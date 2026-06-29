@@ -2177,15 +2177,19 @@ class TestAutodevLoop:
         state = data["states"].get("implement_current", {})
         assert state.get("on_yes") == "dequeue_next"
 
-    def test_implement_current_on_no_routes_to_dequeue_next(self, data: dict) -> None:
-        """On gate-blocked exit (exit 1), still advance to dequeue_next."""
+    def test_implement_current_on_no_routes_to_check_impl_auth(self, data: dict) -> None:
+        """On non-zero exit (exit 1), route to check_impl_auth to detect auth failures."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_no") == "dequeue_next"
+        assert state.get("on_no") == "check_impl_auth", (
+            f"implement_current.on_no should be 'check_impl_auth', got {state.get('on_no')!r}"
+        )
 
-    def test_implement_current_on_error_routes_to_done(self, data: dict) -> None:
-        """On fatal error, terminate the loop via done."""
+    def test_implement_current_on_error_routes_to_check_impl_auth(self, data: dict) -> None:
+        """On fatal error, route to check_impl_auth to detect auth failures before terminating."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_error") == "done"
+        assert state.get("on_error") == "check_impl_auth", (
+            f"implement_current.on_error should be 'check_impl_auth', got {state.get('on_error')!r}"
+        )
 
     def test_copy_broke_down_routes_to_check_decision_after_refine(self, data: dict) -> None:
         """copy_broke_down must route to check_decision_after_refine so decision_needed is
@@ -7460,14 +7464,17 @@ class TestRnImplementDiagnosticOutcomes:
         assert state["on_error"] == "route_rem_scores_missing"
 
     def test_route_rem_scores_missing_splits_to_record_state(self, data: dict) -> None:
-        """route_rem_scores_missing matches the SCORES_MISSING token and routes it to
-        record_scores_missing; everything else falls through to record_failure."""
+        """route_rem_scores_missing matches SCORES_MISSING and routes it to record_scores_missing;
+        everything else falls through to route_rem_env_not_ready (ENH-2353) before record_failure."""
         state = data["states"]["route_rem_scores_missing"]
         assert state["evaluate"]["type"] == "output_contains"
         assert state["evaluate"]["pattern"] == "SCORES_MISSING"
         assert "${captured.rem_outcome.output}" in state["evaluate"]["source"]
         assert state["on_yes"] == "record_scores_missing"
-        assert state["on_no"] == "record_failure"
+        assert state["on_no"] == "route_rem_env_not_ready", (
+            "route_rem_scores_missing.on_no must route to route_rem_env_not_ready "
+            "so ENV_NOT_READY aborts the queue before falling through to record_failure"
+        )
         assert state["on_error"] == "record_failure"
 
     def test_dec_rate_limited_on_no_routes_to_size_review_router(self, data: dict) -> None:
@@ -8193,3 +8200,117 @@ class TestInteractiveComponentGeneratorLoop:
         assert "allow_cdn" in ctx
         assert "n_build" in ctx
         assert "n_final" in ctx
+
+
+class TestAutodevAuthGuard:
+    """Auth-failure fast-fail guard for autodev.implement_current (ENH-2353)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "autodev.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_implement_current_captures_ll_auto_output(self, data: dict) -> None:
+        """implement_current must capture output as ll_auto_output for auth-check."""
+        state = data["states"]["implement_current"]
+        assert state.get("capture") == "ll_auto_output", (
+            f"implement_current must set capture: ll_auto_output, got {state.get('capture')!r}"
+        )
+
+    def test_implement_current_on_no_routes_to_check_impl_auth(self, data: dict) -> None:
+        """implement_current.on_no must route to check_impl_auth instead of dequeue_next."""
+        state = data["states"]["implement_current"]
+        assert state.get("on_no") == "check_impl_auth"
+
+    def test_implement_current_on_error_routes_to_check_impl_auth(self, data: dict) -> None:
+        """implement_current.on_error must route to check_impl_auth."""
+        state = data["states"]["implement_current"]
+        assert state.get("on_error") == "check_impl_auth"
+
+    def test_check_impl_auth_state_exists(self, data: dict) -> None:
+        """check_impl_auth state must be defined in autodev."""
+        assert "check_impl_auth" in data["states"], "check_impl_auth state missing from autodev"
+
+    def test_check_impl_auth_uses_ll_auto_auth_check_fragment(self, data: dict) -> None:
+        """check_impl_auth must use the ll_auto_auth_check fragment."""
+        state = data["states"]["check_impl_auth"]
+        assert state.get("fragment") == "ll_auto_auth_check"
+
+    def test_check_impl_auth_on_yes_aborts_queue(self, data: dict) -> None:
+        """check_impl_auth.on_yes (auth detected) must route to abort_env_not_ready."""
+        state = data["states"]["check_impl_auth"]
+        assert state.get("on_yes") == "abort_env_not_ready"
+
+    def test_check_impl_auth_on_no_drains_queue(self, data: dict) -> None:
+        """check_impl_auth.on_no (no auth failure) must continue draining the queue."""
+        state = data["states"]["check_impl_auth"]
+        assert state.get("on_no") == "dequeue_next"
+
+    def test_abort_env_not_ready_state_exists(self, data: dict) -> None:
+        """abort_env_not_ready state must be defined in autodev."""
+        assert "abort_env_not_ready" in data["states"], (
+            "abort_env_not_ready state missing from autodev"
+        )
+
+    def test_abort_env_not_ready_has_diagnostic_echo(self, data: dict) -> None:
+        """abort_env_not_ready must echo a user-actionable diagnostic message."""
+        action = data["states"]["abort_env_not_ready"].get("action", "")
+        assert "echo" in action
+
+
+class TestRnImplementAuthFastFail:
+    """rn-implement ENV_NOT_READY routing aborts the queue on auth failure (ENH-2353)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-implement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_route_rem_scores_missing_on_no_routes_to_env_not_ready_router(
+        self, data: dict
+    ) -> None:
+        """route_rem_scores_missing.on_no must hand off to route_rem_env_not_ready
+        so ENV_NOT_READY aborts the queue before falling through to record_failure."""
+        state = data["states"]["route_rem_scores_missing"]
+        assert state["on_no"] == "route_rem_env_not_ready", (
+            f"route_rem_scores_missing.on_no should be 'route_rem_env_not_ready', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_route_rem_env_not_ready_state_exists(self, data: dict) -> None:
+        """route_rem_env_not_ready state must be defined in rn-implement."""
+        assert "route_rem_env_not_ready" in data["states"], (
+            "route_rem_env_not_ready state missing from rn-implement"
+        )
+
+    def test_route_rem_env_not_ready_detects_token(self, data: dict) -> None:
+        """route_rem_env_not_ready must match the ENV_NOT_READY outcome token."""
+        state = data["states"]["route_rem_env_not_ready"]
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "ENV_NOT_READY"
+        assert "${captured.rem_outcome.output}" in state["evaluate"]["source"]
+
+    def test_route_rem_env_not_ready_aborts_on_yes(self, data: dict) -> None:
+        """route_rem_env_not_ready.on_yes must route to abort_env_not_ready to stop the queue."""
+        state = data["states"]["route_rem_env_not_ready"]
+        assert state["on_yes"] == "abort_env_not_ready"
+
+    def test_route_rem_env_not_ready_falls_through_on_no(self, data: dict) -> None:
+        """route_rem_env_not_ready.on_no must fall through to record_failure for genuine failures."""
+        state = data["states"]["route_rem_env_not_ready"]
+        assert state["on_no"] == "record_failure"
+
+    def test_abort_env_not_ready_state_exists(self, data: dict) -> None:
+        """abort_env_not_ready state must be defined in rn-implement."""
+        assert "abort_env_not_ready" in data["states"], (
+            "abort_env_not_ready state missing from rn-implement"
+        )
+
+    def test_abort_env_not_ready_has_diagnostic_echo(self, data: dict) -> None:
+        """abort_env_not_ready must echo a user-actionable diagnostic message."""
+        action = data["states"]["abort_env_not_ready"].get("action", "")
+        assert "echo" in action

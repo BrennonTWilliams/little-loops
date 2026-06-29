@@ -423,6 +423,7 @@ states:
 
   implement:
     action_type: shell
+    capture: ll_auto_output
     action: |
       ID="${context.issue_id}"
       ll-auto --only "$ID" 2>&1
@@ -430,8 +431,17 @@ states:
       # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
       exit $?
     on_yes: emit_implemented
+    on_no: check_impl_auth
+    on_error: check_impl_auth
+
+  check_impl_auth:
+    # ENH-2353: gate between implement failure and emit_implement_failed.
+    # Greps captured ll-auto output for auth signatures; routes auth failures
+    # to emit_env_not_ready (ENV_NOT_READY → parent aborts queue) rather than
+    # mislabeling them as IMPLEMENT_FAILED.
+    fragment: ll_auto_auth_check
+    on_yes: emit_env_not_ready
     on_no: emit_implement_failed
-    on_error: emit_implement_failed
 
   decide:
     fragment: with_rate_limit_handling
@@ -713,7 +723,7 @@ states:
   # Each terminal path writes exactly one outcome token to the shared run_dir so
   # the parent's classify_remediation can route deterministically rather than
   # collapsing every non-done terminal into "decompose". Tokens:
-  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY
 
   emit_implemented:
     action_type: shell
@@ -755,6 +765,15 @@ states:
     action_type: shell
     action: |
       echo "IMPLEMENT_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_env_not_ready:
+    # ENH-2353: auth-failure fast-fail. Writes ENV_NOT_READY sidecar so the parent's
+    # route_rem_env_not_ready can abort the queue instead of continuing to dequeue.
+    action_type: shell
+    action: |
+      echo "ENV_NOT_READY" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
     next: failed
 
   emit_scores_missing:

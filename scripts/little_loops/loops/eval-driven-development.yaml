@@ -9,6 +9,8 @@ initial: implement
 max_steps: 20
 timeout: 14400
 on_handoff: spawn
+import:
+  - lib/common.yaml
 context:
   harness_name: ""            # required: name of harness loop to run
   readiness_threshold: 90     # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
@@ -20,8 +22,27 @@ states:
   implement:
     action: ll-auto --priority P1,P2 --quiet
     action_type: shell
-    capture: implement_result
-    next: commit_impl
+    capture: ll_auto_output
+    evaluate:
+      type: exit_code
+    on_yes: commit_impl
+    on_no: check_impl_auth
+    on_error: check_impl_auth
+
+  check_impl_auth:
+    # ENH-2353: detect auth failures before proceeding to commit.
+    # Auth failures abort the loop; genuine ll-auto failures still commit
+    # (partial implementation) and continue to harness evaluation.
+    fragment: ll_auto_auth_check
+    on_yes: abort_env_not_ready
+    on_no: commit_impl
+
+  abort_env_not_ready:
+    # ENH-2353: abort on auth misconfiguration.
+    action_type: shell
+    action: |
+      echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
+    next: failed
 
   # Commit implementation changes before evaluation.
   commit_impl:

@@ -701,14 +701,34 @@ states:
     # diagnostic/tooling failure (confidence/outcome frontmatter unreadable after a
     # scoring pass), not a genuine implementation failure. Tagging it distinctly lets
     # operators triage scoring errors from real ll-auto failures. on_no falls through
-    # to record_failure for the remaining IMPLEMENT_FAILED outcome.
+    # to route_rem_env_not_ready to check for auth failures before record_failure.
     evaluate:
       type: output_contains
       source: "${captured.rem_outcome.output}"
       pattern: "SCORES_MISSING"
     on_yes: record_scores_missing
+    on_no: route_rem_env_not_ready
+    on_error: record_failure
+
+  route_rem_env_not_ready:
+    # ENH-2353: fast-fail if rn-remediate detected an auth failure. ENV_NOT_READY
+    # means no issue will succeed until the environment is fixed; abort the entire
+    # queue immediately rather than burning time re-discovering the same failure.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "ENV_NOT_READY"
+    on_yes: abort_env_not_ready
     on_no: record_failure   # genuine IMPLEMENT_FAILED → recorded failure
     on_error: record_failure
+
+  abort_env_not_ready:
+    # ENH-2353: terminal abort for auth misconfiguration. Routes to failed so the
+    # parent caller receives a non-success exit code.
+    action_type: shell
+    action: |
+      echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
+    next: failed
 
   run_decomposition:
     # ENH-2005: on_success == on_failure is INTENTIONAL sidecar routing — the

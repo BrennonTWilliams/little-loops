@@ -258,6 +258,26 @@ fragments:
       Write a one-paragraph diagnostic summary the operator can use to re-run or adjust inputs.
     next: failed
 
+  ll_auto_auth_check:
+    description: |
+      Shell state that greps captured ll-auto output for host-auth failure signatures
+      (HTTP 401/403 and the ll-auto fatal credential string) and emits AUTH_FAILED or OK.
+      Designed to follow any ll-auto call site that sets capture: ll_auto_output.
+      State must supply: on_yes (auth detected → abort route), on_no (no auth failure → continue).
+      Callers MUST set capture: ll_auto_output on their ll-auto state so this fragment can
+      read ${captured.ll_auto_output.output}. Detection is host-agnostic: output signatures
+      only; no ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env probes (ENH-2353).
+    action_type: shell
+    action: |
+      if echo "${captured.ll_auto_output.output}" | grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authentication method'; then
+        echo "AUTH_FAILED"
+      else
+        echo "OK"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "AUTH_FAILED"
+
   subloop_rate_limit_diagnostic:
     description: |
       Sub-loop terminal handler for rate-limit exhaustion (ENH-1977 GAP A). Writes an

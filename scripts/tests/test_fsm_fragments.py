@@ -2407,3 +2407,55 @@ class TestPolicyRouterLib:
         assert not error_list, (
             f"policy-refine.yaml validation errors: {[str(e) for e in error_list]}"
         )
+
+
+class TestLlAutoAuthCheckFragment:
+    """Structural assertions for the ll_auto_auth_check fragment (ENH-2353)."""
+
+    LIB_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+
+    @pytest.fixture
+    def fragments(self) -> dict:
+        import yaml
+
+        data = yaml.safe_load(self.LIB_PATH.read_text())
+        return data.get("fragments", {})
+
+    def test_fragment_exists(self, fragments: dict) -> None:
+        """ll_auto_auth_check must be defined in lib/common.yaml."""
+        assert "ll_auto_auth_check" in fragments, (
+            "ll_auto_auth_check fragment missing from lib/common.yaml"
+        )
+
+    def test_fragment_is_shell_type(self, fragments: dict) -> None:
+        """ll_auto_auth_check must use action_type: shell."""
+        frag = fragments["ll_auto_auth_check"]
+        assert frag.get("action_type") == "shell"
+
+    def test_fragment_has_output_contains_evaluate(self, fragments: dict) -> None:
+        """ll_auto_auth_check must evaluate with output_contains."""
+        frag = fragments["ll_auto_auth_check"]
+        assert frag.get("evaluate", {}).get("type") == "output_contains"
+
+    def test_fragment_pattern_is_auth_failed(self, fragments: dict) -> None:
+        """ll_auto_auth_check evaluate.pattern must be AUTH_FAILED."""
+        frag = fragments["ll_auto_auth_check"]
+        assert frag.get("evaluate", {}).get("pattern") == "AUTH_FAILED"
+
+    def test_fragment_action_covers_ll_auto_credential_string(self, fragments: dict) -> None:
+        """Fragment action must grep for ll-auto's fatal credential string, not just HTTP 401/403."""
+        frag = fragments["ll_auto_auth_check"]
+        action = frag.get("action", "").lower()
+        assert "could not resolve authentication" in action or "authentication method" in action, (
+            "ll_auto_auth_check action must cover the ll-auto fatal credential string "
+            "'Could not resolve authentication' — the existing 401/403 pattern alone misses it"
+        )
+
+    def test_fragment_action_references_ll_auto_output_capture(self, fragments: dict) -> None:
+        """Fragment action must reference the standardized ll_auto_output capture variable."""
+        frag = fragments["ll_auto_auth_check"]
+        action = frag.get("action", "")
+        assert "captured.ll_auto_output.output" in action, (
+            "ll_auto_auth_check action must reference ${captured.ll_auto_output.output} — "
+            "callers must set capture: ll_auto_output on their ll-auto state"
+        )

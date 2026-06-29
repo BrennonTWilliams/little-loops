@@ -298,9 +298,10 @@ states:
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
     # ll-auto --only against it. Exit 0 (on_yes) → dequeue_next for next
-    # queued issue. Exit 1 (on_no) → decision gate blocked; still advance to
-    # dequeue_next so the queue drains normally. Fatal error → done.
+    # queued issue. Exit non-zero → check_impl_auth to detect auth failures
+    # before deciding whether to drain the queue or abort.
     fragment: shell_exit
+    capture: ll_auto_output
     action: |
       # BUG-1870: re-queue any stale inflight issue left by a prior context handoff.
       # On resume, init is bypassed so autodev-inflight may hold an issue that was
@@ -323,8 +324,23 @@ states:
       ll-auto --only "$CURRENT"
     action_type: shell
     on_yes: dequeue_next
+    on_no: check_impl_auth
+    on_error: check_impl_auth
+
+  check_impl_auth:
+    # ENH-2353: gate between ll-auto failure and queue drain. Auth failures abort
+    # the queue (abort_env_not_ready); genuine implementation failures continue
+    # draining (dequeue_next) so other issues still get a chance.
+    fragment: ll_auto_auth_check
+    on_yes: abort_env_not_ready
     on_no: dequeue_next
-    on_error: done
+
+  abort_env_not_ready:
+    # ENH-2353: abort the autodev queue on auth misconfiguration.
+    action_type: shell
+    action: |
+      echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
+    next: done
 
   detect_children:
     # Diff current issue IDs against the pre-refinement baseline to find any

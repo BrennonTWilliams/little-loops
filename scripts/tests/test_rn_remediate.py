@@ -297,11 +297,11 @@ class TestRemediationActions:
         assert impl["on_yes"] == "emit_implemented"
 
     def test_implement_failure_routes_to_failed(self) -> None:
-        """implement routes to failed (terminal) on failure — issue skipping stays in parent."""
+        """implement routes to check_impl_auth on failure — auth check gates emit_implement_failed."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl["on_no"] == "emit_implement_failed"
-        assert impl["on_error"] == "emit_implement_failed"
+        assert impl["on_no"] == "check_impl_auth"
+        assert impl["on_error"] == "check_impl_auth"
 
     def test_decide_is_slash_command_with_auto(self) -> None:
         """decide invokes /ll:decide-issue --auto as a slash_command."""
@@ -1182,7 +1182,8 @@ class TestOutcomeTokenChannel:
     def test_implement_success_emits_implemented(self) -> None:
         data = _load_loop()
         assert data["states"]["implement"]["on_yes"] == "emit_implemented"
-        assert data["states"]["implement"]["on_no"] == "emit_implement_failed"
+        # on_no routes through check_impl_auth first (ENH-2353 auth guard)
+        assert data["states"]["implement"]["on_no"] == "check_impl_auth"
 
     def test_bug2006_token_disambiguation_preserved(self) -> None:
         """BUG-2006: diagnose DECOMPOSE path → emit_needs_decompose (plain token);
@@ -1574,3 +1575,97 @@ class TestEnsureFormatted:
             "Gate should exit 0 for enh missing only deprecated 'Current Pain Point'.\n"
             f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestRnRemediateAuthGuard — ENH-2353: auth-signature fast-fail
+# ---------------------------------------------------------------------------
+
+
+class TestRnRemediateAuthGuard:
+    """Auth-failure fast-fail guard for rn-remediate.implement (ENH-2353)."""
+
+    def test_implement_captures_ll_auto_output(self) -> None:
+        """implement must capture its output as ll_auto_output for the auth-check state."""
+        data = _load_loop()
+        impl = data["states"]["implement"]
+        assert impl.get("capture") == "ll_auto_output", (
+            f"implement must set capture: ll_auto_output, got {impl.get('capture')!r}"
+        )
+
+    def test_implement_on_no_routes_to_check_impl_auth(self) -> None:
+        """implement.on_no must route to check_impl_auth, not emit_implement_failed."""
+        data = _load_loop()
+        impl = data["states"]["implement"]
+        assert impl.get("on_no") == "check_impl_auth", (
+            f"implement.on_no should be 'check_impl_auth', got {impl.get('on_no')!r}"
+        )
+
+    def test_implement_on_error_routes_to_check_impl_auth(self) -> None:
+        """implement.on_error must route to check_impl_auth."""
+        data = _load_loop()
+        impl = data["states"]["implement"]
+        assert impl.get("on_error") == "check_impl_auth", (
+            f"implement.on_error should be 'check_impl_auth', got {impl.get('on_error')!r}"
+        )
+
+    def test_check_impl_auth_state_exists(self) -> None:
+        """check_impl_auth state must be defined in rn-remediate."""
+        data = _load_loop()
+        assert "check_impl_auth" in data["states"], "check_impl_auth state missing"
+
+    def test_check_impl_auth_uses_ll_auto_auth_check_fragment(self) -> None:
+        """check_impl_auth must use the ll_auto_auth_check shared fragment."""
+        data = _load_loop()
+        state = data["states"]["check_impl_auth"]
+        assert state.get("fragment") == "ll_auto_auth_check", (
+            f"check_impl_auth must use fragment: ll_auto_auth_check, got {state.get('fragment')!r}"
+        )
+
+    def test_check_impl_auth_on_yes_routes_to_emit_env_not_ready(self) -> None:
+        """check_impl_auth.on_yes (auth detected) must route to emit_env_not_ready."""
+        data = _load_loop()
+        state = data["states"]["check_impl_auth"]
+        assert state.get("on_yes") == "emit_env_not_ready", (
+            f"check_impl_auth.on_yes should be 'emit_env_not_ready', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_impl_auth_on_no_routes_to_emit_implement_failed(self) -> None:
+        """check_impl_auth.on_no (genuine failure) must route to emit_implement_failed."""
+        data = _load_loop()
+        state = data["states"]["check_impl_auth"]
+        assert state.get("on_no") == "emit_implement_failed", (
+            f"check_impl_auth.on_no should be 'emit_implement_failed', got {state.get('on_no')!r}"
+        )
+
+    def test_emit_env_not_ready_state_exists(self) -> None:
+        """emit_env_not_ready state must be defined."""
+        data = _load_loop()
+        assert "emit_env_not_ready" in data["states"], "emit_env_not_ready state missing"
+
+    def test_emit_env_not_ready_writes_sidecar(self) -> None:
+        """emit_env_not_ready must write subloop_outcome_ sidecar (sidecar contract, ENH-1977)."""
+        data = _load_loop()
+        action = data["states"]["emit_env_not_ready"].get("action", "")
+        assert "subloop_outcome_" in action, (
+            "emit_env_not_ready must write subloop_outcome_<ID>.txt — parent classify_remediation "
+            "reads this sidecar; without it auth failures fall through as IMPLEMENT_FAILED"
+        )
+
+    def test_emit_env_not_ready_writes_env_not_ready_token(self) -> None:
+        """emit_env_not_ready must emit the ENV_NOT_READY outcome token."""
+        data = _load_loop()
+        action = data["states"]["emit_env_not_ready"].get("action", "")
+        assert "ENV_NOT_READY" in action
+
+    def test_emit_env_not_ready_routes_to_failed_terminal(self) -> None:
+        """emit_env_not_ready must route to failed so the parent aborts the queue."""
+        data = _load_loop()
+        state = data["states"]["emit_env_not_ready"]
+        assert state.get("next") == "failed"
+
+    def test_emit_env_not_ready_has_diagnostic_echo(self) -> None:
+        """emit_env_not_ready must echo a user-actionable diagnostic message."""
+        data = _load_loop()
+        action = data["states"]["emit_env_not_ready"].get("action", "")
+        assert "echo" in action, "emit_env_not_ready must echo a diagnostic message"
