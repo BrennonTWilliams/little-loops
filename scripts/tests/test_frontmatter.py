@@ -172,6 +172,7 @@ class TestParseFrontmatter:
             ("in-progress", "in_progress"),
             ("in progress", "in_progress"),
             ("wip", "in_progress"),
+            ("pending", "open"),
         ],
     )
     def test_status_synonym_normalized(self, synonym: str, expected: str) -> None:

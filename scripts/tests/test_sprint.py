@@ -2460,6 +2460,29 @@ class TestSprintManagerLoadOrResolve:
         assert "BUG-001" in result.issues
         assert "FEAT-010" not in result.issues
 
+    def test_load_or_resolve_pending_children_included(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """Pending children are coerced to open (active) and must be included.
+
+        ``pending`` is a non-canonical status coerced to ``open`` on read via
+        STATUS_SYNONYMS, so it falls within the active set EPIC resolution uses.
+        Contrast with test_load_or_resolve_filters_inactive_statuses (done-out).
+        """
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-450-test-epic.md").write_text(
+            "---\nid: EPIC-450\nstatus: open\n---\n# EPIC-450\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-020-pending-feature.md").write_text(
+            "---\nparent: EPIC-450\nstatus: pending\n---\n# FEAT-020: Pending Feature\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-450")
+
+        assert result is not None
+        assert "FEAT-020" in result.issues
+
     def test_load_or_resolve_epic_not_found(self, tmp_path: Path, epic_project: BRConfig) -> None:
         """EPIC ID that doesn't exist returns None."""
         manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)

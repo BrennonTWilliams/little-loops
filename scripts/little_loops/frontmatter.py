@@ -23,6 +23,7 @@ STATUS_SYNONYMS: dict[str, str] = {
     "in-progress": "in_progress",
     "in progress": "in_progress",
     "wip": "in_progress",
+    "pending": "open",
 }
 
 
