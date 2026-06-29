@@ -536,8 +536,8 @@ states:
     on_error: check_decision_needed
 
   check_decision_needed:
-    # Gate: skip size-review if the issue has decision_needed: true — a competing
-    # option must be resolved via /ll:decide-issue before sizing makes sense.
+    # Gate: skip the entire issue if decision_needed: true — a competing option
+    # must be resolved via /ll:decide-issue before the issue can be refined.
     action: |
       ISSUE_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$ISSUE_FILE" ] && grep -q "decision_needed: true" "$ISSUE_FILE"; then
