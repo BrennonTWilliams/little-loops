@@ -2,8 +2,8 @@ name: "general-task"
 description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
 category: harness
 initial: check_baseline_tests
-max_steps: 200
-default_timeout: 1800
+max_steps: 500
+default_timeout: 14400
 on_handoff: spawn
 artifact_versioning_ok: true
 on_max_steps: summarize_partial
@@ -19,7 +19,7 @@ context:
   # else fall back to bare "pytest". A whole-artifact gate embedded here (e.g. a
   # coverage threshold) is enforced at completion time, not after every step.
   test_cmd: ""
-  max_step_attempts: 3    # max verify attempts per step before abandoning it (Fix #2)
+  max_step_attempts: 3 # max verify attempts per step before abandoning it (Fix #2)
 
 circuit:
   repeated_failure:
