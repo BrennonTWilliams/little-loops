@@ -1,5 +1,5 @@
 ---
-id: FEAT-2267
+id: FEAT-2387
 title: Generic host-parameterized ll-init --upgrade surface refresh
 type: feature
 status: open
@@ -15,7 +15,7 @@ depends_on: [FEAT-2260]
 labels: [host-compat, portfolio, init, upgrade]
 ---
 
-# FEAT-2267: Generic host-parameterized ll-init --upgrade surface refresh
+# FEAT-2387: Generic host-parameterized ll-init --upgrade surface refresh
 
 ## Summary
 
@@ -248,6 +248,7 @@ _Added by `/ll:verify-issues` (2026-06-27):_ Multiple references to `writers.py:
   kept; still unimplemented.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-06-29T01:39:33 - `f12e79a8-668c-41bc-b237-a5dd7b91e4d5.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:27:28 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:wire-issue` - 2026-06-25T18:46:15 - `b48daf6e-e26f-40d4-9aab-ea94d716a199.jsonl`
