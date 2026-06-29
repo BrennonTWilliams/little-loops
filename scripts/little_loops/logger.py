@@ -79,9 +79,9 @@ class Logger:
             print(self._format(self.CYAN, msg), flush=True)
 
     def debug(self, msg: str) -> None:
-        """Log a debug message (gray/dim)."""
+        """Log a debug message (gray/dim) to stderr."""
         if self.verbose:
-            print(self._format(self.GRAY, msg), flush=True)
+            print(self._format(self.GRAY, msg), file=sys.stderr, flush=True)
 
     def success(self, msg: str) -> None:
         """Log a success message."""
@@ -89,9 +89,9 @@ class Logger:
             print(self._format(self.GREEN, msg), flush=True)
 
     def warning(self, msg: str) -> None:
-        """Log a warning message."""
+        """Log a warning message to stderr."""
         if self.verbose:
-            print(self._format(self.YELLOW, msg), flush=True)
+            print(self._format(self.YELLOW, msg), file=sys.stderr, flush=True)
 
     def error(self, msg: str) -> None:
         """Log an error message to stderr."""

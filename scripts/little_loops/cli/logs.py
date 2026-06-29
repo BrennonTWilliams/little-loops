@@ -129,7 +129,9 @@ def _extract_cwd_from_project(project_dir: Path) -> Path | None:
     return None
 
 
-def discover_all_projects(logger: Logger, *, host: str | None = None) -> list[Path]:
+def discover_all_projects(
+    logger: Logger, *, host: str | None = None, existing_only: bool = False
+) -> list[Path]:
     """Discover all projects with ll activity for the given host.
 
     Iterates the host's session directory (e.g. ``~/.claude/projects/`` for
@@ -138,9 +140,12 @@ def discover_all_projects(logger: Logger, *, host: str | None = None) -> list[Pa
     returns a sorted list of paths that exist on disk.
 
     Args:
-        logger: Logger instance for warnings.
+        logger: Logger instance for diagnostics.
         host: Host identifier. If None, auto-detects from ``LL_HOOK_HOST``
             env var (default ``"claude-code"``).
+        existing_only: When True, silently skip paths that don't exist on disk
+            (no debug message). Useful for scripted consumers that want clean
+            stderr as well as clean stdout.
 
     Returns:
         Sorted list of decoded absolute paths for projects with ll activity.
@@ -179,7 +184,8 @@ def discover_all_projects(logger: Logger, *, host: str | None = None) -> list[Pa
         )
 
         if not decoded_path.exists():
-            logger.debug(f"Decoded path does not exist: {decoded_path}")
+            if not existing_only:
+                logger.debug(f"Decoded path does not exist: {decoded_path}")
             continue
 
         if _has_ll_activity(project_dir):
@@ -1733,6 +1739,12 @@ Examples:
         help="List all Claude projects with ll activity (one path per line, sorted)",
     )
     add_json_arg(discover_parser)
+    discover_parser.add_argument(
+        "--existing-only",
+        action="store_true",
+        default=False,
+        help="Only emit paths that currently exist on disk; suppress all diagnostic output.",
+    )
 
     tail_parser = subparsers.add_parser(
         "tail",
@@ -1981,7 +1993,7 @@ def main_logs() -> int:
             return 1
 
         if args.command == "discover":
-            projects = discover_all_projects(logger)
+            projects = discover_all_projects(logger, existing_only=args.existing_only)
             if args.json:
                 print_json({"paths": [str(p) for p in projects]})
             else:

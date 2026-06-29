@@ -3,7 +3,7 @@ id: BUG-2377
 type: BUG
 title: '`ll-logs` diagnostic logs pollute stdout, corrupting `discover`/`-j` output'
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-28T20:50:00Z'
 discovered_date: 2026-06-28
 discovered_by: user-report
@@ -16,7 +16,13 @@ relates_to:
 - ENH-2378
 - FEAT-2379
 decision_needed: false
-confidence_score: 95
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 22
+score_change_surface: 20
+completed_at: '2026-06-29T03:04:44Z'
 ---
 
 # BUG-2377: `ll-logs` diagnostic logs pollute stdout, corrupting `discover`/`-j` output
@@ -41,7 +47,14 @@ to **stdout**, intermixed with the command's real output. This:
 This is the prerequisite blocker for automating cross-project loop review (FEAT-2379):
 a harvester cannot reliably parse `ll-logs` output while diagnostics share the data channel.
 
-## Root cause
+## Current Behavior
+
+`ll-logs discover` and `ll-logs scan-failures -j` interleave diagnostic log lines (e.g.,
+`[HH:MM:SS] Decoded path does not exist: ...`) with data output on stdout. In a real run,
+143 of 162 stdout lines were diagnostic noise. Redirecting stderr (`2>/dev/null`) has no
+effect because diagnostics are on stdout. `json.load` raises on the corrupted `-j` stream.
+
+## Root Cause
 
 `little_loops.logger.Logger` routes almost every level to stdout. Only `error` goes to
 stderr:
@@ -63,7 +76,7 @@ Because `debug()` prints to stdout, every stale/deleted worktree path the decode
 is dumped into the data stream. The discover corpus on this machine contains dozens of stale
 worktree paths, so the noise dominates.
 
-## Reproduction
+## Steps to Reproduce
 
 ```bash
 ll-logs discover >/tmp/out.txt 2>/tmp/err.txt
@@ -72,7 +85,7 @@ grep -c "Decoded path" /tmp/out.txt      # 143
 ll-logs scan-failures --all -j | python3 -c "import sys,json; json.load(sys.stdin)"  # raises
 ```
 
-## Proposed fix
+## Proposed Solution
 
 Two layers, smallest-blast-radius first:
 
@@ -88,7 +101,7 @@ Two layers, smallest-blast-radius first:
    flag, and add `discover --existing-only` to filter the output to live project roots
    (the common case for any downstream harvester).
 
-## Acceptance criteria
+## Expected Behavior
 
 - `ll-logs discover` prints only project paths to stdout; diagnostics (if any) go to stderr.
 - `ll-logs scan-failures --all -j` produces a stdout stream that `json.load` parses with no
@@ -96,7 +109,46 @@ Two layers, smallest-blast-radius first:
 - `ll-logs discover --existing-only` exists and emits only paths that currently exist on disk.
 - A regression test asserts stdout from `discover` contains no `[HH:MM:SS]`-prefixed lines.
 
+## Impact
+
+- **Priority**: P2 — Corrupts `-j` output for all downstream consumers; blocks FEAT-2379 automation.
+- **Effort**: Small — Targeted `logger.py` stdout→stderr migration for `debug`/`warning`, plus
+  a `--existing-only` flag in `logs.py`; no schema changes.
+- **Risk**: Medium — `Logger` is shared by all `ll-*` CLIs; audit needed for consumers
+  that capture `info`/`success` from stdout (e.g. banner formatting).
+- **Breaking Change**: Potentially yes — callers capturing `debug`/`warning` from stdout would break.
+
 ## Notes
 
 The `[HH:MM:SS]` prefix comes from `Logger._format` (`logger.py:65-74`); it is a strong
 fingerprint for "a diagnostic leaked onto stdout" and can anchor the regression assertion.
+
+## Status
+
+**Open** | Created: 2026-06-28 | Priority: P2
+
+
+## Session Log
+- `ll-auto` - 2026-06-29T03:04:44 - `c36fedc1-a775-4033-a0f8-84a8ab3d85c9.jsonl`
+- `/ll:ready-issue` - 2026-06-29T02:53:22 - `4b9ff954-4eeb-493a-8db9-ac3c8055194e.jsonl`
+- `/ll:format-issue` - 2026-06-29T02:47:53 - `8e8a3029-68ed-4f21-903e-bad13d7b46d0.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-06-28
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

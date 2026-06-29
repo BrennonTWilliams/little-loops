@@ -318,7 +318,6 @@ class TestDiscover:
         assert result == 0
         captured = capsys.readouterr()
         lines = [line.strip() for line in captured.out.strip().splitlines() if line.strip()]
-        # Filter to just the project paths (not warning lines)
         project_lines = [p for p in lines if p in (str(path_a), str(path_b))]
         assert project_lines == sorted(project_lines)
 
@@ -488,6 +487,100 @@ class TestDiscover:
         assert result == 0
         data = json.loads(capsys.readouterr().out)
         assert data == {"paths": []}
+
+    def test_discover_stdout_contains_no_timestamp_prefixed_lines(self, capsys) -> None:
+        """discover stdout must contain no [HH:MM:SS]-prefixed diagnostic lines (BUG-2377).
+
+        Stale/nonexistent decoded paths generate debug messages; those must go to stderr,
+        not stdout, so downstream consumers (json.load, shell pipelines) see clean data.
+        """
+        import re
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            # Create a stale encoded dir (decoded path won't exist) to trigger debug msg
+            stale_encoded = "-stale-worktree-bug2377"
+            stale_dir = claude_projects / stale_encoded
+            stale_dir.mkdir(parents=True, exist_ok=True)
+            with open(stale_dir / "session.jsonl", "w") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "type": "queue-operation",
+                            "operation": "enqueue",
+                            "content": "/ll:manage-issue bug fix",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "sessionId": "abc123",
+                        }
+                    )
+                    + "\n"
+                )
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        timestamp_re = re.compile(r"^\[?\d{2}:\d{2}:\d{2}\]?")
+        for line in captured.out.splitlines():
+            assert not timestamp_re.match(line), (
+                f"Diagnostic line leaked onto stdout (BUG-2377): {line!r}"
+            )
+
+    def test_discover_existing_only_flag_accepted(self) -> None:
+        """discover --existing-only is a valid flag and exits 0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover", "--existing-only"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
+    def test_discover_existing_only_omits_nonexistent_paths(self, capsys) -> None:
+        """discover --existing-only emits only paths that exist on disk."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            # Valid project (exists on disk)
+            valid_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "valid_project",
+                [
+                    {
+                        "type": "queue-operation",
+                        "operation": "enqueue",
+                        "content": "/ll:manage-issue bug fix",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "sessionId": "abc123",
+                    }
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover", "--existing-only"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [line.strip() for line in captured.out.strip().splitlines() if line.strip()]
+        assert str(valid_path) in lines
 
 
 class TestTail:

@@ -223,18 +223,19 @@ class TestLoggerDebug:
     """Tests for debug() method."""
 
     def test_debug_prints_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
-        """Message appears in output."""
+        """Message appears on stderr (not stdout)."""
         logger.debug("debug message")
         captured = capsys.readouterr()
-        assert "debug message" in captured.out
+        assert "debug message" in captured.err
+        assert "debug message" not in captured.out
 
     def test_debug_uses_gray_color(
         self, logger: Logger, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Uses GRAY color code."""
+        """Uses GRAY color code on stderr."""
         logger.debug("test")
         captured = capsys.readouterr()
-        assert Logger.GRAY in captured.out
+        assert Logger.GRAY in captured.err
 
     def test_debug_silent_when_not_verbose(
         self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
@@ -242,7 +243,7 @@ class TestLoggerDebug:
         """No output when verbose=False."""
         silent_logger.debug("should not appear")
         captured = capsys.readouterr()
-        assert captured.out == ""
+        assert captured.err == ""
 
 
 # =============================================================================
@@ -289,18 +290,19 @@ class TestLoggerWarning:
     def test_warning_prints_message(
         self, logger: Logger, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Message appears in output."""
+        """Message appears on stderr (not stdout)."""
         logger.warning("warning message")
         captured = capsys.readouterr()
-        assert "warning message" in captured.out
+        assert "warning message" in captured.err
+        assert "warning message" not in captured.out
 
     def test_warning_uses_yellow_color(
         self, logger: Logger, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Uses YELLOW color code."""
+        """Uses YELLOW color code on stderr."""
         logger.warning("test")
         captured = capsys.readouterr()
-        assert Logger.YELLOW in captured.out
+        assert Logger.YELLOW in captured.err
 
     def test_warning_silent_when_not_verbose(
         self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
@@ -308,7 +310,7 @@ class TestLoggerWarning:
         """No output when verbose=False."""
         silent_logger.warning("should not appear")
         captured = capsys.readouterr()
-        assert captured.out == ""
+        assert captured.err == ""
 
 
 # =============================================================================
@@ -602,12 +604,13 @@ class TestLoggerFlush:
             log.info("test")
         assert tracker.flush_called, "info() must call flush() on stdout"
 
-    def test_debug_flushes_stdout(self) -> None:
-        """debug() flushes stdout immediately."""
-        tracker, log = self._make_tracker()
-        with patch("sys.stdout", tracker):
+    def test_debug_flushes_stderr(self) -> None:
+        """debug() flushes stderr immediately."""
+        tracker = FlushTracker()
+        log = Logger(verbose=True, use_color=False)
+        with patch("sys.stderr", tracker):
             log.debug("test")
-        assert tracker.flush_called, "debug() must call flush() on stdout"
+        assert tracker.flush_called, "debug() must call flush() on stderr"
 
     def test_success_flushes_stdout(self) -> None:
         """success() flushes stdout immediately."""
@@ -616,12 +619,13 @@ class TestLoggerFlush:
             log.success("test")
         assert tracker.flush_called, "success() must call flush() on stdout"
 
-    def test_warning_flushes_stdout(self) -> None:
-        """warning() flushes stdout immediately."""
-        tracker, log = self._make_tracker()
-        with patch("sys.stdout", tracker):
+    def test_warning_flushes_stderr(self) -> None:
+        """warning() flushes stderr immediately."""
+        tracker = FlushTracker()
+        log = Logger(verbose=True, use_color=False)
+        with patch("sys.stderr", tracker):
             log.warning("test")
-        assert tracker.flush_called, "warning() must call flush() on stdout"
+        assert tracker.flush_called, "warning() must call flush() on stderr"
 
     def test_error_flushes_stderr(self) -> None:
         """error() flushes stderr immediately."""
