@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.fragments import resolve_fragments
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_generator_fix_discipline,
@@ -288,6 +289,74 @@ class TestBuiltinLoopFiles:
         assert asserted > 0, (
             "No built-in loop exercised the diagnose-before-failure-terminal assertion; "
             "the BUG-1606 regression guard is vacuous (all diagnose states removed?)."
+        )
+
+
+class TestSubloopSidecarContract:
+    """The sub-loop → parent outcome-channel sidecar contract (ENH-1977).
+
+    `rn-implement`'s `classify_remediation` / `classify_decomposition` states read the
+    child loop's real outcome from `${run_dir}/subloop_outcome_<ID>.txt` rather than from
+    the child's terminal verdict (which collapses every non-`done` exit into `failed`).
+    For that channel to be reliable, every state in a sub-loop that transitions into a
+    terminal (`done` or `failed`) MUST write the sidecar token first — otherwise the
+    parent `cat`s a missing file and silently falls back to `IMPLEMENT_FAILED`, losing the
+    real outcome with no error (the BUG-2383-class silent-failure the audit flagged).
+
+    This guards the load-bearing assumption confirmed across two `rn-implement` audit runs
+    (2026-06-27 and 2026-06-29, Recommendation #4): a new `next: failed` / `on_error: failed`
+    path added to a sub-loop without a paired sidecar write will fail here instead of
+    silently corrupting parent classification at runtime.
+    """
+
+    # Sub-loops whose outcome the parent reads through the sidecar channel.
+    SUBLOOPS = ("rn-remediate", "rn-decompose")
+    SIDECAR_MARKER = "subloop_outcome_"
+    TERMINALS = {"done", "failed"}
+
+    @staticmethod
+    def _transition_targets(state: dict) -> set[str]:
+        """All state names this state can transition to (next / on_* / route table)."""
+        targets: set[str] = set()
+        nxt = state.get("next")
+        if isinstance(nxt, str):
+            targets.add(nxt)
+        for key, val in state.items():
+            if key.startswith("on_") and isinstance(val, str):
+                targets.add(val)
+        route = state.get("route")
+        if isinstance(route, dict):
+            targets.update(v for v in route.values() if isinstance(v, str))
+        return targets
+
+    def test_terminal_routing_states_write_sidecar(self) -> None:
+        """Every sub-loop state that routes to a terminal writes the outcome sidecar."""
+        asserted = 0
+        for name in self.SUBLOOPS:
+            loop_file = BUILTIN_LOOPS_DIR / f"{name}.yaml"
+            assert loop_file.exists(), f"Sub-loop not found: {loop_file}"
+            data = resolve_fragments(yaml.safe_load(loop_file.read_text()), loop_file.parent)
+            states = data.get("states", {})
+            for state_name, cfg in states.items():
+                if not isinstance(cfg, dict) or cfg.get("terminal"):
+                    continue  # terminals themselves have no outbound transition
+                if not (self._transition_targets(cfg) & self.TERMINALS):
+                    continue  # does not reach a terminal directly
+                action = cfg.get("action") or ""
+                assert self.SIDECAR_MARKER in action, (
+                    f"{name}.yaml: state '{state_name}' transitions to a terminal "
+                    f"{self._transition_targets(cfg) & self.TERMINALS} but does not write "
+                    f"'{self.SIDECAR_MARKER}<ID>.txt'. The parent's classify_remediation/"
+                    f"classify_decomposition would read a missing sidecar and silently "
+                    f"misclassify the outcome as IMPLEMENT_FAILED (ENH-1977 / audit Rec #4)."
+                )
+                asserted += 1
+        # Vacuous-pass guard: if no state ever reached a terminal, the loop structure changed
+        # out from under this regression guard — fail loudly rather than go green having
+        # checked nothing.
+        assert asserted > 0, (
+            "No sub-loop state routed to a terminal; the sidecar-contract regression guard "
+            "is vacuous (did rn-remediate/rn-decompose terminal structure change?)."
         )
 
 
@@ -1753,12 +1822,8 @@ class TestAutoRefineAndImplementLoop:
             (completed_dir / f"P3-{cid}-x.md").write_text("done\n")
         # finalize sources autodev's ledgers under the shared run_dir.
         (run_dir / "autodev-passed.txt").write_text("".join(f"{i}\n" for i in passed))
-        (run_dir / "autodev-skipped.txt").write_text(
-            "".join(f"ID-{i}\n" for i in range(skipped))
-        )
-        (run_dir / f"{p}-errored.txt").write_text(
-            "".join(f"ID-{i}\n" for i in range(errored))
-        )
+        (run_dir / "autodev-skipped.txt").write_text("".join(f"ID-{i}\n" for i in range(skipped)))
+        (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
