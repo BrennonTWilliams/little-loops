@@ -217,6 +217,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   outcome-token table describe `LEARNING_GATE_BLOCKED` as solely a post-implement,
   `rn-remediate`-originated token; needs a new gate-order bullet and an updated token
   description now that it can also originate pre-dequeue [Agent 2 finding]
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — the "Using Learning Tests in Issue Lifecycle Gates"
+  section's claim that "all three automation runners... resolve targets just-in-time via a
+  shared `resolve_learning_targets()` helper" becomes incomplete once `check_learning_ready`
+  ships: it is a fourth gate call site that does **not** use that shared Python helper (it
+  shells out directly to `ll-learning-tests check <target> --stale-aware` per target, mirroring
+  `check_blocked_by`'s frontmatter-parsing pattern instead) [Agent 2 finding, second
+  `/ll:wire-issue` pass]
 
 ### Configuration
 - N/A
@@ -339,6 +346,50 @@ all prior claims confirmed accurate except the two corrections above):_
 - **`re_enqueue_unblocked` exact anchor**: the `grep -q "blocked_by"` substring check referenced in
   the "`re_enqueue_unblocked` ledger ambiguity" note above is at `rn-implement.yaml:585`.
 
+_Third `/ll:refine-issue` pass — re-verified against current HEAD (`9c30803e`); all prior line numbers
+and claims confirmed exact (no drift), one precision nuance worth recording:_
+
+- **`skip_learning_gate` bypass mechanism — location precision**: `rn-remediate.yaml:441`'s
+  `if [ -n "${context.skip_learning_gate}" ]` lives inside the **`implement`** state (lines 433-450),
+  not inside `check_learning_gate` (lines 452-460) itself. It controls whether `--skip-learning-gate`
+  is appended to the inner `ll-auto --only` call — `check_learning_gate` always executes on
+  `implement`'s `on_no`/`on_error`; it just finds no `LEARNING_GATE_BLOCKED` marker to classify when
+  the flag suppressed the gate upstream inside `ll-auto`. This means rn-remediate's bypass is
+  indirect (suppress the marker the classifier looks for), not a literal skip of the classifier
+  state. Wiring Step 6's design for `check_learning_ready` is **not** identical to this mechanism —
+  the new state must short-circuit itself directly (an early `if [ -n "${context.skip_learning_gate}" ];
+  then echo READY; exit 0; fi`-style guard before any `ll-learning-tests check` subprocess calls),
+  since there is no downstream `ll-auto` call whose marker output it could instead suppress. Both
+  approaches achieve the same fail-open contract, but an implementer copying rn-remediate's exact
+  shape (gate the flag passed to a subprocess) rather than `check_blocked_by`'s shape (gate the
+  state's own routing) would build the wrong thing.
+
+_Second `/ll:wire-issue` pass — re-ran the 3-agent wiring sweep against current HEAD; prior wiring
+(Tests/Documentation sections, Implementation Steps 6-12) confirmed still complete, two small
+additions:_
+
+- **Adjacent existing gate call site — `worker_pool.py` (in addition to the already-noted
+  `autodev.yaml`)**: `scripts/little_loops/parallel/worker_pool.py`'s
+  `_run_per_worktree_proof_first_gate()` is a third existing learning-gate call site (alongside the
+  in-`ll-auto` gate and `autodev.yaml`'s `check_learning_gate`/`mark_gate_blocked` pair) that resolves
+  `learning_tests_required` per worktree for `ll-parallel`. Like `autodev.yaml`, it is untouched by
+  this issue's Scope Boundaries (rn-implement/rn-remediate only) and is exactly the kind of caller
+  Acceptance Criterion 4 ("the in-`ll-auto` learning gate still fires for callers that bypass
+  `rn-implement`") already covers — flagged for symmetry awareness only, no action required
+  [Agent 1 finding].
+- **`test_builtin_loops.py` line-number drift, found mid-pass**: the prior "Test references
+  confirmed" note's `test_builtin_loops.py` citations have drifted since the Third refine-issue
+  pass — `TestLearningGateConsistency` now starts at line 8722 (not 8662), and within it
+  `test_rn_implement_report_tallies_separately` is now at lines 8813-8819 (not 8753-8759) and
+  `test_rn_implement_threads_skip_to_remediate` is now at lines 8821-8824 (not 8761-8764).
+  Assertion *content* is unchanged — only line numbers moved. The drift is confined to
+  `test_builtin_loops.py`, which `git status` shows as locally modified (uncommitted, unrelated
+  edits) at the time of this pass; re-locate by class/function name
+  (`TestLearningGateConsistency`, `test_rn_implement_report_tallies_separately`,
+  `test_rn_implement_threads_skip_to_remediate`, `test_rn_remediate_threads_skip_flag`) rather
+  than trusting any cited line number in this file until that local modification lands or is
+  reverted [Agent 3 finding].
+
 ## API/Interface
 
 N/A — no public API changes. This adds internal FSM router states (`check_learning_ready`,
@@ -358,6 +409,9 @@ N/A — no public API changes. This adds internal FSM router states (`check_lear
 `enhancement`, `rn-implement`, `learning-tests`, `orchestration`, `efficiency`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-30T23:30:00 - `77eb3749-b914-48c8-a9c1-dcc2bba1ebb0.jsonl`
+- `/ll:wire-issue` - 2026-06-30T23:09:39 - `ccc753bc-c18e-4ab5-83d0-331a9ffe1e99.jsonl`
+- `/ll:refine-issue` - 2026-06-30T22:58:47 - `ccc753bc-c18e-4ab5-83d0-331a9ffe1e99.jsonl`
 - `/ll:refine-issue` - 2026-06-30T22:22:30 - `d9035869-74ff-4583-aea5-9a496a2f8235.jsonl`
 - `/ll:confidence-check` - 2026-06-30T21:50:47 - `0efaa89a-2331-4523-aad0-814d20e76a5a.jsonl`
 - `/ll:wire-issue` - 2026-06-30T21:43:57 - `7475cb34-e529-45a6-ae0d-48e2395d6a0c.jsonl`
