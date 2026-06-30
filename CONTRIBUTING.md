@@ -223,6 +223,8 @@ little-loops/
         ├── config/              # Configuration management (package)
         ├── state.py             # State persistence
         ├── frontmatter.py       # YAML frontmatter parsing
+        ├── decisions.py         # Decisions and rules log data layer (FEAT-1891)
+        ├── decisions_sync.py    # Decisions sync and session start integration (FEAT-1895)
         ├── learning_tests/      # Learning test registry (CRUD for .ll/learning-tests/; package)
         ├── doc_counts.py        # Documentation count utilities
         ├── link_checker.py      # Link validation
@@ -597,7 +599,7 @@ Before adding a new skill, answer:
 
 3. **After creating a new skill:** run `ll-adapt --host codex --apply` to generate `agents/openai.yaml` alongside the `SKILL.md`. Skipping this step will fail CI (`test_all_real_skills_have_openai_yaml`). Skills tagged `disable-model-invocation: true` are exempt.
 
-4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `ll-doctor` and verify "0 skill descriptions dropped".
+4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `ll-doctor` (`scripts/little_loops/cli/doctor.py`) and verify "0 skill descriptions dropped".
 
 5. **Before release:** run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines. Exits 1 if any violation is found — extract reference content into companion files (see the 500-line convention above).
 

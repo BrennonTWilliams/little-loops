@@ -297,11 +297,13 @@ class TestRemediationActions:
         assert impl["on_yes"] == "emit_implemented"
 
     def test_implement_failure_routes_to_failed(self) -> None:
-        """implement routes to check_impl_auth on failure — auth check gates emit_implement_failed."""
+        """implement routes to check_learning_gate on failure — the learning-gate check
+        (550659db) is first in the failure chain, falling through to the auth guard
+        (check_impl_auth) and then emit_implement_failed."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl["on_no"] == "check_impl_auth"
-        assert impl["on_error"] == "check_impl_auth"
+        assert impl["on_no"] == "check_learning_gate"
+        assert impl["on_error"] == "check_learning_gate"
 
     def test_decide_is_slash_command_with_auto(self) -> None:
         """decide invokes /ll:decide-issue --auto as a slash_command."""
@@ -1182,8 +1184,9 @@ class TestOutcomeTokenChannel:
     def test_implement_success_emits_implemented(self) -> None:
         data = _load_loop()
         assert data["states"]["implement"]["on_yes"] == "emit_implemented"
-        # on_no routes through check_impl_auth first (ENH-2353 auth guard)
-        assert data["states"]["implement"]["on_no"] == "check_impl_auth"
+        # on_no routes through check_learning_gate first (550659db), then the
+        # check_impl_auth auth guard (ENH-2353), then emit_implement_failed
+        assert data["states"]["implement"]["on_no"] == "check_learning_gate"
 
     def test_bug2006_token_disambiguation_preserved(self) -> None:
         """BUG-2006: diagnose DECOMPOSE path → emit_needs_decompose (plain token);
@@ -1597,20 +1600,22 @@ class TestRnRemediateAuthGuard:
             f"implement must set capture: ll_auto_output, got {impl.get('capture')!r}"
         )
 
-    def test_implement_on_no_routes_to_check_impl_auth(self) -> None:
-        """implement.on_no must route to check_impl_auth, not emit_implement_failed."""
+    def test_implement_on_no_routes_to_check_learning_gate(self) -> None:
+        """implement.on_no must route to check_learning_gate (the first failure-chain
+        guard, 550659db), not directly to emit_implement_failed. The chain then falls
+        through check_learning_gate → check_impl_auth (ENH-2353) → emit_implement_failed."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl.get("on_no") == "check_impl_auth", (
-            f"implement.on_no should be 'check_impl_auth', got {impl.get('on_no')!r}"
+        assert impl.get("on_no") == "check_learning_gate", (
+            f"implement.on_no should be 'check_learning_gate', got {impl.get('on_no')!r}"
         )
 
-    def test_implement_on_error_routes_to_check_impl_auth(self) -> None:
-        """implement.on_error must route to check_impl_auth."""
+    def test_implement_on_error_routes_to_check_learning_gate(self) -> None:
+        """implement.on_error must route to check_learning_gate (first failure-chain guard)."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl.get("on_error") == "check_impl_auth", (
-            f"implement.on_error should be 'check_impl_auth', got {impl.get('on_error')!r}"
+        assert impl.get("on_error") == "check_learning_gate", (
+            f"implement.on_error should be 'check_learning_gate', got {impl.get('on_error')!r}"
         )
 
     def test_check_impl_auth_state_exists(self) -> None:

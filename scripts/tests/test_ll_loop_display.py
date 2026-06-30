@@ -2805,9 +2805,9 @@ class TestRunForegroundExitCodes:
         with patch("builtins.print"):
             return run_foreground(_Executor(terminated_by), self._make_fsm(), self._make_args())
 
-    @pytest.mark.parametrize("terminated_by", ["terminal", "signal", "handoff"])
+    @pytest.mark.parametrize("terminated_by", ["terminal", "interrupted", "handoff"])
     def test_zero_exit_code_for_graceful_termination(self, terminated_by: str) -> None:
-        """terminal, signal, and handoff all return exit code 0."""
+        """terminal, interrupted, and handoff all return exit code 0."""
         assert self._run_with_terminated_by(terminated_by) == 0
 
     @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])
@@ -2822,7 +2822,7 @@ class TestRunForegroundExitCodes:
     def test_exit_codes_dict_matches_expected_mapping(self) -> None:
         """EXIT_CODES dict has the expected keys and values."""
         assert EXIT_CODES["terminal"] == 0
-        assert EXIT_CODES["signal"] == 0
+        assert EXIT_CODES["interrupted"] == 0
         assert EXIT_CODES["handoff"] == 0
         assert EXIT_CODES["max_steps"] == 1
         assert EXIT_CODES["timeout"] == 1

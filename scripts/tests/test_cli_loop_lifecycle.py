@@ -1148,9 +1148,9 @@ class TestCmdResumeExitCodes:
             mock_exec_cls.return_value.resume.return_value = mock_result
             return cmd_resume("test-loop", args, tmp_path, logger)
 
-    @pytest.mark.parametrize("terminated_by", ["terminal", "signal", "handoff"])
+    @pytest.mark.parametrize("terminated_by", ["terminal", "interrupted", "handoff"])
     def test_zero_exit_for_graceful_termination(self, tmp_path: Path, terminated_by: str) -> None:
-        """terminal, signal, and handoff all return exit code 0."""
+        """terminal, interrupted, and handoff all return exit code 0."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 0
 
     @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])

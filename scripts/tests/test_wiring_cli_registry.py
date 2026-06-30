@@ -42,7 +42,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "ll-history-context", "ENH-1846"),
     (".claude/CLAUDE.md", "ll-history-context", "ENH-1846"),
     ("docs/reference/CLI.md", "--for-skill", "ENH-1909"),
-    ("docs/reference/CLI.md", "37 `LLEvent` types", "ENH-1115"),
+    ("docs/reference/CLI.md", "38 `LLEvent` types", "ENH-1115"),
     ("commands/help.md", "using goals file if present, or auto-discovering goals", "ENH-1443"),
     ("commands/help.md", "ll-logs", "ll-logs"),
     ("docs/reference/CLI.md", "dead-skills", "ENH-1923"),

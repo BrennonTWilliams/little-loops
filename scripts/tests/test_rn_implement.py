@@ -596,10 +596,12 @@ class TestValidation:
         splitting SCORES_MISSING / SIZE_REVIEW_FAILED diagnostics out of record_failure.
         feat(loops) bbf77018 added route_rem_env_not_ready + abort_env_not_ready (+2),
         raising it to 37 — auth-signature fast-fail for ll-auto-calling loops.
+        feat(loops) 550659db added route_rem_learning_gate + record_learning_gate_blocked
+        (+2), raising it to 39 — learning-gate routing for ll-auto-calling loops.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 37, f"Expected ≤37 states in orchestrator, got {state_count}"
+        assert state_count <= 39, f"Expected ≤39 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
