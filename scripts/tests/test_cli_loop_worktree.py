@@ -417,21 +417,18 @@ class TestCleanupWorktree:
         def _mock_run(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["branch", "-D"]:
                 branch_cmds.append(args)
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "20260101-000000-my-loop\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
-        # subprocess.run returns branch name for rev-parse
         with patch.object(git_lock, "run", side_effect=_mock_run):
-            with patch(
-                "subprocess.run",
-                return_value=subprocess.CompletedProcess([], 0, "20260101-000000-my-loop\n", ""),
-            ):
-                cleanup_worktree(
-                    worktree_path=wt,
-                    repo_path=repo,
-                    logger=logger,
-                    git_lock=git_lock,
-                    delete_branch=True,
-                )
+            cleanup_worktree(
+                worktree_path=wt,
+                repo_path=repo,
+                logger=logger,
+                git_lock=git_lock,
+                delete_branch=True,
+            )
 
         assert branch_cmds, "Expected 'git branch -D' call"
         assert "20260101-000000-my-loop" in branch_cmds[0]
@@ -571,6 +568,8 @@ class TestWorkerPoolCleanupBranchGuard:
         def _mock_git(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["branch", "-D"]:
                 branch_deletes.append(args[2])
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "parallel/bug-001\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(pool._git_lock, "run", side_effect=_mock_git):
@@ -593,6 +592,8 @@ class TestWorkerPoolCleanupBranchGuard:
         def _mock_git(args: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["branch", "-D"]:
                 branch_deletes.append(args[2])
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "20260101-000000-my-loop\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(pool._git_lock, "run", side_effect=_mock_git):

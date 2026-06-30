@@ -1,11 +1,13 @@
 ---
 id: ENH-2326
-title: "Route remaining bare git calls through GitLock and add a worktree concurrency regression test"
+title: Route remaining bare git calls through GitLock and add a worktree concurrency
+  regression test
 type: ENH
-status: open
+status: done
 priority: P4
-captured_at: "2026-06-26T22:26:49Z"
-discovered_date: "2026-06-26"
+captured_at: '2026-06-26T22:26:49Z'
+completed_at: '2026-06-30T04:53:35Z'
+discovered_date: '2026-06-26'
 discovered_by: audit
 labels:
 - worktree
@@ -19,6 +21,12 @@ relates_to:
 depends_on:
 - ENH-2329
 decision_needed: false
+confidence_score: 96
+outcome_confidence: 83
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 21
+score_change_surface: 20
 ---
 
 # ENH-2326: Route remaining bare git calls through GitLock and add a worktree concurrency regression test
@@ -74,6 +82,15 @@ cover create/cleanup, active-worktree guards, orphan liveness, and ghost-ref pru
    assert post-conditions (no orphaned `.worktrees/` dirs, no dangling `parallel/*` branches,
    no `index.lock` errors surfaced). Reference the scenarios from BUG-140/142/579.
 
+## Implementation Steps
+
+1. Convert `worktree_utils.py:78` (git-identity copy in `setup_worktree()`) from bare `subprocess.run` to `git_lock.run(["config", config_key, value], cwd=worktree_path)`.
+2. Convert `worktree_utils.py:141` (`cleanup_worktree()` branch detection) to `git_lock.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path, timeout=10)`. ENH-2325 is done and targeted `orchestrator.py._inspect_worktree` only — no lock-free mandate applies to this call (see updated Scope Boundary note).
+3. Update `test_cli_loop_worktree.py` — move branch-name injection from `patch("subprocess.run")` to `patch.object(git_lock, "run", side_effect=...)` for the three hard-breaking tests (`test_deletes_branch_when_delete_branch_true` line 406, `test_parallel_branch_is_deleted` line 563, `test_main_branch_not_deleted` line 609).
+4. Update `test_worker_pool.py` — move branch-name injection from `mock_subprocess.return_value` to `patch.object(worker_pool._git_lock, "run", side_effect=...)` for lines 723 and 751.
+5. Add `scripts/tests/test_worktree_concurrency.py` using `ThreadPoolExecutor(max_workers=K)` against a real tmp git repo (copy `temp_git_repo` fixture from `test_merge_coordinator.py`); assert post-conditions: no orphaned `.worktrees/` dirs, no dangling `parallel/*` branches, no `index.lock` errors.
+6. Run `python -m pytest scripts/tests/` to verify no regressions.
+
 ## Integration Map
 
 ### Files to Modify
@@ -98,7 +115,7 @@ cover create/cleanup, active-worktree guards, orphan liveness, and ghost-ref pru
 - `scripts/tests/test_merge_coordinator.py` — `temp_git_repo` fixture (function scope) is the canonical real-git-repo scaffold to copy into the new test file.
 - `scripts/tests/test_worker_pool.py` — existing isolation-unit tests; shows `threading.Event`/`time.sleep` concurrency patterns. **Update required**: All `TestWorkerPoolWorktreeManagement.*` tests use `patch("subprocess.run")` to catch the line-78 `git config` and line-141 `rev-parse` calls; after conversion these patches become no-ops. Hard-breaking tests: `test_cleanup_worktree_removes_worktree` (line 723) and `test_cleanup_worktree_deletes_parallel_branch` (line 751) inject branch names via `mock_subprocess.return_value` — after conversion the branch name will come from `patch.object(worker_pool._git_lock, "run", side_effect=...)` instead; those tests must be updated to set the branch return value via the git_lock mock.
 - `scripts/tests/test_orchestrator.py`, `scripts/tests/test_merge_coordinator.py` — existing isolation-unit tests for BUG-140/142/579 scenarios; no direct `worktree_utils` subprocess mock coupling; no update needed.
-- `scripts/tests/test_cli_loop_worktree.py` — shows `patch.object(git_lock, "run", ...)` + separate `patch("subprocess.run", ...)` stub pattern. **Update required**: All `TestSetupWorktree.*` tests (lines 50–264) patch `subprocess.run` to catch the line-78 `git config` call; these patches become no-ops after conversion. Hard-breaking tests: `TestCleanupWorktree.test_deletes_branch_when_delete_branch_true` (line 309), `TestWorkerPoolCleanupBranchGuard.test_parallel_branch_is_deleted` (line 466), and `test_non_parallel_branch_not_deleted` (line 488) inject branch names via `patch("subprocess.run")` for the line-141 `rev-parse` call; after conversion they must inject the branch name via `patch.object(git_lock, "run", side_effect=...)` for `args == ["rev-parse", "--abbrev-ref", "HEAD"]`.
+- `scripts/tests/test_cli_loop_worktree.py` — shows `patch.object(git_lock, "run", ...)` + separate `patch("subprocess.run", ...)` stub pattern. **Update required**: All `TestSetupWorktree.*` tests (lines 50–264) patch `subprocess.run` to catch the line-78 `git config` call; these patches become no-ops after conversion. Hard-breaking tests: `TestCleanupWorktree.test_deletes_branch_when_delete_branch_true` (line 406), `TestWorkerPoolCleanupBranchGuard.test_parallel_branch_is_deleted` (line 563), and `test_main_branch_not_deleted` (line 609; formerly `test_non_parallel_branch_not_deleted`) inject branch names via `patch("subprocess.run")` for the line-141 `rev-parse` call; after conversion they must inject the branch name via `patch.object(git_lock, "run", side_effect=...)` for `args == ["rev-parse", "--abbrev-ref", "HEAD"]`.
 - `scripts/tests/test_git_lock.py` — GitLock unit tests; reference for retry/backoff assertion patterns.
 - `scripts/tests/test_subprocess_mocks.py` — uses a **global** `patch("subprocess.run", side_effect=mock_run)` (not a split `patch.object(git_lock, "run")` pattern). After conversion, the moved calls still route through `GitLock._run_with_retry → subprocess.run`, so the global patch intercepts them transitively with the same `["git", ...]` argv. **No update required.** [Wiring pass finding — corrected by Agent 2 analysis]
 
@@ -154,7 +171,7 @@ _Added by `/ll:refine-issue --auto` — re-verified against current source: the 
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-1. Update `scripts/tests/test_cli_loop_worktree.py` — **hard-breaking** (split-patch pattern): `test_deletes_branch_when_delete_branch_true` (line 309), `test_parallel_branch_is_deleted` (line 466), and `test_non_parallel_branch_not_deleted` (line 488) use `patch.object(git_lock, "run")` + `patch("subprocess.run")` to inject a branch name for the line-141 `rev-parse` call. After conversion, the rev-parse is intercepted by `patch.object(git_lock, "run")` and never reaches `subprocess.run` — the branch-name return value must be moved into the `git_lock.run` mock, keyed on `args == ["rev-parse", "--abbrev-ref", "HEAD"]`. The `patch("subprocess.run")` in `TestSetupWorktree.*` tests becomes unused (benign, but remove for clarity).
+1. Update `scripts/tests/test_cli_loop_worktree.py` — **hard-breaking** (split-patch pattern): `test_deletes_branch_when_delete_branch_true` (line 406), `test_parallel_branch_is_deleted` (line 563), and `test_main_branch_not_deleted` (line 609; formerly `test_non_parallel_branch_not_deleted`) use `patch.object(git_lock, "run")` + `patch("subprocess.run")` to inject a branch name for the line-141 `rev-parse` call. After conversion, the rev-parse is intercepted by `patch.object(git_lock, "run")` and never reaches `subprocess.run` — the branch-name return value must be moved into the `git_lock.run` mock, keyed on `args == ["rev-parse", "--abbrev-ref", "HEAD"]`. The `patch("subprocess.run")` in `TestSetupWorktree.*` tests becomes unused (benign, but remove for clarity).
 2. Update `scripts/tests/test_worker_pool.py` — **hard-breaking** (split-patch pattern): `test_cleanup_worktree_removes_worktree` (line 723) and `test_cleanup_worktree_deletes_parallel_branch` (line 751) inject branch names via `mock_subprocess.return_value`; after conversion these must inject via `patch.object(worker_pool._git_lock, "run", side_effect=...)` for the rev-parse command.
 3. After adding `test_worktree_concurrency.py`, `docs/test-quality-audit.md` has a note ("GitLock serialization assumption is never verified with multiple threads running simultaneously") that describes the gap ENH-2326 closes. No change needed as part of this issue, but the note becomes stale — optionally remove it post-merge.
    Note: `scripts/tests/test_subprocess_mocks.py` uses a global `patch("subprocess.run")` (no split `patch.object(git_lock, "run")`); GitLock._run_with_retry calls `subprocess.run` internally so the global patch fires transitively — **no update needed** there.
@@ -169,11 +186,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Note: acceptable to split into two issues (GitLock consistency vs. concurrency test) if the
 implementer prefers; kept together here as one robustness pass._
 
-## Labels
-
-`worktree`, `parallel`, `testing`, `tech-debt`
-
 ## Session Log
+- `/ll:ready-issue` - 2026-06-30T04:41:51 - `1bc6ee50-98a7-4976-8691-22aa548a66a9.jsonl`
+- `/ll:format-issue` - 2026-06-30T04:33:07 - `493dc49c-a5c6-43bf-b114-97621d8d3dcc.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-27T01:23:43 - `14bc42e7-76a4-4427-8347-44e5b2c9966b.jsonl`
@@ -188,11 +203,5 @@ implementer prefers; kept together here as one robustness pass._
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): ENH-2325 explicitly mandates that branch-detection in worktree tear-down paths uses bare `subprocess.run` — not `GitLock` — because the lock machinery must not block on a partially torn-down worktree. This conflicts with this issue's plan to convert `worktree_utils.py:141` (`rev-parse --abbrev-ref HEAD` inside `cleanup_worktree()`) to `git_lock.run()`. Before implementing, coordinate with ENH-2325: the safest resolution is to restrict this issue's GitLock conversion to `worktree_utils.py:78` only (the `setup_worktree` git-identity copy — a safe, live-worktree call), and to add an exemption comment at `:141` explaining the intentional lock-free pattern. Do not convert `:141` without confirming with ENH-2325's implementer that the dying-worktree risk is addressed. Related issue: ENH-2325.
+**Note** (added by `/ll:audit-issue-conflicts`; **updated by `/ll:ready-issue`**: ENH-2325 is now `done`): ENH-2325's scope was `orchestrator.py._inspect_worktree` (branch-name derivation via string manipulation), not `worktree_utils.py:141`. It did not mandate that `cleanup_worktree()`'s `rev-parse` call stay lock-free; `worktree_utils.py:141` remains bare `subprocess.run` after ENH-2325 merged. The coordination concern is resolved — the `:141` conversion decision in this issue stands as written in Implementation Step 2 (convert to `git_lock.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path, timeout=10)` per the timeout convention at `:149`). Related issue: ENH-2325 (done).
 
----
-
-## Status
-
-- **Status**: open
-- **Priority**: P4

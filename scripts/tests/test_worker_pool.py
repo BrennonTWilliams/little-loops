@@ -763,11 +763,13 @@ class TestWorkerPoolWorktreeManagement:
             args: list[str], cwd: Path, **kwargs: Any
         ) -> subprocess.CompletedProcess[str]:
             captured_commands.append(args)
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "parallel/bug-001\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                # Return parallel branch name
+                # Return parallel branch name for WorkerPool's own rev-parse
                 mock_subprocess.return_value = subprocess.CompletedProcess(
                     [], 0, "parallel/bug-001\n", ""
                 )
@@ -793,10 +795,13 @@ class TestWorkerPoolWorktreeManagement:
             args: list[str], cwd: Path, **kwargs: Any
         ) -> subprocess.CompletedProcess[str]:
             captured_commands.append(args)
+            if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "20260101-120000-my-loop\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
+                # Return loop branch name for WorkerPool's own rev-parse
                 mock_subprocess.return_value = subprocess.CompletedProcess(
                     [], 0, "20260101-120000-my-loop\n", ""
                 )

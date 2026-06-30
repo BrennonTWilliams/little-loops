@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -75,10 +74,9 @@ def setup_worktree(
     for config_key in ["user.email", "user.name"]:
         value_result = git_lock.run(["config", config_key], cwd=repo_path)
         if value_result.returncode == 0 and value_result.stdout.strip():
-            subprocess.run(
-                ["git", "config", config_key, value_result.stdout.strip()],
+            git_lock.run(
+                ["config", config_key, value_result.stdout.strip()],
                 cwd=worktree_path,
-                capture_output=True,
             )
 
     # Copy .claude/ to establish project root for Claude Code (BUG-007)
@@ -138,11 +136,10 @@ def cleanup_worktree(
 
     branch_name: str | None = None
     if delete_branch:
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        branch_result = git_lock.run(
+            ["rev-parse", "--abbrev-ref", "HEAD"],
             cwd=worktree_path,
-            capture_output=True,
-            text=True,
+            timeout=10,
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
 
