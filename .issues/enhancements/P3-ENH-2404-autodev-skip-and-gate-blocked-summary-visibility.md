@@ -3,7 +3,7 @@ id: ENH-2404
 title: autodev/auto-refine summary loses skip reasons and drops gate-blocked issues
   entirely; make per-issue outcomes legible in summary.json
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-06-30T00:00:00Z'
 discovered_date: '2026-06-30'
@@ -24,6 +24,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-06-30T22:25:37Z'
 ---
 
 # ENH-2404: legible per-issue outcomes in auto-refine summary.json
@@ -144,7 +145,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   computed; back-compat parse of a legacy summary without the new keys.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `TestAutoRefineAndImplementLoop._run_finalize` (`test_builtin_loops.py:1799-1831`)
+- `TestAutoRefineAndImplementLoop._run_finalize` (`test_builtin_loops.py:1813-1860`)
   — its `skipped` fixture param currently writes bare `ID-{i}` lines with no
   REASON suffix, and the helper never writes `autodev-gate-blocked.txt` at all.
   Both need updating (REASON-suffixed lines + a new gate-blocked fixture param)
@@ -152,7 +153,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   empty/zero values for every synthetic row regardless of whether the
   implementation is correct. [wiring agent finding]
 - `TestValidatorWarningBudget.test_deterministic_warning_categories_do_not_regrow`
-  / `test_allowlist_entries_are_not_stale` (`test_builtin_loops.py:7710-7811`) —
+  / `test_allowlist_entries_are_not_stale` (`test_builtin_loops.py:7933-7959`) —
   ratchets WARNING-severity categories per `(loop_stem, category)`; neither
   `autodev` nor `auto-refine-and-implement` currently has an `ALLOWLIST` entry.
   If the new shell logic added to `finalize`/skip-sites trips a category (e.g.
@@ -190,15 +191,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   surfaces `autodev-gate-blocked.txt` in its own human-readable stdout summary;
   the data already exists, only `finalize`'s `summary.json` never reads it.
 
-**`finalize` state** — `scripts/little_loops/loops/auto-refine-and-implement.yaml:129-191`:
-- `count()` helper (line 139): `awk 'NF{c++} END{print c+0}'`, fails open to 0.
-- `SKIP=$(count autodev-skipped.txt)` (line 163), `ERR=$(count $P-errored.txt)`
-  (line 164) — `autodev-gate-blocked.txt` is never referenced (zero `grep`
+**`finalize` state** — `scripts/little_loops/loops/auto-refine-and-implement.yaml:151-251`:
+- `count()` helper (line 162): `awk 'NF{c++} END{print c+0}'`, fails open to 0.
+- `SKIP=$(count autodev-skipped.txt)` (line 222), `ERR=$(count $P-errored.txt)`
+  (line 223) — `autodev-gate-blocked.txt` is never referenced (zero `grep`
   matches for `gate` in this state).
-- Current `summary.json` schema emitted verbatim (lines 182-183):
+- Current `summary.json` schema emitted verbatim (lines 241-242):
   `{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s}` —
   exactly the 5 keys asserted by `test_finalize_summary_has_closure_keys`.
-- A `subloop_outcome_auto-refine-and-implement.txt` sidecar (line 187,
+- A `subloop_outcome_auto-refine-and-implement.txt` sidecar (line 246,
   ENH-2005 pattern) is written alongside `summary.json` — unaffected by this
   issue.
 
@@ -281,7 +282,7 @@ needs more than `wc -l`/`grep -c`, the established fallback is an inline
 _These touchpoints were identified by wiring analysis and must be included in
 the implementation:_
 
-7. Update `_run_finalize`'s test fixture (`test_builtin_loops.py:1799-1831`)
+7. Update `_run_finalize`'s test fixture (`test_builtin_loops.py:1813-1860`)
    to write REASON-suffixed `autodev-skipped.txt` lines and add a new
    `autodev-gate-blocked.txt` fixture param — otherwise the new parsing logic
    under test sees empty/zero values regardless of correctness.
@@ -300,24 +301,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 Existing test scaffolding to extend rather than reinvent (all in
 `scripts/tests/test_builtin_loops.py`):
-- `TestAutoRefineAndImplementLoop._run_finalize` (lines 1799-1831) —
+- `TestAutoRefineAndImplementLoop._run_finalize` (lines 1813-1860) —
   executes the real `finalize` shell action via
   `subprocess.run(["bash","-c", script], ...)` against a `tmp_path` run dir;
   its keyword-arg signature (`closed=`, `passed=`, `skipped=`, `errored=`)
   is the natural place to add `gate_blocked=` and a per-reason
   `skipped_breakdown=` for the new tests this issue requires.
-- `test_finalize_summary_has_closure_keys` (lines 1890-1896) — template for
+- `test_finalize_summary_has_closure_keys` (lines 2018-2023) — template for
   a new test asserting `gate_blocked`, `skipped_breakdown`, `parked_rate`
   keys are present.
 - `test_finalize_sources_autodev_ledgers` (lines 1793-1797) — currently
   asserts only `autodev-passed.txt`/`autodev-skipped.txt` appear in the
   action; template for a new `test_finalize_sources_gate_blocked_ledger`
   asserting `"autodev-gate-blocked.txt" in action`.
-- `test_mark_gate_blocked_advances_queue_without_failing` (lines 2212-2223)
+- `test_mark_gate_blocked_advances_queue_without_failing` (lines 2360-2370)
   — existing structural test for the `mark_gate_blocked` write; unaffected
   by this issue (no format change needed there).
 - `test_skip_inflight_shell_action_writes_skipped_and_clears_inflight`
-  (lines 2851-2874) — execution test that asserts `"ENH-0001" in skipped`;
+  (lines 2999-3022) — execution test that asserts `"ENH-0001" in skipped`;
   will need updating to `"ENH-0001  refine_failed" in skipped` (two-space
   delimiter) once the skip-site format changes.
 - `skills/audit-loop-run/SKILL.md` Step 6a (lines 257-269) is the prose to
@@ -388,6 +389,8 @@ back-compat.
 | ENH-2397 | Regression test for the `subloop_outcome_auto-refine-and-implement.txt` sidecar contract — same artifact family `finalize` writes alongside `summary.json`; wiring agent finding |
 
 ## Session Log
+- `ll-auto` - 2026-06-30T22:25:37 - `d9035869-74ff-4583-aea5-9a496a2f8235.jsonl`
+- `/ll:ready-issue` - 2026-06-30T22:06:10 - `ef295bd9-11bf-46e5-82c4-98f2f58d0f0e.jsonl`
 - `/ll:confidence-check` - 2026-06-30T21:30:00Z - `9c51cc81-2d8a-46ee-95b4-5c41273e7bfb.jsonl`
 - `/ll:wire-issue` - 2026-06-30T21:04:31 - `ec0f9327-2f06-44a8-abd0-51d0ad3feb50.jsonl`
 - `/ll:refine-issue (ledger-format decision)` - 2026-06-30T20:54:12 - `46dd6a40-bb04-4d8a-9558-e932826588aa.jsonl`
@@ -402,3 +405,23 @@ back-compat.
 ## Status
 
 **Open** | Created: 2026-06-30 | Priority: P3
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-06-30
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

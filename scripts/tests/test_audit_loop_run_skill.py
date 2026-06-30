@@ -141,6 +141,19 @@ class TestAssessLoopSkill:
         assert "honest-failure" in final_report_section
         # → Final Report verdict enum must include honest-failure
 
+    def test_skill_step6a_reads_enh_2404_keys(self) -> None:
+        """Step 6a must recognize the additive ENH-2404 summary.json keys
+        (skipped_breakdown, gate_blocked, parked_rate) and note legacy back-compat."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        for key in ("skipped_breakdown", "gate_blocked", "parked_rate"):
+            assert key in step6_section, f"Step 6 must mention {key!r}"
+        # → must call out that these keys are additive / absent on legacy summaries
+        assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
+
     # ------------------------------------------------------------------
     # Fixture structural validation
     # ------------------------------------------------------------------

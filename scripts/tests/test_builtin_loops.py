@@ -1821,6 +1821,9 @@ class TestAutoRefineAndImplementLoop:
         baseline: tuple[str, ...] = (),
         done_in_place: tuple[str, ...] = (),
         done_baseline: tuple[str, ...] = (),
+        gate_blocked: int = 0,
+        skipped_reasons: tuple[str, ...] = (),
+        issue_set: tuple[str, ...] = (),
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -1830,6 +1833,12 @@ class TestAutoRefineAndImplementLoop:
         `done_baseline`, leaf issues completed in place). CLOSED is the union;
         NOT_CLOSED is autodev-passed − that union. `passed` are autodev's passed
         (attempted-implementation) IDs.
+
+        ENH-2404: `gate_blocked` (count) seeds autodev-gate-blocked.txt with bare
+        IDs. `skipped_reasons` writes one "ID-{i}  {reason}" line per entry to
+        autodev-skipped.txt (REASON-suffixed, overrides the bare-ID `skipped`
+        write when non-empty) — used to exercise skipped_breakdown. `issue_set`
+        substitutes ${captured.issue_set.output} so parked_rate has a denominator.
         """
         p = "auto-refine-and-implement"
         (run_dir / f"{p}-completed-baseline.txt").write_text(
@@ -1848,10 +1857,20 @@ class TestAutoRefineAndImplementLoop:
             self._write_done_in_place_fixture(run_dir, did)
         # finalize sources autodev's ledgers under the shared run_dir.
         (run_dir / "autodev-passed.txt").write_text("".join(f"{i}\n" for i in passed))
-        (run_dir / "autodev-skipped.txt").write_text("".join(f"ID-{i}\n" for i in range(skipped)))
+        if skipped_reasons:
+            skipped_text = "".join(
+                f"ID-{i}  {reason}\n" for i, reason in enumerate(skipped_reasons)
+            )
+        else:
+            skipped_text = "".join(f"ID-{i}\n" for i in range(skipped))
+        (run_dir / "autodev-skipped.txt").write_text(skipped_text)
+        (run_dir / "autodev-gate-blocked.txt").write_text(
+            "".join(f"GB-{i}\n" for i in range(gate_blocked))
+        )
         (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
         result = subprocess.run(
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
         )
@@ -2022,6 +2041,100 @@ class TestAutoRefineAndImplementLoop:
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         for key in ("verdict", "closed", "not_closed", "skipped", "errored"):
             assert key in summary, f"summary.json missing {key!r}: {summary}"
+
+    # --- ENH-2404: gate-blocked surfacing, skipped_breakdown, parked_rate ----
+
+    def test_finalize_summary_has_enh_2404_keys(self, data: dict, tmp_path: Path) -> None:
+        """summary.json must additively report skipped_breakdown/gate_blocked/parked_rate."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        for key in ("skipped_breakdown", "gate_blocked", "parked_rate"):
+            assert key in summary, f"summary.json missing {key!r}: {summary}"
+
+    def test_finalize_sources_gate_blocked_ledger(self, data: dict) -> None:
+        """finalize must read autodev-gate-blocked.txt — previously never referenced,
+        so a learning-gate block vanished from summary.json with no trace."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "autodev-gate-blocked.txt" in action, (
+            "finalize must source autodev-gate-blocked.txt to surface gate_blocked"
+        )
+
+    def test_finalize_gate_blocked_count_surfaces(self, data: dict, tmp_path: Path) -> None:
+        """A run with learning-gate blocks must report gate_blocked >= 1, not drop them."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), gate_blocked=2
+        )
+        assert summary["gate_blocked"] == 2, f"expected gate_blocked=2, got {summary}"
+
+    def test_finalize_gate_blocked_zero_when_no_ledger_entries(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A run with no gate-blocks must report gate_blocked=0, not omit the key."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        assert summary["gate_blocked"] == 0, f"expected gate_blocked=0, got {summary}"
+
+    def test_finalize_skipped_breakdown_aggregates_by_reason(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """skipped_breakdown must distinguish decomposed (success) from refine_failed /
+        low_readiness (failures) instead of collapsing all skips into one integer."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=(),
+            skipped_reasons=("decomposed", "refine_failed", "low_readiness", "low_readiness"),
+        )
+        breakdown = summary["skipped_breakdown"]
+        assert breakdown == {"decomposed": 1, "refine_failed": 1, "low_readiness": 2}, (
+            f"expected per-reason counts, got {breakdown}"
+        )
+
+    def test_finalize_skipped_breakdown_back_compat_bare_id_lines(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """Legacy bare-ID skip lines (no REASON suffix) must not crash the breakdown
+        parser — they fall back to an 'unspecified' bucket."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, passed=(), skipped=3)
+        assert summary["skipped"] == 3
+        assert summary["skipped_breakdown"] == {"unspecified": 3}, (
+            f"bare-ID lines should bucket under 'unspecified', got {summary['skipped_breakdown']}"
+        )
+
+    def test_finalize_parked_rate_computation(self, data: dict, tmp_path: Path) -> None:
+        """parked_rate = (skipped + not_closed + gate_blocked) / input_size."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1", "FEAT-2"),
+            skipped_reasons=("low_readiness",),
+            gate_blocked=1,
+            issue_set=("FEAT-1", "FEAT-2", "FEAT-3", "FEAT-4"),
+        )
+        # not_closed = FEAT-2 (passed but not in closed-now-union) = 1
+        # parked = skipped(1) + not_closed(1) + gate_blocked(1) = 3; input_size = 4
+        assert summary["parked_rate"] == pytest.approx(0.75), f"got {summary}"
+
+    def test_finalize_parked_rate_zero_when_input_size_unavailable(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """parked_rate must default to 0.0 (not crash / divide-by-zero) when
+        issue_set was never captured (e.g. empty backlog)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir)
+        assert summary["parked_rate"] == 0.0, f"got {summary}"
 
     def test_init_snapshots_completed_baseline(self, data: dict, tmp_path: Path) -> None:
         """ENH-2385: init must snapshot the completed/ set so finalize can compute a
@@ -3016,7 +3129,10 @@ class TestAutodevLoop:
         )
         assert result.returncode == 0, f"skip_inflight action failed: {result.stderr}"
         skipped = (run_dir / "autodev-skipped.txt").read_text()
-        assert "ENH-0001" in skipped, "skip_inflight must write the issue ID to autodev-skipped.txt"
+        assert "ENH-0001  refine_failed" in skipped, (
+            "skip_inflight must write 'ID  REASON' (two-space-delimited, ENH-2404) "
+            f"to autodev-skipped.txt, got {skipped!r}"
+        )
         assert not (run_dir / "autodev-inflight").exists(), (
             "skip_inflight must remove autodev-inflight so done does not surface a stale warning"
         )

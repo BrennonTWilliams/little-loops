@@ -156,6 +156,10 @@ states:
     # parents) and a status:done diff (leaf issues, BUG-2403). NOT_CLOSED/
     # SKIPPED are sourced from autodev's ledgers under the shared run_dir;
     # ERRORED from record_error. awk counts non-blank lines and always exits 0.
+    # ENH-2404: GATE_BLOCKED reads the distinct gate-blocked ledger (ENH-2402)
+    # so learning-gate blocks are no longer invisible; SKIPPED_BREAKDOWN
+    # aggregates the keyed "ID  REASON" skip ledger by reason; PARKED_RATE is
+    # a visibility signal (not a gate) over the resolved issue_set size.
     action: |
       RUN_DIR="${context.run_dir}"
       P=auto-refine-and-implement
@@ -222,6 +226,45 @@ states:
       SKIP=$(count autodev-skipped.txt)
       ERR=$(count $P-errored.txt)
 
+      # ENH-2404: GATE_BLOCKED — learning-gate blocks (ENH-2402) are a distinct
+      # ledger from skips; previously never read here, so a blocked issue
+      # vanished from summary.json with no trace.
+      GATE_BLOCKED=$(count autodev-gate-blocked.txt)
+
+      # ENH-2404: SKIPPED_BREAKDOWN aggregates the "ID  REASON" skip ledger by
+      # reason (decomposed / refine_failed / low_readiness / ...), so a
+      # reviewer can tell a healthy decomposition-heavy run from a failing
+      # one without re-reading events.jsonl. Fails open to {} on any error.
+      SKIPPED_BREAKDOWN=$(python3 -c "
+      import json, sys
+      breakdown = {}
+      try:
+          with open(sys.argv[1]) as f:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  parts = line.split(None, 1)
+                  reason = parts[1].strip() if len(parts) > 1 else 'unspecified'
+                  breakdown[reason] = breakdown.get(reason, 0) + 1
+      except Exception:
+          pass
+      print(json.dumps(breakdown))
+      " "$RUN_DIR/autodev-skipped.txt" 2>/dev/null || echo '{}')
+      [ -z "$SKIPPED_BREAKDOWN" ] && SKIPPED_BREAKDOWN='{}'
+
+      # ENH-2404: PARKED_RATE is a visibility signal, NOT a blocking gate —
+      # with skipped_breakdown present, a high rate interprets itself (e.g.
+      # "4 low_readiness" is actionable, "4 decomposed" is healthy). Denominator
+      # is the resolved issue_set size from resolve_set; 0.0 when unavailable.
+      INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
+        | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+      if [ "$INPUT_SIZE" -gt 0 ]; then
+        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
+      else
+        PARKED_RATE=0.0
+      fi
+
       # Verdict reflects real closure. A run is only 'success' when it closed
       # something and left nothing parked (no skips, no not-closed, no crash).
       if [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
@@ -238,14 +281,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"parked_rate":%s}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$PARKED_RATE" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s parked_rate=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$PARKED_RATE"
     action_type: shell
     next: done
 

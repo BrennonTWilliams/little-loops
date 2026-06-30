@@ -122,8 +122,10 @@ states:
     # refine-to-ready-issue exits via its `failed` terminal or the executor
     # receives a signal/crash (on_error). Mirrors the skip_and_continue pattern
     # in auto-refine-and-implement.yaml.
+    # ENH-2404: two-space-delimited "ID  REASON" (matches rn-implement.yaml
+    # mark_deferred), so finalize can distinguish failure reasons.
     action: |
-      echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
     fragment: queue_track
     action_type: shell
@@ -423,13 +425,15 @@ states:
     # sibling in the original list. Records the parent as skipped (it was
     # decomposed, not refined to ready) and moves the parent file to
     # .issues/completed/ to mirror recursive-refine's cleanup discipline.
+    # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success
+    # outcome, distinct from a refinement/readiness failure.
     action: |
       CHILDREN=$(cat ${context.run_dir}/autodev-new-children.txt)
       EXISTING=$(cat ${context.run_dir}/autodev-queue.txt 2>/dev/null || true)
       { echo "$CHILDREN"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' \
         > ${context.run_dir}/autodev-queue.txt
-      echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+      echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
       PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
       if [ -n "$PARENT_FILE" ]; then
         mkdir -p .issues/completed
@@ -552,6 +556,8 @@ states:
     # as skipped; move parent to .issues/completed/. If none: route to
     # recheck_after_size_review so a score check can decide whether to
     # implement or skip (BUG-1230).
+    # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success
+    # outcome, distinct from a refinement/readiness failure.
     action: |
       ll-issues list --json | python3 -c "
       import json, sys
@@ -579,7 +585,7 @@ states:
         { echo "$CHILDREN"; echo "$EXISTING"; } \
           | grep -v '^[[:space:]]*$' \
           > ${context.run_dir}/autodev-queue.txt
-        echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+        echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
         PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
         if [ -n "$PARENT_FILE" ]; then
           mkdir -p .issues/completed
@@ -605,13 +611,15 @@ states:
     # effort genuinely small). Perform a final score check before deciding to
     # skip. Mirrors recheck_scores exactly; on pass routes to implement_current
     # so ready leaf issues are not silently dropped.
+    # ENH-2404: two-space-delimited "ID  REASON" on the skip path — the
+    # issue stayed below threshold after size-review declined to split it.
     action: |
       if ll-issues check-readiness ${captured.input.output} \
           --readiness ${context.readiness_threshold} \
           --outcome ${context.outcome_threshold}; then
         echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
       else
-        echo "${captured.input.output}" >> ${context.run_dir}/autodev-skipped.txt
+        echo "${captured.input.output}  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
         rm -f ${context.run_dir}/autodev-inflight
         exit 1
       fi

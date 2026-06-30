@@ -267,6 +267,8 @@ If the file exists, extract the claimed-outcome counters (`closed`, `implemented
 - **claimed_success > 0**: `closed > 0` / `implemented > 0` (or any equivalent success token) is present
 - **claimed_success == 0**: the success counter is `0` (or key absent) — the run honestly reports it produced nothing
 
+**ENH-2404 — parked-issue visibility (`auto-refine-and-implement` / `autodev`)**: if present, also read `skipped_breakdown` (an object keyed by reason, e.g. `{"decomposed": 1, "refine_failed": 0, "low_readiness": 4}`), `gate_blocked` (issues parked by the learning-gate, ENH-2402 — previously invisible here), and `parked_rate` (`(skipped + not_closed + gate_blocked) / input_size`). `parked_rate` is a visibility signal, not a pass/fail gate — interpret it via `skipped_breakdown`: a high rate dominated by `decomposed` is healthy (the run is legitimately fanning out into children), while one dominated by `refine_failed` / `low_readiness` is a genuine quality signal worth flagging in the report. These three keys are additive; older `summary.json` files (pre-ENH-2404) will lack them — treat their absence as "no breakdown data available" rather than an error, and fall back to the plain `skipped` count.
+
 ### Step 6b: Verdict Table
 
 Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`), the artifact/contract evidence from Step 4, and the claimed-success signal from Step 6a:
