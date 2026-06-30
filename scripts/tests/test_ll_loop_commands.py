@@ -225,12 +225,17 @@ states:
         assert all("severity" in v and "path" in v and "message" in v for v in data["violations"])
         assert any(v["severity"] == "error" for v in data["violations"])
 
-    def test_validate_json_loop_reference_warning(
+    def test_validate_json_loop_reference_error(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """BUG-2305: --json output includes warning for unresolvable bare loop: ref."""
+        """An unresolvable bare loop: ref is an ERROR — --json reports invalid and exits non-zero.
+
+        Promoted from WARNING (BUG-2305): a static loop: target that cannot resolve at
+        definition time fails identically at runtime, so it fails the load instead of
+        deferring to an opaque on_error route.
+        """
         from little_loops.cli.loop.config_cmds import cmd_validate
         from little_loops.logger import Logger
 
@@ -252,13 +257,13 @@ states:
         args = argparse.Namespace(json=True)
         result = cmd_validate("ref-loop", args, loops_dir, logger)
 
-        assert result == 0  # WARNING does not cause non-zero exit
+        assert result == 1  # ERROR causes non-zero exit
         data = json.loads(capsys.readouterr().out)
-        assert data["valid"] is True
-        ref_warnings = [v for v in data["violations"] if "no-such-loop" in v["message"]]
-        assert len(ref_warnings) == 1
-        assert ref_warnings[0]["severity"] == "warning"
-        assert ref_warnings[0]["path"] == "states.run.loop"
+        assert data["valid"] is False
+        ref_errors = [v for v in data["violations"] if "no-such-loop" in v["message"]]
+        assert len(ref_errors) == 1
+        assert ref_errors[0]["severity"] == "error"
+        assert ref_errors[0]["path"] == "states.run.loop"
 
     def test_validate_json_no_flag_unchanged(
         self,

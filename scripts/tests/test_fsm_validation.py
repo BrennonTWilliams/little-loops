@@ -3341,15 +3341,17 @@ class TestClassifyRouteDefault:
 
 
 class TestLoopReferenceValidation:
-    """BUG-2305: _validate_loop_references emits WARNING for unresolvable loop: refs."""
+    """BUG-2305 / sprint-refine audit: _validate_loop_references emits ERROR for
+    unresolvable static loop: refs (promoted from WARNING — a static ref that fails
+    resolution at definition time fails identically at runtime, so it is never benign)."""
 
     def _write_yaml(self, tmp_path: Path, body: str) -> Path:
         p = tmp_path / "test-loop.yaml"
         p.write_text(body)
         return p
 
-    def test_missing_loop_reference_emits_warning(self, tmp_path: Path) -> None:
-        """A bare loop: ref with no matching file produces one WARNING."""
+    def test_missing_loop_reference_emits_error(self, tmp_path: Path) -> None:
+        """A bare loop: ref with no matching file produces one ERROR."""
         loop_yaml = self._write_yaml(
             tmp_path,
             (
@@ -3365,13 +3367,32 @@ class TestLoopReferenceValidation:
             ),
         )
         _, diagnostics = load_and_validate(loop_yaml, raise_on_error=False)
-        ref_warnings = [
+        ref_errors = [
             d
             for d in diagnostics
-            if d.severity == ValidationSeverity.WARNING and "nonexistent-loop" in d.message
+            if d.severity == ValidationSeverity.ERROR and "nonexistent-loop" in d.message
         ]
-        assert len(ref_warnings) == 1, f"Expected 1 loop-reference warning, got: {diagnostics}"
-        assert ref_warnings[0].path == "states.launch.loop"
+        assert len(ref_errors) == 1, f"Expected 1 loop-reference error, got: {diagnostics}"
+        assert ref_errors[0].path == "states.launch.loop"
+
+    def test_missing_loop_reference_raises_by_default(self, tmp_path: Path) -> None:
+        """With raise_on_error=True (the default), an unresolvable loop: ref fails the load."""
+        loop_yaml = self._write_yaml(
+            tmp_path,
+            (
+                "name: parent-loop\n"
+                "description: test\n"
+                "initial: launch\n"
+                "states:\n"
+                "  launch:\n"
+                "    loop: nonexistent-loop\n"
+                "    on_complete: done\n"
+                "  done:\n"
+                "    terminal: true\n"
+            ),
+        )
+        with pytest.raises(ValueError, match="nonexistent-loop"):
+            load_and_validate(loop_yaml)
 
     def test_missing_loop_reference_no_with_block(self, tmp_path: Path) -> None:
         """Bare loop: ref (no with: block) is checked — this was the original gap."""

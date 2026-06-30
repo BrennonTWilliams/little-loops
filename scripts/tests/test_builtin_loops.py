@@ -975,8 +975,9 @@ class TestRefineToReadyIssueSubLoop:
         """confidence_check must delegate score verification to the verify-confidence-scores oracle,
         routing success to check_readiness (extraction of ENH-1033 guard into reusable child loop)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("loop") == "verify-confidence-scores", (
-            f"confidence_check.loop should be 'verify-confidence-scores', got {confidence_check.get('loop')!r}"
+        assert confidence_check.get("loop") == "oracles/verify-confidence-scores", (
+            "confidence_check.loop should be 'oracles/verify-confidence-scores' (the oracle lives in "
+            f"loops/oracles/ and must be referenced with the prefix), got {confidence_check.get('loop')!r}"
         )
         assert confidence_check.get("on_success") == "check_readiness", (
             f"confidence_check.on_success should be 'check_readiness', got {confidence_check.get('on_success')!r}"
@@ -7715,11 +7716,6 @@ class TestValidatorWarningBudget:
             # Bucket A: targets injected by oracles/enumerate-and-prove sub-loop on success path
             "states.scaffold_integration.action",
         },
-        ("refine-to-ready-issue", "loop-reference"): {
-            # resolve_loop_path only searches top-level of builtin loops dir; verify-confidence-scores
-            # lives in loops/oracles/ and resolves correctly at runtime via the executor's loops_dir.
-            "states.confidence_check.loop",
-        },
     }
 
     @pytest.fixture
@@ -7774,6 +7770,45 @@ class TestValidatorWarningBudget:
         assert not stale, (
             "Allowlist entries no longer produce warnings - remove them to lock in the fix:\n"
             + "\n".join(stale)
+        )
+
+
+class TestBuiltinLoopReferencesResolve:
+    """Every static loop: reference in every built-in loop must resolve to a real file.
+
+    Regression guard for the sprint-refine-and-implement audit: refine-to-ready-issue's
+    confidence_check referenced the bare name 'verify-confidence-scores' while the oracle
+    lives in loops/oracles/ and must be referenced as 'oracles/verify-confidence-scores'.
+    resolve_loop_path raised FileNotFoundError, the validator emitted only a (then
+    allowlisted) WARNING, and the loop's on_error route swallowed the failure — two
+    multi-hour sprint runs produced zero implementations. This test exercises the same
+    resolver the executor uses, so a missing oracles/ prefix (or any unresolvable static
+    loop: ref) fails CI at definition time instead of at hour two of a run.
+    """
+
+    @pytest.fixture
+    def builtin_loops(self) -> list[Path]:
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        assert files, "No built-in loop files found"
+        return files
+
+    def test_all_static_loop_references_resolve(self, builtin_loops: list[Path]) -> None:
+        """load_and_validate (which now errors on unresolvable loop: refs) must not flag any."""
+        unresolved: list[str] = []
+        for loop_file in builtin_loops:
+            _, diagnostics = load_and_validate(loop_file, raise_on_error=False)
+            for d in diagnostics:
+                if (
+                    d.severity is ValidationSeverity.ERROR
+                    and "does not resolve to any file" in d.message
+                ):
+                    unresolved.append(
+                        f"{loop_file.relative_to(BUILTIN_LOOPS_DIR)}: {d.path} — {d.message}"
+                    )
+        assert not unresolved, (
+            "Built-in loop(s) reference a loop: target that does not resolve. Oracle sub-loops "
+            "must be referenced with the 'oracles/' prefix (e.g. 'oracles/verify-confidence-scores'):\n"
+            + "\n".join(unresolved)
         )
 
 

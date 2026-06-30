@@ -3180,3 +3180,94 @@
   scope: issue
   alternatives_rejected: Option A (gate-level fix in ensure_formatted inline Python)
   issue: BUG-2395
+- id: ARCH-151
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'The validator detected the broken `loop: verify-confidence-scores` reference
+    but only at WARNING severity, making it trivially suppressible. The defect caused
+    100% silent failure at runtime — every issue dead-ended at the confidence gate.
+    WARNING-severity checks on static references that will always fail at runtime
+    understate the impact and invite allowlisting.'
+  rule: 'Promote static unresolvable loop references from WARNING to ERROR; a reference
+    that fails resolution at definition time '
+  enforcement: advisory
+  issue: BUG-2400
+- id: TEST-152
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: The BUG-2305 allowlist entry claimed the path 'resolves correctly at
+    runtime via the executor's loops_dir' — a claim that was false. `resolve_loop_path`
+    was never tested against the bare name. Suppressing a warning on an unverified
+    assumption masks the defect and embeds the incorrect value into the test suite.
+  rule: Never suppress a validator warning by asserting runtime behavior you have
+    not verified; check the actual resolution code
+  enforcement: advisory
+  issue: BUG-2400
+- id: TEST-153
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: '`test_builtin_loops.py:978` asserted `confidence_check.loop == ''verify-confidence-scores''`
+    — the broken value — locking the bug in. A golden test should verify the intended
+    contract, not freeze whatever the code happens to produce at the time the test
+    is written.'
+  rule: Tests must assert the correct canonical value, not ratchet in the currently-observed
+    (possibly broken) value.
+  enforcement: advisory
+  issue: BUG-2400
+- id: ARCH-154
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The missing `oracles/` prefix caused a `FileNotFoundError` at runtime.
+    Convention throughout the built-in loop set uses fully-qualified relative paths
+    for non-top-level loops. Bare names only work for loops directly in `loops/`.
+  rule: Sub-loop `loop:` references must include their subdirectory qualifier (e.g.
+    `oracles/verify-confidence-scores`); `resolv
+  enforcement: advisory
+  issue: BUG-2400
+- id: ARCH-155
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: '`on_error: diagnose` consumed the `FileNotFoundError` from the unresolved
+    loop reference and routed to `failed` with no surfaced cause. The parent loop
+    saw ''child did not reach done'' and skipped the issue — no log, no stderr, no
+    distinguishable signal. Silent consumption of errors from infrastructure failures
+    (file not found, path errors) makes root-cause analysis require source inspection.'
+  rule: An `on_error` handler that routes to a terminal state must log the underlying
+    exception before consuming it; silent swal
+  enforcement: advisory
+  issue: BUG-2400
+- id: OTHE-156
+  type: rule
+  timestamp: '2026-06-30T16:08:01Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The `confidence_check` region was extracted into `oracles/verify-confidence-scores.yaml`
+    in commit `fd6a1c78` but the reference in `refine-to-ready-issue.yaml` was not
+    updated. A simple `grep` for the bare loop name at extraction time would have
+    caught the stale reference immediately.
+  rule: When extracting a component into a subdirectory, update every reference site
+    in the same commit; search for bare names b
+  enforcement: advisory
+  issue: BUG-2400

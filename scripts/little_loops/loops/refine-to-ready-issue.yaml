@@ -123,7 +123,7 @@ states:
     on_error: confidence_check
 
   confidence_check:
-    loop: verify-confidence-scores
+    loop: oracles/verify-confidence-scores
     with:
       issue_id: "${captured.issue_id.output}"
     on_success: check_readiness

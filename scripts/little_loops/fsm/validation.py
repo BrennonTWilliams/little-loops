@@ -471,6 +471,17 @@ def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationEr
 
     Called from load_and_validate (not validate_fsm) because resolving child loops
     requires file-system access via the loop directory path.
+
+    Severity is ERROR: a reachable ``loop:`` state with an unresolvable *static*
+    (non-``${...}``) target can never execute — the runtime executor calls the same
+    ``resolve_loop_path`` and raises ``FileNotFoundError`` on dispatch. Originally a
+    WARNING (BUG-2305) on the theory that some references are "intentionally optional",
+    but that theory does not hold: dynamic names are already skipped above, and a static
+    name either resolves at definition time or fails identically at runtime. Two
+    multi-hour sprint runs silently burned compute because a missing ``oracles/`` prefix
+    on ``refine-to-ready-issue.confidence_check`` produced only a WARNING that was then
+    allowlisted away. Promoting to ERROR makes the loop fail to load (``ll-loop validate``
+    exits non-zero, CI fails) instead of deferring to an opaque runtime ``on_error`` route.
     """
     errors: list[ValidationError] = []
     for state_name, state in fsm.states.items():
@@ -488,7 +499,7 @@ def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationEr
                 ValidationError(
                     message=f"Loop reference '{state.loop}' does not resolve to any file.",
                     path=f"states.{state_name}.loop",
-                    severity=ValidationSeverity.WARNING,
+                    severity=ValidationSeverity.ERROR,
                 )
             )
     return errors
