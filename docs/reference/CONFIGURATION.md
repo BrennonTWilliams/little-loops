@@ -1088,6 +1088,38 @@ Settings for hook adapter selection.
 | `host` | (auto-detected) | Host agent identifier for hook adapters: `"claude-code"`, `"opencode"`, or `"codex"`. Adapters translate between the host's native hook protocol and `LLHookEvent`/`LLHookResult`. |
 | `stale_ref_fix` | `"report"` | Session-end stale-ref sweep mode: `"report"` prints findings to stderr; `"auto"` also rewrites them in-place. |
 
+#### `hooks.pre_compact.rubric`
+
+Rubric-gated compaction timing (ENH-2341). When enabled, the `precompact.sh` hook evaluates four structural conditions over the recent transcript before writing state. All conditions must pass; any failure causes the hook to return exit 0 without writing state (compaction still fires but without a continuation snapshot). Disabled by default.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `hooks.pre_compact.rubric.enabled` | `false` | Enable rubric-gated compaction timing. When `false`, falls back to original threshold-only behaviour. |
+| `hooks.pre_compact.rubric.hard_ceiling_pct` | `0.95` | Reserved: context fill fraction above which state is always written. Not yet enforced (token count not exposed in PreCompact payload). |
+| `hooks.pre_compact.rubric.signals.closed_unit_signals` | `["\bdone\b", "\bcompleted\b", "\bfixed\b", "\bresolved\b"]` | Patterns indicating a reasoning unit is closed. |
+| `hooks.pre_compact.rubric.signals.reducible_signals` | `["\bin summary\b", "\bto summarize\b", "\boverall\b"]` | Patterns indicating content is summarisable. |
+| `hooks.pre_compact.rubric.signals.progress_signals` | `["\bchanged\b", "\bupdated\b", "\bmodified\b", "\bimplemented\b"]` | Patterns indicating progress since last compaction. |
+| `hooks.pre_compact.rubric.signals.stuck_signals` | `["\bsame error\b", "\bstill failing\b", "\brepeat\b"]` | Patterns indicating a stuck loop. Any match causes rubric to fail. |
+
+```json
+{
+  "hooks": {
+    "pre_compact": {
+      "rubric": {
+        "enabled": true,
+        "hard_ceiling_pct": 0.95,
+        "signals": {
+          "closed_unit_signals": ["\\bdone\\b", "\\bcompleted\\b"],
+          "reducible_signals": ["\\bin summary\\b"],
+          "progress_signals": ["\\bchanged\\b", "\\bupdated\\b"],
+          "stuck_signals": ["\\bsame error\\b", "\\bstill failing\\b"]
+        }
+      }
+    }
+  }
+}
+```
+
 ### `extensions`
 
 List of extension module paths to load at startup. Each entry is a `"module.path:ClassName"` string. Extensions implement the `LLExtension` protocol and receive structured `LLEvent` notifications from the EventBus during ll-loop, ll-parallel, and ll-sprint runs.

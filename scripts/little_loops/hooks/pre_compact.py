@@ -14,11 +14,14 @@ read by ``hooks/scripts/context-monitor.sh::check_compaction`` (only the
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from little_loops.config.core import resolve_config_path
+from little_loops.config.features import PreCompactRubricConfig
 from little_loops.file_utils import acquire_lock, atomic_write_json
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
@@ -26,6 +29,58 @@ _FEEDBACK = (
     "[ll] Task state preserved before context compaction. "
     "Check .ll/ll-precompact-state.json if resuming work."
 )
+_TRANSCRIPT_TAIL_CHARS = 8000
+
+
+def _load_rubric_config(cwd: Path) -> PreCompactRubricConfig:
+    """Load PreCompactRubricConfig from project config, returning defaults on miss."""
+    config_path = resolve_config_path(cwd)
+    if config_path is None:
+        return PreCompactRubricConfig()
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return PreCompactRubricConfig()
+    if not isinstance(data, dict):
+        return PreCompactRubricConfig()
+    return PreCompactRubricConfig.from_dict(
+        data.get("hooks", {}).get("pre_compact", {}).get("rubric", {})
+    )
+
+
+def _find_evidence(text: str, signals: list[str]) -> bool:
+    """Return True if any signal pattern matches within text (case-insensitive)."""
+    if not signals:
+        return False
+    parts: list[str] = []
+    for s in signals:
+        try:
+            re.compile(s, re.IGNORECASE)
+            parts.append(f"(?:{s})")
+        except re.error:
+            continue
+    if not parts:
+        return False
+    return bool(re.compile("|".join(parts), re.IGNORECASE).search(text))
+
+
+def should_compact(
+    trajectory_excerpt: str, rubric: PreCompactRubricConfig
+) -> tuple[bool, str]:
+    """Evaluate the SELFCOMPACT rubric over the recent trajectory.
+
+    Returns ``(compact_now, reason)``. Each condition requires verbatim evidence;
+    absence defaults to False. ``not_stuck`` fails when stuck signals ARE found.
+    """
+    conditions = {
+        "closed_unit": _find_evidence(trajectory_excerpt, rubric.signals.closed_unit_signals),
+        "reducible": _find_evidence(trajectory_excerpt, rubric.signals.reducible_signals),
+        "progress": _find_evidence(trajectory_excerpt, rubric.signals.progress_signals),
+        "not_stuck": not _find_evidence(trajectory_excerpt, rubric.signals.stuck_signals),
+    }
+    passed = all(conditions.values())
+    reason = ", ".join(k for k, v in conditions.items() if not v) or "all conditions met"
+    return passed, reason
 
 
 def handle(event: LLHookEvent) -> LLHookResult:
@@ -53,6 +108,18 @@ def handle(event: LLHookEvent) -> LLHookResult:
     try:
         payload = event.payload or {}
         transcript_path = payload.get("transcript_path") or ""
+
+        # Rubric gate (ENH-2341): defer state writing when reasoning unit is open.
+        rubric_cfg = _load_rubric_config(Path.cwd())
+        if rubric_cfg.enabled and transcript_path:
+            try:
+                raw = Path(transcript_path).read_text(encoding="utf-8", errors="replace")
+                excerpt = raw[-_TRANSCRIPT_TAIL_CHARS:]
+                compact_now, _reason = should_compact(excerpt, rubric_cfg)
+                if not compact_now:
+                    return LLHookResult(exit_code=0)
+            except OSError:
+                pass  # graceful degrade: proceed with state write
 
         state_dir = Path(".ll")
         state_file = state_dir / "ll-precompact-state.json"

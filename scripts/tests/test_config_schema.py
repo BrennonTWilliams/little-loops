@@ -628,3 +628,28 @@ class TestConfigSchema:
         enabled = session_capture["properties"]["enabled"]
         assert enabled["type"] == "boolean"
         assert enabled["default"] is False
+
+    def test_hooks_pre_compact_rubric_in_schema(self) -> None:
+        """hooks.pre_compact.rubric must be declared in config-schema.json (ENH-2341).
+
+        The hooks block has additionalProperties: false, so pre_compact must be
+        explicitly declared or any config using it will be rejected by JSON Schema.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        hooks_props = data["properties"]["hooks"]["properties"]
+        assert "pre_compact" in hooks_props, (
+            "hooks.pre_compact is not declared in config-schema.json; configs using "
+            "hooks.pre_compact.rubric will be rejected by additionalProperties: false"
+        )
+        rubric_props = hooks_props["pre_compact"]["properties"]["rubric"]["properties"]
+        assert "enabled" in rubric_props
+        assert rubric_props["enabled"]["type"] == "boolean"
+        assert "hard_ceiling_pct" in rubric_props
+        assert rubric_props["hard_ceiling_pct"]["type"] == "number"
+        assert "signals" in rubric_props
+        signals_props = rubric_props["signals"]["properties"]
+        assert "closed_unit_signals" in signals_props
+        assert signals_props["closed_unit_signals"]["type"] == "array"
+        assert "reducible_signals" in signals_props
+        assert "progress_signals" in signals_props
+        assert "stuck_signals" in signals_props

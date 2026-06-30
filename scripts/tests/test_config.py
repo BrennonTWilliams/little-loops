@@ -44,6 +44,7 @@ from little_loops.config import (
     OrchestrationConfig,
     OTelEventsConfig,
     ParallelAutomationConfig,
+    PreCompactRubricConfig,
     ProjectConfig,
     RateLimitsConfig,
     RecursiveRefineConfig,
@@ -3038,3 +3039,68 @@ class TestBRConfigHistoryIntegration:
             h2.compaction.cross_session_enabled == config.history.compaction.cross_session_enabled
         )
         assert h2.compaction.max_level == config.history.compaction.max_level
+
+
+class TestPreCompactRubricConfig:
+    """Tests for PreCompactRubricConfig dataclass (ENH-2341)."""
+
+    def test_enabled_defaults_to_false(self) -> None:
+        """enabled defaults to False (opt-in; preserves existing behaviour)."""
+        config = PreCompactRubricConfig.from_dict({})
+        assert config.enabled is False
+
+    def test_enabled_from_dict(self) -> None:
+        """enabled is read from config dict."""
+        config = PreCompactRubricConfig.from_dict({"enabled": True})
+        assert config.enabled is True
+
+    def test_hard_ceiling_pct_defaults(self) -> None:
+        """hard_ceiling_pct defaults to 0.95."""
+        config = PreCompactRubricConfig.from_dict({})
+        assert config.hard_ceiling_pct == 0.95
+
+    def test_hard_ceiling_pct_from_dict(self) -> None:
+        """hard_ceiling_pct is read from config dict."""
+        config = PreCompactRubricConfig.from_dict({"hard_ceiling_pct": 0.80})
+        assert config.hard_ceiling_pct == 0.80
+
+    def test_signals_defaults_non_empty(self) -> None:
+        """All four signal lists default to non-empty lists."""
+        config = PreCompactRubricConfig.from_dict({})
+        assert len(config.signals.closed_unit_signals) > 0
+        assert len(config.signals.reducible_signals) > 0
+        assert len(config.signals.progress_signals) > 0
+        assert len(config.signals.stuck_signals) > 0
+
+    def test_signals_closed_unit_from_dict(self) -> None:
+        """closed_unit_signals is read from nested signals dict."""
+        config = PreCompactRubricConfig.from_dict(
+            {"signals": {"closed_unit_signals": [r"\bmission accomplished\b"]}}
+        )
+        assert r"\bmission accomplished\b" in config.signals.closed_unit_signals
+
+    def test_signals_reducible_from_dict(self) -> None:
+        """reducible_signals is read from nested signals dict."""
+        config = PreCompactRubricConfig.from_dict(
+            {"signals": {"reducible_signals": [r"\bin short\b"]}}
+        )
+        assert r"\bin short\b" in config.signals.reducible_signals
+
+    def test_signals_progress_from_dict(self) -> None:
+        """progress_signals is read from nested signals dict."""
+        config = PreCompactRubricConfig.from_dict(
+            {"signals": {"progress_signals": [r"\badvanced\b"]}}
+        )
+        assert r"\badvanced\b" in config.signals.progress_signals
+
+    def test_signals_stuck_from_dict(self) -> None:
+        """stuck_signals is read from nested signals dict."""
+        config = PreCompactRubricConfig.from_dict(
+            {"signals": {"stuck_signals": [r"\bdeadloop\b"]}}
+        )
+        assert r"\bdeadloop\b" in config.signals.stuck_signals
+
+    def test_from_dict_empty_does_not_raise(self) -> None:
+        """from_dict({}) returns a valid default instance without raising."""
+        config = PreCompactRubricConfig.from_dict({})
+        assert isinstance(config, PreCompactRubricConfig)

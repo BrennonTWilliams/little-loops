@@ -58,6 +58,7 @@ from little_loops.config.features import (
     NextIssueConfig,
     NextIssueSortKey,
     OTelEventsConfig,
+    PreCompactRubricConfig,
     ScanConfig,
     SessionDigestConfig,
     SocketEventsConfig,
@@ -122,5 +123,6 @@ __all__ = [
     "EvolutionConfig",
     "GoNoGoConfig",
     "HistoryConfig",
+    "PreCompactRubricConfig",
     "SessionDigestConfig",
 ]

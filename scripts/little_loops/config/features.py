@@ -365,6 +365,84 @@ class SprintsConfig:
         )
 
 
+_CLOSED_UNIT_SIGNALS_DEFAULT: list[str] = [
+    r"\bdone\b",
+    r"\bcompleted\b",
+    r"\bfixed\b",
+    r"\bresolved\b",
+]
+_REDUCIBLE_SIGNALS_DEFAULT: list[str] = [
+    r"\bin summary\b",
+    r"\bto summarize\b",
+    r"\boverall\b",
+]
+_PROGRESS_SIGNALS_DEFAULT: list[str] = [
+    r"\bchanged\b",
+    r"\bupdated\b",
+    r"\bmodified\b",
+    r"\bimplemented\b",
+]
+_STUCK_SIGNALS_DEFAULT: list[str] = [
+    r"\bsame error\b",
+    r"\bstill failing\b",
+    r"\brepeat\b",
+]
+
+
+@dataclass
+class RubricSignalsConfig:
+    """Signal lists for each rubric condition in PreCompactRubricConfig (ENH-2341)."""
+
+    closed_unit_signals: list[str] = field(
+        default_factory=lambda: list(_CLOSED_UNIT_SIGNALS_DEFAULT)
+    )
+    reducible_signals: list[str] = field(
+        default_factory=lambda: list(_REDUCIBLE_SIGNALS_DEFAULT)
+    )
+    progress_signals: list[str] = field(
+        default_factory=lambda: list(_PROGRESS_SIGNALS_DEFAULT)
+    )
+    stuck_signals: list[str] = field(default_factory=lambda: list(_STUCK_SIGNALS_DEFAULT))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RubricSignalsConfig:
+        """Create RubricSignalsConfig from dictionary."""
+        return cls(
+            closed_unit_signals=data.get(
+                "closed_unit_signals", list(_CLOSED_UNIT_SIGNALS_DEFAULT)
+            ),
+            reducible_signals=data.get(
+                "reducible_signals", list(_REDUCIBLE_SIGNALS_DEFAULT)
+            ),
+            progress_signals=data.get("progress_signals", list(_PROGRESS_SIGNALS_DEFAULT)),
+            stuck_signals=data.get("stuck_signals", list(_STUCK_SIGNALS_DEFAULT)),
+        )
+
+
+@dataclass
+class PreCompactRubricConfig:
+    """Rubric-gated compaction timing configuration (ENH-2341).
+
+    When enabled, the pre_compact hook evaluates four structural conditions over
+    the recent transcript before writing state. All conditions must pass; any
+    failure returns exit 0 (graceful defer). Disabled by default so existing
+    threshold-only behaviour is preserved.
+    """
+
+    enabled: bool = False
+    hard_ceiling_pct: float = 0.95
+    signals: RubricSignalsConfig = field(default_factory=RubricSignalsConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PreCompactRubricConfig:
+        """Create PreCompactRubricConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            hard_ceiling_pct=data.get("hard_ceiling_pct", 0.95),
+            signals=RubricSignalsConfig.from_dict(data.get("signals", {})),
+        )
+
+
 @dataclass
 class DiscoverabilityConfig:
     """Controls how learning-test gaps are surfaced during implementation."""

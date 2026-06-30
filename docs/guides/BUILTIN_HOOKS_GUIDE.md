@@ -65,7 +65,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
-| **PreCompact** | precompact | Snapshots task state before compaction | exit 2 | on |
+| **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 
 The rest of this guide walks each event in firing order.
@@ -317,6 +317,20 @@ Fires just before Claude Code compacts the conversation. It snapshots task state
 
 This is what lets a post-compaction context pick up mid-task. Always on; writes are atomic with a fail-open advisory lock. See [Session Handoff](SESSION_HANDOFF.md).
 
+**Rubric-gated timing (opt-in):** When `hooks.pre_compact.rubric.enabled: true`, the hook first evaluates four structural conditions over the recent transcript before writing state. If any condition fails, the hook returns exit 0 without writing state — the compaction still happens but without a continuation snapshot. Enable with:
+
+```json
+{ "hooks": { "pre_compact": { "rubric": { "enabled": true } } } }
+```
+
+The four conditions (each requires evidence in the transcript; absence → defer):
+1. **closed_unit** — reasoning unit has a definite resolution (default signals: `done`, `completed`, `fixed`)
+2. **reducible** — content can be summarised to a few facts (default signals: `in summary`, `to summarize`)
+3. **progress** — something changed since the last compact (default signals: `changed`, `updated`, `modified`)
+4. **not_stuck** — no stuck-loop signals detected (default signals: `same error`, `still failing`)
+
+Signal lists are configurable via `hooks.pre_compact.rubric.signals.*`. Disabled by default; when disabled (or on any transcript-read error), falls back to the original threshold-only behaviour.
+
 **Hook:** `precompact-handoff.sh` → `little_loops.hooks.pre_compact_handoff.handle`
 
 Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-precompact-state.json` as an idempotency guard (skips if no state snapshot was written by `precompact.sh`), then writes `.ll/ll-continue-prompt.md` atomically with a 3s advisory lock, returning **exit 2**:
@@ -364,6 +378,8 @@ A few quick controls:
 | `analytics.capture.file_events` | PostToolUse | `true` | Record file events (needs `analytics.enabled`) |
 | `learning_tests.enabled` | PreToolUse | `false` | Enable the import gate |
 | `learning_tests.discoverability.mode` | PreToolUse | `warn` | `off` / `warn` / `block` |
+| `hooks.pre_compact.rubric.enabled` | PreCompact | `false` | Enable rubric-gated compaction timing |
+| `hooks.pre_compact.rubric.hard_ceiling_pct` | PreCompact | `0.95` | Reserved: hard ceiling fraction (not yet enforced) |
 | `scratch_pad.enabled` | PreToolUse | `false` | Redirect oversized Bash output |
 | `scratch_pad.automation_contexts_only` | PreToolUse | `true` | Only fire in automation |
 | `context_monitor.enabled` | PostToolUse, Stop | `true` | Track context usage |

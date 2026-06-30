@@ -1244,6 +1244,54 @@
           "enum": ["report", "auto"],
           "default": "report",
           "description": "Session-end stale-ref sweep mode (FEAT-1680). report prints findings to stderr; auto also rewrites them in-place."
+        },
+        "pre_compact": {
+          "type": "object",
+          "description": "Pre-compact hook configuration (ENH-2341).",
+          "properties": {
+            "rubric": {
+              "type": "object",
+              "description": "Rubric-gated compaction timing. When enabled, the pre_compact hook evaluates four structural conditions over the recent transcript before writing state. Disabled by default.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Enable rubric-gated compaction timing. When false (default), falls back to threshold-only behaviour."
+                },
+                "hard_ceiling_pct": {
+                  "type": "number",
+                  "default": 0.95,
+                  "description": "Context fill fraction above which state is always written regardless of rubric result. Reserved for future enforcement once token count is available in the PreCompact payload."
+                },
+                "signals": {
+                  "type": "object",
+                  "description": "Signal pattern lists for each rubric condition. Patterns are regex strings matched case-insensitively against the recent transcript.",
+                  "properties": {
+                    "closed_unit_signals": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Patterns indicating a reasoning unit is closed (e.g. 'done', 'completed', 'fixed')."
+                    },
+                    "reducible_signals": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Patterns indicating content can be faithfully reduced to key facts (e.g. 'in summary', 'to summarize')."
+                    },
+                    "progress_signals": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Patterns indicating something changed since the last compaction (e.g. 'changed', 'updated', 'implemented')."
+                    },
+                    "stuck_signals": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Patterns indicating the agent is stuck in a loop (e.g. 'same error', 'still failing'). Presence of any stuck signal causes rubric to fail."
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "additionalProperties": false

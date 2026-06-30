@@ -71,3 +71,11 @@ User can:
 2. Start new Claude Code session
 3. Paste as first prompt
 4. Continue with fresh context
+
+### Compaction Timing
+When `hooks.pre_compact.rubric.enabled` is `true`, the `precompact.sh` hook
+evaluates a structural rubric before writing this prompt. If the current
+reasoning unit is mid-derivation (rubric conditions unmet), no state is written
+and the host compacts without a continuation snapshot — the next handoff
+opportunity fires when the rubric next passes. Set `enabled: false` (default)
+to restore threshold-only behaviour and always write state on compaction.

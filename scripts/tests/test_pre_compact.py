@@ -250,3 +250,147 @@ class TestContextMonitorContract:
         text = monitor.read_text()
         assert "check_compaction" in text
         assert ".compacted_at" in text
+
+
+# ---------------------------------------------------------------------------
+# Helpers for rubric tests (ENH-2341)
+# ---------------------------------------------------------------------------
+
+
+def _write_rubric_config(project_dir: Path, *, rubric: dict) -> None:
+    """Write a minimal ll-config.json with rubric settings under hooks.pre_compact."""
+    ll_dir = project_dir / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    (ll_dir / "ll-config.json").write_text(
+        json.dumps({"hooks": {"pre_compact": {"rubric": rubric}}}),
+        encoding="utf-8",
+    )
+
+
+def _transcript(tmp_path: Path, content: str) -> Path:
+    """Write a minimal JSONL transcript file and return its path."""
+    t = tmp_path / "transcript.jsonl"
+    t.write_text(
+        json.dumps({"type": "msg", "content": content}) + "\n",
+        encoding="utf-8",
+    )
+    return t
+
+
+class TestRubricGating:
+    """Rubric-gated compaction timing (ENH-2341).
+
+    When ``hooks.pre_compact.rubric.enabled`` is ``true``, the handler evaluates
+    four conditions over the recent transcript before deciding whether to write
+    state. All conditions must pass; any failure returns exit 0 (no state written,
+    graceful defer). Disabled by default so existing behaviour is unchanged.
+    """
+
+    def test_rubric_disabled_writes_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rubric disabled (default) → old behaviour: write state + exit 2."""
+        monkeypatch.chdir(tmp_path)
+        _write_rubric_config(tmp_path, rubric={"enabled": False})
+
+        result = pre_compact.handle(_event())
+
+        assert result.exit_code == 2
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_all_conditions_pass_writes_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """All rubric conditions pass → write state + exit 2."""
+        monkeypatch.chdir(tmp_path)
+        t = _transcript(tmp_path, "Task completed. In summary, updated 3 files.")
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event(transcript_path=str(t)))
+
+        assert result.exit_code == 2
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_fails_closed_unit_skips_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """closed_unit condition fails → exit 0, no state file written."""
+        monkeypatch.chdir(tmp_path)
+        # Has reducible + progress but no closed_unit signal
+        t = _transcript(tmp_path, "In summary, updated the implementation.")
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event(transcript_path=str(t)))
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_fails_reducible_skips_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """reducible condition fails → exit 0, no state file written."""
+        monkeypatch.chdir(tmp_path)
+        # Has closed_unit + progress but no reducible signal
+        t = _transcript(tmp_path, "Task completed. Changed several files.")
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event(transcript_path=str(t)))
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_fails_progress_skips_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """progress condition fails → exit 0, no state file written."""
+        monkeypatch.chdir(tmp_path)
+        # Has closed_unit + reducible but no progress signal
+        t = _transcript(tmp_path, "Task completed. In summary, reviewing the current status.")
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event(transcript_path=str(t)))
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_fails_stuck_skips_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stuck signals detected → exit 0, no state file written."""
+        monkeypatch.chdir(tmp_path)
+        # Has closed_unit + reducible + progress but also stuck signals
+        t = _transcript(
+            tmp_path, "Task completed. In summary, updated files. Same error occurred."
+        )
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event(transcript_path=str(t)))
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_missing_transcript_degrades_gracefully(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Transcript path not found → degrade to old behaviour: write state + exit 2."""
+        monkeypatch.chdir(tmp_path)
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(
+            _event(transcript_path=str(tmp_path / "nonexistent.jsonl"))
+        )
+
+        assert result.exit_code == 2
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
+    def test_rubric_no_transcript_path_degrades_gracefully(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No transcript path in payload → degrade to old behaviour: write state + exit 2."""
+        monkeypatch.chdir(tmp_path)
+        _write_rubric_config(tmp_path, rubric={"enabled": True})
+
+        result = pre_compact.handle(_event())
+
+        assert result.exit_code == 2
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()

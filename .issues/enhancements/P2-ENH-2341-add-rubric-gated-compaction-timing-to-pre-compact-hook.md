@@ -2,12 +2,19 @@
 id: ENH-2341
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-06-27
-captured_at: "2026-06-27T05:17:49Z"
+captured_at: '2026-06-27T05:17:49Z'
+completed_at: '2026-06-30T03:59:24Z'
 discovered_by: capture-issue
 decision_needed: false
 parent: EPIC-2149
+confidence_score: 96
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2341: Add Rubric-Gated Compaction Timing to pre_compact Hook
@@ -106,7 +113,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/config/__init__.py` — add `PreCompactRubricConfig` to the `from little_loops.config.features import (...)` block and to `__all__`; every config dataclass in `features.py` follows this mandatory re-export pattern [Agent 1 + 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `hooks/adapters/claude-code/hooks.json` — two `matcher: "*"` `PreCompact` entries pointing to `precompact.sh`
+- `hooks/hooks.json` — two `matcher: "*"` `PreCompact` entries pointing to `precompact.sh`
 - `hooks/adapters/claude-code/precompact.sh` — bash bridge: `echo "$INPUT" | python -m little_loops.hooks pre_compact`
 - `scripts/little_loops/hooks/adapters/codex/hooks.json` — Codex `PreCompact` entry pointing to `pre-compact.sh`
 - `scripts/little_loops/hooks/adapters/codex/pre-compact.sh` — sets `LL_HOOK_HOST=codex`, same Python invocation
@@ -215,7 +222,26 @@ The template at `hooks/prompts/continuation-prompt-template.md` has a `## Templa
 
 **Open** | Created: 2026-06-27 | Priority: P2
 
+## Resolution
+
+Implemented `PreCompactRubricConfig` (opt-in, default disabled) that gates pre-compact state writing on four structural conditions evaluated over the recent transcript excerpt: closed reasoning unit, reducible content, measurable progress, and absence of stuck-loop signals. Exit code 0 on rubric failure defers state writing; exit 2 on pass preserves existing feedback behaviour. All signal lists are configurable via `hooks.pre_compact.rubric.signals.*` in `ll-config.json`.
+
+**Files modified:**
+- `scripts/little_loops/config/features.py` — added `RubricSignalsConfig` + `PreCompactRubricConfig` dataclasses
+- `scripts/little_loops/config/__init__.py` — re-exported `PreCompactRubricConfig`
+- `scripts/little_loops/hooks/pre_compact.py` — added `_load_rubric_config()`, `_find_evidence()`, `should_compact()`, wired into `handle()`
+- `config-schema.json` — declared `hooks.pre_compact.rubric` schema
+- `scripts/tests/test_pre_compact.py` — added `TestRubricGating` (8 tests)
+- `scripts/tests/test_config.py` — added `TestPreCompactRubricConfig` (10 tests)
+- `scripts/tests/test_config_schema.py` — added schema assertion test
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — added rubric qualifier + config table rows
+- `docs/reference/CONFIGURATION.md` — added `hooks.pre_compact.rubric` subsection
+- `hooks/prompts/continuation-prompt-template.md` — added `### Compaction Timing` note
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-30T03:59:24Z - `manage-issue`
+- `/ll:ready-issue` - 2026-06-30T03:38:28 - `5d7b1be5-e434-44ab-bd7c-e7f4353b60e9.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00Z - `4fa7b3c8-2ba9-4ece-b050-a044af097c04.jsonl`
 - `/ll:wire-issue` - 2026-06-27T06:13:39 - `5c164999-cef5-4e23-b356-71ebf3af4e40.jsonl`
 - `/ll:refine-issue` - 2026-06-27T05:33:04 - `15663aad-3484-4d3c-b333-946a0e331e1a.jsonl`
 - `/ll:format-issue` - 2026-06-27T05:22:30 - `b1f554bc-7cd6-42a8-af86-2e0e2a418a25.jsonl`
