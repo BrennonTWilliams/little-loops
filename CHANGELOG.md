@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.135.0] - 2026-06-29
+
+### Added
+
+- **Generic host-parameterized `ll-init --upgrade` surface refresh** — Upgrade surface now accepts a host parameter for targeted, host-specific refreshes. (FEAT-2387)
+- **GeminiEmitter + adapter infrastructure** — Full host-agnostic event emission for Gemini CLI; CodexEmitter and core adapter registry included. (FEAT-2392)
+- **`ll-logs loop-fleet` subcommand** — Cross-project FSM run aggregation and fleet-view analytics for multi-repo loop monitoring. (a03e9f77)
+- **MR-10 FSM validation rule** — Flags silent JSON parse-swallow with `exit 0` that discards failures without an `on_error:` route. (ec546490)
+- **Auth-signature fast-fail for `ll-auto`-calling loops** — Loops now abort early on authentication failures instead of silently continuing. (bbf77018)
+- **`auto-refine-and-implement` interleaved refine→implement** — Per-issue refine and implement phases are now interleaved rather than batched. (4aa90e44)
+
+### Fixed
+
+- **`re_enqueue_unblocked` in `rn-implement` missing `on_error:` route** — MR-10 violation resolved; parse failures now route explicitly instead of being swallowed with exit 0. (BUG-2394)
+- **Worktree split-tracking, silent work loss, and stale PID suppression** — Three correlated bugs in loop worktree management resolved; work loss under concurrent runs no longer possible. (13fb3c89)
+- **Tagged-JSON parse failures now surfaced** — Loop states that caught `JSONDecodeError` and exited 0 now propagate failures visibly. (947e565a)
+- **Non-canonical `pending` status coerced to `open` on read** — Status normalization now applied consistently at read time across all issue loaders. (8da35039)
+
+### Changed
+
+- **`ensure_formatted` gate honors `deprecated` section flag** — Gate behavior now consistent with `is_formatted()` for deprecated sections; stops false ensure_formatted loops. (ENH-2398)
+- **Issue assembler no longer emits `## Labels` body section** — New issues created post-ENH-1392 no longer include the deprecated body-section Labels block. (ENH-2399)
+- **Documentation migration and alias retirement for `ll-adapt`** — Docs migrated to canonical locations; deprecated adapter aliases retired. (FEAT-2393)
+
 ## [1.134.0] - 2026-06-28
 
 ### Added
