@@ -96,7 +96,7 @@ Read the full issue file to extract:
 
 ## Phase 3: Extract Options
 
-Scan the Proposed Solution section for options using these three patterns (in order of precedence):
+Scan the Proposed Solution section for options using these patterns (in order of precedence). If Proposed Solution yields 0 options, repeat the scan over `## Codebase Research Findings` and `## Implementation Status` — refined issues often deposit options there.
 
 ### Pattern 1 — Section Headers
 ```
@@ -120,9 +120,20 @@ Extract: the item label or leading phrase as option title; full item text as des
 Note: only apply this pattern if Pattern 1 and Pattern 2 found 0 options
 ```
 
+### Pattern 4 — Bullet-List Options
+```
+Match: bullet items naming lettered/numbered options: /^[-*]\s+\(([a-z0-9])\)\s+/ or /^[-*]\s+\*?\*?Option\s+([A-Z0-9])/
+Example: - (a) useEffect in SettingsSheet…, - (b) Hoist into App.tsx…, - **Option A**: …
+Extract: the (x)/Option label as option title; body text until the next bullet or heading as description
+Note: only apply if Patterns 1–3 found 0 options
+```
+
 ### Option Count Check
 
 After extraction:
+
+**Auto-mode bullet-list handling**: if the ONLY options found came from Pattern 4 and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Set `OPTIONS = 0` so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, `decision_needed` stays `true` for human review. In interactive mode, Pattern-4 options ARE scored through Phases 4–7 normally.
+
 - If `OPTIONS` is empty and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
 - If `OPTIONS` is empty and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
 - If `len(OPTIONS) == 1`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`)
@@ -143,7 +154,7 @@ Before scanning for provisional language, collect all numbered list items under 
 Markers appear inline after the bold question label, e.g.:
 `**Fork vs. flag.** ✅ **RESOLVED** (2026-06-04 by …)`
 
-**If ALL items under `## Open Questions` are marked resolved** (or the section has no items) **and `decision_needed: true`**:
+**If the `## Open Questions` section exists with items and they are ALL marked resolved, and `decision_needed: true`**:
 
 1. Output:
    ```
@@ -154,7 +165,7 @@ Markers appear inline after the bold question label, e.g.:
 3. Do NOT clear `decision_needed` — leave it as `true`.
 4. Exit 0, then proceed to Phase 8 (Append Session Log) only. Skip Phases 4–7 and Phase 9.
 
-**If at least one question is unresolved**, proceed to the provisional-language scan below (scoping the scan to unresolved items only).
+**If the section is absent, has no items, or has at least one unresolved item**, fall through to the provisional-language scan below — do NOT take the `NO_ACTIONABLE_DECISIONS` exit. An absent `## Open Questions` section is not "nothing to decide": options and recommendations commonly live in `## Proposed Solution` or `## Codebase Research Findings`. When the section exists, scope the scan to its unresolved items only.
 
 ---
 
@@ -182,6 +193,15 @@ Example: "the existing approach must be replaced with direct file writes"
 Candidate: the concrete replacement approach named
 ```
 
+### Provisional Pattern D — Declarative recommendation
+```
+Match: prose naming a winning option without a provisional wrapper:
+  **Recommended**: (b)  /  the recommendation is now (b)  /  Refresh N supersedes prior — (a)+(b)
+Candidate: the referenced option(s); multi-part winners like (a)+(b) are allowed.
+Requirement: the referent must exist as a Pattern-4 bullet option in `## Proposed Solution` or
+`## Codebase Research Findings`. A marker with a matching option is a **clear winner** — treat as decided.
+```
+
 For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
 
 ### Resolution Logic
@@ -191,7 +211,7 @@ Classify each match as:
 - **Ambiguous**: multiple alternatives listed, no single preference expressed.
 
 **If exactly one clear winner is found:**
-1. Edit the issue text to make the approach declarative — remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`, `"must be replaced with"`) and state the concrete approach as decided.
+1. Edit the issue text to make the approach declarative — for Patterns A–C remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`, `"must be replaced with"`); for Pattern D add a `> **Selected:** (x) — per the stated recommendation` callout on the recommended bullet. State the concrete approach as decided.
 2. Use the Edit tool (inline `---` block replacement — same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
    ```
    READ the current --- frontmatter block (from opening --- to closing ---)

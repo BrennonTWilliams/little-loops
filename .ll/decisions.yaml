@@ -3271,3 +3271,45 @@
     in the same commit; search for bare names b
   enforcement: advisory
   issue: BUG-2400
+- id: ARCH-157
+  type: rule
+  timestamp: '2026-06-30T16:28:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'The skill equated a missing ## Open Questions section with all-questions-resolved
+    and exited early. Absence means ''not applicable here'', not ''already done''
+    — conflating the two caused the downstream scan to be skipped entirely.'
+  rule: Treat an absent optional section as fall-through, not as a resolved or complete
+    state.
+  enforcement: advisory
+  issue: ENH-2401
+- id: ARCH-158
+  type: rule
+  timestamp: '2026-06-30T16:28:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'The ''automation cannot clear a flag it did not earn'' principle: auto-mode
+    acting on informal bullet lists without an explicit **Recommended** marker would
+    re-litigate decisions the author may have already settled informally.'
+  rule: Automation must not clear or resolve a flag unless an explicit, unambiguous
+    marker is present in the source artifact.
+  enforcement: advisory
+  issue: ENH-2401
+- id: ARCH-159
+  type: rule
+  timestamp: '2026-06-30T16:28:31Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'The NO_ACTIONABLE_DECISIONS exit fired when ## Open Questions was absent,
+    before any content scan ran. A terminal exit should require positive evidence,
+    not just the absence of one optional section.'
+  rule: Guard terminal-exit branches with both an existence check AND a content check;
+    never exit solely on section absence.
+  enforcement: advisory
+  issue: ENH-2401

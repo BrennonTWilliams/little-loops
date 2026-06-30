@@ -311,3 +311,80 @@ class TestPhase3bResolvedFilter:
         assert "Do NOT edit the issue file" in text or "do not edit" in text.lower(), (
             "Phase 3b-i must document that the issue file is not edited on the NO_ACTIONABLE_DECISIONS path"
         )
+
+
+class TestPattern4BulletOptions:
+    """Phase 3 must document Pattern 4 (bullet-list options) — FEAT-389 design gap.
+
+    refine-issue commonly deposits options as `- (a) ...` / `- (b) ...` bullet lists in
+    `## Codebase Research Findings`. Pattern 4 catches these; the auto-mode guardrail keeps
+    them from being scored without an explicit author recommendation.
+    """
+
+    def _phase3_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("Phase 3: Extract Options")
+        end = content.index("## Phase 3b")
+        return content[start:end]
+
+    def test_pattern_4_documented(self) -> None:
+        assert "Pattern 4" in self._phase3_text(), (
+            "Phase 3 must document Pattern 4 (bullet-list options)"
+        )
+
+    def test_bullet_list_match_documented(self) -> None:
+        assert "bullet" in self._phase3_text().lower(), (
+            "Pattern 4 must describe bullet-list option matching"
+        )
+
+    def test_secondary_sections_scanned(self) -> None:
+        assert "Codebase Research Findings" in self._phase3_text(), (
+            "Phase 3 must widen extraction to ## Codebase Research Findings when "
+            "Proposed Solution yields 0 options"
+        )
+
+    def test_auto_mode_bullet_guardrail_documented(self) -> None:
+        text = self._phase3_text()
+        assert "Pattern D" in text and "recommendation marker" in text.lower(), (
+            "Phase 3 Option Count Check must gate auto-mode Pattern-4 options behind a "
+            "declarative recommendation marker (Pattern D)"
+        )
+
+
+class TestPattern3bDeclarativeRecommendation:
+    """Phase 3b must document Pattern D + the absent-Open-Questions fall-through — FEAT-389.
+
+    The original Phase 3b-i exited NO_ACTIONABLE_DECISIONS whenever ## Open Questions was
+    absent, short-circuiting the provisional scan. The fix falls through to the scan, and
+    Pattern D recognizes explicit declarative recommendations on bullet-list options.
+    """
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_pattern_d_documented(self) -> None:
+        assert "Pattern D" in self._phase_text(), (
+            "Phase 3b must document Provisional Pattern D (declarative recommendation)"
+        )
+
+    def test_recommendation_marker_described(self) -> None:
+        assert "recommend" in self._phase_text().lower(), (
+            "Pattern D must describe declarative recommendation markers"
+        )
+
+    def test_absent_open_questions_falls_through(self) -> None:
+        text = self._phase_text().lower()
+        assert "absent" in text and "fall through" in text, (
+            "Phase 3b-i must fall through to the provisional scan when ## Open Questions "
+            "is absent/empty rather than exiting NO_ACTIONABLE_DECISIONS"
+        )
+
+    def test_no_actionable_gated_on_existing_resolved_section(self) -> None:
+        assert "exists with items" in self._phase_text(), (
+            "Phase 3b-i must restrict the NO_ACTIONABLE_DECISIONS exit to an existing, "
+            "all-resolved ## Open Questions section"
+        )
