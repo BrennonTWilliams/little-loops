@@ -11,9 +11,10 @@ description: |
   First implementation runs as soon as the first leaf passes refinement — NOT
   after the whole tree is refined.
 
-  finalize verifies closure from a .issues/completed/ ground-truth diff
-  (ENH-2385) — counting both ll-auto leaf closures and decomposition closures
-  (autodev git-mv's decomposed umbrellas into completed/) — and emits a
+  finalize verifies closure from the UNION of two ground-truth diffs
+  (BUG-2403): a .issues/completed/ diff (ENH-2385, for decomposed umbrellas
+  that autodev git-mv's there) and a status:done diff (for leaf issues, which
+  complete IN PLACE per ENH-1418 and never enter completed/). It emits a
   summary.json verdict (success / partial / partial-with-errors / phantom /
   no-op) plus a subloop_outcome token that reflects real terminal state, not an
   exit-code proxy (ENH-2005).
@@ -40,10 +41,31 @@ states:
       rm -f "$RUN_DIR/summary.json"
       # ENH-2385: snapshot the closed set so finalize can compute ground-truth
       # closures (issues that reached .issues/completed/ during THIS run). This
-      # captures BOTH ll-auto leaf closures and autodev decomposition closures
-      # (enqueue_children git-mv's decomposed umbrellas into completed/).
+      # captures autodev decomposition closures (enqueue_children git-mv's
+      # decomposed umbrellas into completed/).
       ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
         | sort -u > "$RUN_DIR/auto-refine-and-implement-completed-baseline.txt"
+      # BUG-2403: leaf issues complete IN PLACE (status: done + completed_at,
+      # ENH-1418) and never enter .issues/completed/ — only decomposed parents
+      # still git-mv there. Snapshot the live done-set too so finalize can
+      # union both closure paths instead of only counting decomposition moves.
+      python3 << 'PYEOF' > "$RUN_DIR/auto-refine-and-implement-done-baseline.txt"
+      import json
+      import subprocess
+
+      done_ids = set()
+      try:
+          r = subprocess.run(
+              ["ll-issues", "list", "--json", "--status", "done"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+      except Exception:
+          pass
+      for issue_id in sorted(done_ids):
+          print(issue_id)
+      PYEOF
     action_type: shell
     next: resolve_set
 
@@ -130,30 +152,67 @@ states:
     # Write a machine-readable summary.json so callers (e.g.
     # sprint-refine-and-implement) and post-hoc audits can distinguish genuine
     # success from a phantom run where every issue was skipped or crashed.
-    # CLOSED is ground truth (completed/ diff). NOT_CLOSED/SKIPPED are sourced
-    # from autodev's ledgers under the shared run_dir; ERRORED from record_error.
-    # awk counts non-blank lines and always exits 0.
+    # CLOSED is ground truth: the UNION of a completed/ diff (decomposed
+    # parents) and a status:done diff (leaf issues, BUG-2403). NOT_CLOSED/
+    # SKIPPED are sourced from autodev's ledgers under the shared run_dir;
+    # ERRORED from record_error. awk counts non-blank lines and always exits 0.
     action: |
       RUN_DIR="${context.run_dir}"
       P=auto-refine-and-implement
       count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
 
-      # ENH-2385: CLOSED is ground truth — issues that reached .issues/completed/
-      # during this run (ll-auto leaf closures + autodev decomposition closures).
+      # ENH-2385: decomposed-parent closures — issues that reached
+      # .issues/completed/ during this run (autodev git-mv on decomposition).
       ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
         | sort -u > "$RUN_DIR/$P-completed-now.txt"
-      CLOSED=$(comm -13 "$RUN_DIR/$P-completed-baseline.txt" "$RUN_DIR/$P-completed-now.txt" \
-                 2>/dev/null | awk 'NF{c++} END{print c+0}')
+      comm -13 "$RUN_DIR/$P-completed-baseline.txt" "$RUN_DIR/$P-completed-now.txt" \
+        2>/dev/null > "$RUN_DIR/$P-completed-new.txt"
+
+      # BUG-2403: leaf closures — issues that reached status: done IN PLACE
+      # during this run (ENH-1418; leaves never enter completed/).
+      python3 << 'PYEOF' > "$RUN_DIR/$P-done-now.txt"
+      import json
+      import subprocess
+
+      done_ids = set()
+      try:
+          r = subprocess.run(
+              ["ll-issues", "list", "--json", "--status", "done"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+      except Exception:
+          pass
+      for issue_id in sorted(done_ids):
+          print(issue_id)
+      PYEOF
+      comm -13 "$RUN_DIR/$P-done-baseline.txt" "$RUN_DIR/$P-done-now.txt" \
+        2>/dev/null > "$RUN_DIR/$P-done-new.txt"
+
+      # CLOSED = union of both closure paths' NEW entries (since baseline), so
+      # decomposed parents (still moved) and leaves (closed in place) are both
+      # counted as ground truth for "closed during this run".
+      cat "$RUN_DIR/$P-completed-new.txt" "$RUN_DIR/$P-done-new.txt" 2>/dev/null \
+        | grep '[^[:space:]]' | sort -u > "$RUN_DIR/$P-closed-union.txt"
+      CLOSED=$(count $P-closed-union.txt)
+
+      # NOT_CLOSED exclusion uses the FULL current snapshot (completed-now ∪
+      # done-now), not just this run's new closures — an issue closed before
+      # the run started that reappears in autodev-passed is still closed, not
+      # "not closed" (preserves the pre-BUG-2403 completed-now semantics).
+      cat "$RUN_DIR/$P-completed-now.txt" "$RUN_DIR/$P-done-now.txt" 2>/dev/null \
+        | grep '[^[:space:]]' | sort -u > "$RUN_DIR/$P-closed-now-union.txt"
 
       # NOT_CLOSED: issues autodev passed refinement and ran ll-auto on that did
-      # NOT reach completed/ (e.g. ll-auto refused to close, or a plan awaits
-      # approval). Derived as autodev-passed − completed, so a rate-limit retry
-      # that eventually closes cannot double-count.
+      # NOT close via either path (e.g. ll-auto refused to close, or a plan
+      # awaits approval). Derived as autodev-passed − closed-now-union, so a
+      # rate-limit retry that eventually closes cannot double-count.
       sort -u "$RUN_DIR/autodev-passed.txt" 2>/dev/null | grep '[^[:space:]]' \
         > "$RUN_DIR/$P-passed-sorted.txt" || true
       : > "$RUN_DIR/$P-not-closed.txt"
       if [ -s "$RUN_DIR/$P-passed-sorted.txt" ]; then
-        comm -23 "$RUN_DIR/$P-passed-sorted.txt" "$RUN_DIR/$P-completed-now.txt" \
+        comm -23 "$RUN_DIR/$P-passed-sorted.txt" "$RUN_DIR/$P-closed-now-union.txt" \
           > "$RUN_DIR/$P-not-closed.txt" 2>/dev/null || true
       fi
       NOT_CLOSED=$(count $P-not-closed.txt)

@@ -3,9 +3,10 @@ id: BUG-2403
 title: auto-refine-and-implement closure metric counts the vestigial .issues/completed/
   directory, so every clean leaf-implementation sprint reports verdict=phantom
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-06-30T00:00:00Z'
+completed_at: '2026-06-30T21:56:27Z'
 discovered_date: '2026-06-30'
 discovered_by: audit-loop-run
 labels:
@@ -267,15 +268,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A sprint of N leaf issues that all reach `status: done` in place during the
+- [x] A sprint of N leaf issues that all reach `status: done` in place during the
       run → `CLOSED == N`, `NOT_CLOSED == 0`, `verdict ∈ {success, partial}` (never
       `phantom`).
-- [ ] Decomposed parents that `git mv` to `.issues/completed/` continue to count
+- [x] Decomposed parents that `git mv` to `.issues/completed/` continue to count
       as closed (union preserves the existing path).
-- [ ] No new directory-move behavior is introduced for leaf completion.
-- [ ] `complete_issue_lifecycle` docstring corrected to describe in-place
+- [x] No new directory-move behavior is introduced for leaf completion.
+- [x] `complete_issue_lifecycle` docstring corrected to describe in-place
       completion.
-- [ ] `ll-loop validate auto-refine-and-implement` passes; `test_builtin_loops.py`
+- [x] `ll-loop validate auto-refine-and-implement` passes; `test_builtin_loops.py`
       green.
 
 ## Impact
@@ -295,9 +296,47 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `audit-loop-run` - 2026-06-30 - reviewed
   `audit-loop-sprint-refine-and-implement-2026-06-30.md` (cards repo); traced
   root cause to ENH-2385 vs ENH-1418 in little-loops.
+- `/ll:manage-issue` - 2026-06-30T21:56:27Z - `df65d7ca-2f4e-4eb3-8e1b-7c78f7a751a8.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-06-30
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: `init` now snapshots
+  the live `status: done` set (`ll-issues list --json --status done`) into
+  `done-baseline.txt`, mirroring the existing `completed-baseline.txt` snapshot.
+  `finalize` derives `CLOSED` from the UNION of two diffs — the `completed/`
+  diff (decomposed parents) and the new `status:done` diff (leaf issues
+  completed in place per ENH-1418) — so leaf closures are no longer dropped.
+  `NOT_CLOSED` exclusion uses the full current snapshot of both sets (not just
+  this run's new closures), preserving the original `completed-now` exclusion
+  semantics for issues closed before the run started.
+- `scripts/little_loops/issue_lifecycle.py`: fixed the stale docstring on
+  `complete_issue_lifecycle` — it claimed "moves the issue to completed";
+  corrected to describe in-place completion (ENH-1418).
+- `scripts/tests/test_builtin_loops.py`: extended `_run_finalize` with
+  `done_in_place`/`done_baseline` fixture support; added
+  `test_finalize_counts_done_in_place_leaf_as_closed`,
+  `test_finalize_excludes_pre_existing_done_baseline_from_closed`,
+  `test_finalize_combines_completed_and_done_in_place_closures`,
+  `test_finalize_not_closed_excludes_done_in_place_leaf`,
+  `test_finalize_not_closed_excludes_pre_baseline_closure_in_passed`, and
+  `test_init_snapshots_done_baseline`.
+
+### Verification Results
+- Tests: PASS (13182 passed, 23 skipped; full suite)
+- Lint: PASS
+- Types: PASS (pre-existing unrelated `wcwidth` stub gap in `cli/loop/layout.py`)
+- Run: PASS (`ll-loop validate auto-refine-and-implement`)
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P2
+**Done** | Created: 2026-06-30 | Priority: P2

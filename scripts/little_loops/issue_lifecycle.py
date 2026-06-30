@@ -658,7 +658,9 @@ def complete_issue_lifecycle(
 ) -> bool:
     """Fallback: Complete the issue lifecycle when command exited early.
 
-    This moves the issue to completed and adds a resolution section.
+    Completes the issue IN PLACE: writes status: done + completed_at and a
+    resolution section to the existing file. Does not move the file (ENH-1418
+    decoupled status from directory location).
 
     Args:
         info: Issue info

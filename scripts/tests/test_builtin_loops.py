@@ -1796,6 +1796,20 @@ class TestAutoRefineAndImplementLoop:
         assert "autodev-passed.txt" in action
         assert "autodev-skipped.txt" in action
 
+    _ID_PREFIX_TO_DIR = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements", "EPIC": "epics"}
+
+    def _write_done_in_place_fixture(self, run_dir: Path, issue_id: str) -> None:
+        """Write a status:done issue .md fixture under run_dir/.issues/<category>/.
+
+        BUG-2403: leaf issues complete IN PLACE (no move to completed/), so the
+        real `ll-issues list --json --status done` call in finalize's action must
+        see them via a category-directory fixture, not a completed/ entry.
+        """
+        category = self._ID_PREFIX_TO_DIR.get(issue_id.split("-")[0], "enhancements")
+        issues_dir = run_dir / ".issues" / category
+        issues_dir.mkdir(parents=True, exist_ok=True)
+        (issues_dir / f"P3-{issue_id}-x.md").write_text(f"---\nid: {issue_id}\nstatus: done\n---\n")
+
     def _run_finalize(
         self,
         data: dict,
@@ -1805,13 +1819,17 @@ class TestAutoRefineAndImplementLoop:
         skipped: int = 0,
         errored: int = 0,
         baseline: tuple[str, ...] = (),
+        done_in_place: tuple[str, ...] = (),
+        done_baseline: tuple[str, ...] = (),
     ) -> dict:
-        """Execute finalize against a ground-truth completed/ dir; return summary.json.
+        """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
-        ENH-2385: finalize derives CLOSED from a .issues/completed/ diff against the
-        init baseline, and NOT_CLOSED from autodev-passed − completed. `closed` are
-        the issues that reached completed/ DURING the run; `baseline` were already
-        there at init; `passed` are autodev's passed (attempted-implementation) IDs.
+        ENH-2385: finalize derives one half of CLOSED from a .issues/completed/ diff
+        against the init baseline (`closed`/`baseline`, decomposed parents).
+        BUG-2403: the other half comes from a status:done diff (`done_in_place`/
+        `done_baseline`, leaf issues completed in place). CLOSED is the union;
+        NOT_CLOSED is autodev-passed − that union. `passed` are autodev's passed
+        (attempted-implementation) IDs.
         """
         p = "auto-refine-and-implement"
         (run_dir / f"{p}-completed-baseline.txt").write_text(
@@ -1821,13 +1839,23 @@ class TestAutoRefineAndImplementLoop:
         completed_dir.mkdir(parents=True, exist_ok=True)
         for cid in set(closed) | set(baseline):
             (completed_dir / f"P3-{cid}-x.md").write_text("done\n")
+        # BUG-2403: done-baseline.txt mirrors completed-baseline.txt for the
+        # in-place completion path — issues already status:done before the run.
+        (run_dir / f"{p}-done-baseline.txt").write_text(
+            "".join(f"{i}\n" for i in sorted(done_baseline))
+        )
+        for did in done_in_place:
+            self._write_done_in_place_fixture(run_dir, did)
         # finalize sources autodev's ledgers under the shared run_dir.
         (run_dir / "autodev-passed.txt").write_text("".join(f"{i}\n" for i in passed))
         (run_dir / "autodev-skipped.txt").write_text("".join(f"ID-{i}\n" for i in range(skipped)))
         (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
-        subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"finalize action failed: {result.stderr}"
         return json.loads((run_dir / "summary.json").read_text())
 
     def test_finalize_verdict_table(self, data: dict, tmp_path: Path) -> None:
@@ -1868,6 +1896,64 @@ class TestAutoRefineAndImplementLoop:
         )
         assert summary["closed"] == 1, f"decomposition closure must count, got {summary}"
 
+    def test_finalize_counts_done_in_place_leaf_as_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2403: a leaf issue that reaches status: done IN PLACE (no move to
+        completed/, per ENH-1418) must count as CLOSED and yield a non-phantom
+        verdict. Previously CLOSED was computed strictly from a completed/ diff,
+        so leaf closures (which never move) were silently dropped and a clean
+        leaf sprint reported phantom on every run."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=("FEAT-1",),
+            done_in_place=("FEAT-1",),
+        )
+        assert summary["closed"] == 1, f"in-place leaf closure must count, got {summary}"
+        assert summary["not_closed"] == 0, f"closed leaf must not also be not_closed: {summary}"
+        assert summary["verdict"] in ("success", "partial"), (
+            f"a closed leaf sprint must not report phantom, got {summary}"
+        )
+
+    def test_finalize_excludes_pre_existing_done_baseline_from_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2403: an issue that was ALREADY status:done before the run (in the
+        done-baseline) must not be double-counted as newly closed just because
+        it's still done at finalize time."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=(),
+            done_baseline=("FEAT-9",),
+            done_in_place=("FEAT-9",),
+        )
+        assert summary["closed"] == 0, (
+            f"pre-existing done issue must not count as newly closed: {summary}"
+        )
+
+    def test_finalize_combines_completed_and_done_in_place_closures(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2403: CLOSED must be the UNION of the completed/ diff (decomposed
+        parents) and the status:done diff (leaf issues) — a sprint with one of
+        each must count both, not just one."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("EPIC-9",),
+            passed=("FEAT-1",),
+            done_in_place=("FEAT-1",),
+        )
+        assert summary["closed"] == 2, f"union of both closure paths expected: {summary}"
+
     def test_finalize_not_closed_excludes_completed_and_avoids_double_count(
         self, data: dict, tmp_path: Path
     ) -> None:
@@ -1885,6 +1971,48 @@ class TestAutoRefineAndImplementLoop:
         )
         assert summary["closed"] == 1 and summary["not_closed"] == 1, (
             f"FEAT-1 closed, FEAT-2 not-closed expected, got {summary}"
+        )
+
+    def test_finalize_not_closed_excludes_done_in_place_leaf(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2403: NOT_CLOSED must exclude a leaf that closed via the
+        done-in-place path (not just the completed/ path) — a passed issue
+        still open is the only case that should count as not_closed."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=("FEAT-1", "FEAT-2"),
+            done_in_place=("FEAT-1",),
+        )
+        assert summary["closed"] == 1 and summary["not_closed"] == 1, (
+            f"FEAT-1 closed in place, FEAT-2 not-closed expected, got {summary}"
+        )
+
+    def test_finalize_not_closed_excludes_pre_baseline_closure_in_passed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2403: NOT_CLOSED exclusion must use the FULL current closed set
+        (completed-now ∪ done-now), not just this run's new closures. An issue
+        that was already closed BEFORE the run (in the baseline) but reappears
+        in autodev-passed is still closed — it must not be flagged not_closed.
+        This preserves the pre-fix `completed-now` exclusion semantics for the
+        completed/ path while extending it to the new done-in-place path."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            baseline=("FEAT-1",),
+            passed=("FEAT-1",),
+            done_baseline=("FEAT-2",),
+            done_in_place=("FEAT-2",),
+        )
+        assert summary["closed"] == 0, f"neither closure is new this run: {summary}"
+        assert summary["not_closed"] == 0, (
+            f"FEAT-1 closed pre-baseline must not count as not_closed: {summary}"
         )
 
     def test_finalize_summary_has_closure_keys(self, data: dict, tmp_path: Path) -> None:
@@ -1909,6 +2037,26 @@ class TestAutoRefineAndImplementLoop:
         baseline = run_dir / "auto-refine-and-implement-completed-baseline.txt"
         assert baseline.exists() and "FEAT-1" in baseline.read_text(), (
             "init must snapshot existing completed/ issues into the baseline file"
+        )
+
+    def test_init_snapshots_done_baseline(self, data: dict, tmp_path: Path) -> None:
+        """BUG-2403: init must snapshot the live status:done set so finalize can
+        compute a ground-truth closure diff for issues that complete in place
+        (ENH-1418) and never enter completed/."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        issues_dir = run_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (issues_dir / "P3-FEAT-1-x.md").write_text("---\nid: FEAT-1\nstatus: done\n---\n")
+        action = data["states"]["init"].get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"init action failed: {result.stderr}"
+        baseline = run_dir / "auto-refine-and-implement-done-baseline.txt"
+        assert baseline.exists() and "FEAT-1" in baseline.read_text(), (
+            "init must snapshot existing status:done issues into the done-baseline file"
         )
 
     def test_finalize_writes_summary_json(self, data: dict) -> None:
