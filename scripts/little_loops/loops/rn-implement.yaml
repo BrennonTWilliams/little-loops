@@ -31,6 +31,11 @@ context:
   # FEAT-1991: "fifo" (default) preserves existing FIFO pop. "value_ranked" selects
   # the highest-value ready issue at each tick using dependency-readiness + impact/effort.
   schedule_mode: "fifo"
+  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. Threaded
+  # down to rn-remediate's inner `ll-auto --only` via with:. Default empty = the
+  # ENH-2319 gate stays active (itself config-gated by learning_tests.enabled).
+  #   ll-loop run rn-implement <id> --context skip_learning_gate=1
+  skip_learning_gate: ""
 import:
   - lib/common.yaml
 meta_self_eval_ok: false
@@ -528,6 +533,7 @@ states:
       outcome_threshold: "${context.outcome_threshold}"
       max_remediation_passes: "${context.max_remediation_passes}"
       run_dir: "${captured.run_dir.output}"
+      skip_learning_gate: "${context.skip_learning_gate}"
     on_success: classify_remediation
     on_failure: classify_remediation
     on_error: record_sub_loop_crash   # ENH-2005: crash ≠ implementation failure
@@ -719,6 +725,21 @@ states:
       source: "${captured.rem_outcome.output}"
       pattern: "ENV_NOT_READY"
     on_yes: abort_env_not_ready
+    on_no: route_rem_learning_gate
+    on_error: record_failure
+
+  route_rem_learning_gate:
+    # Learning-gate consistency: rn-remediate emitted LEARNING_GATE_BLOCKED because
+    # the inner `ll-auto --only` blocked the issue on unproven external-API deps
+    # (ENH-2319). Record it distinctly (like SCORES_MISSING) rather than collapsing
+    # it into a genuine implementation failure — the issue is actionable once its
+    # deps are proven via /ll:explore-api, not broken. on_no falls through to the
+    # generic failure bucket.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "LEARNING_GATE_BLOCKED"
+    on_yes: record_learning_gate_blocked
     on_no: record_failure   # genuine IMPLEMENT_FAILED → recorded failure
     on_error: record_failure
 
@@ -866,6 +887,20 @@ states:
       echo "[SIZE_REVIEW_FAILED] $ID — size review errored or was inconclusive"
     next: dequeue_next
 
+  record_learning_gate_blocked:
+    # rn-remediate emitted LEARNING_GATE_BLOCKED: the inner `ll-auto --only` blocked
+    # the issue on unproven external-API deps (ENH-2319 learning gate). Diagnostic,
+    # distinct from a genuine implementation failure — tag it (like SCORES_MISSING /
+    # SIZE_REVIEW_FAILED) so report tallies it separately and operators know the
+    # remedy is /ll:explore-api, not a code fix. The issue is left in place to
+    # re-surface once its deps are proven.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} LEARNING_GATE_BLOCKED" >> "${captured.run_dir.output}/failures.txt"
+      echo "[LEARNING_GATE_BLOCKED] $ID — unproven external-API deps; prove with /ll:explore-api then re-run"
+    next: dequeue_next
+
   mark_blocked:
     action_type: shell
     action: |
@@ -949,8 +984,11 @@ states:
       # reflects only genuine implementation failures (operator triage).
       SCORES_MISSING=$(grep -c "SCORES_MISSING" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
       SIZE_REVIEW_FAILED=$(grep -c "SIZE_REVIEW_FAILED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      # Learning-gate blocks are tagged into failures.txt but are not genuine
+      # implementation failures — tally separately (operator remedy: /ll:explore-api).
+      LEARNING_GATE_BLOCKED=$(grep -c "LEARNING_GATE_BLOCKED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
       TOTAL_FAILURES=$(wc -l < "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED))
+      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED - LEARNING_GATE_BLOCKED))
       RATE_LIMITED=$(wc -l < "$RUN_DIR/rate_limits.txt" 2>/dev/null | tr -d ' ' || echo 0)
 
       {
@@ -966,13 +1004,14 @@ states:
         printf '  "sub_loop_crashes": %s,\n' "$SUB_LOOP_CRASHES"
         printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
         printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
+        printf '  "learning_gate_blocked": %s,\n' "$LEARNING_GATE_BLOCKED"
         printf '  "rate_limited": %s\n' "$RATE_LIMITED"
         printf '}\n'
       } > "$RUN_DIR/summary.json"
 
       echo "=== rn-implement Complete ==="
       echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
-      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Rate-limited: $RATE_LIMITED"
+      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Learning-gate-blocked: $LEARNING_GATE_BLOCKED | Rate-limited: $RATE_LIMITED"
       echo "  Summary written to: $RUN_DIR/summary.json"
     next: done
 

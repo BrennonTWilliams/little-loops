@@ -26,6 +26,10 @@ import:
 context:
   max_issues: 100
   scope: ""   # optional: sprint name (.sprints/<name>.yaml) or EPIC-NNN; empty → rank backlog
+  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. Forwarded
+  # to autodev (→ its inner `ll-auto --only`) via with:. Default empty = the
+  # ENH-2319 gate stays active (config-gated by learning_tests.enabled).
+  skip_learning_gate: ""
 
 states:
   init:
@@ -107,6 +111,7 @@ states:
     loop: autodev
     with:
       input: "${captured.issue_set.output}"
+      skip_learning_gate: "${context.skip_learning_gate}"
     on_success: finalize
     on_failure: finalize
     on_error: record_error

@@ -2178,19 +2178,57 @@ class TestAutodevLoop:
         state = data["states"].get("implement_current", {})
         assert state.get("on_yes") == "dequeue_next"
 
-    def test_implement_current_on_no_routes_to_check_impl_auth(self, data: dict) -> None:
-        """On non-zero exit (exit 1), route to check_impl_auth to detect auth failures."""
+    def test_implement_current_on_no_routes_to_check_learning_gate(self, data: dict) -> None:
+        """On non-zero exit (exit 1), route to check_learning_gate FIRST so a learning-gate
+        block (LEARNING_GATE_BLOCKED) is distinguished from a generic failure / auth failure."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_no") == "check_impl_auth", (
-            f"implement_current.on_no should be 'check_impl_auth', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_learning_gate", (
+            f"implement_current.on_no should be 'check_learning_gate', got {state.get('on_no')!r}"
         )
 
-    def test_implement_current_on_error_routes_to_check_impl_auth(self, data: dict) -> None:
-        """On fatal error, route to check_impl_auth to detect auth failures before terminating."""
+    def test_implement_current_on_error_routes_to_check_learning_gate(self, data: dict) -> None:
+        """On fatal error, route to check_learning_gate first (then auth) before terminating."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_error") == "check_impl_auth", (
-            f"implement_current.on_error should be 'check_impl_auth', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_learning_gate", (
+            f"implement_current.on_error should be 'check_learning_gate', got {state.get('on_error')!r}"
         )
+
+    def test_check_learning_gate_routes_to_auth_check_on_no(self, data: dict) -> None:
+        """check_learning_gate detects a gate block (on_yes → mark_gate_blocked) and otherwise
+        falls through to check_impl_auth (on_no), preserving the ENH-2353 auth fast-fail."""
+        state = data["states"].get("check_learning_gate", {})
+        assert state.get("fragment") == "ll_auto_learning_gate_check", (
+            f"check_learning_gate should use the ll_auto_learning_gate_check fragment, "
+            f"got {state.get('fragment')!r}"
+        )
+        assert state.get("on_yes") == "mark_gate_blocked", (
+            f"check_learning_gate.on_yes should be 'mark_gate_blocked', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_impl_auth", (
+            f"check_learning_gate.on_no should fall through to 'check_impl_auth', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_mark_gate_blocked_advances_queue_without_failing(self, data: dict) -> None:
+        """mark_gate_blocked records the issue distinctly and returns to dequeue_next so the
+        queue keeps draining (the issue re-surfaces once its deps are proven)."""
+        state = data["states"].get("mark_gate_blocked", {})
+        action = state.get("action", "")
+        assert "autodev-gate-blocked.txt" in action, (
+            "mark_gate_blocked should record the issue to autodev-gate-blocked.txt"
+        )
+        assert "/ll:explore-api" in action, (
+            "mark_gate_blocked should point the operator at /ll:explore-api"
+        )
+        assert state.get("next") == "dequeue_next"
+
+    def test_implement_current_threads_skip_learning_gate(self, data: dict) -> None:
+        """implement_current must append --skip-learning-gate when the skip context is set,
+        for parity with `ll-auto --skip-learning-gate`."""
+        state = data["states"].get("implement_current", {})
+        action = state.get("action", "")
+        assert "${context.skip_learning_gate}" in action
+        assert "--skip-learning-gate" in action
 
     def test_copy_broke_down_routes_to_check_decision_after_refine(self, data: dict) -> None:
         """copy_broke_down must route to check_decision_after_refine so decision_needed is
@@ -8254,15 +8292,17 @@ class TestAutodevAuthGuard:
             f"implement_current must set capture: ll_auto_output, got {state.get('capture')!r}"
         )
 
-    def test_implement_current_on_no_routes_to_check_impl_auth(self, data: dict) -> None:
-        """implement_current.on_no must route to check_impl_auth instead of dequeue_next."""
+    def test_implement_current_routes_to_check_learning_gate_then_auth(self, data: dict) -> None:
+        """implement_current.on_no/on_error route to check_learning_gate, which falls through
+        to check_impl_auth on a non-gate failure — the auth fast-fail stays reachable."""
         state = data["states"]["implement_current"]
-        assert state.get("on_no") == "check_impl_auth"
-
-    def test_implement_current_on_error_routes_to_check_impl_auth(self, data: dict) -> None:
-        """implement_current.on_error must route to check_impl_auth."""
-        state = data["states"]["implement_current"]
-        assert state.get("on_error") == "check_impl_auth"
+        assert state.get("on_no") == "check_learning_gate"
+        assert state.get("on_error") == "check_learning_gate"
+        gate = data["states"]["check_learning_gate"]
+        assert gate.get("on_no") == "check_impl_auth", (
+            "check_learning_gate must fall through to check_impl_auth so the ENH-2353 "
+            "auth fast-fail still runs on a non-gate failure"
+        )
 
     def test_check_impl_auth_state_exists(self, data: dict) -> None:
         """check_impl_auth state must be defined in autodev."""
@@ -8334,10 +8374,14 @@ class TestRnImplementAuthFastFail:
         state = data["states"]["route_rem_env_not_ready"]
         assert state["on_yes"] == "abort_env_not_ready"
 
-    def test_route_rem_env_not_ready_falls_through_on_no(self, data: dict) -> None:
-        """route_rem_env_not_ready.on_no must fall through to record_failure for genuine failures."""
+    def test_route_rem_env_not_ready_falls_through_to_learning_gate_on_no(self, data: dict) -> None:
+        """route_rem_env_not_ready.on_no must hand off to route_rem_learning_gate so a
+        LEARNING_GATE_BLOCKED outcome is recorded distinctly before the generic failure bucket."""
         state = data["states"]["route_rem_env_not_ready"]
-        assert state["on_no"] == "record_failure"
+        assert state["on_no"] == "route_rem_learning_gate", (
+            f"route_rem_env_not_ready.on_no should be 'route_rem_learning_gate', "
+            f"got {state.get('on_no')!r}"
+        )
 
     def test_abort_env_not_ready_state_exists(self, data: dict) -> None:
         """abort_env_not_ready state must be defined in rn-implement."""
@@ -8349,3 +8393,127 @@ class TestRnImplementAuthFastFail:
         """abort_env_not_ready must echo a user-actionable diagnostic message."""
         action = data["states"]["abort_env_not_ready"].get("action", "")
         assert "echo" in action
+
+
+class TestLearningGateConsistency:
+    """The three core implementation loops route a learning-gate block (ENH-2319)
+    consistently through the same `ll-auto --only` choke point: a distinct
+    LEARNING_GATE_BLOCKED outcome (not a generic failure) plus a uniform
+    `skip_learning_gate` knob threaded down to the inner ll-auto call."""
+
+    @pytest.fixture
+    def common(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "lib" / "common.yaml").read_text())
+
+    @pytest.fixture
+    def rn_remediate(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "rn-remediate.yaml").read_text())
+
+    @pytest.fixture
+    def rn_implement(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "rn-implement.yaml").read_text())
+
+    @pytest.fixture
+    def autodev(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "autodev.yaml").read_text())
+
+    @pytest.fixture
+    def auto_refine(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
+
+    @pytest.fixture
+    def sprint_refine(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "sprint-refine-and-implement.yaml").read_text())
+
+    # --- shared fragment -----------------------------------------------------
+
+    def test_fragment_defined_and_matches_marker(self, common: dict) -> None:
+        """The shared ll_auto_learning_gate_check fragment greps for the
+        LEARNING_GATE_BLOCKED marker and exposes it via output_contains."""
+        frag = common["fragments"]["ll_auto_learning_gate_check"]
+        assert "LEARNING_GATE_BLOCKED" in frag["action"]
+        assert frag["evaluate"]["type"] == "output_contains"
+        assert frag["evaluate"]["pattern"] == "GATE_BLOCKED"
+
+    # --- rn-remediate (rn-implement's leaf implementer) ----------------------
+
+    def test_rn_remediate_implement_routes_to_learning_gate_first(self, rn_remediate: dict) -> None:
+        """implement on_no/on_error → check_learning_gate (before auth/failure)."""
+        impl = rn_remediate["states"]["implement"]
+        assert impl["on_no"] == "check_learning_gate"
+        assert impl["on_error"] == "check_learning_gate"
+
+    def test_rn_remediate_check_learning_gate_falls_through_to_auth(
+        self, rn_remediate: dict
+    ) -> None:
+        gate = rn_remediate["states"]["check_learning_gate"]
+        assert gate["fragment"] == "ll_auto_learning_gate_check"
+        assert gate["on_yes"] == "emit_learning_gate_blocked"
+        assert gate["on_no"] == "check_impl_auth"
+
+    def test_rn_remediate_emits_distinct_token(self, rn_remediate: dict) -> None:
+        emit = rn_remediate["states"]["emit_learning_gate_blocked"]
+        assert "LEARNING_GATE_BLOCKED" in emit["action"]
+        assert "subloop_outcome_${context.issue_id}.txt" in emit["action"]
+        assert emit["next"] == "failed"
+
+    def test_rn_remediate_threads_skip_flag(self, rn_remediate: dict) -> None:
+        impl = rn_remediate["states"]["implement"]["action"]
+        assert "${context.skip_learning_gate}" in impl
+        assert "--skip-learning-gate" in impl
+        assert "skip_learning_gate" in rn_remediate["context"]
+        assert "skip_learning_gate" in rn_remediate["parameters"]
+
+    # --- rn-implement (parent classifier) ------------------------------------
+
+    def test_rn_implement_routes_learning_gate_before_failure(self, rn_implement: dict) -> None:
+        """The env-not-ready router hands off to route_rem_learning_gate, which
+        records the block distinctly and only then falls through to record_failure."""
+        assert (
+            rn_implement["states"]["route_rem_env_not_ready"]["on_no"] == "route_rem_learning_gate"
+        )
+        router = rn_implement["states"]["route_rem_learning_gate"]
+        assert router["evaluate"]["pattern"] == "LEARNING_GATE_BLOCKED"
+        assert "${captured.rem_outcome.output}" in router["evaluate"]["source"]
+        assert router["on_yes"] == "record_learning_gate_blocked"
+        assert router["on_no"] == "record_failure"
+
+    def test_rn_implement_record_state_tags_and_advances(self, rn_implement: dict) -> None:
+        rec = rn_implement["states"]["record_learning_gate_blocked"]
+        action = rec["action"]
+        assert "LEARNING_GATE_BLOCKED" in action
+        assert "failures.txt" in action
+        assert "/ll:explore-api" in action
+        assert rec["next"] == "dequeue_next"
+
+    def test_rn_implement_report_tallies_separately(self, rn_implement: dict) -> None:
+        """report must count LEARNING_GATE_BLOCKED out of the generic FAILURES bucket
+        and surface it in summary.json."""
+        report = rn_implement["states"]["report"]["action"]
+        assert "LEARNING_GATE_BLOCKED" in report
+        assert "- LEARNING_GATE_BLOCKED" in report  # subtracted from FAILURES
+        assert "learning_gate_blocked" in report  # summary.json key
+
+    def test_rn_implement_threads_skip_to_remediate(self, rn_implement: dict) -> None:
+        assert "skip_learning_gate" in rn_implement["context"]
+        with_block = rn_implement["states"]["run_remediation"]["with"]
+        assert with_block["skip_learning_gate"] == "${context.skip_learning_gate}"
+
+    # --- autodev / auto-refine / sprint-refine skip threading ----------------
+
+    def test_skip_flag_threads_through_sprint_chain(
+        self, autodev: dict, auto_refine: dict, sprint_refine: dict
+    ) -> None:
+        """sprint-refine → auto-refine → autodev → inner ll-auto all forward the knob."""
+        assert "skip_learning_gate" in sprint_refine["context"]
+        assert (
+            sprint_refine["states"]["delegate"]["with"]["skip_learning_gate"]
+            == "${context.skip_learning_gate}"
+        )
+        assert "skip_learning_gate" in auto_refine["context"]
+        assert (
+            auto_refine["states"]["delegate"]["with"]["skip_learning_gate"]
+            == "${context.skip_learning_gate}"
+        )
+        assert "skip_learning_gate" in autodev["context"]
+        assert "--skip-learning-gate" in autodev["states"]["implement_current"]["action"]

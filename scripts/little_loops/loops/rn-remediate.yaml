@@ -49,6 +49,10 @@ parameters:
     type: path
     required: true
     description: "Parent loop's run directory for score snapshots and counter coupling"
+  skip_learning_gate:
+    type: string
+    required: false
+    description: "Non-empty bypasses the ENH-2319 learning gate in the inner ll-auto --only (parity with ll-auto --skip-learning-gate)"
 
 context:
   readiness_threshold: 85
@@ -65,6 +69,11 @@ context:
   # refined AND wired at least once before implement. Set false to restore the
   # single-dimension short-circuit behavior. Overridable by the parent via with:.
   require_refine_and_wire: true
+  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. When
+  # non-empty, the inner `ll-auto --only` is invoked with --skip-learning-gate so
+  # the ENH-2319 gate is bypassed for this issue. Threaded from the parent
+  # (rn-implement) via with:. Default empty = gate active (config-gated).
+  skip_learning_gate: ""
 
 states:
   # =========================================================================
@@ -426,13 +435,29 @@ states:
     capture: ll_auto_output
     action: |
       ID="${context.issue_id}"
-      ll-auto --only "$ID" 2>&1
+      # Learning-gate skip parity: append --skip-learning-gate when the caller set
+      # the skip_learning_gate context (mirrors `ll-auto --skip-learning-gate`).
+      SKIP_FLAG=""
+      if [ -n "${context.skip_learning_gate}" ]; then
+        SKIP_FLAG="--skip-learning-gate"
+      fi
+      ll-auto --only "$ID" $SKIP_FLAG 2>&1
       # Failure recording is owned by the parent's record_failure state
       # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
       exit $?
     on_yes: emit_implemented
+    on_no: check_learning_gate
+    on_error: check_learning_gate
+
+  check_learning_gate:
+    # Learning-gate consistency: a gate block (ENH-2319, marker LEARNING_GATE_BLOCKED
+    # printed by process_issue_inplace) exits 1 from `ll-auto --only`, which would
+    # otherwise be laundered into IMPLEMENT_FAILED. Detect it FIRST so the parent
+    # can report it distinctly (mirrors the ENV_NOT_READY split, ENH-2353). on_no
+    # falls through to the auth check, then the generic failure path.
+    fragment: ll_auto_learning_gate_check
+    on_yes: emit_learning_gate_blocked
     on_no: check_impl_auth
-    on_error: check_impl_auth
 
   check_impl_auth:
     # ENH-2353: gate between implement failure and emit_implement_failed.
@@ -723,7 +748,7 @@ states:
   # Each terminal path writes exactly one outcome token to the shared run_dir so
   # the parent's classify_remediation can route deterministically rather than
   # collapsing every non-done terminal into "decompose". Tokens:
-  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY | LEARNING_GATE_BLOCKED
 
   emit_implemented:
     action_type: shell
@@ -780,6 +805,17 @@ states:
     action_type: shell
     action: |
       echo "SCORES_MISSING" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+    next: failed
+
+  emit_learning_gate_blocked:
+    # Learning-gate consistency: the inner `ll-auto --only` blocked this issue on
+    # unproven external-API deps (ENH-2319). Write a distinct token so the parent's
+    # route_rem_learning_gate records it separately from a genuine IMPLEMENT_FAILED
+    # and surfaces the explore-api remedy to the operator.
+    action_type: shell
+    action: |
+      echo "LEARNING_GATE_BLOCKED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "Learning gate blocked ${context.issue_id}: prove external-API deps with /ll:explore-api, then re-run"
     next: failed
 
   # =========================================================================

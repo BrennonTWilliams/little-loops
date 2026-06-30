@@ -11,6 +11,9 @@ initial: delegate
 on_handoff: spawn
 context:
   sprint_name: ""   # sprint name (.sprints/<name>.yaml) or an EPIC-NNN id
+  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. Forwarded
+  # to auto-refine-and-implement (→ autodev → inner `ll-auto --only`) via with:.
+  skip_learning_gate: ""
 
 states:
   delegate:
@@ -23,6 +26,7 @@ states:
     loop: auto-refine-and-implement
     with:
       scope: "${context.sprint_name}"
+      skip_learning_gate: "${context.skip_learning_gate}"
     on_success: read_outcome
     on_failure: read_outcome
     on_error: record_crash

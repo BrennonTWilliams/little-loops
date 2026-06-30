@@ -23,6 +23,12 @@ scope:
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+  # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. Threaded
+  # into implement_current's inner `ll-auto --only` via the SKIP_FLAG. Default
+  # empty = the ENH-2319 gate stays active (config-gated by learning_tests.enabled).
+  # Passed down from auto-refine-and-implement via with: so the sprint path honors it too.
+  #   ll-loop run autodev <ids> --context skip_learning_gate=1
+  skip_learning_gate: ""
 import:
   - lib/common.yaml
 
@@ -40,6 +46,7 @@ states:
       mkdir -p .loops/tmp
       printf '' > ${context.run_dir}/autodev-passed.txt
       printf '' > ${context.run_dir}/autodev-skipped.txt
+      printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       rm -f ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-inflight
       echo "${context.input}" | tr ',' '\n' \
@@ -321,11 +328,41 @@ states:
             && mv "${context.run_dir}/autodev-queue.tmp" "${context.run_dir}/autodev-queue.txt"
         fi
       fi
-      ll-auto --only "$CURRENT"
+      # Learning-gate skip parity: append --skip-learning-gate when the caller set
+      # the skip_learning_gate context (mirrors `ll-auto --skip-learning-gate`).
+      SKIP_FLAG=""
+      if [ -n "${context.skip_learning_gate}" ]; then
+        SKIP_FLAG="--skip-learning-gate"
+      fi
+      ll-auto --only "$CURRENT" $SKIP_FLAG
     action_type: shell
     on_yes: dequeue_next
+    on_no: check_learning_gate
+    on_error: check_learning_gate
+
+  check_learning_gate:
+    # Learning-gate consistency: a gate block (ENH-2319, marker LEARNING_GATE_BLOCKED
+    # printed by process_issue_inplace) exits 1 from `ll-auto --only`, which would
+    # otherwise be laundered into a generic implementation failure / auth check.
+    # Detect it FIRST and record it distinctly so the run summary can tell a
+    # gate block (remedy: /ll:explore-api) from a real failure. on_no falls through
+    # to the auth check (mirrors rn-remediate's ordering for cross-loop parity).
+    fragment: ll_auto_learning_gate_check
+    on_yes: mark_gate_blocked
     on_no: check_impl_auth
-    on_error: check_impl_auth
+
+  mark_gate_blocked:
+    # Record the gate-blocked issue distinctly and advance the queue. The issue is
+    # left in place (not skipped-as-failed) so it re-surfaces once its external-API
+    # deps are proven via /ll:explore-api. Clears the inflight sentinel so `done`
+    # does not warn about it.
+    action: |
+      echo "${captured.input.output}" >> ${context.run_dir}/autodev-gate-blocked.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[LEARNING_GATE_BLOCKED] ${captured.input.output} — unproven external-API deps; prove with /ll:explore-api then re-run"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   check_impl_auth:
     # ENH-2353: gate between ll-auto failure and queue drain. Auth failures abort
@@ -594,18 +631,25 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      GATE_BLOCKED_IDS=$(cat ${context.run_dir}/autodev-gate-blocked.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
 
       printf '\n=== Autodev Summary ===\n\n'
-      printf 'Passed  (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
-      printf 'Skipped (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      printf 'Passed       (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
+      printf 'Skipped      (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      if [ "$GATE_BLOCKED_COUNT" -gt 0 ]; then
+        printf 'Gate-blocked (%d): %s  (prove deps with /ll:explore-api, then re-run)\n' "$GATE_BLOCKED_COUNT" "$GATE_BLOCKED_LIST"
+      fi
       if [ -n "$INFLIGHT" ]; then
         printf 'WARNING: in-flight issue not resolved: %s (re-queue to retry)\n' "$INFLIGHT"
       fi
