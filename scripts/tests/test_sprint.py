@@ -1598,7 +1598,7 @@ class TestSprintEdit:
         assert len(sprint.issues) == 2
 
         captured = capsys.readouterr()
-        assert "not found" in captured.out.lower()
+        assert "not found" in captured.err.lower()
 
     def test_edit_add_skips_duplicates(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Adding an already-present issue warns about duplicate."""
@@ -1652,7 +1652,7 @@ class TestSprintEdit:
         assert result == 0
 
         captured = capsys.readouterr()
-        assert "Not in sprint" in captured.out
+        assert "Not in sprint" in captured.err
 
     def test_edit_prune_removes_invalid(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Prune removes issues whose files don't exist."""

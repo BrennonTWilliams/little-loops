@@ -594,10 +594,12 @@ class TestValidation:
         ENH-2247 added route_rem_scores_missing + route_dec_size_review_failed +
         record_scores_missing + record_size_review_failed (+4), raising it to 35 —
         splitting SCORES_MISSING / SIZE_REVIEW_FAILED diagnostics out of record_failure.
+        feat(loops) bbf77018 added route_rem_env_not_ready + abort_env_not_ready (+2),
+        raising it to 37 — auth-signature fast-fail for ll-auto-calling loops.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 35, f"Expected ≤35 states in orchestrator, got {state_count}"
+        assert state_count <= 37, f"Expected ≤37 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 

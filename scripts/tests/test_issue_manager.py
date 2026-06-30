@@ -674,7 +674,7 @@ class TestDependencyAwareSequencing:
 
         captured = capsys.readouterr()
         # Check that cycle warning was printed
-        assert "Dependency cycle detected" in captured.out or "cycle" in captured.out.lower()
+        assert "Dependency cycle detected" in captured.err or "cycle" in captured.err.lower()
 
 
 class TestAutoManagerPriorityFilter:

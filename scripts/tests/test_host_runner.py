@@ -301,7 +301,7 @@ class TestCodexRunner:
         assert "[Persona:" not in invocation.args[-1]
         captured = capsys.readouterr()
         assert "ghost-agent" in captured.err
-        assert "ll-adapt-agents-for-codex" in captured.err
+        assert "ll-adapt --host codex --apply" in captured.err
 
     def test_build_streaming_falls_back_when_developer_instructions_empty(
         self, tmp_path: Path
