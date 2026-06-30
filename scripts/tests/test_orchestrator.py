@@ -928,7 +928,12 @@ class TestInspectWorktree:
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
 
-        result = orchestrator._inspect_worktree(worktree_path)
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "parallel/enh-042-20260117-150000\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
         assert result is not None
         assert result.issue_id == "ENH-042"
         assert result.branch_name == "parallel/enh-042-20260117-150000"
@@ -955,7 +960,12 @@ class TestInspectWorktree:
 
         orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
 
-        result = orchestrator._inspect_worktree(worktree_path)
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "parallel/bug-099-20260117-160000\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
         assert result is not None
         assert result.has_uncommitted_changes is True
         assert len(result.changed_files) == 2
@@ -977,8 +987,99 @@ class TestInspectWorktree:
 
         orchestrator._git_lock.run = mock_git_run_raises  # type: ignore[method-assign,assignment]
 
-        result = orchestrator._inspect_worktree(worktree_path)
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "parallel/bug-001-20260117-120000\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
         assert result is None
+
+    def test_returns_actual_branch_for_feature_branch_mode(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Returns actual branch name when worktree is on a feature/* branch."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-enh-042-20260117-150000"
+        worktree_path.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "0\n"
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "feature/enh-042-my-issue\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
+        assert result is not None
+        assert result.branch_name == "feature/enh-042-my-issue"
+
+    def test_returns_none_when_rev_parse_fails(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Returns branch_name=None when rev-parse exits non-zero."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-007-20260117-120000"
+        worktree_path.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "0\n"
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 128
+        rev_parse_result.stdout = ""
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
+        assert result is not None
+        assert result.branch_name is None
+
+    def test_inspect_worktree_uses_rev_parse_not_string_replace(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Branch name comes from rev-parse, not string replacement (BUG-823 regression)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        # Dir is named worker-enh-042-ts — string-replace would give parallel/enh-042-ts
+        worktree_path = worktree_base / "worker-enh-042-20260117-150000"
+        worktree_path.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "0\n"
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "feature/enh-042-slug\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orchestrator._inspect_worktree(worktree_path)
+        assert result is not None
+        assert result.branch_name == "feature/enh-042-slug"
+        assert result.branch_name != "parallel/enh-042-20260117-150000"
 
 
 class TestMergePendingWorktrees:

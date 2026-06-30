@@ -3266,7 +3266,7 @@ Located at `little_loops.parallel.types`.
 @dataclass
 class PendingWorktreeInfo:
     worktree_path: Path             # Path to the worktree directory
-    branch_name: str                # Git branch (parallel/<issue-id>-<timestamp>)
+    branch_name: str | None         # Git branch from rev-parse, or None if unavailable
     issue_id: str                   # Extracted issue ID (e.g., "BUG-045")
     commits_ahead: int              # Commits ahead of main
     has_uncommitted_changes: bool   # Whether there are uncommitted changes

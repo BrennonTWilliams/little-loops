@@ -41,6 +41,21 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
 
+def _worktree_branch_name(worktree_path: Path) -> str | None:
+    """Return the current branch of a worktree via git rev-parse.
+
+    Uses bare subprocess.run (not _git_lock) — the lock must not block on a
+    partially torn-down worktree.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 class ParallelOrchestrator:
     """Main controller for parallel issue processing.
 
@@ -276,15 +291,7 @@ class ParallelOrchestrator:
             for worktree_path in orphaned:
                 try:
                     # Resolve branch name BEFORE removing the worktree (BUG-2324)
-                    branch_result = subprocess.run(
-                        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                        cwd=worktree_path,
-                        capture_output=True,
-                        text=True,
-                    )
-                    branch_name = (
-                        branch_result.stdout.strip() if branch_result.returncode == 0 else None
-                    )
+                    branch_name = _worktree_branch_name(worktree_path)
 
                     if dry_run:
                         self.logger.info(
@@ -396,17 +403,7 @@ class ParallelOrchestrator:
         """
         try:
             # Read actual branch name from worktree via rev-parse
-            branch_result = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=worktree_path,
-                capture_output=True,
-                text=True,
-            )
-            if branch_result.returncode == 0:
-                branch_name = branch_result.stdout.strip()
-            else:
-                # Fall back to string derivation if rev-parse fails
-                branch_name = worktree_path.name.replace("worker-", "parallel/")
+            branch_name = _worktree_branch_name(worktree_path)
 
             # Extract issue ID (e.g., bug-045 -> BUG-045)
             # Pattern: worker-<issue-id>-<timestamp>
@@ -511,6 +508,12 @@ class ParallelOrchestrator:
 
         for info in with_work:
             try:
+                if info.branch_name is None:
+                    self.logger.warning(
+                        f"  Skipping merge for {info.issue_id}: branch name unknown (rev-parse failed)"
+                    )
+                    continue
+
                 # If there are uncommitted changes, commit them first
                 if info.has_uncommitted_changes:
                     self.logger.info(f"  Committing uncommitted changes in {info.issue_id}...")

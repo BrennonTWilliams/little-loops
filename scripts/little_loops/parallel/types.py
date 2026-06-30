@@ -282,7 +282,7 @@ class PendingWorktreeInfo:
 
     Attributes:
         worktree_path: Path to the worktree directory
-        branch_name: Git branch name (parallel/<issue-id>-<timestamp>)
+        branch_name: Git branch name from rev-parse, or None if rev-parse failed
         issue_id: Extracted issue ID (e.g., BUG-045)
         commits_ahead: Number of commits ahead of main
         has_uncommitted_changes: Whether there are uncommitted changes
@@ -290,7 +290,7 @@ class PendingWorktreeInfo:
     """
 
     worktree_path: Path
-    branch_name: str
+    branch_name: str | None
     issue_id: str
     commits_ahead: int
     has_uncommitted_changes: bool
