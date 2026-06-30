@@ -3,7 +3,7 @@ id: ENH-2405
 title: Learning gate re-extracts targets instead of proving the registered `learning_tests_required`
 type: ENH
 priority: P3
-status: open
+status: done
 relates_to:
 - EPIC-2207
 - ENH-2209
@@ -24,6 +24,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-06-30T23:25:32Z'
 ---
 
 # ENH-2405: Learning gate re-extracts targets instead of proving the registered `learning_tests_required`
@@ -251,6 +252,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low — additive; fallback preserves current behavior for un-refined issues.
 - **Breaking Change**: No.
 
+## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Fix Commit**: `3bc37b8a` — feat(learning-tests): thread registered targets through gate instead of re-extracting
+- **Files Changed**: `scripts/little_loops/issue_manager.py`, `scripts/little_loops/learning_tests/gate.py`, `scripts/little_loops/loops/proof-first-task.yaml`, `scripts/little_loops/parallel/worker_pool.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_issue_manager.py`, `scripts/tests/test_worker_pool.py`, `scripts/tests/test_learning_tests_gate.py` (new), `docs/guides/LEARNING_TESTS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/API.md`, `docs/reference/CLI.md`, `scripts/little_loops/loops/README.md`
+
+All four Acceptance Criteria are satisfied in the committed code:
+- AC1 — `proof-first-task.yaml`'s `check_targets_csv` routes a populated `targets_csv` to `gate_direct` → `ready-to-implement-gate`, proving exactly the registered list, entirely bypassing `assumption-firewall`.
+- AC2 — `gate_direct` never reaches `assumption-firewall`'s `extract_assumptions` step when `targets_csv` is populated (structural routing, not a runtime guard) — confirmed by `test_check_targets_csv_routes_to_gate_direct_and_gate` and `test_gate_direct_delegates_to_ready_to_implement_gate_with_targets_csv` in `test_builtin_loops.py`.
+- AC3 — absent `targets_csv` still routes `check_targets_csv.on_no` → `gate` (assumption-firewall), preserving the JIT fallback unchanged.
+- AC4 — the `LEARNING_GATE_BLOCKED {info.issue_id}` print in `issue_manager.py` is untouched by this diff.
+
+Verification: `python -m pytest scripts/tests/test_learning_tests_gate.py scripts/tests/test_issue_manager.py scripts/tests/test_worker_pool.py scripts/tests/test_builtin_loops.py` → 1223 passed.
+
 ## Related Key Documentation
 
 - [LEARNING_TESTS_GUIDE.md](../../docs/guides/LEARNING_TESTS_GUIDE.md) — learning test registry, the implement-time gate, and `learning_tests_required` semantics.
@@ -260,6 +275,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `learning-tests`, `consistency`, `efficiency`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-30T23:25:01 - `e05ddbf4-7b67-4a84-bef5-08463331f064.jsonl`
 - `/ll:ready-issue` - 2026-06-30T22:50:23 - `1785790f-eac6-470a-b7f9-1c5edff6ff08.jsonl`
 - `/ll:confidence-check` - 2026-06-30T22:44:46Z - `edd3a86a-a9fc-4550-94a9-f80b858e42c0.jsonl`
 - `/ll:confidence-check` - 2026-06-30T21:50:12Z - `a69cdcc2-dcb8-4c8c-8d25-8101c9563e35.jsonl`
@@ -270,4 +286,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P3
+**Done** | Created: 2026-06-30 | Priority: P3
