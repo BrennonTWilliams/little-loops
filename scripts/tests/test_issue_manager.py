@@ -3653,6 +3653,33 @@ class TestAutoManagerLearningGate:
         assert "blocked" in result.failure_reason.lower()
         mock_impl.assert_not_called()
 
+    def test_blocked_gate_prints_greppable_marker(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """A blocked verdict prints the LEARNING_GATE_BLOCKED marker to stdout so FSM loops
+        implementing via `ll-auto --only` can route on it (cross-loop consistency)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+        self._write_blocked_state(temp_project_dir)
+
+        with (
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="blocked",
+            ),
+            patch("little_loops.issue_manager.run_with_continuation"),
+        ):
+            process_issue_inplace(issue, lt_enabled_config, MagicMock(), skip_learning_gate=False)
+
+        out = capsys.readouterr().out
+        assert "LEARNING_GATE_BLOCKED" in out
+        assert issue.issue_id in out
+
     def test_skip_learning_gate_bypasses_gate_and_runs_implement(
         self, lt_enabled_config: BRConfig, temp_project_dir: Path
     ) -> None:

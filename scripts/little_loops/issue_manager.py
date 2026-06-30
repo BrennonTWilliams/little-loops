@@ -861,6 +861,12 @@ def process_issue_inplace(
                 logger.info(f"Learning gate skipped for {info.issue_id} (--skip-learning-gate)")
             elif verdict == "blocked":
                 logger.warning(f"Learning gate blocked {info.issue_id}: unproven external-API deps")
+                # Emit a stable, greppable marker on stdout so FSM loops that
+                # implement via `ll-auto --only` can distinguish a learning-gate
+                # block from a generic implementation failure (mirrors the
+                # ENV_NOT_READY auth-signature pattern, ENH-2353). Loops capture
+                # `ll-auto --only ... 2>&1` and route on this token.
+                print(f"LEARNING_GATE_BLOCKED {info.issue_id}", flush=True)
                 return IssueProcessingResult(
                     success=False,
                     duration=time.time() - issue_start_time,
