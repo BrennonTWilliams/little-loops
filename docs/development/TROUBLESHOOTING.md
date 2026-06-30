@@ -281,7 +281,6 @@ git worktree prune
      }
    }
    ```
-4. Use CLI flag: `ll-auto --timeout 7200`
 
 ### Permission denied errors
 

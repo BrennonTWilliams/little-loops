@@ -368,7 +368,7 @@ Discover parentless open issues and propose parent assignments to open epics usi
 
 **Flags:**
 - `--auto` — apply all HIGH-confidence proposals without prompting
-- `--min-score MEDIUM|HIGH` — filter proposals to this confidence tier or above (default: MEDIUM)
+- `--min-score <threshold>` — filter proposals to Jaccard similarity ≥ threshold (float, e.g. `0.5`); default `0.0` (show all) or `0.7` when `--auto`
 
 **Output:** For each accepted link, writes `parent: <EPIC-NNN>` to the child issue frontmatter and appends the child to the EPIC's `## Children` section.
 
@@ -557,9 +557,8 @@ Create FSM loop configurations — interactively or from a natural language desc
 **Workflow (no args — interactive):**
 1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness, RL variants, policy-router, meta-optimize, orch-router)
 2. Configure type-specific parameters
-3. For the **harness branch**: asks whether the loop calls external packages or third-party APIs (ENH-2215). If yes (or if `learning_tests_required` was already populated by `/ll:wire-issue` or `/ll:scope-epic`), auto-injects an `assumption_gate` state that runs the `assumption-firewall` loop to prove API assumptions before the implementation loop starts.
-4. Name and preview the FSM YAML
-5. Save to `.loops/<name>.yaml` and validate
+3. Name and preview the FSM YAML
+4. Save to `.loops/<name>.yaml` and validate
 
 **Workflow (with args — fast path):**
 1. Infer loop type and parameters from description

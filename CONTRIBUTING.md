@@ -218,13 +218,12 @@ little-loops/
         ├── issues/              # Issue utility sub-package (ENH-1300)
         │   ├── __init__.py
         │   ├── anchors.py       # resolve_anchor(): language-agnostic backwards scan
-        │   ├── anchor_sweep.py  # sweep_issues(): two-phase scan-and-rewrite
-        │   └── decisions.py     # add_decisions_parser() + cmd_decisions(): decisions log CLI
+        │   └── anchor_sweep.py  # sweep_issues(): two-phase scan-and-rewrite
         ├── cli_args.py          # Argument parsing
-        ├── config.py            # Configuration management
+        ├── config/              # Configuration management (package)
         ├── state.py             # State persistence
         ├── frontmatter.py       # YAML frontmatter parsing
-        ├── learning_tests.py    # Learning test registry (CRUD for .ll/learning-tests/)
+        ├── learning_tests/      # Learning test registry (CRUD for .ll/learning-tests/; package)
         ├── doc_counts.py        # Documentation count utilities
         ├── link_checker.py      # Link validation
         ├── issue_manager.py
@@ -267,7 +266,6 @@ little-loops/
         │   ├── __init__.py
         │   ├── schema.py
         │   ├── fsm-loop-schema.json
-        │   ├── compilers.py
         │   ├── concurrency.py
         │   ├── evaluators.py
         │   ├── executor.py

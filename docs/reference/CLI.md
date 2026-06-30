@@ -310,6 +310,7 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--idle-timeout` | | Kill worker if no output for N seconds (0 to disable) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
+| `--skip-learning-gate` | | Bypass the per-issue learning-test pre-flight gate (for emergency runs when `learning_tests.enabled` is true) |
 
 **Examples:**
 ```bash
@@ -633,8 +634,9 @@ In addition to structural checks (reachability, evaluator fields, routing consis
 - **MR-7 (ERROR)**: A FSM action string contains an unescaped `${namespace.path:-default}` (bash `:-` parameter-expansion default syntax). The FSM interpolation engine does not support this form and will crash at runtime with `Path 'ns.path:-default' not found in context`. Use `${ns.path:default=value}` (engine-native) or `$${VAR:-value}` (shell-escaped) instead. Blocks the loop from running. Suppressed by `bash_default_ok: true`. (ENH-2348)
 - **MR-8 (WARNING)**: A `check_semantic`/`llm_structured` state whose `evaluate.prompt` does not contain evidence-contract keywords (`verbatim`, `quote`, `evidence`). Verdicts without verbatim citation requirements default to optimism (SHOR Table 1: 33–55% accuracy; Sonnet 4.6 = 33.4%). States with `evaluate.prompt: null` inherit `DEFAULT_LLM_PROMPT` which includes the contract automatically and are not flagged. Does not block validation. Suppressed by `evidence_contract_ok: true`. (ENH-2342)
 - **MR-9 (ERROR)**: A shell action string contains `$$(` or `$$VAR` (over-escaped bash). The FSM interpolator only rewrites the brace form `$${...}` → `${...}`; bare `$(...)` and `$VAR` are passed to `bash -c` untouched. Doubling them causes the leading `$$` to expand to the runner's PID, silently corrupting every downstream `${captured.*}` reference (e.g. `echo "$$(pwd)"` captures `<pid>(pwd)` instead of a path). Use single `$` for command substitution and variables; reserve `$$` exclusively for the `$${VAR}` brace form that collides with `${ns.path}` interpolation. Blocks the loop from running. Suppressed by `shell_pid_ok: true`. (BUG-2368)
+- **MR-10 (WARNING)**: A `shell`-type state whose inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 (`sys.exit(0)` or `exit(0)`) — without an `on_error:` route — silently discards parse failures. The FSM receives exit 0 and treats the state as successful, producing zero results with no log, no stderr, and no non-zero exit code. Add `on_error:` to the state to route parse failures explicitly. Does not block validation. Suppressed by `parse_swallow_ok: true` when treating a parse failure as an empty result is intentional. (BUG-2383)
 
-MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment). MR-3 is suppressed by `shared_state_ok: true`. MR-4 is suppressed by `partial_route_ok: true`. MR-5 is suppressed by `artifact_versioning: true` or `artifact_versioning_ok: true`. MR-6 is suppressed by `generator_fix_ok: true`. MR-7 is suppressed by `bash_default_ok: true`. MR-8 is suppressed by `evidence_contract_ok: true`. MR-9 is suppressed by `shell_pid_ok: true`.
+MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment). MR-3 is suppressed by `shared_state_ok: true`. MR-4 is suppressed by `partial_route_ok: true`. MR-5 is suppressed by `artifact_versioning: true` or `artifact_versioning_ok: true`. MR-6 is suppressed by `generator_fix_ok: true`. MR-7 is suppressed by `bash_default_ok: true`. MR-8 is suppressed by `evidence_contract_ok: true`. MR-9 is suppressed by `shell_pid_ok: true`. MR-10 is suppressed by `parse_swallow_ok: true`.
 
 - **Zero-retry counter pattern (WARNING)**: Detects states whose `retry` config sets `max_retries: 0` alongside a non-zero `retry_count` counter variable, or `retry_count` that is never incremented in any on-error transition. A zero-retry counter pattern means the state will never actually retry despite having retry infrastructure wired — this is almost always a configuration mistake. Does not block validation.
 - **Multimodal evaluator blind-spot (WARNING)**: Detects harness-loop states that use an LLM multimodal prompt (screenshot/image) evaluated via `output_contains` as the sole gate routing directly to a terminal state. LLMs can silently fall back to text-only analysis when reading images, producing verdicts from incomplete information without the `output_contains` evaluator detecting the gap. Consider adding a shell-action verification state (e.g., functional smoke test) between scoring and the terminal. Does not block validation. Suppressed by `meta_self_eval_ok: true`.
@@ -1548,7 +1550,7 @@ Manage rules, decisions, and exceptions log.
 
 | Flag | Description |
 |------|-------------|
-| `--from` | Source to generate from: `completed` (default). Reads completed issues from `.issues/completed/`, skips entries already present in `.ll/decisions.yaml`, and appends new `decision` entries for each issue not yet logged. |
+| `--from` | Source to generate from: `completed` (default). Scans issue type directories (`.issues/bugs/`, `.issues/features/`, `.issues/enhancements/`, `.issues/epics/`) for files with `status: done` frontmatter, skips entries already present in `.ll/decisions.yaml`, and appends new `decision` entries for each issue not yet logged. |
 
 **`sync` flags:**
 
@@ -1990,6 +1992,7 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `scan-failures` | Mine failed ll-* Bash calls from session logs; cluster by error signature; optionally create bug issues |
 | `diff` | Compare two sessions' ll-invocation behavior: skills added/removed, per-skill count deltas, and unified sequence diff |
 | `eval-export` | Export EvalFixture v1 records reconstructed from session logs for use with `ll-harness` |
+| `loop-fleet` | Aggregate cross-project loop-run outcomes for built-in loop improvement |
 
 **`discover` flags:**
 

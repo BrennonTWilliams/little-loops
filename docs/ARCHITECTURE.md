@@ -516,7 +516,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
-| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (`JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, `SQLiteTransport`) |
+| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (defined in `transport.py`; `SQLiteTransport` in `session_store.py`): `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, `SQLiteTransport` |
 | `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
 | `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
@@ -531,7 +531,7 @@ The `EventBus` is wired into the following subsystems, which emit events at key 
 
 | Subsystem | File | Events Emitted |
 |-----------|------|----------------|
-| FSM Executor | `fsm/executor.py` | `fsm.state_enter`, `fsm.loop_complete`, `fsm.evaluate`, `fsm.route` |
+| FSM Executor | `fsm/executor.py` | `loop_start`, `state_enter`, `action_start`, `action_complete`, `loop_complete` |
 | StateManager | `state.py` | State persistence events (save, load, mark completed/failed) |
 | Issue Lifecycle | `issue_lifecycle.py` | Issue status transitions (move, close, defer, skip, undefer) — emits `issue.completed`, `issue.closed`, `issue.deferred`, `issue.skipped` (from `skip_issue()`), `issue.started` (from `undefer_issue()`), `issue.failure_captured` |
 | Parallel Orchestrator | `parallel/orchestrator.py` | Worker start/complete, merge events |
@@ -571,6 +571,8 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v10 | `summary_nodes`, `summary_spans` | LCM-style hierarchical summary DAG (FEAT-1712): `summary_nodes` stores three-level LCM Algorithm 3 summaries (normal LLM → aggressive bullet-point LLM → deterministic truncation) as leaf and condensed nodes over `message_events` blocks; `summary_spans` links each node back to its source messages for lossless drill-down. Enables `ll-session grep`, `ll-session expand`, and `ll-session describe`. Compaction is opt-in via `history.compaction.enabled` in `ll-config.json`. |
 | v11 | `assistant_messages` | Stores concatenated text blocks from assistant responses so the SFT pipeline can read conversation turn-pairs from the database instead of re-parsing JSONL (ENH-1942). Includes `tool_use_count` for filter predicates and `idx_assistant_messages_dedup` for idempotent backfill. |
 | v12 | `summary_nodes.level`, `idx_summary_nodes_cross_dedup` | Adds `level INTEGER DEFAULT 0` column to `summary_nodes` for N-level DAG traversal (0 = leaf/per-session condensed, 1+ = cross-session condensed, max = root) and a cross-session dedup index `idx_summary_nodes_cross_dedup` on `(level, ts_start, ts_end) WHERE kind='condensed' AND session_id IS NULL` (ENH-1953). |
+| v13 | `correction_retirements` | Records addressed correction clusters (topic fingerprint + optional rule ID) so `detect_recurring_feedback()` excludes already-ruled topics from future runs; unique index on `topic_fingerprint` for idempotent inserts (ENH-2046). |
+| v14 | `issue_snapshots` | Stores full issue content (title, priority, body, frontmatter) at key lifecycle transitions (`captured`, `done`, `cancelled`) so completed issue context is queryable from the DB even after the source `.md` file is moved or deleted. FTS via `search_index` with `kind="snapshot"` (ENH-2151). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -704,7 +706,7 @@ FSM handoff.
 
 | Component | Purpose |
 |-----------|---------|
-| `HostRunner` (Protocol) | Contract every runner satisfies — `detect()`, `build_oneshot()`, `build_streaming()`, `build_detached()` factories returning `HostInvocation`; `describe_capabilities()` returning `CapabilityReport` |
+| `HostRunner` (Protocol) | Contract every runner satisfies — `detect()`, `build_streaming()`, `build_blocking_json()`, `build_version_check()`, `build_detached()` factories returning `HostInvocation`; `describe_capabilities()` returning `CapabilityReport` |
 | `HostInvocation` (frozen dataclass) | Value object holding `binary`, `args`, `env`, `capabilities`, and `cleanup_paths` — passed to `subprocess.Popen`/`run`; callers must unlink `cleanup_paths` after the subprocess completes |
 | `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
 | `ClaudeCodeRunner` | Production runner for the `claude` CLI |

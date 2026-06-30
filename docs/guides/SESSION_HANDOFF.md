@@ -154,60 +154,28 @@ Generates a continuation prompt capturing current session state. **Summarizes co
 **Default Output:** Writes to `.ll/ll-continue-prompt.md`:
 
 ```markdown
+---
+session_date: 2026-06-29
+session_branch: feat/oauth2-auth
+issues_in_progress: [ENH-495]
+---
+
 # Session Continuation: Refactoring auth module
 
-## Conversation Summary
+## Intent
+Refactoring the authentication module to support OAuth2 providers, starting with JWT token validation and the refresh token endpoint.
 
-### Primary Intent
-Refactoring the authentication module to support OAuth2 providers.
+## File Modifications
+- `src/middleware/auth.ts` — added token validation; chose JWT for statelessness
+- `src/utils/tokens.ts` — new token utility extracted for reuse
 
-### What Happened
-1. Analyzed existing auth middleware
-2. Discussed JWT vs session-based approach - chose JWT for statelessness
-3. Implemented token validation utility
-4. Encountered CORS issue with refresh endpoint - fixed with credentials flag
+## Decisions Made
+- Decision: JWT over sessions — Rationale: statelessness and microservice compatibility
+- Decision: HTTP-only cookies for refresh tokens — Rationale: prevents XSS (user requirement)
 
-### User Feedback
-- User clarified that refresh tokens should use HTTP-only cookies for security
-
-### Errors and Resolutions
-| Error | How Fixed | User Feedback |
-|-------|-----------|---------------|
-| CORS error on /refresh | Added credentials: 'include' | None |
-| Token expiry too short | Increased to 15 minutes | User confirmed 15min is acceptable |
-
-### Code Changes
-| File | Changes Made | Discussion Context |
-|------|--------------|-------------------|
-| `src/middleware/auth.ts:45` | Added token validation | Core auth flow |
-| `src/utils/tokens.ts:12` | New token utility | Extracted for reuse |
-
-## Resume Point
-
-### What Was Being Worked On
-Implementing the refresh token endpoint callback handler
-
-### Direct Quote
-> "Now let's implement the callback handler for the refresh flow"
-
-### Next Step
-Add the /auth/refresh endpoint with cookie handling
-
-## Important Context
-
-### Decisions Made
-- **JWT over sessions**: Chosen for statelessness and microservice compatibility
-- **HTTP-only cookies**: For refresh tokens to prevent XSS
-
-### Gotchas Discovered
-- **CORS with credentials**: Must set credentials: 'include' on fetch requests
-
-### User-Specified Constraints
-- Refresh tokens must use HTTP-only cookies (security requirement)
-- Token expiry: 15 minutes
-
-### Patterns Being Followed
-- Following pattern from `src/middleware/rate-limit.ts` for middleware structure
+## Next Steps
+1. Implement the `/auth/refresh` endpoint callback handler with cookie handling
+2. Add CORS `credentials: 'include'` to all fetch calls that hit the refresh endpoint
 ```
 
 **Deep Mode Output:** Includes all sections above, plus:

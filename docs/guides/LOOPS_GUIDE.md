@@ -987,13 +987,13 @@ cua_observe:
       - "Authentication required"
   on_yes: cua_plan
   on_no: cua_observe
-  on_error: auth_failed   # NON_RECOVERABLE routes here immediately
+  on_error: auth_failed   # error_patterns match → verdict="error" → routes here
 
 auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` is what triggers the `NON_RECOVERABLE` path — patterns in that list yield `verdict="error"` (routing to `on_error`) when the main pattern is not found, without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`.
+The `error_patterns` list on `output_contains` yields `verdict="error"` when any listed pattern is found in the output — this routes to `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 <!-- END TODO stub -->
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
