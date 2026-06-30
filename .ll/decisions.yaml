@@ -3398,3 +3398,26 @@
     and subtracted from the generic failu
   enforcement: advisory
   issue: ENH-2402
+- id: ARCHITECTURE-077
+  type: decision
+  timestamp: '2026-06-30T21:20:16Z'
+  category: architecture
+  labels: []
+  rationale: Gate uses learning_tests_required only as a trigger guard (issue_manager.py:855-859)
+    then re-extracts via assumption-firewall; should prove the registered list
+  rule: 'Captured: Learning gate re-extracts targets instead of proving registered
+    learning_tests_required'
+  scope: issue
+  issue: ENH-2405
+- id: ARCHITECTURE-078
+  type: decision
+  timestamp: '2026-06-30T21:20:16Z'
+  category: architecture
+  labels: []
+  rationale: Learning-gate block discovered late inside ll-auto; add cheap pre-dequeue
+    check mirroring ENH-2008 to skip wasted remediation; in-ll-auto gate stays as
+    defense-in-depth
+  rule: 'Captured: rn-implement pre-dequeue learning-readiness gate (mirror ENH-2008
+    blocked_by gate)'
+  scope: issue
+  issue: ENH-2406
