@@ -214,6 +214,14 @@ that dimension can never match and routing always falls through to the catch-all
 check names the inert predicate(s) and the missing dimension. Suppressed by
 `policy_dims_scored_ok: true` at the loop top-level.
 
+`ll-loop validate` also enforces an **unresolvable static `loop:` reference** check as ERROR
+severity (BUG-2400). A state whose `loop:` key contains a static (non-`${...}`) name that
+cannot be resolved to a `.yaml` file at definition time will always fail identically at runtime
+(`FileNotFoundError`). The validator now blocks the loop from loading — `ll-loop validate` exits 1
+and `ll-loop run` refuses to start. Fix: use the full relative path including any subdirectory prefix
+(e.g. `loop: oracles/verify-confidence-scores`, not `loop: verify-confidence-scores`). Dynamic names
+containing `${...}` are not checked.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.
