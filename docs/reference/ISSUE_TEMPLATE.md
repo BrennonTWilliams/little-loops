@@ -30,7 +30,7 @@ The little-loops issue template has been optimized to maximize value for both AI
 | **Implementation Steps** | | HIGH | High-level outline (NEW v2.0) |
 | **Impact** | ✓ | HIGH | Priority/Effort/Risk with justifications |
 | **Related Key Documentation** | | LOW | Links to docs |
-| **Labels** | frontmatter | MEDIUM | Categorization — `labels:` field in frontmatter (post-ENH-1392); not a required body heading |
+| **Labels** | frontmatter | MEDIUM | Categorization — `labels:` field in frontmatter (post-ENH-1392); not a required body heading. The issue assembler no longer emits a `## Labels` body section when creating new issues (ENH-2399). |
 | **Status** | ✓ | HIGH | Status footer |
 
 ### Type-Specific Sections

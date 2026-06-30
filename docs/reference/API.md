@@ -34,7 +34,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.context_window` | Model→context-window size mapping (`context_window_for()`) |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`) |
-| `little_loops.adapters` | Host-parameterised emitter layer (`HostEmitter` Protocol + `resolve_emitter` registry factory) — spike, concrete emitters are stubs (FEAT-2260) |
+| `little_loops.adapters` | Host-parameterised emitter layer (`HostEmitter` Protocol + `resolve_emitter` registry factory) — `CodexEmitter` and `GeminiEmitter` fully implemented (FEAT-2391/2392) |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
 | `little_loops.hooks` | Host-agnostic hook intent dispatcher and built-in handlers |
@@ -7104,7 +7104,7 @@ Subclasses `UserWarning` (not `Warning`) so test code can capture it via `pytest
 
 ## little_loops.adapters
 
-> **Spike status** (FEAT-2260): The `HostEmitter` Protocol and registry are implemented and tested. Concrete emitter bodies (`CodexEmitter`, `GeminiEmitter`) are stubs — all methods raise `NotImplementedError`. Full emission logic ships as a follow-on under FEAT-2260.
+> `CodexEmitter` and `GeminiEmitter` are fully implemented (FEAT-2391/2392). Use `ll-adapt --host codex --apply` or `ll-adapt --host gemini --apply` to emit artifacts for a given host.
 
 Host-parameterised adapter layer that converts ll skill/command/agent metadata into each target host's discovery format. Parallel to `little_loops.host_runner` (which handles *invoking* the host CLI); this module handles *emitting* ll artifacts *to* a host.
 
@@ -7148,8 +7148,8 @@ class AdapterError(Exception): ...
 
 | Class | Host key | Status |
 |-------|----------|--------|
-| `CodexEmitter` | `"codex"` | Stub — `emit_*` raise `NotImplementedError` |
-| `GeminiEmitter` | `"gemini"` | Stub — `emit_*` raise `NotImplementedError` |
+| `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files |
+| `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files |
 | `OmpEmitter` | `"omp"` | Raises `AdapterError` (not `NotImplementedError`) with a PR pointer; absent from auto-detection |
 
 To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_REGISTRY` in `core.py`.
