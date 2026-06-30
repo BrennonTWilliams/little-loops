@@ -182,7 +182,7 @@ git worktree list
 
 **Cause**: In a git worktree, `.git` is a file (not a directory) pointing to the real gitdir. Some tools and subprocesses fail to resolve this automatically.
 
-**Solution**: `ClaudeCodeRunner.build_streaming()` in `host_runner.py` automatically detects worktrees and sets `GIT_DIR` / `GIT_WORK_TREE` environment variables before spawning Claude (the legacy `run_claude_command` helper in `subprocess_utils.py` is retained as a public alias that now dispatches through `host_runner`). If you are invoking shell commands manually inside a worktree, set them yourself:
+**Solution**: `ClaudeCodeRunner.build_streaming()` in `host_runner.py` automatically detects worktrees and sets `GIT_DIR` / `GIT_WORK_TREE` environment variables before spawning Claude (the legacy `run_claude_command` helper in `subprocess_utils.py` is retained as a wrapper function that now dispatches through `host_runner`). If you are invoking shell commands manually inside a worktree, set them yourself:
 ```bash
 export GIT_DIR=$(cat .git | sed 's/gitdir: //')
 export GIT_WORK_TREE=$(pwd)
@@ -516,7 +516,7 @@ grep state_file .ll/ll-config.json
 1. Increase limit in config:
    ```json
    {
-     "continuation": {
+     "automation": {
        "max_continuations": 5
      }
    }
@@ -592,7 +592,7 @@ grep -rn "print(" hooks/ scripts/ | grep -v "flush=True"
    ```bash
    cat .ll/ll-context-state.json | jq '.breakdown'
    ```
-5. For custom tuning, edit `hooks/scripts/context-monitor.sh` lines 56-118
+5. For custom tuning, edit `hooks/scripts/context-monitor.sh` lines 53-109
 
 For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_HANDOFF.md).
 
@@ -876,11 +876,6 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
      | bash hooks/scripts/scratch-pad-redirect.sh
    # → allow with updatedInput.command = "pytest ... > .loops/tmp/scratch/pytest-$$.txt 2>&1; tail -20 ..."
 
-   # Read deny: oversized file with filtered extension returns a deny + Bash suggestion
-   yes line | head -500 > /tmp/big.txt
-   echo '{"tool_name":"Read","tool_input":{"file_path":"/tmp/big.txt"},"permission_mode":"bypassPermissions"}' \
-     | bash hooks/scripts/scratch-pad-redirect.sh
-   # → deny with permissionDecisionReason suggesting cat > .loops/tmp/scratch/... && tail -20 ...
    ```
 3. Check `jq` is installed (required by most hooks):
    ```bash

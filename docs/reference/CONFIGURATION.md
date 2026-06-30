@@ -553,7 +553,7 @@ enabled; these keys control how skills and CLI tools *read* that data.
 
 Opt-in project-context snapshot injected at session start (ENH-1907). Queries `history.db` and
 prepends a `<project_context>` block to session context so every new session gets a "what's been
-happening lately" summary. Default: disabled. Run `ll-history-context --project` to preview.
+happening lately" summary. Default: enabled (opt-out via `history.session_digest.enabled: false`). Run `ll-history-context --project` to preview.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -669,7 +669,7 @@ Design tokens are organized into **profiles** under `path/profiles/`. Each profi
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `active` | `str` | `"default"` | Name of the active profile; must match a subdirectory in `path/profiles/`. |
-| `profiles_dir` | `str` | `"profiles"` | Subdirectory under `path` containing profile directories. |
+| `profiles_dir` | `str\|null` | `null` | Subdirectory under `path` containing profile directories. Defaults to `"profiles"` at runtime when `null`. |
 
 Built-in profiles:
 - `default` — WCAG AA accessible palette
@@ -754,7 +754,7 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the decisions log feature. |
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
-| `auto_generate` | `list[str]` | `[]` | Sources to auto-generate `decision` entries from on session start. Supported value: `"completed"` — scans `.issues/completed/` and appends entries for issues not yet logged. Equivalent to running `ll-issues decisions generate --from completed`. |
+| `auto_generate` | `list[str]` | `[]` | Issue type prefixes that filter which issue types are processed when running `ll-issues decisions generate`. Empty list processes all types. Example: `["FEAT", "ENH"]` skips BUG entries. |
 
 ### `epics`
 

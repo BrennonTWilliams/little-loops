@@ -718,7 +718,7 @@ exits 0.
 ```bash
 ll-loop monitor fix-types               # tail events and log
 ll-loop monitor fix-types --show-diagrams --clear    # pinned FSM diagram + scrolling log
-ll-loop monitor fix-types --log-file /tmp/custom.log # tail a custom log path
+ll-loop monitor fix-types --clear              # with clear-screen on redraw
 ```
 
 | Flag | Short | Description |
@@ -2664,7 +2664,7 @@ python -m pytest tests/   # Run starter tests
 
 > **Internal:** Maintainer/developer tool. End users do not need to run this directly.
 
-Generate JSON Schema (draft-07) files for all 37 `LLEvent` types and write them to `docs/reference/schemas/`.
+Generate JSON Schema (draft-07) files for all 38 `LLEvent` types and write them to `docs/reference/schemas/`.
 
 **Flags:**
 

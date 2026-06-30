@@ -161,7 +161,7 @@ little-loops/
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── docs/                 # Documentation
 │   ├── ARCHITECTURE.md                  # System design diagrams
-│   ├── INDEX.md                         # Documentation index
+│   ├── index.md                         # Documentation index
 │   ├── generalized-fsm-loop.md         # FSM loop system
 │   ├── reference/                       # Reference documentation
 │   │   ├── API.md                       # Python API reference
@@ -251,7 +251,7 @@ little-loops/
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
-        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session, v1–v12 migrations)
+        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session, v1–v14 migrations)
         ├── history_reader.py    # Typed read-only query API for .ll/history.db (8 query functions, 7 dataclasses)
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction
@@ -599,7 +599,7 @@ Before adding a new skill, answer:
 
 3. **After creating a new skill:** run `ll-adapt --host codex --apply` to generate `agents/openai.yaml` alongside the `SKILL.md`. Skipping this step will fail CI (`test_all_real_skills_have_openai_yaml`). Skills tagged `disable-model-invocation: true` are exempt.
 
-4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `/doctor` and verify "0 skill descriptions dropped".
+4. **Before release:** run `ll-verify-skill-budget` to check the total description token footprint. Exits 1 if over the 2000-token budget — shorten descriptions or tag more skills with `disable-model-invocation: true`. Then run `ll-doctor` and verify "0 skill descriptions dropped".
 
 5. **Before release:** run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines. Exits 1 if any violation is found — extract reference content into companion files (see the 500-line convention above).
 

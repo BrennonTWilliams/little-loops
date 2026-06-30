@@ -18,7 +18,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
-| `--sprint <name>` | Scope to issues in a named sprint definition | `map-dependencies`, `confidence-check`, `issue-size-review` |
+| `--sprint <name>` | Scope to issues in a named sprint definition | `confidence-check`, `issue-size-review` |
 
 Not all commands support all flags. See individual command documentation for supported flags.
 
@@ -684,7 +684,7 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 **Flags:**
 - `--auto`: Apply all eligible non-breaking fixes automatically. Still prints the full report.
 - `--dry-run`: Report findings and scorecard only. Make no changes, skip artifact persistence.
-- `--exercise`: In Step 2.5, also run `ll-loop run --max-steps 1` in addition to `ll-loop simulate`.
+- `--exercise`: In Step 2.5, also run `ll-loop run --max-iterations 1` in addition to `ll-loop simulate`.
 - `--no-simulate`: Skip behavioral verification (Step 2.5) entirely.
 - `--rubric-only`: Stop after displaying the rubric scorecard. No fix proposals, no artifact persistence.
 - `--strict-semantic`: Run SR-* semantic checks in a fresh context seeded only with calibration examples from `reference.md` to prevent static-check findings from biasing judgment.

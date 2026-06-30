@@ -615,7 +615,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v12)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v14)
     SS-->>DB: backfill_incremental() in background thread
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -640,7 +640,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v12 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v14 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
@@ -686,7 +686,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v12) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v14) and CLI transport-wiring table.
 
 ---
 
@@ -1335,7 +1335,7 @@ For automated bulk staleness detection across all records, use `ll-loop run lear
 
 ### LearningTestsConfig Consumers
 
-The `LearningTestsConfig` dataclass (`scripts/little_loops/config/schema.py`) is consumed by three call sites within EPIC-2207's scope:
+The `LearningTestsConfig` dataclass (`scripts/little_loops/config/features.py`) is consumed by three call sites within EPIC-2207's scope:
 
 | Call Site | Issue | Config Field Read |
 |---|---|---|
