@@ -3313,3 +3313,88 @@
     never exit solely on section absence.
   enforcement: advisory
   issue: ENH-2401
+- id: ARCH-160
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Gate blocks were indistinguishable from real implementation crashes in
+    summary.json/failures.txt. ENH-2353 (ENV_NOT_READY) established this pattern first;
+    ENH-2402 extends it to learning-gate blocks. Without distinct tokens, operators
+    cannot tell whether the remedy is a code fix or /ll:explore-api.
+  rule: Each distinguishable failure mode in an FSM loop must emit a stable, greppable
+    marker and route to a dedicated outcome s
+  enforcement: advisory
+  issue: ENH-2402
+- id: ARCH-161
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Loops hardcoded ll-auto --only "$ID" with no way to pass --skip-learning-gate,
+    breaking parity with the CLI entrypoints. When a knob exists at the CLI layer,
+    FSM loops must expose it as a context/parameters var and propagate it inward.
+  rule: Any --flag exposed by ll-auto/ll-parallel/ll-sprint must have a corresponding
+    context variable in every FSM loop that ca
+  enforcement: advisory
+  issue: ENH-2402
+- id: ARCH-162
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The learning gate was already mechanically consistent via process_issue_inplace.
+    ENH-2402 kept that single ownership and only added observability/routing on top
+    — no duplicated gate logic across loops.
+  rule: Gate logic must live in a single source of truth (e.g., process_issue_inplace);
+    loops delegate to it rather than re-impl
+  enforcement: advisory
+  issue: ENH-2402
+- id: ARCH-163
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The ll_auto_learning_gate_check fragment was modeled on the existing
+    ll_auto_auth_check pattern. Shared fragments prevent drift between loops that
+    perform the same structural check.
+  rule: Output-checking patterns reused across multiple loops belong in loops/lib/common.yaml
+    as named fragments, not copy-paste
+  enforcement: advisory
+  issue: ENH-2402
+- id: ARCH-164
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: skip_learning_gate had to be added to rn-implement→rn-remediate and sprint-refine-and-implement→auto-refine-and-implement→autodev
+    separately; each appends --skip-learning-gate to its inner ll-auto call only when
+    the var is set.
+  rule: When a loop chain delegates A→B→C, a context variable added at A must be explicitly
+    threaded into each inner call — it d
+  enforcement: advisory
+  issue: ENH-2402
+- id: OTHE-165
+  type: rule
+  timestamp: '2026-06-30T18:38:02Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: Gate-blocked issues inflated the FAILURES bucket, obscuring real failure
+    rates. They represent a distinct operator action (run /ll:explore-api) and must
+    be reported as their own metric.
+  rule: Blocked or gated outcomes must be tallied separately from failures in summary.json
+    and subtracted from the generic failu
+  enforcement: advisory
+  issue: ENH-2402

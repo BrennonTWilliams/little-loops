@@ -94,6 +94,9 @@
       "show_diagrams": "clean"
     }
   },
+  "learning_tests": {
+    "enabled": true
+  },
   "history": {
     "session_digest": {
       "enabled": true,

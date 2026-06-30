@@ -210,6 +210,19 @@ it and route. For `rn-remediate`:
 | `IMPLEMENT_FAILED` | Implementation failure | Record failure, continue |
 | `SCORES_MISSING` | Diagnostic/tooling failure (confidence or outcome frontmatter unreadable after implementation) | Record diagnostic failure separately, continue |
 | `SIZE_REVIEW_FAILED` | `/ll:issue-size-review` errored or was inconclusive during decompose | Record diagnostic failure separately, continue |
+| `ENV_NOT_READY` | Host auth not configured (HTTP 401/403 during `ll-auto`) | Abort the queue (ENH-2353) |
+| `LEARNING_GATE_BLOCKED` | Learning gate (ENH-2319) blocked the issue on unproven external-API deps | Record diagnostic separately (remedy: `/ll:explore-api`), continue |
+
+The learning-gate routing is **consistent across all three core implementation
+loops**: `rn-remediate`, `autodev`, and (via `auto-refine-and-implement` →
+`autodev`) `sprint-refine-and-implement` all implement through the same
+`ll-auto --only` choke point, which runs the ENH-2319 gate inside
+`process_issue_inplace`. On a block, `ll-auto` prints the `LEARNING_GATE_BLOCKED`
+marker; each loop screens the captured output (`ll_auto_learning_gate_check`
+fragment) *before* the auth/failure checks so a gate block is reported distinctly
+rather than laundered into a generic implementation failure. A uniform
+`skip_learning_gate` context knob (parity with `ll-auto --skip-learning-gate`)
+threads from each loop down to the inner `ll-auto --only` call.
 
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring
