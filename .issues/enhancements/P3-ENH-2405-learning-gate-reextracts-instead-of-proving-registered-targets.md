@@ -84,6 +84,29 @@ not a freshly-extracted `["stripe", "requests"]`.
 3. **Redundant cost.** Every gated issue pays for a second assumption-extraction LLM call
    whose answer the system already computed and persisted during refinement.
 
+## Proposed Solution
+
+Thread the registered `learning_tests_required` list through the gate instead of discarding
+it, mirroring the pattern that already exists in `_run_learning_gate_preflight`
+(`cli/sprint/run.py`), which resolves registered targets and shells
+`ll-loop run ready-to-implement-gate --context targets=<csv>` directly, bypassing
+`assumption-firewall` entirely:
+
+1. Add an optional `targets: list[str] | None` parameter to `run_learning_gate_for_issue`
+   (`gate.py`) and pass the already-resolved `targets` from `process_issue_inplace`
+   (`issue_manager.py`) instead of dropping it after the trigger-guard check.
+2. Forward `targets` as a `targets_csv` context input on the `ll-loop run proof-first-task`
+   subprocess call.
+3. In `proof-first-task.yaml`, route a populated `targets_csv` directly to
+   `ready-to-implement-gate` (mapping onto its existing `targets` context key) instead of
+   through `assumption-firewall`'s `extract_assumptions` step. When `targets_csv` is absent,
+   keep today's `assumption-firewall` extraction as the JIT fallback.
+4. Mirror the same `targets_csv` threading in the ll-parallel per-worktree gate
+   (`worker_pool.py:_run_per_worktree_proof_first_gate`) so the registered list is proven on
+   that path too.
+
+See Implementation Steps and Integration Map below for the full file-by-file breakdown.
+
 ## Integration Map
 
 ### Files to Modify
@@ -93,7 +116,7 @@ not a freshly-extracted `["stripe", "requests"]`.
 - `scripts/little_loops/loops/assumption-firewall.yaml` — `extract_assumptions` becomes the fallback-only path (runs only when no registered targets are supplied).
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/parallel/worker_pool.py` — **resolves the "Decision needed" flagged at line 124-125 in favor of inclusion.** `_run_per_worktree_proof_first_gate` (63-129) is an *independent* second gate call site (it does **not** call `run_learning_gate_for_issue`) that shells `ll-loop run proof-first-task --context issue_file=<path>` at 103-114 — forwarding only `issue_file`, never `targets_csv` — and resolves targets inline at 88-96 instead of via `resolve_learning_targets`. Until this is threaded, the ll-parallel path keeps triggering the redundant `assumption-firewall` re-extraction even after the primary fix lands, so the registered list is **not** proven on that path (Acceptance Criterion 1 silently fails under `ll-parallel`). Append `--context targets_csv=<csv>` here (mirroring the `issue_manager.py` change) and optionally collapse the inline extraction (88-96) into `resolve_learning_targets` (the line-87 comment already anticipates this). [Agent 2 finding — confirmed via grep: `run_learning_gate_for_issue` has no second production caller; `worker_pool.py` duplicates the logic, including a private `_read_loop_final_state` at 45-60.]
+- `scripts/little_loops/parallel/worker_pool.py` — **resolves the "Decision needed" flagged in the Codebase Research Findings section below in favor of inclusion.** `_run_per_worktree_proof_first_gate` (63-129) is an *independent* second gate call site (it does **not** call `run_learning_gate_for_issue`) that shells `ll-loop run proof-first-task --context issue_file=<path>` at 103-114 — forwarding only `issue_file`, never `targets_csv` — and resolves targets inline at 88-96 instead of via `resolve_learning_targets`. Until this is threaded, the ll-parallel path keeps triggering the redundant `assumption-firewall` re-extraction even after the primary fix lands, so the registered list is **not** proven on that path (Acceptance Criterion 1 silently fails under `ll-parallel`). Append `--context targets_csv=<csv>` here (mirroring the `issue_manager.py` change) and optionally collapse the inline extraction (88-96) into `resolve_learning_targets` (the line-87 comment already anticipates this). [Agent 2 finding — confirmed via grep: `run_learning_gate_for_issue` has no second production caller; `worker_pool.py` duplicates the logic, including a private `_read_loop_final_state` at 45-60.]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_manager.py` (`process_issue_inplace`) — sole production caller of `run_learning_gate_for_issue`; the behavior change originates here.
@@ -108,9 +131,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_install_learning_gate.py` — guards the `LEARNING_GATE_BLOCKED` / exit-code contract (Acceptance Criterion 4); confirm byte-for-byte unchanged.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- **Correction (AC4 coverage misattributed):** `scripts/tests/test_install_learning_gate.py` does **not** reference `LEARNING_GATE_BLOCKED` (verified: `grep -c` returns 0). Its classes (`TestGateDisabled`, `TestAcceptanceSignals`, `TestInstallVariants`, `TestStaleRecords`, `TestSessionCache`) test the pip/npm install-nudge hook (ENH-2208/2212), not the implement-time marker. The real AC4 contract is guarded by `scripts/tests/test_issue_manager.py::TestLearningGateInvocation::test_blocked_gate_prints_greppable_marker` (3656 — `assert "LEARNING_GATE_BLOCKED" in out`) and `scripts/tests/test_builtin_loops.py::TestLearningGateConsistency` (~8398+ — YAML-structure assertions across `rn-remediate.yaml`/`rn-implement.yaml`/`lib/common.yaml`). Re-run/diff **those** for the byte-for-byte check, not `test_install_learning_gate.py`. [Agent 3 finding]
+- **Correction (AC4 coverage misattributed):** `scripts/tests/test_install_learning_gate.py` does **not** reference `LEARNING_GATE_BLOCKED` (verified: `grep -c` returns 0). Its classes (`TestGateDisabled`, `TestAcceptanceSignals`, `TestInstallVariants`, `TestStaleRecords`, `TestSessionCache`) test the pip/npm install-nudge hook (ENH-2208/2212), not the implement-time marker. The real AC4 contract is guarded by `scripts/tests/test_issue_manager.py::TestAutoManagerLearningGate::test_blocked_gate_prints_greppable_marker` (3656 — `assert "LEARNING_GATE_BLOCKED" in out`) and `scripts/tests/test_builtin_loops.py::TestLearningGateConsistency` (~8662+ — YAML-structure assertions across `rn-remediate.yaml`/`rn-implement.yaml`/`lib/common.yaml`). Re-run/diff **those** for the byte-for-byte check, not `test_install_learning_gate.py`. [Agent 3 finding]
 - `scripts/tests/test_worker_pool.py` — `_run_per_worktree_proof_first_gate` is fully covered by 6 tests (3092-3261: `test_gate_skipped_when_lt_disabled`, `test_gate_skipped_when_no_learning_tests_required`, `test_gate_resolves_targets_jit_when_field_none`, `test_gate_logs_no_external_deps_when_jit_empty`, `test_blocked_result_skips_manage_issue`, `test_skip_learning_gate_flag_bypasses_gate`). All assert subprocess `cmd` membership (not exact-signature), so appending `--context targets_csv=<csv>` won't break them. Add a test asserting the cmd contains `targets_csv=<csv>` when `learning_tests_required` is populated — model on `test_gate_resolves_targets_jit_when_field_none` (3143; inspects `mock_sub.call_args[0][0]`). [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py` — add a structural routing assertion that `proof-first-task.yaml` routes a populated `targets_csv` **past** `assumption-firewall` directly into `ready-to-implement-gate`. Note the existing guard `test_prove_state_has_targets_csv_with_context_ref` (5656) hard-asserts `ready-to-implement-gate.yaml`'s `prove.learning.targets_csv == "${context.targets}"` — the new `proof-first-task` routing must thread its CSV via `with: targets: "${context.targets_csv}"` (mapping onto the sub-loop's existing **`targets`** key), **not** by renaming the sub-loop's context key, or this test breaks. [Agent 2 finding]
+- `scripts/tests/test_builtin_loops.py` — add a structural routing assertion that `proof-first-task.yaml` routes a populated `targets_csv` **past** `assumption-firewall` directly into `ready-to-implement-gate`. Note the existing guard `test_prove_state_has_targets_csv_with_context_ref` (5796) hard-asserts `ready-to-implement-gate.yaml`'s `prove.learning.targets_csv == "${context.targets}"` — the new `proof-first-task` routing must thread its CSV via `with: targets: "${context.targets_csv}"` (mapping onto the sub-loop's existing **`targets`** key), **not** by renaming the sub-loop's context key, or this test breaks. [Agent 2 finding]
 - `scripts/tests/test_learning_tests_extractor.py` — covers `resolve_learning_targets` / `extract_learning_targets`; relevant if `worker_pool.py`'s inline extraction (88-96) is collapsed into `resolve_learning_targets`. [Agent 1 finding]
 
 ### Documentation
@@ -151,9 +174,9 @@ The ll-parallel path does **not** go through `run_learning_gate_for_issue`. `scr
 `scripts/little_loops/cli/sprint/run.py:_run_learning_gate_preflight` (164-216) already does what ENH-2405 wants — it calls `resolve_learning_targets(info)` (196), aggregates the registered targets, and shells `ll-loop run ready-to-implement-gate --context targets=<csv>` (214-216), bypassing `assumption-firewall` entirely. This is the canonical "prove the registered list directly" pattern in-tree; model the new gate path on it.
 
 **Concrete test models (for the new divergence + routing tests in the Tests subsection above):**
-- `scripts/tests/test_issue_manager.py::TestLearningGateInvocation` (3596-3736) — `_make_issue(..., learning_tests_required=[...])` helper plus the `mock_gate.call_args` kwargs idiom; model the divergence test as `assert kwargs.get("targets") == ["stripe"]`.
+- `scripts/tests/test_issue_manager.py::TestAutoManagerLearningGate` (3563-3736) — `_make_issue(..., learning_tests_required=[...])` helper plus the `mock_gate.call_args` kwargs idiom; model the divergence test as `assert kwargs.get("targets") == ["stripe"]`. _(refine-issue correction: class is `TestAutoManagerLearningGate`, not `TestLearningGateInvocation`.)_
 - `scripts/tests/test_sprint_integration.py::TestLearningGatePreflight.test_dedup_targets_across_issues` (1938-1959) — mocks `subprocess.run`, reads `cmd_args = mock_sub.call_args[0][0]`, asserts `"targets=anthropic" in cmd_args`; closest existing model for asserting the CSV reaches `--context`.
-- `scripts/tests/test_builtin_loops.py::TestProofFirstTaskLoop` / `TestAssumptionFirewallLoop` (`test_run_gate_targets_refers_to_flatten_testable` ~5711) — structural YAML-routing assertions; add one asserting a populated `targets_csv` routes past `assumption-firewall`.
+- `scripts/tests/test_builtin_loops.py::TestProofFirstTaskLoop` / `TestAssumptionFirewallLoop` (`test_run_gate_targets_refers_to_flatten_testable` ~5975) — structural YAML-routing assertions; add one asserting a populated `targets_csv` routes past `assumption-firewall`.
 - `scripts/tests/test_learning_state.py::TestLearningStateCsvTargets` (415-510) — `targets_csv` CSV round-trip / whitespace-strip coverage.
 
 ## Implementation Steps
@@ -186,7 +209,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
    populated `targets_csv` directly to `ready-to-implement-gate`, pass it via
    `with: targets: "${context.targets_csv}"` — mapping onto `ready-to-implement-gate.yaml`'s
    existing **`targets`** context key (line 11). Do **not** rename the sub-loop's key, or
-   `test_builtin_loops.py::test_prove_state_has_targets_csv_with_context_ref` (5656) breaks.
+   `test_builtin_loops.py::test_prove_state_has_targets_csv_with_context_ref` (5796) breaks.
    `ready-to-implement-gate.yaml` therefore stays out of "Files to Modify."
 7. **Add the ll-parallel threading test.** In `scripts/tests/test_worker_pool.py`, assert the
    subprocess cmd contains `targets_csv=<csv>` when `learning_tests_required` is populated
@@ -200,7 +223,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **In scope**: making the implement-time gate consume `learning_tests_required` as its proof
   set; suppressing the redundant extraction when the field is populated.
-- **In scope** _(wire-issue: resolves the "Decision needed" at line 124-125)_: the ll-parallel
+- **In scope** _(wire-issue: resolves the "Decision needed" in Codebase Research Findings)_: the ll-parallel
   per-worktree gate (`worker_pool.py:_run_per_worktree_proof_first_gate`) — without threading
   `targets_csv` there too, the registered list is not proven on the `ll-parallel` path and
   Acceptance Criterion 1 silently fails for concurrent runs.
@@ -237,6 +260,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 `enhancement`, `learning-tests`, `consistency`, `efficiency`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-06-30T22:50:23 - `1785790f-eac6-470a-b7f9-1c5edff6ff08.jsonl`
+- `/ll:confidence-check` - 2026-06-30T22:44:46Z - `edd3a86a-a9fc-4550-94a9-f80b858e42c0.jsonl`
 - `/ll:confidence-check` - 2026-06-30T21:50:12Z - `a69cdcc2-dcb8-4c8c-8d25-8101c9563e35.jsonl`
 - `/ll:wire-issue` - 2026-06-30T21:44:54 - `7475cb34-e529-45a6-ae0d-48e2395d6a0c.jsonl`
 - `/ll:refine-issue` - 2026-06-30T21:32:27 - `d936c18f-af8b-463c-a9ae-9bb32d4ac27a.jsonl`

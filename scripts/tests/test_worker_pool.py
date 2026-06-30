@@ -3207,6 +3207,33 @@ class TestPerWorktreeProofFirstGate:
         logged = " ".join(str(call) for call in logger.info.call_args_list)
         assert "no external dependencies detected" in logged
 
+    def test_gate_threads_targets_csv_when_learning_tests_required_populated(
+        self, lt_enabled_br_config: BRConfig, tmp_path: Path
+    ) -> None:
+        """ENH-2405: a populated learning_tests_required field must be forwarded as
+        --context targets_csv=<csv> so the gate proves the registered list instead
+        of re-extracting via assumption-firewall."""
+        from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
+
+        issue = self._make_issue(tmp_path, "ENH-006", learning_tests_required=["httpx"])
+
+        with patch(
+            "little_loops.parallel.worker_pool.subprocess.run",
+            return_value=self._gate_ok_result(),
+        ) as mock_sub:
+            result = _run_per_worktree_proof_first_gate(
+                issue,
+                tmp_path,
+                lt_enabled_br_config,
+                ParallelConfig(),
+                MagicMock(),
+            )
+
+        assert result is True
+        mock_sub.assert_called_once()
+        cmd = mock_sub.call_args[0][0]
+        assert "targets_csv=httpx" in " ".join(cmd)
+
     def test_blocked_result_skips_manage_issue(
         self, lt_enabled_br_config: BRConfig, tmp_path: Path
     ) -> None:

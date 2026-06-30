@@ -5715,10 +5715,11 @@ def run_learning_gate_for_issue(
     *,
     skip: bool = False,
     cwd: Path | None = None,
+    targets: list[str] | None = None,
 ) -> Literal["passed", "blocked", "skipped"]
 ```
 
-Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). All terminal states exit 0; `"blocked"` is distinguished from `"passed"` by reading the loop state file at `<cwd>/.loops/.running/proof-first-task.state.json`. `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`).
+Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). All terminal states exit 0; `"blocked"` is distinguished from `"passed"` by reading the loop state file at `<cwd>/.loops/.running/proof-first-task.state.json`. `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`). `targets`, when non-empty, is forwarded as a `targets_csv` context input so `proof-first-task` proves exactly the registered `learning_tests_required` list instead of re-extracting one via `assumption-firewall`; `None`/empty preserves the JIT extraction fallback (ENH-2405).
 
 ---
 

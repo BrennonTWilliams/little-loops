@@ -3712,6 +3712,37 @@ class TestAutoManagerLearningGate:
         # Implement phase runs
         mock_impl.assert_called_once()
 
+    def test_gate_called_with_resolved_targets(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path
+    ) -> None:
+        """ENH-2405: the resolved registry list must be threaded into the gate call
+        instead of being discarded after the trigger-guard check, so the gate proves
+        the registered targets rather than re-extracting an independent list."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["stripe"])
+
+        fail_ready = MagicMock(returncode=1, stdout="", stderr="")
+        impl_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="passed",
+            ) as mock_gate,
+            patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ),
+            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
+            patch("little_loops.issue_manager.check_git_status", return_value=False),
+        ):
+            process_issue_inplace(issue, lt_enabled_config, MagicMock(), skip_learning_gate=False)
+
+        mock_gate.assert_called_once()
+        _, kwargs = mock_gate.call_args
+        assert kwargs.get("targets") == ["stripe"]
+
     def test_gate_not_invoked_when_learning_tests_disabled(
         self, lt_disabled_config: BRConfig, temp_project_dir: Path
     ) -> None:

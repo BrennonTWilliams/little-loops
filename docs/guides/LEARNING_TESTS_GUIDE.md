@@ -221,7 +221,7 @@ Five named loops compose the learning-test gate stack. Pick the one that matches
 | `assumption-firewall` | You have an issue file and want the gate to extract and validate API assumptions for you before you start writing code. |
 | `integrate-sdk` | You are starting from an SDK discovery (greenfield or existing usage) and want proof-backed scaffolding with citation comments in the output. |
 | `adopt-third-party-api` | You are starting from a vendor docs URL and want an end-to-end pipeline: scrape → enumerate endpoints → prove each → write an integration playbook. |
-| `proof-first-task` | **Recommended default** — wraps any implementation loop with an `assumption-firewall` gate. Use this when you are not sure which specific gate fits; it handles assumption extraction automatically and delegates to `general-task` (or a caller-specified impl loop) once proven. |
+| `proof-first-task` | **Recommended default** — wraps any implementation loop with a Learning-Test Registry gate. Use this when you are not sure which specific gate fits; it proves a caller-supplied `targets_csv` directly when given, otherwise falls back to `assumption-firewall` for automatic assumption extraction, and delegates to `general-task` (or a caller-specified impl loop) once proven. |
 
 See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for the full description and `Run:` examples for each loop.
 
@@ -306,6 +306,8 @@ learning_tests_required:
 - **Missing** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; NOT_READY only if still missing after exploration
 
 Issues without `learning_tests_required` are opt-in at the interactive `/ll:ready-issue` layer, but all three automation runners now resolve targets just-in-time via a shared `resolve_learning_targets()` helper (ENH-2319): when the field is absent (`None`), the helper extracts targets from the issue text via LLM, so an unrefined issue routed to any runner still has its external-API assumptions checked rather than silently bypassed. `ll-auto` gates each issue between the ready and implement phases (use `--skip-learning-gate` to bypass); `ll-sprint` gates the whole sprint in a pre-flight batch check; `ll-parallel` gates per worktree (BUG-2320).
+
+When the field **is** populated, `ll-auto` and `ll-parallel` thread it straight through as a `targets_csv` context input on the `proof-first-task` gate, which proves exactly that registered list via `ready-to-implement-gate` — skipping `assumption-firewall`'s LLM-based extraction entirely (ENH-2405). The two extraction paths (registry-declared vs. JIT) can never diverge: the gate always proves what was registered when something was registered, and only re-derives a list from issue text when nothing was.
 
 `/ll:go-no-go` pre-fetches registry status for all declared targets and injects a **Learning Test Context** block into both adversarial agent prompts and the judge prompt before Phase 3b, so unproven assumptions surface in the judge's RATIONALE without requiring numeric score deltas.
 

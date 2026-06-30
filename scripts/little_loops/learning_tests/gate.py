@@ -78,6 +78,7 @@ def run_learning_gate_for_issue(
     *,
     skip: bool = False,
     cwd: Path | None = None,
+    targets: list[str] | None = None,
 ) -> Literal["passed", "blocked", "skipped"]:
     """Invoke proof-first-task loop for an issue and return the gate verdict.
 
@@ -90,19 +91,27 @@ def run_learning_gate_for_issue(
         skip: If True, return "skipped" immediately without running the loop.
         cwd: Working directory for the subprocess (and state-file lookup).
             Defaults to ``Path.cwd()`` when None.
+        targets: The already-resolved ``learning_tests_required`` registry
+            (ENH-2209). When non-empty, forwarded as a ``targets_csv``
+            context input so ``proof-first-task`` proves this exact list
+            instead of re-extracting one via ``assumption-firewall``
+            (ENH-2405). ``None``/empty preserves the JIT extraction fallback.
     """
     if skip:
         return "skipped"
 
     working_dir = cwd or Path.cwd()
+    cmd = [
+        "ll-loop",
+        "run",
+        "proof-first-task",
+        "--context",
+        f"issue_file={issue_path}",
+    ]
+    if targets:
+        cmd += ["--context", f"targets_csv={','.join(targets)}"]
     subprocess.run(
-        [
-            "ll-loop",
-            "run",
-            "proof-first-task",
-            "--context",
-            f"issue_file={issue_path}",
-        ],
+        cmd,
         capture_output=True,
         text=True,
         cwd=working_dir,

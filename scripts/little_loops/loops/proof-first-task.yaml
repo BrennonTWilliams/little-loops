@@ -1,6 +1,6 @@
 name: proof-first-task
 category: gate
-description: Opt-in wrapper that gates any implementation loop on assumption-firewall — extracts external-API assumptions from an issue file, proves each against the Learning-Test Registry, then delegates to a caller-specified impl loop. When no issue_file is given, skips the gate and runs the impl loop directly.
+description: Opt-in wrapper that gates any implementation loop on the Learning-Test Registry — proves a caller-supplied targets_csv directly when given, otherwise extracts external-API assumptions from the issue file via assumption-firewall — then delegates to a caller-specified impl loop. When no issue_file is given, skips the gate and runs the impl loop directly.
 initial: check_issue_file
 max_steps: 150
 timeout: 7200
@@ -12,14 +12,29 @@ context:
   task: ""
   issue_file: ""
   impl_loop: "general-task"
+  targets_csv: ""
 
 states:
 
   check_issue_file:
     fragment: shell_exit
     action: test -n "${context.issue_file}" && test -f "${context.issue_file}"
-    on_yes: gate
+    on_yes: check_targets_csv
     on_no: run_impl
+
+  check_targets_csv:
+    fragment: shell_exit
+    action: test -n "${context.targets_csv}"
+    on_yes: gate_direct
+    on_no: gate
+
+  gate_direct:
+    loop: ready-to-implement-gate
+    with:
+      targets: "${context.targets_csv}"
+    on_success: run_impl
+    on_failure: blocked
+    on_error: blocked
 
   gate:
     loop: assumption-firewall

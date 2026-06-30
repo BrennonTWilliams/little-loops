@@ -856,7 +856,9 @@ def process_issue_inplace(
         if targets:
             logger.info(f"Learning gate: checking {len(targets)} target(s): {', '.join(targets)}")
             gate_cwd = config.repo_path or Path.cwd()
-            verdict = run_learning_gate_for_issue(info.path, skip=skip_learning_gate, cwd=gate_cwd)
+            verdict = run_learning_gate_for_issue(
+                info.path, skip=skip_learning_gate, cwd=gate_cwd, targets=targets
+            )
             if verdict == "skipped":
                 logger.info(f"Learning gate skipped for {info.issue_id} (--skip-learning-gate)")
             elif verdict == "blocked":

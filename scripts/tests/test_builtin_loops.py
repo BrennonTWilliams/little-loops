@@ -6003,6 +6003,66 @@ class TestProofFirstTaskLoop:
             f"check_issue_file.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
+    def test_context_has_targets_csv(self, data: dict) -> None:
+        """ENH-2405: context must declare targets_csv for the registered-targets path."""
+        assert "targets_csv" in data.get("context", {}), (
+            f"context must declare 'targets_csv', got {list(data.get('context', {}).keys())}"
+        )
+
+    def test_check_issue_file_routes_to_check_targets_csv(self, data: dict) -> None:
+        """ENH-2405: check_issue_file.on_yes must route to check_targets_csv (not gate
+        directly), so a populated targets_csv can bypass assumption-firewall."""
+        state = data["states"].get("check_issue_file", {})
+        assert state.get("on_yes") == "check_targets_csv", (
+            f"check_issue_file.on_yes should be 'check_targets_csv', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_targets_csv_uses_shell_exit_fragment(self, data: dict) -> None:
+        """ENH-2405: check_targets_csv must use the shell_exit fragment."""
+        state = data["states"].get("check_targets_csv", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_targets_csv.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_targets_csv_routes_to_gate_direct_and_gate(self, data: dict) -> None:
+        """ENH-2405: a populated targets_csv routes to gate_direct (skipping
+        assumption-firewall); an absent one falls back to gate (assumption-firewall)."""
+        state = data["states"].get("check_targets_csv", {})
+        assert state.get("on_yes") == "gate_direct", (
+            f"check_targets_csv.on_yes should be 'gate_direct', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "gate", (
+            f"check_targets_csv.on_no should be 'gate', got {state.get('on_no')!r}"
+        )
+
+    def test_gate_direct_delegates_to_ready_to_implement_gate_with_targets_csv(
+        self, data: dict
+    ) -> None:
+        """ENH-2405: gate_direct must prove the registered list directly via
+        ready-to-implement-gate, bypassing assumption-firewall's extract_assumptions."""
+        state = data["states"].get("gate_direct", {})
+        assert state.get("loop") == "ready-to-implement-gate", (
+            f"gate_direct.loop should be 'ready-to-implement-gate', got {state.get('loop')!r}"
+        )
+        with_ = state.get("with", {})
+        assert with_.get("targets") == "${context.targets_csv}", (
+            f"gate_direct.with.targets should be '${{context.targets_csv}}', got {with_.get('targets')!r}"
+        )
+
+    def test_gate_direct_routes_to_run_impl_and_blocked(self, data: dict) -> None:
+        """ENH-2405: gate_direct must route success to run_impl, failure/error to blocked
+        (mirroring the gate state's existing terminal routing)."""
+        state = data["states"].get("gate_direct", {})
+        assert state.get("on_success") == "run_impl", (
+            f"gate_direct.on_success should be 'run_impl', got {state.get('on_success')!r}"
+        )
+        assert state.get("on_failure") == "blocked", (
+            f"gate_direct.on_failure should be 'blocked', got {state.get('on_failure')!r}"
+        )
+        assert state.get("on_error") == "blocked", (
+            f"gate_direct.on_error should be 'blocked', got {state.get('on_error')!r}"
+        )
+
     def test_gate_delegates_to_assumption_firewall(self, data: dict) -> None:
         """gate must delegate to assumption-firewall sub-loop."""
         state = data["states"].get("gate", {})
