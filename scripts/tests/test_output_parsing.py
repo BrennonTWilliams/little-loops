@@ -1076,16 +1076,14 @@ class TestExtractTaggedJson:
     def test_uses_last_matching_line(self) -> None:
         """When multiple tag lines exist, the last one wins."""
         raw = (
-            'IDEAS_JSON: [{"text": "first"}]\n'
-            'Some intervening text\n'
-            'IDEAS_JSON: [{"text": "last"}]'
+            'IDEAS_JSON: [{"text": "first"}]\nSome intervening text\nIDEAS_JSON: [{"text": "last"}]'
         )
         data, error = extract_tagged_json(raw, "IDEAS_JSON")
         assert error is None
         assert data == [{"text": "last"}]
 
     def test_strips_whitespace_around_json(self) -> None:
-        raw = "ENUMERATE_JSON:   [\"a\", \"b\"]   "
+        raw = 'ENUMERATE_JSON:   ["a", "b"]   '
         data, error = extract_tagged_json(raw, "ENUMERATE_JSON")
         assert error is None
         assert data == ["a", "b"]

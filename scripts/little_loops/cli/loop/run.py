@@ -440,9 +440,7 @@ def cmd_run(
                     )
                     _ahead_str = _revcount.stdout.strip()
                     _commits_ahead = (
-                        int(_ahead_str)
-                        if _revcount.returncode == 0 and _ahead_str.isdigit()
-                        else 0
+                        int(_ahead_str) if _revcount.returncode == 0 and _ahead_str.isdigit() else 0
                     )
 
                     if _has_dirty or _commits_ahead > 0:

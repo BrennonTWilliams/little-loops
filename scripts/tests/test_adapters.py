@@ -313,9 +313,7 @@ class TestProcessAgentsTraversal:
     def test_agent_meta_has_required_keys(self, tmp_path: Path) -> None:
         _make_agent(tmp_path, "my-agent")
         emitter = _MockEmitter()
-        process_agents(
-            emitter, tmp_path / "agents", tmp_path / ".codex" / "agents", False, True
-        )
+        process_agents(emitter, tmp_path / "agents", tmp_path / ".codex" / "agents", False, True)
         meta = emitter.agent_calls[0]
         for key in ("agent_name", "agent_path", "content", "fm", "output_dir", "apply", "quiet"):
             assert key in meta
@@ -511,9 +509,9 @@ class TestCodexEmitterEmitAgent:
     def test_toml_contains_description(self, tmp_path: Path) -> None:
         meta = self._meta(tmp_path, "my-agent", description="Use for tasks.")
         CodexEmitter().emit_agent(meta)
-        assert 'description = "Use for tasks."' in (
-            meta["output_dir"] / "my-agent.toml"
-        ).read_text()
+        assert (
+            'description = "Use for tasks."' in (meta["output_dir"] / "my-agent.toml").read_text()
+        )
 
     def test_toml_contains_model(self, tmp_path: Path) -> None:
         meta = self._meta(tmp_path, "my-agent", model="opus")
@@ -624,9 +622,7 @@ def _make_skill_with_short_desc(
 
     name_line = f"name: {name}\n" if include_name else ""
     metadata_block = (
-        f"metadata:\n  short-description: {description[:80]}\n"
-        if include_short_desc
-        else ""
+        f"metadata:\n  short-description: {description[:80]}\n" if include_short_desc else ""
     )
     skill_md.write_text(
         f"---\n{name_line}description: {description}\n{metadata_block}---\n\n# Body\n"

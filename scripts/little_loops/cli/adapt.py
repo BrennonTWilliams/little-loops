@@ -103,9 +103,7 @@ Examples:
 
         # Skills
         if skills_dir.exists():
-            s_adapted, s_skipped, s_errors = process_skills(
-                emitter, skills_dir, apply, args.quiet
-            )
+            s_adapted, s_skipped, s_errors = process_skills(emitter, skills_dir, apply, args.quiet)
             total_adapted += s_adapted
             total_skipped += s_skipped
             total_errors += s_errors

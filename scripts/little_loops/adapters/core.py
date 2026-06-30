@@ -63,9 +63,7 @@ def resolve_emitter(host: str) -> HostEmitter:
     """
     entry = _EMITTER_MAP.get(host)
     if entry is None:
-        raise AdapterError(
-            f"Host {host!r} is not registered. Available: {sorted(_EMITTER_MAP)}."
-        )
+        raise AdapterError(f"Host {host!r} is not registered. Available: {sorted(_EMITTER_MAP)}.")
     module_path, cls_name = entry
     module = importlib.import_module(module_path)
     return cast(HostEmitter, getattr(module, cls_name)())
@@ -97,7 +95,7 @@ def _extract_body(text: str) -> str:
     end = text.find("---", 3)
     if end == -1:
         return ""
-    after_fm = text[end + 3:]
+    after_fm = text[end + 3 :]
     if after_fm.startswith("\n"):
         after_fm = after_fm[1:]
     return after_fm

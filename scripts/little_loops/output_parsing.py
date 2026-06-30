@@ -44,7 +44,7 @@ def extract_tagged_json(raw: str, tag: str) -> tuple[list | dict | None, str | N
     for line in reversed(raw.split("\n")):
         stripped = line.strip()
         if stripped.startswith(prefix):
-            found = stripped[len(prefix):].strip()
+            found = stripped[len(prefix) :].strip()
             break
 
     if found is None:

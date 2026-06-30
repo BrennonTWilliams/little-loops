@@ -263,7 +263,9 @@ class TestLabelsNotRequired:
         """
         for issue_type in self.ISSUE_TYPES:
             data = json.loads((TEMPLATES_DIR / f"{issue_type}-sections.json").read_text())
-            full_include = data.get("creation_variants", {}).get("full", {}).get("include_common", [])
+            full_include = (
+                data.get("creation_variants", {}).get("full", {}).get("include_common", [])
+            )
             assert "Labels" not in full_include, (
                 f"{issue_type}-sections.json: 'Labels' must not be in "
                 f"creation_variants.full.include_common (ENH-2399 — labels live in frontmatter)"

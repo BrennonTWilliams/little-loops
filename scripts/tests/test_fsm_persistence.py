@@ -2626,14 +2626,13 @@ class TestListRunningLoopsCrossInstanceSuppression:
 
         loop_names = [s.loop_name for s in states]
         # Must include the live "starting" entry (not just the stale done entry)
-        assert (
-            loop_names.count("rn-implement") == 2
-        ), f"Expected 2 rn-implement entries (stale + live), got: {loop_names}"
+        assert loop_names.count("rn-implement") == 2, (
+            f"Expected 2 rn-implement entries (stale + live), got: {loop_names}"
+        )
 
         statuses = {s.status for s in states if s.loop_name == "rn-implement"}
         assert "starting" in statuses, (
-            "Live PID-only entry must appear as 'starting'; "
-            f"found statuses: {statuses}"
+            f"Live PID-only entry must appear as 'starting'; found statuses: {statuses}"
         )
 
     def test_same_stem_pid_still_deduplicated(self, tmp_path: Path) -> None:

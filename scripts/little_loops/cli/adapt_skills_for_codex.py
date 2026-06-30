@@ -44,9 +44,7 @@ def _find_plugin_root() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _process_skills(
-    skills_dir: Path, apply: bool, quiet: bool
-) -> tuple[int, int, int]:
+def _process_skills(skills_dir: Path, apply: bool, quiet: bool) -> tuple[int, int, int]:
     """Backward-compat wrapper: delegate to core traversal + CodexEmitter."""
     return _core_process_skills(CodexEmitter(), skills_dir, apply, quiet)
 

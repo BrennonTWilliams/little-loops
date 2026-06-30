@@ -3154,36 +3154,38 @@ class TestIsFormatted:
         feats_dir.mkdir()
         issue_file = feats_dir / "P3-FEAT-9999-test-feature.md"
         issue_file.write_text(
-            "\n".join([
-                "---",
-                "labels:",
-                "- host-compat",
-                "- portfolio",
-                "---",
-                "",
-                "# FEAT-9999: Test feature",
-                "",
-                "## Summary",
-                "A test feature.",
-                "",
-                "## Current Behavior",
-                "N/A — new feature.",
-                "",
-                "## Expected Behavior",
-                "It works as described.",
-                "",
-                "## Use Case",
-                "As a developer, I want X so that Y.",
-                "",
-                "## Acceptance Criteria",
-                "- Criterion 1",
-                "",
-                "## Impact",
-                "- **Priority**: P3 - Low",
-                "",
-                "## Status",
-                "open",
-            ])
+            "\n".join(
+                [
+                    "---",
+                    "labels:",
+                    "- host-compat",
+                    "- portfolio",
+                    "---",
+                    "",
+                    "# FEAT-9999: Test feature",
+                    "",
+                    "## Summary",
+                    "A test feature.",
+                    "",
+                    "## Current Behavior",
+                    "N/A — new feature.",
+                    "",
+                    "## Expected Behavior",
+                    "It works as described.",
+                    "",
+                    "## Use Case",
+                    "As a developer, I want X so that Y.",
+                    "",
+                    "## Acceptance Criteria",
+                    "- Criterion 1",
+                    "",
+                    "## Impact",
+                    "- **Priority**: P3 - Low",
+                    "",
+                    "## Status",
+                    "open",
+                ]
+            )
         )
         assert is_formatted(issue_file) is True, (
             "feat with frontmatter labels + ## Use Case should be formatted (BUG-2395)"
@@ -3201,33 +3203,35 @@ class TestIsFormatted:
         bugs_dir.mkdir()
         issue_file = bugs_dir / "P3-BUG-9999-test-bug.md"
         issue_file.write_text(
-            "\n".join([
-                "---",
-                "labels:",
-                "- rn-remediate",
-                "- loop",
-                "---",
-                "",
-                "# BUG-9999: Test bug",
-                "",
-                "## Summary",
-                "A test bug.",
-                "",
-                "## Current Behavior",
-                "It breaks.",
-                "",
-                "## Expected Behavior",
-                "It works.",
-                "",
-                "## Steps to Reproduce",
-                "1. Do the thing.",
-                "",
-                "## Impact",
-                "- **Priority**: P3 - Low",
-                "",
-                "## Status",
-                "open",
-            ])
+            "\n".join(
+                [
+                    "---",
+                    "labels:",
+                    "- rn-remediate",
+                    "- loop",
+                    "---",
+                    "",
+                    "# BUG-9999: Test bug",
+                    "",
+                    "## Summary",
+                    "A test bug.",
+                    "",
+                    "## Current Behavior",
+                    "It breaks.",
+                    "",
+                    "## Expected Behavior",
+                    "It works.",
+                    "",
+                    "## Steps to Reproduce",
+                    "1. Do the thing.",
+                    "",
+                    "## Impact",
+                    "- **Priority**: P3 - Low",
+                    "",
+                    "## Status",
+                    "open",
+                ]
+            )
         )
         assert is_formatted(issue_file) is True, (
             "bug with frontmatter labels + no ## Labels body should be formatted (BUG-2395)"
@@ -3245,17 +3249,19 @@ class TestIsFormatted:
         feats_dir.mkdir()
         issue_file = feats_dir / "P3-FEAT-9998-sparse.md"
         issue_file.write_text(
-            "\n".join([
-                "---",
-                "labels:",
-                "- test",
-                "---",
-                "",
-                "# FEAT-9998: Sparse",
-                "",
-                "## Summary",
-                "Only has Summary — missing Impact, Status, Use Case, etc.",
-            ])
+            "\n".join(
+                [
+                    "---",
+                    "labels:",
+                    "- test",
+                    "---",
+                    "",
+                    "# FEAT-9998: Sparse",
+                    "",
+                    "## Summary",
+                    "Only has Summary — missing Impact, Status, Use Case, etc.",
+                ]
+            )
         )
         assert is_formatted(issue_file) is False, (
             "feat missing required sections should still report not formatted after demotion"

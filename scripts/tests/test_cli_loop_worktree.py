@@ -904,8 +904,10 @@ class TestCmdRunWorktreeAbsoluteLoopsDir:
             patch("little_loops.transport.wire_transports"),
             patch("little_loops.fsm.persistence.PersistentExecutor", _CapturingPE),
             patch("little_loops.fsm.persistence._reconcile_stale_runs"),
-            patch("little_loops.cli.loop.run.subprocess.run",
-                  return_value=subprocess.CompletedProcess([], 0, "abc123\n", "")),
+            patch(
+                "little_loops.cli.loop.run.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, "abc123\n", ""),
+            ),
         ):
             _mock_br_config(mock_cfg, tmp_path)
 
@@ -917,9 +919,7 @@ class TestCmdRunWorktreeAbsoluteLoopsDir:
         assert actual.is_absolute(), (
             f"PersistentExecutor must receive an absolute loops_dir; got {actual!r}"
         )
-        assert actual == expected_abs, (
-            f"Expected {expected_abs}, got {actual}"
-        )
+        assert actual == expected_abs, f"Expected {expected_abs}, got {actual}"
 
 
 # ---------------------------------------------------------------------------
@@ -987,17 +987,16 @@ class TestCleanupWorktreeFailLoud:
         with (
             patch("little_loops.config.BRConfig") as mock_cfg,
             patch("little_loops.worktree_utils.setup_worktree"),
-            patch("little_loops.worktree_utils.cleanup_worktree",
-                  side_effect=lambda **kw: cleanup_calls.append(kw)),
-            patch("little_loops.cli.loop.run.os.chdir",
-                  side_effect=chdir_calls.append),
-            patch("little_loops.cli.loop.run.atexit.register",
-                  side_effect=registered.append),
+            patch(
+                "little_loops.worktree_utils.cleanup_worktree",
+                side_effect=lambda **kw: cleanup_calls.append(kw),
+            ),
+            patch("little_loops.cli.loop.run.os.chdir", side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register", side_effect=registered.append),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
             patch("little_loops.transport.wire_transports"),
             patch("little_loops.fsm.persistence._reconcile_stale_runs"),
-            patch("little_loops.cli.loop.run.subprocess.run",
-                  side_effect=subprocess_side_effect),
+            patch("little_loops.cli.loop.run.subprocess.run", side_effect=subprocess_side_effect),
         ):
             _mock_br_config(mock_cfg, tmp_path)
 
@@ -1005,8 +1004,7 @@ class TestCleanupWorktreeFailLoud:
             mock_pe.event_bus = MagicMock()
             mock_pe.close_transports = MagicMock()
 
-            with patch("little_loops.fsm.persistence.PersistentExecutor",
-                       return_value=mock_pe):
+            with patch("little_loops.fsm.persistence.PersistentExecutor", return_value=mock_pe):
                 cmd_run("test-loop", args, loops_dir, logger)
 
             # Create the worktree directory so .exists() → True during cleanup
@@ -1014,9 +1012,7 @@ class TestCleanupWorktreeFailLoud:
                 Path(chdir_calls[-1]).mkdir(parents=True, exist_ok=True)
 
             # Invoke _cleanup_worktree_on_exit while patches are still active
-            cleanup_fn = next(
-                fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit"
-            )
+            cleanup_fn = next(fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit")
             cleanup_fn()
 
         return cleanup_calls, logger
@@ -1102,30 +1098,24 @@ class TestCleanupWorktreeFailLoud:
             patch("little_loops.config.BRConfig") as mock_cfg,
             patch("little_loops.worktree_utils.setup_worktree"),
             patch("little_loops.worktree_utils.cleanup_worktree"),
-            patch("little_loops.cli.loop.run.os.chdir",
-                  side_effect=chdir_calls.append),
-            patch("little_loops.cli.loop.run.atexit.register",
-                  side_effect=registered.append),
+            patch("little_loops.cli.loop.run.os.chdir", side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register", side_effect=registered.append),
             patch("little_loops.cli.loop.run.run_foreground", return_value=0),
             patch("little_loops.transport.wire_transports"),
             patch("little_loops.fsm.persistence._reconcile_stale_runs"),
-            patch("little_loops.cli.loop.run.subprocess.run",
-                  side_effect=_subprocess),
+            patch("little_loops.cli.loop.run.subprocess.run", side_effect=_subprocess),
         ):
             _mock_br_config(mock_cfg, tmp_path)
             mock_pe = MagicMock()
             mock_pe.event_bus = MagicMock()
             mock_pe.close_transports = MagicMock()
-            with patch("little_loops.fsm.persistence.PersistentExecutor",
-                       return_value=mock_pe):
+            with patch("little_loops.fsm.persistence.PersistentExecutor", return_value=mock_pe):
                 cmd_run("test-loop", args, loops_dir, logger)
 
             if chdir_calls:
                 Path(chdir_calls[-1]).mkdir(parents=True, exist_ok=True)
 
-            cleanup_fn = next(
-                fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit"
-            )
+            cleanup_fn = next(fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit")
             cleanup_fn()
 
         # A warning must mention the branch name

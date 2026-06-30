@@ -70,8 +70,8 @@ def _insert_skill_fields(content: str, name: str, short_desc: str) -> tuple[str,
     if not m:
         return content, False
 
-    fm_text = content[4:3 + m.start()]
-    after = content[3 + m.start():]
+    fm_text = content[4 : 3 + m.start()]
+    after = content[3 + m.start() :]
 
     changed = False
 
@@ -102,11 +102,7 @@ def _title_case(slug: str) -> str:
 
 def _make_openai_yaml_content(display_name: str, short_desc: str) -> str:
     """Return ``agents/openai.yaml`` content for the Codex Skills API."""
-    return (
-        f'interface:\n'
-        f'  display_name: "{display_name}"\n'
-        f'  short_description: "{short_desc}"\n'
-    )
+    return f'interface:\n  display_name: "{display_name}"\n  short_description: "{short_desc}"\n'
 
 
 def _synthesized_skill_md(stem: str, description: str) -> str:
@@ -223,10 +219,7 @@ def _format_agent_toml(
         safe_body += "\n"
 
     result = (
-        f"{_MARKER}\n"
-        f'name = "{name}"\n'
-        f'description = "{escaped_desc}"\n'
-        f'model = "{escaped_model}"\n'
+        f'{_MARKER}\nname = "{name}"\ndescription = "{escaped_desc}"\nmodel = "{escaped_model}"\n'
     )
 
     # Resolve tools from frontmatter for rich-field derivation
@@ -246,12 +239,7 @@ def _format_agent_toml(
         servers_str = ", ".join(f'"{s}"' for s in mcp_servers)
         result += f"mcp_servers = [{servers_str}]\n"
 
-    result += (
-        f"\n"
-        f'developer_instructions = """\n'
-        f"{safe_body}"
-        f'"""\n'
-    )
+    result += f'\ndeveloper_instructions = """\n{safe_body}"""\n'
     return result
 
 
@@ -297,7 +285,9 @@ class CodexEmitter:
                 skill_path.write_text(new_text)
             if not yaml_exists:
                 openai_yaml.parent.mkdir(exist_ok=True)
-                openai_yaml.write_text(_make_openai_yaml_content(_title_case(skill_name), short_desc))
+                openai_yaml.write_text(
+                    _make_openai_yaml_content(_title_case(skill_name), short_desc)
+                )
             if not quiet:
                 print(f"  APPLY  {skill_name}: {short_desc[:50]}")
         else:

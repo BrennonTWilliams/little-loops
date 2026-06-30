@@ -34,7 +34,6 @@ from little_loops.cli.logs import (
     _get_builtin_loop_names,
     _InvocationSignal,
     _is_ll_relevant,
-    _LoopRunRecord,
     _parse_args,
     _parse_terminal_event,
     _redact_input_context,
@@ -3856,8 +3855,10 @@ class TestLoopFleet:
         """_parse_terminal_event returns the loop_complete record."""
         events_file = tmp_path / "events.jsonl"
         events_file.write_text(
-            json.dumps({"event": "state_transition", "from": "start", "to": "review"}) + "\n"
-            + json.dumps(self._loop_complete()) + "\n"
+            json.dumps({"event": "state_transition", "from": "start", "to": "review"})
+            + "\n"
+            + json.dumps(self._loop_complete())
+            + "\n"
         )
         result = _parse_terminal_event(events_file)
         assert result is not None
@@ -3954,9 +3955,7 @@ class TestLoopFleet:
         """--loop filters to only the matching loop name."""
         project_path = tmp_path / "proj"
         project_path.mkdir()
-        self._make_history_run(
-            project_path, "2026-01-01T000000-rn-build", [self._loop_complete()]
-        )
+        self._make_history_run(project_path, "2026-01-01T000000-rn-build", [self._loop_complete()])
         self._make_history_run(
             project_path, "2026-01-02T000000-rn-implement", [self._loop_complete()]
         )

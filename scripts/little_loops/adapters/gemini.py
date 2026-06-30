@@ -42,13 +42,9 @@ def _strip_metadata_short_description(fm_text: str) -> tuple[str, bool]:
     if "short-description:" not in fm_text:
         return fm_text, False
 
-    cleaned = re.sub(
-        r"^[ \t]*short-description:.*$\n?", "", fm_text, flags=re.MULTILINE
-    )
+    cleaned = re.sub(r"^[ \t]*short-description:.*$\n?", "", fm_text, flags=re.MULTILINE)
     # Remove empty metadata: header (followed immediately by blank line or end)
-    cleaned = re.sub(
-        r"^metadata:[ \t]*\n(?=\n|\Z)", "", cleaned, flags=re.MULTILINE
-    )
+    cleaned = re.sub(r"^metadata:[ \t]*\n(?=\n|\Z)", "", cleaned, flags=re.MULTILINE)
     return cleaned, cleaned != fm_text
 
 

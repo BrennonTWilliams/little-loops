@@ -1150,36 +1150,38 @@ class TestRefineStatusFormatColumn:
         (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
 
-        content = "\n".join([
-            "---",
-            "labels:",
-            "- bug",
-            "- idempotency",
-            "---",
-            "",
-            "# BUG-302: Frontmatter labels bug",
-            "",
-            "## Summary",
-            "Test issue with labels in frontmatter.",
-            "",
-            "## Current Behavior",
-            "It breaks.",
-            "",
-            "## Expected Behavior",
-            "It works.",
-            "",
-            "## Steps to Reproduce",
-            "1. Do the thing.",
-            "",
-            "## Impact",
-            "- **Priority**: P3 - Low",
-            "- **Effort**: Small",
-            "- **Risk**: Low",
-            "- **Breaking Change**: No",
-            "",
-            "## Status",
-            "**Open** | Created: 2026-01-01 | Priority: P3",
-        ])
+        content = "\n".join(
+            [
+                "---",
+                "labels:",
+                "- bug",
+                "- idempotency",
+                "---",
+                "",
+                "# BUG-302: Frontmatter labels bug",
+                "",
+                "## Summary",
+                "Test issue with labels in frontmatter.",
+                "",
+                "## Current Behavior",
+                "It breaks.",
+                "",
+                "## Expected Behavior",
+                "It works.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "- **Effort**: Small",
+                "- **Risk**: Low",
+                "- **Breaking Change**: No",
+                "",
+                "## Status",
+                "**Open** | Created: 2026-01-01 | Priority: P3",
+            ]
+        )
         (bugs_dir / "P3-BUG-302-frontmatter-labels.md").write_text(content)
 
         with patch.object(

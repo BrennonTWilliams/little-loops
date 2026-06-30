@@ -35,8 +35,8 @@ from little_loops.fsm.validation import (
     _validate_llm_evidence_contract,
     _validate_meta_loop_evaluation,
     _validate_overescaped_shell,
-    _validate_parse_swallow,
     _validate_parameters,
+    _validate_parse_swallow,
     _validate_partial_route_dead_end,
     _validate_progress_paths_isolation,
     _validate_state_action,
@@ -3605,12 +3605,12 @@ class TestParseSwallow:
         on_error: str | None = None,
         parse_swallow_ok: bool = False,
     ) -> FSMLoop:
-        state_kwargs: dict = dict(
-            action=action,
-            action_type=action_type,
-            on_yes="done",
-            on_no="work",
-        )
+        state_kwargs: dict = {
+            "action": action,
+            "action_type": action_type,
+            "on_yes": "done",
+            "on_no": "work",
+        }
         if on_error is not None:
             state_kwargs["on_error"] = on_error
         return FSMLoop(
