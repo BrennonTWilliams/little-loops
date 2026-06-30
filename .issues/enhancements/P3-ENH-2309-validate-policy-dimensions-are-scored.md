@@ -1,15 +1,28 @@
 ---
 id: ENH-2309
-title: ll-loop validate rule — flag policy_rules dimensions that are never scored
+title: "ll-loop validate rule \u2014 flag policy_rules dimensions that are never scored"
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-26
+completed_at: 2026-06-30 04:18:41+00:00
 discovered_by: capture-issue
 relates_to:
 - FEAT-2301
 - ENH-2164
 - ENH-2154
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 25
+labels:
+- enhancement
+- loops
+- policy-router
+- validation
+- tooling
 ---
 
 # ENH-2309: ll-loop validate rule — flag policy_rules dimensions that are never scored
@@ -52,7 +65,7 @@ already in `fsm/validation.py`.
 
 ## Current Behavior
 
-`validate_fsm()` runs ~20 validators (`fsm/validation.py:956-1094`). None of them
+`validate_fsm()` runs ~20 validators (`fsm/validation.py:950+`). None of them
 parse `context.policy_rules` and cross-check the referenced dimensions against the
 set of dimensions that are actually scored. A loop whose entire decision table
 references unscored dimensions validates clean.
@@ -157,11 +170,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-06-26). All ci
 flag lives in three places, so this one must too:
 - `scripts/little_loops/fsm/schema.py` — add `policy_dims_scored_ok: bool = False` to the
   `FSMLoop` dataclass (beside `generator_fix_ok`, `schema.py:1007`); serialize-when-true in
-  `to_dict()` (beside `schema.py:1088`); bind in `from_dict()` with
-  `data.get("policy_dims_scored_ok", False)` (beside `schema.py:1163`). Omitting the
+  `to_dict()` (beside `schema.py:1091`); bind in `from_dict()` with
+  `data.get("policy_dims_scored_ok", False)` (beside `schema.py:1175`). Omitting the
   dataclass field makes `fsm.policy_dims_scored_ok` raise `AttributeError`.
 - `scripts/little_loops/fsm/validation.py` — add `"policy_dims_scored_ok"` to
-  `KNOWN_TOP_LEVEL_KEYS` (`validation.py:178-183`) so a loop setting the flag does not also
+  `KNOWN_TOP_LEVEL_KEYS` (`validation.py:173`) so a loop setting the flag does not also
   trip the "Unknown top-level key" warning. Add a YAML round-trip test asserting no
   Unknown-top-level warning (model: `TestArtifactIsolation.test_shared_state_ok_recognized_as_top_level_key`).
 
@@ -186,15 +199,15 @@ exactly so the scored set matches the `rubric-dim-<name>.txt` keys:
 states where `state.action_type in ("shell", None)`; match the literal
 `r"rubric-dim-([\w-]+)\.txt"` (write site: `policy-router.yaml:99`,
 `f"rubric-dim-{dim_name}.txt"`). Skip states with no `action`. Pattern to model:
-`_validate_generator_fix_discipline` (`validation.py:1543+`) iterates states and inspects
+`_validate_generator_fix_discipline` (`validation.py:1567`) iterates states and inspects
 shell action bodies the same way.
 
 **Verified anchors (current line numbers).**
 
 | Reference | Issue cites | Actual | Status |
 |-----------|-------------|--------|--------|
-| `validate_fsm()` span | `validation.py:956-1094` | `def` at **923**, `return` at **1096** | ⚠ start stale — use **923** |
-| register beside `_validate_classify_route_default` | `~1083` | **1083** | ✓ exact |
+| `validate_fsm()` span | `validation.py:956-1094` | `def` at **950** | ⚠ stale — use **950** |
+| register beside `_validate_classify_route_default` | `~1083` | **1116** | ⚠ stale — use **1116** |
 | `_ALL_OPS` | `policy_rules.py:28` | **28** | ✓ |
 | `_eval_predicate` missing-dim → `!=`-only | `policy_rules.py:188-195` | def **188**, missing-dim block **192-195** | ✓ |
 | `rubric-dim-<name>.txt` normalization | `policy-router.yaml:97` | **97** | ✓ |
@@ -205,7 +218,7 @@ shell action bodies the same way.
 `make_state(...)` / `EvaluateConfig` helpers, and the fires / does-not-fire / suppression /
 `validate_fsm()`-wiring quartet. Import `_validate_policy_dimensions_scored` in the test file's
 private-validator import block. `_validate_classify_route_default` itself is defined at
-`validation.py:1602` — a complete, current model for the new validator's shape and WARNING
+`validation.py:1835` — a complete, current model for the new validator's shape and WARNING
 construction (`ValidationError(..., severity=ValidationSeverity.WARNING)`).
 
 ## Scope Boundaries
@@ -242,15 +255,24 @@ construction (`ValidationError(..., severity=ValidationSeverity.WARNING)`).
   false positives on dynamically-named shell scorers, mitigated by warn-not-error.
 - **Breaking Change**: No
 
-## Labels
-
-`enhancement`, `loops`, `policy-router`, `validation`, `tooling`
-
 ## Status
 
 **Open** | Created: 2026-06-26 | Priority: P3
 
 
+## Resolution
+
+Added `_validate_policy_dimensions_scored()` to `fsm/validation.py` — checks that every
+dimension referenced in `context.policy_rules` predicates (raw, un-normalized) is either
+listed in `context.rubric_dimensions` (normalized) or written via a `rubric-dim-<name>.txt`
+literal in a shell state action. The reserved `aggregate` dimension is exempt. WARNING
+severity, suppressed by `policy_dims_scored_ok: true`. Added `policy_dims_scored_ok` field
+to `FSMLoop` dataclass (schema.py) and to `KNOWN_TOP_LEVEL_KEYS` (validation.py). Eleven
+tests added to `TestPolicyDimensionsScored` in `test_fsm_validation.py`. Documented in
+CLAUDE.md Loop Authoring section and POLICY_ROUTER_GUIDE.md Warnings section.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-06-30T04:09:42 - `c2f7b255-d538-46f8-bf87-7e4a629a4e20.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:21:11 - `80f7e865-5668-4056-97f7-9794b7b8c70e.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:01:07 - `11019421-7a7f-4973-a715-6797eeed3a7c.jsonl`
+- `/ll:confidence-check` - 2026-06-29T00:00:00 - `96b8b220-dde5-41bd-9f97-4b8271b0db67.jsonl`

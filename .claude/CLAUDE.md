@@ -203,6 +203,17 @@ parse failures explicitly. Set `parse_swallow_ok: true` to suppress in the rare
 case where treating a parse failure as an empty result is intentional and the
 absence of an error route is deliberate.
 
+`ll-loop validate` also enforces a **policy-table rule** (ENH-2309) as WARNING
+severity. For any loop defining `context.policy_rules`, each predicate dimension is
+checked against the set of *scored* dimensions — i.e. those listed in
+`context.rubric_dimensions` (normalized: lowercase + spaces→hyphens) or written by a
+shell state as `rubric-dim-<name>.txt`. A dimension that is referenced but never scored
+is **silently inert at runtime**: `_eval_predicate` returns `True` only for `!=` when
+the dimension is missing from the scores dict, so `==`/`>=`/`<=`/`<`/`>` predicates on
+that dimension can never match and routing always falls through to the catch-all. The
+check names the inert predicate(s) and the missing dimension. Suppressed by
+`policy_dims_scored_ok: true` at the loop top-level.
+
 The `loop-specialist` agent diagnoses violations post-hoc as
 `self-evaluation bias` / `feature-stubbing` failure modes
 (`agents/loop-specialist.md`); this section shifts the gate left.

@@ -38,6 +38,7 @@ from little_loops.fsm.validation import (
     _validate_parameters,
     _validate_parse_swallow,
     _validate_partial_route_dead_end,
+    _validate_policy_dimensions_scored,
     _validate_progress_paths_isolation,
     _validate_state_action,
     _validate_zero_retry_counter,
@@ -3702,3 +3703,157 @@ class TestParseSwallow:
         _, warnings = load_and_validate(loop_yaml, raise_on_error=False)
         unknown = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown == [], f"parse_swallow_ok flagged as unknown: {unknown}"
+
+
+class TestPolicyDimensionsScored:
+    """policy_rules predicate dimensions must be scored (ENH-2309)."""
+
+    def _policy_fsm(
+        self,
+        *,
+        policy_rules: str = "",
+        rubric_dimensions: str = "",
+        shell_scorer_action: str = "",
+        policy_dims_scored_ok: bool = False,
+    ) -> FSMLoop:
+        context: dict = {}
+        if policy_rules:
+            context["policy_rules"] = policy_rules
+        if rubric_dimensions:
+            context["rubric_dimensions"] = rubric_dimensions
+        states: dict = {
+            "work": make_state(action="run.sh", on_yes="done", on_no="done"),
+            "done": make_state(terminal=True),
+        }
+        if shell_scorer_action:
+            states["score"] = make_state(action=shell_scorer_action)
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states=states,
+            context=context,
+            policy_dims_scored_ok=policy_dims_scored_ok,
+        )
+
+    def test_warning_fires_for_unscored_dim(self) -> None:
+        """WARNING fires when a predicate dim is not in rubric_dimensions or shell writes."""
+        fsm = self._policy_fsm(
+            policy_rules="quality:>=85 -> done\n* -> work",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "quality" in errors[0].message
+        assert "inert" in errors[0].message
+
+    def test_no_warning_when_dim_in_rubric_dimensions(self) -> None:
+        """No warning when the predicate dim matches a rubric_dimensions entry."""
+        fsm = self._policy_fsm(
+            policy_rules="quality:>=85 -> done\n* -> work",
+            rubric_dimensions="quality",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_no_warning_when_dim_written_by_shell_scorer(self) -> None:
+        """No warning when a shell state writes rubric-dim-<name>.txt for the dim."""
+        fsm = self._policy_fsm(
+            policy_rules="quality:>=85 -> done\n* -> work",
+            shell_scorer_action="echo 80 > rubric-dim-quality.txt",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_aggregate_exempt(self) -> None:
+        """The reserved 'aggregate' dimension never triggers the warning."""
+        fsm = self._policy_fsm(
+            policy_rules="aggregate:>=85 -> done\n* -> work",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_suppressed_by_policy_dims_scored_ok(self) -> None:
+        """policy_dims_scored_ok: true suppresses the warning."""
+        fsm = self._policy_fsm(
+            policy_rules="quality:>=85 -> done\n* -> work",
+            policy_dims_scored_ok=True,
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_no_errors_for_empty_policy_rules(self) -> None:
+        """An absent or empty policy_rules block produces no errors."""
+        fsm = self._policy_fsm(policy_rules="")
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_no_crash_on_malformed_policy_rules(self) -> None:
+        """A malformed policy_rules block defers to the grammar validator; no crash."""
+        fsm = self._policy_fsm(policy_rules="not valid rule syntax!!!")
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_raw_dim_not_normalized_triggers_warning(self) -> None:
+        """Predicate 'Has Citations' stays raw; rubric_dimensions 'Has Citations'
+        normalizes to 'has-citations' in the scored set — no match, warning fires."""
+        fsm = self._policy_fsm(
+            policy_rules="Has Citations:==true -> done\n* -> work",
+            rubric_dimensions="Has Citations",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert len(errors) == 1
+        assert "Has Citations" in errors[0].message
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the policy-dimensions-scored warning."""
+        fsm = self._policy_fsm(
+            policy_rules="quality:>=85 -> done\n* -> work",
+        )
+        all_errors = validate_fsm(fsm)
+        dim_warnings = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING
+            and "inert" in e.message
+            and e.path == "context.policy_rules"
+        ]
+        assert len(dim_warnings) == 1
+
+    def test_policy_dims_scored_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level policy_dims_scored_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Loop with intentionally unscored dims\n"
+            "initial: work\n"
+            "policy_dims_scored_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+    def test_canonical_policy_refine_dims_pass(self) -> None:
+        """policy-refine's dimensions are all scored — no warning fires."""
+        # policy-refine: rubric_dimensions = "clarity|completeness|feasibility|security"
+        # policy_rules references: security, completeness, feasibility, clarity, aggregate
+        fsm = self._policy_fsm(
+            policy_rules=(
+                "security:<65 -> escalate\n"
+                "completeness:<60 -> deep_repair\n"
+                "feasibility:<60 -> rethink\n"
+                "clarity:>=85 & completeness:>=85 & feasibility:>=85 -> done\n"
+                "aggregate:>=85 -> done\n"
+                "aggregate:>=60 -> light_repair\n"
+                "* -> deep_repair"
+            ),
+            rubric_dimensions="clarity|completeness|feasibility|security",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []

@@ -208,6 +208,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "bash_default_ok",
         "shell_pid_ok",
         "parse_swallow_ok",
+        "policy_dims_scored_ok",
         "import",
         "fragments",
         "from",
@@ -1115,6 +1116,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_classify_route_default(fsm))
 
+    errors.extend(_validate_policy_dimensions_scored(fsm))
+
     errors.extend(_validate_zero_retry_counter(fsm))
 
     errors.extend(_validate_on_max_steps(fsm, defined_states))
@@ -1858,6 +1861,94 @@ def _validate_classify_route_default(fsm: FSMLoop) -> list[ValidationError]:
                     "or set `partial_route_ok: true` at the loop top-level to suppress."
                 ),
                 path=f"states.{state_name}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
+
+
+def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate that policy_rules predicates only reference dimensions that are actually scored.
+
+    A predicate on a dimension absent from both ``context.rubric_dimensions`` and any
+    shell state's ``rubric-dim-<name>.txt`` write is silently inert at runtime —
+    ``_eval_predicate`` returns ``True`` only for ``!=`` when the dimension is missing
+    from the scores dict, so every other operator falls through to the catch-all.
+
+    Referenced dimensions are kept **raw** (un-normalized); the scored set is normalized
+    (lowercase + spaces→hyphens) to match the file-naming convention in
+    ``lib/policy-router.yaml``.  This intentional asymmetry means a predicate whose dim
+    is ``Has Citations`` is flagged as inert even if ``Has Citations`` appears in
+    ``rubric_dimensions`` — because the score key written by ``policy_parse_scores`` is
+    ``has-citations``, which the raw predicate dim never equals at runtime.
+
+    The reserved ``aggregate`` pseudo-dimension is always written by ``policy_parse_scores``
+    and is exempt from this check.
+
+    Suppressed by ``policy_dims_scored_ok: true`` at the loop top-level.
+    """
+    if fsm.policy_dims_scored_ok:
+        return []
+
+    policy_rules_text = str(fsm.context.get("policy_rules", "")).strip()
+    if not policy_rules_text:
+        return []
+
+    from little_loops.fsm.policy_rules import parse_rules
+
+    try:
+        rules = parse_rules(policy_rules_text)
+    except ValueError:
+        return []
+
+    # Collect referenced dimensions raw (un-normalized); skip the reserved 'aggregate'
+    _RESERVED = {"aggregate"}
+    referenced: dict[str, list[str]] = {}
+    for rule in rules:
+        for pred in rule.predicates:
+            if pred.dim in _RESERVED:
+                continue
+            pred_str = f"{pred.dim}:{pred.op}{pred.value}"
+            referenced.setdefault(pred.dim, []).append(pred_str)
+
+    if not referenced:
+        return []
+
+    # Build scored set: normalize rubric_dimensions (lowercase + spaces→hyphens)
+    scored: set[str] = set()
+    rubric_dims_raw = str(fsm.context.get("rubric_dimensions", ""))
+    if rubric_dims_raw.strip():
+        for name in rubric_dims_raw.split("|"):
+            normalized = re.sub(r"\s+", "-", name.strip().lower())
+            if normalized:
+                scored.add(normalized)
+
+    # Also collect dims written via rubric-dim-<name>.txt literals in shell state actions
+    _SCORER_PATTERN = re.compile(r"rubric-dim-([\w-]+)\.txt")
+    for state in fsm.states.values():
+        if not state.action:
+            continue
+        if state.action_type not in ("shell", None):
+            continue
+        for m in _SCORER_PATTERN.finditer(state.action):
+            scored.add(m.group(1))
+
+    # Flag raw-referenced dimensions not present in the normalized scored set
+    errors: list[ValidationError] = []
+    for dim, predicates in sorted(referenced.items()):
+        if dim in scored:
+            continue
+        pred_list = ", ".join(f"`{p}`" for p in predicates)
+        errors.append(
+            ValidationError(
+                message=(
+                    f"dimension `{dim}` is referenced in policy_rules but never scored "
+                    f"(not in rubric_dimensions and no shell state writes "
+                    f"rubric-dim-{dim}.txt) — predicate(s) {pred_list} are inert at "
+                    "runtime and routing will fall through to the catch-all. "
+                    "Set `policy_dims_scored_ok: true` to suppress."
+                ),
+                path="context.policy_rules",
                 severity=ValidationSeverity.WARNING,
             )
         )

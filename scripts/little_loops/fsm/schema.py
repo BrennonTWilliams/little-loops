@@ -1009,6 +1009,7 @@ class FSMLoop:
     evidence_contract_ok: bool = False
     shell_pid_ok: bool = False
     parse_swallow_ok: bool = False
+    policy_dims_scored_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1098,6 +1099,8 @@ class FSMLoop:
             result["shell_pid_ok"] = self.shell_pid_ok
         if self.parse_swallow_ok:
             result["parse_swallow_ok"] = self.parse_swallow_ok
+        if self.policy_dims_scored_ok:
+            result["policy_dims_scored_ok"] = self.policy_dims_scored_ok
 
         return result
 
@@ -1177,6 +1180,7 @@ class FSMLoop:
             evidence_contract_ok=data.get("evidence_contract_ok", False),
             shell_pid_ok=data.get("shell_pid_ok", False),
             parse_swallow_ok=data.get("parse_swallow_ok", False),
+            policy_dims_scored_ok=data.get("policy_dims_scored_ok", False),
             imports=data.get("import", []),
         )
 
