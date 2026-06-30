@@ -2578,6 +2578,85 @@ class TestScratchPadRedirect:
         finally:
             os.chdir(original_dir)
 
+    def test_python_dash_m_pytest_rewritten(self, hook_script: Path, tmp_path: Path):
+        """`python -m pytest ...` is unwrapped to `pytest` and redirected (BUG-2407)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m pytest scripts/tests/"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            hso = output["hookSpecificOutput"]
+            assert hso["permissionDecision"] == "allow"
+            assert "updatedInput" in hso
+            new_cmd = hso["updatedInput"]["command"]
+            assert ".loops/tmp/scratch/" in new_cmd
+            assert "tail -20" in new_cmd
+            assert "python -m pytest scripts/tests/" in new_cmd
+        finally:
+            os.chdir(original_dir)
+
+    def test_python3_dash_m_mypy_rewritten(self, hook_script: Path, tmp_path: Path):
+        """`python3 -m mypy ...` is unwrapped to `mypy` and redirected (BUG-2407)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python3 -m mypy scripts/little_loops/"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            hso = output["hookSpecificOutput"]
+            assert hso["permissionDecision"] == "allow"
+            assert "updatedInput" in hso
+            new_cmd = hso["updatedInput"]["command"]
+            assert ".loops/tmp/scratch/" in new_cmd
+        finally:
+            os.chdir(original_dir)
+
+    def test_python_dash_m_non_allowlisted_module_allow(
+        self, hook_script: Path, tmp_path: Path
+    ):
+        """`python -m <module not in allowlist>` is allowed unchanged."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path, enabled=True)
+            result = self._run(
+                hook_script,
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "python -m http.server 8000"},
+                    "permission_mode": "bypassPermissions",
+                },
+            )
+            assert result.returncode == 0
+            output = json.loads(result.stdout)
+            assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+            assert "updatedInput" not in output["hookSpecificOutput"]
+        finally:
+            os.chdir(original_dir)
+
 
 class TestContextMonitorLockTimeout:
     """Test that context-monitor.sh uses correct lock timeout value."""

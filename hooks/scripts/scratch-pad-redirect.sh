@@ -68,10 +68,20 @@ case "$TOOL_NAME" in
         FIRST_TOKEN=$(echo "$CMD" | awk '{print $1}')
         FIRST_BASE=$(basename "$FIRST_TOKEN" 2>/dev/null || echo "$FIRST_TOKEN")
 
+        # Unwrap `python -m <module>` / `python3 -m <module>` so the allowlist
+        # match sees through the interpreter prefix (BUG-2407).
+        EFFECTIVE_NAME="$FIRST_BASE"
+        case "$FIRST_BASE" in
+            python|python3|python3.*)
+                MOD=$(echo "$CMD" | sed -nE 's/.*[[:space:]]-m[[:space:]]+([A-Za-z0-9_.]+).*/\1/p')
+                [ -n "$MOD" ] && EFFECTIVE_NAME="${MOD##*.}"
+                ;;
+        esac
+
         MATCH=0
         while IFS= read -r cmd; do
             [ -z "$cmd" ] && continue
-            if [ "$FIRST_BASE" = "$cmd" ] || [ "$FIRST_TOKEN" = "$cmd" ]; then
+            if [ "$FIRST_BASE" = "$cmd" ] || [ "$FIRST_TOKEN" = "$cmd" ] || [ "$EFFECTIVE_NAME" = "$cmd" ]; then
                 MATCH=1
                 break
             fi
