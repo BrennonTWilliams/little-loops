@@ -781,7 +781,7 @@ class PersistentExecutor:
 
         # Update final state
         final_status = "completed" if result.terminated_by == "terminal" else "failed"
-        if result.terminated_by in ("max_steps", "max_iterations_reached", "signal"):
+        if result.terminated_by in ("max_steps", "max_iterations_reached", "interrupted"):
             final_status = "interrupted"
         if result.terminated_by == "handoff":
             final_status = "awaiting_continuation"

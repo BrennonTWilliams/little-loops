@@ -1955,7 +1955,7 @@ class TestSignalHandlingPersistence:
         executor.request_shutdown()
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
         # Check persisted state
         state = executor.persistence.load_state()
@@ -2025,7 +2025,7 @@ class TestSignalHandlingPersistence:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         assert "my_capture" in result.captured
         assert result.captured["my_capture"]["output"] == "important_data_xyz"
 
@@ -2092,7 +2092,7 @@ class TestSignalHandlingPersistence:
 
         # First run - gets interrupted
         result1 = executor.run()
-        assert result1.terminated_by == "signal"
+        assert result1.terminated_by == "interrupted"
         assert result1.final_state == "step2"  # Routed after step1
 
         # Check state shows interrupted
@@ -2131,7 +2131,7 @@ class TestSignalHandlingPersistence:
 
         # Find loop_complete event
         loop_complete = next(e for e in events if e["event"] == "loop_complete")
-        assert loop_complete["terminated_by"] == "signal"
+        assert loop_complete["terminated_by"] == "interrupted"
 
     def test_signal_during_multi_iteration_preserves_progress(self, tmp_loops_dir: Path) -> None:
         """Signal during multi-iteration execution preserves all progress."""
@@ -2191,7 +2191,7 @@ class TestSignalHandlingPersistence:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         assert result.iterations == 4  # 4 iterations completed
 
         # Both captures should have latest values
@@ -2202,6 +2202,65 @@ class TestSignalHandlingPersistence:
         # Last step1 was call 3, last step2 was call 4
         assert result.captured["step1_out"]["output"] == "call_3"
         assert result.captured["step2_out"]["output"] == "call_4"
+
+    def test_mid_run_shutdown_emits_interrupted_in_events_jsonl(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Signal received between route and state_enter emits terminated_by='interrupted' in events.jsonl."""
+        fsm = FSMLoop(
+            name="mid-run-signal-test",
+            initial="step1",
+            max_iterations=500,
+            states={
+                "step1": StateConfig(action="echo step1", next="step2"),
+                "step2": StateConfig(action="echo step2", next="step1"),
+            },
+        )
+
+        call_count = [0]
+        executor_ref: list[PersistentExecutor] = []
+
+        class ShutdownAfterFirstRunner:
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+                on_output_line: Any = None,
+                agent: str | None = None,
+                tools: list[str] | None = None,
+                on_usage: Any = None,
+                on_usage_detailed: Any = None,
+                model: str | None = None,
+            ) -> ActionResult:
+                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed, model
+                call_count[0] += 1
+                if call_count[0] == 1 and executor_ref:
+                    # Trigger shutdown after first action — simulates signal between route and state_enter
+                    executor_ref[0].request_shutdown()
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        runner = ShutdownAfterFirstRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner)
+        executor_ref.append(executor)
+
+        result = executor.run()
+
+        # FSMResult.terminated_by must be "interrupted"
+        assert result.terminated_by == "interrupted"
+
+        # events.jsonl loop_complete must also say "interrupted" (not "max_iterations" or "signal")
+        events = executor.persistence.read_events()
+        loop_complete = next(e for e in events if e["event"] == "loop_complete")
+        assert loop_complete["terminated_by"] == "interrupted", (
+            f"Expected 'interrupted' in events.jsonl but got {loop_complete['terminated_by']!r}; "
+            "this fails when shutdown fires between route and state_enter"
+        )
+
+        # state.json status must agree
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
 
 
 class TestRateLimitRetriesPersistence:

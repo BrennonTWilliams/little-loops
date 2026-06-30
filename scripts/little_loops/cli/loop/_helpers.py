@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 # Exit code mapping for terminated_by values
 EXIT_CODES: dict[str, int] = {
     "terminal": 0,
-    "signal": 0,
+    "interrupted": 0,
     "handoff": 0,
     "max_steps": 1,
     "timeout": 1,
@@ -1298,7 +1298,7 @@ def run_foreground(
             # A terminal state whose name is not "done" represents failure (the
             # established convention; see sub-FSM routing in executor.py). Colour
             # only genuine success green so a `failed` terminal doesn't read as a pass.
-            _is_success = result.terminated_by in ("terminal", "signal", "handoff") and not (
+            _is_success = result.terminated_by in ("terminal", "interrupted", "handoff") and not (
                 result.terminated_by == "terminal" and result.final_state != "done"
             )
             if _is_success:

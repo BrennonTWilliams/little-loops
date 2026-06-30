@@ -1757,7 +1757,7 @@ def _derive_loop_outcome(event: dict) -> str:
         return "max-steps"
     if terminated_by == "cycle_detected":
         return "stalled"
-    if terminated_by in ("signal", "handoff", "timeout"):
+    if terminated_by in ("interrupted", "handoff", "timeout"):
         return "interrupted"
     final_state = event.get("final_state", "")
     if any(kw in final_state for kw in ("fail", "error", "abort")):

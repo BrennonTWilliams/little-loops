@@ -2814,7 +2814,7 @@ class TestSignalHandling:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         assert result.iterations == 0
         assert result.final_state == "check"  # Never moved from initial
         assert len(mock_runner.calls) == 0  # No actions executed
@@ -2877,14 +2877,14 @@ class TestSignalHandling:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         # Two iterations completed before shutdown was detected
         assert result.iterations == 2
         assert result.final_state == "step3"
         assert len(runner.calls) == 2  # step1.sh and step2.sh executed
 
     def test_shutdown_emits_loop_complete_event(self) -> None:
-        """Shutdown emits loop_complete event with terminated_by=signal."""
+        """Shutdown emits loop_complete event with terminated_by=interrupted."""
         fsm = FSMLoop(
             name="test-signal",
             initial="check",
@@ -2906,12 +2906,12 @@ class TestSignalHandling:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
         # Find loop_complete event
         loop_complete_events = [e for e in events if e.get("event") == "loop_complete"]
         assert len(loop_complete_events) == 1
-        assert loop_complete_events[0]["terminated_by"] == "signal"
+        assert loop_complete_events[0]["terminated_by"] == "interrupted"
 
     def test_shutdown_preserves_captured_values(self) -> None:
         """Shutdown preserves captured values from completed iterations."""
@@ -2976,7 +2976,7 @@ class TestSignalHandling:
 
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         assert "my_value" in result.captured
         assert result.captured["my_value"]["output"] == "captured_data_123"
 
@@ -3002,7 +3002,7 @@ class TestSignalHandling:
         result = executor.run()
 
         # Signal takes precedence over max_steps
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
     def test_shutdown_checked_before_timeout(self) -> None:
         """Shutdown is checked before timeout check."""
@@ -3028,7 +3028,7 @@ class TestSignalHandling:
             result = executor.run()
 
         # Signal takes precedence over timeout
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
     def test_sigkill_on_next_state_triggers_shutdown(self) -> None:
         """SIGKILL (exit_code=-9) on a prompt action with state.next triggers shutdown, not next routing."""
@@ -3047,7 +3047,7 @@ class TestSignalHandling:
         result = executor.run()
 
         # Should terminate via signal, not route to refine_issues
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
         assert result.final_state == "score_issues"
         # refine_issues must never have been entered
         assert all("/refine" not in call for call in mock_runner.calls)
@@ -3113,7 +3113,7 @@ class TestSignalHandling:
         result = executor.run()
 
         assert result.final_state == "done"
-        assert result.terminated_by != "signal"
+        assert result.terminated_by != "interrupted"
 
 
 class TestActionExceptionRouting:
@@ -3798,7 +3798,7 @@ class TestFatalErrorAndStopSignals:
         )
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
 
 class TestRoutingEdgeCases:
@@ -3928,7 +3928,7 @@ class TestShutdownRequest:
         executor.request_shutdown()
         result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
 
 class TestBackoff:
@@ -4046,7 +4046,7 @@ class TestBackoff:
             with patch("little_loops.fsm.executor.time.sleep"):
                 result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
 
 class TestDefaultActionRunnerProcessTracking:
@@ -6211,7 +6211,7 @@ class TestRateLimitTwoTier:
         with patch("little_loops.fsm.executor.time.sleep", side_effect=_sleep_and_maybe_signal):
             result = executor.run()
 
-        assert result.terminated_by == "signal"
+        assert result.terminated_by == "interrupted"
 
     def test_total_wait_seconds_accumulates_across_tiers(self) -> None:
         """total_wait_seconds accumulates real elapsed sleep across short + long tiers."""

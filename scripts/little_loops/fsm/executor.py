@@ -313,7 +313,7 @@ class FSMExecutor:
             while True:
                 # Check shutdown request (signal handling)
                 if self._shutdown_requested:
-                    return self._finish("signal")
+                    return self._finish("interrupted")
 
                 # Check step limit (max_steps): caps individual state executions.
                 if self.iteration >= self.fsm.max_steps:
@@ -532,7 +532,7 @@ class FSMExecutor:
 
                 # SIGKILL in _execute_state sets shutdown flag and returns None
                 if next_state is None and self._shutdown_requested:
-                    return self._finish("signal")
+                    return self._finish("interrupted")
 
                 if next_state is None:
                     # BUG-158 / BUG-2204: if a cap summary handler executed and
