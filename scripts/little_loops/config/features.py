@@ -346,6 +346,25 @@ class DesignTokensConfig:
 
 
 @dataclass
+class ArtifactsConfig:
+    """Configuration for `ll-artifact` artifact generators (FEAT-2301).
+
+    `default_output_dir` is the directory where generated human-facing
+    artifacts (HTML builders, diagrams, exporters) are written when no
+    `--output` override is given. Shared across all `ll-artifact` subcommands.
+    """
+
+    default_output_dir: str = "."
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ArtifactsConfig:
+        """Create ArtifactsConfig from dictionary."""
+        return cls(
+            default_output_dir=data.get("default_output_dir", "."),
+        )
+
+
+@dataclass
 class SprintsConfig:
     """Sprint management configuration."""
 

@@ -1,0 +1,206 @@
+{
+  "_comment": "FEAT-2301 cross-language conformance corpus. Pins policy-rule validator logic shared between Python (evaluate_rules/_detect_shadows) and the HTML builder's JS validator. Rule tables use the canonical text grammar (see fsm/policy_rules.py parse_rules).",
+  "evaluate_cases": [
+    {
+      "name": "ordered-op numeric match",
+      "rules": "security:<65 -> escalate\naggregate:>=85 -> done\n* -> deep_repair",
+      "scores": {
+        "security": 50,
+        "aggregate": 90
+      },
+      "expected_target": "escalate"
+    },
+    {
+      "name": "ordered-op numeric coercion '9' < '10' is numeric-true",
+      "rules": "version:<10 -> old\n* -> current",
+      "scores": {
+        "version": "9"
+      },
+      "expected_target": "old"
+    },
+    {
+      "name": "ordered-op string '9' would be lexically > '10' but numeric wins (no match here)",
+      "rules": "version:<10 -> old\n* -> current",
+      "scores": {
+        "version": "11"
+      },
+      "expected_target": "current"
+    },
+    {
+      "name": "catch-all fall-through (no specific rule matches)",
+      "rules": "security:<65 -> escalate\n* -> deep_repair",
+      "scores": {
+        "security": 90
+      },
+      "expected_target": "deep_repair"
+    },
+    {
+      "name": "conjunctive & rule both predicates pass",
+      "rules": "security:>=80 & coverage:>=90 -> ship\n* -> hold",
+      "scores": {
+        "security": 85,
+        "coverage": 95
+      },
+      "expected_target": "ship"
+    },
+    {
+      "name": "conjunctive & rule one predicate fails",
+      "rules": "security:>=80 & coverage:>=90 -> ship\n* -> hold",
+      "scores": {
+        "security": 85,
+        "coverage": 70
+      },
+      "expected_target": "hold"
+    },
+    {
+      "name": "missing dimension matches only != (here == on missing dim fails, falls to catch-all)",
+      "rules": "flag:==true -> on\n* -> off",
+      "scores": {
+        "other": 1
+      },
+      "expected_target": "off"
+    },
+    {
+      "name": "missing dimension matches != (absent != value is true)",
+      "rules": "flag:!=true -> notset\n* -> off",
+      "scores": {
+        "other": 1
+      },
+      "expected_target": "notset"
+    },
+    {
+      "name": "== numeric comparison (100 == 100 true)",
+      "rules": "score:==100 -> perfect\n* -> imperfect",
+      "scores": {
+        "score": 100
+      },
+      "expected_target": "perfect"
+    },
+    {
+      "name": "== string comparison fallback (status string equality)",
+      "rules": "status:==passing -> green\n* -> red",
+      "scores": {
+        "status": "passing"
+      },
+      "expected_target": "green"
+    },
+    {
+      "name": "!= string comparison fallback (different strings)",
+      "rules": "status:!=passing -> notgreen\n* -> green",
+      "scores": {
+        "status": "failing"
+      },
+      "expected_target": "notgreen"
+    },
+    {
+      "name": "== numeric vs string coercion ('100' == 100 numeric-true)",
+      "rules": "score:==100 -> perfect\n* -> imperfect",
+      "scores": {
+        "score": "100"
+      },
+      "expected_target": "perfect"
+    },
+    {
+      "name": "boolean-encoded predicate: dim scored 100 with >=50 matches",
+      "rules": "ready:>=50 -> go\n* -> wait",
+      "scores": {
+        "ready": 100
+      },
+      "expected_target": "go"
+    },
+    {
+      "name": "boolean-encoded predicate: dim scored 0 with >=50 falls through",
+      "rules": "ready:>=50 -> go\n* -> wait",
+      "scores": {
+        "ready": 0
+      },
+      "expected_target": "wait"
+    },
+    {
+      "name": "first-match-wins ordering (earlier broad rule wins over later specific)",
+      "rules": "security:<90 -> first\nsecurity:<70 -> second\n* -> third",
+      "scores": {
+        "security": 50
+      },
+      "expected_target": "first"
+    },
+    {
+      "name": "no rule matches and no catch-all returns null",
+      "rules": "security:<40 -> escalate\naggregate:>=99 -> done",
+      "scores": {
+        "security": 50,
+        "aggregate": 90
+      },
+      "expected_target": null
+    },
+    {
+      "name": "!= numeric comparison (100 != 90 true)",
+      "rules": "score:!=90 -> changed\n* -> same",
+      "scores": {
+        "score": 100
+      },
+      "expected_target": "changed"
+    },
+    {
+      "name": "ordered op > strictly greater (equal value does NOT match >)",
+      "rules": "score:>85 -> above\n* -> notabove",
+      "scores": {
+        "score": 85
+      },
+      "expected_target": "notabove"
+    }
+  ],
+  "shadow_cases": [
+    {
+      "name": "catch-all shadows later rule",
+      "rules": "* -> deep_repair\nsecurity:<65 -> escalate",
+      "expected_shadowed_rule_numbers": [
+        2
+      ]
+    },
+    {
+      "name": "subset-predicate shadowing (earlier fewer constraints subsumes later)",
+      "rules": "security:>=80 -> a\nsecurity:>=80 & coverage:>=90 -> b\n* -> c",
+      "expected_shadowed_rule_numbers": [
+        2
+      ]
+    },
+    {
+      "name": "clean table no shadows",
+      "rules": "security:<65 -> escalate\naggregate:>=85 -> done\n* -> deep_repair",
+      "expected_shadowed_rule_numbers": []
+    },
+    {
+      "name": "multi-rule one shadow (catch-all in middle shadows last)",
+      "rules": "security:<65 -> escalate\n* -> deep_repair\naggregate:>=85 -> done",
+      "expected_shadowed_rule_numbers": [
+        3
+      ]
+    },
+    {
+      "name": "no shadow: distinct predicate sets",
+      "rules": "a:>=1 -> one\nb:>=2 -> two\nc:>=3 -> three",
+      "expected_shadowed_rule_numbers": []
+    },
+    {
+      "name": "identical predicate set is a subset (later rule shadowed)",
+      "rules": "x:==1 -> first\nx:==1 -> second",
+      "expected_shadowed_rule_numbers": [
+        2
+      ]
+    },
+    {
+      "name": "catch-all last shadows nothing (no later non-catchall rules)",
+      "rules": "security:<65 -> escalate\naggregate:>=85 -> done\n* -> fallback",
+      "expected_shadowed_rule_numbers": []
+    },
+    {
+      "name": "two shadows: catch-all first shadows both following rules",
+      "rules": "* -> base\na:>=1 -> one\nb:>=2 -> two",
+      "expected_shadowed_rule_numbers": [
+        2,
+        3
+      ]
+    }
+  ]
+}

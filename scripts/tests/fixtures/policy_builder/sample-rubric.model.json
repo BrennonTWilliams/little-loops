@@ -1,0 +1,13 @@
+{
+  "mode": "rubric",
+  "name": "sample-rubric",
+  "description": "Sample rubric model used to prove the rubric emit path validates.",
+  "subject": "artifact.md",
+  "maxSteps": 10,
+  "thresholdHigh": 85,
+  "thresholdMedium": 65,
+  "dimensions": [
+    { "name": "Clarity", "type": "numeric" },
+    { "name": "Has Examples", "type": "boolean" }
+  ]
+}

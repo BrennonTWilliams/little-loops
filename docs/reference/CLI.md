@@ -1518,6 +1518,7 @@ Manage rules, decisions, and exceptions log.
 | `--before <ISO-8601>` | Show entries with timestamp before this date |
 | `--scope <scope>` | Filter `DecisionEntry` records by scope |
 | `--active-only` | Exclude entries superseded by a newer entry |
+| `--enforcement` | Filter `rule`/`coupling` entries by enforcement level: `required` or `advisory` |
 | `--format` / `-f` | Output format: `text` (default), `json` |
 
 **`add` flags:**
@@ -1580,6 +1581,7 @@ No additional flags. Analyzes `decision` entries and clusters them by category a
 ```bash
 ll-issues decisions list
 ll-issues decisions list --type rule --active-only
+ll-issues decisions list --type rule --enforcement required --active-only  # only enforced rules
 ll-issues decisions list --no-outcome
 ll-issues decisions add --type=decision --category=architecture --rule="Use atomic_write" --rationale="Prevents partial state"
 ll-issues decisions outcome dec-001 --result=worked --notes="No incidents in 30 days"
@@ -2661,6 +2663,38 @@ python -m pytest tests/   # Run starter tests
 ```
 
 > **See also:** [Write a little-loops hook](../claude-code/write-a-hook.md) — full authoring walkthrough for the `LLHookIntentExtension` Protocol, including the adapter flow and pure-function + subprocess testing patterns.
+
+---
+
+### ll-artifact
+
+Generate self-contained, human-facing HTML artifacts from project data. All project-derived inputs are stamped into the page at generation time, so the output works over `file://` with no runtime fetch.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `policy-builder` | Emit a visual builder for policy-router / rubric FSM loop YAML |
+
+**Exit codes:** `0` = artifact generated successfully, `1` = error
+
+#### ll-artifact policy-builder
+
+Emit `policy-router-builder.html` — a single self-contained page for visually authoring Decision Table and Rubric loop YAML. The page inlines three project-derived blobs: design-token CSS variables (light + dark, from `load_design_tokens` / `render_as_css_vars_themed`), the canonical predicate grammar (`policy_rules.grammar_spec()`), and the skill/command catalog (from `skills/*/SKILL.md` + `commands/*.md`). It renders a live YAML preview, shadow / zero-condition / unknown-action validation hints, Copy/Download, and a light/dark theme toggle.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--output` | `-o` | Output directory (default: `config.artifacts.default_output_dir`, normally `.`) |
+
+**Examples:**
+```bash
+ll-artifact policy-builder                   # Write policy-router-builder.html to the default output dir
+ll-artifact policy-builder -o build/         # Write to a custom directory
+```
+
+> **Note:** Generated YAML can be validated with `ll-loop validate <name>` after downloading. Decision Table output imports `lib/rubric-router.yaml` then `lib/policy-router.yaml`; Rubric output imports only `lib/rubric-router.yaml`.
 
 ---
 

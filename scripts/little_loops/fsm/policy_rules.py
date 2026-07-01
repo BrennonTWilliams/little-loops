@@ -252,3 +252,33 @@ def evaluate_rules(rules: list[Rule], scores: dict[str, object]) -> str | None:
         if all(_eval_predicate(p, scores) for p in rule.predicates):
             return rule.target
     return None
+
+
+# ---------------------------------------------------------------------------
+# Grammar export / cross-engine translation
+# ---------------------------------------------------------------------------
+
+
+def grammar_spec() -> dict[str, object]:
+    """Public, serializable view of the canonical predicate grammar.
+
+    Single source for any consumer that must mirror the grammar out-of-process
+    (the FEAT-2301 HTML builder's JS, route_table's operator list, ...).
+    Operator lists are returned sorted for deterministic output.
+    """
+    return {
+        "ordered_ops": sorted(_ORDERED_OPS),
+        "all_ops": sorted(_ALL_OPS),
+        "pred_pattern": _PRED_PATTERN.pattern,
+    }
+
+
+def _py_pattern_to_js(pattern: str) -> str:
+    """Translate a Python regex source string to its JS RegExp equivalent.
+
+    Only the named-group syntax differs for the patterns we stamp:
+    Python ``(?P<name>...)`` -> JS ``(?<name>...)``. All other constructs in
+    ``_PRED_PATTERN`` (\\w \\s \\S \\-, the >=|<=|==|!=|<|> alternation, lazy *?,
+    ^...$ anchors) are identical across engines.
+    """
+    return re.sub(r"\(\?P<([^>]+)>", r"(?<\1>", pattern)

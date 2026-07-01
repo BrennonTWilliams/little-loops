@@ -10,11 +10,16 @@ Covers:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from little_loops.fsm.policy_rules import (
+    _PRED_PATTERN,
     Predicate,
+    _py_pattern_to_js,
     evaluate_rules,
+    grammar_spec,
     parse_rules,
     serialize_rules,
 )
@@ -333,3 +338,106 @@ class TestEvaluateRules:
             )
             == "REFINE"
         )
+
+
+# ---------------------------------------------------------------------------
+# grammar_spec / _py_pattern_to_js  (FEAT-2301 cross-engine grammar export)
+# ---------------------------------------------------------------------------
+
+# Predicate strings that SHOULD match _PRED_PATTERN.
+_MATCHING_CORPUS = [
+    "confidence:>=85",
+    "has-citations:==true",
+    "aggregate:<60",
+    "x:!=foo",
+    "security:<=65",
+    "outcome:>75",
+    "flag:==false",
+    "change-surface:==0",
+    "dim with spaces:>=10",
+    "a:!=b",
+    "completeness : < 60",
+    "ambiguity:>=15",
+]
+
+# Predicate strings that should NOT match _PRED_PATTERN.
+_NON_MATCHING_CORPUS = [
+    "",
+    "no-op-here",
+    ":>=5",
+    "dim:",
+    "dim>=5",
+]
+
+
+class TestGrammarSpec:
+    def test_all_ops_sorted(self) -> None:
+        assert grammar_spec()["all_ops"] == sorted([">=", "<=", "==", "!=", "<", ">"])
+
+    def test_ordered_ops_sorted(self) -> None:
+        assert grammar_spec()["ordered_ops"] == sorted([">=", "<=", "<", ">"])
+
+    def test_pred_pattern_matches_constant(self) -> None:
+        assert grammar_spec()["pred_pattern"] == _PRED_PATTERN.pattern
+
+    def test_spec_keys(self) -> None:
+        assert set(grammar_spec().keys()) == {"ordered_ops", "all_ops", "pred_pattern"}
+
+
+class TestPyPatternToJs:
+    def test_simple_named_group_translation(self) -> None:
+        assert _py_pattern_to_js("(?P<dim>x)(?P<op>y)") == "(?<dim>x)(?<op>y)"
+
+    def test_no_named_groups_unchanged(self) -> None:
+        assert _py_pattern_to_js(r"^abc\d+$") == r"^abc\d+$"
+
+    def test_js_form_has_all_group_names(self) -> None:
+        js = _py_pattern_to_js(_PRED_PATTERN.pattern)
+        assert "(?<dim>" in js
+        assert "(?<op>" in js
+        assert "(?<value>" in js
+
+    def test_js_form_drops_python_named_group_syntax(self) -> None:
+        js = _py_pattern_to_js(_PRED_PATTERN.pattern)
+        assert "(?P<" not in js
+
+    def test_translation_is_named_group_only(self) -> None:
+        """The ONLY byte difference is (?P<name> -> (?<name>.
+
+        Re-adding the ``P`` to every JS named group must reproduce the original
+        Python pattern exactly. This proves the transform touches nothing else
+        (anchors, char classes, the operator alternation, lazy quantifiers).
+        Python's ``re`` cannot compile the JS form ``(?<name>...)`` directly, so
+        we verify structure-preservation via this exact-string round-trip rather
+        than by compiling the JS source (which is reserved for the JS engine).
+        """
+        js = _py_pattern_to_js(_PRED_PATTERN.pattern)
+        back_to_py = re.sub(r"\(\?<([^>]+)>", r"(?P<\1>", js)
+        assert back_to_py == _PRED_PATTERN.pattern
+
+    def test_roundtrip_corpus_match_parity(self) -> None:
+        """The Python pattern that the JS form is derived from is the source of
+        truth for what JS will match.
+
+        Since the translation is provably named-group-only (see
+        :meth:`test_translation_is_named_group_only`), matching behavior is
+        identical across engines. We exercise the corpus against the canonical
+        ``_PRED_PATTERN`` to pin the expected accept/reject set the JS form must
+        reproduce. We cannot run node here, so this stands in for executing the
+        translated RegExp.
+        """
+        for text in _MATCHING_CORPUS:
+            assert _PRED_PATTERN.match(text) is not None, f"should match {text!r}"
+        for text in _NON_MATCHING_CORPUS:
+            assert _PRED_PATTERN.match(text) is None, f"should NOT match {text!r}"
+
+    def test_translated_pattern_does_not_compile_as_python(self) -> None:
+        """Sanity guard: the JS form is genuinely JS-flavored, not Python.
+
+        Python's ``re`` rejects ``(?<name>...)`` (it requires ``(?P<name>...)``),
+        so a successful translation must raise here. This documents why we verify
+        the JS form structurally rather than by compiling it in Python.
+        """
+        js = _py_pattern_to_js(_PRED_PATTERN.pattern)
+        with pytest.raises(re.error):
+            re.compile(js)

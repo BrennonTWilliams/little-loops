@@ -1,0 +1,58 @@
+name: sample-rubric
+description: |
+  Sample rubric model used to prove the rubric emit path validates.
+category: quality
+input_key: subject
+required_inputs: ["subject"]
+initial: score
+max_steps: 10
+import:
+  - lib/rubric-router.yaml
+
+context:
+  subject: "artifact.md"
+  rubric_dimensions: "clarity|has-examples"
+  threshold_high: "85"
+  threshold_medium: "65"
+
+states:
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      For boolean dimensions (has-examples): score 100 if the condition holds, 0 if it does not.
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  parse_scores:
+    fragment: rubric_parse_scores
+    next: route_high
+
+  route_high:
+    fragment: rubric_route_high
+    on_yes: done
+    on_no: route_medium
+
+  route_medium:
+    fragment: rubric_route_medium
+    on_yes: light_repair
+    on_no: deep_repair
+
+  light_repair:
+    action_type: prompt
+    action: |
+      Apply light refinements to ${context.subject}.
+      Focus on the lowest-scoring dimensions to push the aggregate above ${context.threshold_high}.
+    next: score
+
+  deep_repair:
+    action_type: prompt
+    action: |
+      Apply comprehensive repairs to ${context.subject}.
+      The aggregate is below ${context.threshold_medium}; rewrite the weakest sections.
+    next: score
+
+  done:
+    terminal: true

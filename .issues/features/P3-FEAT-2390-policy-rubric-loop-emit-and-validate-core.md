@@ -3,8 +3,9 @@ id: FEAT-2390
 title: Policy/rubric loop emit + validate engine (headless core)
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-28
+completed_at: 2026-07-01 02:33:41+00:00
 discovered_by: rescope-feat-2301
 relates_to:
 - FEAT-2301
@@ -526,7 +527,50 @@ _Added by `/ll:confidence-check` on 2026-06-30_
   here; the closest in-repo precedents (`verify_design_tokens.py`, `doc_counts.py`) are
   same-language structural diffs, not a corpus shared across two languages.
 
+## Resolution
+
+_Implemented via `/ll:manage-issue` on 2026-06-30._
+
+**Approach:** Ported the reviewed engine from `feat-2301-self-contained-html-builder`
+(commit `08e272b6`) onto the `main` basis (the recommended execution choice), then
+hardened and gated it. Cherry-pick applied cleanly except a trivial `cli/__init__.py`
+`__all__` conflict (`main_adapt` vs `main_artifact` — kept both); the FEAT-2301 issue
+file change in the commit was discarded (out of scope, FEAT-2301 stays open).
+
+**AC status — all met:**
+- `grammar_spec()` / `_py_pattern_to_js()` exposed and unit-tested (`test_policy_rules.py`);
+  JS-translated regex proven identical to `_PRED_PATTERN` over the corpus.
+- Both emit modes pass `ll-loop validate` with zero ERROR findings — decision-table
+  (golden `sample-decision-table.yaml`) **and** rubric (added golden `sample-rubric.yaml`
+  + `test_golden_rubric_yaml_validates`, since the AC requires *each* mode and only
+  decision-table was pinned on-branch).
+- Boolean-dim `==true→>=50` / `==false→<50`; dimension-name normalization shared across
+  header/instruction/predicate.
+- Drift guard: `test_emitted_grammar_matches_canonical` (Python) + node conformance corpus.
+- **JS logic pinned:** `node --test scripts/tests/js/*.test.mjs` (Node ≥22, zero deps), 7 tests.
+- `render_as_css_vars_themed(light, dark)` emits scoped `:root` + `[data-theme=dark]`.
+- **`active_theme` stamped** — fixed the FEAT-2301 worktree theme bug: `cmd_policy_builder`
+  now stamps the configured theme onto `<html data-theme=...>` (was hardcoded `light`).
+
+**Deviations / decisions:**
+- **CI location = the local pytest suite, NOT GitHub Actions.** The repo has no hosted CI
+  by design and the maintainer does not pay for Actions. The "named, enforced location"
+  AC is satisfied by wrapping the node:test suite in a pytest test
+  (`test_policy_builder_node_gate.py`) so it runs under `python -m pytest scripts/tests/`.
+  Codified in `.claude/CLAUDE.md` (Testing & CI Policy) and `CONTRIBUTING.md`.
+- **Fixed a NUL byte** in `policy_builder_core.mjs` (raw `\x00` delimiters in shadow-key
+  template literals made the file binary); replaced with the ` ` source escape —
+  byte-identical runtime string, pure-text source, HTML output no longer inlines a NUL.
+- Added `BRConfig.to_dict()` `artifacts` block the on-branch commit missed (wiring gap).
+- README "37 CLI tools" count left as-is: it is test-pinned (FEAT-1045) and the issue
+  marked updating it optional; bumping it broke `test_wiring_guides_and_meta.py`, so reverted.
+
+**Verification:** full suite 13,272 passed / 23 skipped; node 7/7; ruff + mypy + ll-verify-package-data
+clean. (One unrelated pre-existing failure remains on `main`: `manage-issue/SKILL.md` = 523 lines
+exceeds the ENH-494 500-line limit — untouched by this issue.)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-06-30 - `94f01e4a-8995-4dd3-9a06-d06181dd9822.jsonl`
 - `/ll:ready-issue` - 2026-07-01T01:41:50 - `36499533-7bd1-4f6d-9bbf-d3658fc451c9.jsonl`
 - `/ll:confidence-check` - 2026-06-30T20:34:56 - `d9f2d02c-a767-40d1-86bf-f3379ca2be91.jsonl`
 - `/ll:wire-issue` - 2026-07-01T01:26:13 - `0d62aae1-e523-4234-ae5c-8ec43811386e.jsonl`

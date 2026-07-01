@@ -11,6 +11,7 @@ from little_loops.design_tokens import (
     DesignTokens,
     load_design_tokens,
     render_as_css_vars,
+    render_as_css_vars_themed,
     render_as_prompt_context,
 )
 
@@ -321,6 +322,68 @@ class TestRenderAsCssVars:
         tokens = load_design_tokens(config)
         assert tokens is not None
         assert "--a-b-c: 1rem;" in render_as_css_vars(tokens)
+
+
+# ---------------------------------------------------------------------------
+# render_as_css_vars_themed
+# ---------------------------------------------------------------------------
+
+
+class TestRenderAsCssVarsThemed:
+    def _load_light_dark(
+        self, tmp_path: Path
+    ) -> tuple[DesignTokens, DesignTokens]:
+        """Write light + dark theme files and load both, returning (light, dark)."""
+        token_dir = _write_tokens(
+            tmp_path,
+            primitives={"color": {"light": {"500": "#FFFFFF"}, "dark": {"500": "#000000"}}},
+            semantic={
+                "color": {"bg": "{color.light.500}"},
+                # Metadata key (starts with `_`) must NOT leak into the CSS output.
+                "_note": "internal annotation",
+            },
+            theme_name="light",
+            theme={"color": {"bg": "{color.light.500}"}},
+        )
+        (token_dir / "themes" / "dark.json").write_text(
+            json.dumps({"color": {"bg": "{color.dark.500}"}})
+        )
+        config = _make_config(tmp_path)
+        light = load_design_tokens(config, theme="light")
+        dark = load_design_tokens(config, theme="dark")
+        assert light is not None and dark is not None
+        return light, dark
+
+    def test_emits_both_scoped_blocks(self, tmp_path: Path) -> None:
+        light, dark = self._load_light_dark(tmp_path)
+        output = render_as_css_vars_themed(light, dark)
+        assert ":root {" in output
+        assert "[data-theme=dark] {" in output
+
+    def test_values_resolved_to_concrete_hex(self, tmp_path: Path) -> None:
+        light, dark = self._load_light_dark(tmp_path)
+        output = render_as_css_vars_themed(light, dark)
+        # No unresolved alias text should survive.
+        assert "{color" not in output
+        assert "--color-bg: #FFFFFF;" in output
+        assert "--color-bg: #000000;" in output
+
+    def test_light_and_dark_distinct_for_shared_token(self, tmp_path: Path) -> None:
+        light, dark = self._load_light_dark(tmp_path)
+        assert light.resolved["color.bg"] != dark.resolved["color.bg"]
+        output = render_as_css_vars_themed(light, dark)
+        root_block, dark_block = output.split("[data-theme=dark] {")
+        assert "--color-bg: #FFFFFF;" in root_block
+        assert "--color-bg: #000000;" in dark_block
+
+    def test_metadata_keys_skipped(self, tmp_path: Path) -> None:
+        light, dark = self._load_light_dark(tmp_path)
+        # The metadata key is present in the resolved tokens...
+        assert "_note" in light.resolved
+        # ...but must be filtered out of the stylesheet.
+        output = render_as_css_vars_themed(light, dark)
+        assert "_note" not in output
+        assert "--_" not in output
 
 
 # ---------------------------------------------------------------------------

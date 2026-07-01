@@ -50,6 +50,7 @@ Repository = "https://github.com/BrennonTWilliams/little-loops"
 
 [project.scripts]
 ll-action = "little_loops.cli:main_action"
+ll-artifact = "little_loops.cli:main_artifact"
 ll-harness = "little_loops.cli:main_harness"
 ll-auto = "little_loops.cli:main_auto"
 ll-parallel = "little_loops.cli:main_parallel"

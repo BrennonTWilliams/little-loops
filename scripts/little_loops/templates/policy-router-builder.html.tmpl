@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Policy Router Builder</title>
+  <style>
+/* Stamped design-token CSS custom properties (light :root + [data-theme=dark]). */
+/*__THEMED_CSS_VARS__*/
+
+:root {
+  color-scheme: light dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--typography-font-family-base, system-ui, sans-serif);
+  background: var(--color-surface-base, #ffffff);
+  color: var(--color-text-primary, #1a1a1a);
+  line-height: 1.5;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-border-default, #d0d0d0);
+}
+h1 { font-size: 1.25rem; margin: 0; }
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+.panel {
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--color-surface-raised, #fafafa);
+}
+fieldset {
+  border: 1px solid var(--color-border-default, #d0d0d0);
+  border-radius: 6px;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+}
+legend { font-weight: 600; padding: 0 0.4rem; }
+label { display: block; font-size: 0.85rem; margin: 0.4rem 0 0.15rem; }
+input, select, textarea, button {
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface-base, #fff);
+  border: 1px solid var(--color-border-default, #ccc);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+}
+input[type="text"], input[type="number"], textarea, select { width: 100%; }
+textarea { min-height: 4rem; resize: vertical; }
+button {
+  cursor: pointer;
+  background: var(--color-action-primary, #2563eb);
+  color: var(--color-action-primary-text, #ffffff);
+  border: none;
+}
+button.secondary {
+  background: transparent;
+  color: var(--color-text-primary, #1a1a1a);
+  border: 1px solid var(--color-border-default, #ccc);
+}
+.row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+.row > * { flex: 1; }
+.row > button { flex: 0 0 auto; }
+.outcome-group { border: 1px dashed var(--color-border-default, #ccc); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
+.rule-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.fallback-row { font-style: italic; opacity: 0.85; }
+pre {
+  background: var(--color-surface-sunken, #1e1e1e);
+  color: var(--color-text-on-sunken, #e0e0e0);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 60vh;
+  white-space: pre;
+  font-family: var(--typography-font-family-mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+}
+.messages { margin: 0.5rem 0; padding: 0; list-style: none; }
+.messages li { padding: 0.3rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; font-size: 0.85rem; }
+.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
+.msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
+.msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
+.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; }
+.theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
+.del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
+small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Policy Router Builder</h1>
+    <div>
+      <select id="mode-switch" aria-label="Builder mode">
+        <option value="decision_table">Decision Table</option>
+        <option value="rubric">Rubric</option>
+      </select>
+      <button class="secondary theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
+    </div>
+  </header>
+
+  <!-- Stamped project-derived JSON globals (plain script, before the module). -->
+  <script>
+    window.__GRAMMAR_SPEC__ = /*__GRAMMAR_SPEC_JSON__*/;
+    window.__SKILL_CATALOG__ = /*__SKILL_CATALOG_JSON__*/;
+    window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
+  </script>
+
+  <main>
+    <section class="panel" id="form-panel">
+      <fieldset>
+        <legend>Identity</legend>
+        <label for="f-name">Loop name</label>
+        <input type="text" id="f-name" value="my-policy-loop" />
+        <label for="f-subject">Subject (context.subject)</label>
+        <input type="text" id="f-subject" value="artifact.md" />
+        <label for="f-maxsteps">Max steps</label>
+        <input type="number" id="f-maxsteps" value="20" min="1" />
+        <label for="f-desc">Description (optional)</label>
+        <textarea id="f-desc"></textarea>
+      </fieldset>
+
+      <fieldset id="threshold-fieldset" hidden>
+        <legend>Thresholds (Rubric)</legend>
+        <label for="f-thigh">High threshold: <span id="thigh-val">85</span></label>
+        <input type="range" id="f-thigh" min="0" max="100" value="85" />
+        <label for="f-tmed">Medium threshold: <span id="tmed-val">65</span></label>
+        <input type="range" id="f-tmed" min="0" max="100" value="65" />
+      </fieldset>
+
+      <fieldset>
+        <legend>Dimensions</legend>
+        <div id="dim-list"></div>
+        <div class="row">
+          <input type="text" id="dim-name" placeholder="dimension name" />
+          <select id="dim-type">
+            <option value="numeric">numeric</option>
+            <option value="boolean">boolean</option>
+          </select>
+          <button id="add-dim" type="button">Add</button>
+        </div>
+        <small class="help">Boolean dimensions are scored 100/0 and compiled to numeric predicates.</small>
+      </fieldset>
+
+      <fieldset id="rules-fieldset">
+        <legend>Rules &amp; Outcomes (Decision Table)</legend>
+        <div id="outcome-list"></div>
+        <div class="row">
+          <input type="text" id="outcome-name" placeholder="new outcome name" />
+          <button id="add-outcome" type="button">Add outcome</button>
+        </div>
+        <div class="row fallback-row">
+          <span>Everything else →</span>
+          <input type="text" id="f-fallback" value="deep_repair" />
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="panel">
+      <h2 style="margin-top:0;font-size:1rem;">Live YAML</h2>
+      <ul class="messages" id="messages"></ul>
+      <div class="row" style="margin-bottom:0.5rem;">
+        <button id="copy-btn" type="button">Copy</button>
+        <button id="download-btn" type="button">Download &lt;name&gt;.yaml</button>
+      </div>
+      <p class="hint" id="validate-hint"></p>
+      <pre id="yaml-preview"></pre>
+    </section>
+  </main>
+
+  <script type="module">
+/*__BUILDER_CORE_JS__*/
+
+// ===========================================================================
+// UI glue — reads window.__GRAMMAR_SPEC__ / window.__SKILL_CATALOG__ and wires
+// a working (visually basic) form to the inlined core. State is a single model
+// object matching serializeLoopYaml's contract.
+// ===========================================================================
+const GRAMMAR = window.__GRAMMAR_SPEC__ || { all_ops: ["==", "!=", ">=", "<=", "<", ">"], ordered_ops: [">=", "<=", "<", ">"] };
+const CATALOG = window.__SKILL_CATALOG__ || [];
+
+const state = {
+  mode: "decision_table",
+  name: "my-policy-loop",
+  description: "",
+  subject: "artifact.md",
+  maxSteps: 20,
+  thresholdHigh: 85,
+  thresholdMedium: 65,
+  dimensions: [],
+  // outcomes drive both the rule grouping and per-outcome state authoring.
+  outcomes: [],
+  fallback: "deep_repair",
+};
+
+// Each outcome carries its own rule rows (predicate lists). We flatten them
+// into model.rules (in outcome order) at serialize time.
+function buildModel() {
+  const rules = [];
+  for (const oc of state.outcomes) {
+    for (const r of oc.rules || []) {
+      if (!r.predicates.length) continue;
+      rules.push({ predicates: r.predicates, target: oc.name, isCatchall: false });
+    }
+  }
+  return {
+    mode: state.mode,
+    name: state.name,
+    description: state.description,
+    subject: state.subject,
+    maxSteps: state.maxSteps,
+    thresholdHigh: state.thresholdHigh,
+    thresholdMedium: state.thresholdMedium,
+    dimensions: state.dimensions,
+    rules,
+    fallback: state.fallback,
+    outcomes: state.outcomes.map((o) => ({
+      name: o.name,
+      actionType: o.actionType,
+      body: o.body,
+      transition: o.transition,
+    })),
+  };
+}
+
+function opsForType(type) {
+  return type === "boolean" ? ["==true", "==false"] : GRAMMAR.all_ops;
+}
+
+// ---- renderers -----------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+function renderDimensions() {
+  const host = $("dim-list");
+  host.innerHTML = "";
+  state.dimensions.forEach((d, i) => {
+    const row = document.createElement("div");
+    row.className = "rule-row";
+    row.innerHTML =
+      `<strong>${normalizeDimName(d.name)}</strong> <em>(${d.type})</em>`;
+    const del = document.createElement("button");
+    del.className = "secondary del";
+    del.textContent = "✕";
+    del.onclick = () => {
+      state.dimensions.splice(i, 1);
+      renderAll();
+    };
+    row.appendChild(del);
+    host.appendChild(row);
+  });
+}
+
+function renderOutcomes() {
+  const host = $("outcome-list");
+  host.innerHTML = "";
+  state.outcomes.forEach((oc, oi) => {
+    const grp = document.createElement("div");
+    grp.className = "outcome-group";
+    const title = document.createElement("div");
+    title.className = "row";
+    title.innerHTML = `<strong>Outcome: ${oc.name}</strong>`;
+    const delOc = document.createElement("button");
+    delOc.className = "secondary del";
+    delOc.textContent = "✕ outcome";
+    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); };
+    title.appendChild(delOc);
+    grp.appendChild(title);
+
+    // rule rows
+    (oc.rules || []).forEach((r, ri) => {
+      r.predicates.forEach((p, pi) => {
+        const row = document.createElement("div");
+        row.className = "rule-row";
+        const dimSel = document.createElement("select");
+        state.dimensions.forEach((d) => {
+          const o = document.createElement("option");
+          o.value = normalizeDimName(d.name);
+          o.textContent = normalizeDimName(d.name);
+          o.dataset.type = d.type;
+          if (o.value === p.dim) o.selected = true;
+          dimSel.appendChild(o);
+        });
+        const opSel = document.createElement("select");
+        const dimType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type || "numeric";
+        opsForType(dimType).forEach((op) => {
+          const o = document.createElement("option");
+          o.value = op; o.textContent = op;
+          if (op === p.op) o.selected = true;
+          opSel.appendChild(o);
+        });
+        const valInput = document.createElement("input");
+        valInput.type = "text"; valInput.value = p.value; valInput.placeholder = "value";
+        if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
+        dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
+        opSel.onchange = () => { p.op = opSel.value; renderAll(); };
+        valInput.oninput = () => { p.value = valInput.value; updatePreview(); };
+        const del = document.createElement("button");
+        del.className = "secondary del"; del.textContent = "✕";
+        del.onclick = () => {
+          r.predicates.splice(pi, 1);
+          if (!r.predicates.length) oc.rules.splice(ri, 1);
+          renderAll();
+        };
+        row.append(dimSel, opSel, valInput, del);
+        grp.appendChild(row);
+      });
+    });
+
+    const addRow = document.createElement("div");
+    addRow.className = "row";
+    const addPred = document.createElement("button");
+    addPred.className = "secondary"; addPred.textContent = "+ condition";
+    addPred.onclick = () => {
+      const firstDim = state.dimensions[0];
+      const dim = firstDim ? normalizeDimName(firstDim.name) : "";
+      const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
+      if (!oc.rules) oc.rules = [];
+      oc.rules.push({ predicates: [{ dim, op, value: "" }] });
+      renderAll();
+    };
+    addRow.appendChild(addPred);
+    grp.appendChild(addRow);
+
+    // Axis A + Axis B authoring
+    const author = document.createElement("div");
+    author.innerHTML = `<label>Action (Axis A)</label>`;
+    const aSel = document.createElement("select");
+    [["prompt", "Prompt"], ["slash_command", "Run a skill"], ["none", "Nothing"]].forEach(([v, t]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = t;
+      if (v === oc.actionType) o.selected = true; aSel.appendChild(o);
+    });
+    const bodyHost = document.createElement("div");
+    function renderBody() {
+      bodyHost.innerHTML = "";
+      if (oc.actionType === "prompt") {
+        const ta = document.createElement("textarea");
+        ta.value = oc.body || "";
+        ta.oninput = () => { oc.body = ta.value; updatePreview(); };
+        bodyHost.appendChild(ta);
+      } else if (oc.actionType === "slash_command") {
+        const sel = document.createElement("select");
+        const blank = document.createElement("option"); blank.value = ""; blank.textContent = "— choose skill —"; sel.appendChild(blank);
+        CATALOG.forEach((s) => {
+          const o = document.createElement("option");
+          o.value = "/ll:" + s.name; o.textContent = "/ll:" + s.name;
+          if (o.value === oc.body) o.selected = true; sel.appendChild(o);
+        });
+        sel.onchange = () => { oc.body = sel.value; updatePreview(); };
+        bodyHost.appendChild(sel);
+      }
+    }
+    aSel.onchange = () => { oc.actionType = aSel.value; renderBody(); updatePreview(); };
+    author.appendChild(aSel);
+    author.appendChild(bodyHost);
+
+    author.insertAdjacentHTML("beforeend", `<label>Then (Axis B)</label>`);
+    const bSel = document.createElement("select");
+    [["rescore", "Re-score"], ["goto", "Go to…"], ["finish", "Finish"]].forEach(([v, t]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = t;
+      if (v === (oc.transition && oc.transition.kind)) o.selected = true; bSel.appendChild(o);
+    });
+    const gotoSel = document.createElement("select");
+    function renderGoto() {
+      gotoSel.innerHTML = "";
+      state.outcomes.forEach((o2) => {
+        const o = document.createElement("option"); o.value = o2.name; o.textContent = o2.name;
+        if (oc.transition && oc.transition.target === o2.name) o.selected = true; gotoSel.appendChild(o);
+      });
+      gotoSel.style.display = (oc.transition && oc.transition.kind === "goto") ? "" : "none";
+    }
+    bSel.onchange = () => {
+      oc.transition = { kind: bSel.value, target: gotoSel.value || (state.outcomes[0] && state.outcomes[0].name) };
+      renderGoto(); updatePreview();
+    };
+    gotoSel.onchange = () => { oc.transition.target = gotoSel.value; updatePreview(); };
+    author.appendChild(bSel);
+    author.appendChild(gotoSel);
+    renderBody(); renderGoto();
+    grp.appendChild(author);
+
+    host.appendChild(grp);
+  });
+}
+
+function renderMessages(model) {
+  const host = $("messages");
+  host.innerHTML = "";
+  const add = (cls, text) => {
+    const li = document.createElement("li"); li.className = cls; li.textContent = text; host.appendChild(li);
+  };
+  // Shadow detection (plain-language).
+  const shadows = detectShadows(model.rules);
+  shadows.forEach((s) => add("msg-warn", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`));
+  // Zero-condition outcomes (an outcome with no rules and not the fallback).
+  state.outcomes.forEach((oc) => {
+    const hasRule = (oc.rules || []).some((r) => r.predicates.length);
+    if (!hasRule) add("msg-warn", `Outcome "${oc.name}" has no conditions — it can only be reached via "Go to".`);
+  });
+  // Unknown skill actions.
+  const known = new Set(CATALOG.map((s) => "/ll:" + s.name));
+  state.outcomes.forEach((oc) => {
+    if (oc.actionType === "slash_command" && oc.body && !known.has(oc.body)) {
+      add("msg-error", `Outcome "${oc.name}" references an unknown skill: ${oc.body}`);
+    }
+  });
+  if (!host.children.length) add("msg-ok", "No issues detected.");
+}
+
+function updatePreview() {
+  const model = buildModel();
+  $("yaml-preview").textContent = serializeLoopYaml(model);
+  $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+  renderMessages(model);
+}
+
+function renderAll() {
+  renderDimensions();
+  if (state.mode === "decision_table") renderOutcomes();
+  updatePreview();
+}
+
+// ---- event wiring --------------------------------------------------------
+$("mode-switch").value = state.mode;
+$("mode-switch").onchange = (e) => {
+  state.mode = e.target.value;
+  $("threshold-fieldset").hidden = state.mode !== "rubric";
+  $("rules-fieldset").hidden = state.mode === "rubric";
+  $("f-maxsteps").value = state.maxSteps = state.mode === "rubric" ? 10 : 20;
+  renderAll();
+};
+$("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
+$("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
+$("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1; updatePreview(); };
+$("f-desc").oninput = (e) => { state.description = e.target.value; updatePreview(); };
+$("f-fallback").oninput = (e) => { state.fallback = e.target.value; updatePreview(); };
+$("f-thigh").oninput = (e) => { state.thresholdHigh = Number(e.target.value); $("thigh-val").textContent = e.target.value; updatePreview(); };
+$("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $("tmed-val").textContent = e.target.value; updatePreview(); };
+
+$("add-dim").onclick = () => {
+  const name = $("dim-name").value.trim();
+  if (!name) return;
+  state.dimensions.push({ name, type: $("dim-type").value });
+  $("dim-name").value = "";
+  renderAll();
+};
+$("add-outcome").onclick = () => {
+  const name = normalizeDimName($("outcome-name").value);
+  if (!name) return;
+  state.outcomes.push({ name, rules: [], actionType: "prompt", body: "", transition: { kind: "rescore" } });
+  $("outcome-name").value = "";
+  renderAll();
+};
+
+$("copy-btn").onclick = () => {
+  const text = $("yaml-preview").textContent;
+  if (navigator.clipboard) navigator.clipboard.writeText(text);
+};
+$("download-btn").onclick = () => {
+  const text = $("yaml-preview").textContent;
+  const blob = new Blob([text], { type: "text/yaml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "policy-loop") + ".yaml";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+// ---- theme toggle: prefers-color-scheme → config active_theme → localStorage
+function initTheme() {
+  const stored = (() => { try { return localStorage.getItem("ll-policy-builder-theme"); } catch (e) { return null; } })();
+  let theme;
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    theme = "dark";
+  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+    theme = "light";
+  } else {
+    theme = window.__ACTIVE_THEME__ || "light";
+  }
+  if (stored) theme = stored;
+  document.documentElement.setAttribute("data-theme", theme);
+  $("theme-toggle").textContent = theme === "dark" ? "☀️" : "🌙";
+}
+$("theme-toggle").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  $("theme-toggle").textContent = next === "dark" ? "☀️" : "🌙";
+  try { localStorage.setItem("ll-policy-builder-theme", next); } catch (e) { /* ignore */ }
+};
+
+// ---- bootstrap -----------------------------------------------------------
+initTheme();
+// seed with a representative starting point
+state.dimensions.push({ name: "quality", type: "numeric" });
+state.outcomes.push({ name: "done", rules: [], actionType: "none", body: "", transition: { kind: "finish" } });
+$("threshold-fieldset").hidden = true;
+$("rules-fieldset").hidden = false;
+renderAll();
+  </script>
+</body>
+</html>

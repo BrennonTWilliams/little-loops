@@ -264,6 +264,26 @@ class TestConfigSchema:
         assert props["active_theme"]["type"] == "string"
         assert props["active_theme"]["default"] == "dark"
 
+    def test_artifacts_in_schema(self) -> None:
+        """artifacts block must be declared in config-schema.json (FEAT-2390).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'artifacts' will be rejected unless the property is
+        declared here. The block backs ``BRConfig.artifacts`` / ``ArtifactsConfig``
+        which supplies ll-artifact's default output directory.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        assert "artifacts" in data["properties"], (
+            "artifacts is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        artifacts = data["properties"]["artifacts"]
+        assert artifacts["type"] == "object"
+        assert artifacts.get("additionalProperties") is False
+        props = artifacts["properties"]
+        assert props["default_output_dir"]["type"] == "string"
+        assert props["default_output_dir"]["default"] == "."
+
     def test_analytics_in_schema(self) -> None:
         """analytics block must be declared in config-schema.json (FEAT-1624).
 

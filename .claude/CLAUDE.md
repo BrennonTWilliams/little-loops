@@ -85,6 +85,31 @@ ruff check scripts/
 ruff format scripts/
 ```
 
+### Testing & CI Policy
+
+**There is no hosted/paid CI in this project — do not add GitHub Actions (or any
+paid CI runner).** The single enforced, cost-free gate is the local test suite:
+
+```bash
+python -m pytest scripts/tests/
+```
+
+This suite *is* our CI. "Ensure CI passes" / "will fail CI" throughout the docs
+means this command must exit 0 — not that a hosted pipeline runs.
+
+When an issue asks for a "CI-gated" check, satisfy it **inside this suite**, not
+with a workflow file:
+
+- Pure-Python gates are ordinary pytest tests / `ll-verify-*` CLIs invoked from a
+  test.
+- **Gates in another language/toolchain are wrapped as a pytest test that shells
+  out** and asserts exit 0, so they run under the same `python -m pytest
+  scripts/tests/` command. Skip gracefully when the external tool is absent so
+  contributors without it aren't hard-blocked; the gate is still enforced
+  wherever the tool exists. Example: the policy-builder JS conformance suite
+  (`node --test scripts/tests/js/*.test.mjs`, Node ≥ 22) is enforced via
+  `scripts/tests/test_policy_builder_node_gate.py` (FEAT-2390).
+
 ## Code Style
 
 - Python 3.11+, type hints required
@@ -279,6 +304,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-parallel` - Process issues concurrently using isolated git worktrees
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
 - `ll-action` - Invoke any ll skill as a one-shot command with JSON-structured output
+- `ll-artifact` - Generate self-contained human-facing HTML artifacts; `policy-builder` emits a `file://`-safe visual builder for policy-router / rubric loop YAML (stamps design-token CSS vars + grammar spec + skill catalog at generation time)
 - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
 - `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline; `edit-routes` renders routing as an editable decision table)
 - `ll-workflows` - Identify multi-step workflow patterns from user message history

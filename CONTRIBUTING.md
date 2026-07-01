@@ -349,7 +349,7 @@ test(config): add tests for configuration merging
 - Keep PRs focused on a single concern
 - Include tests for new functionality
 - Update CHANGELOG.md for user-facing changes
-- Ensure CI passes before requesting review
+- Ensure the local test suite passes before requesting review — `python -m pytest scripts/tests/` **is** our CI (there is no hosted/paid CI; see the Testing & CI Policy in `.claude/CLAUDE.md`). Any "will fail CI" note elsewhere in these docs refers to this suite. Language-external gates (e.g. the Node `node:test` conformance suite) are wrapped as pytest tests so they run in the same command.
 
 ### Documentation wiring for new CLI tools
 

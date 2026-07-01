@@ -1537,6 +1537,17 @@
       },
       "additionalProperties": false
     },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "default_output_dir": {
+          "type": "string",
+          "default": ".",
+          "description": "Directory where ll-artifact writes generated human-facing artifacts (e.g. the policy-router builder HTML). Relative paths resolve against the project root."
+        }
+      },
+      "additionalProperties": false
+    },
     "session_capture": {
       "type": "object",
       "description": "Continuous session event capture (FEAT-1262). When enabled, session-capture.sh appends one structured event record per tool invocation to .ll/ll-session-events.jsonl, providing the data source for FEAT-1264's PreCompact handoff snapshot builder.",

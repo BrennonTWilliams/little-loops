@@ -167,6 +167,10 @@ For interactive editing, use `/ll:configure`.
     "active_theme": "dark"
   },
 
+  "artifacts": {
+    "default_output_dir": "."
+  },
+
   "loops": {
     "loops_dir": ".loops"
   },
@@ -745,6 +749,22 @@ The design token loader supports the [W3C Design Tokens Community Group](https:/
 ```
 
 **See also**: [Design Tokens Community Group specification](https://tr.designtokens.org/)
+
+### `artifacts`
+
+Output settings for `ll-artifact`, the generator of self-contained human-facing HTML artifacts (FEAT-2390). Currently backs the `policy-builder` subcommand, which stamps design-token CSS vars, the canonical predicate grammar, and the skill/command catalog into a `file://`-safe policy-router / rubric loop builder page.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_output_dir` | `str` | `"."` | Directory where `ll-artifact` writes generated artifacts when no `--output`/`-o` override is given. Relative paths resolve against the project root. |
+
+```json
+"artifacts": {
+  "default_output_dir": "."
+}
+```
+
+Per-project config only needs an `artifacts` block to override the default output directory; the dataclass default suffices otherwise.
 
 ### `decisions`
 

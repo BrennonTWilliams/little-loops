@@ -3,6 +3,7 @@
 Provides command-line interfaces for automated issue management:
 - ll-harness: One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
 - ll-action: Invoke ll skills as one-shot commands with JSON-structured output
+- ll-artifact: Generate self-contained human-facing HTML artifacts (policy-builder: file://-safe policy-router/rubric loop builder)
 - ll-adapt: Unified host-parameterized skill/command/agent adapter (--host codex|omp|...)
 - ll-adapt-agents-for-codex: Add Codex subagent TOML files to .codex/agents/ (alias for ll-adapt --host codex)
 - ll-adapt-skills-for-codex: Add Codex Skills API frontmatter to ll skill SKILL.md files (alias for ll-adapt --host codex)
@@ -41,6 +42,7 @@ from little_loops.cli.action import main_action
 from little_loops.cli.adapt import main_adapt
 from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
+from little_loops.cli.artifact import main_artifact
 from little_loops.cli.auto import main_auto
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.ctx_stats import main_ctx_stats
@@ -84,6 +86,7 @@ from little_loops.init.cli import main_init
 __all__ = [
     "main_action",
     "main_adapt",
+    "main_artifact",
     "main_harness",
     "main_adapt_agents_for_codex",
     "main_adapt_skills_for_codex",

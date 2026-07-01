@@ -1,0 +1,50 @@
+{
+  "mode": "decision_table",
+  "name": "sample-decision-table",
+  "description": "Sample Decision Table builder output used as a golden fixture for the\nserializeLoopYaml() round-trip (FEAT-2301).",
+  "subject": "artifact.md",
+  "maxSteps": 20,
+  "thresholdHigh": 85,
+  "thresholdMedium": 65,
+  "dimensions": [
+    { "name": "Security", "type": "numeric" },
+    { "name": "Coverage", "type": "numeric" },
+    { "name": "Has Tests", "type": "boolean" }
+  ],
+  "rules": [
+    {
+      "predicates": [{ "dim": "Security", "op": "<", "value": "65" }],
+      "target": "escalate",
+      "isCatchall": false
+    },
+    {
+      "predicates": [
+        { "dim": "Has Tests", "op": "==", "value": "true" },
+        { "dim": "Coverage", "op": ">=", "value": "90" }
+      ],
+      "target": "ship",
+      "isCatchall": false
+    }
+  ],
+  "fallback": "deep_repair",
+  "outcomes": [
+    {
+      "name": "escalate",
+      "actionType": "prompt",
+      "body": "SECURITY ESCALATION: artifact.md scored below the security threshold.\nFlag this artifact for human security review and halt automated refinement.",
+      "transition": { "kind": "finish" }
+    },
+    {
+      "name": "ship",
+      "actionType": "slash_command",
+      "body": "/ll:commit",
+      "transition": { "kind": "goto", "target": "deep_repair" }
+    },
+    {
+      "name": "deep_repair",
+      "actionType": "prompt",
+      "body": "Apply comprehensive repairs to artifact.md.\nAddress all gaps: improve structure, fill missing content, resolve ambiguities.",
+      "transition": { "kind": "rescore" }
+    }
+  ]
+}

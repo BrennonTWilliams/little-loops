@@ -325,3 +325,25 @@ def render_as_css_vars(tokens: DesignTokens) -> str:
         lines.append(f"  {css_name}: {value};")
     lines.append("}")
     return "\n".join(lines)
+
+
+def render_as_css_vars_themed(light: DesignTokens, dark: DesignTokens) -> str:
+    """Return two scoped CSS blocks (`:root` for light, `[data-theme=dark]` for dark)
+    declaring all resolved tokens as custom properties, with all alias chains
+    already resolved to concrete values.
+
+    Metadata keys (names starting with `_`, e.g. `_wcag_spot_check`) are skipped
+    so they do not leak into the stylesheet. Used by the FEAT-2301 HTML builder
+    to inline a live light/dark toggle.
+    """
+
+    def _block(scope: str, tokens: DesignTokens) -> str:
+        lines = [f"{scope} {{"]
+        for name, value in sorted(tokens.resolved.items()):
+            if name.startswith("_"):
+                continue
+            lines.append(f"  --{name.replace('.', '-')}: {value};")
+        lines.append("}")
+        return "\n".join(lines)
+
+    return _block(":root", light) + "\n" + _block("[data-theme=dark]", dark)

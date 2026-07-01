@@ -1,0 +1,64 @@
+name: sample-decision-table
+description: |
+  Sample Decision Table builder output used as a golden fixture for the
+  serializeLoopYaml() round-trip (FEAT-2301).
+max_steps: 20
+
+import:
+  - lib/rubric-router.yaml
+  - lib/policy-router.yaml
+
+context:
+  subject: "artifact.md"
+  rubric_dimensions: "security|coverage|has-tests"
+  threshold_high: "85"
+  threshold_medium: "65"
+  policy_rules: |
+    security:<65 -> escalate
+    has-tests:>=50 & coverage:>=90 -> ship
+    * -> deep_repair
+
+initial: score
+
+states:
+  score:
+    fragment: rubric_score
+    action: |
+      Evaluate ${context.subject} on these dimensions: ${context.rubric_dimensions}.
+      For each dimension output: DIMENSION: <name>: <score 0-100> — <one-sentence rationale>
+      For boolean dimensions (has-tests): score 100 if the condition holds, 0 if it does not.
+      Final line: AGGREGATE: <int 0-100>
+    capture: scores
+    next: parse_scores
+
+  parse_scores:
+    fragment: policy_parse_scores
+    next: policy_dispatch
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    route:
+      escalate: escalate
+      ship: ship
+      deep_repair: deep_repair
+      _: deep_repair
+      _error: escalate
+
+  escalate:
+    action_type: prompt
+    action: |
+      SECURITY ESCALATION: artifact.md scored below the security threshold.
+      Flag this artifact for human security review and halt automated refinement.
+    terminal: true
+
+  ship:
+    action_type: slash_command
+    action: /ll:commit
+    next: deep_repair
+
+  deep_repair:
+    action_type: prompt
+    action: |
+      Apply comprehensive repairs to artifact.md.
+      Address all gaps: improve structure, fill missing content, resolve ambiguities.
+    next: score

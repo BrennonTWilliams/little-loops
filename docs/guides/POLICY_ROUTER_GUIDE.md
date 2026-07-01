@@ -13,6 +13,7 @@
 - [What Is the Policy Router?](#what-is-the-policy-router)
 - [The Rule Table Syntax](#the-rule-table-syntax)
 - [Wiring a Loop with `lib/policy-router.yaml`](#wiring-a-loop-with-libpolicy-routeryaml)
+- [Visual Builder (greenfield)](#visual-builder-greenfield)
 - [Editing the Table with `ll-loop edit-routes`](#editing-the-table-with-ll-loop-edit-routes)
 - [Adding and Removing Rows](#adding-and-removing-rows)
 - [Warnings: Gaps, Shadows, and Catch-alls](#warnings-gaps-shadows-and-catch-alls)
@@ -192,6 +193,38 @@ evaluation. `ll-loop simulate policy-refine` can trace FSM state connectivity wi
 running real LLM calls, but it cannot evaluate policy rules (shell actions are not
 executed in simulation). To confirm which rule fires for a given score set, trace the
 table manually or run the loop with a real or mocked artifact.
+
+## Visual Builder (greenfield)
+
+When you are authoring a **new** policy-router or rubric loop from scratch — rather than
+editing one that already exists — generate the self-contained HTML builder:
+
+```bash
+ll-artifact policy-builder            # writes ./policy-router-builder.html
+ll-artifact policy-builder -o ~/tmp   # custom output directory
+```
+
+Open the generated `policy-router-builder.html` in any browser (no install, no server — it
+works over `file://`). It presents a one-page form with two modes:
+
+- **Decision Table** — per-dimension conjunctive rules, grouped into action cards
+  ("`light_repair` happens when…") with a non-deletable "Everything else → `<action>`"
+  fallback. Dimensions are typed (numeric vs boolean), so the operator dropdown only offers
+  valid operators and the numeric-coercion parse-error class is unrepresentable. Each outcome
+  card authors its full target state along two axes — **Does** (`action_type` + body: a prompt,
+  a skill/command from this project's stamped catalog, or nothing) and **Then** (transition:
+  re-score, go to another outcome, or finish) — so MR-4 dead-ends cannot be expressed.
+- **Rubric** — one aggregate score with two threshold sliders feeding a fixed high/medium/low
+  table (mirrors `lib/rubric-router.yaml`).
+
+The page validates live (shadowed rules, zero-condition rules, and unknown actions are flagged
+in plain language) and emits downloadable loop YAML with a printed `ll-loop validate <name>`
+hint. Its grammar, design-token theme, and skill catalog are **stamped from this project at
+generation time**, so regenerate the file to pick up new skills or grammar changes.
+
+**Builder vs. `edit-routes`:** the builder is *greenfield-only* — it composes a new loop and
+exports YAML. `ll-loop edit-routes` (below) is the round-trip editor for a loop that *already
+exists*. Use the builder to create; use `edit-routes` to revise.
 
 ## Editing the Table with `ll-loop edit-routes`
 

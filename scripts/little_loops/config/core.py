@@ -22,6 +22,7 @@ from little_loops.config.automation import (
 from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
     AnalyticsCaptureConfig,
+    ArtifactsConfig,
     DecisionsConfig,
     DesignTokensConfig,
     EventsConfig,
@@ -221,6 +222,7 @@ class BRConfig:
         self._design_tokens = DesignTokensConfig.from_dict(
             self._raw_config.get("design_tokens", {})
         )
+        self._artifacts = ArtifactsConfig.from_dict(self._raw_config.get("artifacts", {}))
         self._analytics_capture = AnalyticsCaptureConfig.from_dict(
             self._raw_config.get("analytics", {}).get("capture", {})
         )
@@ -310,6 +312,11 @@ class BRConfig:
     def design_tokens(self) -> DesignTokensConfig:
         """Get design tokens configuration."""
         return self._design_tokens
+
+    @property
+    def artifacts(self) -> ArtifactsConfig:
+        """Get artifacts (ll-artifact) configuration."""
+        return self._artifacts
 
     @property
     def analytics_capture(self) -> AnalyticsCaptureConfig:
@@ -626,6 +633,9 @@ class BRConfig:
                 "active_theme": self._design_tokens.active_theme,
                 "active": self._design_tokens.active,
                 "profiles_dir": self._design_tokens.profiles_dir,
+            },
+            "artifacts": {
+                "default_output_dir": self._artifacts.default_output_dir,
             },
             "analytics": {
                 "enabled": self._raw_config.get("analytics", {}).get("enabled", False),
