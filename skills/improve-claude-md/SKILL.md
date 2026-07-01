@@ -227,14 +227,24 @@ and stop.
 For each candidate in `feedbacks`, compute a short topic excerpt (first 80 chars of `topic`). Then check:
 
 ```bash
-# Check decisions.yaml
-ll-issues decisions list --type rule 2>/dev/null | grep -i "${TOPIC_EXCERPT}" || true
+# Check decisions.yaml — capture `decisions list` output BEFORE piping to grep, so a
+# real query failure (argparse exit 2) is not masked by grep's exit code under a
+# non-pipefail pipeline, and stderr is not blackholed (BUG-2423).
+DECISIONS_MATCH=""
+if [ -f .ll/decisions.yaml ]; then
+    existing_rules=$(ll-issues decisions list --type rule)
+    if [ $? -ne 0 ]; then
+        echo "⚠ [DECISIONS] dedup query failed — cannot confirm rule novelty; treat this candidate as uncertain rather than silently OPEN" >&2
+    else
+        DECISIONS_MATCH=$(echo "$existing_rules" | grep -i "${TOPIC_EXCERPT}" || true)
+    fi
+fi
 
 # Check CLAUDE.md
-grep -i "${TOPIC_EXCERPT}" "${FILE_ARG}" || true
+CLAUDE_MATCH=$(grep -i "${TOPIC_EXCERPT}" "${FILE_ARG}" || true)
 ```
 
-- If either check returns output: mark candidate as **COVERED** (skip; do not propose)
+- If `DECISIONS_MATCH` or `CLAUDE_MATCH` is non-empty: mark candidate as **COVERED** (skip; do not propose)
 - Otherwise: mark candidate as **OPEN**
 
 ### Step CT-2: Per-Candidate Approval Loop

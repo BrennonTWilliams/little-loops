@@ -185,15 +185,32 @@ Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict mus
 - Stale targets produce a WARN but do not block.
 
 #### Decisions Gate
-- Check active required rules against this issue:
-  - Run `ll-issues decisions list --type rule --enforcement required --active-only --format json 2>/dev/null || true`
-  - If absent or empty output: SKIPPED (decisions log is opt-in; gracefully skip entirely)
-  - If rules present, for each required rule check if this issue's proposed solution conflicts:
-    - Check for exception entries: `ll-issues decisions list --type exception 2>/dev/null || true`
-    - If an exception entry has `rule_ref` matching this rule's ID and `issue` matching this issue's ID: suppress the violation
-    - If violation found and not suppressed: FAIL row in VALIDATION table: `Decisions | FAIL | Rule <ID>: <rule text> violated`
-    - If no violation: PASS row: `Decisions | PASS | All required rules satisfied`
-    - If exception suppresses the violation: PASS row: `Decisions | PASS | Rule <ID> suppressed by exception <exception_id>`
+Gate on the decisions log so its **absence** is the only clean skip; a query
+**failure** must surface as a WARN row, never as a silent clean pass (BUG-2423). Run
+without `|| true` and branch on the exit status — do **not** blackhole stderr:
+
+```bash
+if [ -f .ll/decisions.yaml ]; then
+    required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only --format json)
+    if [ $? -ne 0 ]; then
+        echo "⚠ [DECISIONS] required-rule query failed — gate did NOT run" >&2   # → WARN row, not PASS
+    elif [ -n "$required_rules" ] && [ "$required_rules" != "[]" ]; then
+        exceptions=$(ll-issues decisions list --type exception)
+        if [ $? -ne 0 ]; then
+            echo "⚠ [DECISIONS] exception lookup failed — cannot confirm suppression" >&2
+        fi
+        # For each required rule, check whether this issue's proposed solution conflicts.
+    fi
+fi
+```
+
+- If the required-rule query **fails** (non-zero exit): WARN row in VALIDATION table — `Decisions | WARN | required-rule query failed — gate did not run` (do **not** emit a PASS; the gate did not run).
+- If `.ll/decisions.yaml` is absent, or the query succeeds with no rules: SKIPPED/PASS (decisions log is opt-in; gracefully skip entirely).
+- If rules present, for each required rule check if this issue's proposed solution conflicts:
+  - If an exception entry has `rule_ref` matching this rule's ID and `issue` matching this issue's ID: suppress the violation
+  - If violation found and not suppressed: FAIL row in VALIDATION table: `Decisions | FAIL | Rule <ID>: <rule text> violated`
+  - If no violation: PASS row: `Decisions | PASS | All required rules satisfied`
+  - If exception suppresses the violation: PASS row: `Decisions | PASS | Rule <ID> suppressed by exception <exception_id>`
 - Absent `.ll/decisions.yaml` is never an error — governance is opt-in.
 
 #### Metadata

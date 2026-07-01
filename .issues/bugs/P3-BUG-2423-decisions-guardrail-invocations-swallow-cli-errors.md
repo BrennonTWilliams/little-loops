@@ -1,15 +1,30 @@
 ---
 id: BUG-2423
-title: Decisions-check invocations swallow CLI errors via `2>/dev/null || true`, silently disabling the guardrail
+title: Decisions-check invocations swallow CLI errors via `2>/dev/null || true`, silently
+  disabling the guardrail
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-07-01T02:24:04Z"
+status: done
+captured_at: '2026-07-01T02:24:04Z'
+completed_at: '2026-07-01T03:42:34Z'
 discovered_date: 2026-07-01
 discovered_by: capture-issue
-labels: [bug, decisions, skills, error-handling, silent-failure]
-relates_to: [BUG-2026, BUG-372]
+labels:
+- bug
+- decisions
+- skills
+- error-handling
+- silent-failure
+relates_to:
+- BUG-2026
+- BUG-372
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2423: Decisions-check invocations swallow CLI errors via `2>/dev/null || true`, silently disabling the guardrail
@@ -77,6 +92,7 @@ _Added by `/ll:refine-issue` — the call-site inventory above is partly stale; 
 - `skills/go-no-go/SKILL.md:407-414` — `decisions add --enforcement=advisory … 2>/dev/null || true`, **already wrapped in an `[ -f .ll/decisions.yaml ]` gate** (lines 406-416), so its absent-skip is already correct; only the inner `|| true` still swallows a real failure. **This site is explicitly OUT OF SCOPE for this bug — leave it unchanged.** It is a tail-of-skill bookkeeping *write* (records the go/no-go verdict), not the required-rule guardrail *read* this bug targets; hardening it yields no correctness benefit here, and go-no-go is an expensive LLM skill invoked directly from FSM loops, so it is not a site to churn casually. Editing it would also break a live test assertion (`test_feat1896_skill_bridges.py:84`, see Integration Map → Tests). If the inner-`|| true`-on-`add`-writes concern is ever pursued, it belongs in a separate follow-on ENH alongside `improve-claude-md:267-273`, not here.
 
 **Broader swallow family outside skills/commands (same hygiene class; candidate for a follow-on, not necessarily this bug's scope):**
+- `.loops/distill-decisions.yaml:14,44` — `decisions list --format json 2>/dev/null | python3 -c …` (count queries piped to Python with a bare `except`; same swallow class, and these are `list` *reads*, not `extract-from-completed`). **Not in the original inventory** — surfaced by the 2026-06-30 re-verification pass. [Agent 1 finding]
 - `.loops/distill-decisions.yaml:34,36` — `decisions extract-from-completed … 2>/dev/null || true`.
 - `hooks/scripts/issue-completion-log.sh:77` — `decisions extract-from-completed --issue … >/dev/null 2>&1`.
 
@@ -84,6 +100,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/wire-issue/static-coupling-layer.md:13,20` — `decisions list --type=coupling … 2>/dev/null` (Phase 3.5 coupling read used by `/ll:wire-issue` itself). No `|| true`, but the effect is identical: stderr is blackholed and the downstream logic keys only on empty/`[]` stdout, so an argparse exit 2 collapses into the "no coupling entries → skip to Phase 4" path — the same silent-failure class this bug targets. **Not in the refine-pass inventory.** Same-class candidate; belongs with the broader-family follow-on, not the core required-rule guardrail scope. [Agent 1 finding]
 
 Net: the core fix touches **6 swallowing `list` invocations across 4 files** (format-issue ×2, ready-issue ×2, verify-issues ×1, improve-claude-md ×1), not "five `list` sites." The two `add` writes (go-no-go, improve-claude-md:267-273) are **out of scope — do not touch them in this bug**; they are a separate, lower-severity concern for a possible follow-on ENH.
+
+_Re-verified 2026-06-30 (`/ll:refine-issue --auto`): all 6 in-scope `list` sites confirmed at their cited lines with **zero drift** — `format-issue/SKILL.md:187,190`, `ready-issue.md:189,192`, `verify-issues.md:69`, `improve-claude-md/SKILL.md:231`. The out-of-scope `add` writes and the `wire-issue/static-coupling-layer.md:13,20` same-class reads are likewise unchanged. `tradeoff-review-issues.md` in fact has **two** gated `add` writes (`296-304` and `348-356`) — both out of scope, noted only so the follow-on ENH counts them. One broader-family inventory addition is noted above (`distill-decisions.yaml:14,44`)._
 
 ## Expected Behavior
 
@@ -135,10 +153,13 @@ Consequence: at the CLI's own level, "file absent" and "zero matches" are *alrea
 
 The `--enforcement` flag fix referenced above has landed: `list` now registers `--enforcement` (`choices=["required","advisory"]`) at `decisions.py:71-76`, regression-tested by `scripts/tests/test_cli_decisions.py::TestDecisionsCLIList::test_list_filter_enforcement`.
 
+_Re-verified 2026-06-30 (`/ll:refine-issue --auto`): every CLI-contract citation above is still exact — `parse_args()` at `cli/issues/__init__.py:733`, `_cmd_list()` at `cli/issues/decisions.py:334-382` (all paths `return 0`), `--enforcement` at `decisions.py:71-76`, regression at `test_cli_decisions.py:201-264`. **One disambiguation:** `load_decisions()`'s absent-file `return []` lives in the **data** module `scripts/little_loops/decisions.py:272-282` (the `if not resolved.exists(): return []` check is at `275-276`), not the identically-named CLI module `cli/issues/decisions.py` — the bare `decisions.py:275-276` citation resolves correctly but is ambiguous between the two same-named files. Also confirmed: `SystemExit(2)` from argparse propagates **uncaught** to the process boundary (`main_issues()` wraps its body in `cli_event_context`, which re-raises unmodified), so exit 2 + stderr remains the sole real-failure signal the hardened callers must key on. [Agent 2 finding]_
+
 ## Proposed Solution
 
-Harden the five decisions-check call sites so a command error is distinguishable
-from an empty result. Options, roughly in order of preference:
+Harden the 6 in-scope `decisions list` guardrail call sites (across 4 files) so a
+command error is distinguishable from an empty result. Options, roughly in order of
+preference:
 
 1. **Capture status + stderr explicitly.** Replace `… 2>/dev/null || true` with a
    form that keeps the exit code, e.g. run the query, branch on `$?`: exit 0 →
@@ -153,7 +174,9 @@ from an empty result. Options, roughly in order of preference:
    definitions, so flag drift fails loudly in CI. Broader than this bug; could be
    split into its own ENH if pursued.
 
-Apply the same pattern across all five call sites so the fix lands consistently.
+Apply the same pattern across all 6 in-scope `list`-read call sites (4 files) so
+the fix lands consistently. The `add`-write sites (go-no-go, improve-claude-md:267-273)
+are **out of scope — do not touch**; see "Explicitly OUT OF SCOPE" under Integration Map.
 
 ### Codebase Research Findings
 
@@ -227,6 +250,8 @@ _Wiring pass added by `/ll:wire-issue` — the "no direct unit test surface" cla
 
 **Historical prose (no update needed):** `scripts/tests/test_cli_decisions.py:214` mentions the old idiom inside a docstring describing the original regression — not a live content assertion, will not break. [Agent 3 finding]
 
+_Re-verified 2026-06-30 (`/ll:refine-issue --auto`) — exact current anchors for the new test (zero drift from the wire-issue pass): the `DOC_STRINGS_ABSENT` table is at `test_wiring_skills_and_commands.py:208-233`, asserted by `test_string_absent_from_doc` (`:236-242`); the optional `DOC_STRINGS_PRESENT` mirror is at `:20-194`, asserted by `test_string_present_in_doc` (`:197-203`); the session-scoped `project_root` fixture is at `conftest.py:118-121`. Copy-paste model for a new ABSENT row (`:210`): `("agents/codebase-analyzer.md", "file:line", "ENH-1299")` — a `(doc_rel, needle, issue_id)` 3-tuple. [Agent 3 finding]_
+
 ### Documentation
 - N/A — the change is to invocation hygiene inside skill/command bodies; no
   user-facing doc describes the swallowing behavior.
@@ -261,7 +286,51 @@ _Added by `/ll:refine-issue` — verified integration surface:_
   "decisions log absent" skip must be preserved so quiet no-op remains the
   behavior when the feature is genuinely off.
 
+## Confidence Check Notes
+
+_Re-verified by `/ll:confidence-check` on 2026-07-01 (post refine-issue/wire-issue/decide-issue passes) — all six in-scope call sites and CLI-contract citations confirmed at their stated lines with zero drift; scores unchanged from the prior check._
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across 6 call sites in 4 files (format-issue ×2, ready-issue ×2, verify-issues ×1, improve-claude-md ×1) — each needs the same file-gate + branch-on-`$?` treatment applied consistently; the improve-claude-md:231 site pipes into `grep`, which needs its own captured-then-piped variant so a non-`pipefail` shell doesn't mask the `decisions list` exit code.
+- The 4 in-scope files have no dedicated regression test for this behavior today; the fix should land its own test extension (`test_wiring_skills_and_commands.py` `DOC_STRINGS_ABSENT`/`DOC_STRINGS_PRESENT` rows, per the issue's Tests section) in the same change so the swallow pattern can't silently reappear.
+
+## Resolution
+
+_Resolved 2026-07-01 via `/ll:manage-issue` (TDD mode)._
+
+Hardened all **6 in-scope `decisions list` guardrail reads across 4 files** to the
+combined Option 1 + Option 2 idiom (per `/ll:decide-issue`): gate on
+`[ -f .ll/decisions.yaml ]` (the sole legitimate clean-empty case), then run the query
+**without `|| true`** and **without blackholing stderr**, branching on `$?` so a
+non-zero exit surfaces as an operator `⚠ [DECISIONS]` warning instead of a clean pass.
+
+- `skills/format-issue/SKILL.md` (Step 2.6) — required-rule read + companion exception lookup.
+- `commands/ready-issue.md` (Decisions Gate) — required-rule read (`--format json`) + exception lookup; failure now maps to a `Decisions | WARN` row, not a silent PASS.
+- `commands/verify-issues.md` (Step B.5) — required-rule read.
+- `skills/improve-claude-md/SKILL.md` (Step CT-1) — dedup lookup; special-cased the piped-into-`grep` site by capturing `decisions list` output into a variable **before** piping, so a non-`pipefail` shell doesn't mask the query's exit code.
+
+**Explicitly untouched (out of scope):** the `decisions add` *writes* at
+`skills/go-no-go/SKILL.md:407-414` and `skills/improve-claude-md/SKILL.md:267-273`
+(deferred to a possible follow-on ENH); the `test_feat1896_skill_bridges.py:84` tripwire
+that asserts go-no-go still contains `2>/dev/null || true` stays green.
+
+**Regression guard (shift-left):** added 10 parametrized rows to
+`scripts/tests/test_wiring_skills_and_commands.py` tagged `BUG-2423` — 6
+`DOC_STRINGS_ABSENT` rows forbidding each scoped swallow needle, 4 `DOC_STRINGS_PRESENT`
+rows requiring the `[ -f .ll/decisions.yaml ]` gate. Validated Red (10 fail on
+unmodified files) → Green (10 pass after fix). Full suite: 13295 passed, 23 skipped;
+the single failure (`test_enh494_skill_companions.py` — `manage-issue/SKILL.md` at 523
+lines) is **pre-existing and unrelated** (that file was 523 at HEAD, untouched here).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T03:42:34Z - `cbb70290-2b30-4d37-91f5-4b7f426bbf3d.jsonl`
+- `/ll:ready-issue` - 2026-07-01T03:16:01 - `b1d80d1f-950b-4ab3-8971-1af05b6c69db.jsonl`
+- `/ll:confidence-check` - 2026-07-01T03:13:40Z - `f5cfb802-e8d7-4866-bd77-17b0c742c10a.jsonl`
+- `/ll:refine-issue` - 2026-07-01T03:09:46 - `c697f748-585d-498e-adef-1039d691c458.jsonl`
+- `/ll:confidence-check` - 2026-06-30T00:00:00Z - `55bf24de-5192-4d0e-ba1f-250ed1f1abb1.jsonl`
 - `/ll:wire-issue` - 2026-07-01T02:52:20 - `3e394fcf-f454-4f27-83c8-04afb80965f0.jsonl`
 - `/ll:decide-issue` - 2026-07-01T02:43:18 - `457ad308-c7c0-49a8-936f-f80f8ed18900.jsonl`
 - `/ll:refine-issue` - 2026-07-01T02:39:12 - `30fa61b7-db73-4b9c-a30e-09f0a8263487.jsonl`
@@ -270,4 +339,4 @@ _Added by `/ll:refine-issue` — verified integration surface:_
 
 ## Status
 
-**Open** | Created: 2026-07-01 | Priority: P3
+**Done** | Created: 2026-07-01 | Completed: 2026-07-01 | Priority: P3

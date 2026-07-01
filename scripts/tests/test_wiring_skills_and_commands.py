@@ -191,6 +191,13 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # ("scheduled wakeup" / "completion notification"); assert the guidance is PRESENT instead.
     ("skills/manage-issue/SKILL.md", "foreground-blocking", "BUG-2408"),
     ("skills/manage-issue/SKILL.md", "scheduled wakeup", "BUG-2408"),
+    # BUG-2423: each hardened decisions-guardrail `list` read now gates on the
+    # decisions-log file so the sole clean-empty case (absent file) is handled up
+    # front; a real query failure is no longer laundered into a clean "no rules" pass.
+    ("skills/format-issue/SKILL.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
+    ("commands/ready-issue.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
+    ("commands/verify-issues.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
+    ("skills/improve-claude-md/SKILL.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
 ]
 
 
@@ -230,6 +237,16 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
         "| hooks/prompts/optimize-prompt-hook.md |",
         "ENH-2291",
     ),
+    # BUG-2423: decisions-guardrail `list` reads must not swallow CLI errors via
+    # `2>/dev/null || true` (collapses argparse exit 2 into a clean "no rules" pass).
+    # Needles are scoped to each specific guardrail invocation so unrelated future
+    # `2>/dev/null || true` usage elsewhere is not caught.
+    ("skills/format-issue/SKILL.md", "--active-only 2>/dev/null || true", "BUG-2423"),
+    ("skills/format-issue/SKILL.md", "--type exception 2>/dev/null || true", "BUG-2423"),
+    ("commands/ready-issue.md", "--active-only --format json 2>/dev/null || true", "BUG-2423"),
+    ("commands/ready-issue.md", "--type exception 2>/dev/null || true", "BUG-2423"),
+    ("commands/verify-issues.md", "--active-only 2>/dev/null || true", "BUG-2423"),
+    ("skills/improve-claude-md/SKILL.md", "decisions list --type rule 2>/dev/null | grep", "BUG-2423"),
 ]
 
 

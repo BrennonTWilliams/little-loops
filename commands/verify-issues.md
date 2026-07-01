@@ -66,7 +66,26 @@ ll-issues list --json --status all | \
 2. **Verify line numbers**: Has the code moved or changed?
 3. **Validate code snippets**: Does quoted code match current code?
 4. **Test claims**: Is the described behavior accurate?
-5. **Check decisions rules**: Run `ll-issues decisions list --type rule --enforcement required --active-only 2>/dev/null || true`. If output is non-empty, check whether the issue's proposed solution conflicts with any active required rule. Suppress violations where a matching exception entry (`rule_ref` = rule ID) exists. Assign verdict `DECISIONS_VIOLATION` if a non-suppressed violation is found. Gracefully skip if `.ll/decisions.yaml` is absent.
+5. **Check decisions rules**: Gate on the decisions log, then run the query without
+   `|| true` so a command failure surfaces instead of masquerading as "no rules"
+   (BUG-2423) — do **not** blackhole stderr:
+
+   ```bash
+   if [ -f .ll/decisions.yaml ]; then
+       required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only)
+       if [ $? -ne 0 ]; then
+           echo "⚠ [DECISIONS] required-rule query failed — decisions check did NOT run" >&2
+       elif [ -n "$required_rules" ]; then
+           : # for each required rule, check whether the issue's proposed solution conflicts
+       fi
+   fi
+   ```
+
+   If the query **fails**, note the check did not run (do not treat as a clean pass).
+   If output is non-empty, check whether the issue's proposed solution conflicts with
+   any active required rule. Suppress violations where a matching exception entry
+   (`rule_ref` = rule ID) exists. Assign verdict `DECISIONS_VIOLATION` if a
+   non-suppressed violation is found. Absent `.ll/decisions.yaml` is a graceful skip.
 
 #### C. Determine Verdict
 

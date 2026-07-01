@@ -182,14 +182,33 @@ See [templates.md](templates.md) for:
 
 ### 2.6. Decisions Log Query
 
-Check active required rules against the issue's proposed approach (gracefully skipped when `.ll/decisions.yaml` is absent):
+Check active required rules against the issue's proposed approach. The decisions log
+is opt-in, so an **absent** `.ll/decisions.yaml` is the only legitimate skip; a query
+**failure** (e.g. argparse exit 2 from flag drift) must surface, not be laundered into
+a clean "no rules" pass (BUG-2423). Gate on the file, then run the query without
+`|| true` and branch on the exit status — do **not** blackhole stderr:
 
-1. Run `ll-issues decisions list --type rule --enforcement required --active-only 2>/dev/null || true`
-2. If output is empty or command produces no output: skip this step entirely (opt-in feature)
-3. For each required rule found, check if the issue's `## Proposed Solution` section conflicts
-4. Run `ll-issues decisions list --type exception 2>/dev/null || true` to find suppressors
-5. If a violation is found and no exception entry has a matching `rule_ref`: add a `[DECISIONS]` finding to the Step 3.5 quality output — `[DECISIONS] Rule <ID> may be violated: <rule text>`
-6. Suppressed violations are silently skipped
+```bash
+if [ -f .ll/decisions.yaml ]; then
+    # No `|| true`: a real failure must not read as "no required rules".
+    required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only)
+    if [ $? -ne 0 ]; then
+        echo "⚠ [DECISIONS] required-rule query failed — guardrail did NOT run; do not report a clean pass" >&2
+    elif [ -n "$required_rules" ]; then
+        # For each required rule, check whether the issue's `## Proposed Solution`
+        # section conflicts. Look up suppressors the same hardened way:
+        exceptions=$(ll-issues decisions list --type exception)
+        if [ $? -ne 0 ]; then
+            echo "⚠ [DECISIONS] exception lookup failed — cannot confirm suppression; do not silently pass" >&2
+        fi
+        # If a violation is found and no exception entry has a matching `rule_ref`,
+        # add a `[DECISIONS]` finding to the Step 3.5 quality output:
+        #   [DECISIONS] Rule <ID> may be violated: <rule text>
+        # Suppressed violations (matching `rule_ref`) are silently skipped.
+    fi
+    # exit 0 + empty output → no required rules to enforce (genuine clean pass).
+fi
+```
 
 ### 3. Identify Gaps
 
