@@ -3,8 +3,9 @@ id: ENH-2431
 title: Wire `rn-implement`'s pre-dequeue learning gate to auto-prove instead of dead-ending
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-01T19:10:34Z'
+completed_at: '2026-07-01T20:50:20Z'
 discovered_date: '2026-07-01'
 discovered_by: capture-issue
 depends_on:
@@ -319,7 +320,53 @@ text) are non-blocking — the issue already gives a strong recommendation
 (default off) and an established suffix idiom to follow, so they're
 resolvable during implementation rather than pre-conditions.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-07-01
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/rn-implement.yaml`: added the opt-in
+  `auto_prove_learning_gate` context flag (default off, mirrors
+  `skip_learning_gate`'s shape but inverted); `check_learning_ready`'s Python
+  heredoc gains a prove-attempt branch that calls `ll-learning-tests prove
+  <target>` (independent `timeout=1800`, not the cheap `check` call's
+  `timeout=30`) for each unproven target when the flag is set, and writes
+  `learning_prove_attempted_<ID>.txt` under `run_dir` when at least one
+  attempt was made; `mark_learning_blocked` reads that marker to emit the
+  additive-suffix tag `LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED` (a
+  substring superset of the existing `LEARNING_GATE_BLOCKED_PRE_DEQUEUE`) so
+  `report`'s existing `grep -c` tallies keep counting correctly with no
+  `report`-state changes needed.
+- `scripts/tests/test_rn_implement.py`: added
+  `TestLearningReadyGate.test_auto_prove_learning_gate_flag_defaults_off`,
+  `test_check_learning_ready_gates_prove_call_on_flag`,
+  `test_check_learning_ready_prove_call_has_independent_timeout`,
+  `test_check_learning_ready_writes_attempted_marker`, and
+  `test_mark_learning_blocked_distinguishes_attempted_tag`.
+- `docs/guides/LEARNING_TESTS_GUIDE.md`, `docs/guides/RECURSIVE_LOOPS_GUIDE.md`,
+  `docs/guides/LOOPS_REFERENCE.md`: documented the auto-prove branch, the new
+  `learning_prove_attempted_<ID>.txt` artifact, and the tag split.
+- `skills/explore-api/SKILL.md`: corrected the stale "CLI Surface Reminder"
+  table (was missing `orphans`/`prove`, per the wiring-pass finding).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 13315 passed, 23 skipped;
+  1 pre-existing failure unrelated to this change,
+  `test_enh494_skill_companions.py::TestSkillLineLimit::test_all_skills_within_limit`
+  on `skills/manage-issue/SKILL.md`, already present on `main` before this issue)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — 1 pre-existing
+  unrelated `import-untyped` note for `wcwidth`, already present on `main`)
+- `ll-loop validate rn-implement`: PASS
+
+### Commits
+- See git log for details
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T20:50:20Z - `5b75cfb2-4f9d-4f0e-8819-55ceca3d2c90.jsonl`
+- `/ll:ready-issue` - 2026-07-01T20:22:58 - `e20e03bb-2e8c-4f61-be24-a1cbf81f5784.jsonl`
 - `/ll:confidence-check` - 2026-07-01T20:30:00Z - `9f72aea4-af69-42bd-a3f6-ecb65eb7d68f.jsonl`
 - `/ll:wire-issue` - 2026-07-01T20:08:16 - `71fbe4b5-3dfe-4d6b-85d7-58fab369564d.jsonl`
 - `/ll:confidence-check` - 2026-07-01T19:35:00Z - `825773cc-f3c3-4e72-b818-2f6802981cbb.jsonl`

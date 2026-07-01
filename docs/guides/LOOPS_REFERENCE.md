@@ -407,10 +407,10 @@ This gate applies to **both** `fifo` and `value_ranked` scheduling — it is not
 
 Chained immediately after the `blocked_by` gate, a second lightweight two-state gate checks learning-readiness before `check_depth`:
 
-1. `check_learning_ready` (shell) — short-circuits to READY if `${context.skip_learning_gate}` is set; otherwise parses the issue's frontmatter directly and checks each `learning_tests_required` target via `ll-learning-tests check <target> --stale-aware`, writing any unproven targets to `learning_unproven_<ID>.txt`.
+1. `check_learning_ready` (shell) — short-circuits to READY if `${context.skip_learning_gate}` is set; otherwise parses the issue's frontmatter directly and checks each `learning_tests_required` target via `ll-learning-tests check <target> --stale-aware`, writing any unproven targets to `learning_unproven_<ID>.txt`. When the opt-in `${context.auto_prove_learning_gate}` flag is set (ENH-2431, default off), an unproven target gets one `ll-learning-tests prove <target>` attempt (its own timeout, not the cheap check call's `timeout=30`) before being counted as unproven; if any target was attempted, `learning_prove_attempted_<ID>.txt` is written under `run_dir`.
 2. `route_learning_ready` (output_contains) — if any targets are unproven, routes to `mark_learning_blocked`; otherwise routes to `check_depth`.
 
-This mirrors the `blocked_by` gate's shape exactly: same fail-open contract, same direct-frontmatter-parsing convention, same upfront placement before the remediation budget. A learning-blocked issue can never be fixed by remediation — the remedy is `/ll:explore-api`, not a code change — so catching it here is free. The in-`ll-auto` learning gate (ENH-2319) remains as defense-in-depth for callers that bypass `rn-implement` (`ll-parallel`, `ll-sprint`); this pre-dequeue check is an earlier, cheaper, FSM-visible check, not a relocation.
+This mirrors the `blocked_by` gate's shape exactly: same fail-open contract, same direct-frontmatter-parsing convention, same upfront placement before the remediation budget. A learning-blocked issue can never be fixed by remediation via `run_remediation` — with `auto_prove_learning_gate` unset (or a target still unresolved after one prove attempt), the remedy is `/ll:explore-api`, not a code change — so catching it here is free. The in-`ll-auto` learning gate (ENH-2319) remains as defense-in-depth for callers that bypass `rn-implement` (`ll-parallel`, `ll-sprint`); this pre-dequeue check is an earlier, cheaper, FSM-visible check, not a relocation.
 
 **Output artifacts** (written to `${context.run_dir}`):
 
@@ -423,6 +423,7 @@ This mirrors the `blocked_by` gate's shape exactly: same fail-open contract, sam
 | `skipped.txt` | Issues skipped (genuinely atomic/too-large decline, errors) |
 | `deferred.txt` | Issues deferred after a remediation stall + no-children decline, or due to unmet `blocked_by` deps (BUG-2006, ENH-2008); the issue's `status` is also set to `deferred`. `re_enqueue_unblocked` removes entries mid-run when their blockers resolve — only entries whose deferral reason contains `blocked_by` are eligible; stalled and depth-capped entries remain untouched (ENH-2195, BUG-2202). |
 | `learning_unproven_<ID>.txt` | Per-issue list of unproven `learning_tests_required` targets, written by `check_learning_ready` and read by `mark_learning_blocked` to name the specific targets (ENH-2406). |
+| `learning_prove_attempted_<ID>.txt` | Written by `check_learning_ready` when `auto_prove_learning_gate` triggered at least one `ll-learning-tests prove <target>` attempt for this issue; read by `mark_learning_blocked` to pick the attempted-vs-not-attempted tag (ENH-2431). |
 | `summary.json` | Final run summary (processed, implemented, decomposed, skipped, deferred, blocked, depth-capped, `learning_gate_blocked_pre_dequeue`) |
 
 **FSM flow:**
@@ -433,9 +434,9 @@ init               (shell: seed queue from comma-separated input, init tracking 
     → check_blocked_by  (shell: parse frontmatter, write blocked_by_unmet_<ID>.txt)
       → route_blocked_by  (evaluate: output_contains — any unmet blockers?)
         on_yes → mark_deferred (named blockers) → dequeue_next
-        on_no  → check_learning_ready  (shell: per-target ll-learning-tests check --stale-aware)
+        on_no  → check_learning_ready  (shell: per-target ll-learning-tests check --stale-aware; if auto_prove_learning_gate=1, one ll-learning-tests prove <target> attempt per unproven target)
           → route_learning_ready  (evaluate: output_contains — any unproven targets?)
-            on_yes → mark_learning_blocked (named targets, tags LEARNING_GATE_BLOCKED_PRE_DEQUEUE) → dequeue_next
+            on_yes → mark_learning_blocked (named targets, tags LEARNING_GATE_BLOCKED_PRE_DEQUEUE or _ATTEMPTED) → dequeue_next
             on_no  → check_depth
     → check_depth  (evaluate: output_numeric lt max_depth)
       on_yes → run_remediation

@@ -233,15 +233,17 @@ Diff expected vs actual and emit the registry record.
 
 ## CLI Surface Reminder
 
-`ll-learning-tests` exposes three subcommands only:
+`ll-learning-tests` exposes these subcommands:
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
-| `check "<target>"` | Print JSON record by target name | 0 if found, 1 if missing |
+| `check "<target>" [--stale-aware]` | Print JSON record by target name | 0 if found (and not stale, with `--stale-aware`), 1 if missing |
 | `list` | Print JSON array of all records | always 0 |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | 0 |
+| `orphans [--mark-stale] [--scope DIRS]` | List records for packages no longer imported anywhere in the configured source dirs | 0 if none found (or `--mark-stale` used), 1 if any found |
+| `prove "<target>"` | Trigger proving for a target via `ready-to-implement-gate` (no issue file required), print the refreshed record | 0 if proven, 1 if refuted/still missing |
 
-There is intentionally **no `write` subcommand** — record creation is owned by skills/agents (this one and any future variants) so the prompt context can capture the proof reasoning, not just the result. To persist a new record, use the `Write` tool as described in Phase 4.
+There is intentionally **no `write` subcommand** — record creation is owned by skills/agents (this one and any future variants) so the prompt context can capture the proof reasoning, not just the result. To persist a new record, use the `Write` tool as described in Phase 4. `prove` doesn't bypass this — it drives the same `ready-to-implement-gate` → `/ll:explore-api` path that writes records, it just orchestrates that path for callers that only have a bare target string.
 
 ## Examples
 

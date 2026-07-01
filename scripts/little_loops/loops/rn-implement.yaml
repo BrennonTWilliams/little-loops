@@ -36,6 +36,13 @@ context:
   # ENH-2319 gate stays active (itself config-gated by learning_tests.enabled).
   #   ll-loop run rn-implement <id> --context skip_learning_gate=1
   skip_learning_gate: ""
+  # ENH-2431: opt-in auto-prove for the pre-dequeue learning gate. When set, an
+  # unproven target gets one `ll-learning-tests prove <target>` attempt before
+  # check_learning_ready routes to mark_learning_blocked. Default off (unlike
+  # skip_learning_gate's opt-out shape) so budget-conscious callers aren't
+  # surprised by rn-implement spawning proving agents on every cold-registry issue.
+  #   ll-loop run rn-implement <id> --context auto_prove_learning_gate=1
+  auto_prove_learning_gate: ""
 import:
   - lib/common.yaml
 meta_self_eval_ok: false
@@ -509,6 +516,8 @@ states:
               return result
 
       issue_id = "${captured.input.output}"
+      run_dir = "${captured.run_dir.output}"
+      auto_prove = "${context.auto_prove_learning_gate}"
 
       # Resolve the issue file across active category dirs (mirrors check_blocked_by)
       issue_path = None
@@ -544,16 +553,38 @@ states:
           sys.exit(0)  # no targets -> ready
 
       unproven = []
+      attempted = False
       for t in targets:
+          proven = True  # subprocess failure for this target -> fail-open (treat as proven)
           try:
               r = subprocess.run(
                   ["ll-learning-tests", "check", t, "--stale-aware"],
                   capture_output=True, text=True, timeout=30,
               )
-              if r.returncode != 0:
-                  unproven.append(t)
+              proven = r.returncode == 0
           except Exception:
-              pass  # subprocess failure for this target -> fail-open (treat as proven)
+              pass
+
+          if not proven and auto_prove:
+              # ENH-2431: one prove attempt before giving up. `prove` runs
+              # ready-to-implement-gate end-to-end (an LLM proving loop that can take
+              # minutes) -- give it its own timeout rather than reusing the cheap
+              # `check` call's timeout=30.
+              attempted = True
+              try:
+                  r2 = subprocess.run(
+                      ["ll-learning-tests", "prove", t],
+                      capture_output=True, text=True, timeout=1800,
+                  )
+                  proven = r2.returncode == 0
+              except Exception:
+                  pass  # prove attempt failed -> still unproven
+
+          if not proven:
+              unproven.append(t)
+
+      if attempted:
+          Path(run_dir, f"learning_prove_attempted_{issue_id}.txt").write_text("1")
 
       if unproven:
           print(" ".join(unproven))
@@ -1071,6 +1102,13 @@ states:
     # Uses the distinct LEARNING_GATE_BLOCKED_PRE_DEQUEUE tag rather than reusing
     # record_learning_gate_blocked's LEARNING_GATE_BLOCKED, so report can tally free
     # pre-dequeue catches separately from remediation-spent safety-net catches.
+    #
+    # ENH-2431: when auto_prove_learning_gate was set, check_learning_ready writes
+    # learning_prove_attempted_<ID>.txt before falling through here. That case gets
+    # the additive-suffix tag LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED (a superset
+    # string of LEARNING_GATE_BLOCKED_PRE_DEQUEUE) rather than a new tag scheme, so
+    # report's existing grep -c substring tallies keep counting both variants
+    # correctly with no report changes required.
     action_type: shell
     action: |
       ID="${captured.input.output}"
@@ -1081,8 +1119,15 @@ states:
       else
         TARGETS="(unknown targets)"
       fi
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} LEARNING_GATE_BLOCKED_PRE_DEQUEUE" >> "$RUN_DIR/failures.txt"
-      echo "[LEARNING_GATE_BLOCKED_PRE_DEQUEUE] $ID — unproven target(s): $TARGETS; prove with /ll:explore-api then re-run"
+      if [ -f "$RUN_DIR/learning_prove_attempted_$${ID}.txt" ]; then
+        TAG="LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED"
+        MSG="unproven target(s) after an auto-prove attempt: $TARGETS; still not provable — try /ll:explore-api then re-run"
+      else
+        TAG="LEARNING_GATE_BLOCKED_PRE_DEQUEUE"
+        MSG="unproven target(s): $TARGETS; prove with /ll:explore-api then re-run"
+      fi
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} $TAG" >> "$RUN_DIR/failures.txt"
+      echo "[$TAG] $ID — $MSG"
     next: dequeue_next
 
   skip_issue:

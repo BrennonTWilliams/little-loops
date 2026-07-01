@@ -941,6 +941,51 @@ class TestLearningReadyGate:
         assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in report
         assert "learning_gate_blocked_pre_dequeue" in report
 
+    # --- ENH-2431: auto-prove branch -----------------------------------------
+
+    def test_auto_prove_learning_gate_flag_defaults_off(self) -> None:
+        """auto_prove_learning_gate is opt-in (default empty), mirroring
+        skip_learning_gate's shape but inverted (opt-in vs opt-out)."""
+        data = _load_loop()
+        assert data["context"]["auto_prove_learning_gate"] == ""
+
+    def test_check_learning_ready_gates_prove_call_on_flag(self) -> None:
+        """The prove-attempt branch reads auto_prove and only calls
+        `ll-learning-tests prove` when it is set."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "${context.auto_prove_learning_gate}" in action
+        assert '"ll-learning-tests", "prove"' in action
+        assert "not proven and auto_prove" in action
+
+    def test_check_learning_ready_prove_call_has_independent_timeout(self) -> None:
+        """The prove subprocess must not reuse the cheap check call's timeout=30 —
+        proving runs an LLM loop that can take minutes."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        # The check call keeps its cheap timeout=30
+        assert '"check", t, "--stale-aware"' in action
+        assert 'timeout=30' in action
+        # The prove call gets its own, larger timeout
+        assert 'timeout=1800' in action
+
+    def test_check_learning_ready_writes_attempted_marker(self) -> None:
+        """A per-run attempted marker is written when auto-prove ran, so
+        mark_learning_blocked can distinguish attempted-and-still-unproven from
+        never-attempted."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "learning_prove_attempted_" in action
+        assert "run_dir" in action
+
+    def test_mark_learning_blocked_distinguishes_attempted_tag(self) -> None:
+        """mark_learning_blocked checks for the attempted marker and emits the
+        additive-suffix tag LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED (a superset
+        string of LEARNING_GATE_BLOCKED_PRE_DEQUEUE) rather than an unrelated tag,
+        so report's existing substring tallies don't need to change."""
+        action = _load_loop()["states"]["mark_learning_blocked"]["action"]
+        assert "learning_prove_attempted_" in action
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED" in action
+        # Still contains the base tag as a plain (non-attempted) fallback
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in action
+
 
 # ============================================================================
 # TestReEnqueueUnblocked — ENH-2195: re-enqueue deferred issues in same run

@@ -239,6 +239,18 @@ place as defense-in-depth — it still fires for callers that bypass
 `rn-implement` entirely, or when a target becomes unproven/stale between the
 pre-dequeue check and the inner `ll-auto --only` call.
 
+ENH-2431 gave the pre-dequeue gate a way to resolve the block itself instead of
+always dead-ending: with the opt-in `auto_prove_learning_gate` context flag set
+(default off), `check_learning_ready` attempts `ll-learning-tests prove <target>`
+for each unproven target before routing to `mark_learning_blocked` — if proving
+succeeds, the issue proceeds to `check_depth` in the same run. A target that
+still fails proving (or the flag being unset) falls through to
+`mark_learning_blocked` as before, which now tags the failure
+`LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED` (an additive-suffix superset of
+`LEARNING_GATE_BLOCKED_PRE_DEQUEUE`) when a prove attempt was actually made, so
+`failures.txt` distinguishes "tried and still stuck" from "never attempted"
+without changing `report`'s existing tally arithmetic.
+
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring
 and skipping.
