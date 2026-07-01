@@ -2617,6 +2617,103 @@ class TestFallbackVerification:
 
         mock_verify.assert_called_once_with(mock_logger, baseline_sha=test_sha)
 
+    def test_plan_present_but_uncommitted_work_routes_to_evidence_path(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """BUG-2409: a plan file present alongside uncommitted work must NOT park the
+        issue as 'awaiting approval'; it should fall through to the evidence-of-work path.
+        """
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        plan_path = Path("thoughts/shared/plans/2026-07-01-BUG-001-management.md")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=plan_path
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.verify_work_was_done",
+                                return_value=True,
+                            ):
+                                with patch(
+                                    "little_loops.issue_manager.complete_issue_lifecycle",
+                                    return_value=True,
+                                ) as mock_complete:
+                                    result = process_issue_inplace(
+                                        sample_issue, mock_config, mock_logger
+                                    )
+
+        # Dirty tree: must not be parked as awaiting approval, and must finalize.
+        assert result.plan_created is False
+        assert result.success
+        mock_complete.assert_called_once()
+
+    def test_plan_present_clean_tree_still_awaits_approval(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """BUG-280 regression: a plan file present with a clean tree (no work vs baseline)
+        must still be parked as 'awaiting approval'.
+        """
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        plan_path = Path("thoughts/shared/plans/2026-07-01-BUG-001-management.md")
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=plan_path
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.verify_work_was_done",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.complete_issue_lifecycle",
+                                return_value=True,
+                            ) as mock_complete:
+                                result = process_issue_inplace(
+                                    sample_issue, mock_config, mock_logger
+                                )
+
+        # Clean tree: genuine approval pause preserved.
+        assert result.plan_created is True
+        assert result.plan_path == str(plan_path)
+        assert not result.success
+        mock_complete.assert_not_called()
+
 
 class TestEarlyCompletionGuard:
     """Tests for the already_done guard when Phase 2 exits non-zero (BUG-1538)."""

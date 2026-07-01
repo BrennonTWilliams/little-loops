@@ -1009,18 +1009,32 @@ def process_issue_inplace(
                 # Check if a plan was created awaiting approval
                 plan_path = detect_plan_creation(result.stdout, info.issue_id)
                 if plan_path is not None:
+                    # BUG-2409: A plan file matching the issue ID is NOT proof the run
+                    # halted at plan approval. The agent may have cleared the confidence
+                    # gate, implemented, and left changes uncommitted in the SAME turn.
+                    # Only park as "awaiting approval" when the tree is genuinely clean
+                    # relative to the Phase-2 baseline; otherwise fall through to the
+                    # evidence-of-work path so completed-but-unfinalized work is not
+                    # silently parked. verify_work_was_done excludes thoughts/, so the
+                    # plan file itself never counts as work (BUG-280 invariant preserved).
+                    if not verify_work_was_done(logger, baseline_sha=_baseline_sha):
+                        logger.info(
+                            f"Plan created at {plan_path}, awaiting approval - "
+                            "issue will remain incomplete until plan is approved and implemented"
+                        )
+                        return IssueProcessingResult(
+                            success=False,
+                            duration=time.time() - issue_start_time,
+                            issue_id=info.issue_id,
+                            plan_created=True,
+                            plan_path=str(plan_path),
+                            failure_reason="",  # Not a failure - plan awaiting approval
+                            corrections=corrections,
+                        )
                     logger.info(
-                        f"Plan created at {plan_path}, awaiting approval - "
-                        "issue will remain incomplete until plan is approved and implemented"
-                    )
-                    return IssueProcessingResult(
-                        success=False,
-                        duration=time.time() - issue_start_time,
-                        issue_id=info.issue_id,
-                        plan_created=True,
-                        plan_path=str(plan_path),
-                        failure_reason="",  # Not a failure - plan awaiting approval
-                        corrections=corrections,
+                        f"Plan file {plan_path} present, but uncommitted implementation "
+                        "changes exist vs the Phase-2 baseline - treating as "
+                        "completed-but-unfinalized work, not awaiting approval (BUG-2409)"
                     )
 
                 logger.info(

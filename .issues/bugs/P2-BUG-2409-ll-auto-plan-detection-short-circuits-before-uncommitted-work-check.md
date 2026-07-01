@@ -1,8 +1,9 @@
 ---
 captured_at: '2026-07-01T00:04:14Z'
+completed_at: '2026-07-01T01:22:52Z'
 discovered_date: 2026-07-01
 discovered_by: capture-issue
-status: open
+status: done
 priority: P2
 type: BUG
 relates_to:
@@ -298,7 +299,41 @@ the reliability of the run summary and risks a dirty-tree re-plan on re-run.
 
 ll-auto, verification, phase-3, plan-detection, automation
 
+## Resolution
+
+Gated the Phase-3 "plan awaiting approval" short-circuit on the **absence** of
+work relative to the Phase-2 baseline. In `process_issue_inplace`
+(`issue_manager.py:1011`), before returning `plan_created=True`, the code now
+calls `verify_work_was_done(logger, baseline_sha=_baseline_sha)`:
+
+- **Clean tree** (no work vs baseline) → park as "awaiting approval" — the
+  genuine approval pause (BUG-280) is preserved unchanged.
+- **Dirty tree** (uncommitted / staged / committed-since-baseline changes) →
+  log "completed-but-unfinalized" distinctly and **fall through** to the existing
+  content-marker → work-evidence ladder, which finalizes the issue instead of
+  silently parking it.
+
+`verify_work_was_done` excludes `thoughts/`, so the plan file itself never
+counts as work — the gate cannot false-positive on the plan. The existing
+fall-through ladder is untouched; no `IssueProcessingResult` flag was added
+(the wiring pass marked structured surfacing optional). No changes were needed
+in `cli/sprint/run.py`, `cli/auto.py`, or `worker_pool.py`.
+
+**Files changed:**
+- `scripts/little_loops/issue_manager.py` — work-evidence gate on the plan branch.
+- `scripts/tests/test_issue_manager.py` — two new tests in `TestFallbackVerification`:
+  `test_plan_present_but_uncommitted_work_routes_to_evidence_path` (dirty tree →
+  not parked, finalizes) and `test_plan_present_clean_tree_still_awaits_approval`
+  (clean tree → BUG-280 invariant preserved).
+
+**Verification:** targeted classes green (12 passed); full suite 13233 passed,
+23 skipped, ruff + mypy clean. (One pre-existing unrelated failure —
+`test_enh494_skill_companions` flags `skills/manage-issue/SKILL.md` at 523 lines
+vs the 500-line budget, introduced by commit `0847fe42`; not touched by this fix.)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T01:22:52Z - `c2c6847f-2f8d-4525-aec0-a80edae6a826.jsonl`
+- `/ll:ready-issue` - 2026-07-01T00:51:28 - `c2c6847f-2f8d-4525-aec0-a80edae6a826.jsonl`
 - `/ll:confidence-check` - 2026-06-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20066cd1-3a9b-408d-8c8e-0304c9a4fe9d.jsonl`
 - `/ll:wire-issue` - 2026-07-01T00:31:28 - `2ab6ee87-0a40-4d96-a26e-4423be53af2b.jsonl`
 - `/ll:refine-issue` - 2026-07-01T00:20:03 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
@@ -309,4 +344,4 @@ ll-auto, verification, phase-3, plan-detection, automation
 
 ## Status
 
-**Current Status**: open
+**Current Status**: done
