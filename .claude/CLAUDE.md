@@ -126,161 +126,48 @@ with a workflow file:
 
 Loops that modify other harness artifacts (loop YAMLs, skill files, agent
 definitions, commands, or `.claude/CLAUDE.md` itself) are **meta-loops** and
-follow stricter design rules than data-operating loops:
+follow stricter design rules than data-operating loops. Three shape rules govern
+them: **(1) diagnosis-first scaffolding** — follow a
+`diagnose → propose → apply → measure-externally` shape, not the generic 5-phase
+pipeline (use the `create-loop` wizard's "Optimize a harness" branch, never the
+"Harness a skill" template); **(2) non-LLM evaluator required** — every
+`check_semantic`/`llm_structured` state pairs with a measurable external signal
+(LLM self-grades on harness edits are ~33–55% accurate, SHOR Table 1); **(3)
+per-run artifact isolation** — write intermediate artifacts under
+`${context.run_dir}/`, never bare `.loops/tmp/`.
 
-1. **Diagnosis-first scaffolding.** Meta-loops should follow a
-   `diagnose → propose → apply → measure-externally` shape, not the generic
-   harness 5-phase pipeline. The `create-loop` wizard's "Optimize a harness"
-   branch generates this template; do not adapt the standard "Harness a skill"
-   template for meta-loops.
-2. **Non-LLM evaluator required.** Every `check_semantic` (`llm_structured`)
-   state in a meta-loop MUST be paired with at least one non-LLM evaluator
-   in the routing chain: `exit_code`, `output_numeric`, `convergence`,
-   `diff_stall`, or `mcp_result`. LLM self-grades on harness updates are
-   ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%) — pair with
-   measurable external evidence or the loop will optimize for what the
-   judge prompt rewards, not what users observe.
-3. **Per-run artifact isolation.** Loops MUST write intermediate artifacts
-   (queues, checkpoints, generated files) under `${context.run_dir}/`, not
-   bare `.loops/tmp/`. The runner injects `run_dir` as
-   `.loops/runs/<loop>-<timestamp>/` and creates the folder before
-   execution. Writing to shared `.loops/tmp/` causes state corruption when
-   two instances of the same loop run concurrently (e.g., under
-   `ll-parallel`, retries that re-enter the loop, or a user re-running it
-   in a worktree while another instance is mid-flight). Legitimate
-   cross-instance artifacts (`.issues/`, `.loops/diagnostics/`,
-   `thoughts/`) are exempt — only `.loops/tmp/` is flagged.
+`ll-loop validate` enforces the rules below. Each row: severity, what it catches,
+and the top-level flag that suppresses it. **Full rationale, the optimizer error
+taxonomy, and the canonical shape live in
+[docs/guides/HARNESS_OPTIMIZATION_GUIDE.md](../docs/guides/HARNESS_OPTIMIZATION_GUIDE.md)**
+(the source of truth this table summarizes).
 
-`ll-loop validate` enforces rule 2 as ERROR severity (rule MR-1). Use
-`meta_self_eval_ok: true` at the loop top-level to suppress the check in
-the rare case where you have a justified reason. See ENH-1665.
+| Rule | Sev | Catches | Suppress with |
+|------|-----|---------|---------------|
+| MR-1 | ERROR | `check_semantic`/`llm_structured` state with no non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) in its routing chain | `meta_self_eval_ok` |
+| MR-2 | WARN | baseline value captured but never referenced by a later evaluator (no measure→propose→apply→re-measure spine) | `meta_self_eval_ok` |
+| MR-3 | WARN | intermediate artifacts written to bare `.loops/tmp/` instead of `${context.run_dir}/` (`.issues/`, `.loops/diagnostics/`, `thoughts/` exempt) | `shared_state_ok` |
+| MR-4 | WARN | LLM-judged state sets `on_yes` but dead-ends on `no`/`partial` (no `on_no`/`on_partial`/`next`/full `route`) | `partial_route_ok` |
+| MR-5 | WARN | harness loop writes iteration artifacts to a flat path (overwrites); needs per-iteration snapshots + `artifact_versioning: true` | `artifact_versioning_ok` |
+| MR-6 | WARN | `shell` state writes to the same path as an LLM-generator state (hand-patching); fix the generator instead | `generator_fix_ok` |
+| MR-7 | ERROR | unescaped `${ns.path:-default}` (bash `:-` syntax the engine can't parse); use `${ns.path:default=value}` or `$${VAR:-value}` | `bash_default_ok` |
+| MR-8 | WARN | `check_semantic` `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`); default-`DEFAULT_LLM_PROMPT` states exempt | `evidence_contract_ok` |
+| MR-9 | ERROR | `$$(` or `$$VAR` over-escapes bash — `$$` expands to the runner PID; use single `$` for subst/vars, `$$` only for `$${VAR}` braces | `shell_pid_ok` |
+| MR-10 | WARN | inline Python `json.load*` catches parse errors and `exit(0)` with no `on_error:` route (swallows failures as empty success) | `parse_swallow_ok` |
+| policy-table | WARN | `context.policy_rules` predicate references a dimension never scored (`rubric_dimensions` / `rubric-dim-<name>.txt`) — silently inert | `policy_dims_scored_ok` |
+| static `loop:` ref | ERROR | a state's static (non-`${...}`) `loop:` name resolves to no `.yaml`; blocks load. Use the full relative path (`loop: oracles/foo`) | — |
 
-`ll-loop validate` enforces rule MR-2 as WARNING severity. A meta-loop that
-captures a baseline value but never references it in a later evaluator lacks
-the measure→propose→apply→re-measure spine — without that comparison the loop
-cannot tell whether an edit helped or hurt. Use `meta_self_eval_ok: true` at
-the loop top-level to suppress when baseline comparison is intentionally absent.
+The `loop-specialist` agent (`agents/loop-specialist.md`) diagnoses violations
+post-hoc as `self-evaluation bias` / `feature-stubbing`; these gates shift the
+check left.
 
-`ll-loop validate` enforces rule 3 as WARNING severity (rule MR-3). Use
-`shared_state_ok: true` at the loop top-level to suppress the check when
-cross-run sharing is intentional.
-
-`ll-loop validate` enforces rule 4 as WARNING severity (rule MR-4). An
-LLM-judged state (action_type: prompt/slash_command, or an explicit
-check_semantic/llm_structured evaluator) that sets `on_yes` but omits
-`on_no` or `on_partial` — with no `next:` or full `route:` table — silently
-dead-ends when the judge returns `no` or `partial`. Use
-`partial_route_ok: true` at the loop top-level to suppress the check when
-dead-ending on a non-yes verdict is intentional. See ENH-1917.
-
-`ll-loop validate` enforces rule 5 as WARNING severity (rule MR-5). A
-harness-category loop that writes artifact files to a flat path in an
-iterative generate→evaluate→generate cycle overwrites every iteration's
-output — only the final version survives. Add per-iteration snapshots and
-declare `artifact_versioning: true`, or set `artifact_versioning_ok: true`
-to suppress when intentional overwrite is the desired behavior. See ENH-1957.
-
-`ll-loop validate` enforces rule 6 as WARNING severity (rule MR-6). A
-meta-loop where a `shell`-type state writes to the same file path as an
-LLM-generator state (`prompt`/`slash_command` with `yaml_state_editor` or
-`replace_action` markers) is flagged as the hand-patching anti-pattern.
-Hand-patching creates fragile output that diverges from the generator on the
-next run; the stable fix is to update the generator action so every subsequent
-run produces correct output automatically. Set `generator_fix_ok: true` to
-suppress for intentional post-processing cases. See ENH-2079.
-
-`ll-loop validate` enforces rule 7 as ERROR severity (rule MR-7). Any FSM
-action string containing an unescaped `${namespace.path:-default}` (bash
-parameter-expansion default syntax) is flagged. The FSM interpolation engine
-does not support this form and will crash at runtime with
-`Path 'ns.path:-default' not found in context`. Use
-`${namespace.path:default=value}` (engine-native) or `$${VAR:-value}`
-(escaped, handled by the shell) instead. Set `bash_default_ok: true` to
-suppress. See ENH-2348.
-
-`ll-loop validate` enforces rule 8 as WARNING severity (rule MR-8). A
-`check_semantic`/`llm_structured` state whose `evaluate.prompt` omits
-evidence-contract keywords (`verbatim`, `quote`, `evidence`) may default to
-optimism — LLM self-grades are 33–55% accurate without verbatim citation
-requirements (SHOR Table 1). States with no `evaluate.prompt` (using
-`DEFAULT_LLM_PROMPT`) are not flagged; the evidence contract is injected
-automatically. Set `evidence_contract_ok: true` to suppress. See ENH-2342.
-
-`ll-loop validate` enforces rule 9 as ERROR severity (rule MR-9). A shell
-action containing `$$(` or `$$VAR` over-escapes bash. The FSM interpolator only
-rewrites the brace form `$${...}` → `${...}`; bare `$(...)` command substitution
-and `$VAR` references are passed to `bash -c` untouched. Doubling them is NOT an
-escape — the leading `$$` expands to the runner's PID, so `echo "$$(pwd)/$$DIR"`
-captures `<pid>(pwd)/<pid>DIR` instead of an absolute path, silently corrupting
-every downstream `${captured…}` reference. Use single `$` (`$(pwd)`, `$DIR`) for
-command substitution and variables; reserve `$$` exclusively for the `$${VAR}`
-brace escape that collides with `${ns.path}` interpolation. Set `shell_pid_ok:
-true` to suppress in the rare case where a literal PID is intended.
-
-`ll-loop validate` enforces rule 10 as WARNING severity (rule MR-10). A shell
-state whose inline Python calls `json.loads`/`json.load`, catches
-`JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0
-(`sys.exit(0)` or `exit(0)`) — without an `on_error:` route — silently discards
-parse failures: the FSM receives exit 0 and treats the state as successful,
-producing zero results with no log, no stderr, and no non-zero exit code (as
-observed in BUG-2383 across three loops). Add `on_error:` to the state to route
-parse failures explicitly. Set `parse_swallow_ok: true` to suppress in the rare
-case where treating a parse failure as an empty result is intentional and the
-absence of an error route is deliberate.
-
-`ll-loop validate` also enforces a **policy-table rule** (ENH-2309) as WARNING
-severity. For any loop defining `context.policy_rules`, each predicate dimension is
-checked against the set of *scored* dimensions — i.e. those listed in
-`context.rubric_dimensions` (normalized: lowercase + spaces→hyphens) or written by a
-shell state as `rubric-dim-<name>.txt`. A dimension that is referenced but never scored
-is **silently inert at runtime**: `_eval_predicate` returns `True` only for `!=` when
-the dimension is missing from the scores dict, so `==`/`>=`/`<=`/`<`/`>` predicates on
-that dimension can never match and routing always falls through to the catch-all. The
-check names the inert predicate(s) and the missing dimension. Suppressed by
-`policy_dims_scored_ok: true` at the loop top-level.
-
-`ll-loop validate` also enforces an **unresolvable static `loop:` reference** check as ERROR
-severity (BUG-2400). A state whose `loop:` key contains a static (non-`${...}`) name that
-cannot be resolved to a `.yaml` file at definition time will always fail identically at runtime
-(`FileNotFoundError`). The validator now blocks the loop from loading — `ll-loop validate` exits 1
-and `ll-loop run` refuses to start. Fix: use the full relative path including any subdirectory prefix
-(e.g. `loop: oracles/verify-confidence-scores`, not `loop: verify-confidence-scores`). Dynamic names
-containing `${...}` are not checked.
-
-The `loop-specialist` agent diagnoses violations post-hoc as
-`self-evaluation bias` / `feature-stubbing` failure modes
-(`agents/loop-specialist.md`); this section shifts the gate left.
-
-Rationale for these rules, plus the optimizer error taxonomy and the canonical
-`diagnose → propose → apply → measure-externally` shape, lives in
-[docs/guides/HARNESS_OPTIMIZATION_GUIDE.md](../docs/guides/HARNESS_OPTIMIZATION_GUIDE.md).
-
-Use `ll-loop diagnose-evaluators <loop>` to validate discriminator health after
-MR-1 passes: a state can have a non-LLM evaluator paired correctly (MR-1
-satisfied) but still be toothless if its verdict never varies across runs.
-Bernoulli variance `p*(1-p)` below 0.05 across ≥10 runs flags an evaluator that
-isn't measuring anything useful.
-
-Use `ll-loop calibrate-budget <loop>` to decide whether increasing `max_steps`
-will actually improve outcomes. Additional iterations amplify a sound strategy but
-produce near-zero returns when the underlying evaluator is unhealthy. Example:
-
-```
-Evaluator: check_quality (llm_structured)
-  Variance p*(1-p): 0.02   ⚠ WARN: below 0.05 threshold — fix evaluator before increasing max_steps
-Evaluator: check_exit (exit_code)
-  Variance p*(1-p): 0.23   ✓ OK
-```
-
-`check_quality` has `p*(1-p) = 0.02` — it nearly always returns the same verdict, so
-the loop cannot learn from its signal regardless of how many iterations you allow.
-`check_exit` has `p*(1-p) = 0.23` — it discriminates well; more iterations here earn
-their token cost.  Fix toothless evaluators (broaden the judge prompt, tighten the
-exit-code command) *before* raising `max_iterations`, or the extra budget is wasted.
-
-Use `ll-loop run --baseline` to empirically validate that a meta-loop harness
-improves output quality over an unguided LLM call. See
-[docs/guides/AUTOMATIC_HARNESSING_GUIDE.md § Validating Your Harness](../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md).
+After MR-1 passes, validate discriminator health and budget before raising `max_steps`:
+- `ll-loop diagnose-evaluators <loop>` — flags a paired-but-toothless evaluator
+  whose verdict never varies (Bernoulli variance `p*(1-p)` < 0.05 across ≥10 runs).
+- `ll-loop calibrate-budget <loop>` — extra iterations against a toothless
+  evaluator earn nothing; fix the evaluator before spending more budget.
+- `ll-loop run <loop> --baseline` — confirm the harness beats an unguided single
+  call. See [docs/guides/AUTOMATIC_HARNESSING_GUIDE.md § Validating Your Harness](../docs/guides/AUTOMATIC_HARNESSING_GUIDE.md).
 
 ## Issue File Format
 
