@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.136.0] - 2026-06-30
+
+### Added
+
+- **`ll-artifact policy-builder` emit + validate engine** — New subcommand emits a `file://`-safe visual builder for policy-router / rubric loop YAML (stamping design-token CSS, the grammar spec, and the skill catalog at generation time) and validates the produced policy. (FEAT-2390)
+- **Topology-aware FSM diagram fallback for the pinned-pane ladder** — When the full state diagram won't fit the pinned pane, rendering now branches on *why* it doesn't fit and degrades to a windowed / scroll-to-active view instead of always collapsing to the neighborhood. (ENH-2410, ENH-2411)
+- **Consistent learning-test gating across core implementation loops** — `rn-implement`, `autodev`, and `sprint-refine-and-implement` share learning-gate routing with a `skip_learning_gate` knob; `issue_manager` emits a `LEARNING_GATE_BLOCKED` stdout marker on block. (ENH-2402)
+- **Learning gate proves registered targets instead of re-extracting** — The gate now threads the issue's registered `learning_tests_required` targets through rather than re-deriving them, so it validates the recorded contract. (ENH-2405)
+- **`decide-issue` bullet-list options + Open-Questions fall-through fix** — Adds Pattern 4 bullet-style option handling and fixes the absent-Open-Questions fall-through. (ENH-2401)
+
+### Fixed
+
+- **Git-lifecycle completion commits over-stage the repo** — Fallback lifecycle and parallel-orchestrator completion commits are now scoped to the issue file instead of staging unrelated working-tree changes. (BUG-2421, BUG-2424)
+- **Decisions-check invocations swallow CLI errors** — Guardrail reads no longer discard CLI errors via `2>/dev/null || true`, and the `--enforcement` filter is now registered on `decisions list`. (BUG-2423)
+- **`feat-1680` stale-ref sweep fires every turn** — Cross-issue stale-ref sweep re-homed from the Stop hook to SessionEnd, so it runs once per session rather than every turn. (BUG-2422)
+- **`scratch-pad-redirect` Stop-hook race and double-wrap** — Redirect hook no longer double-wraps commands or races the Stop-hook cleanup, and now unwraps `python -m <module>` in the allowlist match. (BUG-2420)
+- **`ll-auto` plan short-circuit before the uncommitted-work check** — Phase-3 plan short-circuit is now gated on the absence of uncommitted work, preventing a headless stall. (BUG-2409)
+- **`manage-issue` backgrounds the final test run** — Headless turns now require a foreground-blocking final test run so the turn doesn't complete before tests finish. (BUG-2408)
+- **`auto-refine-and-implement` closure metric counts the vestigial `.issues/completed/`** — Closure verdict now unions the `completed/` and `status: done` diffs. (BUG-2403)
+- **Unresolvable `loop:` refs demoted work to a silent warning** — Static `loop:` references that resolve to no YAML are promoted from WARNING to ERROR so they block load. (BUG-2400)
+- **FSM `terminated_by` value misaligned with `state.json`** — Runner now emits `terminated_by: "interrupted"` (renamed from `"signal"`) so `events.jsonl` matches `state.json`. (BUG-2397)
+
+### Changed
+
+- **Worktree git calls routed through `GitLock`** — Remaining bare git calls in worktree management now go through `GitLock`, with a new concurrency regression test. (ENH-2326)
+- **Removed fragile branch-name string-replace in the orchestrator** — `_inspect_worktree` no longer derives branch names via string replacement. (ENH-2325)
+- **`ll-loop validate` flags never-scored `policy_rules` dimensions** — Validation warns when a `policy_rules` predicate references a rubric dimension that is never scored. (ENH-2309)
+- **Rubric-gated compaction timing in the `pre_compact` hook** — Adds rubric-gated timing so compaction fires at a better point. (ENH-2341)
+- **`autodev`/`auto-refine` summary preserves skip reasons** — Summary no longer drops skip reasons or gate-blocked issues. (ENH-2404)
+
 ## [1.135.0] - 2026-06-29
 
 ### Added
