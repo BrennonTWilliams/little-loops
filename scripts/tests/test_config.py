@@ -3095,9 +3095,7 @@ class TestPreCompactRubricConfig:
 
     def test_signals_stuck_from_dict(self) -> None:
         """stuck_signals is read from nested signals dict."""
-        config = PreCompactRubricConfig.from_dict(
-            {"signals": {"stuck_signals": [r"\bdeadloop\b"]}}
-        )
+        config = PreCompactRubricConfig.from_dict({"signals": {"stuck_signals": [r"\bdeadloop\b"]}})
         assert r"\bdeadloop\b" in config.signals.stuck_signals
 
     def test_from_dict_empty_does_not_raise(self) -> None:

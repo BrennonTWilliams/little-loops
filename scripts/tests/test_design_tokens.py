@@ -330,9 +330,7 @@ class TestRenderAsCssVars:
 
 
 class TestRenderAsCssVarsThemed:
-    def _load_light_dark(
-        self, tmp_path: Path
-    ) -> tuple[DesignTokens, DesignTokens]:
+    def _load_light_dark(self, tmp_path: Path) -> tuple[DesignTokens, DesignTokens]:
         """Write light + dark theme files and load both, returning (light, dark)."""
         token_dir = _write_tokens(
             tmp_path,

@@ -64,9 +64,7 @@ def _find_evidence(text: str, signals: list[str]) -> bool:
     return bool(re.compile("|".join(parts), re.IGNORECASE).search(text))
 
 
-def should_compact(
-    trajectory_excerpt: str, rubric: PreCompactRubricConfig
-) -> tuple[bool, str]:
+def should_compact(trajectory_excerpt: str, rubric: PreCompactRubricConfig) -> tuple[bool, str]:
     """Evaluate the SELFCOMPACT rubric over the recent trajectory.
 
     Returns ``(compact_now, reason)``. Each condition requires verbatim evidence;

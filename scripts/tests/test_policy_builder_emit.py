@@ -15,18 +15,8 @@ from unittest.mock import patch
 from little_loops.cli.artifact import cmd_policy_builder, main_artifact
 from little_loops.logger import Logger
 
-GOLDEN = (
-    Path(__file__).parent
-    / "fixtures"
-    / "policy_builder"
-    / "sample-decision-table.yaml"
-)
-GOLDEN_RUBRIC = (
-    Path(__file__).parent
-    / "fixtures"
-    / "policy_builder"
-    / "sample-rubric.yaml"
-)
+GOLDEN = Path(__file__).parent / "fixtures" / "policy_builder" / "sample-decision-table.yaml"
+GOLDEN_RUBRIC = Path(__file__).parent / "fixtures" / "policy_builder" / "sample-rubric.yaml"
 
 
 def test_emit_writes_html(tmp_path: Path) -> None:

@@ -2632,9 +2632,7 @@ class TestScratchPadRedirect:
         finally:
             os.chdir(original_dir)
 
-    def test_python_dash_m_non_allowlisted_module_allow(
-        self, hook_script: Path, tmp_path: Path
-    ):
+    def test_python_dash_m_non_allowlisted_module_allow(self, hook_script: Path, tmp_path: Path):
         """`python -m <module not in allowlist>` is allowed unchanged."""
         import os
 

@@ -1871,9 +1871,7 @@ class TestAutoRefineAndImplementLoop:
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, f"finalize action failed: {result.stderr}"
         return json.loads((run_dir / "summary.json").read_text())
 
@@ -1915,9 +1913,7 @@ class TestAutoRefineAndImplementLoop:
         )
         assert summary["closed"] == 1, f"decomposition closure must count, got {summary}"
 
-    def test_finalize_counts_done_in_place_leaf_as_closed(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_counts_done_in_place_leaf_as_closed(self, data: dict, tmp_path: Path) -> None:
         """BUG-2403: a leaf issue that reaches status: done IN PLACE (no move to
         completed/, per ENH-1418) must count as CLOSED and yield a non-phantom
         verdict. Previously CLOSED was computed strictly from a completed/ diff,
@@ -2163,9 +2159,7 @@ class TestAutoRefineAndImplementLoop:
         (issues_dir / "P3-FEAT-1-x.md").write_text("---\nid: FEAT-1\nstatus: done\n---\n")
         action = data["states"]["init"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, f"init action failed: {result.stderr}"
         baseline = run_dir / "auto-refine-and-implement-done-baseline.txt"
         assert baseline.exists() and "FEAT-1" in baseline.read_text(), (

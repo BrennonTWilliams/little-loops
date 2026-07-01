@@ -4519,9 +4519,7 @@ class TestWindowedDiagram:
         assert "layers above" in out and "layers below" in out
         # The active state's box (not just a banner mention) is inside the window.
         banner_terms = ("layers above", "layers below")
-        assert any(
-            "s10" in ln for ln in lines if not any(t in ln for t in banner_terms)
-        ), out
+        assert any("s10" in ln for ln in lines if not any(t in ln for t in banner_terms)), out
 
     def test_overflow_banner_reports_layer_counts(self) -> None:
         from little_loops.cli.loop.layout import _render_windowed_diagram

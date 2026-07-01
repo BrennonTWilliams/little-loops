@@ -31,9 +31,7 @@ JS_TEST_DIR = Path(__file__).parent / "js"
 def _node_major(node: str) -> int | None:
     """Return the major version of ``node``, or None if it cannot be probed."""
     try:
-        proc = subprocess.run(
-            [node, "--version"], capture_output=True, text=True, timeout=30
-        )
+        proc = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
     raw = proc.stdout.strip().lstrip("v")
@@ -53,9 +51,7 @@ def test_node_conformance_suite_passes() -> None:
     """
     node = shutil.which("node")
     if node is None:
-        pytest.skip(
-            "node not installed; JS conformance gate runs wherever Node >= 22 is available"
-        )
+        pytest.skip("node not installed; JS conformance gate runs wherever Node >= 22 is available")
     major = _node_major(node)
     if major is None or major < 22:
         pytest.skip(f"Node >= 22 required for node:test; found major version {major}")

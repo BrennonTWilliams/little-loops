@@ -3828,9 +3828,7 @@ class TestAutoManagerLearningGate:
                 "little_loops.issue_manager.run_learning_gate_for_issue",
                 return_value="passed",
             ) as mock_gate,
-            patch(
-                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
-            ),
+            patch("little_loops.issue_manager.run_with_continuation", return_value=impl_result),
             patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
             patch("little_loops.issue_manager.check_git_status", return_value=False),
         ):

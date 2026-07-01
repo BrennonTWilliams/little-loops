@@ -359,9 +359,7 @@ class TestRubricGating:
         """Stuck signals detected → exit 0, no state file written."""
         monkeypatch.chdir(tmp_path)
         # Has closed_unit + reducible + progress but also stuck signals
-        t = _transcript(
-            tmp_path, "Task completed. In summary, updated files. Same error occurred."
-        )
+        t = _transcript(tmp_path, "Task completed. In summary, updated files. Same error occurred.")
         _write_rubric_config(tmp_path, rubric={"enabled": True})
 
         result = pre_compact.handle(_event(transcript_path=str(t)))
@@ -376,9 +374,7 @@ class TestRubricGating:
         monkeypatch.chdir(tmp_path)
         _write_rubric_config(tmp_path, rubric={"enabled": True})
 
-        result = pre_compact.handle(
-            _event(transcript_path=str(tmp_path / "nonexistent.jsonl"))
-        )
+        result = pre_compact.handle(_event(transcript_path=str(tmp_path / "nonexistent.jsonl")))
 
         assert result.exit_code == 2
         assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()

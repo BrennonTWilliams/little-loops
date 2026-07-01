@@ -415,24 +415,16 @@ class RubricSignalsConfig:
     closed_unit_signals: list[str] = field(
         default_factory=lambda: list(_CLOSED_UNIT_SIGNALS_DEFAULT)
     )
-    reducible_signals: list[str] = field(
-        default_factory=lambda: list(_REDUCIBLE_SIGNALS_DEFAULT)
-    )
-    progress_signals: list[str] = field(
-        default_factory=lambda: list(_PROGRESS_SIGNALS_DEFAULT)
-    )
+    reducible_signals: list[str] = field(default_factory=lambda: list(_REDUCIBLE_SIGNALS_DEFAULT))
+    progress_signals: list[str] = field(default_factory=lambda: list(_PROGRESS_SIGNALS_DEFAULT))
     stuck_signals: list[str] = field(default_factory=lambda: list(_STUCK_SIGNALS_DEFAULT))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RubricSignalsConfig:
         """Create RubricSignalsConfig from dictionary."""
         return cls(
-            closed_unit_signals=data.get(
-                "closed_unit_signals", list(_CLOSED_UNIT_SIGNALS_DEFAULT)
-            ),
-            reducible_signals=data.get(
-                "reducible_signals", list(_REDUCIBLE_SIGNALS_DEFAULT)
-            ),
+            closed_unit_signals=data.get("closed_unit_signals", list(_CLOSED_UNIT_SIGNALS_DEFAULT)),
+            reducible_signals=data.get("reducible_signals", list(_REDUCIBLE_SIGNALS_DEFAULT)),
             progress_signals=data.get("progress_signals", list(_PROGRESS_SIGNALS_DEFAULT)),
             stuck_signals=data.get("stuck_signals", list(_STUCK_SIGNALS_DEFAULT)),
         )

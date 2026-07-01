@@ -2203,9 +2203,7 @@ class TestSignalHandlingPersistence:
         assert result.captured["step1_out"]["output"] == "call_3"
         assert result.captured["step2_out"]["output"] == "call_4"
 
-    def test_mid_run_shutdown_emits_interrupted_in_events_jsonl(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_mid_run_shutdown_emits_interrupted_in_events_jsonl(self, tmp_loops_dir: Path) -> None:
         """Signal received between route and state_enter emits terminated_by='interrupted' in events.jsonl."""
         fsm = FSMLoop(
             name="mid-run-signal-test",
@@ -2233,7 +2231,16 @@ class TestSignalHandlingPersistence:
                 on_usage_detailed: Any = None,
                 model: str | None = None,
             ) -> ActionResult:
-                del timeout, is_slash_command, on_output_line, agent, tools, on_usage, on_usage_detailed, model
+                del (
+                    timeout,
+                    is_slash_command,
+                    on_output_line,
+                    agent,
+                    tools,
+                    on_usage,
+                    on_usage_detailed,
+                    model,
+                )
                 call_count[0] += 1
                 if call_count[0] == 1 and executor_ref:
                     # Trigger shutdown after first action — simulates signal between route and state_enter

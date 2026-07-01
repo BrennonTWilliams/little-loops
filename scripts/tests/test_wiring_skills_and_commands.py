@@ -246,7 +246,11 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
     ("commands/ready-issue.md", "--active-only --format json 2>/dev/null || true", "BUG-2423"),
     ("commands/ready-issue.md", "--type exception 2>/dev/null || true", "BUG-2423"),
     ("commands/verify-issues.md", "--active-only 2>/dev/null || true", "BUG-2423"),
-    ("skills/improve-claude-md/SKILL.md", "decisions list --type rule 2>/dev/null | grep", "BUG-2423"),
+    (
+        "skills/improve-claude-md/SKILL.md",
+        "decisions list --type rule 2>/dev/null | grep",
+        "BUG-2423",
+    ),
 ]
 
 
