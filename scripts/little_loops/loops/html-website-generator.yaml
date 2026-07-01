@@ -12,8 +12,11 @@ description: |
   Anthropic's harness design article. Thin wrapper over
   oracles/generator-evaluator (ENH-1869).
 initial: plan
-max_steps: 30
-timeout: 14400
+# A single-page generator converges in ~3 refine rounds once the evaluator can see
+# the full page (full-page screenshot) and routing is score-driven. 30 steps / 4h was
+# far more headroom than needed and turned "done at iter-3" into a wall-hit timeout.
+max_steps: 12
+timeout: 3600
 
 # HARNESS: Context variables control quality threshold.
 context:
@@ -98,14 +101,21 @@ states:
          threshold, write "No issues — all criteria pass."]
         ```
 
+        Score ONLY what is visible in the full-page screenshot. Do NOT invent
+        "cannot be verified from this image" issues — the screenshot is full-page,
+        so every section is present. If some detail is genuinely off-screen, that
+        is not a scoring criterion and must not lower any score or block passing.
+
         After writing the file, evaluate the scores:
         - design_quality weight: 2x (threshold 6)
         - originality weight: 2x (threshold 6)
         - craft weight: 1x (threshold 6)
         - functionality weight: 1x (threshold 6)
 
-        If ALL four individual scores are >= 6, output exactly: ALL_PASS
-        Otherwise output: ITERATE
+        The pass/fail decision is a pure function of the four numeric scores ONLY.
+        A non-empty "Issues to Address" list is advisory polish for the next pass and
+        MUST NOT prevent passing. If ALL four individual scores are >= 6, output
+        exactly: ALL_PASS (even when issues remain listed). Otherwise output: ITERATE
       pass_threshold: 6
     on_yes: smoke_test
     on_no: failed

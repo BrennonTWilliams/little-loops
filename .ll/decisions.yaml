@@ -3467,3 +3467,32 @@
     a relative time window (e.g. ''last N days''); '
   enforcement: advisory
   issue: BUG-2427
+- id: ARCH-167
+  type: rule
+  timestamp: '2026-07-01T18:56:49Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The loop stayed in ITERATE forever because all four rubric scores passed
+    threshold but the routing predicate also checked for an empty issues list, which
+    was never empty even when scores passed — causing non-convergence despite passing
+    metrics.
+  rule: 'Drive evaluator pass/fail routing purely from numeric/threshold scores; never
+    let a non-empty advisory prose list (e.g. '
+  enforcement: advisory
+  issue: ENH-2429
+- id: TEST-168
+  type: rule
+  timestamp: '2026-07-01T18:56:49Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: A viewport-only screenshot left ~90% of the generated page unseen, causing
+    the evaluator to manufacture 'cannot be verified' issues every round, which the
+    generator chased indefinitely without ever resolving anything visible.
+  rule: When a visual/screenshot-based evaluator grades generated page or UI output,
+    capture the full page, not just the viewpor
+  enforcement: advisory
+  issue: ENH-2429

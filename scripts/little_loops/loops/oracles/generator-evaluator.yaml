@@ -72,7 +72,7 @@ states:
         /*) ABS_DIR="${context.run_dir}" ;;
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
-      playwright screenshot "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"
+      playwright screenshot --full-page "file://$${ABS_DIR}/${context.artifact_path}" "$${ABS_DIR}/screenshot.png" 2>&1 && echo "CAPTURED"
     on_yes: snapshot
     on_no: snapshot
     on_error: snapshot
