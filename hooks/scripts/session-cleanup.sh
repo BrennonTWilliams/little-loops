@@ -13,8 +13,10 @@ cleanup() {
     # Clean up lock and state files (relative to CWD which should be project root)
     rm -f .ll/.ll-lock .ll/ll-context-state.json 2>/dev/null || true
 
-    # Clean up scratch pad files
-    rm -rf ".loops/tmp/scratch" 2>/dev/null || true
+    # NOTE: scratch-pad cleanup deliberately does NOT happen here. This is a Stop
+    # handler (fires at every turn end); deleting .loops/tmp/scratch here raced
+    # auto-backgrounded allowlisted commands that outlive the turn (BUG-2420).
+    # Scratch cleanup now lives in scratch-cleanup.sh, wired to SessionEnd.
 
     # Read worktree base from config, with fallback default
     CONFIG_FILE=".ll/ll-config.json"

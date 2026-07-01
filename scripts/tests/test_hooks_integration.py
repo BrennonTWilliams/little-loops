@@ -2658,6 +2658,220 @@ class TestScratchPadRedirect:
             os.chdir(original_dir)
 
 
+class TestScratchPadRedirectBug2420:
+    """BUG-2420: don't double-wrap output-managing commands; group-wrap bare
+    compound commands so one redirect captures every segment; recreate the
+    scratch dir at execution time (belt-and-suspenders for the cleanup race)."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        return Path(__file__).parent.parent.parent / "hooks/scripts/scratch-pad-redirect.sh"
+
+    def _write_config(self, tmp_path: Path) -> None:
+        config = {
+            "scratch_pad": {
+                "enabled": True,
+                "threshold_lines": 200,
+                "automation_contexts_only": True,
+                "tail_lines": 20,
+                "command_allowlist": ["cat", "pytest", "mypy", "ruff", "ls", "grep", "find"],
+                "file_extension_filters": [".log", ".txt"],
+            }
+        }
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "ll-config.json").write_text(json.dumps(config))
+
+    def _run(self, hook_script: Path, command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(
+                {
+                    "tool_name": "Bash",
+                    "tool_input": {"command": command},
+                    "permission_mode": "bypassPermissions",
+                }
+            ),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+    def test_already_redirecting_command_passthrough(self, hook_script: Path, tmp_path: Path):
+        """A command that already manages its own output (`>`) is passed through
+        unchanged — appending a second redirect would bind to the trailing
+        segment and misroute the real output (defect 1)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            result = self._run(hook_script, "pytest a.py > out.txt 2>&1; tail -20 out.txt")
+            assert result.returncode == 0
+            hso = json.loads(result.stdout)["hookSpecificOutput"]
+            assert hso["permissionDecision"] == "allow"
+            assert "updatedInput" not in hso, (
+                "a command already managing its own output must not be re-wrapped"
+            )
+        finally:
+            os.chdir(original_dir)
+
+    def test_tee_command_passthrough(self, hook_script: Path, tmp_path: Path):
+        """A command piping to `tee` already manages its output → passthrough."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            result = self._run(hook_script, "pytest a.py | tee out.txt")
+            assert result.returncode == 0
+            hso = json.loads(result.stdout)["hookSpecificOutput"]
+            assert "updatedInput" not in hso
+        finally:
+            os.chdir(original_dir)
+
+    def test_compound_command_group_wrapped(self, hook_script: Path, tmp_path: Path):
+        """A bare compound command (`;` between segments) is group-wrapped so a
+        single redirect captures every segment, not just the trailing one."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            result = self._run(hook_script, "pytest a.py; pytest b.py")
+            assert result.returncode == 0
+            hso = json.loads(result.stdout)["hookSpecificOutput"]
+            assert "updatedInput" in hso
+            new_cmd = hso["updatedInput"]["command"]
+            # Subshell group wraps the whole compound command...
+            assert "( pytest a.py; pytest b.py )" in new_cmd
+            # ...and exactly one output redirect targets the scratch file.
+            assert new_cmd.count("> .loops/tmp/scratch/") == 1
+        finally:
+            os.chdir(original_dir)
+
+    def test_rewrite_recreates_scratch_dir(self, hook_script: Path, tmp_path: Path):
+        """The rewritten command recreates the scratch dir so it exists at
+        execution time even if a prior sweep removed it (defect 2 belt-and-suspenders)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            result = self._run(hook_script, "pytest scripts/tests/")
+            assert result.returncode == 0
+            hso = json.loads(result.stdout)["hookSpecificOutput"]
+            assert "updatedInput" in hso
+            assert "mkdir -p .loops/tmp/scratch" in hso["updatedInput"]["command"]
+        finally:
+            os.chdir(original_dir)
+
+    def test_compound_command_execution_captures_all_segments(
+        self, hook_script: Path, tmp_path: Path
+    ):
+        """Execution-level: running the rewritten compound command lands BOTH
+        segments' output in the scratch file, not just the trailing one."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            (tmp_path / "alpha.txt").write_text("a")
+            (tmp_path / "beta.txt").write_text("b")
+            result = self._run(hook_script, "ls alpha.txt; ls beta.txt")
+            new_cmd = json.loads(result.stdout)["hookSpecificOutput"]["updatedInput"]["command"]
+            # Execute the rewritten command exactly as the harness would.
+            subprocess.run(
+                ["bash", "-c", new_cmd], cwd=tmp_path, capture_output=True, text=True, timeout=10
+            )
+            scratch_files = list((tmp_path / ".loops/tmp/scratch").glob("*.txt"))
+            assert scratch_files, "scratch file was not created"
+            contents = scratch_files[0].read_text()
+            assert "alpha.txt" in contents and "beta.txt" in contents, (
+                f"both segments' output must be captured; got: {contents!r}"
+            )
+        finally:
+            os.chdir(original_dir)
+
+
+class TestScratchCleanupSessionEnd:
+    """BUG-2420: scratch cleanup moved off the racing `Stop` hook onto a
+    dedicated, correctly-wired `SessionEnd` binding."""
+
+    REPO_ROOT = Path(__file__).parent.parent.parent
+
+    def test_session_cleanup_no_longer_removes_scratch(self):
+        """session-cleanup.sh (a Stop handler) must NOT delete the scratch dir —
+        that raced auto-backgrounded commands still writing to it. Explanatory
+        comments may still reference the path; only executable lines are checked."""
+        text = (self.REPO_ROOT / "hooks/scripts/session-cleanup.sh").read_text()
+        code_lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+        offending = [ln for ln in code_lines if ".loops/tmp/scratch" in ln]
+        assert not offending, (
+            "session-cleanup.sh (Stop) must not remove the scratch dir; scratch "
+            f"cleanup belongs on SessionEnd. Offending lines: {offending!r}"
+        )
+
+    def test_scratch_cleanup_script_removes_scratch(self):
+        """A dedicated scratch-cleanup.sh exists and performs the scratch rm -rf."""
+        script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
+        assert script.is_file(), "hooks/scripts/scratch-cleanup.sh must exist"
+        text = script.read_text()
+        assert "rm -rf" in text and ".loops/tmp/scratch" in text
+
+    def test_scratch_cleanup_never_fails_when_dir_absent(self, tmp_path: Path):
+        """scratch-cleanup.sh must exit 0 even when the scratch dir is absent."""
+        import os
+
+        script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)  # no .loops/tmp/scratch here
+            result = subprocess.run(
+                [str(script)], input="{}", capture_output=True, text=True, timeout=5
+            )
+            assert result.returncode == 0
+        finally:
+            os.chdir(original_dir)
+
+    def test_scratch_cleanup_removes_dir_when_present(self, tmp_path: Path):
+        """scratch-cleanup.sh removes the scratch dir when present."""
+        import os
+
+        script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            scratch = tmp_path / ".loops/tmp/scratch"
+            scratch.mkdir(parents=True)
+            (scratch / "x.txt").write_text("data")
+            result = subprocess.run(
+                [str(script)], input="{}", capture_output=True, text=True, timeout=5
+            )
+            assert result.returncode == 0
+            assert not scratch.exists(), "scratch dir should be removed by scratch-cleanup.sh"
+        finally:
+            os.chdir(original_dir)
+
+    def test_hooks_json_registers_session_end_scratch_cleanup(self):
+        """hooks/hooks.json registers a SessionEnd block bound to scratch-cleanup.sh."""
+        data = json.loads((self.REPO_ROOT / "hooks/hooks.json").read_text())
+        assert "SessionEnd" in data["hooks"], "hooks.json is missing a SessionEnd key"
+        commands = [
+            hook.get("command", "")
+            for group in data["hooks"]["SessionEnd"]
+            for hook in group.get("hooks", [])
+        ]
+        assert any("scratch-cleanup.sh" in c for c in commands), (
+            f"SessionEnd must bind scratch-cleanup.sh; got {commands!r}"
+        )
+
+
 class TestContextMonitorLockTimeout:
     """Test that context-monitor.sh uses correct lock timeout value."""
 

@@ -173,6 +173,18 @@
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh",
+            "timeout": 5,
+            "statusMessage": "Cleaning up scratch pad..."
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "matcher": "*",

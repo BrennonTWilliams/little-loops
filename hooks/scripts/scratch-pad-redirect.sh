@@ -91,12 +91,26 @@ case "$TOOL_NAME" in
             allow_response
         fi
 
+        # Don't double-wrap a command that already manages its own output.
+        # Appending a second redirect would bind to the trailing segment (e.g. a
+        # user's own `tail`) and misroute the real producer's output. Guard on
+        # output-managing operators only (`>`, `>>` ⊂ `>`, `| tee`) — NOT `;`/`|`,
+        # since a bare compound command must be captured, not passed through (BUG-2420).
+        case "$CMD" in
+            *'>'*|*'| tee '*) allow_response ;;
+        esac
+
         SAFE_NAME=$(echo "$FIRST_BASE" | tr -cd '[:alnum:]_-')
         SAFE_NAME="${SAFE_NAME:-cmd}"
         SCRATCH_PATH=".loops/tmp/scratch/${SAFE_NAME}-$$.txt"
-        mkdir -p .loops/tmp/scratch 2>/dev/null || true
 
-        NEW_CMD="${CMD} > ${SCRATCH_PATH} 2>&1; tail -${TAIL_LINES} ${SCRATCH_PATH}"
+        # Group-wrap in a subshell so a single redirect applies atomically across
+        # every `;`/`|` segment of a bare compound command (otherwise it binds to
+        # the final segment only and earlier output is lost). Recreate the scratch
+        # dir inside the rewritten command so it exists at execution time even when
+        # an auto-backgrounded command outlives the turn and the dir was swept — a
+        # subshell is robust to `${CMD}` shapes that would break `{ …; }` grouping.
+        NEW_CMD="mkdir -p .loops/tmp/scratch; ( ${CMD} ) > ${SCRATCH_PATH} 2>&1; tail -${TAIL_LINES} ${SCRATCH_PATH}"
         CTX="Output redirected to ${SCRATCH_PATH} (last ${TAIL_LINES} lines shown inline)."
 
         jq -nc --arg new "$NEW_CMD" --arg ctx "$CTX" \
