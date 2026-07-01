@@ -4596,6 +4596,55 @@ class TestWindowedDiagram:
         assert _render_windowed_diagram(fsm, "only", budget=50) == ""
 
 
+def _long_back_edge_fsm(n: int, back_src: str, back_dst: str) -> FSMLoop:
+    """Chain ``s0 → … → s{n-1}`` plus one back-edge from ``back_src`` to ``back_dst``.
+
+    Used to exercise a margin pipe long enough to fully span a narrow window.
+    """
+    states: dict[str, StateConfig] = {
+        f"s{i}": make_test_state(action="step", on_yes=f"s{i + 1}") for i in range(n - 1)
+    }
+    states[back_src] = make_test_state(action="step", on_yes=f"s{int(back_src[1:]) + 1}", on_no=back_dst)
+    states[f"s{n - 1}"] = make_test_state(terminal=True)
+    return make_test_fsm(initial="s0", states=states)
+
+
+class TestWindowedDiagramPassThroughPipes:
+    """A margin pipe spanning past both window edges is a bare line with no
+    visible connector — the overflow banners already summarize what's cropped,
+    so these segments are blanked rather than left as noise."""
+
+    def test_pass_through_back_edge_pipe_is_blanked(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _long_back_edge_fsm(20, back_src="s15", back_dst="s2")
+        out = _render_windowed_diagram(fsm, "s8", budget=14, mode="full")
+        lines = _strip(out)
+
+        # Window covers s8/s9 only; both back-edge endpoints (s2, s15) are cropped
+        # away, so no left-margin pipe or its "no" label should survive. The box
+        # itself starts well to the right (see the leading spaces above), so the
+        # left margin — everything before the box — must be pipe-free.
+        assert "s8" in "\n".join(lines) and "s9" in "\n".join(lines)
+        assert "▲" in out and "layers above" in out
+        assert "layers below" in out
+        box_start = min(ln.index("┌") for ln in lines if "┌" in ln)
+        margin = "\n".join(ln[:box_start] for ln in lines if "layers" not in ln)
+        assert "│" not in margin, margin
+        assert "no" not in margin, margin
+
+    def test_partial_stub_pipe_survives(self) -> None:
+        """When one endpoint is inside the window, the stub is meaningful and stays."""
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _long_back_edge_fsm(20, back_src="s15", back_dst="s2")
+        out = _render_windowed_diagram(fsm, "s2", budget=14, mode="full")
+        lines = _strip(out)
+
+        assert any("s2" in ln for ln in lines)
+        assert "│" in "\n".join(lines)
+
+
 class TestWindowedLadderIntegration:
     """Tests for the "window" rung in the pinned-pane fallback ladder."""
 

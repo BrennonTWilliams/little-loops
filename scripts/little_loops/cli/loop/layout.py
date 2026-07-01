@@ -1240,6 +1240,14 @@ def _render_layered_diagram(
     # landing on the same grid row, which would clobber the first label written there.
     used_label_rows: set[int] = set()
 
+    # Margin pipe spans (ENH-2410 windowed-crop cleanup): (col, top_row, bot_row,
+    # label_row_pos, label_start, label_len) for every back-edge / forward
+    # skip-layer pipe drawn below. When the window later crops to rows strictly
+    # between top_row and bot_row (neither corner visible), the pipe is a bare
+    # pass-through line with no connector or arrowhead — the overflow banners
+    # already summarize what's above/below, so those segments get blanked.
+    margin_pipe_spans: list[tuple[int, int, int, int, int, int]] = []
+
     # Draw forward edges between layers (vertical arrows with labels)
     for li in range(len(layers) - 1):
         layer_h = max(box_height[s] for s in layers[li])
@@ -1552,11 +1560,14 @@ def _render_layered_diagram(
                 if not found:
                     label_row_pos = top_row + 1
             used_label_rows.add(label_row_pos)
+            label_start = rightmost_pipe_col + 2
+            label_len = 0
             if 0 <= label_row_pos < total_height and not title_only:
-                label_start = rightmost_pipe_col + 2
                 for j, ch in enumerate(label):
                     if label_start + j < content_left - 1 and label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = _lc(ch)
+                        label_len = j + 1
+            margin_pipe_spans.append((col, top_row, bot_row, label_row_pos, label_start, label_len))
 
     # Forward skip-layer edges: right-margin vertical arrows with labels
     # Symmetric to the left-margin back-edge renderer above
@@ -1672,19 +1683,25 @@ def _render_layered_diagram(
                 if not found:
                     label_row_pos = top_row + 1
             used_label_rows.add(label_row_pos)
+            label_start = rightmost_fwd_pipe_col + 2
+            label_len = 0
             if 0 <= label_row_pos < total_height and not title_only:
-                label_start = rightmost_fwd_pipe_col + 2
                 max_label = total_width - label_start
                 if 0 < max_label < len(label):
                     label = label[: max_label - 1] + "…"
                 for j, ch in enumerate(label):
                     if label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = _lc(ch)
+                        label_len = j + 1
+            margin_pipe_spans.append((col, top_row, bot_row, label_row_pos, label_start, label_len))
 
     # Windowed crop (ENH-2410): keep only the grid rows for the ±K layers around
     # the active state that fit ``budget``. Slicing whole grid rows preserves the
-    # real column positions, arrows, labels, badges and highlight; back-edge
-    # margin pipes that cross the window survive as truncated stubs.
+    # real column positions, arrows, labels, badges and highlight. Back-edge and
+    # forward-skip margin pipes whose window slice contains neither endpoint are
+    # pure pass-through lines — blanked below since the overflow banners already
+    # summarize what's above/below; pipes with one endpoint still visible survive
+    # as meaningful truncated stubs.
     banner_above = ""
     banner_below = ""
     if window is not None:
@@ -1733,7 +1750,28 @@ def _render_layered_diagram(
             if not grew:
                 break
 
-        grid = grid[_layer_top(lo) : _layer_bottom(hi)]
+        window_top = _layer_top(lo)
+        window_bot = _layer_bottom(hi)
+
+        # Blank pass-through margin pipes: segments whose window slice contains
+        # neither the source nor destination corner render as a bare vertical
+        # line with no connector — pure noise once the endpoints are cropped
+        # away. Only untouched "│" cells are cleared; a "┼" junction means a
+        # different (possibly still-visible) edge's horizontal connector
+        # crosses here, so it's left alone.
+        for p_col, p_top, p_bot, p_label_row, p_label_start, p_label_len in margin_pipe_spans:
+            if p_top < window_top and p_bot >= window_bot:
+                for r in range(window_top, window_bot):
+                    if 0 <= r < total_height and 0 <= p_col < total_width:
+                        if strip_ansi(grid[r][p_col]) == "│":
+                            grid[r][p_col] = " "
+                if window_top <= p_label_row < window_bot and p_label_len > 0:
+                    for j in range(p_label_len):
+                        c = p_label_start + j
+                        if 0 <= c < total_width:
+                            grid[p_label_row][c] = " "
+
+        grid = grid[window_top:window_bot]
 
         if lo > 0:
             reps = [layers[li][0] for li in range(0, lo)]
