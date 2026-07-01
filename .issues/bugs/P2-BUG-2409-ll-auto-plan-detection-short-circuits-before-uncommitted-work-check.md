@@ -9,6 +9,12 @@ relates_to:
 - BUG-2408
 - BUG-280
 - BUG-1538
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-2409: ll-auto Phase 3 "plan awaiting approval" short-circuits before checking for uncommitted work
@@ -293,6 +299,7 @@ the reliability of the run summary and risks a dirty-tree re-plan on re-run.
 ll-auto, verification, phase-3, plan-detection, automation
 
 ## Session Log
+- `/ll:confidence-check` - 2026-06-30T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20066cd1-3a9b-408d-8c8e-0304c9a4fe9d.jsonl`
 - `/ll:wire-issue` - 2026-07-01T00:31:28 - `2ab6ee87-0a40-4d96-a26e-4423be53af2b.jsonl`
 - `/ll:refine-issue` - 2026-07-01T00:20:03 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:08:39 - `f960a02a-adbc-4f7d-b3c8-b867aa0ea338.jsonl`

@@ -1,11 +1,11 @@
 ---
 id: ENH-2410
-title: "Windowed / scroll-to-active FSM diagram fallback for the pinned-pane ladder"
+title: Windowed / scroll-to-active FSM diagram fallback for the pinned-pane ladder
 type: ENH
 priority: P3
 status: open
-captured_at: "2026-06-30T00:27:20Z"
-discovered_date: "2026-06-30"
+captured_at: '2026-06-30T00:27:20Z'
+discovered_date: '2026-06-30'
 discovered_by: capture-issue
 relates_to:
 - ENH-2062
@@ -20,6 +20,12 @@ labels:
 - loop
 - ux
 - diagram
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2410: Windowed / scroll-to-active FSM diagram fallback
@@ -132,6 +138,21 @@ ll-loop run big-loop.yaml --show-diagrams clean --clear
    (when the active state is off the happy path) must still apply before
    windowing.
 
+## Scope Boundaries
+
+- **In scope**: A new `"window"` layered variant that crops the real Sugiyama
+  render to ±K layers around the active state; overflow banners
+  (`▲ N layers above …` / `▼ M layers below …`); truncated stubs for back-edges
+  that cross the window; threading a height budget from `_choose_pinned_layout`
+  into the windowed builder; inserting the variant into the default layered
+  ladder above `neighborhood`; and (recommended) an explicit `window` topology
+  value in `TOPOLOGY_VALUES` / `TOPOLOGY_TO_DETAIL` for forced, testable use.
+- **Out of scope**: Topology-aware selection between `window` / `neighborhood` /
+  outline based on FSM shape — that is ENH-2411, which this feeds. Also out of
+  scope: replacing or removing the existing `full` / `neighborhood` / `single`
+  rungs (the ladder inserts, it does not replace); horizontal / column cropping
+  (windowing is vertical-only); and interactive scrolling of the pinned pane.
+
 ## Integration Map
 
 ### Files to Modify
@@ -172,6 +193,26 @@ ll-loop run big-loop.yaml --show-diagrams clean --clear
   values / fallback behavior.
 - `CHANGELOG.md` — "Added" entry.
 
+## Implementation Steps
+
+1. Add a windowed render path in `layout.py` (`_render_windowed_diagram`, or a
+   `window=(active, budget)` branch in `_render_layered_diagram`) that reuses
+   `LayerAssigner` / `CrossingMinimizer` and crops rendered rows to ±K layers
+   around the active state's layer, cutting cleanly at box boundaries.
+2. Emit overflow affordances above/below the window and keep truncated stubs for
+   back-edges that cross it, so global position and cycles aren't silently lost.
+3. Thread the height budget from `_choose_pinned_layout` through
+   `_build_pinned_pane` / `_render_pinned_pane` into the windowed builder so K is
+   sized to the viewport; add the `"window"` branch and insert it into the
+   layered ladder above `neighborhood`.
+4. (Optional) Add `"window"` to `TOPOLOGY_VALUES` / `TOPOLOGY_TO_DETAIL` and the
+   `_parse_show_diagrams` validator so power users can force it explicitly.
+5. Handle edge cases: `None`/unknown active state (window the graph top),
+   off-path active state (defer to the existing `main`-scope `full` fallback),
+   and a 1-layer window that still doesn't fit (defer to `single`).
+6. Add `TestWindowedDiagram` coverage plus a ladder-selection test, and update
+   `docs/reference/CLI.md`, `docs/guides/LOOPS_GUIDE.md`, and `CHANGELOG.md`.
+
 ## Impact
 
 - **Priority**: P3 — UX quality on the most-seen fallback rung; opt-in display
@@ -191,3 +232,12 @@ ll-loop run big-loop.yaml --show-diagrams clean --clear
 - ENH-1652 / ENH-1702 / ENH-1672 — `--show-diagrams` mode/preset/modifier
   plumbing this extends.
 - FEAT-670 — the adaptive layout engine being windowed.
+
+## Status
+
+**Open** | Created: 2026-06-30 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-07-01T00:35:22 - `20066cd1-3a9b-408d-8c8e-0304c9a4fe9d.jsonl`
+- `/ll:confidence-check` - 2026-07-01T00:40:00 - `aeea8dae-2fb9-4090-9cbd-6df3709031d2.jsonl`
