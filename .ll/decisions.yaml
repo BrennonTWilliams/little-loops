@@ -3421,3 +3421,35 @@
     blocked_by gate)'
   scope: issue
   issue: ENH-2406
+- id: ARCHITECTURE-079
+  type: decision
+  timestamp: '2026-07-01T03:19:51Z'
+  category: architecture
+  labels: []
+  rationale: Both completion commits are frontmatter-only (code diff already merged
+    by merge_coordinator beforehand), so the issue file is the complete attributable
+    change set. Option 1 (attributable delta) would need a new WorkerResult serialized
+    field + MergeCoordinator retention change, and its recompute fallback is broken
+    under concurrent workers on a shared GitLock. Scored 11/12 vs 4/12.
+  rule: 'Option 2 — minimal floor: stage only the issue file at both orchestrator
+    completion sites, modeled on _maybe_auto_commit()'
+  scope: issue
+  alternatives_rejected: 'Option 1 — attributable delta: reuse _get_main_repo_baseline()/_detect_main_repo_leaks()
+    by threading the baseline set[str] through WorkerResult'
+  issue: BUG-2424
+- id: ARCHITECTURE-080
+  type: decision
+  timestamp: '2026-07-01T03:52:13Z'
+  category: architecture
+  labels: []
+  rationale: 'Highest reuse (mirrors _maybe_auto_commit idiom, info.path in hand at
+    all four call sites, zero cross-boundary plumbing); consistent with sibling BUG-2424
+    decision; literally what AC #5 mandates. Scored 12/12 vs Option 1 (7/12) and Option
+    2 (4/12).'
+  rule: 'Option 3 — Minimal floor: stage only info.path in _commit_issue_completion,
+    warn on skipped dirty paths, never git add -A'
+  scope: issue
+  alternatives_rejected: 'Option 1 (capture-then-restore: worker_pool primitives are
+    GitLock-bound, not importable; 5-signature surface); Option 2 (explicit path list:
+    FILES_CHANGED report structurally unavailable on early exit, parser unwired)'
+  issue: BUG-2421
