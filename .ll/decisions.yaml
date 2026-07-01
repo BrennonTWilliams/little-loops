@@ -3453,3 +3453,17 @@
     GitLock-bound, not importable; 5-signature surface); Option 2 (explicit path list:
     FILES_CHANGED report structurally unavailable on early exit, parser unwired)'
   issue: BUG-2421
+- id: TEST-166
+  type: rule
+  timestamp: '2026-07-01T18:44:56Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: TestProjectDigest fixtures hardcoded ts='2026-06-01T10:00:00Z' for a
+    days=30 window check; as wall-clock time passed the fixture fell outside the window
+    and 7 unrelated tests began failing purely from date drift.
+  rule: 'Never hardcode absolute calendar timestamps in test fixtures that exercise
+    a relative time window (e.g. ''last N days''); '
+  enforcement: advisory
+  issue: BUG-2427

@@ -996,7 +996,7 @@ def project_digest(
         return ProjectDigest(sections=[], days=days)
 
     cutoff = _stale_cutoff(days)
-    provider_keys: list[str] = list(SECTION_PROVIDERS.keys()) if sections is None else sections
+    provider_keys: list[str] = list(SECTION_PROVIDERS.keys()) if not sections else sections
 
     result: list[tuple[str, list[str]]] = []
     try:

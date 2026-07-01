@@ -402,7 +402,10 @@ class TestSessionsForIssue:
 class TestProjectDigest:
     """Tests for project_digest() and render_project_context() (ENH-1907)."""
 
-    def _insert_file_event(self, db: Path, path: str, ts: str = "2026-06-01T10:00:00Z") -> None:
+    def _insert_file_event(self, db: Path, path: str, ts: str | None = None) -> None:
+        # Default to a recent timestamp so "fresh row" assertions stay inside the
+        # digest's day window regardless of the wall-clock date the suite runs on.
+        ts = ts or (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         conn = connect(db)
         try:
             conn.execute(
@@ -414,8 +417,9 @@ class TestProjectDigest:
             conn.close()
 
     def _insert_issue_event(
-        self, db: Path, issue_id: str, transition: str, ts: str = "2026-06-01T10:00:00Z"
+        self, db: Path, issue_id: str, transition: str, ts: str | None = None
     ) -> None:
+        ts = ts or (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         conn = connect(db)
         try:
             conn.execute(
@@ -509,12 +513,16 @@ class TestProjectDigest:
         assert "touched_files" in section_names
         assert "recurring_corrections" not in section_names
 
-    def test_empty_sections_list_returns_empty_digest(self, tmp_path: Path) -> None:
+    def test_empty_sections_list_renders_all_sections(self, tmp_path: Path) -> None:
+        # An empty sections list is treated the same as None (the config default):
+        # render all registered providers, per project_digest()'s documented contract.
         db = tmp_path / "test.db"
         ensure_db(db)
         self._insert_file_event(db, "scripts/foo.py")
         digest = project_digest(db, days=30, sections=[])
-        assert digest.empty
+        assert not digest.empty
+        section_names = [name for name, _ in digest.sections]
+        assert "touched_files" in section_names
 
     def test_render_nonempty_digest_wraps_in_tags(self, tmp_path: Path) -> None:
         db = tmp_path / "test.db"

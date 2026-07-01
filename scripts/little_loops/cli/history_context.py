@@ -207,8 +207,7 @@ def main_history_context() -> int:
 
             _hist = HistoryConfig.from_dict(merged.get("history", {}))
             _sd = _hist.session_digest
-            _sections = _sd.sections if _sd.sections else None
-            digest = project_digest(args.db, days=_sd.days, sections=_sections)
+            digest = project_digest(args.db, days=_sd.days, sections=_sd.sections)
             block = render_project_context(digest, char_cap=_sd.char_cap, days=_sd.days)
             if block:
                 print(block)
