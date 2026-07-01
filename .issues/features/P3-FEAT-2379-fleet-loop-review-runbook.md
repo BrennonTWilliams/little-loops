@@ -17,9 +17,6 @@ labels:
 relates_to:
 - BUG-2377
 - ENH-2378
-blocked_by:
-- BUG-2377
-- ENH-2378
 decision_needed: false
 confidence_score: 75
 ---
@@ -48,9 +45,11 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
 
 ## Deliverables
 
-1. **A runbook** at `docs/guides/FLEET_LOOP_REVIEW.md` documenting the cycle, the commands at
+1. **A runbook** at `docs/runbooks/FLEET_LOOP_REVIEW.md` documenting the cycle, the commands at
    each phase, how to attribute, how to record a baseline, and the in-scope rule (fix only
-   built-ins here; other projects' own loops are fixed in place).
+   built-ins here; other projects' own loops are fixed in place). This is the **first runbook**;
+   it establishes the `docs/runbooks/` home and the runbook header convention (see "Runbook
+   conventions" below) for future operational procedures.
 2. **A repeatable entry point** — a `make fleet-loop-review` / `just` target (or a thin
    `scripts/` wrapper) that chains:
    - `ll-logs loop-fleet -j` (ENH-2378) — run outcomes per built-in loop.
@@ -69,12 +68,26 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
 - **Target**: this repo's **built-in** loops only. Cross-project data is *evidence*; fixes to
   other projects' `.loops/` happen in those projects, not back-ported here.
 
+## Runbook conventions (location decision)
+
+This is the first **runbook** in the repo, so it establishes the artifact class. A *guide*
+(`docs/guides/*`) explains a feature; a *runbook* documents an **operational procedure executed
+on a cadence**, with a checklist and a recorded baseline. To keep the classes distinct:
+
+- **Home**: runbooks live under `docs/runbooks/`, not `docs/guides/`. Create the directory with
+  this issue.
+- **Header convention**: every runbook leads with these sections, in order —
+  **Purpose · Cadence · Phases · Baseline / Re-measure contract · In-scope rule**. The
+  re-measure contract is mandatory (it is what makes a procedure a runbook rather than a guide).
+- Future operational procedures (release drills, fleet sweeps, recurring audits) follow the same
+  location and header convention.
+
 ## Acceptance criteria
 
 - `make fleet-loop-review` (or documented equivalent) runs end-to-end and produces a dated
   diagnostic report with: per-built-in-loop fleet outcomes, flagged loops, and a baseline diff
   vs. the previous report.
-- `docs/guides/FLEET_LOOP_REVIEW.md` documents the four phases and the re-measurement contract.
+- `docs/runbooks/FLEET_LOOP_REVIEW.md` documents the four phases and the re-measurement contract.
 - The runbook explicitly states the in-scope rule and links the diagnose tools and
   `loop-specialist` agent.
 - Running the cycle twice (before/after a deliberate built-in-loop fix) demonstrates the
@@ -82,8 +95,11 @@ rate for that loop. Other-projects' logs are the unbiased oracle a self-grade ca
 
 ## Dependencies
 
-- **BUG-2377** — parseable `ll-logs` output (blocker).
-- **ENH-2378** — `ll-logs loop-fleet` harvester (the HARVEST phase's core data source).
+Both prerequisites have landed — this issue is unblocked (`blocked_by` cleared).
+
+- **BUG-2377** (done) — parseable `ll-logs` output.
+- **ENH-2378** (done) — `ll-logs loop-fleet` harvester, the HARVEST phase's core data source
+  (implemented in `scripts/little_loops/cli/logs.py`).
 
 ## Future extension (out of scope here)
 
