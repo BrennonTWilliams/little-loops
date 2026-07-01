@@ -68,6 +68,12 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
         action="store_true",
         help="Exclude entries superseded by a newer entry",
     )
+    list_p.add_argument(
+        "--enforcement",
+        choices=["required", "advisory"],
+        default=None,
+        help="Filter rule/coupling entries by enforcement level (required or advisory)",
+    )
     add_config_arg(list_p)
 
     # -- add --
@@ -351,6 +357,11 @@ def _cmd_list(args, path, list_entries, resolve_active) -> int:
 
     if getattr(args, "active_only", False):
         entries = resolve_active(entries)
+
+    if getattr(args, "enforcement", None):
+        # Only RuleEntry / CouplingEntry carry an enforcement level; entries
+        # without one (decisions, exceptions) never match an explicit filter.
+        entries = [e for e in entries if getattr(e, "enforcement", None) == args.enforcement]
 
     if getattr(args, "archetype", None):
         from little_loops.decisions import CouplingEntry as _CE

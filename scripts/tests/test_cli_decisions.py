@@ -198,6 +198,84 @@ class TestDecisionsCLIList:
         assert "NAMING-001" in captured.out
         assert "WORKFLOW-001" not in captured.out
 
+    def test_list_filter_enforcement(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --enforcement filters rules by enforcement level.
+
+        Regression: the ``list`` subparser previously had no ``--enforcement``
+        argument, so every call site passing ``--enforcement required`` (in
+        format-issue, ready-issue, verify-issues) exited 2 with an argparse
+        error that was swallowed by ``2>/dev/null || true`` — silently no-op'ing
+        the decisions guardrail.
+        """
+        advisory_rule = RuleEntry(
+            id="STYLE-002",
+            type="rule",
+            timestamp="2026-06-03T00:00:00Z",
+            category="style",
+            labels=["style"],
+            rationale="Preference, not a hard gate",
+            rule="Prefer f-strings over .format()",
+            enforcement="advisory",
+        )
+        save_decisions([sample_rule, advisory_rule], decisions_path)
+
+        # --enforcement required: only the required rule (NAMING-001)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "rule",
+                "--enforcement",
+                "required",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "NAMING-001" in captured.out
+        assert "STYLE-002" not in captured.out
+
+        # --enforcement advisory: only the advisory rule (STYLE-002)
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "list",
+                "--type",
+                "rule",
+                "--enforcement",
+                "advisory",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "STYLE-002" in captured.out
+        assert "NAMING-001" not in captured.out
+
     def test_list_no_outcome(
         self,
         temp_project_dir: Path,
