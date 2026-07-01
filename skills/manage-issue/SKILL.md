@@ -163,25 +163,9 @@ See [templates.md](templates.md) for the full Enhanced Plan Template structure.
 
 **Skip this phase if**: Action is `verify` or `plan`, or `--quick` flag is set.
 
-Check the issue's `decision_needed` frontmatter field before proceeding to implementation:
+Check the issue's `decision_needed` frontmatter field before proceeding to implementation. If `true` and `--force-implement` is not set, HALT and direct the user to run `/ll:decide-issue [ISSUE_ID]`. If absent/false, proceed silently to Phase 2.5.
 
-```
-READ decision_needed from issue YAML frontmatter
-
-IF decision_needed is true:
-  IF --force-implement flag is set:
-    WARN: "⚠ Decision gate: decision_needed=true. Proceeding due to --force-implement."
-    PROCEED to Phase 2.5
-  ELSE:
-    HALT with message:
-    "✗ Decision gate: this issue has competing implementation options that require a decision.
-     Run /ll:decide-issue [ISSUE_ID] to select an approach, then re-run manage-issue.
-     Use --force-implement to bypass this gate."
-    STOP (do not proceed to Phase 3)
-
-ELSE (decision_needed is absent or false):
-  PROCEED silently to Phase 2.5
-```
+See [templates.md](templates.md) for the full gate pseudocode and halt/warn message text.
 
 ---
 
@@ -189,35 +173,9 @@ ELSE (decision_needed is absent or false):
 
 **Skip this phase if**: Action is `verify` or `plan`, `--quick` flag is set, or `config.commands.confidence_gate.enabled` is `false` (default).
 
-When `config.commands.confidence_gate.enabled` is `true`, check the issue's `confidence_score` frontmatter before proceeding to implementation:
+When `config.commands.confidence_gate.enabled` is `true`, check the issue's `confidence_score` frontmatter before proceeding to implementation. If absent or below `readiness_threshold` and `--force-implement` is not set, HALT and direct the user to run `/ll:confidence-check [ID]`. Otherwise (score meets threshold, or `--force-implement` set), proceed to Phase 3.
 
-```
-READ confidence_score from issue YAML frontmatter
-
-IF confidence_score is absent:
-  IF --force-implement flag is set:
-    WARN: "⚠ Confidence gate: no confidence_score found. Proceeding due to --force-implement."
-    PROCEED to Phase 3
-  ELSE:
-    HALT with message:
-    "✗ Confidence gate: no confidence_score on file.
-     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to bypass."
-    STOP (do not proceed to Phase 3)
-
-ELSE IF confidence_score < config.commands.confidence_gate.readiness_threshold:
-  IF --force-implement flag is set:
-    WARN: "⚠ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD]. Proceeding due to --force-implement."
-    PROCEED to Phase 3
-  ELSE:
-    HALT with message:
-    "✗ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD].
-     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to override."
-    STOP (do not proceed to Phase 3)
-
-ELSE:
-  LOG: "✓ Confidence gate: score [SCORE]/100 meets threshold [THRESHOLD]."
-  PROCEED to Phase 3
-```
+See [templates.md](templates.md) for the full gate pseudocode and halt/warn message text.
 
 ---
 

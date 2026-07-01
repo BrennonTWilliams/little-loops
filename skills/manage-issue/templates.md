@@ -211,6 +211,60 @@ After writing tests, run: `{{config.project.test_cmd}} [test_files] -v`
 
 ---
 
+## Phase 2.3/2.5: Gate Logic
+
+### Decision Gate (Phase 2.3)
+
+```
+READ decision_needed from issue YAML frontmatter
+
+IF decision_needed is true:
+  IF --force-implement flag is set:
+    WARN: "⚠ Decision gate: decision_needed=true. Proceeding due to --force-implement."
+    PROCEED to Phase 2.5
+  ELSE:
+    HALT with message:
+    "✗ Decision gate: this issue has competing implementation options that require a decision.
+     Run /ll:decide-issue [ISSUE_ID] to select an approach, then re-run manage-issue.
+     Use --force-implement to bypass this gate."
+    STOP (do not proceed to Phase 3)
+
+ELSE (decision_needed is absent or false):
+  PROCEED silently to Phase 2.5
+```
+
+### Confidence Gate (Phase 2.5)
+
+```
+READ confidence_score from issue YAML frontmatter
+
+IF confidence_score is absent:
+  IF --force-implement flag is set:
+    WARN: "⚠ Confidence gate: no confidence_score found. Proceeding due to --force-implement."
+    PROCEED to Phase 3
+  ELSE:
+    HALT with message:
+    "✗ Confidence gate: no confidence_score on file.
+     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to bypass."
+    STOP (do not proceed to Phase 3)
+
+ELSE IF confidence_score < config.commands.confidence_gate.readiness_threshold:
+  IF --force-implement flag is set:
+    WARN: "⚠ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD]. Proceeding due to --force-implement."
+    PROCEED to Phase 3
+  ELSE:
+    HALT with message:
+    "✗ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD].
+     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to override."
+    STOP (do not proceed to Phase 3)
+
+ELSE:
+  LOG: "✓ Confidence gate: score [SCORE]/100 meets threshold [THRESHOLD]."
+  PROCEED to Phase 3
+```
+
+---
+
 ## Phase 3: Implementation Templates
 
 ### Resume Status Display Format
