@@ -126,7 +126,13 @@ _Resolved 2026-07-01 (direct fix, TDD-adjacent: red fixtures observed first)._
   now returns the same non-empty sections as the `None` default, and
   `render_project_context(...)` starts with `<project_context>`.
 - `ruff check` + `ruff format --check` clean on all four changed files.
-- Full suite (`python -m pytest scripts/tests/`) run to confirm no regressions.
+- Full suite (`python -m pytest scripts/tests/`): **13304 passed, 23 skipped,
+  1 failed in 427s**. The single failure —
+  `test_enh494_skill_companions.py::TestSkillLineLimit::test_all_skills_within_limit`
+  (a SKILL.md line-count limit) — is **pre-existing and unrelated**: this change
+  touched no skill files (only `history_reader.py`, `test_history_reader.py`,
+  `session_start.py`, `history_context.py`). Same standing failure recorded in
+  [[BUG-2423]]'s resolution.
 
 ## Files Changed
 
