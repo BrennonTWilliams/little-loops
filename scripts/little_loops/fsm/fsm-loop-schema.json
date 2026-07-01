@@ -518,6 +518,7 @@
             "output_contains",
             "convergence",
             "diff_stall",
+            "score_stall",
             "action_stall",
             "llm_structured",
             "mcp_result",
@@ -599,9 +600,19 @@
         },
         "max_stall": {
           "type": "integer",
-          "description": "Consecutive no-change iterations before stall verdict (diff_stall)",
+          "description": "Consecutive no-progress rounds before stall verdict (diff_stall/score_stall)",
           "default": 1,
           "minimum": 1
+        },
+        "history_file": {
+          "type": "string",
+          "description": "Path to the per-round score-history file for score_stall (default: ${context.run_dir}/.score_history)"
+        },
+        "epsilon": {
+          "type": "number",
+          "description": "Minimum score improvement counted as progress for score_stall",
+          "default": 0.5,
+          "minimum": 0
         },
         "track": {
           "type": "array",

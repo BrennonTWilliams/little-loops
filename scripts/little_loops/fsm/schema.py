@@ -50,7 +50,10 @@ class EvaluateConfig:
         previous: Previous value reference for convergence
         direction: Optimization direction for convergence (minimize/maximize)
         scope: Paths to limit git diff to for diff_stall evaluator
-        max_stall: Consecutive no-change iterations before failure (diff_stall)
+        max_stall: Consecutive no-change iterations before failure (diff_stall/score_stall)
+        history_file: Path to the per-round score-history file for score_stall
+            (default: ${context.run_dir}/.score_history)
+        epsilon: Minimum score improvement counted as progress for score_stall
         pairs: List of producer/consumer pair dicts for contract evaluator
         line: Line selector for classify evaluator (last/first/<int index>)
     """
@@ -62,6 +65,7 @@ class EvaluateConfig:
         "output_contains",
         "convergence",
         "diff_stall",
+        "score_stall",
         "action_stall",
         "llm_structured",
         "mcp_result",
@@ -84,7 +88,9 @@ class EvaluateConfig:
     previous: str | None = None
     direction: Literal["minimize", "maximize"] = "minimize"
     scope: list[str] | None = None  # for diff_stall: limit git diff to these paths
-    max_stall: int = 1  # for diff_stall: consecutive no-change iterations before failure
+    max_stall: int = 1  # for diff_stall/score_stall: consecutive no-progress rounds before failure
+    history_file: str | None = None  # for score_stall: path to per-round score-history file
+    epsilon: float = 0.5  # for score_stall: minimum score improvement counted as progress
     track: list[str] | None = None  # for action_stall: context keys to track (default: ["action"])
     max_repeat: int = 2  # for action_stall: consecutive identical iterations before failure
     baseline_path: str | None = None  # for comparator: path to .loops/baselines/<loop>/ dir
@@ -131,6 +137,10 @@ class EvaluateConfig:
             result["scope"] = self.scope
         if self.max_stall != 1:
             result["max_stall"] = self.max_stall
+        if self.history_file is not None:
+            result["history_file"] = self.history_file
+        if self.epsilon != 0.5:
+            result["epsilon"] = self.epsilon
         if self.track is not None:
             result["track"] = self.track
         if self.max_repeat != 2:
@@ -170,6 +180,8 @@ class EvaluateConfig:
             direction=data.get("direction", "minimize"),
             scope=data.get("scope"),
             max_stall=data.get("max_stall", 1),
+            history_file=data.get("history_file"),
+            epsilon=data.get("epsilon", 0.5),
             track=data.get("track"),
             max_repeat=data.get("max_repeat", 2),
             baseline_path=data.get("baseline_path"),

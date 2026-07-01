@@ -435,12 +435,20 @@ evaluate  (fragment: playwright_screenshot)
 snapshot  (shell: copy artifact + screenshot to iter-N/ subdir for versioning)
   → score  (unconditional)
 
-score  (fragment: ll_rubric_score)
+score  (fragment: ll_rubric_score; local numeric-score override — emits SCORE: <0-10>)
   on_yes  → done  (terminal)
-  on_no   → check_stall
+  on_no   → record_score
   on_error → generate
 
-check_stall  (fragment: diff_stall_gate; max_stall=3)
+record_score  (shell: append parsed SCORE to ${run_dir}/.score_history)
+  → check_stall  (unconditional)
+
+check_stall  (fragment: score_stall_gate; max_stall=2 — primary: score plateau)
+  on_yes (score still improving) → check_diff_stall
+  on_no  (score plateaued)       → done  (accept best-so-far)
+  on_error                       → check_diff_stall
+
+check_diff_stall  (fragment: diff_stall_gate; max_stall=3 — secondary/OR: byte plateau)
   on_yes (new changes observed) → generate
   on_no  (plateaued)            → done  (accept best-so-far)
   on_error                      → generate
@@ -457,7 +465,7 @@ Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the 
 **Category**: oracle sub-loop
 **File**: `scripts/little_loops/loops/oracles/generator-evaluator-cli.yaml`
 
-CLI-render oracle variant of `generator-evaluator`, created via `from: generator-evaluator` inheritance (first oracle to use `from:` — FEAT-2269). Overrides two states from the parent: `evaluate` (replaces Playwright screenshot with a caller-provided shell render command) and `snapshot` (replaces single `screenshot.png` copy with multi-file `views/*.png` copy). All other states (`generate`, `score`, `check_stall`, `done`, `failed`) are inherited unchanged.
+CLI-render oracle variant of `generator-evaluator`, created via `from: generator-evaluator` inheritance (first oracle to use `from:` — FEAT-2269). Overrides two states from the parent: `evaluate` (replaces Playwright screenshot with a caller-provided shell render command) and `snapshot` (replaces single `screenshot.png` copy with multi-file `views/*.png` copy). All other states (`generate`, `score`, `record_score`, `check_stall`, `check_diff_stall`, `done`, `failed`) are inherited unchanged.
 
 Intended for any CLI-rendered artifact: OpenSCAD, graphviz, manim, CNC toolchains, etc. Currently used only by `openscad-model-generator` as a reusable component; `openscad-model-generator` invokes the oracle directly for its inner generate → render → score cycle.
 
@@ -513,12 +521,20 @@ evaluate * (shell: runs render_command; echoes CAPTURED on success)
 snapshot * (shell: copies artifact_path + views/*.png to iter-N/)
   → score  (unconditional)
 
-score      (fragment: ll_rubric_score; inherited)
+score      (fragment: ll_rubric_score; inherited — numeric-score override + capture)
   on_yes  → done  (terminal)
-  on_no   → check_stall
+  on_no   → record_score
   on_error → generate
 
-check_stall (fragment: diff_stall_gate; inherited)
+record_score (shell: append parsed SCORE to ${run_dir}/.score_history; inherited)
+  → check_stall  (unconditional)
+
+check_stall (fragment: score_stall_gate; inherited — primary: score plateau)
+  on_yes → check_diff_stall
+  on_no  → done
+  on_error → check_diff_stall
+
+check_diff_stall (fragment: diff_stall_gate; inherited — secondary/OR: byte plateau)
   on_yes → generate
   on_no  → done
   on_error → generate

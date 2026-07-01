@@ -68,6 +68,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "output_contains": ["pattern"],
     "convergence": ["target"],
     "diff_stall": [],
+    "score_stall": [],
     "action_stall": [],
     "llm_structured": [],
     "mcp_result": [],
@@ -314,6 +315,23 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
                 ValidationError(
                     message="max_stall must be >= 1",
                     path=f"{path}.max_stall",
+                )
+            )
+
+    # Validate score_stall-specific fields
+    if evaluate.type == "score_stall":
+        if evaluate.max_stall < 1:
+            errors.append(
+                ValidationError(
+                    message="max_stall must be >= 1",
+                    path=f"{path}.max_stall",
+                )
+            )
+        if evaluate.epsilon < 0:
+            errors.append(
+                ValidationError(
+                    message="epsilon must be >= 0",
+                    path=f"{path}.epsilon",
                 )
             )
 
@@ -1196,7 +1214,8 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
                     "Loop modifies harness artifacts but has no non-LLM evaluator. "
                     "LLM self-grades on harness updates are unreliable (SHOR Table 1: "
                     "33-55% accuracy). Pair every check_semantic state with at least one "
-                    "of: exit_code, output_numeric, convergence, diff_stall, action_stall, mcp_result. "
+                    "of: exit_code, output_numeric, convergence, diff_stall, score_stall, "
+                    "action_stall, mcp_result. "
                     "Note: llm_structured and comparator both use the LLM and do not satisfy MR-1. "
                     "To suppress with justification, set `meta_self_eval_ok: true` at the "
                     "loop top-level."

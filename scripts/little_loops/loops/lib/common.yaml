@@ -159,6 +159,27 @@ fragments:
       type: diff_stall
       max_stall: 2
 
+  score_stall_gate:
+    description: |
+      Evaluator-only fragment that supplies evaluate.type: score_stall and
+      evaluate.max_stall: 2. Detects a scored-output plateau by reading a
+      per-round score-history file (one numeric aggregate rubric score per
+      line, appended under ${context.run_dir}/.score_history by the loop's
+      score state). Returns yes while scores keep improving by more than
+      epsilon; returns no once the aggregate score has not improved for
+      max_stall consecutive rounds (accept best-so-far). This is the
+      score-plateau companion to diff_stall_gate: byte-diff can keep changing
+      while the visible/scored output stops improving, so score_stall catches
+      the stagnation that diff_stall misses (ENH-2428).
+      State must supply: action, action_type, and routing (on_yes, on_no);
+      optionally on_error, evaluate.history_file (defaults to
+      ${context.run_dir}/.score_history), and evaluate.epsilon (default 0.5).
+      Default max_stall: 2 (EvaluateConfig default is 1; override per-state if
+      needed).
+    evaluate:
+      type: score_stall
+      max_stall: 2
+
   snapshot_artifact:
     description: |
       Shell state that snapshots the current artifact into a per-iteration

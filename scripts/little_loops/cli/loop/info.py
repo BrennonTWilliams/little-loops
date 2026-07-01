@@ -1069,6 +1069,7 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "output_json": "JSON",
     "convergence": "convergence",
     "diff_stall": "diff stall",
+    "score_stall": "score stall",
     "action_stall": "action stall",
     "comparator": "blind comparator",
 }

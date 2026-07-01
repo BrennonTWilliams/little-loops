@@ -28,6 +28,7 @@ from little_loops.fsm.evaluators import (
     evaluate_output_contains,
     evaluate_output_json,
     evaluate_output_numeric,
+    evaluate_score_stall,
 )
 from little_loops.fsm.interpolation import InterpolationContext
 from little_loops.fsm.schema import EvaluateConfig
@@ -1466,6 +1467,103 @@ class TestDiffStallEvaluator:
 
         # Count file should now be reset to 0
         assert count_file.read_text().strip() == "0"
+
+
+class TestScoreStallEvaluator:
+    """Tests for score_stall evaluator (ENH-2428).
+
+    Unlike diff_stall, score_stall is stateless across calls: the per-round
+    score-history file *is* the persisted state, so a test can feed a flat
+    score history and assert the plateau verdict deterministically.
+    """
+
+    def _write_history(self, tmp_path: Path, scores: list[float]) -> str:
+        hist = tmp_path / ".score_history"
+        hist.write_text("".join(f"{s}\n" for s in scores))
+        return str(hist)
+
+    def test_missing_history_returns_success(self, tmp_path) -> None:
+        """No history file yet (first iterations) returns yes (keep going)."""
+        result = evaluate_score_stall(str(tmp_path / ".score_history"), max_stall=2)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+        assert result.details["rounds"] == 0
+
+    def test_single_score_returns_success(self, tmp_path) -> None:
+        """A single recorded score is not enough to declare a plateau."""
+        hist = self._write_history(tmp_path, [5.0])
+        result = evaluate_score_stall(hist, max_stall=2)
+        assert result.verdict == "yes"
+        assert result.details["rounds"] == 1
+
+    def test_flat_history_at_threshold_returns_failure(self, tmp_path) -> None:
+        """A flat score history plateaus and returns no at max_stall rounds."""
+        hist = self._write_history(tmp_path, [5.0, 5.0, 5.0])
+        result = evaluate_score_stall(hist, max_stall=2)
+        assert result.verdict == "no"
+        assert result.details["stall_count"] == 2
+        assert result.details["max_stall"] == 2
+
+    def test_flat_history_below_threshold_returns_success(self, tmp_path) -> None:
+        """Below the max_stall threshold, a flat history still returns yes."""
+        hist = self._write_history(tmp_path, [5.0, 5.0])
+        result = evaluate_score_stall(hist, max_stall=2)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 1
+
+    def test_progress_resets_counter(self, tmp_path) -> None:
+        """A score improvement greater than epsilon resets the stall counter."""
+        hist = self._write_history(tmp_path, [5.0, 5.0, 9.0])
+        result = evaluate_score_stall(hist, max_stall=2)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+
+    def test_epsilon_swallows_tiny_improvement(self, tmp_path) -> None:
+        """An improvement smaller than epsilon counts as a stall, not progress."""
+        hist = self._write_history(tmp_path, [5.0, 5.3])
+        result = evaluate_score_stall(hist, max_stall=1, epsilon=0.5)
+        assert result.verdict == "no"
+        assert result.details["stall_count"] == 1
+
+    def test_epsilon_allows_real_improvement(self, tmp_path) -> None:
+        """An improvement exceeding epsilon is treated as genuine progress."""
+        hist = self._write_history(tmp_path, [5.0, 5.6])
+        result = evaluate_score_stall(hist, max_stall=1, epsilon=0.5)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+
+    def test_blank_and_garbage_lines_ignored(self, tmp_path) -> None:
+        """Blank and non-numeric lines are skipped when parsing history."""
+        hist = tmp_path / ".score_history"
+        hist.write_text("5.0\n\nnot-a-number\n5.0\n5.0\n")
+        result = evaluate_score_stall(str(hist), max_stall=2)
+        assert result.verdict == "no"
+        assert result.details["rounds"] == 3
+
+    def test_dispatch_score_stall(self, tmp_path) -> None:
+        """evaluate() dispatcher routes score_stall with an explicit history_file."""
+        hist = self._write_history(tmp_path, [5.0, 5.0, 5.0])
+        config = EvaluateConfig(type="score_stall", history_file=hist, max_stall=2)
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "no"
+        assert result.details["max_stall"] == 2
+
+    def test_dispatch_defaults_to_run_dir_history(self, tmp_path) -> None:
+        """With no history_file, evaluate() reads ${context.run_dir}/.score_history."""
+        self._write_history(tmp_path, [7.0, 7.0, 7.0])
+        config = EvaluateConfig(type="score_stall", max_stall=2)
+        ctx = InterpolationContext(context={"run_dir": str(tmp_path)})
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "no"
+
+    def test_dispatch_nonzero_exit_does_not_short_circuit(self, tmp_path) -> None:
+        """score_stall is exit-code-aware: a nonzero action exit is not an error."""
+        hist = self._write_history(tmp_path, [5.0, 5.0, 5.0])
+        config = EvaluateConfig(type="score_stall", history_file=hist, max_stall=2)
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 1, ctx)
+        assert result.verdict == "no"
 
 
 class TestActionStallEvaluator:

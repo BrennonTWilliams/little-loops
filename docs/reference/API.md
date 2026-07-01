@@ -4596,6 +4596,7 @@ class EvaluateConfig:
         "output_contains",  # Pattern matching
         "convergence",      # Progress toward target
         "diff_stall",       # Detect stalled iterations via git diff
+        "score_stall",      # Detect scored-output plateau via per-round score history
         "action_stall",     # Detect repeated action/output for N consecutive iterations
         "llm_structured",   # LLM with structured output
         "mcp_result",       # Parse MCP tool call response envelope
@@ -4618,7 +4619,9 @@ class EvaluateConfig:
     previous: str | None = None        # Previous value reference
     direction: Literal["minimize", "maximize"] = "minimize"
     scope: list[str] | None = None     # For diff_stall: limit git diff to these paths
-    max_stall: int = 1                 # For diff_stall: consecutive no-change iterations before failure
+    max_stall: int = 1                 # For diff_stall/score_stall: consecutive no-progress rounds before failure
+    history_file: str | None = None    # For score_stall: per-round score-history file (default: ${context.run_dir}/.score_history)
+    epsilon: float = 0.5               # For score_stall: minimum score improvement counted as progress
     track: list[str] | None = None    # For action_stall: context keys to track (default: ["action"])
     max_repeat: int = 2               # For action_stall: consecutive identical iterations before failure
     baseline_path: str | None = None   # For comparator: path to .loops/baselines/<loop>/ dir

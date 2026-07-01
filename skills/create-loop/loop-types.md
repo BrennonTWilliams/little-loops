@@ -990,6 +990,48 @@ check_stall:
 
 ---
 
+**Score-plateau detection (native `score_stall` evaluator)**
+
+`diff_stall` catches a working tree that stops changing, but it misses a subtler
+stagnation mode common to rubric-scored *refine* loops: the artifact keeps
+growing byte-for-byte (so the git diff is never identical) while the **scored
+output plateaus** — every round earns roughly the same rubric score with
+diminishing visible change. Use the `score_stall` evaluator (companion to
+`diff_stall`, ENH-2428) for that case.
+
+The loop's score state appends each round's numeric aggregate rubric score to a
+per-run `.score_history` file under `${context.run_dir}/` (one score per line).
+`score_stall` reads that history and returns `no` once the best-so-far score has
+not improved by more than `epsilon` for `max_stall` consecutive rounds, so the
+loop accepts best-so-far instead of running to the step/time ceiling:
+
+```yaml
+check_stall:
+  action: "echo 'score stall check'"   # action output is ignored by score_stall
+  action_type: shell
+  fragment: score_stall_gate
+  on_yes: check_diff_stall  # score still improving — fall through to the diff-stall check (OR)
+  on_no: done               # score plateaued — accept best-so-far
+  on_error: check_diff_stall
+```
+
+Pair it with `diff_stall_gate` as a cheap secondary/OR condition (route
+`score_stall`'s `on_yes`/`on_error` into a following `check_diff_stall` state) so
+either plateau signal can terminate the loop. See
+`loops/oracles/generator-evaluator.yaml` for the canonical wiring.
+
+**YAML field reference:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `history_file` | `str` | `${context.run_dir}/.score_history` | Per-round score-history file to read |
+| `max_stall` | `int` | `1` | Consecutive no-improvement rounds before `no` verdict (fragment sets `2`) |
+| `epsilon` | `float` | `0.5` | Minimum score improvement over best-so-far counted as progress |
+
+**Verdicts:** `yes` (score still improving or history too short), `no` (plateaued at max_stall)
+
+---
+
 **Partial DoD Satisfaction Threshold (`general-task` loops)**
 
 By default the `general-task` loop requires 100% of all Definition of Done criteria to be checked before routing to `done`. For tasks where some criteria depend on human decisions or environment state (e.g., "Working tree is clean", "PR approved"), add `min_pass_rate` and `hard_criteria_tags` to `context:` to enable a two-tier gate:

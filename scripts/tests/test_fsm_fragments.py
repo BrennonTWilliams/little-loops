@@ -1755,6 +1755,56 @@ class TestDiffStallGateFragment:
         assert "fragment" not in state
 
 
+class TestScoreStallGateFragment:
+    """Tests that score_stall_gate exists in the real lib/common.yaml (ENH-2428)."""
+
+    @staticmethod
+    def _load_common_yaml() -> dict:
+        import yaml
+
+        lib_path = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+        with open(lib_path) as f:
+            return yaml.safe_load(f)
+
+    def test_score_stall_gate_defined_in_common_yaml(self) -> None:
+        data = self._load_common_yaml()
+        assert "score_stall_gate" in data["fragments"]
+
+    def test_score_stall_gate_has_score_stall_evaluator(self) -> None:
+        frag = self._load_common_yaml()["fragments"]["score_stall_gate"]
+        assert frag["evaluate"]["type"] == "score_stall"
+        assert frag["evaluate"]["max_stall"] == 2
+
+    def test_score_stall_gate_has_description(self) -> None:
+        frag = self._load_common_yaml()["fragments"]["score_stall_gate"]
+        assert "description" in frag
+        assert frag["description"].strip()
+
+    def test_score_stall_gate_resolves_in_loop(self) -> None:
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "check_stall",
+            "import": ["lib/common.yaml"],
+            "states": {
+                "check_stall": {
+                    "fragment": "score_stall_gate",
+                    "action": "echo 'checking stall'",
+                    "action_type": "shell",
+                    "on_yes": "next_state",
+                    "on_no": "done",
+                },
+                "next_state": {"terminal": True},
+                "done": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["check_stall"]
+        assert state["evaluate"]["type"] == "score_stall"
+        assert state["evaluate"]["max_stall"] == 2
+        assert "fragment" not in state
+
+
 class TestFragmentParameterBindings:
     """Tests for fragment parameterization via with: bindings in resolve_fragments."""
 

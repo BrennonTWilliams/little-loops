@@ -94,23 +94,85 @@ states:
     next: score
 
   score:
+    # Scoped numeric-scoring override (ENH-2428, Option B): keeps the shared
+    # ll_rubric_score fragment's binary ALL_PASS/NEEDS_WORK evaluator (via
+    # output_contains) but overrides the prompt to ALSO emit a numeric per-round
+    # aggregate on the final line (SCORE: <0-10>) and captures the output so the
+    # downstream record_score state can persist it to the per-run score history.
+    # This mirrors the rubric_score/rubric_parse_scores capture/parse pattern in
+    # lib/rubric-router.yaml as a LOCAL override here — NOT by editing the
+    # shared lib/harness.yaml ll_rubric_score fragment (which stays test-locked
+    # for its 6 other consumers). Precedent: the local evaluate: override in
+    # generator-evaluator-cli.yaml.
     fragment: ll_rubric_score
     with:
       run_dir: "${context.run_dir}"
       rubric: "${context.rubric}"
       pass_threshold: "${context.pass_threshold}"
+    action: |
+      Review the generated artifact in ${param.run_dir} against the rubric below.
+
+      ${param.rubric}
+
+      Pass threshold: ${param.pass_threshold}/10 per criterion.
+      Score EACH criterion on a 0-10 scale. If every criterion meets or exceeds
+      the threshold, output ALL_PASS on its own line. Otherwise output NEEDS_WORK
+      and describe the specific improvements required.
+
+      On the FINAL line, output the mean of your per-criterion scores as a single
+      number in the form: SCORE: <number 0-10>
+    capture: score_output
     on_yes: done
-    on_no: check_stall
+    on_no: record_score
     on_error: generate
 
+  record_score:
+    # HARNESS (ENH-2428): parse the mean rubric SCORE emitted by the score state
+    # and append it to the per-run .score_history file (one score per line) so
+    # the score_stall evaluator can detect a scored-output plateau. Per-run
+    # isolation (MR-3): writes under ${context.run_dir}/, never bare .loops/tmp/.
+    # Runs unconditionally (next: check_stall).
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import re
+      output = """${captured.score_output.output}"""
+      m = re.search(r'SCORE:\s*([0-9]+(?:\.[0-9]+)?)', output)
+      score = m.group(1) if m else "0"
+      with open("${context.run_dir}/.score_history", "a") as f:
+          f.write(score + "\n")
+      print(f"recorded score={score}")
+      PYEOF
+    next: check_stall
+
   check_stall:
-    # HARNESS: Diff-stall guard — if the model has produced no file changes for
-    # max_stall consecutive refine cycles, the plateau is detected early and the
-    # loop routes to done (accept best-so-far) rather than burning the remaining
-    # iteration budget. on_yes = new changes observed; on_no = plateaued.
-    # on_error = git unavailable — don't block the loop, continue generating.
+    # HARNESS (ENH-2428): score-plateau guard (primary stall axis). If the rubric
+    # score has not improved by more than epsilon for max_stall consecutive refine
+    # cycles, the plateau is detected early and the loop routes to done (accept
+    # best-so-far) rather than burning the remaining iteration budget. This
+    # replaces byte-diff as the primary signal because index.html can keep growing
+    # byte-for-byte while the visible/scored output plateaus (the
+    # html-website-generator-20260701T105614 failure mode). diff_stall is retained
+    # as a cheap secondary/OR condition (check_diff_stall). on_yes = score still
+    # improving → fall through to the diff-stall check; on_no = plateaued → done.
+    # on_error = no/short history yet → keep going (route to diff-stall check).
+    fragment: score_stall_gate
+    action: echo "score stall check"
+    action_type: shell
+    evaluate:
+      max_stall: 2
+    on_yes: check_diff_stall
+    on_no: done
+    on_error: check_diff_stall
+
+  check_diff_stall:
+    # HARNESS: Secondary diff-stall guard (OR condition, per ENH-2428 Scope
+    # Boundaries — diff_stall is retained, not removed). If the model has produced
+    # no file changes for max_stall consecutive refine cycles, route to done.
+    # on_yes = new changes observed → continue generating; on_no = byte plateau →
+    # done. on_error = git unavailable → don't block the loop, continue generating.
     fragment: diff_stall_gate
-    action: echo "stall check"
+    action: echo "diff stall check"
     action_type: shell
     evaluate:
       max_stall: 3

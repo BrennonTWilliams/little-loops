@@ -304,8 +304,8 @@ states:                         # State definitions
     evaluate:                   # How to evaluate the action result
       type: string              # exit_code, output_numeric, output_json,
                                 # output_contains, llm_structured, convergence,
-                                # diff_stall, action_stall, mcp_result, harbor_scorer,
-                                # comparator
+                                # diff_stall, score_stall, action_stall, mcp_result,
+                                # harbor_scorer, comparator
       # ... type-specific fields (see Evaluator Types)
     
     # --- Routing Layer ---
@@ -709,6 +709,27 @@ evaluate:
 | git unavailable or command failed | `error` |
 
 Result details: `{ stall_count: <int>, max_stall: <int>, diff_changed: <bool> }`
+
+#### `score_stall`
+
+Detect when an iterative refine loop's **scored output** plateaus, even when the file keeps changing byte-for-byte (the failure mode `diff_stall` misses). Reads a per-round score-history file — one numeric aggregate rubric score per line — that the loop's score state appends under `${context.run_dir}/`. Tracks the running best-so-far: a round counts as progress only when its score exceeds the previous best by more than `epsilon`; otherwise the stall counter increments. Unlike `diff_stall`, it is stateless across calls — the history file *is* the persisted state.
+
+```yaml
+evaluate:
+  type: score_stall
+  history_file: "${context.run_dir}/.score_history"  # Optional: default shown
+  max_stall: 2                  # Optional: consecutive no-improvement rounds before `no` verdict
+  epsilon: 0.5                  # Optional: minimum score improvement counted as progress
+```
+
+| Scenario | Verdict |
+|----------|---------|
+| Fewer than 2 recorded scores (history missing/short) | `yes` |
+| Latest score improved best-so-far by more than epsilon | `yes` |
+| No improvement, stall count < max_stall | `yes` |
+| No improvement for max_stall consecutive rounds | `no` |
+
+Result details: `{ stall_count: <int>, max_stall: <int>, epsilon: <float>, rounds: <int>, best: <float> }`
 
 ---
 

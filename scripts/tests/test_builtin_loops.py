@@ -6481,6 +6481,27 @@ class TestGeneratorEvaluatorOracle:
         state = data["states"].get("done", {})
         assert state.get("terminal") is True, "done.terminal should be True"
 
+    def test_check_stall_routes_through_score_stall(self, data: dict) -> None:
+        """ENH-2428: check_stall must use the score_stall gate (score-plateau signal)."""
+        from little_loops.fsm.fragments import resolve_fragments
+
+        resolved = resolve_fragments(
+            yaml.safe_load(self.LOOP_FILE.read_text()), BUILTIN_LOOPS_DIR
+        )
+        state = resolved["states"].get("check_stall", {})
+        assert state.get("evaluate", {}).get("type") == "score_stall", (
+            "check_stall must route through the score_stall evaluator"
+        )
+
+    def test_records_score_history_under_run_dir(self, data: dict) -> None:
+        """ENH-2428: a record_score state persists scores under run_dir (MR-3)."""
+        states = data.get("states", {})
+        assert "record_score" in states, "record_score state missing"
+        action = states["record_score"].get("action", "")
+        assert ".score_history" in action, "record_score must write .score_history"
+        assert "${context.run_dir}" in action, "score history must live under run_dir"
+        assert ".loops/tmp/" not in action, "must not write to bare .loops/tmp/ (MR-3)"
+
     def test_imports_harness_yaml(self, data: dict) -> None:
         imports = data.get("import", [])
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
@@ -7799,6 +7820,34 @@ class TestRnRemediateAssessRouting:
         assert not data.get("partial_route_ok"), (
             "partial_route_ok should be absent or false now that decide/wire/refine all "
             "define on_yes/on_no/on_partial; remove it so MR-4 validation catches regressions"
+        )
+
+    # format_issue state tests (BUG-2433)
+
+    def test_format_issue_trims_rate_limit_max_wait(self, data: dict) -> None:
+        """format_issue must opt out of the fragment's 6h long-wait budget (BUG-2433: a
+        cheap fail-open pre-pass should not park the loop for hours on a 429)."""
+        state = data["states"].get("format_issue", {})
+        assert state.get("rate_limit_max_wait_seconds") == 1, (
+            f"format_issue.rate_limit_max_wait_seconds should be 1, "
+            f"got {state.get('rate_limit_max_wait_seconds')!r}"
+        )
+
+    def test_format_issue_trims_rate_limit_long_wait_ladder(self, data: dict) -> None:
+        """format_issue must override the long-wait ladder to a single ~1s rung (BUG-2433)."""
+        state = data["states"].get("format_issue", {})
+        assert state.get("rate_limit_long_wait_ladder") == [1], (
+            f"format_issue.rate_limit_long_wait_ladder should be [1], "
+            f"got {state.get('rate_limit_long_wait_ladder')!r}"
+        )
+
+    def test_format_issue_on_rate_limit_exhausted_routes_to_assess(self, data: dict) -> None:
+        """format_issue.on_rate_limit_exhausted must route to assess (fail-open, matches
+        this state's existing on_no/on_error/on_partial intent — BUG-2433)."""
+        state = data["states"].get("format_issue", {})
+        assert state.get("on_rate_limit_exhausted") == "assess", (
+            f"format_issue.on_rate_limit_exhausted should be 'assess', "
+            f"got {state.get('on_rate_limit_exhausted')!r}"
         )
 
 

@@ -1009,6 +1009,23 @@ class TestMetaLoopValidation:
         mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
 
+    def test_mr1_passes_when_score_stall_evaluator_present(self) -> None:
+        """MR-1 does not fire when at least one score_stall evaluator is present (ENH-2428)."""
+        fsm = self._meta_fsm(
+            states={
+                "check": make_state(
+                    action="run.sh",
+                    evaluate=EvaluateConfig(type="score_stall"),
+                    on_yes="done",
+                    on_no="check",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        errors = _validate_meta_loop_evaluation(fsm)
+        mr1_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert mr1_errors == [], f"Unexpected MR-1 ERROR: {mr1_errors}"
+
     def test_mr1_suppressed_by_meta_self_eval_ok(self) -> None:
         """meta_self_eval_ok: true suppresses MR-1."""
         fsm = self._meta_fsm(

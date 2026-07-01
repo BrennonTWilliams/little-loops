@@ -599,6 +599,89 @@ def evaluate_diff_stall(
         )
 
 
+def evaluate_score_stall(
+    history_file: str,
+    max_stall: int = 1,
+    epsilon: float = 0.5,
+) -> EvaluationResult:
+    """Detect a scored-output plateau by reading a per-round score-history file.
+
+    The history file holds one numeric rubric score per line (the aggregate for
+    each refine round), appended by the loop's score state under
+    ${context.run_dir}/. This evaluator reads the full history and tracks the
+    running best-so-far: a round counts as *progress* only when its score exceeds
+    the previous best by more than epsilon (which resets the stall counter);
+    otherwise the stall counter increments. When the counter reaches max_stall
+    consecutive non-improving rounds the scores have plateaued and the evaluator
+    returns 'no' (accept best-so-far / stop).
+
+    Unlike diff_stall, this evaluator is stateless across calls — the history
+    file itself is the persisted state, so a test can feed a flat score history
+    and assert the plateau verdict deterministically.
+
+    Args:
+        history_file: Path to the newline-delimited score-history file.
+        max_stall: Consecutive non-improving rounds before a stall verdict.
+        epsilon: Minimum improvement over best-so-far counted as progress.
+
+    Returns:
+        EvaluationResult with verdict:
+            - yes: scores still improving, or not enough history yet (continue)
+            - no: scores plateaued for max_stall consecutive rounds (stop)
+    """
+    path = Path(history_file)
+    scores: list[float] = []
+    try:
+        raw = path.read_text()
+    except (FileNotFoundError, OSError):
+        raw = ""
+
+    for line in raw.splitlines():
+        token = line.strip()
+        if not token:
+            continue
+        try:
+            scores.append(float(token))
+        except ValueError:
+            continue
+
+    # Not enough history to judge a plateau — keep going.
+    if len(scores) < 2:
+        return EvaluationResult(
+            verdict="yes",
+            details={
+                "stall_count": 0,
+                "max_stall": max_stall,
+                "epsilon": epsilon,
+                "rounds": len(scores),
+                "best": scores[-1] if scores else None,
+            },
+        )
+
+    best = scores[0]
+    stall = 0
+    for score in scores[1:]:
+        if score > best + epsilon:
+            best = score
+            stall = 0
+        else:
+            if score > best:
+                best = score
+            stall += 1
+
+    verdict = "no" if stall >= max_stall else "yes"
+    return EvaluationResult(
+        verdict=verdict,
+        details={
+            "stall_count": stall,
+            "max_stall": max_stall,
+            "epsilon": epsilon,
+            "rounds": len(scores),
+            "best": best,
+        },
+    )
+
+
 def evaluate_action_stall(
     track: list[str] | None = None,
     max_repeat: int = 2,
@@ -1568,6 +1651,7 @@ def evaluate(
             "mcp_result",
             "harbor_scorer",
             "diff_stall",
+            "score_stall",
             "action_stall",
             "llm_structured",
             "contract",
@@ -1677,6 +1761,19 @@ def evaluate(
         return evaluate_diff_stall(
             scope=config.scope,
             max_stall=config.max_stall,
+        )
+
+    elif eval_type == "score_stall":
+        history_file = config.history_file or "${context.run_dir}/.score_history"
+        if context:
+            try:
+                history_file = interpolate(history_file, context)
+            except InterpolationError:
+                pass  # Use raw path on resolution failure
+        return evaluate_score_stall(
+            history_file=history_file,
+            max_stall=config.max_stall,
+            epsilon=config.epsilon,
         )
 
     elif eval_type == "action_stall":

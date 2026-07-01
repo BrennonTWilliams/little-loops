@@ -91,7 +91,7 @@ suppressed with a top-level flag when you have a justified reason.
 
 | Rule | What it requires | Why | Severity | Suppress with |
 |------|------------------|-----|----------|---------------|
-| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) | Self-grades are unreliable (ENH-1665) | **ERROR** | `meta_self_eval_ok: true` |
+| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `score_stall`, `mcp_result`) | Self-grades are unreliable (ENH-1665) | **ERROR** | `meta_self_eval_ok: true` |
 | **MR-2** | A meta-loop's captured baseline value must be referenced by a later evaluator (measure→propose→apply→re-measure spine) | Without a baseline comparison, the gate cannot tell whether an edit helped or hurt | WARNING | `meta_self_eval_ok: true` |
 | **MR-3** | Intermediate artifacts write under `${context.run_dir}/`, not bare `.loops/tmp/` | Concurrency safety — shared `.loops/tmp/` corrupts state across concurrent runs (`.issues/`, `.loops/diagnostics/`, `thoughts/` are exempt) | WARNING | `shared_state_ok: true` |
 | **MR-4** | An LLM-judged state with `on_yes` must also route `on_no`/`on_partial` (or `next:`/full `route:`) — no silent dead-end on a non-yes verdict | Half of verdicts are adverse (ENH-1917) | WARNING | `partial_route_ok: true` |
