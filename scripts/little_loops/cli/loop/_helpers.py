@@ -252,6 +252,90 @@ def _choose_pinned_layout(
     return last_text, last_h
 
 
+def _classify_fsm_topology(fsm: FSMLoop) -> str:
+    """Classify an FSM's graph shape as ``'linear' | 'tree' | 'general'``.
+
+    Mirrors the ``TopologyDetector`` plumbing in ``_render_fsm_diagram`` over the
+    full-scope edge set so the fallback ladder can branch on the loop's intrinsic
+    shape (FEAT-670). Full scope (not path-filtered) is used deliberately: the
+    ladder is about how the whole graph degrades, not the active happy path.
+    """
+    from little_loops.cli.loop.layout import (
+        TopologyDetector,
+        _bfs_order,
+        _classify_edges,
+        _collect_edges,
+        _trace_main_path,
+    )
+
+    edges = _collect_edges(fsm)
+    bfs_order_list, _bfs_depth = _bfs_order(fsm.initial, edges)
+    main_path, main_edge_set = _trace_main_path(fsm, edges)
+    branches, back_edges = _classify_edges(edges, main_edge_set, bfs_order_list)
+    return TopologyDetector(edges, main_path, branches, back_edges).classify()
+
+
+def _variant_width(variant: str | None) -> int:
+    """Return the widest display (ANSI-stripped) line in a rendered variant."""
+    if not variant:
+        return 0
+    return max((len(strip_ansi(ln)) for ln in variant.split("\n")), default=0)
+
+
+def _build_fallback_ladder(
+    facets: DiagramFacets,
+    fsm: FSMLoop,
+    full_variant: str | None,
+    cols: int,
+) -> list[str]:
+    """Order the degraded pinned-pane rungs by classified topology + failing dimension.
+
+    Returns an ordered list of ``detail`` strings (most→least detailed) for the
+    auto-degradation path (``source != "topology"``, layered topology). The list
+    always starts with ``"full"`` and terminates in ``"single"`` (the
+    guaranteed-fit floor). Only the *ordering* of the intermediate rungs varies;
+    ``_choose_pinned_layout`` still selects the first rung that fits by height.
+
+    Topology (FEAT-670) selects *which* detail-shedding path is preferred, and a
+    width probe of the built ``full`` variant orders the general-graph rungs:
+
+    - linear / tree (narrow, tall): title-only rungs keep every state before we
+      fall to the windowed crop (ENH-2410) or the synthetic neighborhood.
+    - general + too wide (fan-out): narrower title-only boxes before the window.
+    - general + too tall (hub-heavy): the windowed crop before title-only.
+
+    Title-only rungs are omitted when the ``"full"`` render already applies them
+    (``state_detail == "title"`` / ``edge_labels == False``), so a user-chosen
+    detail level is never double-applied (Open Question 5).
+    """
+    # Detail-shedding rungs that keep every state. Skip a rung when the "full"
+    # render already applies it, to avoid an identical duplicate variant.
+    keep_all: list[str] = []
+    if facets.state_detail != "title":
+        keep_all.append("title_only")
+    if facets.edge_labels:
+        keep_all.append("title_only_nolabels")
+
+    topology = _classify_fsm_topology(fsm)
+    too_wide = _variant_width(full_variant) > cols
+
+    if topology in ("linear", "tree") or too_wide:
+        # Narrow-but-tall chains and wide fan-outs both benefit from shedding box
+        # detail (shorter and/or narrower boxes) while keeping every state,
+        # before cropping to a window or collapsing to the neighborhood view.
+        ladder = ["full", *keep_all, "window", "neighborhood", "single"]
+    else:
+        # Hub-heavy general graph that is tall but not wide: the windowed crop
+        # preserves local structure better than shedding detail graph-wide.
+        ladder = ["full", "window", *keep_all, "neighborhood", "single"]
+
+    deduped: list[str] = []
+    for rung in ladder:
+        if rung not in deduped:
+            deduped.append(rung)
+    return deduped
+
+
 def _render_single_line_status(fsm: FSMLoop, active_state: str | None) -> str:
     """Render the single-line fallback: ``fsm: <preds> → [<active>] → <succs>``."""
     from little_loops.cli.loop.layout import _collect_edges
@@ -289,9 +373,12 @@ def _build_pinned_pane(
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
     ``detail`` selects the diagram variant: ``"full"`` (layered
-    ``_render_fsm_diagram``), ``"window"`` (the real layered render cropped to
-    ±K layers around the active state — ENH-2410), ``"neighborhood"`` (1-hop
-    pred/active/succ), or ``"single"`` (one-line ``fsm:`` status). The returned
+    ``_render_fsm_diagram``), ``"title_only"`` / ``"title_only_nolabels"`` (the
+    layered render with per-state bodies — and, for ``_nolabels``, edge labels —
+    suppressed so every state stays visible in shorter/narrower boxes; ENH-2411),
+    ``"window"`` (the real layered render cropped to ±K layers around the active
+    state — ENH-2410), ``"neighborhood"`` (1-hop pred/active/succ), or
+    ``"single"`` (one-line ``fsm:`` status). The returned
     string is intended to be printed with ``flush=True`` and is terminated by a
     horizontal separator (no trailing newline).
 
@@ -345,22 +432,36 @@ def _build_pinned_pane(
                 suppress_labels=not facets.edge_labels,
                 title_only=facets.state_detail == "title",
             )
-        # "full" (layered)
+        # "full" (layered) and the "title_only" detail-shedding rungs (ENH-2411).
+        # All three keep every state; the title-only rungs force shorter (and,
+        # for _nolabels, narrower) boxes without introducing any new render code.
         scope = facets.scope
         if scope == "main" and highlight is not None:
             _filtered_edges, reachable = _filter_main_path_graph(target, _collect_edges(target))
             if highlight not in reachable:
                 scope = "full"
+        if detail == "title_only":
+            render_verbose = False
+            render_title_only = True
+            render_suppress = not facets.edge_labels
+        elif detail == "title_only_nolabels":
+            render_verbose = False
+            render_title_only = True
+            render_suppress = True
+        else:  # "full"
+            render_verbose = verbose
+            render_title_only = facets.state_detail == "title"
+            render_suppress = not facets.edge_labels
         return _render_fsm_diagram(
             target,
-            verbose=verbose,
+            verbose=render_verbose,
             highlight_state=highlight,
             highlight_color=highlight_color,
             edge_label_colors=edge_label_colors,
             badges=badges,
             mode=scope,
-            suppress_labels=not facets.edge_labels,
-            title_only=facets.state_detail == "title",
+            suppress_labels=render_suppress,
+            title_only=render_title_only,
         )
 
     prev_map = prev_state_at_depth or {}
@@ -473,8 +574,10 @@ def _render_pinned_pane(
 
     # Build the fallback ladder based on facets source and topology.
     # Explicit topology (source="topology"): render exactly once, no degradation.
-    # Preset/default with layered topology: full → window → neighborhood → single
-    #   (window crops the real render to fit before the synthetic neighborhood).
+    # Preset/default with layered topology: topology-aware ladder (ENH-2411) —
+    #   _build_fallback_ladder orders the rungs (full / title-only / window /
+    #   neighborhood / single) by the FSM's classified shape and the failing
+    #   viewport dimension, always terminating in the single-line floor.
     # Explicit neighborhood topology: neighborhood→single.
     topo_detail = TOPOLOGY_TO_DETAIL[facets.topology]
     raw_variants: list[str | None]
@@ -482,12 +585,11 @@ def _render_pinned_pane(
         # A "window" topology can fail to fit and return None; fall back to single.
         raw_variants = [v for v in [_build(topo_detail)] if v is not None] or [_build("single")]
     elif topo_detail == "full":
-        raw_variants = [
-            _build("full"),
-            _build("window"),
-            _build("neighborhood"),
-            _build("single"),
-        ]
+        # Build "full" once, then let the ladder builder probe its width and the
+        # FSM's topology to order the remaining rungs.
+        full_variant = _build("full")
+        ladder = _build_fallback_ladder(facets, fsm, full_variant, cols)
+        raw_variants = [full_variant if rung == "full" else _build(rung) for rung in ladder]
     elif topo_detail == "neighborhood":
         raw_variants = [_build("neighborhood"), _build("single")]
     else:  # inline / single

@@ -4478,6 +4478,27 @@ def _hub_fsm(n_preds: int) -> FSMLoop:
     return make_test_fsm(initial="p0", states=states)
 
 
+def _tree_fsm(n_leaves: int) -> FSMLoop:
+    """A fan-out tree: ``root`` branches to ``n_leaves`` leaves, no fan-in.
+
+    Branches exist but every non-root state has exactly one incoming edge, so
+    ``TopologyDetector`` classifies this as ``tree`` (not ``general``).
+    """
+    root = make_test_state(action="branch", on_yes="leaf0", on_no="leaf1")
+    states: dict[str, StateConfig] = {"root": root}
+    # Chain any extra leaves off leaf1 so each has a single parent (no fan-in).
+    prev = "leaf1"
+    states["leaf0"] = make_test_state(terminal=True)
+    for i in range(1, n_leaves):
+        nxt = f"leaf{i + 1}"
+        if i == n_leaves - 1:
+            states[prev] = make_test_state(terminal=True)
+        else:
+            states[prev] = make_test_state(action="step", on_yes=nxt)
+        prev = nxt
+    return make_test_fsm(initial="root", states=states)
+
+
 class TestWindowedDiagram:
     """Tests for _render_windowed_diagram: real layered render cropped to ±K layers."""
 
@@ -4653,3 +4674,144 @@ class TestWindowTopologyValue:
         assert facets is not None
         assert facets.topology == "window"
         assert facets.source == "topology"
+
+
+class TestTopologyAwareLadder:
+    """ENH-2411: fallback ladder branches on classified topology + failing dimension."""
+
+    def _full_facets(self):  # type: ignore[no-untyped-def]
+        from little_loops.cli.loop.diagram_modes import DiagramFacets
+
+        # Preset source, layered, full detail, labels on → title-only rungs are distinct
+        # from the "full" render (nothing to double-apply).
+        return DiagramFacets("layered", True, "full", "full", "preset")
+
+    def _clean_facets(self):  # type: ignore[no-untyped-def]
+        from little_loops.cli.loop.diagram_modes import DiagramFacets
+
+        # clean preset already renders title-only with labels off.
+        return DiagramFacets("layered", False, "title", "main", "preset")
+
+    def _pane(self, detail, fsm, highlight, facets, rows=60):  # type: ignore[no-untyped-def]
+        from little_loops.cli.loop._helpers import _build_pinned_pane
+
+        return _build_pinned_pane(
+            detail,
+            fsm,
+            highlight,
+            {},
+            {},
+            "iter 1/50",
+            80,
+            facets=facets,
+            highlight_color="32",
+            edge_label_colors=None,
+            badges=None,
+            rows=rows,
+            min_action_rows=6,
+        )
+
+    # --- topology classifier ---------------------------------------------------
+    def test_classify_linear(self) -> None:
+        from little_loops.cli.loop._helpers import _classify_fsm_topology
+
+        assert _classify_fsm_topology(_chain_fsm(6)) == "linear"
+
+    def test_classify_tree(self) -> None:
+        from little_loops.cli.loop._helpers import _classify_fsm_topology
+
+        assert _classify_fsm_topology(_tree_fsm(4)) == "tree"
+
+    def test_classify_general_hub(self) -> None:
+        from little_loops.cli.loop._helpers import _classify_fsm_topology
+
+        assert _classify_fsm_topology(_hub_fsm(5)) == "general"
+
+    # --- ladder ordering -------------------------------------------------------
+    def test_linear_sheds_detail_before_window_and_neighborhood(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        ladder = _build_fallback_ladder(self._full_facets(), _chain_fsm(20), None, 80)
+        assert ladder[0] == "full" and ladder[-1] == "single"
+        assert "title_only" in ladder
+        assert ladder.index("title_only") < ladder.index("window")
+        assert ladder.index("title_only") < ladder.index("neighborhood")
+
+    def test_tree_sheds_detail_before_neighborhood(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        ladder = _build_fallback_ladder(self._full_facets(), _tree_fsm(6), None, 80)
+        assert ladder.index("title_only") < ladder.index("neighborhood")
+
+    def test_general_hub_windows_before_shedding_detail(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        # full_variant None → not too wide → hub-heavy (tall) general path.
+        ladder = _build_fallback_ladder(self._full_facets(), _hub_fsm(8), None, 80)
+        assert ladder.index("window") < ladder.index("title_only")
+        assert ladder.index("window") < ladder.index("neighborhood")
+        assert ladder.index("title_only") < ladder.index("neighborhood")
+
+    def test_general_wide_sheds_detail_before_window(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        wide = "x" * 200  # widest line exceeds cols=80 → too_wide → prefer narrower boxes
+        ladder = _build_fallback_ladder(self._full_facets(), _hub_fsm(4), wide, 80)
+        assert ladder.index("title_only") < ladder.index("window")
+
+    def test_floor_and_head_invariant_all_topologies(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        for fsm in (_chain_fsm(8), _tree_fsm(4), _hub_fsm(6)):
+            ladder = _build_fallback_ladder(self._full_facets(), fsm, None, 80)
+            assert ladder[0] == "full"
+            assert ladder[-1] == "single"
+
+    def test_no_duplicate_rungs(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        for fsm in (_chain_fsm(8), _tree_fsm(4), _hub_fsm(6)):
+            ladder = _build_fallback_ladder(self._full_facets(), fsm, None, 80)
+            assert len(ladder) == len(set(ladder))
+
+    def test_clean_preset_omits_redundant_title_only(self) -> None:
+        from little_loops.cli.loop._helpers import _build_fallback_ladder
+
+        # clean already renders title-only + labels off → no extra title-only rungs.
+        ladder = _build_fallback_ladder(self._clean_facets(), _chain_fsm(20), None, 80)
+        assert "title_only" not in ladder
+        assert "title_only_nolabels" not in ladder
+        assert ladder == ["full", "window", "neighborhood", "single"]
+
+    # --- new _build_pinned_pane detail rungs -----------------------------------
+    def test_title_only_rung_keeps_all_states_and_is_shorter(self) -> None:
+        fsm = _chain_fsm(8)
+        facets = self._full_facets()
+        full = self._pane("full", fsm, "s3", facets)
+        title = self._pane("title_only", fsm, "s3", facets)
+        assert full is not None and title is not None
+        stripped = "\n".join(_strip(title))
+        for i in range(8):
+            assert f"s{i}" in stripped, f"state s{i} missing from title-only render:\n{title}"
+        assert len(_strip(title)) < len(_strip(full)), (
+            f"title-only should be shorter than full:\ntitle={title}\nfull={full}"
+        )
+
+    def test_title_only_nolabels_rung_renders_and_keeps_all_states(self) -> None:
+        fsm = _tree_fsm(5)
+        pane = self._pane("title_only_nolabels", fsm, "root", self._full_facets())
+        assert pane is not None
+        stripped = "\n".join(_strip(pane))
+        assert "root" in stripped
+        assert "leaf0" in stripped
+
+    def test_explicit_topology_source_bypasses_ladder(self) -> None:
+        from little_loops.cli.loop.diagram_modes import TOPOLOGY_TO_DETAIL, resolve_facets
+
+        ns = argparse.Namespace(show_diagrams="neighborhood")
+        facets = resolve_facets(ns)
+        assert facets is not None
+        # Explicit topology → source "topology": _render_pinned_pane renders exactly
+        # TOPOLOGY_TO_DETAIL[topology] once and never enters the reordered ladder path.
+        assert facets.source == "topology"
+        assert TOPOLOGY_TO_DETAIL[facets.topology] == "neighborhood"
