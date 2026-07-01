@@ -23,7 +23,7 @@ import signal
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -2863,6 +2863,214 @@ class TestCompleteIssueLifecycle:
         fm = parse_frontmatter(content)
         assert fm.get("status") == "done"
         assert "completed_at" in fm
+
+
+@pytest.fixture
+def real_git_orchestrator(
+    default_parallel_config: ParallelConfig,
+) -> Iterator[tuple[ParallelOrchestrator, Path]]:
+    """A ``ParallelOrchestrator`` wired to a *real* git repo (BUG-2424 regression).
+
+    The shared ``temp_repo_with_config`` fixture is a plain filesystem (no
+    ``git init``) and the orchestrator suite stubs ``_git_lock.run`` — neither
+    can catch over-staging. This fixture stands up an actual git repo with a
+    committed issue file and returns an orchestrator that runs its **un-stubbed**
+    ``GitLock`` against it, so ``git add`` scope can be asserted for real.
+    """
+    import subprocess as sp
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        repo_path = Path(tmpdir)
+        sp.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
+        sp.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=repo_path,
+            capture_output=True,
+            check=True,
+        )
+        sp.run(
+            ["git", "config", "user.name", "Test User"],
+            cwd=repo_path,
+            capture_output=True,
+            check=True,
+        )
+
+        ll_dir = repo_path / ".ll"
+        ll_dir.mkdir()
+        config = {
+            "project": {"name": "test", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config))
+        (repo_path / ".issues" / "bugs").mkdir(parents=True)
+        (repo_path / ".issues" / "completed").mkdir(parents=True)
+        (repo_path / ".worktrees").mkdir()
+
+        issue_path = repo_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_path.write_text(
+            "---\nid: BUG-001\nstatus: in_progress\n---\n\n# BUG-001: Test Bug\n\n## Summary\nTest.\n"
+        )
+        sp.run(["git", "add", "-A"], cwd=repo_path, capture_output=True, check=True)
+        sp.run(
+            ["git", "commit", "-m", "initial commit"],
+            cwd=repo_path,
+            capture_output=True,
+            check=True,
+        )
+
+        br_config = BRConfig(repo_path)
+        with (
+            patch("little_loops.parallel.orchestrator.WorkerPool"),
+            patch("little_loops.parallel.orchestrator.MergeCoordinator"),
+            patch("little_loops.parallel.orchestrator.IssuePriorityQueue"),
+        ):
+            orch = ParallelOrchestrator(
+                parallel_config=default_parallel_config,
+                br_config=br_config,
+                repo_path=repo_path,
+                verbose=False,
+            )
+        orch.queue.completed_ids = []  # type: ignore[misc]
+        orch.queue.failed_ids = []  # type: ignore[misc]
+        orch.queue.in_progress_ids = []  # type: ignore[misc]
+        yield orch, repo_path
+
+
+class TestScopedCompletionStaging:
+    """BUG-2424: parallel completion commits must stage ONLY the issue file.
+
+    Regression coverage for the two main-repo ``git add -A`` sites in
+    ``orchestrator.py`` (``_complete_issue_lifecycle_if_needed`` and the
+    ``_on_worker_complete`` feature-branch frontmatter fallback), which could
+    sweep pre-existing dirty/untracked files into a worker's completion commit.
+    """
+
+    @staticmethod
+    def _tracked(repo_path: Path) -> str:
+        import subprocess as sp
+
+        return sp.run(
+            ["git", "ls-files"], cwd=repo_path, capture_output=True, text=True, check=True
+        ).stdout
+
+    @staticmethod
+    def _status(repo_path: Path) -> str:
+        import subprocess as sp
+
+        return sp.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    def test_complete_lifecycle_commit_excludes_unrelated_dirty_file(
+        self,
+        real_git_orchestrator: tuple[ParallelOrchestrator, Path],
+        mock_issue: MagicMock,
+    ) -> None:
+        """A pre-existing dirty main-repo file is NOT swept into the lifecycle commit."""
+        orch, repo_path = real_git_orchestrator
+        issue_path = repo_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        mock_issue.path = issue_path
+        mock_issue.issue_type = "bugs"
+        orch._issue_info_by_id["BUG-001"] = mock_issue
+
+        # Dirty state belonging to another issue/session in the main working tree.
+        (repo_path / "unrelated_wip.py").write_text("# WIP for another issue\n")
+
+        result = orch._complete_issue_lifecycle_if_needed("BUG-001")
+
+        assert result is True
+        assert "unrelated_wip.py" not in self._tracked(repo_path), (
+            "unrelated dirty file must never be committed by the completion path"
+        )
+        assert "unrelated_wip.py" in self._status(repo_path), (
+            "unrelated dirty file must remain uncommitted in the working tree"
+        )
+
+    def test_complete_lifecycle_commit_is_scoped_to_issue_file(
+        self,
+        real_git_orchestrator: tuple[ParallelOrchestrator, Path],
+        mock_issue: MagicMock,
+    ) -> None:
+        """On a clean tree the lifecycle commit still lands, containing only the issue file."""
+        import subprocess as sp
+
+        orch, repo_path = real_git_orchestrator
+        issue_path = repo_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        mock_issue.path = issue_path
+        mock_issue.issue_type = "bugs"
+        orch._issue_info_by_id["BUG-001"] = mock_issue
+
+        before = sp.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        result = orch._complete_issue_lifecycle_if_needed("BUG-001")
+        assert result is True
+
+        after = sp.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert int(after) == int(before) + 1, "a clean tree should still produce a scoped commit"
+
+        files = sp.run(
+            ["git", "show", "--name-only", "--format=", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert files == [".issues/bugs/P1-BUG-001-test-bug.md"], (
+            f"completion commit must contain only the issue file, got {files}"
+        )
+
+    def test_on_worker_complete_feature_branch_excludes_unrelated_dirty_file(
+        self,
+        real_git_orchestrator: tuple[ParallelOrchestrator, Path],
+        mock_issue: MagicMock,
+    ) -> None:
+        """The feature-branch frontmatter fallback must not sweep in unrelated dirt."""
+        orch, repo_path = real_git_orchestrator
+        issue_path = repo_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        mock_issue.path = issue_path
+        mock_issue.issue_type = "bugs"
+        orch._issue_info_by_id["BUG-001"] = mock_issue
+
+        orch.parallel_config.use_feature_branches = True
+        orch.parallel_config.push_feature_branches = False
+
+        (repo_path / "unrelated_wip.py").write_text("# other work\n")
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001",
+            worktree_path=repo_path / ".worktrees" / "w",
+            duration=1.0,
+        )
+        orch._on_worker_complete(result)
+
+        assert "unrelated_wip.py" not in self._tracked(repo_path), (
+            "feature-branch fallback must never commit an unrelated dirty file"
+        )
+        assert "unrelated_wip.py" in self._status(repo_path), (
+            "unrelated dirty file must remain uncommitted after feature-branch completion"
+        )
 
 
 class TestCleanup:

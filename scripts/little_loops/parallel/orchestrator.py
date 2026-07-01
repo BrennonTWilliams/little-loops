@@ -1021,17 +1021,16 @@ class ParallelOrchestrator:
                             updates["pr_url"] = branch_state["pr_url"]
                         content = update_frontmatter(content, updates)
                         info.path.write_text(content)
-                        self._git_lock.run(["add", "-A"], cwd=self.repo_path)
-                        commit_result = self._git_lock.run(
-                            [
-                                "commit",
-                                "-m",
-                                f"{result.issue_id}: record feature branch in frontmatter",
-                            ],
-                            cwd=self.repo_path,
+                        # BUG-2424: stage only the issue file, never `git add -A`
+                        # against the main repo (would sweep unrelated dirty state).
+                        commit_result = self._stage_and_commit_issue_scoped(
+                            result.issue_id,
+                            info.path,
+                            f"{result.issue_id}: record feature branch in frontmatter",
                         )
                         if (
-                            commit_result.returncode != 0
+                            commit_result is not None
+                            and commit_result.returncode != 0
                             and "nothing to commit" not in commit_result.stdout.lower()
                         ):
                             self.logger.warning(
@@ -1345,6 +1344,41 @@ class ParallelOrchestrator:
                 "then 'git stash pop' or 'git stash apply stash@{N}'"
             )
 
+    def _stage_and_commit_issue_scoped(
+        self, issue_id: str, issue_path: Path, commit_msg: str
+    ) -> subprocess.CompletedProcess[str] | None:
+        """Stage and commit ONLY the issue file in the main repo (BUG-2424).
+
+        Both parallel completion commits — ``_on_worker_complete``'s feature-branch
+        frontmatter fallback and ``_complete_issue_lifecycle_if_needed`` — are
+        frontmatter-only follow-ups: the worker's code diff is already merged and
+        committed beforehand. Staging with ``git add -A`` here would sweep any
+        pre-existing dirty or untracked file in the main working tree into the
+        commit, corrupting its provenance (poisoned ``git blame``/``bisect``,
+        premature commit of unrelated WIP).
+
+        Mirror ``hooks/post_tool_use.py:_maybe_auto_commit`` instead: stage the
+        single issue file, then skip the commit (warn only) if any *other* path is
+        dirty or staged in the main repo. The skip is self-protecting under
+        concurrent workers sharing one ``GitLock`` — a later completer re-runs this
+        check and also declines to sweep the still-staged file.
+
+        Returns the commit ``CompletedProcess`` on success, or ``None`` when the
+        commit was skipped because unrelated dirty state was present.
+        """
+        filename = issue_path.name
+        self._git_lock.run(["add", "--", str(issue_path)], cwd=self.repo_path)
+        status = self._git_lock.run(["status", "--porcelain"], cwd=self.repo_path)
+        other = [ln for ln in status.stdout.splitlines() if filename not in ln]
+        if other:
+            self.logger.warning(
+                f"{issue_id}: skipping scoped completion commit — main repo has "
+                f"unrelated dirty paths an unscoped stage would sweep in: "
+                f"{[ln.strip() for ln in other]}"
+            )
+            return None
+        return self._git_lock.run(["commit", "-m", commit_msg], cwd=self.repo_path)
+
     def _complete_issue_lifecycle_if_needed(
         self, issue_id: str, terminal_status: str = "done"
     ) -> bool:
@@ -1412,12 +1446,6 @@ class ParallelOrchestrator:
             original_path.write_text(content)
             append_session_log_entry(original_path, "ll-parallel")
 
-            # Stage and commit
-            self._git_lock.run(
-                ["add", "-A"],
-                cwd=self.repo_path,
-            )
-
             action = self.br_config.get_category_action(info.issue_type)
             if terminal_status == "in_progress":
                 lifecycle_note = "Feature branch ready — status: in_progress (awaiting PR merge)"
@@ -1431,10 +1459,14 @@ Issue: {issue_id}
 Type: {info.issue_type}
 Title: {info.title}
 """
-            commit_result = self._git_lock.run(
-                ["commit", "-m", commit_msg],
-                cwd=self.repo_path,
-            )
+            # BUG-2424: stage only the issue file, never `git add -A` against the
+            # main repo (would sweep unrelated dirty/untracked state into the commit).
+            commit_result = self._stage_and_commit_issue_scoped(issue_id, original_path, commit_msg)
+
+            if commit_result is None:
+                # Skipped: unrelated dirty state in the main repo. The frontmatter
+                # status was still written to the file; the helper already warned.
+                return True
 
             if commit_result.returncode != 0:
                 if "nothing to commit" not in commit_result.stdout.lower():
