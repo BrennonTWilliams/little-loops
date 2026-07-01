@@ -10,12 +10,20 @@ relates_to: []
 
 # Score-plateau early-stop for generator-evaluator oracle
 
-## Problem
+## Summary
 
-The `oracles/generator-evaluator` sub-loop has a stall guard (`check_stall` →
-`diff_stall_gate`, `scripts/little_loops/loops/lib/common.yaml:148`) that watches
-**git diff bytes**. This does not catch the real stagnation mode observed in the
-`html-website-generator` run review (`html-website-generator-20260701T105614`):
+The `oracles/generator-evaluator` sub-loop's stall guard watches git diff
+bytes, which misses the real stagnation mode: visible/scored output plateaus
+while the file keeps growing byte-for-byte. Add a **score-plateau** evaluator
+that accepts best-so-far and routes to `done` when rubric scores stop
+improving for `max_stall` consecutive rounds.
+
+## Current Behavior
+
+`check_stall` → `diff_stall_gate` (`scripts/little_loops/loops/lib/common.yaml:148`)
+watches **git diff bytes**. This does not catch the real stagnation mode
+observed in the `html-website-generator` run review
+(`html-website-generator-20260701T105614`):
 
 - `index.html` grew 94 KB → 124 KB across 16 refine rounds, so the git diff was
   never identical and `diff_stall` never fired.
@@ -24,9 +32,23 @@ The `oracles/generator-evaluator` sub-loop has a stall guard (`check_stall` →
 - Result: the loop burned ~2h15m / most of its iteration budget buying almost no
   scored improvement, then hit the step/time ceiling.
 
-A byte-diff signal is the wrong axis. We need a **score-plateau** signal: if the
-rubric scores do not improve for N consecutive rounds, accept best-so-far and
-route to `done`.
+## Expected Behavior
+
+A **score-plateau** signal replaces byte-diff as the primary stall axis: if
+the rubric scores do not improve by more than a small epsilon for `max_stall`
+(default 2) consecutive rounds, the loop accepts best-so-far and routes to
+`done` instead of continuing to the step/time ceiling.
+
+## Motivation
+
+- The `html-website-generator` review found the loop burned ~2h15m — most of
+  its iteration budget — buying almost no scored improvement after iter-1,
+  because the stall guard watches the wrong signal (byte diff, not rubric
+  score).
+- A reusable `score_stall` evaluator fixes this for `oracles/generator-evaluator`
+  and any other loop pairing an LLM `score` state with iterative refinement.
+- Satisfies the MR-1 discriminator rule (non-LLM external evaluator paired
+  with the LLM `score` state) noted in the Proposed Solution below.
 
 ## Context
 
@@ -42,7 +64,7 @@ This issue is the remaining, larger piece: a reusable **score-stall evaluator**
 so the plateau is caught on the correct signal rather than relying only on the
 lowered step ceiling as a backstop.
 
-## Proposed approach
+## Proposed Solution
 
 - Persist each round's numeric rubric scores (the four criteria) to a small file
   under `${context.run_dir}/` (e.g. `.score_history` — per-run isolation per
@@ -56,7 +78,18 @@ lowered step ceiling as a backstop.
 - This is a non-LLM external evaluator, satisfying the MR-1 discriminator rule
   for the paired LLM `score` state.
 
-## Acceptance criteria
+## Scope Boundaries
+
+- **In scope**: persisting per-round rubric scores under `${context.run_dir}/`;
+  a `score_stall` evaluator (or fragment) with a `max_stall` knob and epsilon
+  threshold; wiring `check_stall` in `oracles/generator-evaluator` to the
+  score-plateau signal.
+- **Out of scope**: removing `diff_stall` outright — it stays as a
+  secondary/OR condition per the Proposed Solution; wiring `score_stall` into
+  other oracle loops beyond `generator-evaluator` (the evaluator should be
+  reusable, but adopting it elsewhere is separate follow-up work).
+
+## Acceptance Criteria
 
 - [ ] A per-run score-history artifact is written under `${context.run_dir}/`
       (never bare `.loops/tmp/`).
@@ -67,7 +100,26 @@ lowered step ceiling as a backstop.
 - [ ] `ll-loop validate oracles/generator-evaluator` stays green.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
+## Impact
+
+- **Priority**: P3 — quality-of-life fix for harness resource usage; wastes
+  iteration budget on real runs but is not a correctness bug.
+- **Effort**: Small-Medium — new evaluator type/fragment plus a small
+  per-round persistence write path, mirroring the existing `diff_stall_gate`
+  pattern already in `common.yaml`.
+- **Risk**: Low — additive evaluator; `diff_stall` is retained as a
+  secondary/OR condition, so existing stall detection isn't removed.
+- **Breaking Change**: No.
+
 ## Notes
 
 Source: `html-website-generator-run-review-20260701.md` (finding 3, "Diminishing
 returns after iter-1" / "Add an early-stop on stagnation").
+
+## Status
+
+**Open** | Created: 2026-07-01 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-07-01T20:26:06 - `6a483798-afef-41ef-99f1-d9709fa879a5.jsonl`
