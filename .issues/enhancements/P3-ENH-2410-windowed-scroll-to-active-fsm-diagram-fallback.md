@@ -3,8 +3,9 @@ id: ENH-2410
 title: Windowed / scroll-to-active FSM diagram fallback for the pinned-pane ladder
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-30T00:27:20Z'
+completed_at: '2026-07-01T01:23:02Z'
 discovered_date: '2026-06-30'
 discovered_by: capture-issue
 relates_to:
@@ -233,11 +234,45 @@ ll-loop run big-loop.yaml --show-diagrams clean --clear
   plumbing this extends.
 - FEAT-670 — the adaptive layout engine being windowed.
 
+## Resolution
+
+Implemented via `/ll:manage-issue`. Added a `"window"` layered diagram variant
+that crops the **real** Sugiyama render to ±K layers around the active state
+(K sized to the viewport) rather than re-synthesizing a subgraph:
+
+- `layout.py::_render_layered_diagram` gained a `window=(active, budget)` kwarg
+  that, after the grid is fully drawn, slices whole grid rows at clean layer
+  boundaries (`row_start`/`box_height`/`self_loops`) — preserving real column
+  positions, arrows, labels, badges and the active-state highlight. Back-edge
+  margin pipes that cross the window survive as truncated stubs for free.
+- New `layout.py::_render_windowed_diagram` mirrors `_render_fsm_diagram`'s
+  pipeline (`LayerAssigner → CrossingMinimizer → _render_layered_diagram`) and
+  new `_overflow_banner` emits `▲ N layers above (…)` / `▼ M layers below (…)`
+  with representative state trails (terminal states keep `◉`). Returns `""` for
+  ≤1-state graphs or when even a one-layer window won't fit `budget`.
+- `_helpers.py` threads a viewport budget from `_render_pinned_pane` →
+  `_build_pinned_pane` → `_render_one`, adds the `"window"` rung to the layered
+  ladder as `[full, window, neighborhood, single]` (dropping the rung when it
+  can't fit), and reuses the existing `main→full` off-path guard.
+- `diagram_modes.py` adds the explicit `window` topology value
+  (`TOPOLOGY_VALUES` / `TOPOLOGY_TO_DETAIL`) for forced, testable use.
+- Docs: `docs/reference/CLI.md`, `docs/guides/LOOPS_GUIDE.md`.
+
+Tests: `TestWindowedDiagram`, `TestWindowedLadderIntegration`,
+`TestWindowTopologyValue` in `scripts/tests/test_ll_loop_display.py` — bounded
+height, both/one/no overflow banners, active box inside the window, `None`/
+unknown active windows the top, budget-too-small → `""`, ladder budget → `None`.
+Full suite: 13,233 passed (the sole failure, `test_all_skills_within_limit`, is a
+pre-existing `skills/manage-issue/SKILL.md` 500-line-limit breach unrelated to
+this diagram change). `ruff` clean; `mypy` clean (only the pre-existing wcwidth
+import-untyped note).
+
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P3
+**Done** | Created: 2026-06-30 | Completed: 2026-07-01 | Priority: P3
 
 
 ## Session Log
 - `/ll:format-issue` - 2026-07-01T00:35:22 - `20066cd1-3a9b-408d-8c8e-0304c9a4fe9d.jsonl`
 - `/ll:confidence-check` - 2026-07-01T00:40:00 - `aeea8dae-2fb9-4090-9cbd-6df3709031d2.jsonl`
+- `/ll:manage-issue` - 2026-07-01T01:23:02 - `0d62aae1-e523-4234-ae5c-8ec43811386e.jsonl`

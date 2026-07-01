@@ -858,11 +858,22 @@ def _render_layered_diagram(
     badges: dict[str, str] | None = None,
     title_only: bool = False,
     suppress_labels: bool = False,
+    window: tuple[str | None, int] | None = None,
 ) -> str:
     """Render FSM using layered (Sugiyama-style) vertical layout.
 
     When ``title_only`` is True, per-state body lines are suppressed.
     When ``suppress_labels`` is True, inter-state edges render without labels.
+
+    When ``window`` is ``(active_state, budget)`` the fully rendered grid is
+    cropped to the ``±K`` layers around ``active_state``'s layer that fit within
+    ``budget`` rows, with ``▲ N layers above …`` / ``▼ M layers below …``
+    overflow banners (ENH-2410). Column positions, arrows, labels, badges and
+    the active-state highlight are the genuine layered ones — only whole grid
+    rows are sliced at clean layer boundaries. Returns ``""`` when even the
+    active layer plus its banners does not fit ``budget`` (the caller then
+    defers to a smaller diagram rung). ``active_state`` of ``None`` / unknown
+    windows the top of the graph.
     """
     terminal_states = terminal_states or set()
     fsm_states = fsm_states or {}
@@ -1663,6 +1674,69 @@ def _render_layered_diagram(
                     if label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = _lc(ch)
 
+    # Windowed crop (ENH-2410): keep only the grid rows for the ±K layers around
+    # the active state that fit ``budget``. Slicing whole grid rows preserves the
+    # real column positions, arrows, labels, badges and highlight; back-edge
+    # margin pipes that cross the window survive as truncated stubs.
+    banner_above = ""
+    banner_below = ""
+    if window is not None:
+        win_active, win_budget = window
+        n_layers = len(layers)
+
+        def _layer_top(li: int) -> int:
+            return row_start[layers[li][0]]
+
+        def _layer_bottom(li: int) -> int:
+            # Exclusive bottom: past the tallest box, plus a self-loop marker row
+            # if any state in the layer has one. Excludes the inter-layer arrow gap
+            # so the cut lands on a clean box boundary.
+            box_bot = max(row_start[s] + box_height[s] for s in layers[li])
+            has_self = any(s in self_loops for s in layers[li])
+            return box_bot + (1 if has_self else 0)
+
+        if win_active is not None and win_active in layer_of:
+            active_layer = layer_of[win_active]
+        else:
+            active_layer = 0  # unknown/None active → window the top of the graph
+
+        def _pane_height(lo: int, hi: int) -> int:
+            h = _layer_bottom(hi) - _layer_top(lo)
+            if lo > 0:
+                h += 1  # ▲ banner
+            if hi < n_layers - 1:
+                h += 1  # ▼ banner
+            return h
+
+        lo = hi = active_layer
+        if _pane_height(lo, hi) > win_budget:
+            # Not even the active layer plus its banners fits — defer to a
+            # smaller diagram rung (neighborhood / single).
+            return ""
+
+        # Grow the window symmetrically (down, then up) while it still fits.
+        while True:
+            grew = False
+            if hi < n_layers - 1 and _pane_height(lo, hi + 1) <= win_budget:
+                hi += 1
+                grew = True
+            if lo > 0 and _pane_height(lo - 1, hi) <= win_budget:
+                lo -= 1
+                grew = True
+            if not grew:
+                break
+
+        grid = grid[_layer_top(lo) : _layer_bottom(hi)]
+
+        if lo > 0:
+            reps = [layers[li][0] for li in range(0, lo)]
+            banner_above = _overflow_banner("▲", lo, reps, terminal_states, tw, above=True)
+        if hi < n_layers - 1:
+            reps = [layers[li][0] for li in range(hi + 1, n_layers)]
+            banner_below = _overflow_banner(
+                "▼", n_layers - 1 - hi, reps, terminal_states, tw, above=False
+            )
+
     # Convert grid to string
     lines = ["".join(row).rstrip() for row in grid]
 
@@ -1676,7 +1750,11 @@ def _render_layered_diagram(
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
 
-    return _colorize_diagram_labels("\n".join(lines), edge_label_colors)
+    body = _colorize_diagram_labels("\n".join(lines), edge_label_colors)
+    if banner_above or banner_below:
+        parts = [p for p in (banner_above, body, banner_below) if p]
+        return "\n".join(parts)
+    return body
 
 
 # ---------------------------------------------------------------------------
@@ -1840,6 +1918,133 @@ def _render_fsm_diagram(
         badges,
         title_only=title_only or (mode == "mini"),
         suppress_labels=suppress_labels or (mode == "mini"),
+    )
+
+
+def _overflow_banner(
+    glyph: str,
+    count: int,
+    reps: list[str],
+    terminal_states: set[str],
+    tw: int,
+    *,
+    above: bool,
+) -> str:
+    """Render a compact windowed-diagram overflow banner.
+
+    ``▲ 3 layers above  (init → plan → select_step)`` /
+    ``▼ 6 layers below  (… → failed ◉)``. ``reps`` are representative state
+    names for the cropped-away layers (first state of each). Terminal states
+    keep the ``◉`` marker. The whole banner is truncated to ``tw`` columns.
+    """
+
+    def _rep(name: str) -> str:
+        return f"{name} ◉" if name in terminal_states else name
+
+    noun = "layer" if count == 1 else "layers"
+    where = "above" if above else "below"
+    head = f"  {glyph} {count} {noun} {where}"
+    trail = " → ".join(_rep(r) for r in reps)
+    if trail:
+        trail = trail if above else f"… → {trail}"
+        text = f"{head}  ({trail})"
+    else:
+        text = head
+    if _display_width(text) > tw:
+        # Truncate on display width, leaving room for the ellipsis + ")".
+        budget = max(0, tw - 2)
+        clipped = text[:budget].rstrip()
+        text = clipped + "…" + (")" if text.rstrip().endswith(")") else "")
+    return text
+
+
+def _render_windowed_diagram(
+    fsm: FSMLoop,
+    active_state: str | None,
+    *,
+    budget: int,
+    verbose: bool = False,
+    highlight_color: str = "32",
+    edge_label_colors: dict[str, str] | None = None,
+    badges: dict[str, str] | None = None,
+    mode: str = "full",
+    suppress_labels: bool = False,
+    title_only: bool = False,
+) -> str:
+    """Render the real layered diagram cropped to ±K layers around ``active_state``.
+
+    Runs the full layered pipeline (``LayerAssigner`` → ``CrossingMinimizer`` →
+    ``_render_layered_diagram``) and asks ``_render_layered_diagram`` to slice
+    the finished grid to the layers that fit ``budget`` rows around the active
+    state, so layout, edges, labels, badges and the highlight are the genuine
+    layered ones rather than a re-synthesized subgraph (ENH-2410).
+
+    Returns ``""`` for empty / single-state graphs or when even a one-layer
+    window does not fit ``budget`` — the caller then defers to a smaller
+    ladder rung (``neighborhood`` / ``single``). ``active_state`` of ``None``
+    or an unknown name windows the top of the graph.
+    """
+    if budget <= 0:
+        return ""
+
+    edges = _collect_edges(fsm)
+    if mode in ("main", "mini"):
+        edges, _reachable = _filter_main_path_graph(fsm, edges)
+    bfs_order_list, _bfs_depth = _bfs_order(fsm.initial, edges)
+    main_path, main_edge_set = _trace_main_path(fsm, edges)
+    branches, back_edges = _classify_edges(edges, main_edge_set, bfs_order_list)
+
+    terminal_states = {name for name, state in fsm.states.items() if state.terminal}
+
+    all_states = list(main_path)
+    for src, dst, _ in branches:
+        for s in (src, dst):
+            if s not in all_states:
+                all_states.append(s)
+
+    # Nothing to window on a trivial graph; the caller's larger rungs handle it.
+    if len(all_states) <= 1:
+        return ""
+
+    back_edge_set: set[tuple[str, str]] = {(s, d) for (s, d, _) in back_edges if s != d}
+
+    tw = terminal_width()
+    max_node_w = 30
+    for s in all_states:
+        st = fsm.states.get(s)
+        badge = _get_state_badge(st, badges)
+        badge_w = _badge_display_width(badge) if badge else 0
+        label = s
+        if s == fsm.initial:
+            label = "→ " + label
+        if s in terminal_states:
+            label = label + " ◉"
+        w = max(_display_width(label), badge_w)
+        max_node_w = max(max_node_w, w + 4 + 4)
+    max_width_per_layer = max(1, (tw - 10) // (max_node_w + 4))
+
+    assigner = LayerAssigner(all_states, edges, back_edge_set, fsm.initial, max_width_per_layer)
+    layers = assigner.assign()
+    minimizer = CrossingMinimizer(layers, edges, back_edge_set)
+    layers = minimizer.minimize()
+
+    return _render_layered_diagram(
+        layers,
+        edges,
+        main_edge_set,
+        branches,
+        back_edges,
+        fsm.initial,
+        terminal_states,
+        fsm.states,
+        verbose,
+        active_state,
+        highlight_color,
+        edge_label_colors,
+        badges,
+        title_only=title_only or (mode == "mini"),
+        suppress_labels=suppress_labels or (mode == "mini"),
+        window=(active_state, budget),
     )
 
 

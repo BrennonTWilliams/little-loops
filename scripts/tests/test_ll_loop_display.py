@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -4448,3 +4449,207 @@ class TestABSummaryDisplay:
         assert "]" in captured.out
         # Harness CI for k=7,n=10: roughly [0.40, 0.89]
         assert "0." in captured.out
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip(text: str) -> list[str]:
+    """Split rendered diagram output into ANSI-stripped lines."""
+    return [_ANSI_RE.sub("", ln) for ln in text.split("\n")]
+
+
+def _chain_fsm(n: int) -> FSMLoop:
+    """Linear chain ``s0 → s1 → … → s{n-1}`` (n distinct layers)."""
+    states: dict[str, StateConfig] = {
+        f"s{i}": make_test_state(action="step", on_yes=f"s{i + 1}") for i in range(n - 1)
+    }
+    states[f"s{n - 1}"] = make_test_state(terminal=True)
+    return make_test_fsm(initial="s0", states=states)
+
+
+def _hub_fsm(n_preds: int) -> FSMLoop:
+    """``n_preds`` predecessors all fanning into ``hub → end`` (a fan-in hub)."""
+    states: dict[str, StateConfig] = {
+        f"p{i}": make_test_state(action="step", on_yes="hub") for i in range(n_preds)
+    }
+    states["hub"] = make_test_state(action="step", on_yes="end")
+    states["end"] = make_test_state(terminal=True)
+    return make_test_fsm(initial="p0", states=states)
+
+
+class TestWindowedDiagram:
+    """Tests for _render_windowed_diagram: real layered render cropped to ±K layers."""
+
+    def test_mid_graph_active_bounds_height_with_both_banners(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(20)
+        budget = 24
+        out = _render_windowed_diagram(fsm, "s10", budget=budget)
+        lines = _strip(out)
+
+        # Height is bounded by construction — the whole 20-layer chain never fits.
+        assert len(lines) <= budget, f"{len(lines)} lines > budget {budget}:\n{out}"
+        # Mid-graph active state → overflow both above and below. Detect banners by
+        # text: the ▼ glyph doubles as the diagram's own arrow tip, so it is not a
+        # reliable banner marker (▲ is banner-only and safe to match directly).
+        assert "▲" in out
+        assert "layers above" in out and "layers below" in out
+        # The active state's box (not just a banner mention) is inside the window.
+        banner_terms = ("layers above", "layers below")
+        assert any(
+            "s10" in ln for ln in lines if not any(t in ln for t in banner_terms)
+        ), out
+
+    def test_overflow_banner_reports_layer_counts(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(20)
+        lines = _strip(_render_windowed_diagram(fsm, "s10", budget=24))
+        above = next(ln for ln in lines if "layers above" in ln)
+        below = next(ln for ln in lines if "layers below" in ln)
+        # e.g. "▲ 7 layers above  (s0 → s1 → …)"
+        assert re.search(r"▲ \d+ layers above", above), above
+        assert re.search(r"▼ \d+ layers below", below), below
+
+    def test_hub_active_stays_bounded(self) -> None:
+        """The whole point: a fan-in hub windows to the viewport instead of a tall tower."""
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _hub_fsm(12)
+        budget = 20
+        out = _render_windowed_diagram(fsm, "hub", budget=budget)
+        lines = _strip(out)
+        assert out != ""
+        assert len(lines) <= budget, f"{len(lines)} lines > budget {budget}:\n{out}"
+        assert any("hub" in ln for ln in lines if "▲" not in ln and "▼" not in ln), out
+
+    def test_none_active_windows_top(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(20)
+        out = _render_windowed_diagram(fsm, None, budget=18)
+        lines = _strip(out)
+        assert len(lines) <= 18
+        # Windowing the top: no "above" overflow, but there is "below".
+        assert "▲" not in out and "layers above" not in out
+        assert "layers below" in out
+        assert any("s0" in ln for ln in lines if "layers below" not in ln), out
+
+    def test_unknown_active_windows_top(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(20)
+        out = _render_windowed_diagram(fsm, "ghost", budget=18)
+        assert "▲" not in out and "layers above" not in out
+        assert any("s0" in ln for ln in _strip(out) if "layers below" not in ln), out
+
+    def test_whole_graph_fits_has_no_banners(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(3)
+        out = _render_windowed_diagram(fsm, "s1", budget=100)
+        # No overflow banners when everything fits (▼ still appears as arrow tips,
+        # so assert on the banner text, not the glyph).
+        assert "▲" not in out
+        assert "layers above" not in out and "layers below" not in out
+        stripped = "\n".join(_strip(out))
+        assert "s0" in stripped and "s1" in stripped and "s2" in stripped
+
+    def test_budget_too_small_returns_empty(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = _chain_fsm(20)
+        # A single box is ~3 rows; 1 row cannot fit even the active layer.
+        assert _render_windowed_diagram(fsm, "s10", budget=1) == ""
+
+    def test_single_state_graph_returns_empty(self) -> None:
+        from little_loops.cli.loop.layout import _render_windowed_diagram
+
+        fsm = make_test_fsm(initial="only", states={"only": make_test_state(terminal=True)})
+        assert _render_windowed_diagram(fsm, "only", budget=50) == ""
+
+
+class TestWindowedLadderIntegration:
+    """Tests for the "window" rung in the pinned-pane fallback ladder."""
+
+    def _facets(self):  # type: ignore[no-untyped-def]
+        from little_loops.cli.loop.diagram_modes import DiagramFacets
+
+        return DiagramFacets("window", True, "full", "full", "topology")
+
+    def test_build_pinned_pane_window_is_bounded(self) -> None:
+        from little_loops.cli.loop._helpers import _build_pinned_pane
+
+        fsm = _chain_fsm(20)
+        rows = 30
+        pane = _build_pinned_pane(
+            "window",
+            fsm,
+            "s10",
+            {},
+            {},
+            "iter 1/50",
+            80,
+            facets=self._facets(),
+            highlight_color="32",
+            edge_label_colors=None,
+            badges=None,
+            rows=rows,
+            min_action_rows=6,
+        )
+        assert pane is not None
+        lines = _strip(pane)
+        assert len(lines) <= rows, f"{len(lines)} > rows {rows}:\n{pane}"
+        # A cropped window on this tall chain must carry an overflow banner.
+        assert "layers above" in pane or "layers below" in pane
+
+    def test_build_pinned_pane_window_returns_none_when_no_room(self) -> None:
+        from little_loops.cli.loop._helpers import _build_pinned_pane
+
+        fsm = _chain_fsm(20)
+        # rows too small for header + a one-layer window + reserved action rows.
+        pane = _build_pinned_pane(
+            "window",
+            fsm,
+            "s10",
+            {},
+            {},
+            "iter 1/50",
+            80,
+            facets=self._facets(),
+            highlight_color="32",
+            edge_label_colors=None,
+            badges=None,
+            rows=8,
+            min_action_rows=6,
+        )
+        assert pane is None
+
+
+class TestWindowTopologyValue:
+    """The explicit ``window`` topology value plumbed through diagram_modes."""
+
+    def test_window_in_topology_values(self) -> None:
+        from little_loops.cli.loop.diagram_modes import (
+            TOPOLOGY_TO_DETAIL,
+            TOPOLOGY_VALUES,
+        )
+
+        assert "window" in TOPOLOGY_VALUES
+        assert TOPOLOGY_TO_DETAIL["window"] == "window"
+
+    def test_parse_show_diagrams_accepts_window(self) -> None:
+        from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
+
+        assert _parse_show_diagrams("window") == "window"
+
+    def test_resolve_facets_window_is_topology_source(self) -> None:
+        from little_loops.cli.loop.diagram_modes import resolve_facets
+
+        ns = argparse.Namespace(show_diagrams="window")
+        facets = resolve_facets(ns)
+        assert facets is not None
+        assert facets.topology == "window"
+        assert facets.source == "topology"

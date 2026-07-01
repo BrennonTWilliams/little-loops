@@ -283,25 +283,36 @@ def _build_pinned_pane(
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
-) -> str:
+    rows: int | None = None,
+    min_action_rows: int = MIN_ACTION_ROWS,
+) -> str | None:
     """Compose the pinned pane (header + diagram(s) + state line + separator).
 
     ``detail`` selects the diagram variant: ``"full"`` (layered
-    ``_render_fsm_diagram``), ``"neighborhood"`` (1-hop pred/active/succ), or
-    ``"single"`` (one-line ``fsm:`` status). The returned string is intended
-    to be printed with ``flush=True`` and is terminated by a horizontal
-    separator (no trailing newline).
+    ``_render_fsm_diagram``), ``"window"`` (the real layered render cropped to
+    ±K layers around the active state — ENH-2410), ``"neighborhood"`` (1-hop
+    pred/active/succ), or ``"single"`` (one-line ``fsm:`` status). The returned
+    string is intended to be printed with ``flush=True`` and is terminated by a
+    horizontal separator (no trailing newline).
+
+    ``rows`` (terminal height) and ``min_action_rows`` size the vertical budget
+    for the ``"window"`` variant. Returns ``None`` when ``detail == "window"``
+    and no window fits the available rows, so the caller can drop this rung from
+    the fallback ladder and fall through to a smaller one.
     """
     from little_loops.cli.loop.layout import (
         _collect_edges,
         _filter_main_path_graph,
         _render_fsm_diagram,
         _render_neighborhood_diagram,
+        _render_windowed_diagram,
     )
 
     verbose = facets.scope == "full" and facets.state_detail == "full"
 
-    def _render_one(target: FSMLoop, highlight: str | None, prev: str | None) -> str:
+    def _render_one(
+        target: FSMLoop, highlight: str | None, prev: str | None, *, budget: int = 0
+    ) -> str:
         if detail == "single":
             return _render_single_line_status(target, highlight)
         if detail == "neighborhood":
@@ -313,6 +324,26 @@ def _build_pinned_pane(
                 highlight_color=highlight_color,
                 mode=facets.scope,
                 prev_state=prev,
+            )
+        if detail == "window":
+            # Same off-happy-path guard as the layered branch: if the active
+            # state was filtered out of the main-scope graph, render full scope.
+            scope = facets.scope
+            if scope == "main" and highlight is not None:
+                _fe, reachable = _filter_main_path_graph(target, _collect_edges(target))
+                if highlight not in reachable:
+                    scope = "full"
+            return _render_windowed_diagram(
+                target,
+                highlight,
+                budget=budget,
+                verbose=verbose,
+                highlight_color=highlight_color,
+                edge_label_colors=edge_label_colors,
+                badges=badges,
+                mode=scope,
+                suppress_labels=not facets.edge_labels,
+                title_only=facets.state_detail == "title",
             )
         # "full" (layered)
         scope = facets.scope
@@ -362,7 +393,18 @@ def _build_pinned_pane(
         lines.append(f"  {key}: {colorize(value, '2')}")
     if model is not None:
         lines.append(f"  model: {colorize(model, '2')}")
-    diagram = _render_one(active_fsm, active_state, active_prev)
+
+    # Vertical budget for the windowed variant: total rows minus the header /
+    # artifact / model lines already accumulated, the iteration + separator
+    # rows added below, and the action-output rows reserved beneath the pane.
+    win_budget = 0
+    if rows is not None:
+        win_budget = rows - len(lines) - 2 - min_action_rows
+
+    diagram = _render_one(active_fsm, active_state, active_prev, budget=win_budget)
+    if detail == "window" and not diagram:
+        # No window fit the available rows — signal the caller to drop this rung.
+        return None
     if diagram:
         lines.extend(diagram.split("\n"))
 
@@ -403,7 +445,12 @@ def _render_pinned_pane(
 
     prev_map = prev_state_at_depth or {}
 
-    def _build(detail: str) -> str:
+    # compact presets (clean/slim) set state_detail="title" and already sacrifice
+    # action body lines; tolerate fewer rows below the diagram to avoid the
+    # single-line fsm: fallback on larger loops.
+    effective_min_action_rows = 3 if facets.state_detail == "title" else min_action_rows
+
+    def _build(detail: str) -> str | None:
         return _build_pinned_pane(
             detail,
             fsm,
@@ -420,26 +467,36 @@ def _render_pinned_pane(
             prev_state_at_depth=prev_map,
             loop_path=loop_path,
             model=model,
+            rows=rows,
+            min_action_rows=effective_min_action_rows,
         )
 
     # Build the fallback ladder based on facets source and topology.
     # Explicit topology (source="topology"): render exactly once, no degradation.
-    # Preset/default with layered topology: full → neighborhood → single.
+    # Preset/default with layered topology: full → window → neighborhood → single
+    #   (window crops the real render to fit before the synthetic neighborhood).
     # Explicit neighborhood topology: neighborhood→single.
     topo_detail = TOPOLOGY_TO_DETAIL[facets.topology]
+    raw_variants: list[str | None]
     if facets.source == "topology":
-        variants = [_build(topo_detail)]
+        # A "window" topology can fail to fit and return None; fall back to single.
+        raw_variants = [v for v in [_build(topo_detail)] if v is not None] or [_build("single")]
     elif topo_detail == "full":
-        variants = [_build("full"), _build("neighborhood"), _build("single")]
+        raw_variants = [
+            _build("full"),
+            _build("window"),
+            _build("neighborhood"),
+            _build("single"),
+        ]
     elif topo_detail == "neighborhood":
-        variants = [_build("neighborhood"), _build("single")]
+        raw_variants = [_build("neighborhood"), _build("single")]
     else:  # inline / single
-        variants = [_build("single")]
+        raw_variants = [_build("single")]
 
-    # compact presets (clean/slim) set state_detail="title" and already sacrifice
-    # action body lines; tolerate fewer rows below the diagram to avoid the
-    # single-line fsm: fallback on larger loops.
-    effective_min_action_rows = 3 if facets.state_detail == "title" else min_action_rows
+    # Drop rungs that could not render (only "window" returns None) so
+    # _choose_pinned_layout never picks a diagram-less pane over a real fallback.
+    variants: list[str] = [v for v in raw_variants if v is not None]
+
     pinned, pinned_height = _choose_pinned_layout(
         rows,
         variants,

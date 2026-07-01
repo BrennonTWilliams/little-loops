@@ -528,7 +528,7 @@ After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop r
 
 **Fields:**
 - `clear` (`boolean`, default `false`) — if `true`, inject `--clear` automatically
-- `show_diagrams` (`string | null`, default `null`) — inject `--show-diagrams <value>`. Valid values: topologies (`layered`, `neighborhood`, `inline`), presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`), or `"default"` for bare `--show-diagrams` (summary preset)
+- `show_diagrams` (`string | null`, default `null`) — inject `--show-diagrams <value>`. Valid values: topologies (`layered`, `neighborhood`, `inline`, `window`), presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`), or `"default"` for bare `--show-diagrams` (summary preset). The `window` topology crops the real layered diagram to ±K layers around the active state (K sized to the viewport) with `▲ N layers above`/`▼ M layers below` overflow banners — it is also the auto-degrade rung tried between `layered` and `neighborhood` when the full diagram is too tall for a pinned pane (ENH-2410).
 - `mode` (`string | null`, default `null`) — reserved for a future `--mode` flag; no effect currently
 - `include` (`string`, default `""`) — default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`
 

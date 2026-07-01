@@ -3,7 +3,7 @@
 Replaces the old ``--show-diagrams=main|full|mini`` single-enum with:
 
   --show-diagrams=<topology-or-preset>
-    topology: layered | neighborhood | inline
+    topology: layered | neighborhood | inline | window
     preset:   detailed | summary | clean | local | oneline
 
   --diagram-edge-labels=on|off   (default on)
@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, replace
 
-TOPOLOGY_VALUES: frozenset[str] = frozenset({"layered", "neighborhood", "inline"})
+TOPOLOGY_VALUES: frozenset[str] = frozenset({"layered", "neighborhood", "inline", "window"})
 PRESET_VALUES: frozenset[str] = frozenset(
     {"detailed", "summary", "clean", "local", "oneline", "slim"}
 )
@@ -48,7 +48,7 @@ class DiagramFacets:
     - ``"default"``  — bare ``--show-diagrams`` flag; same fallback as preset.
     """
 
-    topology: str  # layered | neighborhood | inline
+    topology: str  # layered | neighborhood | inline | window
     edge_labels: bool  # True = render edge labels
     state_detail: str  # title | full
     scope: str  # main | full  (silently ignored for inline topology)
@@ -69,6 +69,9 @@ TOPOLOGY_TO_DETAIL: dict[str, str] = {
     "layered": "full",
     "neighborhood": "neighborhood",
     "inline": "single",
+    # "window" crops the real layered render to ±K layers around the active
+    # state (ENH-2410); K is sized to the viewport by _build_pinned_pane.
+    "window": "window",
 }
 
 
