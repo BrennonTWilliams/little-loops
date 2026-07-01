@@ -253,8 +253,11 @@ class TestCommitIssueCompletion:
         assert result is True
         mock_logger.success.assert_called()
 
-        # Verify git add -A was called
-        add_cmds = [c for c in captured_commands if c == ["git", "add", "-A"]]
+        # BUG-2421: staging is scoped to the issue file only, never `git add -A`.
+        assert ["git", "add", "-A"] not in captured_commands
+        add_cmds = [
+            c for c in captured_commands if c == ["git", "add", "--", str(sample_issue_info.path)]
+        ]
         assert len(add_cmds) == 1
 
         # Verify commit message format
@@ -293,6 +296,128 @@ class TestCommitIssueCompletion:
 
         assert result is True  # Still returns True to continue flow
         mock_logger.warning.assert_called()
+
+
+@pytest.fixture
+def temp_git_repo(tmp_path: Path) -> Path:
+    """A real temporary git repo with an initial commit (BUG-2421 regression).
+
+    Duplicated locally per the established pattern — ``conftest.py`` has no
+    git-init fixture (mirrors ``test_worktree_concurrency.py:25``).
+    """
+    subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, capture_output=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, capture_output=True)
+    (tmp_path / "seed.txt").write_text("seed\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=tmp_path, capture_output=True)
+    return tmp_path
+
+
+class TestCommitIssueCompletionScoped:
+    """BUG-2421: fallback completion commits must stage ONLY the issue file.
+
+    Regression coverage for the ``git add -A`` over-staging in
+    ``_commit_issue_completion()`` (the ll-auto lifecycle safety-net), which swept
+    every dirty/untracked file in the working tree into an issue's completion
+    commit. Mirrors the sibling parallel-path coverage in
+    ``test_orchestrator.py::TestScopedCompletionStaging`` (BUG-2424).
+    """
+
+    @staticmethod
+    def _make_issue(repo_path: Path) -> IssueInfo:
+        issue_path = repo_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("---\nstatus: done\n---\n\n# BUG-001: Test Bug\n")
+        return IssueInfo(
+            path=issue_path,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test Bug",
+        )
+
+    @staticmethod
+    def _committed_files(repo_path: Path) -> list[str]:
+        return subprocess.run(
+            ["git", "show", "--name-only", "--format=", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+
+    @staticmethod
+    def _status(repo_path: Path) -> str:
+        return subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    def test_fallback_commit_excludes_unrelated_dirty_file(
+        self,
+        temp_git_repo: Path,
+        mock_logger: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A pre-existing dirty file is NOT swept into the fallback completion commit."""
+        info = self._make_issue(temp_git_repo)
+        # Dirty state belonging to another issue/session/branch.
+        (temp_git_repo / "unrelated_wip.py").write_text("# WIP for another issue\n")
+        monkeypatch.chdir(temp_git_repo)
+
+        result = _commit_issue_completion(info, "fix", "BUG-001 fixed", mock_logger)
+
+        assert result is True
+        committed = self._committed_files(temp_git_repo)
+        assert committed == [".issues/bugs/P1-BUG-001-test-bug.md"], (
+            f"completion commit must contain only the issue file, got {committed}"
+        )
+        assert "unrelated_wip.py" in self._status(temp_git_repo), (
+            "unrelated dirty file must remain uncommitted in the working tree"
+        )
+        # AC #5: the helper logs the skipped dirty paths it declined to stage.
+        mock_logger.warning.assert_called()
+        warned = " ".join(str(c) for c in mock_logger.warning.call_args_list)
+        assert "unrelated_wip.py" in warned
+
+    def test_fallback_commit_scoped_to_issue_file_on_clean_tree(
+        self,
+        temp_git_repo: Path,
+        mock_logger: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """On a clean tree the fallback commit still lands, containing only the issue file."""
+        info = self._make_issue(temp_git_repo)
+        monkeypatch.chdir(temp_git_repo)
+
+        before = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        result = _commit_issue_completion(info, "fix", "BUG-001 fixed", mock_logger)
+        assert result is True
+
+        after = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        assert int(after) == int(before) + 1, "a clean tree should still produce a scoped commit"
+        assert self._committed_files(temp_git_repo) == [".issues/bugs/P1-BUG-001-test-bug.md"]
+        # No unrelated dirty paths → no skip warning.
+        mock_logger.warning.assert_not_called()
 
 
 # =============================================================================

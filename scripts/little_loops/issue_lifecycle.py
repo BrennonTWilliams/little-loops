@@ -363,10 +363,20 @@ def _commit_issue_completion(
     Returns:
         True if commit succeeded or nothing to commit
     """
-    # Stage all changes
+    # BUG-2421: stage ONLY the issue file, never `git add -A`. This is a
+    # safety-net path that fires on abnormal subloop exit (crash/timeout/context
+    # exhaustion), so the working tree may hold unrelated dirty/untracked files
+    # from other issues, sessions, or branches. `git add -A` would sweep all of
+    # them into this issue's completion commit, corrupting provenance (poisoned
+    # `git blame`/`bisect`, premature commit of unrelated WIP). Mirrors the
+    # sibling parallel-path fix `_stage_and_commit_issue_scoped()`
+    # (parallel/orchestrator.py, BUG-2424) and the `_maybe_auto_commit()` idiom
+    # (hooks/post_tool_use.py) — but still commits the issue file (per AC #5),
+    # only warning about the dirty paths it leaves behind rather than skipping.
+    issue_path = info.path
     try:
         stage_result = subprocess.run(
-            ["git", "add", "-A"],
+            ["git", "add", "--", str(issue_path)],
             capture_output=True,
             text=True,
             timeout=30,
@@ -375,6 +385,25 @@ def _commit_issue_completion(
             logger.warning(f"git add failed: {stage_result.stderr}")
     except subprocess.TimeoutExpired:
         logger.warning("git add timed out")
+
+    # Warn about any other dirty paths we are deliberately leaving uncommitted.
+    try:
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        filename = issue_path.name
+        other = [ln for ln in status_result.stdout.splitlines() if filename not in ln]
+        if other:
+            logger.warning(
+                f"Scoped completion commit for {info.issue_id}: staging only the "
+                "issue file; leaving unrelated dirty paths uncommitted for "
+                f"deliberate follow-up: {[ln.strip() for ln in other]}"
+            )
+    except subprocess.TimeoutExpired:
+        logger.warning("git status timed out")
 
     # Create commit
     commit_msg = f"{commit_prefix}({info.issue_type}): {commit_body}"
