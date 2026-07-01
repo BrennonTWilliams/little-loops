@@ -4,8 +4,18 @@ type: enhancement
 status: open
 priority: P3
 title: Score-plateau early-stop for generator-evaluator oracle
-labels: [loops, harness, generator-evaluator]
+labels:
+- loops
+- harness
+- generator-evaluator
 relates_to: []
+confidence_score: 95
+outcome_confidence: 59
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+decision_needed: true
 ---
 
 # Score-plateau early-stop for generator-evaluator oracle
@@ -120,6 +130,36 @@ returns after iter-1" / "Add an early-stop on stagnation").
 
 **Open** | Created: 2026-07-01 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-01_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
+
+### Outcome Risk Factors
+- Open decision — either extend the shared `ll_rubric_score` fragment
+  (`scripts/little_loops/loops/lib/harness.yaml:16`, used by 7 loops:
+  hitl-compare, html-anything, html-website-generator,
+  interactive-component-generator, openscad-model-generator, hitl-md,
+  svg-image-generator) to emit numeric per-criterion scores, or add a scoped
+  numeric-scoring variant used only by `generator-evaluator`. Resolve before
+  implementing: the change already spans a broad enumeration across 6+ core
+  sites (`schema.py`, `evaluators.py`, `validation.py`, a fragment library,
+  `generator-evaluator.yaml` wiring, plus tests); extending the shared prompt
+  too would widen it further to 7 unrelated loops that don't consume
+  `score_stall` at all.
+- The Proposed Solution assumes numeric per-criterion rubric scores are
+  already available to persist, but `ll_rubric_score` currently emits only a
+  binary `ALL_PASS`/`NEEDS_WORK` verdict with no numeric output — the prompt
+  and a capture/parse step (mirroring `rubric_score`/`rubric_parse_scores` in
+  `lib/rubric-router.yaml`) must be added as part of this issue; that work
+  isn't called out in the Proposed Solution or Acceptance Criteria.
+- The exact epsilon threshold and whether plateau is judged on the aggregate
+  score or all four criteria individually are undecided — pick sane defaults
+  (e.g., epsilon relative to the 0-10 `pass_threshold` scale) during
+  implementation.
 
 ## Session Log
 - `/ll:format-issue` - 2026-07-01T20:26:06 - `6a483798-afef-41ef-99f1-d9709fa879a5.jsonl`
+- `/ll:confidence-check` - 2026-07-01T20:34:06 - `39568524-616e-4270-8660-34ace681fd21.jsonl`
