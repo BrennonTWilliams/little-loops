@@ -158,14 +158,20 @@ states:
     # most ONE format pass — bounded, no oscillation. Fail-open on every non-yes
     # verdict: a formatting failure should not dead-end the loop; assess →
     # diagnose still catches residual content deficiencies.
+    # Rate-limit budget is deliberately trimmed to near-immediate fall-through
+    # (short retry tier + one ~1s long-wait rung) rather than the fragment's 6h
+    # default: this is a cheap, optional, fail-open pass, not worth a multi-hour
+    # 429 wait (BUG-2433).
     fragment: with_rate_limit_handling
     action: "/ll:format-issue ${context.issue_id} --auto"
     action_type: slash_command
+    rate_limit_max_wait_seconds: 1
+    rate_limit_long_wait_ladder: [1]
     on_yes: assess
     on_no: assess
     on_partial: assess
     on_error: assess
-    on_rate_limit_exhausted: rate_limit_diagnostic
+    on_rate_limit_exhausted: assess
 
   # =========================================================================
   # Phase 1: Assessment Bridge — Confidence Check & Gate Chain

@@ -3520,3 +3520,35 @@
     of dead-ending'
   scope: issue
   issue: ENH-2431
+- id: ARCHITECTURE-083
+  type: decision
+  timestamp: '2026-07-01T22:00:47Z'
+  category: architecture
+  labels: []
+  rationale: ll_rubric_score is directly consumed by only 2 loops; generator-evaluator-cli.yaml
+    already demonstrates from:-inheritance scoping to generator-evaluator alone; Option
+    A would retrofit capture/parse infra onto a fragment whose binary output_contains:ALL_PASS
+    shape is test-locked across 8 consumers, forcing an unrelated consumer (openscad-model-generator)
+    to absorb an unneeded shape change
+  rule: Add a scoped numeric-scoring variant for oracles/generator-evaluator (Option
+    B), leaving the shared ll_rubric_score fragment untouched
+  scope: issue
+  alternatives_rejected: 'Option A: Extend the shared ll_rubric_score fragment to
+    emit numeric per-criterion scores'
+  issue: ENH-2428
+- id: ARCHITECTURE-084
+  type: decision
+  timestamp: '2026-07-01T22:39:02Z'
+  category: architecture
+  labels: []
+  rationale: Both options bound the 429 wait to seconds instead of 6h; literal-1 needs
+    zero validator/schema changes and breaks no existing tests, while relaxing the
+    floor to 0 (though architecturally closer to the fragment's documented sentinel)
+    requires touching two shared validation files and preserving mid-ladder-zero rejection
+    semantics for marginal benefit.
+  rule: 'format_issue rate-limit fix: use literal rate_limit_max_wait_seconds:1 /
+    ladder:[1] instead of relaxing the validator''s >=1 floor to accept 0'
+  scope: issue
+  alternatives_rejected: Relax validation.py/fsm-loop-schema.json >=1 floor to accept
+    0 as an explicit opt-out sentinel
+  issue: BUG-2433

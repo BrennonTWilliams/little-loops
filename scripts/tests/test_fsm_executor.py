@@ -6249,6 +6249,31 @@ class TestRateLimitTwoTier:
         assert "total_wait_seconds" in exhausted[0]
         assert exhausted[0]["total_wait_seconds"] >= 0.0
 
+    def test_max_wait_one_second_bails_after_single_long_wait_rung(self) -> None:
+        """BUG-2433: rate_limit_max_wait_seconds=1 + ladder=[1] with the default short
+        tier (3 retries) walks all 3 short retries, then executes exactly ONE ~1s
+        long-wait rung before exhausting — the near-immediate fall-through a cheap,
+        fail-open state (e.g. rn-remediate's format_issue) needs instead of the
+        fragment's 6h default budget."""
+        fsm = self._fsm(
+            rate_limit_long_wait_ladder=[1],
+            rate_limit_max_wait_seconds=1,
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 4
+        runner.use_indexed_order = True
+        events: list[dict] = []
+
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "rate_limit_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["short_retries"] == 3
+        assert exhausted[0]["long_retries"] == 1
+        assert exhausted[0]["total_wait_seconds"] >= 1.0
+        assert result.final_state == "exhausted"
+
 
 class TestRateLimitHeartbeat:
     """ENH-1144/ENH-1148: ``rate_limit_waiting`` heartbeat cadence during the
