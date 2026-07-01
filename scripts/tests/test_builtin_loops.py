@@ -8818,6 +8818,22 @@ class TestLearningGateConsistency:
         assert "- LEARNING_GATE_BLOCKED" in report  # subtracted from FAILURES
         assert "learning_gate_blocked" in report  # summary.json key
 
+    def test_rn_implement_pre_dequeue_tag_does_not_double_count(self, rn_implement: dict) -> None:
+        """ENH-2406: mark_learning_blocked's LEARNING_GATE_BLOCKED_PRE_DEQUEUE tag is a
+        substring superset of the post-remediation safety-net's LEARNING_GATE_BLOCKED tag —
+        report must count pre-dequeue catches in their own summary.json key and subtract
+        them out of the generic LEARNING_GATE_BLOCKED tally, not double-count both."""
+        mlb = rn_implement["states"]["mark_learning_blocked"]
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in mlb["action"]
+
+        report = rn_implement["states"]["report"]["action"]
+        assert 'grep -c "LEARNING_GATE_BLOCKED_PRE_DEQUEUE"' in report
+        assert "learning_gate_blocked_pre_dequeue" in report  # distinct summary.json key
+        # The generic count must be derived by subtracting the pre-dequeue count from the
+        # raw substring match, not by reusing the raw grep verbatim.
+        assert "LEARNING_GATE_BLOCKED_TOTAL" in report
+        assert "LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in report
+
     def test_rn_implement_threads_skip_to_remediate(self, rn_implement: dict) -> None:
         assert "skip_learning_gate" in rn_implement["context"]
         with_block = rn_implement["states"]["run_remediation"]["with"]

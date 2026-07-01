@@ -598,10 +598,13 @@ class TestValidation:
         raising it to 37 — auth-signature fast-fail for ll-auto-calling loops.
         feat(loops) 550659db added route_rem_learning_gate + record_learning_gate_blocked
         (+2), raising it to 39 — learning-gate routing for ll-auto-calling loops.
+        ENH-2406 added check_learning_ready + route_learning_ready + mark_learning_blocked
+        (+3), raising it to 42 — pre-dequeue learning-readiness gate (mirrors ENH-2008's
+        check_blocked_by + route_blocked_by two-state shape, plus its own record state).
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 39, f"Expected ≤39 states in orchestrator, got {state_count}"
+        assert state_count <= 42, f"Expected ≤42 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -841,7 +844,7 @@ class TestBlockedByGate:
         assert "${captured.run_dir.output}" in action
 
     def test_route_blocked_by_defers_on_blocked(self) -> None:
-        """route_blocked_by sends BLOCKED → mark_deferred, else → check_depth."""
+        """route_blocked_by sends BLOCKED → mark_deferred, else → check_learning_ready."""
         data = _load_loop()
         rbb = data["states"]["route_blocked_by"]
         evaluate = rbb["evaluate"]
@@ -849,14 +852,94 @@ class TestBlockedByGate:
         assert evaluate["pattern"] == "BLOCKED"
         assert "${captured.blocked_by_status.output}" in evaluate["source"]
         assert rbb["on_yes"] == "mark_deferred"
-        assert rbb["on_no"] == "check_depth"
-        assert rbb["on_error"] == "check_depth"
+        assert rbb["on_no"] == "check_learning_ready"
+        assert rbb["on_error"] == "check_learning_ready"
 
     def test_mark_deferred_names_unmet_blocker(self) -> None:
         """mark_deferred reads blocked_by_unmet_<ID>.txt to name the specific blocker."""
         action = _load_loop()["states"]["mark_deferred"]["action"]
         assert "blocked_by_unmet_" in action
         assert "not done" in action
+
+
+# ============================================================================
+# TestLearningReadyGate — ENH-2406: pre-dequeue learning-readiness gate
+# ============================================================================
+
+
+class TestLearningReadyGate:
+    """The post-blocked_by gate defers issues with unproven learning_tests_required
+    targets before they spend a run_remediation pass (mirrors TestBlockedByGate)."""
+
+    def test_check_learning_ready_state_exists(self) -> None:
+        """check_learning_ready exists, captures status, routes to route_learning_ready."""
+        data = _load_loop()
+        clr = data["states"]["check_learning_ready"]
+        assert clr["capture"] == "learning_ready_status"
+        assert clr["next"] == "route_learning_ready"
+
+    def test_check_learning_ready_fails_open_on_error(self) -> None:
+        """A gate error must never block processing — it routes to check_depth."""
+        data = _load_loop()
+        clr = data["states"]["check_learning_ready"]
+        assert clr["on_error"] == "check_depth"
+
+    def test_check_learning_ready_short_circuits_on_skip_flag(self) -> None:
+        """skip_learning_gate must short-circuit before any subprocess calls (Wiring Step 6)."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "${context.skip_learning_gate}" in action
+
+    def test_check_learning_ready_uses_stale_aware_cli(self) -> None:
+        """Gate shells out to `ll-learning-tests check <target> --stale-aware` per target."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "ll-learning-tests" in action
+        assert '"check"' in action
+        assert "--stale-aware" in action
+
+    def test_check_learning_ready_parses_frontmatter_not_show_json(self) -> None:
+        """The gate reads learning_tests_required from the issue file frontmatter,
+        mirroring check_blocked_by's direct-parsing convention."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "learning_tests_required" in action
+        assert "read_text()" in action and "---" in action
+
+    def test_check_learning_ready_writes_unproven_under_run_dir(self) -> None:
+        """Unproven targets are recorded per-run (run_dir), not a shared path (MR-3)."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        assert "learning_unproven_" in action
+        assert "${captured.run_dir.output}" in action
+
+    def test_route_learning_ready_routes_on_unproven(self) -> None:
+        """route_learning_ready sends UNPROVEN → mark_learning_blocked, else → check_depth."""
+        data = _load_loop()
+        rlr = data["states"]["route_learning_ready"]
+        evaluate = rlr["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "UNPROVEN"
+        assert "${captured.learning_ready_status.output}" in evaluate["source"]
+        assert rlr["on_yes"] == "mark_learning_blocked"
+        assert rlr["on_no"] == "check_depth"
+        assert rlr["on_error"] == "check_depth"
+
+    def test_mark_learning_blocked_uses_distinct_tag(self) -> None:
+        """mark_learning_blocked tags failures.txt with the PRE_DEQUEUE-distinct token
+        (not the post-remediation safety-net's bare LEARNING_GATE_BLOCKED) and never
+        enters run_remediation."""
+        data = _load_loop()
+        mlb = data["states"]["mark_learning_blocked"]
+        action = mlb["action"]
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in action
+        assert "failures.txt" in action
+        assert "/ll:explore-api" in action
+        assert mlb["next"] == "dequeue_next"
+
+    def test_report_tallies_pre_dequeue_separately(self) -> None:
+        """report must count LEARNING_GATE_BLOCKED_PRE_DEQUEUE distinctly from the
+        generic LEARNING_GATE_BLOCKED safety-net tag (no double counting) and surface
+        it in summary.json."""
+        report = _load_loop()["states"]["report"]["action"]
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in report
+        assert "learning_gate_blocked_pre_dequeue" in report
 
 
 # ============================================================================

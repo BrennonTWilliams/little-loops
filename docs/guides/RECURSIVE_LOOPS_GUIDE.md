@@ -137,9 +137,10 @@ own. Given an issue ID (or comma-separated list), it seeds a queue and loops:
 
 ```
 dequeue next issue
-  → is it blocked_by an unfinished dep?   → defer
-  → is it deeper than max_depth (3)?      → cap
-  → is it already done/cancelled?         → skip
+  → is it blocked_by an unfinished dep?           → defer
+  → does it have unproven learning_tests_required? → defer (prove with /ll:explore-api)
+  → is it deeper than max_depth (3)?               → cap
+  → is it already done/cancelled?                  → skip
   → otherwise → delegate to rn-remediate
         ↳ if remediation says "decompose" → delegate to rn-decompose
 repeat until the queue is empty or max_steps (500) is hit
@@ -223,6 +224,20 @@ fragment) *before* the auth/failure checks so a gate block is reported distinctl
 rather than laundered into a generic implementation failure. A uniform
 `skip_learning_gate` context knob (parity with `ll-auto --skip-learning-gate`)
 threads from each loop down to the inner `ll-auto --only` call.
+
+`LEARNING_GATE_BLOCKED` is no longer exclusively a post-implement, `rn-remediate`-
+originated token. ENH-2406 added a pre-dequeue gate (`check_learning_ready` /
+`route_learning_ready` / `mark_learning_blocked`) directly in `rn-implement`'s
+router, ahead of `run_remediation` — a learning-blocked issue can never be fixed
+by remediation, so catching it before the issue is even dequeued into a
+remediation pass is strictly cheaper. This pre-dequeue catch is tagged with a
+distinct `LEARNING_GATE_BLOCKED_PRE_DEQUEUE` token (tallied separately in
+`summary.json` as `learning_gate_blocked_pre_dequeue`) so operators can tell free
+pre-dequeue catches apart from remediation-spent safety-net catches. The
+post-implement `check_learning_gate` classifier in `rn-remediate` remains in
+place as defense-in-depth — it still fires for callers that bypass
+`rn-implement` entirely, or when a target becomes unproven/stale between the
+pre-dequeue check and the inner `ll-auto --only` call.
 
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring

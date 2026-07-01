@@ -455,6 +455,13 @@ states:
     # otherwise be laundered into IMPLEMENT_FAILED. Detect it FIRST so the parent
     # can report it distinctly (mirrors the ENV_NOT_READY split, ENH-2353). on_no
     # falls through to the auth check, then the generic failure path.
+    #
+    # ENH-2406 safety net: rn-implement's check_learning_ready gate now catches
+    # registered learning_tests_required targets BEFORE this issue ever reaches
+    # run_remediation, so in practice this state only fires for callers that bypass
+    # rn-implement, or for a target that became unproven/stale between the
+    # pre-dequeue check and this inner `ll-auto --only` call. Routing here is
+    # unchanged — it remains the defense-in-depth path, not the primary catch.
     fragment: ll_auto_learning_gate_check
     on_yes: emit_learning_gate_blocked
     on_no: check_impl_auth

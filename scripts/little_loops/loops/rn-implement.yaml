@@ -451,12 +451,134 @@ states:
 
   route_blocked_by:
     # ENH-2008: BLOCKED -> reuse BUG-2006's mark_deferred (which now names the
-    # specific unmet dep). READY / any error -> proceed to check_depth.
+    # specific unmet dep). READY / any error -> proceed to check_learning_ready
+    # (ENH-2406 chains its own pre-dequeue gate onto this edge).
     evaluate:
       type: output_contains
       source: "${captured.blocked_by_status.output}"
       pattern: "BLOCKED"
     on_yes: mark_deferred
+    on_no: check_learning_ready
+    on_error: check_learning_ready
+
+  check_learning_ready:
+    # ENH-2406: cheap upfront gate, mirroring check_blocked_by. If the dequeued
+    # issue declares learning_tests_required targets that are not yet proven (per
+    # the stale-aware registry), defer it BEFORE run_remediation — a learning-blocked
+    # issue can never be fixed by remediation; the remedy is /ll:explore-api, not a
+    # code change. The ENH-2319 gate inside `ll-auto --only` remains as
+    # defense-in-depth; this is an earlier, cheaper, FSM-visible check, not a
+    # relocation.
+    #
+    # skip_learning_gate: short-circuits this state directly (no downstream
+    # `ll-auto` call whose marker it could otherwise suppress, unlike rn-remediate's
+    # `implement` state, which gates the flag it passes to a subprocess instead).
+    #
+    # Note: deliberately parses the issue file's YAML frontmatter directly rather
+    # than `ll-issues show --json` (which does expose learning_tests_required) —
+    # consistency with check_blocked_by's adjacent convention outweighs the
+    # shortcut. Shells out to `ll-learning-tests check <target> --stale-aware` once
+    # per target rather than calling into learning_tests/gate.py directly (gate.py
+    # has no per-target stale-aware registry-check function; the CLI is the
+    # check-only entry point — see ENH-2406 research notes).
+    #
+    # Fail-open: skip flag set, unresolved issue file, parse error, or a subprocess
+    # failure all yield no unproven targets -> READY -> check_depth.
+    action_type: shell
+    action: |
+      if [ -n "${context.skip_learning_gate}" ]; then
+        echo "READY"
+        exit 0
+      fi
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      UNPROVEN=$(python3 << 'PYEOF'
+      import re, subprocess, sys
+      from pathlib import Path
+      try:
+          import yaml as _yaml
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      issue_id = "${captured.input.output}"
+
+      # Resolve the issue file across active category dirs (mirrors check_blocked_by)
+      issue_path = None
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m and m.group(1) == issue_id:
+                  issue_path = p
+                  break
+          if issue_path:
+              break
+
+      if not issue_path:
+          sys.exit(0)  # unresolved -> fail-open (let downstream handle)
+
+      try:
+          content = issue_path.read_text()
+          m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+          fm = _parse_yaml(m.group(1)) if m else {}
+      except Exception:
+          sys.exit(0)  # parse error -> fail-open
+
+      val = fm.get("learning_tests_required") or []
+      if isinstance(val, str):
+          targets = [v.strip() for v in val.split(",") if v.strip()]
+      else:
+          targets = [str(v).strip() for v in (val if isinstance(val, list) else []) if v]
+
+      if not targets:
+          sys.exit(0)  # no targets -> ready
+
+      unproven = []
+      for t in targets:
+          try:
+              r = subprocess.run(
+                  ["ll-learning-tests", "check", t, "--stale-aware"],
+                  capture_output=True, text=True, timeout=30,
+              )
+              if r.returncode != 0:
+                  unproven.append(t)
+          except Exception:
+              pass  # subprocess failure for this target -> fail-open (treat as proven)
+
+      if unproven:
+          print(" ".join(unproven))
+      PYEOF
+      )
+      if [ -n "$UNPROVEN" ]; then
+        echo "$UNPROVEN" > "$RUN_DIR/learning_unproven_$${ID}.txt"
+        echo "[LEARNING_NOT_READY] $ID has unproven targets:$UNPROVEN"
+        echo "UNPROVEN"
+      else
+        echo "READY"
+      fi
+    capture: learning_ready_status
+    next: route_learning_ready
+    on_error: check_depth   # fail-open: never block processing on a gate error
+
+  route_learning_ready:
+    # ENH-2406: UNPROVEN -> mark_learning_blocked (distinct from blocked_by's
+    # mark_deferred — see mark_learning_blocked for why). READY / any error ->
+    # proceed to check_depth.
+    evaluate:
+      type: output_contains
+      source: "${captured.learning_ready_status.output}"
+      pattern: "UNPROVEN"
+    on_yes: mark_learning_blocked
     on_no: check_depth
     on_error: check_depth
 
@@ -938,6 +1060,31 @@ states:
       echo "[DEFERRED] $ID — $REASON"
     next: dequeue_next
 
+  mark_learning_blocked:
+    # ENH-2406: terminal record state for the upfront learning-readiness gate.
+    # Modeled on mark_deferred's shape, but writes to failures.txt (like
+    # record_learning_gate_blocked) rather than deferred.txt — this is a free
+    # pre-dequeue catch, not a remediation stall, and intentionally sidesteps
+    # re_enqueue_unblocked (no same-run re-enqueue: proving a learning test happens
+    # out-of-band via /ll:explore-api, not via anything this run can detect).
+    #
+    # Uses the distinct LEARNING_GATE_BLOCKED_PRE_DEQUEUE tag rather than reusing
+    # record_learning_gate_blocked's LEARNING_GATE_BLOCKED, so report can tally free
+    # pre-dequeue catches separately from remediation-spent safety-net catches.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${captured.run_dir.output}"
+      UNPROVEN_FILE="$RUN_DIR/learning_unproven_$${ID}.txt"
+      if [ -f "$UNPROVEN_FILE" ]; then
+        TARGETS=$(tr -s ' ' < "$UNPROVEN_FILE" | sed 's/^ *//;s/ *$//')
+      else
+        TARGETS="(unknown targets)"
+      fi
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} LEARNING_GATE_BLOCKED_PRE_DEQUEUE" >> "$RUN_DIR/failures.txt"
+      echo "[LEARNING_GATE_BLOCKED_PRE_DEQUEUE] $ID — unproven target(s): $TARGETS; prove with /ll:explore-api then re-run"
+    next: dequeue_next
+
   skip_issue:
     action_type: shell
     action: |
@@ -986,9 +1133,15 @@ states:
       SIZE_REVIEW_FAILED=$(grep -c "SIZE_REVIEW_FAILED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
       # Learning-gate blocks are tagged into failures.txt but are not genuine
       # implementation failures — tally separately (operator remedy: /ll:explore-api).
-      LEARNING_GATE_BLOCKED=$(grep -c "LEARNING_GATE_BLOCKED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      # ENH-2406: LEARNING_GATE_BLOCKED_PRE_DEQUEUE (the pre-dequeue gate's tag) is a
+      # substring superset of LEARNING_GATE_BLOCKED (the post-remediation safety-net's
+      # tag) — count the total substring match, then subtract the _PRE_DEQUEUE-only
+      # count so a pre-dequeue catch isn't double-counted into both buckets.
+      LEARNING_GATE_BLOCKED_PRE_DEQUEUE=$(grep -c "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      LEARNING_GATE_BLOCKED_TOTAL=$(grep -c "LEARNING_GATE_BLOCKED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      LEARNING_GATE_BLOCKED=$((LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE))
       TOTAL_FAILURES=$(wc -l < "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED - LEARNING_GATE_BLOCKED))
+      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED - LEARNING_GATE_BLOCKED_TOTAL))
       RATE_LIMITED=$(wc -l < "$RUN_DIR/rate_limits.txt" 2>/dev/null | tr -d ' ' || echo 0)
 
       {
@@ -1005,13 +1158,14 @@ states:
         printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
         printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
         printf '  "learning_gate_blocked": %s,\n' "$LEARNING_GATE_BLOCKED"
+        printf '  "learning_gate_blocked_pre_dequeue": %s,\n' "$LEARNING_GATE_BLOCKED_PRE_DEQUEUE"
         printf '  "rate_limited": %s\n' "$RATE_LIMITED"
         printf '}\n'
       } > "$RUN_DIR/summary.json"
 
       echo "=== rn-implement Complete ==="
       echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
-      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Learning-gate-blocked: $LEARNING_GATE_BLOCKED | Rate-limited: $RATE_LIMITED"
+      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Learning-gate-blocked: $LEARNING_GATE_BLOCKED | Learning-gate-blocked-pre-dequeue: $LEARNING_GATE_BLOCKED_PRE_DEQUEUE | Rate-limited: $RATE_LIMITED"
       echo "  Summary written to: $RUN_DIR/summary.json"
     next: done
 
