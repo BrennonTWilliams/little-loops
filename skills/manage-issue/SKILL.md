@@ -403,6 +403,30 @@ Run each verification command if configured (non-null). Skip silently if not con
 
 All configured checks must pass before proceeding. Unconfigured (null) checks are skipped.
 
+### Headless-Safe Final Test Run
+
+**CRITICAL for headless automation.** `ll-auto`, `ll-parallel`, and `ll-sprint` drive
+this skill through a single non-interactive `claude -p` turn — there is **no**
+interactive "scheduled wakeup" or "completion notification" mechanism in that turn.
+Run the final verification suite **foreground-blocking** (`run_in_background: false`)
+and wait for its result before proceeding. For large output, use the scratch-pad
+redirect that pipes to a file and tails the summary:
+
+```bash
+{{config.project.test_cmd}} > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt
+```
+
+- **Never** background the result-blocking final test suite (no `run_in_background:
+  true`, no trailing `&`) when your next action depends on its result, and **never**
+  narrate waiting for a scheduled wakeup or completion notification and then end the
+  turn. That signal never fires under `claude -p`, so the turn ends before Phase 5
+  (set-status + commit) runs — leaving the work uncommitted and the issue still `open`.
+- This does **not** apply to the `run_cmd` smoke test above: its documented
+  start-in-background / wait-briefly / terminate pattern for long-running servers is
+  still correct. Only the result-blocking final test suite must be foreground.
+- Once the final suite passes, continue **in the same turn** to Phase 5 to finalize
+  (set `status: done`, then commit the scoped changes) — do not stop at the test run.
+
 ---
 
 ## Phase 4.5: Integration Review

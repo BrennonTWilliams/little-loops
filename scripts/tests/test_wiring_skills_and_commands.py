@@ -183,6 +183,14 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/create-loop/loop-types.md", "## Policy Router Questions", "ENH-2299"),
     ("skills/create-loop/templates.md", "policy-router", "ENH-2299"),
     ("docs/reference/COMMANDS.md", "policy-router", "ENH-2299"),
+    # BUG-2408: manage-issue Phase 4 "Verify" must require a foreground-blocking final
+    # test run and forbid the background-then-await-wakeup idiom. Headless `claude -p`
+    # turns have no interactive wakeup/notification, so backgrounding the result-blocking
+    # final suite strands the work uncommitted before Phase 5. A whole-file DOC_STRINGS_ABSENT
+    # check is unsuitable here because the forbidding prose itself names the bad idioms
+    # ("scheduled wakeup" / "completion notification"); assert the guidance is PRESENT instead.
+    ("skills/manage-issue/SKILL.md", "foreground-blocking", "BUG-2408"),
+    ("skills/manage-issue/SKILL.md", "scheduled wakeup", "BUG-2408"),
 ]
 
 

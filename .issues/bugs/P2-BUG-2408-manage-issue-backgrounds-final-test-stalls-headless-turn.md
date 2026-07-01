@@ -1,14 +1,21 @@
 ---
 captured_at: '2026-07-01T00:04:14Z'
+completed_at: '2026-07-01T00:42:09Z'
 discovered_date: 2026-07-01
 discovered_by: capture-issue
-status: open
+status: done
 priority: P2
 type: BUG
 relates_to:
 - BUG-2409
 - BUG-280
 - BUG-1538
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2408: manage-issue implement flow stalls on backgrounded final test + notification wait in headless ll-auto turn
@@ -367,7 +374,36 @@ run summary.
 
 manage-issue, ll-auto, headless, automation, finalization
 
+## Resolution
+
+- **Action**: implement (fix)
+- **Completed**: 2026-07-01
+- **Status**: Completed
+
+### Changes Made
+- `skills/manage-issue/SKILL.md`: Added a "Headless-Safe Final Test Run" subsection to
+  Phase 4 "Verify" — requires the final verification suite to run foreground-blocking
+  (or via the scratch-pad redirect), forbids backgrounding the result-blocking final
+  suite / waiting for a scheduled wakeup or completion notification in a headless
+  `claude -p` turn, scopes the ban around the legitimate `run_cmd` smoke test, and
+  points to Phase 5 finalization in the same turn. Phase 5's set-status→commit order
+  is unchanged (option (a), matches `issue_lifecycle.complete_issue_lifecycle()`).
+- `scripts/tests/test_wiring_skills_and_commands.py`: Added two `DOC_STRINGS_PRESENT`
+  rows (`foreground-blocking`, `scheduled wakeup`) tagged `BUG-2408` locking the new
+  guidance in place. A whole-file `DOC_STRINGS_ABSENT` check was intentionally not used
+  because the forbidding prose legitimately names the bad idioms.
+
+### Verification Results
+- Tests: PASS (`test_wiring_skills_and_commands.py` + `test_skill_expander.py`, 209 passed;
+  the two BUG-2408 rows were red pre-fix, now green; raw-token guard still green)
+- Lint: PASS (`ruff check` on the modified test file)
+- Types: SKIP (no `little_loops/` source changed — prose + test-row fix only)
+
+---
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T00:42:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8b8dd55c-f9fa-4899-a131-1ec9493faad1.jsonl`
+- `/ll:confidence-check` - 2026-07-01T00:37:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7ee0b25b-1fdb-41f0-b2a8-c20f7a0581dc.jsonl`
 - `/ll:wire-issue` - 2026-07-01T00:31:12 - `28c75023-3d01-4d42-8eca-8d599b55ff31.jsonl`
 - `/ll:refine-issue` - 2026-07-01T00:18:04 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:09:07 - `ac278041-8972-4118-8e20-9572ae7f75f4.jsonl`
@@ -377,4 +413,4 @@ manage-issue, ll-auto, headless, automation, finalization
 
 ## Status
 
-**Current Status**: open
+**Current Status**: done
