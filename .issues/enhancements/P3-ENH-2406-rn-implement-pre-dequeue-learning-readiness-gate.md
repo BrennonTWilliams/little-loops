@@ -4,7 +4,7 @@ title: '`rn-implement`: pre-dequeue learning-readiness gate (mirror ENH-2008 blo
   gate)'
 type: ENH
 priority: P3
-status: open
+status: done
 relates_to:
 - EPIC-2207
 - ENH-2008
@@ -409,6 +409,7 @@ N/A — no public API changes. This adds internal FSM router states (`check_lear
 `enhancement`, `rn-implement`, `learning-tests`, `orchestration`, `efficiency`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-01T00:28:59 - `30250bcf-0ca1-43b6-9d9f-6ffb78a57185.jsonl`
 - `/ll:confidence-check` - 2026-06-30T23:30:00 - `77eb3749-b914-48c8-a9c1-dcc2bba1ebb0.jsonl`
 - `/ll:wire-issue` - 2026-06-30T23:09:39 - `ccc753bc-c18e-4ab5-83d0-331a9ffe1e99.jsonl`
 - `/ll:refine-issue` - 2026-06-30T22:58:47 - `ccc753bc-c18e-4ab5-83d0-331a9ffe1e99.jsonl`
@@ -419,6 +420,29 @@ N/A — no public API changes. This adds internal FSM router states (`check_lear
 - `/ll:format-issue` - 2026-06-30T21:24:21 - `13874c47-a99b-4643-8187-fc2c7bf0ae42.jsonl`
 - `/ll:capture-issue` - 2026-06-30T21:17:26Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/517f4fde-43d5-44f7-afc7-41dd7c15be45.jsonl`
 
+## Resolution
+
+**Closed - Already Fixed** (2026-06-30, via `/ll:ready-issue`).
+
+Implemented in commit `f60de257` — "feat(loops): add pre-dequeue learning-readiness
+gate to rn-implement (ENH-2406)" (on `main`). Verified present and working:
+
+- `check_learning_ready` + `route_learning_ready` states added on the
+  `route_blocked_by → check_depth` edge (`rn-implement.yaml:461-581`); `on_yes`
+  routes to `mark_learning_blocked` (`rn-implement.yaml:1063`).
+- `skip_learning_gate` short-circuit guard present in `check_learning_ready`
+  (`rn-implement.yaml:489`) — Wiring Step 6 satisfied.
+- Distinct `LEARNING_GATE_BLOCKED_PRE_DEQUEUE` tag written to `failures.txt`; `report`
+  counts it separately and subtracts it from the generic `LEARNING_GATE_BLOCKED` total,
+  surfacing a `learning_gate_blocked_pre_dequeue` key in `summary.json`
+  (`rn-implement.yaml:1136-1161`) — Implementation Step 12 satisfied.
+- `rn-remediate.yaml:459-464` demoted `check_learning_gate` to a documented safety-net.
+- Docs updated: `LOOPS_REFERENCE.md`, `RECURSIVE_LOOPS_GUIDE.md`, `LEARNING_TESTS_GUIDE.md`.
+- Tests green (21 passed): `TestLearningReadyGate`,
+  `TestValidation::test_state_count_is_orchestrator_sized` (ceiling bumped to ≤42),
+  `test_builtin_loops.py::TestLearningGateConsistency`.
+- `ll-loop validate rn-implement` passes (all MR gates).
+
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P3
+**Done** | Created: 2026-06-30 | Closed: 2026-06-30 | Priority: P3
