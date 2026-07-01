@@ -75,6 +75,39 @@ notification" idiom is valid in interactive sessions but is a dead-end in a
 single headless automation turn: the turn boundary arrives before the awaited
 event, so the commit + status-update tail never executes.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (all 5 issue claims verified accurate):_
+
+- **Precise fix-surface anchors in the skill**: `skills/manage-issue/SKILL.md`
+  Phase 3 "Implement" (lines ~279–376) covers only the Context-Handoff protocol,
+  not test-execution mode. Phase 4 "Verify" (lines ~380–404) is where the
+  configured `test_cmd` runs — this is the natural anchor for the new
+  foreground-blocking rule. Phase 5 "Complete Issue Lifecycle" (lines ~426+)
+  holds commit + `set-status`, and is only reached if the agent proceeds past
+  Phase 4 in the same turn.
+- **Scope the ban — do not make it blanket.** Phase 4 already contains one
+  *legitimate* `run_in_background` use at line ~397: the `run_cmd` smoke test for
+  long-running server processes ("start in background, wait briefly for startup,
+  then terminate"). The new rule must forbid backgrounding **only the
+  result-blocking final test suite** (where the agent's next action depends on
+  the result), not backgrounding in general, or it will contradict the existing
+  smoke-test guidance.
+- **Turn-end mechanism (confirmed, not a timeout).** `run_claude_command`
+  (`scripts/little_loops/subprocess_utils.py`, lines ~449–498) breaks the reader
+  loop on the stream-json `"result"` event (`result_seen = True` → `break`), a
+  normal non-exceptional return. The two `TimeoutExpired`-raising paths (wall-clock
+  ~391–400; idle ~402–411) never fire here because the backgrounded pytest keeps
+  the process group alive within budget and `idle_timeout_seconds` defaults to 0.
+- **Why the finalization tail is skipped.** `run_with_continuation`
+  (`scripts/little_loops/issue_manager.py`, loop starting line ~201) only
+  continues the session when `detect_context_handoff(result.stdout)` matches the
+  literal `CONTEXT_HANDOFF: Ready for fresh session` string. A "wait for
+  wakeup/notification" narration prints no such marker, so the loop falls through
+  to its terminal `break` (~line 478) after one round. The
+  `Phase 2 (implement) completed in N minutes` line is logged unconditionally by
+  `timed_phase`'s `finally` block — it signals turn-end, not task-completion.
+
 ## Integration Map
 
 - `skills/manage-issue/SKILL.md` — implement/verify phase; add a headless-safe
@@ -85,6 +118,83 @@ event, so the commit + status-update tail never executes.
   `run_with_continuation`; the turn ends here without a `CONTEXT_HANDOFF` marker.
 - `.claude/CLAUDE.md` § Automation: Scratch Pad — the scratch-pad-redirect
   pattern is the intended vehicle for large foreground command output.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — corrected paths and additional integration points:_
+
+- **Path correction**: the automation defaults are at
+  `scripts/little_loops/config/automation.py:17-18` (`timeout_seconds: int = 3600`,
+  `idle_timeout_seconds: int = 0`), not `config/automation.py` — there is no
+  `config/` dir at repo root.
+- **`scripts/little_loops/parallel/worker_pool.py`** — `ll-parallel` also drives
+  issues through `run_with_continuation`, so this same headless stall affects
+  parallel runs, not just `ll-auto`. The skill-guidance fix covers both; no
+  separate runner change is needed for parity.
+- **`scripts/tests/test_wiring_skills_and_commands.py`** — the SKILL.md
+  content-lint home (see "Tests to Add"). `skills/manage-issue/SKILL.md` is
+  already a target in its `DOC_STRINGS_PRESENT` / `DOC_STRINGS_ABSENT` tables;
+  new rows extend the most-worn path rather than adding a new test file.
+- **`detect_context_handoff`** — the marker check consumed by
+  `run_with_continuation` (regex `CONTEXT_HANDOFF:\s*Ready for fresh session`),
+  surfaced via `scripts/little_loops/subprocess_utils.py` (~lines 59/72) and
+  `scripts/little_loops/fsm/signal_detector.py`. No automated emitter exists — it
+  is purely agent-narrated per the SKILL.md Handoff Protocol.
+- **`hooks/scripts/scratch-pad-redirect.sh`** — the foreground-blocking redirect
+  vehicle already exists (PreToolUse hook, active in automation/`bypassPermissions`
+  contexts). The fix leans on it rather than inventing a new mechanism.
+
+### Wiring Pass (added by `/ll:wire-issue`)
+
+_Additional integration points surfaced by the wiring pass (3 parallel agents):_
+
+**Dependent Files (Callers/Importers)**
+- `scripts/little_loops/cli/sprint/run.py` — `ll-sprint` also drives issues through
+  `AutoManager` / `run_with_continuation`, so the same headless stall affects sprint
+  runs, not just `ll-auto` and `ll-parallel`. The skill-guidance fix covers all three
+  paths; no separate runner change is needed. [Agent 1]
+
+**Runtime-consumption constraint on the edit (not an edit target, but binding)**
+- `scripts/little_loops/skill_expander.py` `expand_skill()` — `skills/manage-issue/SKILL.md`
+  is not merely documentation: for `ll-auto`'s **initial** turn its prose is read,
+  frontmatter-stripped, and `{{config.x}}` / relative `(*.md)` links are substituted to
+  build the literal headless prompt string. New Phase 4 prose must **not** accidentally
+  form a `{{config.something}}` token (silently blanked if unresolvable) or a
+  `(something.md)` pattern (rewritten to an absolute path). [Agent 2]
+- `scripts/little_loops/parallel/types.py` `ParallelConfig.get_manage_command()` —
+  `ll-parallel` sends a plain slash-command template (`/ll:manage-issue …`) with **no**
+  pre-expansion, so only `ll-auto`'s first turn is subject to `expand_skill` substitution
+  quirks. Both paths ultimately execute the same SKILL.md content. [Agent 2]
+
+**Finalization-ordering decision — resolving evidence**
+- `scripts/little_loops/issue_lifecycle.py` `complete_issue_lifecycle()` — the
+  Python-driven fallback completion path writes `status: done` **first**
+  (`update_frontmatter` + `write_text`), then calls `_commit_issue_completion()` (git add
+  + commit) **second** — i.e. set-status→commit, the **same order Phase 5 currently
+  documents**. This is direct precedent for resolving the discrepancy per option (a):
+  keep Phase 5's existing set-status→commit order so the interactive SKILL.md path and
+  the automated fallback stay in parity, and add the headless-safety rule to **Phase 4
+  only** — do not introduce a contradictory commit→set-status statement. [Agent 2]
+
+**Documentation / hook coupling (advisory — no change required)**
+- `docs/ARCHITECTURE.md` § "Session Log Auto-Linking" + `hooks/scripts/issue-completion-log.sh`
+  — Phase 5 sets status via the `ll-issues set-status` **Bash CLI** (not the Write tool),
+  so this PostToolUse hook (fires only on a `Write` to `.issues/*.md` whose frontmatter
+  reads `status: done`) does **not** trigger from that step. Whichever finalization order
+  Phase 5 keeps, it does not interact with this hook — no hook change is implied. [Agent 2]
+- `hooks/scripts/scratch-pad-redirect.sh` clarification — the hook auto-redirects
+  `python -m pytest …` **output size** (it unwraps `python -m <module>` against
+  `scratch_pad.command_allowlist`), but it does **not** inspect or block the
+  `run_in_background` tool parameter. The SKILL.md prose rule is therefore the **only**
+  mechanism that can prevent the background-then-await stall — the hook and the new
+  guidance address orthogonal concerns. [Agent 2]
+
+**Confirmed no-change surface (noise filtered from Agent 1's broad trace)**
+- The ~13 importers of `run_with_continuation` / `detect_context_handoff` /
+  `run_claude_command` and the ~13 skill files that merely reference `/ll:manage-issue`
+  as a next step need **no** change — this is a prose + test-row fix with no Python
+  signature or behavior change. `output_parsing.py`, `skills/manage-issue/templates.md`,
+  `config-schema.json`, and `.ll/ll-config.json` are likewise untouched.
 
 ## Steps to Reproduce
 
@@ -107,6 +217,30 @@ In `skills/manage-issue/SKILL.md`, add an explicit headless-safety rule:
 - Enforce finalization ordering: tests pass → commit scoped files →
   `ll-issues set-status <ID> done`, all within the same turn.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — implementation constraints the plan must resolve:_
+
+- **⚠ Finalization-ordering discrepancy — resolve deliberately.** This issue
+  proposes `commit scoped files → set-status done`, but Phase 5 "Complete Issue
+  Lifecycle" *currently documents the reverse*: step 2 is
+  `ll-issues set-status <ID> done`, step 3 is "Commit All Changes" (i.e.
+  set-status **before** commit, and the commit's `git add` even includes the
+  updated issue file). Decide one of: (a) the "same turn, no dead-end" property
+  is what matters and either order is fine — then keep Phase 5's existing
+  set-status→commit order to avoid churn and stale-status-in-commit changes; or
+  (b) genuinely reorder Phase 5 to commit→set-status. Do **not** add
+  commit→set-status guidance in Phase 4 while leaving Phase 5 saying the opposite,
+  or the skill will contradict itself.
+- **Reuse existing foreground vocabulary** for consistency: `skills/go-no-go/SKILL.md`
+  (Steps 3b–3d) and `skills/decide-issue/SKILL.md` (Phase 4) already use
+  `**foreground**`, `run_in_background: false`, and "wait … before proceeding".
+  Mirror that phrasing rather than inventing new terms.
+- **Prefer the documented redirect idiom** verbatim from `.claude/CLAUDE.md`
+  § Automation: Scratch Pad —
+  `... > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt`
+  — so the guidance matches the already-hooked `scratch-pad-redirect.sh` behavior.
+
 ## Implementation Steps
 
 1. Edit `skills/manage-issue/SKILL.md` implement/verify step: require the final
@@ -123,11 +257,53 @@ In `skills/manage-issue/SKILL.md`, add an explicit headless-safety rule:
    implementation ends in a long full-suite test: confirm the turn finishes with
    changes committed and the issue `status: done`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were surfaced by wiring analysis and must be honored during implementation:_
+
+6. Resolve the finalization-ordering discrepancy per option (a): **keep** Phase 5's
+   existing set-status→commit order (matches `issue_lifecycle.complete_issue_lifecycle()`)
+   and add the headless-safety rule to **Phase 4** only — do not add a contradictory
+   commit→set-status statement in Phase 4.
+7. When writing the new Phase 4 prose, avoid any `{{config.…}}` token or `(name.md)`
+   link pattern — `expand_skill()` substitutes both when building `ll-auto`'s headless
+   prompt (`skill_expander.py`).
+8. After editing, run `python -m pytest scripts/tests/test_skill_expander.py -v` (the
+   `test_manage_issue_expansion_has_no_raw_tokens` guard) to confirm the new prose left
+   no unresolved template token, plus
+   `python -m pytest scripts/tests/test_wiring_skills_and_commands.py -v` for the new rows.
+
 ## Tests to Add
 
 - A SKILL.md lint/guard assertion (mirroring existing skill-content checks) that
   the implement/verify section contains the foreground-blocking + no-background-wait
   guidance.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete test target and pattern:_
+
+- **Home**: extend the parametrized tables in
+  `scripts/tests/test_wiring_skills_and_commands.py`
+  (`test_string_present_in_doc` / `test_string_absent_from_doc`, rows are
+  `(doc_rel, needle, issue_id)`). `skills/manage-issue/SKILL.md` is already a
+  target there — add:
+  - a `DOC_STRINGS_PRESENT` row for the foreground-blocking phrase (e.g. the
+    chosen `**foreground**` / scratch-redirect marker), tagged `"BUG-2408"`.
+  - a `DOC_STRINGS_ABSENT` row forbidding the failure idiom (e.g. a
+    "scheduled wakeup" / "completion notification" phrase in the verify section),
+    tagged `"BUG-2408"` — but only if that phrase can't appear legitimately
+    elsewhere in the file; otherwise scope the check to Phase 4.
+- **If a scoped/ordering assertion is needed** (verify Phase 4 contains the rule,
+  or that finalization order is X-before-Y), model a bespoke test on the
+  `_phase_text()` section-slicing + `.find()` ordering idiom in
+  `scripts/tests/test_confidence_check_skill.py` and
+  `scripts/tests/test_ready_issue_lint.py` (`pos_a < pos_b` ordering asserts).
+  Both use the session-scoped `project_root` fixture from
+  `scripts/tests/conftest.py`. Note: no `test_manage_issue_skill.py` exists yet;
+  prefer extending the shared table file over creating a new one.
+- Run with:
+  `python -m pytest scripts/tests/test_wiring_skills_and_commands.py -v`
 
 ## Acceptance Criteria
 
@@ -163,6 +339,7 @@ run summary.
 manage-issue, ll-auto, headless, automation, finalization
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-01T00:18:04 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:09:07 - `ac278041-8972-4118-8e20-9572ae7f75f4.jsonl`
 - `/ll:capture-issue` - 2026-07-01T00:04:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50bef1ad-9ed2-44c2-9376-d53bca2305b4.jsonl`
 

@@ -31,7 +31,7 @@ changes sitting in the working tree.
 
 ## Current Behavior
 
-In `_process_single_issue` Phase 3 (`issue_manager.py:1000-1024`):
+In `process_issue_inplace` Phase 3 (`issue_manager.py:1000-1024`):
 
 1. `verify_issue_completed()` returns False (status still `open`, no commit).
 2. `result.returncode == 0` (headless turn ended cleanly).
@@ -76,6 +76,41 @@ presence of real work.
 - `scripts/little_loops/issue_lifecycle.py:440` — `status=… (expected
   done/cancelled)` warning emitted just before this path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — codebase analysis; all 5 line refs above verified
+accurate (no drift):_
+
+- **Enclosing function**: the Phase-3 block lives in `process_issue_inplace()`
+  (`issue_manager.py:560`), not `_process_single_issue`.
+  `AutoManager._process_issue()` (`issue_manager.py:1371`) is a thin wrapper that
+  delegates to it and consumes `result.plan_created` / `result.plan_path`.
+- **Reusable gate — no new plumbing**: `verify_work_was_done(logger,
+  baseline_sha=_baseline_sha)` (`work_verification.py:44-161`) already detects all
+  three "uncommitted work vs baseline" cases the fix needs — unstaged
+  (`git diff --name-only`), staged (`git diff --cached --name-only`), and
+  committed-since-baseline (`git diff --name-only <baseline>..HEAD`). `_baseline_sha`
+  is already in scope at the short-circuit site (`:1011`), so the fix only needs to
+  call this helper before the `plan_path is not None` early-return and fall through
+  when it returns `True`.
+- **Plan file self-exclusion**: `EXCLUDED_DIRECTORIES` (`work_verification.py:18-25`)
+  excludes `thoughts/` (also `.issues/`, `.speckit/`, `.worktrees/`, `.auto-manage`),
+  so the plan file under `thoughts/shared/plans/` is *not* counted as work by
+  `verify_work_was_done` — gating on this helper cannot false-positive on the plan
+  itself.
+- **`detect_plan_creation` ignores stdout**: its `output` param
+  (`issue_manager.py:488-516`) is documented "unused, for future pattern matching"
+  and never read; `st_mtime` is only used to pick among multiple matches, never to
+  gate recency. Confirms the pure-existence root cause.
+- **Content-marker ladder runs first on the no-plan path**:
+  `check_content_markers(info.path)` (`issue_manager.py:519-542`, called at `:1032`)
+  is tried before `verify_work_was_done` at `:1043`. The new gate should sit at the
+  plan branch (`:1011`); the fall-through then reuses this existing
+  content-marker → work-evidence ladder unchanged.
+- **Git subprocess convention**: use bare
+  `subprocess.run(["git", ...], capture_output=True, text=True)` (as at `:883-888`),
+  **not** `worker_pool.py`'s `_git_lock.run(...)` — documented in BUG-1538.
+
 ## Steps to Reproduce
 
 1. Take an issue whose plan clears the confidence gate (≥ threshold) so the agent
@@ -107,6 +142,37 @@ work relative to the Phase-2 baseline:
   does *not* return `plan_created=True`; routes to the evidence-of-work path.
 - Regression test preserving BUG-280 behavior: plan file present **and** clean
   tree (no diff vs baseline) → still returns "awaiting approval."
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete test targets from codebase analysis:_
+
+- **Coverage gap confirmed**: `test_issue_manager.py` has **zero** references to
+  `plan_created` — no existing test drives the `plan_path is not None` branch. Both
+  new tests are net-new coverage of that branch.
+- **Home for the new tests**: `TestFallbackVerification`
+  (`scripts/tests/test_issue_manager.py:2367-2619`), which already exercises the
+  Phase-3 fallback via `process_issue_inplace`.
+- **Exact template to model after**: `test_baseline_sha_passed_to_verify_work_was_done`
+  (`test_issue_manager.py:2565-2618`). It patches `run_claude_command`,
+  `run_with_continuation`, `verify_issue_completed=False`, `detect_plan_creation`,
+  `check_content_markers=False`, `little_loops.issue_manager.subprocess.run`
+  (for `git rev-parse HEAD`), and `verify_work_was_done`, then asserts on the result.
+  For the two new tests, patch `detect_plan_creation` to return a real `Path`
+  (plan present) and vary `verify_work_was_done` → `True` (dirty tree: assert the
+  result does *not* have `plan_created is True` and routes to the evidence path) vs
+  `False` (clean tree: assert `plan_created is True`, BUG-280 invariant preserved).
+- **Fixtures**: reuse `mock_config` and `sample_issue` from `TestFallbackVerification`.
+  Note `temp_project_dir` (`conftest.py:130`) is **not** a real git repo — git state
+  is simulated by patching `subprocess.run`, not by real commits.
+- **Sibling gate-test conventions**: `TestEarlyCompletionGuard`
+  (`test_issue_manager.py:2621-2684`) and `TestDecisionNeededGate` (`:3462-3557`)
+  show the file's "same setup, one flag flipped, assert on the branch taken" shape.
+- **Low-level helper already covered**: `TestVerifyWorkWasDoneBaselineSha`
+  (`scripts/tests/test_work_verification.py:428-509`) already tests baseline-diff
+  detection itself; the new tests cover only the Phase-3 *gating*, not the helper.
+- **Existing glob-helper tests**: `TestDetectPlanCreation`
+  (`test_issue_manager.py:3286-3387`) covers `detect_plan_creation` in isolation.
 
 ## Acceptance Criteria
 
@@ -153,6 +219,7 @@ the reliability of the run summary and risks a dirty-tree re-plan on re-run.
 ll-auto, verification, phase-3, plan-detection, automation
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-01T00:20:03 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:08:39 - `f960a02a-adbc-4f7d-b3c8-b867aa0ea338.jsonl`
 - `/ll:capture-issue` - 2026-07-01T00:04:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50bef1ad-9ed2-44c2-9376-d53bca2305b4.jsonl`
 
