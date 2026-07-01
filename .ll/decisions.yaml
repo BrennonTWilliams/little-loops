@@ -3496,3 +3496,27 @@
     capture the full page, not just the viewpor
   enforcement: advisory
   issue: ENH-2429
+- id: ARCHITECTURE-081
+  type: decision
+  timestamp: '2026-07-01T19:11:40Z'
+  category: architecture
+  labels: []
+  rationale: rn-implement's pre-dequeue learning gate (ENH-2406) is check-only and
+    terminal, so it never reaches ENH-2319's auto-proving choke point in ll-auto;
+    a target-addressed prove verb closes that gap.
+  rule: 'Captured: Add ll-learning-tests prove subcommand so gates can trigger proving
+    directly'
+  scope: issue
+  issue: ENH-2430
+- id: ARCHITECTURE-082
+  type: decision
+  timestamp: '2026-07-01T19:14:37Z'
+  category: architecture
+  labels: []
+  rationale: 'Split from ENH-2430: adding the ll-learning-tests prove verb doesn''t
+    change rn-implement''s behavior by itself; this issue is the actual gate wiring
+    + the unconditional-vs-flag default decision, depends_on ENH-2430.'
+  rule: 'Captured: Wire rn-implement''s pre-dequeue learning gate to auto-prove instead
+    of dead-ending'
+  scope: issue
+  issue: ENH-2431
