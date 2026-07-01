@@ -277,6 +277,77 @@ class TestStaleAwareCLI:
         assert result == 0
 
 
+class TestMainLearningTestsProve:
+    """Tests for ll-learning-tests prove subcommand (ENH-2430)."""
+
+    def _make_record(self, *, status: str = "proven") -> LearnTestRecord:
+        return LearnTestRecord(
+            target="requests",
+            date="2026-07-01",
+            status=status,
+            assertions=[Assertion(claim="raises on 4xx", result="pass")],
+            raw_output_path=None,
+        )
+
+    def test_prove_success_prints_json_exits_0(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record(status="proven")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run") as mock_run,
+            patch("little_loops.learning_tests.check_learning_test", return_value=record),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+        mock_run.assert_called_once()
+        data = json.loads(capsys.readouterr().out)
+        assert data["target"] == "requests"
+        assert data["status"] == "proven"
+
+    def test_prove_shells_to_ready_to_implement_gate(self) -> None:
+        record = self._make_record(status="proven")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run") as mock_run,
+            patch("little_loops.learning_tests.check_learning_test", return_value=record),
+        ):
+            main_learning_tests()
+        cmd = mock_run.call_args[0][0]
+        assert cmd == [
+            "ll-loop",
+            "run",
+            "ready-to-implement-gate",
+            "--context",
+            "targets=requests",
+        ]
+
+    def test_prove_still_refuted_exits_1(self, capsys: pytest.CaptureFixture[str]) -> None:
+        record = self._make_record(status="refuted")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run"),
+            patch("little_loops.learning_tests.check_learning_test", return_value=record),
+        ):
+            result = main_learning_tests()
+        assert result == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "refuted"
+
+    def test_prove_still_missing_exits_1_with_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "nonexistent target"]),
+            patch("subprocess.run"),
+            patch("little_loops.learning_tests.check_learning_test", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Error" in captured.err
+        assert "nonexistent target" in captured.err
+
+
 class TestMainLearningTestsOrphans:
     """Tests for ll-learning-tests orphans subcommand (ENH-2216)."""
 

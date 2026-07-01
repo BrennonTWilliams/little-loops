@@ -45,6 +45,33 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prove(args: argparse.Namespace) -> int:
+    import subprocess
+
+    from little_loops.cli.output import print_json
+    from little_loops.learning_tests import check_learning_test
+
+    subprocess.run(
+        [
+            "ll-loop",
+            "run",
+            "ready-to-implement-gate",
+            "--context",
+            f"targets={args.target}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    record = check_learning_test(args.target)
+    if record is None:
+        print(f"Error: no record found for {args.target!r}", file=sys.stderr)
+        return 1
+
+    print_json(record.to_dict())
+    return 0 if record.status == "proven" else 1
+
+
 def cmd_list(_args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
     from little_loops.learning_tests import list_records
@@ -125,6 +152,7 @@ Examples:
   ll-learning-tests check "Anthropic SDK streaming"
   ll-learning-tests list
   ll-learning-tests mark-stale "Anthropic SDK streaming"
+  ll-learning-tests prove "Anthropic SDK streaming"
 """,
         )
 
@@ -186,6 +214,16 @@ Examples:
             ),
         )
 
+        prove_parser = subparsers.add_parser(
+            "prove",
+            help="Trigger proving for a target; print the refreshed record",
+            description=(
+                "Trigger proving for a target via the ready-to-implement-gate loop "
+                "(retry-then-/ll:explore-api) and print the refreshed registry record"
+            ),
+        )
+        prove_parser.add_argument("target", help="Target name (e.g. 'Anthropic SDK streaming')")
+
         parsed = parser.parse_args()
 
         if parsed.command == "check":
@@ -196,6 +234,8 @@ Examples:
             return cmd_mark_stale(parsed)
         elif parsed.command == "orphans":
             return cmd_orphans(parsed)
+        elif parsed.command == "prove":
+            return cmd_prove(parsed)
         else:
             parser.print_help()
             return 1

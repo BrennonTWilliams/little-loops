@@ -3,8 +3,9 @@ id: ENH-2430
 title: Add `ll-learning-tests prove` subcommand so gates can trigger proving directly
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-01T19:10:34Z'
+completed_at: '2026-07-01T20:13:11Z'
 discovered_date: '2026-07-01'
 discovered_by: capture-issue
 relates_to:
@@ -309,7 +310,42 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `learning-tests`, `cli`, `automation`, `rn-implement`
 
+## Resolution
+
+Added `cmd_prove(args)` to `scripts/little_loops/cli/learning_tests.py` and
+registered a `prove <target>` subparser in `main_learning_tests()`. Per the
+issue's own Codebase Research Findings, `cmd_prove` shells directly to
+`ll-loop run ready-to-implement-gate --context targets=<target>` (mirroring
+`_run_learning_gate_preflight()` in `scripts/little_loops/cli/sprint/run.py`)
+rather than adding a throwaway `issue_file=`-less `proof-first-task` path or
+touching `learning_tests/gate.py` — no gate.py changes were needed.
+
+Exit-code/success determination uses the post-run registry record
+(`check_learning_test(target)`), not the subprocess/loop-runner exit code:
+`ll-loop run`'s exit code reflects FSM `terminated_by` (`"terminal"` → 0
+whenever *any* terminal state is reached, `done` or `blocked` alike — see
+`EXIT_CODES` in `scripts/little_loops/cli/loop/_helpers.py`), so it can't
+distinguish a proving success from a proving failure. Reading the refreshed
+registry record instead exactly matches the issue's stated API contract
+(exit 0 iff `status == "proven"`, exit 1 for `refuted` or still-missing).
+
+`rn-implement.yaml` wiring was intentionally left untouched — that's
+`ENH-2431` (`depends_on: [ENH-2430]`), a separate follow-up issue per this
+issue's own Scope Boundaries.
+
+Tests: added `TestMainLearningTestsProve` to
+`scripts/tests/test_cli_learning_tests.py` (success/refuted/missing-after-prove
+cases, plus a call-shape assertion on the `ll-loop` subprocess invocation).
+Docs updated: `docs/reference/CLI.md`, `docs/guides/LEARNING_TESTS_GUIDE.md`,
+`commands/help.md`, `.claude/CLAUDE.md`.
+
+Full suite: `python -m pytest scripts/tests/` — 13310 passed, 23 skipped, 1
+pre-existing unrelated failure (`test_enh494_skill_companions.py` — a
+`skills/manage-issue/SKILL.md` line-count-limit violation, untouched by this
+change).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T20:13:11Z - `ed11f1cc-c43e-416b-9e88-abe7c7c25998.jsonl`
 - `/ll:ready-issue` - 2026-07-01T19:54:13 - `7170efdb-276e-4eec-b79a-2c6959d3b08d.jsonl`
 - `/ll:refine-issue` - 2026-07-01T19:27:16 - `825773cc-f3c3-4e72-b818-2f6802981cbb.jsonl`
 - `/ll:format-issue` - 2026-07-01T19:16:18 - `9be8c8f3-0586-400c-835a-63136f4a32fd.jsonl`

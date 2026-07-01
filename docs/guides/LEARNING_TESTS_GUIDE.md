@@ -138,7 +138,7 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 
 ## CLI Reference
 
-`ll-learning-tests` is intentionally narrow: it owns reads and stale-marking, never writes. Record creation is owned by `/ll:explore-api` so the prompt context that produces the record also captures the reasoning behind it.
+`ll-learning-tests` owns reads, stale-marking, and (via `prove`) triggering the existing proving loop — it never hand-writes a registry record directly. Record creation remains owned by `/ll:explore-api` so the prompt context that produces the record also captures the reasoning behind it; `prove` just orchestrates that existing skill/loop for callers that only have a bare target, not an issue file.
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
@@ -146,6 +146,7 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 | `list` | Print every record as a JSON array | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` on success, `1` if not found |
 | `orphans [--mark-stale] [--scope DIRS]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans. `--scope DIRS` overrides the default import-scan directories (comma-separated; defaults to `learning_tests.scan_dirs` config key or `scripts/`). | `0` if no orphans found, or with `--mark-stale`; `1` if orphans exist |
+| `prove "<target>"` | Target-addressed proving (ENH-2430) — no issue file required. Shells to `ll-loop run ready-to-implement-gate --context targets=<target>` (see [Using Learning Tests in Loops](#using-learning-tests-in-loops)), then prints the refreshed record. | `0` if the target ends `proven`, `1` if `refuted` or still missing |
 
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
@@ -155,6 +156,7 @@ ll-learning-tests mark-stale "Anthropic SDK streaming"
 ll-learning-tests orphans                          # list orphaned records (exit 1 if any)
 ll-learning-tests orphans --mark-stale             # mark them stale, exit 0
 ll-learning-tests orphans --scope src/,lib/        # scan custom directories
+ll-learning-tests prove "Anthropic SDK streaming"  # trigger proving directly; no issue file needed
 ```
 
 ## Pre-Seeding Assumptions with `--assume`

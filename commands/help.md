@@ -292,7 +292,7 @@ ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintain
 ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
 ll-adapt         Generate host-specific artefacts for a given host (--host codex --apply regenerates skills, commands, agent TOMLs)
 ll-doctor         Check host CLI capability support for little-loops features
-ll-learning-tests Query and manage the learning test registry (check/list/mark-stale)
+ll-learning-tests Query and manage the learning test registry (check/list/mark-stale/orphans/prove)
 ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry; dead-skills for never/rarely-invoked skill detection; scan-failures for mining failed ll-* calls into bug candidates)
 ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)

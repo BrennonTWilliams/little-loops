@@ -2869,6 +2869,7 @@ Query and manage the learning test registry. Skills and loops call this via `Bas
 | `list` | Print all records as a JSON array |
 | `mark-stale <target>` | Set status=stale; exit 1 if not found |
 | `orphans [--mark-stale]` | List records whose target package is not imported by any project file; optionally mark them all stale |
+| `prove <target>` | Trigger proving via `ready-to-implement-gate` (retry-then-`/ll:explore-api`); print the refreshed record; exit 0 if `proven`, 1 otherwise (ENH-2430) |
 
 **Examples:**
 ```bash
@@ -2879,6 +2880,7 @@ ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'
 ll-learning-tests mark-stale "Anthropic SDK streaming"
 ll-learning-tests orphans                # list orphaned records
 ll-learning-tests orphans --mark-stale   # atomically mark all orphans stale
+ll-learning-tests prove "Anthropic SDK streaming"   # trigger proving directly, no issue file required
 ll-learning-tests --help
 ```
 
