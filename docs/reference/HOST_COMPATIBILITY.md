@@ -27,7 +27,7 @@ into `LLHookEvent` payloads.
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` |
 | `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` |
-| `stop` → `session_end` | ✓ (dispatched as `session_end`) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
+| `session_end`        | ✓ (`SessionEnd` event → `session_end`) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only |
 

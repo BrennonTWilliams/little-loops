@@ -64,7 +64,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
-| **Stop** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
+| **SessionEnd** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 
@@ -99,7 +99,7 @@ Context window fills up (Claude Code fires PreCompact before compacting)
 
 Session ends
   → Stop (cleanup): removes locks, temp files, orphaned worktrees
-  → Stop (stale refs): reports any open-issue references pointing at done issues
+  → SessionEnd (stale refs): reports any open-issue references pointing at done issues
 ```
 
 ---
@@ -280,7 +280,7 @@ Never blocks.
 
 ## Stop
 
-Three hooks run when the session ends. All are advisory and must never fail.
+Two hooks run after each assistant turn (Claude Code's `Stop` event). Both are advisory and must never fail.
 
 ### Context handoff sentinel
 
@@ -294,6 +294,12 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 Removes this session's lock and context-state files, clears `.loops/tmp/scratch`, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Always on.
 
+---
+
+## SessionEnd
+
+Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) — not per turn. Advisory; must never fail.
+
 ### Sweep stale cross-issue references
 
 **Hook:** `session-end.sh` → `little_loops.hooks.sweep_stale_refs.handle`
@@ -303,7 +309,7 @@ Collects every `status: done` issue, then scans open issues for prose that still
 - `report` (default) — lists findings on stderr, edits nothing
 - `auto` — rewrites the stale phrasing in place (e.g. "is open" → "is done")
 
-Always runs; defaults to the non-destructive `report` mode.
+Always runs; defaults to the non-destructive `report` mode. The dispatch intent stays `session_end` (host-agnostic); on Codex, which has no separate `SessionEnd` event, `session_end` is mapped onto its `Stop` event instead (ENH-2105).
 
 ---
 
@@ -387,7 +393,7 @@ A few quick controls:
 | `issues.auto_commit` | PostToolUse | `false` | Auto-commit issue files |
 | `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
-| `hooks.stale_ref_fix` | Stop | `report` | `report` or `auto` |
+| `hooks.stale_ref_fix` | SessionEnd | `report` | `report` or `auto` |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).

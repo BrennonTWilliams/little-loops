@@ -1,9 +1,10 @@
 ---
 id: BUG-2422
 captured_at: '2026-07-01T02:13:42Z'
+completed_at: '2026-07-01T03:23:21Z'
 discovered_date: 2026-07-01
 discovered_by: capture-issue
-status: open
+status: done
 priority: P3
 type: BUG
 relates_to:
@@ -365,7 +366,46 @@ _Wiring pass added by `/ll:wire-issue` — test-gap trace (Agent 3) result:_
 - Any change to what the sweep *does* (its scan/report logic is correct; only
   its firing cadence is wrong).
 
+## Resolution
+
+Re-homed the FEAT-1680 stale-ref sweep from the per-turn `Stop` event to the
+session-terminal `SessionEnd` event on Claude Code. The `session-end.sh` adapter
+and `sweep_stale_refs.handle` Python handler are reused verbatim — only the
+`hooks.json` event key changed. BUG-2420's `SessionEnd` block was already
+committed, so the sweep was **appended** as a second `hooks` group inside the
+existing `SessionEnd` array (sharing it with `scratch-cleanup.sh`) and removed
+from the `Stop` array. The sweep now fires once per session instead of once per
+assistant turn, eliminating the double whole-tree `find_issues()` scan on every
+response.
+
+**Changes:**
+- `hooks/hooks.json` — moved `session-end.sh` from the `Stop` array into the
+  existing `SessionEnd` array (appended as the 2nd group). Other `Stop` handlers
+  (`context-handoff-sentinel.sh`, `session-cleanup.sh`) left in place.
+- `scripts/tests/test_claude_code_adapter.py` — added two wiring tests
+  (`test_hooks_json_registers_sweep_under_session_end` positive,
+  `test_hooks_json_stop_no_longer_references_sweep` regression), modeled on the
+  existing `test_hooks_json_has_precompact_handoff` "second entry in an event
+  array" precedent. TDD: both were confirmed Red before the `hooks.json` edit.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — moved sweep from `Stop` to a new
+  `## SessionEnd` section; updated the lifecycle table row, the "session from
+  hook's perspective" walkthrough, the `## Stop` intro (2 hooks, per-turn), and
+  the `hooks.stale_ref_fix` config-table event column.
+- `docs/reference/HOST_COMPATIBILITY.md` — relabeled the parity row to
+  `session_end` and set the Claude Code cell to `✓ (SessionEnd event → session_end)`;
+  Codex/OpenCode stay `(deferred)` (ENH-2105).
+
+No change to `sweep_stale_refs.py`, the `session_end` dispatch intent (host-agnostic),
+or any Codex/OpenCode adapter. Verified negatives from the wiring pass
+(`ARCHITECTURE.md`, `API.md`, `EVENT-SCHEMA.md`, `CHANGELOG.md`) confirmed — no edits.
+
+**Verification:** Full suite `python -m pytest scripts/tests/` — 13285 passed, the
+2 new wiring tests among them. One pre-existing, unrelated failure
+(`skills/manage-issue/SKILL.md` = 523 > 500-line limit, unchanged at HEAD, not
+touched by this fix).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-01T03:23:21 - `f2b563fe-acae-472f-942a-b6cf769740e2.jsonl`
 - `/ll:ready-issue` - 2026-07-01T02:47:14 - `965f9d28-0986-4224-a4e8-137bcdd66c4d.jsonl`
 - `/ll:confidence-check` - 2026-07-01T02:44:41 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6191c231-16b2-4dc2-b059-585b404f1916.jsonl`
 - `/ll:wire-issue` - 2026-07-01T02:39:34 - `bb26fac8-dafb-4bb9-8850-4e2c32747581.jsonl`
@@ -377,4 +417,4 @@ _Wiring pass added by `/ll:wire-issue` — test-gap trace (Agent 3) result:_
 
 ## Status
 
-**Current Status**: open
+**Current Status**: done
