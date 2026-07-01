@@ -3,7 +3,7 @@ id: BUG-2421
 title: Fallback lifecycle completion commits entire working tree via git add -A
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-01T02:00:57Z'
 discovered_date: 2026-07-01
 discovered_by: capture-issue
@@ -472,7 +472,38 @@ _Touchpoints identified by wiring analysis; fold into the steps above:_
 - **Risk**: Low-to-medium — changes commit staging behavior in the automation
   path; needs the regression test to lock in the exclusion.
 
+## Resolution
+
+- **Status**: done — closed as `already_fixed` by `/ll:ready-issue` on 2026-06-30.
+- **Fix Commit**: `901a5cf8` ("fix(lifecycle): scope fallback completion commit
+  to the issue file") — commit body explicitly states `Fixes BUG-2421`.
+
+The selected Option 3 (Minimal floor) was implemented exactly as decided:
+`_commit_issue_completion()` (`scripts/little_loops/issue_lifecycle.py:349`) now
+stages only the issue file with `git add -- <info.path>` (`:379`), warns about any
+other dirty paths left uncommitted (`:389-404`), and never uses `git add -A`. All
+four completion paths (close `:661`, complete/fallback `:734`, defer `:826`,
+undefer `:976`) share the helper and are equally scoped.
+
+### Acceptance Criteria — all met
+- ✅ `complete_issue_lifecycle()` no longer stages unrelated files (scoped `git add -- <issue_path>`).
+- ✅ Pre-existing dirty files remain uncommitted after fallback completion.
+- ✅ Close/defer/undefer paths equally scoped (all call the same fixed helper; zero `git add -A`).
+- ✅ Regression test `TestCommitIssueCompletionScoped` (`scripts/tests/test_issue_lifecycle.py:319`)
+  proves an unrelated dirty file is excluded; the old `git add -A` assertion was
+  updated (`:257` now asserts `["git", "add", "-A"] not in captured_commands`).
+- ✅ When attribution is unavailable, the helper stages only the issue file and logs the skipped dirty paths.
+
+Verified: `python -m pytest scripts/tests/test_issue_lifecycle.py -k "Scoped or commit"` → 6 passed;
+`grep "add.*-A" scripts/little_loops/issue_lifecycle.py` → only in explanatory comments.
+
+**Note on scope:** the two `ll-parallel` twin sites (`orchestrator.py:1024`, `:1417`)
+were handled by sibling [[BUG-2424]] in commit `4453b0a0` ("fix(parallel): scope
+orchestrator completion commits to the issue file"), consistent with this issue's
+Codebase Research scope decision to fix the `ll-auto` path (`issue_lifecycle.py`) here.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-01T04:35:28 - `a629a9db-ec8c-4ca0-968e-1aba38fd87e8.jsonl`
 - `/ll:confidence-check` - 2026-07-01T04:05:10 - `3d7d4b7c-0998-4d5d-89d0-05189e85c357.jsonl`
 - `/ll:wire-issue` - 2026-07-01T04:01:31 - `3cbad948-5e1d-46b4-8dd2-efb318ba0a6e.jsonl`
 - `/ll:decide-issue` - 2026-07-01T03:52:17 - `345610ae-c160-42f1-afbf-621aee7ee799.jsonl`
