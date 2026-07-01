@@ -1969,6 +1969,7 @@ class TestDisplayProgressEvents:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
                 self._make_fsm(),
+                verbose=False,
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
@@ -1999,6 +2000,7 @@ class TestDisplayProgressEvents:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="clean"))
             mock_render.assert_called_once_with(
                 self._make_fsm(),
+                verbose=False,
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
@@ -2028,6 +2030,7 @@ class TestDisplayProgressEvents:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams="slim"))
             mock_render.assert_called_once_with(
                 self._make_fsm(),
+                verbose=False,
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
@@ -2090,6 +2093,7 @@ class TestDisplayProgressEvents:
             )
             mock_render.assert_called_once_with(
                 self._make_fsm(),
+                verbose=False,
                 highlight_state="start",
                 highlight_color="32",
                 edge_label_colors=None,
@@ -2527,6 +2531,7 @@ class TestDisplayProgressEvents:
         calls = mock_render.call_args_list
         assert calls[0] == call(
             parent_fsm,
+            verbose=False,
             highlight_state="run_sub_loop",
             highlight_color="32",
             edge_label_colors=None,
@@ -2537,6 +2542,7 @@ class TestDisplayProgressEvents:
         )
         assert calls[1] == call(
             child_fsm,
+            verbose=False,
             highlight_state="child_state_1",
             highlight_color="32",
             edge_label_colors=None,

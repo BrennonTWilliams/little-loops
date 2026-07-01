@@ -161,5 +161,117 @@ def test_highlighted_action_rectangular() -> None:
     _assert_boxes_rectangular(_render_fsm_diagram(fsm, verbose=True, highlight_state="start"))
 
 
+# ---------------------------------------------------------------------------
+# BUG-2425 — width bounding for back-edge-heavy FSMs in the non-TTY stream path
+# ---------------------------------------------------------------------------
+
+
+def _make_back_edge_heavy_fsm(n: int = 40) -> object:
+    """Build a chain ``s0 → s1 → … → sN`` where every ``s_i`` also has an
+    ``on_no`` back-edge to ``s0``, producing ~N distinct back-edges. Unclamped,
+    the left gutter grows ~2 cols/back-edge and overflows the terminal width."""
+    states = {}
+    for i in range(n):
+        nxt = f"s{i + 1}" if i < n - 1 else "done"
+        states[f"s{i}"] = make_test_state(action=f"echo step {i}", on_yes=nxt, on_no="s0")
+    states["done"] = make_test_state(terminal=True)
+    return make_test_fsm(name="back-edge-heavy", initial="s0", states=states)
+
+
+def _max_line_display_width(rendered: str) -> int:
+    return max(
+        (max(0, wcswidth(strip_ansi(ln))) for ln in rendered.splitlines()),
+        default=0,
+    )
+
+
+def _clean_facets() -> object:
+    from little_loops.cli.loop.diagram_modes import DiagramFacets
+
+    return DiagramFacets("layered", False, "title", "main", "preset")  # "clean" preset
+
+
+def test_back_edge_gutter_clamped_to_width(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Part 1: the back-edge left gutter is clamped to ``tw // 3`` so state boxes
+    are not pushed off the right edge. Unclamped this FSM renders ~100 cols wide
+    at tw=80; clamped, no line exceeds tw."""
+    tw = 80
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+    fsm = _make_back_edge_heavy_fsm()
+    rendered = _render_fsm_diagram(fsm)
+    assert _max_line_display_width(rendered) <= tw, (
+        f"back-edge gutter unbounded: widest line is "
+        f"{_max_line_display_width(rendered)} cols (> {tw})"
+    )
+
+
+def test_streaming_diagram_fits_width(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Part 2 (invariant): the non-TTY streaming render never emits a line wider
+    than the effective width for a back-edge-heavy FSM."""
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+
+    tw = 80
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+    fsm = _make_back_edge_heavy_fsm()
+    rendered = _render_streaming_diagram(
+        fsm,
+        "s0",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=tw,
+    )
+    assert rendered, "streaming render produced no diagram"
+    assert _max_line_display_width(rendered) <= tw, (
+        f"streaming diagram overflows: widest line is "
+        f"{_max_line_display_width(rendered)} cols (> {tw})"
+    )
+
+
+def test_streaming_diagram_degrades_when_too_wide(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Part 2 (ladder walk): when the full diagram cannot fit ``cols``, the
+    streaming path sheds detail via the ENH-2411 ladder rather than emitting the
+    raw full render. A narrow ``cols`` forces degradation."""
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+
+    tw = 80
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+    fsm = _make_back_edge_heavy_fsm(n=8)  # full render ~55 cols; degrades below a 40-col budget
+    full = _render_fsm_diagram(fsm, title_only=True, mode="full")
+    cols = 40
+    assert _max_line_display_width(full) > cols, "precondition: full render wider than target cols"
+
+    rendered = _render_streaming_diagram(
+        fsm,
+        "s0",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=cols,
+    )
+    assert rendered, "streaming render produced no diagram"
+    assert _max_line_display_width(rendered) <= cols, (
+        f"streaming diagram did not degrade to fit: widest line is "
+        f"{_max_line_display_width(rendered)} cols (> {cols})"
+    )
+    # The degraded render is strictly smaller than the full render it replaced.
+    assert _max_line_display_width(rendered) < _max_line_display_width(full)
+
+
+def test_variant_width_counts_display_columns() -> None:
+    """Part 3: ``_variant_width`` measures display columns (wcwidth), not char
+    count, so double-width glyphs are sized correctly."""
+    from little_loops.cli.loop._helpers import _variant_width
+
+    # Three CJK glyphs → 3 chars but 6 display columns.
+    assert _variant_width("状態確") == 6
+    # Widest line across a multi-line variant.
+    assert _variant_width("ab\n状態確認") == 8
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

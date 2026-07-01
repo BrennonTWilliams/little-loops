@@ -990,6 +990,11 @@ def _render_layered_diagram(
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back_initial)
         n_back_initial = len(non_self_back_initial)
         back_edge_margin = max_label_len + max(6, 2 * n_back_initial + 2)
+        # BUG-2425: clamp the back-edge channel gutter to a fraction of the
+        # terminal width so a back-edge-heavy loop can't push state boxes off
+        # the right edge. Overflow channels are dropped by the draw loop's
+        # `col >= content_left - 1` guard, collapsing into the bounded gutter.
+        back_edge_margin = min(back_edge_margin, max(6, tw // 3))
 
     content_left = 2 + back_edge_margin
 
@@ -1147,6 +1152,8 @@ def _render_layered_diagram(
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back)
         n_back = len(non_self_back)
         actual_margin = max_label_len + max(6, 2 * n_back + 2)
+        # BUG-2425: same terminal-width clamp as the initial estimate above.
+        actual_margin = min(actual_margin, max(6, tw // 3))
         if actual_margin != back_edge_margin:
             # Need to recalculate positions (rare case - usually matches)
             back_edge_margin = actual_margin

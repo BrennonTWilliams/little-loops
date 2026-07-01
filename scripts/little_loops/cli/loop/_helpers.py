@@ -276,10 +276,18 @@ def _classify_fsm_topology(fsm: FSMLoop) -> str:
 
 
 def _variant_width(variant: str | None) -> int:
-    """Return the widest display (ANSI-stripped) line in a rendered variant."""
+    """Return the widest display (ANSI-stripped) line in a rendered variant.
+
+    Uses ``_display_width`` (wcwidth) rather than ``len`` so double-width glyphs
+    (emoji badges, CJK, some arrows) are sized by the columns they occupy, not
+    the code points they take (BUG-2425 Part 3). Local import avoids the
+    layout↔_helpers module-load cycle.
+    """
     if not variant:
         return 0
-    return max((len(strip_ansi(ln)) for ln in variant.split("\n")), default=0)
+    from little_loops.cli.loop.layout import _display_width
+
+    return max((_display_width(strip_ansi(ln)) for ln in variant.split("\n")), default=0)
 
 
 def _build_fallback_ladder(
@@ -618,6 +626,92 @@ def _render_pinned_pane(
     return pinned_height
 
 
+def _render_streaming_diagram(
+    fsm: FSMLoop,
+    highlight_state: str | None,
+    *,
+    facets: DiagramFacets,
+    highlight_color: str,
+    edge_label_colors: dict[str, str] | None,
+    badges: dict[str, str] | None,
+    scope: str,
+    cols: int,
+) -> str:
+    """Render the FSM diagram for the non-TTY streaming path, degrading it via
+    the ENH-2411 fallback ladder until it fits ``cols`` display columns.
+
+    The pinned/TTY path routes through ``_render_pinned_pane`` →
+    ``_build_fallback_ladder`` and sheds detail when a diagram won't fit. The
+    streaming (background/log) path previously called ``_render_fsm_diagram``
+    directly with no width budget, so a wide/back-edge-heavy loop overflowed and
+    wrapped into a broken stream (BUG-2425 Defect 2). This mirrors the ladder for
+    streaming: render ``full``; if it fits, use it; otherwise walk the
+    topology-ordered ladder (``title_only`` / ``neighborhood`` / ``single``,
+    skipping ``window`` which needs a row budget the log has none of) and return
+    the first rung whose widest line fits ``cols``. ``single`` is the guaranteed
+    floor.
+
+    ``scope`` is the already-resolved main→full scope from the caller (its
+    off-happy-path fallback has already run), so every rung renders at that scope.
+    """
+    from little_loops.cli.loop.layout import (
+        _render_fsm_diagram,
+        _render_neighborhood_diagram,
+    )
+
+    verbose = facets.scope == "full" and facets.state_detail == "full"
+
+    def _render_rung(detail: str) -> str:
+        if detail == "single":
+            return _render_single_line_status(fsm, highlight_state)
+        if detail == "neighborhood":
+            return _render_neighborhood_diagram(
+                fsm,
+                highlight_state or fsm.initial,
+                edge_label_colors=edge_label_colors,
+                badges=badges,
+                highlight_color=highlight_color,
+                mode=scope,
+                prev_state=None,
+            )
+        # "full" and the "title_only" detail-shedding rungs (ENH-2411) — all keep
+        # every state; the title-only rungs force shorter/narrower boxes.
+        if detail == "title_only":
+            render_verbose, render_title_only, render_suppress = False, True, not facets.edge_labels
+        elif detail == "title_only_nolabels":
+            render_verbose, render_title_only, render_suppress = False, True, True
+        else:  # full
+            render_verbose = verbose
+            render_title_only = facets.state_detail == "title"
+            render_suppress = not facets.edge_labels
+        return _render_fsm_diagram(
+            fsm,
+            verbose=render_verbose,
+            highlight_state=highlight_state,
+            highlight_color=highlight_color,
+            edge_label_colors=edge_label_colors,
+            badges=badges,
+            mode=scope,
+            suppress_labels=render_suppress,
+            title_only=render_title_only,
+        )
+
+    full_variant = _render_rung("full")
+    if _variant_width(full_variant) <= cols:
+        return full_variant
+
+    ladder = _build_fallback_ladder(facets, fsm, full_variant, cols)
+    for rung in ladder:
+        if rung in ("full", "window"):
+            continue
+        variant = _render_rung(rung)
+        if variant and _variant_width(variant) <= cols:
+            return variant
+
+    # Guaranteed floor: the single-line status always fits.
+    return _render_single_line_status(fsm, highlight_state)
+
+
 class StateFeedRenderer:
     """Renders loop-state events as terminal output for foreground runs and monitor attach.
 
@@ -750,7 +844,6 @@ class StateFeedRenderer:
                 from little_loops.cli.loop.layout import (
                     _collect_edges,
                     _filter_main_path_graph,
-                    _render_fsm_diagram,
                 )
 
                 assert self.facets is not None
@@ -779,15 +872,18 @@ class StateFeedRenderer:
                             f"(showing full diagram: active state "
                             f"{active_highlight!r} is off the main path)"
                         )
-                diagram = _render_fsm_diagram(
+                # BUG-2425: route through the ENH-2411 width-fallback ladder so a
+                # wide/back-edge-heavy diagram degrades (title-only / neighborhood
+                # / single) instead of overflowing the non-TTY log width.
+                diagram = _render_streaming_diagram(
                     active_fsm_diag,
-                    highlight_state=active_highlight,
+                    active_highlight,
+                    facets=self.facets,
                     highlight_color=self.highlight_color,
                     edge_label_colors=self.edge_label_colors,
                     badges=self.badges,
-                    mode=active_scope,
-                    suppress_labels=not self.facets.edge_labels,
-                    title_only=self.facets.state_detail == "title",
+                    scope=active_scope,
+                    cols=tw,
                 )
                 # Header: breadcrumb shows immediate parent when inside a sub-loop.
                 if active_depth_diag > 0:
