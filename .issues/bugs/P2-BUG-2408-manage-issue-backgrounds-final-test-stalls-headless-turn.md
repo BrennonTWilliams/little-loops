@@ -305,6 +305,35 @@ _Added by `/ll:refine-issue` — concrete test target and pattern:_
 - Run with:
   `python -m pytest scripts/tests/test_wiring_skills_and_commands.py -v`
 
+### Wiring Pass Findings (added by `/ll:wire-issue`)
+
+- **Exact row shape**: `DOC_STRINGS_PRESENT` / `DOC_STRINGS_ABSENT` rows are positional
+  3-tuples `(doc_rel, needle, issue_id)`; `issue_id` appears **only** in the assertion
+  failure message, not matched against any registry — so a `"BUG-2408"` tag is a
+  free-form traceability annotation. [Agent 3]
+- **Regression guard — do not displace these substrings.** Existing manage-issue
+  `DOC_STRINGS_PRESENT` needles live in the phases this fix edits: `completed_at`,
+  `date -u +"%Y-%m-%dT%H:%M:%SZ`, `update_frontmatter` (Phase 5 §1.6), and
+  `status: done` / `status:` (Phase 5 §2). They are plain-presence checks, so a reorder
+  won't break them — but the edit must not **remove or rephrase** these exact
+  substrings. [Agent 3]
+- **`test_skill_expander.py` will break on a raw token.**
+  `TestExpandSkillAgainstRealManageIssue::test_manage_issue_expansion_has_no_raw_tokens`
+  (~lines 253–277) asserts the expanded skill contains no unresolved `{{config.` /
+  `$ARGUMENTS` / `(templates.md)` tokens — new Phase 4 prose that accidentally includes
+  such a pattern will fail this test. [Agent 2 + Agent 3]
+- **Bespoke ordering-test slicer detail.** If a scoped Phase-4/Phase-5 ordering test is
+  added, `skills/manage-issue/SKILL.md` uses `##`-level phase headings — a
+  `_phase_text()`-style slicer must delimit with `content.find("\n## ", start + 1)`,
+  **not** the `\n###` used in `test_confidence_check_skill.py`. Note also that the
+  pattern-source files (`test_confidence_check_skill.py`, `test_ready_issue_lint.py`) use
+  a module-level `PROJECT_ROOT = Path(__file__).parent.parent.parent` constant, not the
+  `conftest.py` `project_root` fixture (a minor correction to the note above). [Agent 3]
+- **Gap (not invented):** no integration/e2e test drives `ll-auto` / `run_with_continuation`
+  through a headless turn that backgrounds the final suite and narrates waiting for a
+  notification, then asserts the turn stalls (or, post-fix, does not). The SKILL.md
+  content-lint rows are the practical guard; a full behavioral test remains a gap. [Agent 3]
+
 ## Acceptance Criteria
 
 - `ll-auto --only <ID>` on an issue with a long final test run finishes the turn
@@ -339,6 +368,7 @@ run summary.
 manage-issue, ll-auto, headless, automation, finalization
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-01T00:31:12 - `28c75023-3d01-4d42-8eca-8d599b55ff31.jsonl`
 - `/ll:refine-issue` - 2026-07-01T00:18:04 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:09:07 - `ac278041-8972-4118-8e20-9572ae7f75f4.jsonl`
 - `/ll:capture-issue` - 2026-07-01T00:04:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50bef1ad-9ed2-44c2-9376-d53bca2305b4.jsonl`
