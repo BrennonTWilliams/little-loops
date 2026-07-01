@@ -144,7 +144,7 @@ taxonomy, and the canonical shape live in
 
 | Rule | Sev | Catches | Suppress with |
 |------|-----|---------|---------------|
-| MR-1 | ERROR | `check_semantic`/`llm_structured` state with no non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `mcp_result`) in its routing chain | `meta_self_eval_ok` |
+| MR-1 | ERROR | `check_semantic`/`llm_structured` state with no non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `score_stall`, `mcp_result`) in its routing chain | `meta_self_eval_ok` |
 | MR-2 | WARN | baseline value captured but never referenced by a later evaluator (no measure→propose→apply→re-measure spine) | `meta_self_eval_ok` |
 | MR-3 | WARN | intermediate artifacts written to bare `.loops/tmp/` instead of `${context.run_dir}/` (`.issues/`, `.loops/diagnostics/`, `thoughts/` exempt) | `shared_state_ok` |
 | MR-4 | WARN | LLM-judged state sets `on_yes` but dead-ends on `no`/`partial` (no `on_no`/`on_partial`/`next`/full `route`) | `partial_route_ok` |
