@@ -111,6 +111,80 @@ accurate (no drift):_
   `subprocess.run(["git", ...], capture_output=True, text=True)` (as at `:883-888`),
   **not** `worker_pool.py`'s `_git_lock.run(...)` — documented in BUG-1538.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/run.py` — **second consumer** of
+  `process_issue_inplace()` / `IssueProcessingResult`, not previously noted (the
+  issue only cites `AutoManager._process_issue`). Its
+  `_run_issue_with_wall_clock_timeout()` wrapper calls `process_issue_inplace`
+  verbatim, so `ll-sprint`'s sequential-wave loop **and** its post-parallel retry
+  loop inherit this routing change automatically. It does **not** branch on
+  `.plan_created` today — a `plan_created=True` result falls into the generic
+  `else` and is recorded as `state.failed_issues[...] = "Issue processing
+  failed"`. The fix reduces that miscategorization as a side effect (dirty-tree
+  cases now fall through to the evidence path). No code change required in
+  `run.py`, but its wave-summary counts shift as a consequence. [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/cli/auto.py` — the `ll-auto` CLI entry point; instantiates
+  `AutoManager` and calls `.run()`, completing the chain `cli/auto.py →
+  AutoManager.run → _process_issue (:1371) → process_issue_inplace`. No code
+  change; establishes the invocation path the bug is observed under. [Agent 1 finding]
+- `scripts/little_loops/parallel/worker_pool.py` — imports `verify_work_was_done`
+  / `EXCLUDED_DIRECTORIES` but has **no** `detect_plan_creation` / "awaiting
+  approval" short-circuit; `ll-parallel` is structurally unaffected and needs no
+  parallel fix (reinforces Out of Scope). [Agent 2 finding]
+- `scripts/little_loops/__init__.py`, `scripts/little_loops/git_operations.py` —
+  re-export surfaces for `AutoManager` / `verify_work_was_done`; no change, listed
+  for completeness. [Agent 1 finding]
+
+### Return-Type Coupling
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_manager.py` — `IssueProcessingResult` (the dataclass
+  returned by `process_issue_inplace`) encodes status as independent boolean flags
+  (`was_closed`, `was_blocked`, `plan_created`), **not** a status enum. If the fix
+  surfaces "completed-but-unfinalized" as structured data rather than log text
+  only, add a new boolean flag here following that convention — there is no enum
+  to extend. `IssueProcessingResult` is also constructed synthetically in
+  `cli/sprint/run.py` (`WALL_CLOCK_TIMEOUT` path), so any new required field must
+  have a default. [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_sprint.py` (733-921), `scripts/tests/test_cli_sprint.py`
+  (626-713), `scripts/tests/test_sprint_integration.py` (292-1864) — mock
+  `process_issue_inplace` wholesale, so they will **not** break; confirm no
+  regression after the fix. [Agent 1 finding]
+- `scripts/tests/test_cli.py` (302-441), `scripts/tests/test_cli_e2e.py`
+  (282-301), `scripts/tests/test_issue_workflow_integration.py` (87-129) —
+  construct `AutoManager` with `dry_run=True`, so they never reach Phase 3
+  (`if not dry_run:` gate at `issue_manager.py:1001`). **Coverage gap:** no
+  e2e/integration test exercises the real (non-dry-run) Phase-3 short-circuit or
+  the run-summary "Issues processed" count in combination with `plan_created`;
+  the two new unit tests in "Tests to Add" are the *only* coverage of this branch. [Agent 3 finding]
+- Reuse the four-call `subprocess.run` `side_effect` pattern from
+  `test_work_verification.py:436-460`
+  (`test_committed_changes_detected_via_baseline_sha`: uncommitted diff → staged
+  diff → `rev-parse HEAD` → `baseline..HEAD` diff) **only if** a new test drives
+  `verify_work_was_done` through real git-diff mocks; the simpler convention at
+  the `issue_manager.py` level (matching `test_baseline_sha_passed_to_verify_work_was_done`)
+  is to patch `verify_work_was_done`'s return value directly. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — "Sequential Mode (ll-auto)" mermaid diagram has a
+  single abstracted `Phase 3: Verification` note; no claim becomes false, but this
+  is the natural home if the "completed-but-unfinalized" branch should be surfaced
+  diagrammatically. Advisory/optional. [Agent 2 finding]
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `config-schema.json` — checked
+  and **not affected**: API.md does not document
+  `process_issue_inplace`/`IssueProcessingResult`; CLI.md's `ll-auto` section has
+  no "awaiting approval" text; `config-schema.json`'s `automation` block has no
+  plan-detection/work-verification key (a new key is needed only if an opt-out
+  flag is deliberately added, which the current scope does not require). [Agent 2 finding]
+
 ## Steps to Reproduce
 
 1. Take an issue whose plan clears the confidence gate (≥ threshold) so the agent
@@ -219,6 +293,7 @@ the reliability of the run summary and risks a dirty-tree re-plan on re-run.
 ll-auto, verification, phase-3, plan-detection, automation
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-01T00:31:28 - `2ab6ee87-0a40-4d96-a26e-4423be53af2b.jsonl`
 - `/ll:refine-issue` - 2026-07-01T00:20:03 - `3fb8d5dc-1928-4342-8cac-be6c5066aa24.jsonl`
 - `/ll:format-issue` - 2026-07-01T00:08:39 - `f960a02a-adbc-4f7d-b3c8-b867aa0ea338.jsonl`
 - `/ll:capture-issue` - 2026-07-01T00:04:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/50bef1ad-9ed2-44c2-9376-d53bca2305b4.jsonl`
