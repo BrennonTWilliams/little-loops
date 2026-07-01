@@ -16,6 +16,7 @@ labels:
 relates_to:
 - EPIC-1463
 - EPIC-2178
+- EPIC-2258
 - FEAT-2274
 - FEAT-2391
 - FEAT-2392
@@ -79,11 +80,15 @@ epic.
 
 ## Children
 
+All three generic shared-infrastructure children are complete — the
+host-parameterized infrastructure this epic owns is fully landed. Remaining
+portfolio work is in the tracked per-host epics below.
+
 - **FEAT-2259** — Generic host-parameterized conformance harness (**done**)
-- **FEAT-2260** — Generic host-parameterized skill + command adapter (pending)
+- **FEAT-2260** — Generic host-parameterized skill + command adapter (**done**)
 - **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
-  (scope-aware install detection prerequisite **BUG-2266** is done; FEAT-2267 is
-  unblocked. BUG-2266 is a `relates_to` precursor, not a child of this epic.)
+  (**done**; scope-aware install-detection prerequisite **BUG-2266** also done.
+  BUG-2266 is a `relates_to` precursor, not a child of this epic.)
 
 ## Tracked sub-epics (sequenced under this epic)
 
@@ -104,9 +109,10 @@ epic.
 
 - Host order is recorded once (ARCHITECTURE-048) and every per-host epic
   references it rather than re-deriving priority.
-- FEAT-2259 landed as a generic component (**done**); FEAT-2260 still pending —
-  and the bespoke per-host conformance / skill / command children are either
-  folded into them or explicitly closed as superseded.
+- FEAT-2259, FEAT-2260, and FEAT-2267 all landed as generic components
+  (**all done**) — and the bespoke per-host conformance / skill / command
+  children are either folded into them or explicitly closed as superseded
+  (e.g. EPIC-2178's FEAT-2188 / FEAT-2189 / FEAT-2192, cancelled 2026-06-25).
 - `HOST_COMPATIBILITY.md` columns for every active host are driven by the
   generic conformance harness output.
 
@@ -123,6 +129,26 @@ epic.
   and the "FEAT-2259 and FEAT-2260 land as generic components" acceptance
   criterion to reflect that FEAT-2259 landed (`done`) and EPIC-2279 is 100%
   complete; FEAT-2260 remains pending. Cross-references/backlinks left unchanged.
+
+- **2026-06-30** (bookkeeping refresh): FEAT-2260 (status `done`) and FEAT-2267
+  (status `done`, with prerequisite BUG-2266 `done`) had stale "pending" /
+  "unblocked" prose in Children and Acceptance Criteria. Updated both — **all
+  three generic shared-infrastructure children (FEAT-2259 / FEAT-2260 /
+  FEAT-2267) are now complete**, so this epic's host-parameterized infrastructure
+  is fully landed. Remaining portfolio work is entirely in the tracked per-host
+  epics (EPIC-1463 / EPIC-2178 / EPIC-2258, all `open`); epic stays `open` as the
+  coordination shell until those sequence through.
+
+- **2026-06-30** (relationship normalization): The three tracked per-host epics
+  were linked inconsistently — EPIC-1463 and EPIC-2178 via `relates_to` only,
+  but EPIC-2258 additionally via `parent: EPIC-2257`. Since `ll-issues
+  epic-progress` counts direct `parent:` children non-recursively, EPIC-2258 was
+  being folded into this coordination epic's completion %. Removed `parent:
+  EPIC-2257` from EPIC-2258 (its `relates_to` already back-links here) and added
+  EPIC-2258 to this epic's `relates_to` for bidirectional symmetry with the other
+  two. Per-host epics are now uniformly tracked via `relates_to` + the "Tracked
+  per-host epics" prose section, not `parent:`. `epic-progress` now reports 6/6
+  (100%) on the directly-owned generic children.
 
 ## Status
 

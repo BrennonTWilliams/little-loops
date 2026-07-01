@@ -5,7 +5,7 @@ type: enhancement
 status: open
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179, ENH-2184, ENH-2185, FEAT-2186, ENH-2187, FEAT-2188, FEAT-2189, FEAT-2190]
+depends_on: [FEAT-2179, ENH-2184, ENH-2185, FEAT-2186, ENH-2187, FEAT-2190, FEAT-2259, FEAT-2260]
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -45,11 +45,11 @@ requires no `(deferred)[^gemini]` cells in the Gemini column.
 | Blocking JSON | ✓ (`-o json`) | ENH-2185 |
 | `--version` flag | ✓ | ENH-2185 |
 | Config probe | ✓ (`.gemini/ll-config.json`) | ENH-2187 |
-| Skills discovery | ✓ (`.gemini/skills/`) | FEAT-2188 |
-| Commands discovery | ✓ (`.gemini/commands/*.toml`) | FEAT-2189 |
+| Skills discovery | ✓ (`.gemini/skills/`) | FEAT-2260 (generic adapter, `--host gemini`) |
+| Commands discovery | ✓ (`.gemini/commands/*.toml`) | FEAT-2260 (generic adapter, `--host gemini`) |
 | Project instructions | ✓ (`GEMINI.md`) | FEAT-2190 |
-| `ll-auto` conformance | ✓ | FEAT-2192 |
-| `ll-loop` conformance | ✓ | FEAT-2192 |
+| `ll-auto` conformance | ✓ | FEAT-2259 (generic harness, `--host gemini`) |
+| `ll-loop` conformance | ✓ | FEAT-2259 (generic harness, `--host gemini`) |
 
 ## Implementation Steps
 
@@ -90,6 +90,8 @@ This issue should be updated incrementally as children land. Final pass:
 2026-06-19 (NEEDS_UPDATE): Confirmed — HOST_COMPATIBILITY.md Gemini column already has `(deferred)[^gemini]` values, not the `(unknown)` stubs the issue body describes. Remaining work (flip deferred→✓ as children land) is still valid; update Summary and Use Case sections to reflect the current column state.
 
 - **2026-06-26** (/ll:verify-issues): Replaced all `(unknown)` references (no such cells exist) with `(deferred)[^gemini]` in Summary, Use Case, Implementation step 4, and Acceptance Criteria, matching the actual Gemini cells at HOST_COMPATIBILITY.md:25-30.
+
+- **2026-06-30** (dependency hygiene): Removed cancelled `FEAT-2188` and `FEAT-2189` from `depends_on` (both cancelled 2026-06-25, superseded by `FEAT-2260` generic skill+command adapter, now `done`). Added `FEAT-2259` (generic conformance harness, `done`) and `FEAT-2260` to `depends_on` to reflect the real prerequisites. Repointed the Cell Update Map "Depends on" column for skills/commands/conformance cells from the cancelled bespoke issues (FEAT-2188/2189/2192) to the generic components. `ll-deps validate` does not flag depends-on-cancelled, so this was a latent stall risk for dependency-ordered runners.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

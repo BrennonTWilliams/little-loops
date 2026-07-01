@@ -6,7 +6,6 @@ status: open
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
-parent: EPIC-2257
 decision_ref: ARCHITECTURE-048
 labels: [epic, host-compat, omp, pi-adapter, tracking]
 relates_to: [EPIC-2257, EPIC-2178]
@@ -76,6 +75,16 @@ EPIC-2257:
 - **Effort**: Medium (aggregate) — runner + hook adapter are the bulk.
 - **Risk**: Low — additive; no existing runner modified.
 - **Breaking Change**: No.
+
+## Verification Notes
+
+- **2026-06-30** (relationship normalization): Removed `parent: EPIC-2257` from
+  frontmatter. This epic is tracked by the EPIC-2257 coordination epic via
+  `relates_to` + its "Tracked per-host epics" prose — matching EPIC-1463 (Codex)
+  and EPIC-2178 (Gemini) — **not** via `parent:`. `parent:` was the lone outlier
+  and caused `ll-issues epic-progress` to fold this whole sub-epic into
+  EPIC-2257's direct-child completion %. The `relates_to: [EPIC-2257, EPIC-2178]`
+  back-link is retained. Do not re-add `parent:` here.
 
 ## Status
 
