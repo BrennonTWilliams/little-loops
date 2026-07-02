@@ -262,6 +262,150 @@ def test_streaming_diagram_degrades_when_too_wide(monkeypatch: pytest.MonkeyPatc
     assert _max_line_display_width(rendered) < _max_line_display_width(full)
 
 
+# ---------------------------------------------------------------------------
+# ENH-2442 — windowed rung wired into the streaming path
+# ---------------------------------------------------------------------------
+#
+# The window rung's real geometry couples to ``terminal_width()`` internally
+# (its overflow banner and back-edge margins are sized against the live
+# terminal, not the caller's ``cols``), so a real-FSM width probe can't
+# reliably force "full too wide, window fits" without an oversized fixture.
+# These tests instead patch the render primitives ``_render_streaming_diagram``
+# dispatches to, isolating the ladder-walk plumbing this issue adds from that
+# pre-existing (out-of-scope) geometry coupling.
+
+
+def test_streaming_diagram_uses_window_rung_when_full_too_wide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the full render doesn't fit ``cols``, the streaming walk now tries
+    the windowed rung (previously unconditionally skipped) before falling to
+    the neighborhood view, mirroring the pinned-pane ladder."""
+    import little_loops.cli.loop.layout as layout
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+
+    cols = 60
+    monkeypatch.setattr(layout, "terminal_width", lambda **_kw: cols)
+    monkeypatch.setattr(layout, "_render_fsm_diagram", lambda *a, **kw: "F" * 100)
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_windowed(*_args: object, **kwargs: object) -> str:
+        captured_kwargs.update(kwargs)
+        return "  ▲ 2 layers above  (s0 → s1)\n  │ s3 │\n  ▼ 2 layers below  (s4 → …)"
+
+    monkeypatch.setattr(layout, "_render_windowed_diagram", fake_windowed)
+
+    fsm = _make_back_edge_heavy_fsm(n=6)
+    rendered = _render_streaming_diagram(
+        fsm,
+        "s3",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=cols,
+    )
+    assert "layers above" in rendered and "layers below" in rendered, rendered
+    # Per-event row budget derived from terminal width (Proposed Solution step 1).
+    assert captured_kwargs.get("budget") == max(8, cols // 4)
+
+
+def test_streaming_diagram_falls_through_when_window_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the windowed render returns ``""`` (degenerate budget/graph — see
+    ``_render_windowed_diagram``'s documented empty-return cases), the
+    streaming walk transparently continues to the next rung rather than
+    stopping on the empty variant."""
+    import little_loops.cli.loop.layout as layout
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+
+    cols = 60
+    monkeypatch.setattr(layout, "terminal_width", lambda **_kw: cols)
+    monkeypatch.setattr(layout, "_render_fsm_diagram", lambda *a, **kw: "F" * 100)
+    monkeypatch.setattr(layout, "_render_windowed_diagram", lambda *a, **kw: "")
+    monkeypatch.setattr(
+        layout, "_render_neighborhood_diagram", lambda *a, **kw: "NEIGHBORHOOD-MARKER"
+    )
+
+    fsm = _make_back_edge_heavy_fsm(n=6)
+    rendered = _render_streaming_diagram(
+        fsm,
+        "s3",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=cols,
+    )
+    assert rendered == "NEIGHBORHOOD-MARKER", rendered
+
+
+def test_streaming_ladder_walk_tries_window_before_neighborhood(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lock-in test: the streaming rung-call sequence includes ``window``
+    immediately after ``full`` and stops there once it fits, so a future
+    regression re-introducing the skip guard shows up as a call-order change."""
+    import little_loops.cli.loop.layout as layout
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+
+    cols = 60
+    calls: list[str] = []
+    monkeypatch.setattr(layout, "terminal_width", lambda **_kw: cols)
+    monkeypatch.setattr(
+        layout, "_render_fsm_diagram", lambda *a, **kw: calls.append("full") or "F" * 100
+    )
+    monkeypatch.setattr(
+        layout, "_render_windowed_diagram", lambda *a, **kw: calls.append("window") or "W" * 10
+    )
+    monkeypatch.setattr(
+        layout,
+        "_render_neighborhood_diagram",
+        lambda *a, **kw: calls.append("neighborhood") or "N" * 10,
+    )
+
+    fsm = _make_back_edge_heavy_fsm(n=6)
+    _render_streaming_diagram(
+        fsm,
+        "s3",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=cols,
+    )
+    assert calls == ["full", "window"], calls
+
+
+def test_streaming_diagram_single_state_window_degenerate_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real (unmocked) degenerate-return contract: a single-state graph makes
+    ``_render_windowed_diagram`` return ``""`` (``len(all_states) <= 1``), so
+    the streaming walk still resolves to the single-line status floor."""
+    from little_loops.cli.loop._helpers import _render_streaming_diagram
+    from tests.helpers import make_test_fsm, make_test_state
+
+    cols = 10
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: cols)
+    fsm = make_test_fsm(initial="only", states={"only": make_test_state(terminal=True)})
+    rendered = _render_streaming_diagram(
+        fsm,
+        "only",
+        facets=_clean_facets(),
+        highlight_color="32",
+        edge_label_colors=None,
+        badges=None,
+        scope="full",
+        cols=cols,
+    )
+    assert rendered == "fsm: · → [only] → ·", rendered
+
+
 def test_variant_width_counts_display_columns() -> None:
     """Part 3: ``_variant_width`` measures display columns (wcwidth), not char
     count, so double-width glyphs are sized correctly."""

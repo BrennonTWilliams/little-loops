@@ -638,7 +638,7 @@ def _render_streaming_diagram(
     cols: int,
 ) -> str:
     """Render the FSM diagram for the non-TTY streaming path, degrading it via
-    the ENH-2411 fallback ladder until it fits ``cols`` display columns.
+    the ENH-2411/ENH-2442 fallback ladder until it fits ``cols`` display columns.
 
     The pinned/TTY path routes through ``_render_pinned_pane`` →
     ``_build_fallback_ladder`` and sheds detail when a diagram won't fit. The
@@ -646,10 +646,11 @@ def _render_streaming_diagram(
     directly with no width budget, so a wide/back-edge-heavy loop overflowed and
     wrapped into a broken stream (BUG-2425 Defect 2). This mirrors the ladder for
     streaming: render ``full``; if it fits, use it; otherwise walk the
-    topology-ordered ladder (``title_only`` / ``neighborhood`` / ``single``,
-    skipping ``window`` which needs a row budget the log has none of) and return
-    the first rung whose widest line fits ``cols``. ``single`` is the guaranteed
-    floor.
+    topology-ordered ladder (``title_only`` / ``window`` / ``neighborhood`` /
+    ``single``) and return the first rung whose widest line fits ``cols``. The
+    ``window`` rung (ENH-2410) uses a per-event row budget derived from ``cols``
+    (the streaming path has no scroll-region to size against). ``single`` is the
+    guaranteed floor.
 
     ``scope`` is the already-resolved main→full scope from the caller (its
     off-happy-path fallback has already run), so every rung renders at that scope.
@@ -657,6 +658,7 @@ def _render_streaming_diagram(
     from little_loops.cli.loop.layout import (
         _render_fsm_diagram,
         _render_neighborhood_diagram,
+        _render_windowed_diagram,
     )
 
     verbose = facets.scope == "full" and facets.state_detail == "full"
@@ -673,6 +675,19 @@ def _render_streaming_diagram(
                 highlight_color=highlight_color,
                 mode=scope,
                 prev_state=None,
+            )
+        if detail == "window":
+            return _render_windowed_diagram(
+                fsm,
+                highlight_state,
+                budget=max(8, cols // 4),
+                verbose=verbose,
+                highlight_color=highlight_color,
+                edge_label_colors=edge_label_colors,
+                badges=badges,
+                mode=scope,
+                suppress_labels=not facets.edge_labels,
+                title_only=facets.state_detail == "title",
             )
         # "full" and the "title_only" detail-shedding rungs (ENH-2411) — all keep
         # every state; the title-only rungs force shorter/narrower boxes.
@@ -702,7 +717,7 @@ def _render_streaming_diagram(
 
     ladder = _build_fallback_ladder(facets, fsm, full_variant, cols)
     for rung in ladder:
-        if rung in ("full", "window"):
+        if rung == "full":
             continue
         variant = _render_rung(rung)
         if variant and _variant_width(variant) <= cols:
