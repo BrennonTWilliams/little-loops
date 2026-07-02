@@ -64,16 +64,35 @@ def _issue_age_days(issue: IssueInfo) -> int | None:
     return max(0, delta.days)
 
 
+def _issue_descends_to(issue_id: str, epic_id: str, parent_map: dict[str, str]) -> bool:
+    """Walk parent chain upward; True iff `issue_id` (transitively) parents to `epic_id`.
+
+    Cycle-safe via a `seen` guard matching the pattern in
+    `cli/issues/list_cmd.py::_find_epic_ancestor`.
+    """
+    seen: set[str] = set()
+    current = parent_map.get(issue_id)
+    while current and current not in seen:
+        if current == epic_id:
+            return True
+        seen.add(current)
+        current = parent_map.get(current)
+    return False
+
+
 def compute_epic_progress(
     epic_id: str,
     all_issues: list[IssueInfo],
 ) -> EpicProgress | None:
     """Compute progress aggregates for an EPIC from all loaded issues.
 
-    Child resolution uses only the ``parent:`` back-reference on child issues.
-    ``relates_to:`` is a cross-reference field (siblings, dependencies) and is
-    intentionally excluded to avoid inflating counts with non-child references.
-    All statuses (including done/cancelled/deferred) are included in totals.
+    Child resolution walks the ``parent:`` chain transitively (cycle-guarded),
+    mirroring ``cli/issues/list_cmd.py::_find_epic_ancestor`` so an issue
+    nests under an EPIC even if its immediate parent is a (done) intermediate
+    FEAT. ``relates_to:`` is a cross-reference field (siblings, dependencies)
+    and is intentionally excluded to avoid inflating counts with non-child
+    references. All statuses (including done/cancelled/deferred) are included
+    in totals.
 
     Returns None when the EPIC ID is not found in all_issues.
     """
@@ -84,7 +103,12 @@ def compute_epic_progress(
         return None
     epic_info = epic_matches[0]
 
-    child_ids: set[str] = {i.issue_id for i in all_issues if i.parent == epic_id}
+    parent_map: dict[str, str] = {i.issue_id: i.parent for i in all_issues if i.parent}
+    child_ids: set[str] = {
+        i.issue_id
+        for i in all_issues
+        if i.issue_id != epic_id and _issue_descends_to(i.issue_id, epic_id, parent_map)
+    }
 
     children = [i for i in all_issues if i.issue_id in child_ids]
 

@@ -240,3 +240,37 @@ class TestComputeEpicProgress:
         assert result_upper is not None
         assert result_lower is not None
         assert result_upper.epic_id == result_lower.epic_id
+
+    def test_transitive_chain_includes_grandchildren(self, tmp_path: Path) -> None:
+        epic = _make_issue(tmp_path, "EPIC-100")
+        feat = _make_issue(tmp_path, "FEAT-200", status="done", parent="EPIC-100")
+        bug = _make_issue(tmp_path, "BUG-300", parent="FEAT-200")
+
+        result = compute_epic_progress("EPIC-100", [epic, feat, bug])
+        assert result is not None
+        child_ids = {c.issue_id for c in result.children}
+        assert child_ids == {"FEAT-200", "BUG-300"}
+
+    def test_cycle_in_parent_chain_does_not_loop(self, tmp_path: Path) -> None:
+        epic = _make_issue(tmp_path, "EPIC-100")
+        feat1 = _make_issue(tmp_path, "FEAT-1", parent="FEAT-2")
+        feat2 = _make_issue(tmp_path, "FEAT-2", parent="FEAT-1")
+
+        result = compute_epic_progress("EPIC-100", [epic, feat1, feat2])
+        assert result is not None
+        assert result.children == []
+
+    def test_unrelated_sibling_chains_excluded(self, tmp_path: Path) -> None:
+        epic_a = _make_issue(tmp_path, "EPIC-A")
+        feat1 = _make_issue(tmp_path, "FEAT-1", parent="EPIC-A")
+        feat2 = _make_issue(tmp_path, "FEAT-2", parent="FEAT-1")
+        feat3 = _make_issue(tmp_path, "FEAT-3", parent="FEAT-2")
+        epic_b = _make_issue(tmp_path, "EPIC-B")
+        feat9 = _make_issue(tmp_path, "FEAT-9", parent="EPIC-B")
+
+        result = compute_epic_progress(
+            "EPIC-A", [epic_a, feat1, feat2, feat3, epic_b, feat9]
+        )
+        assert result is not None
+        child_ids = {c.issue_id for c in result.children}
+        assert child_ids == {"FEAT-1", "FEAT-2", "FEAT-3"}
