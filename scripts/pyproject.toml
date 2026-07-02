@@ -98,6 +98,7 @@ mcp-call = "little_loops.mcp_call:main"
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",
     "ruff>=0.1.0",
@@ -137,12 +138,18 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Coverage is intentionally NOT in addopts: instrumentation adds ~30-100%
+# overhead on every run. For a coverage report use the opt-in invocation:
+#   python -m pytest scripts/tests/ --cov=little_loops \
+#       --cov-report=term-missing:skip-covered --cov-report=html
+# (the [tool.coverage.*] config below still applies when --cov is passed.)
+# -n auto runs the suite across all CPU cores via pytest-xdist. Override with
+# -n 0 to force serial (e.g. when debugging a single test with pdb).
 addopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=little_loops",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-report=html",
+    "-n",
+    "auto",
 ]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
@@ -171,4 +178,6 @@ fail_under = 80
 [tool.mutmut]
 paths_to_mutate = ["little_loops/"]
 pytest_add_cli_args_test_selection = ["tests/"]
-pytest_add_cli_args = ["-x", "-q"]
+# -n0 disables xdist for per-mutant runs: each mutant runs a tiny test subset,
+# so worker spawn overhead would outweigh any parallelism gain.
+pytest_add_cli_args = ["-x", "-q", "-n0"]

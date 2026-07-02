@@ -1293,15 +1293,33 @@ class TestMakeInstanceId:
         result = _make_instance_id("my-loop")
         assert result.startswith("my-loop-")
 
-    def test_successive_calls_are_unique(self) -> None:
-        """Two successive calls return distinct values (timestamp resolution is 1 second)."""
-        import time
+    def test_successive_calls_are_unique(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Two calls in different seconds return distinct values.
 
-        from little_loops.cli.loop._helpers import _make_instance_id
+        The ID embeds a 1-second-resolution timestamp. Rather than sleeping ~1s to
+        cross a real second boundary, freeze the clock to two fixed instants — this
+        is deterministic and instant.
+        """
+        from datetime import datetime
 
-        id1 = _make_instance_id("test")
-        time.sleep(1.05)
-        id2 = _make_instance_id("test")
+        from little_loops.cli.loop import _helpers
+
+        instants = iter(
+            [
+                datetime(2026, 1, 1, 0, 0, 1),
+                datetime(2026, 1, 1, 0, 0, 2),
+            ]
+        )
+
+        class _FrozenDatetime:
+            @staticmethod
+            def now(tz: object = None) -> datetime:
+                return next(instants)
+
+        monkeypatch.setattr(_helpers, "datetime", _FrozenDatetime)
+
+        id1 = _helpers._make_instance_id("test")
+        id2 = _helpers._make_instance_id("test")
         assert id1 != id2, "Expected distinct instance IDs across second boundary"
 
 

@@ -1153,7 +1153,6 @@ class TestContextMonitor:
         session, causing estimates to diverge by 70K+ tokens on long sessions.
         """
         import os
-        import time
 
         original_dir = os.getcwd()
         try:
@@ -1215,9 +1214,12 @@ class TestContextMonitor:
                 "last_baseline_mtime should not change when mtime is unchanged"
             )
 
-            # New turn: wait for mtime to advance, then update transcript with 120K tokens
-            time.sleep(1.1)
+            # New turn: update the transcript, then force its mtime strictly forward
+            # via os.utime so the hook treats this as a new turn. Avoids a real ~1s
+            # sleep just to cross the filesystem mtime-resolution boundary.
             write_transcript(120000)
+            bumped = os.stat(transcript_file).st_mtime + 10
+            os.utime(transcript_file, (bumped, bumped))
 
             state3 = run_hook()
             assert state3["transcript_baseline_tokens"] == 120000, (

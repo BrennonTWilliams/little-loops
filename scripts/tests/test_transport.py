@@ -84,6 +84,27 @@ def _read_lines(conn: socket.socket, expected: int, timeout: float = 5.0) -> lis
     return lines
 
 
+def _wait_until(pred: Any, timeout: float = 2.0, interval: float = 0.005) -> None:
+    """Poll ``pred`` until it returns truthy or ``timeout`` elapses.
+
+    Replaces fixed ``time.sleep()`` waits for the background accept loop: returns
+    as soon as the condition holds (typically single-digit ms) instead of always
+    burning the worst-case delay, and fails loudly instead of racing.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return
+        time.sleep(interval)
+    raise AssertionError(f"condition not met within {timeout}s")
+
+
+def _client_count(t: UnixSocketTransport) -> int:
+    """Number of clients the transport's accept loop has currently registered."""
+    with t._clients_lock:
+        return len(t._clients)
+
+
 class TestTransportProtocol:
     """Tests for the Transport Protocol."""
 
@@ -420,7 +441,7 @@ class TestUnixSocketTransport:
         try:
             client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client.connect(str(path))
-            time.sleep(0.2)
+            _wait_until(lambda: _client_count(t) == 1)
 
             t.send({"event": "first", "ts": "t1"})
             t.send({"event": "second", "ts": "t2"})
@@ -442,7 +463,7 @@ class TestUnixSocketTransport:
             c1.connect(str(path))
             c2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             c2.connect(str(path))
-            time.sleep(0.3)
+            _wait_until(lambda: _client_count(t) == 2)
 
             t.send({"event": "x"})
             t.send({"event": "y"})
@@ -465,12 +486,14 @@ class TestUnixSocketTransport:
             c1.connect(str(path))
             c2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             c2.connect(str(path))
-            time.sleep(0.3)
+            _wait_until(lambda: _client_count(t) == 2)
 
             c1.close()
-            time.sleep(0.2)
-
+            # The next send causes c1's _client_loop to attempt sendall on a
+            # closed socket, which surfaces the disconnect and drops c1 from
+            # _clients. Wait for that cleanup before reading from c2.
             t.send({"event": "after-disconnect"})
+            _wait_until(lambda: _client_count(t) == 1)
 
             lines = _read_lines(c2, expected=1)
             assert len(lines) == 1
@@ -486,11 +509,13 @@ class TestUnixSocketTransport:
         try:
             c1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             c1.connect(str(path))
-            time.sleep(0.2)
+            _wait_until(lambda: _client_count(t) == 1)
 
             c2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             c2.connect(str(path))
-            time.sleep(0.3)
+            # c2 exceeds max_clients=1, so it is accepted-and-closed; wait for the
+            # rejection to be recorded rather than for a client slot to appear.
+            _wait_until(lambda: t.get_stats()["client_rejections"] == 1)
 
             t.send({"event": "only-c1"})
             lines = _read_lines(c1, expected=1)
@@ -520,18 +545,19 @@ class TestUnixSocketTransport:
             c1 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             c1.connect(str(path))
             sockets.append(c1)
-            time.sleep(0.2)
+            _wait_until(lambda: _client_count(t) == 1)
 
             # Connect 5 more clients — all should be rejected.
             # Pace them so the accept loop drains the kernel backlog between attempts;
-            # listen(1) would drop the OS queue if we flood without waiting.
+            # listen(1) would drop the OS queue if we flood without waiting. Waiting
+            # for each rejection to register before the next connect preserves that
+            # pacing while returning as soon as the accept loop catches up.
             with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
-                for _ in range(5):
+                for i in range(5):
                     cx = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                     cx.connect(str(path))
                     sockets.append(cx)
-                    time.sleep(0.08)  # let accept loop process this rejection
-                time.sleep(0.2)  # final settle
+                    _wait_until(lambda i=i: t.get_stats()["client_rejections"] == i + 1)
 
             # All 5 attempts should be counted
             assert t.get_stats()["client_rejections"] == 5
@@ -625,7 +651,7 @@ class TestUnixSocketTransport:
         c1.connect(str(path))
         c2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         c2.connect(str(path))
-        time.sleep(0.3)
+        _wait_until(lambda: _client_count(t) == 2)
 
         start = time.monotonic()
         t.close()
@@ -854,7 +880,10 @@ class TestWebhookTransport:
             t = WebhookTransport(url="http://example.com/hook", batch_ms=50)
             t.send({"event": "a"})
             t.send({"event": "b"})
-            time.sleep(0.2)
+            # Both events are enqueued before any wait, so the batch_ms timer
+            # collects them into one POST; wait for that flush instead of a fixed
+            # sleep (returns as soon as the batch lands, ~batch_ms).
+            _wait_until(lambda: len(posts) >= 1)
             t.close()
 
         assert len(posts) >= 1
