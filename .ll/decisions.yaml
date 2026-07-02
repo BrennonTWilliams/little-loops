@@ -3736,3 +3736,109 @@
     clock, os.utime, or _wait_until predicate p
   enforcement: advisory
   issue: ENH-2445
+- id: ARCHITECTURE-091
+  type: decision
+  timestamp: '2026-07-02T21:13:38Z'
+  category: architecture
+  labels: []
+  rationale: Option A reuses the established 4-location config extension pattern with
+    all target files, test infrastructure, and serialization conventions already in
+    place. The sub-dataclass shape (EpicBranchesConfig) is directly modeled on ConfidenceGateConfig
+    in commands.*, proving it is viable. Option B's cleaner semantic namespacing is
+    outweighed by requiring 8-10 file touches, an entirely net-new Python layer despite
+    a schema stub, and cross-namespace coupling through the already crowded create_parallel_config().
+  rule: Option A — parallel.epic_branches.* — follows the established 4-location extension
+    pattern (use_feature_branches/open_pr_for_feature_branches) with all test infrastructure
+    directly reusable; nested-object precedent exists in commands.*
+  scope: issue
+  alternatives_rejected: 'Option B — epics.branch.* (separate top-level EPIC lifecycle
+    namespace): requires net-new EpicsConfig dataclass, wiring through the 230-line
+    hand-maintained to_dict(), and growing create_parallel_config()''s already 23-param
+    signature.'
+  issue: FEAT-2339
+- id: ARCHITECTURE-092
+  type: decision
+  timestamp: '2026-07-02T21:30:05Z'
+  category: architecture
+  labels: []
+  rationale: Own-branch-per-level requires new multi-level merge-chain infrastructure
+    out of scope for this FEAT's single epic-branch-to-base model. Flattening keeps
+    exactly one integration branch per top-level unit of work, matches compute_epic_progress()'s
+    single-level rollup, and reuses the existing _issue_descends_to() traversal shape
+    rather than inventing branch-chaining semantics.
+  rule: 'Nested-EPIC branch routing: flatten to nearest EPIC ancestor (one integration
+    branch per issue''s nearest EPIC ancestor), not a chained per-level branch hierarchy'
+  scope: issue
+  alternatives_rejected: 'Own-branch-per-level: requires cascading completion detection
+    and multi-level merge chains (sub-branch to parent-branch to base) not needed
+    for this FEAT''s scope.'
+  issue: FEAT-2339
+- id: ARCHITECTURE-093
+  type: decision
+  timestamp: '2026-07-02T21:30:05Z'
+  category: architecture
+  labels: []
+  rationale: The FEAT's own motivation is atomic delivery (main never carries a half-finished
+    EPIC); a partial-merge policy would contradict that. Reuses the one existing precedent
+    for group-failure gating, Orchestrator.run()'s failed_count == 0 all-or-nothing
+    cleanup gate.
+  rule: 'Partial-failure merge policy: block EPIC completion-merge until ALL children
+    reach done; a failed/blocked child holds the epic branch open rather than triggering
+    a partial merge'
+  scope: issue
+  alternatives_rejected: 'Partial/best-effort merge of completed children while others
+    still fail: contradicts the FEAT''s atomic-delivery motivation and has no existing
+    precedent in the codebase.'
+  issue: FEAT-2339
+- id: ARCHITECTURE-094
+  type: decision
+  timestamp: '2026-07-02T21:30:19Z'
+  category: architecture
+  labels: []
+  rationale: Epic-mode children keep their existing feature/ or parallel/ naming --
+    only fork/merge target changes, not the name -- so the three gates already handle
+    them correctly with no wiring changes. The epic/* prefix is deliberately invisible
+    to all three, avoiding the BUG-2324 drift-then-fix cycle by making the exclusion
+    explicit and intentional.
+  rule: 'Branch-prefix cleanup-gate ownership: no changes to the three existing gates
+    (_is_ll_branch(), _cleanup_worktree()''s parallel/ check, prune_merged_feature_branches()''s
+    feature/ check); epic/* lifecycle is owned exclusively by the new delete_epic_branch()
+    step'
+  scope: issue
+  alternatives_rejected: 'Updating the three existing gates to recognize epic/*: unnecessary
+    since none of them ever see an epic/* branch name on a per-child basis, and adding
+    logic there would duplicate delete_epic_branch()''s explicit-deletion design.'
+  issue: FEAT-2339
+- id: ARCHITECTURE-095
+  type: decision
+  timestamp: '2026-07-02T21:30:20Z'
+  category: architecture
+  labels: []
+  rationale: The in-place path never creates a worktree, so it structurally cannot
+    use an epic branch for exactly the same reason it can't use a feature branch --
+    same limitation, same cause -- so the fix is to extend the existing mechanism
+    rather than build a new one.
+  rule: 'In-place/contention-subwave warning (cli/sprint/run.py): extend the existing
+    warning with a parallel effective_epic_branches check, appending to (not replacing)
+    the message to preserve the existing test''s substring assertion'
+  scope: issue
+  alternatives_rejected: 'A separate epic-specific warning mechanism: unnecessary
+    duplication given the identical root cause and existing test coupling to the current
+    message substring.'
+  issue: FEAT-2339
+- id: ARCHITECTURE-096
+  type: decision
+  timestamp: '2026-07-02T21:30:20Z'
+  category: architecture
+  labels: []
+  rationale: 'The repo''s established convention already stamps use_feature_branches:
+    false explicitly even though it matches the schema default; epic_branches should
+    follow the same convention rather than being the one parallel.* key left to silent
+    default-fallback, which would read as an oversight rather than a decision.'
+  rule: 'templates/*.json parity: stamp epic_branches: {enabled: false} explicitly
+    in all 9 project-type templates, matching the existing use_feature_branches convention'
+  scope: issue
+  alternatives_rejected: 'Relying on schema-default fallback (no explicit template
+    stamp): would make epic_branches the only parallel.* key without explicit template
+    parity, inconsistent with existing convention.'
+  issue: FEAT-2339
