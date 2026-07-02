@@ -222,6 +222,12 @@ def _run_yes(
     upgrade: bool = False,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
+    from little_loops.logo import print_logo
+
+    # Human-facing banner. The machine-readable --plan/apply paths live in
+    # separate functions and never call this, so their JSON output stays clean.
+    print_logo()
+
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
     from little_loops.init.install_check import (

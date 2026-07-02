@@ -136,3 +136,35 @@ class TestInitHeadlessEndToEnd:
                 f"settings missing in {root}"
             )
             assert (root / ".issues" / "bugs").is_dir(), f"bugs dir missing in {root}"
+
+
+class TestInitLogoBanner:
+    """The CLI logo banner prints on human-facing runs but never pollutes the
+    machine-readable --plan JSON output."""
+
+    def test_yes_run_prints_logo_banner(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        project = tmp_path / "banner_yes"
+        project.mkdir()
+
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        out = capsys.readouterr().out
+        assert "little loops" in out, "logo banner missing from --yes stdout"
+
+    def test_plan_output_has_no_logo_and_stays_valid_json(
+        self, tmp_path: Path
+    ) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        project = tmp_path / "banner_plan"
+        project.mkdir()
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            assert _run_init(["--plan", "--root", str(project)]) == 0
+
+        stdout = buf.getvalue()
+        assert "little loops" not in stdout, "logo leaked into --plan output"
+        # stdout must remain parseable JSON (no banner prefix/suffix).
+        json.loads(stdout)
