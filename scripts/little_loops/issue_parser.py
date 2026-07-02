@@ -42,6 +42,23 @@ def is_normalized(filename: str) -> bool:
     return bool(_NORMALIZED_RE.match(filename))
 
 
+def _required_sections(sections_data: dict[str, Any]) -> set[str]:
+    """Return the set of non-deprecated required section titles for a template.
+
+    Shared by :func:`is_formatted` and :func:`check_format_gaps`. ``common_sections``
+    entries use a boolean ``required`` key; ``type_sections`` entries use a string
+    ``level`` key (``== "required"``) — this asymmetry is why there are two loops.
+    """
+    required: set[str] = set()
+    for name, defn in sections_data.get("common_sections", {}).items():
+        if defn.get("required") is True and not defn.get("deprecated", False):
+            required.add(name)
+    for name, defn in sections_data.get("type_sections", {}).items():
+        if defn.get("level") == "required" and not defn.get("deprecated", False):
+            required.add(name)
+    return required
+
+
 def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
     """Check whether an issue file has been formatted.
 
@@ -81,19 +98,147 @@ def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
     except Exception:
         return False
 
-    required: set[str] = set()
-    for name, defn in sections_data.get("common_sections", {}).items():
-        if defn.get("required") is True and not defn.get("deprecated", False):
-            required.add(name)
-    for name, defn in sections_data.get("type_sections", {}).items():
-        if defn.get("level") == "required" and not defn.get("deprecated", False):
-            required.add(name)
-
+    required = _required_sections(sections_data)
     if not required:
         return True
 
     headings = {m.strip() for m in re.findall(r"^##\s+(.+)$", content, re.MULTILINE)}
     return required.issubset(headings)
+
+
+# Extracts a canonical replacement name from a deprecation_reason string, e.g.
+# "Renamed to 'Proposed Solution' in v2.0" or "Consolidated into 'API/Interface' section".
+_DEPRECATION_CANONICAL_RE = re.compile(r"(?:Renamed to|Consolidated into|Redundant with) '([^']+)'")
+
+
+def _section_body(content: str, heading: str) -> str | None:
+    """Return the raw text between a ``## heading`` line and the next ``##`` line.
+
+    Returns None when the heading is absent.
+    """
+    pattern = rf"^##\s+{re.escape(heading)}\s*$"
+    match = re.search(pattern, content, re.MULTILINE)
+    if match is None:
+        return None
+    start = match.end()
+    next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
+    end = start + next_match.start() if next_match else len(content)
+    return content[start:end]
+
+
+def _normalize_whitespace(text: str) -> str:
+    """Collapse all whitespace runs to single spaces, for boilerplate comparison."""
+    return " ".join(text.split())
+
+
+@dataclass
+class FormatGaps:
+    """Graded structural format gaps for an issue (ENH-2426).
+
+    Model: EpicDrift (cli/issues/epic_consistency.py) — one list[str] field per
+    gap category plus a derived has_gaps property and a to_dict() for --format json.
+    """
+
+    missing: list[str] = field(default_factory=list)
+    renamed: list[str] = field(default_factory=list)
+    empty: list[str] = field(default_factory=list)
+    boilerplate: list[str] = field(default_factory=list)
+
+    @property
+    def has_gaps(self) -> bool:
+        """True when any gap category is non-empty."""
+        return bool(self.missing or self.renamed or self.empty or self.boilerplate)
+
+    def to_dict(self) -> dict[str, list[str]]:
+        """Serialize to a JSON-serializable dict for --format json output."""
+        return {
+            "missing": self.missing,
+            "renamed": self.renamed,
+            "empty": self.empty,
+            "boilerplate": self.boilerplate,
+        }
+
+
+def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> FormatGaps:
+    """Grade an issue's structural format gaps against its type template.
+
+    Deterministic (no LLM) structural linter for the ``ensure_formatted`` gate.
+    Unlike :func:`is_formatted`, this always runs the structural analysis — it does
+    not honor the ``/ll:format-issue`` session-log shortcut, since every issue that
+    reaches the gate has already run that command (the shortcut would always fire
+    and defeat the point of catching malformed-but-present issues).
+
+    Gap classes:
+        missing: a required section header is absent from the body.
+        renamed: a present section header is deprecated with an extractable
+            canonical replacement (e.g. "Proposed Fix" -> "Proposed Solution").
+        empty: a required section header is present but its body is whitespace-only.
+        boilerplate: a required section's body still equals its creation_template.
+
+    Args:
+        issue_path: Path to the issue markdown file.
+        templates_dir: Optional override for the templates directory.
+
+    Returns:
+        A FormatGaps instance. Fails open (empty FormatGaps, no gaps) when the
+        file is unreadable, its type cannot be determined, or its template cannot
+        be loaded — mirroring is_formatted()'s fail-open behavior.
+    """
+    from little_loops.issue_template import load_issue_sections
+
+    gaps = FormatGaps()
+
+    try:
+        content = issue_path.read_text(encoding="utf-8")
+    except Exception:
+        return gaps
+
+    type_match = _ISSUE_TYPE_RE.search(issue_path.name)
+    if not type_match:
+        return gaps
+    issue_type = type_match.group(1)
+
+    try:
+        sections_data = load_issue_sections(issue_type, templates_dir)
+    except Exception:
+        return gaps
+
+    required = _required_sections(sections_data)
+    headings = {m.strip() for m in re.findall(r"^##\s+(.+)$", content, re.MULTILINE)}
+
+    gaps.missing = sorted(required - headings)
+
+    section_defs: dict[str, dict[str, Any]] = {}
+    for group in ("common_sections", "type_sections"):
+        for name, defn in sections_data.get(group, {}).items():
+            if isinstance(defn, dict):
+                section_defs[name] = defn
+
+    deprecated_present = sorted(
+        name
+        for name, defn in section_defs.items()
+        if defn.get("deprecated", False) and name in headings
+    )
+    for name in deprecated_present:
+        canonical_match = _DEPRECATION_CANONICAL_RE.search(
+            section_defs[name].get("deprecation_reason", "")
+        )
+        if canonical_match:
+            gaps.renamed.append(f"{name} → {canonical_match.group(1)}")
+
+    for name in sorted(required & headings):
+        body = _section_body(content, name)
+        if body is None:
+            continue
+        stripped = body.strip()
+        if not stripped:
+            gaps.empty.append(name)
+            continue
+        template = section_defs.get(name, {}).get("creation_template", "")
+        if template and _normalize_whitespace(stripped) == _normalize_whitespace(template):
+            gaps.boilerplate.append(name)
+
+    return gaps
 
 
 def slugify(text: str) -> str:

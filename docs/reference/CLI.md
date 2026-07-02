@@ -1395,6 +1395,25 @@ ll-issues cf FEAT-518 implementation_ready # Exit 0 if implementation_ready: tru
 
 ---
 
+#### `ll-issues format-check`
+
+Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in four classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), and `boilerplate` (a required section's body still equals its `creation_template`). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `issue_id` | _(required)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
+| `--format {text,json}` | `text` | Output format |
+
+**Examples:**
+```bash
+ll-issues format-check ENH-2426               # text report, exit 0/1
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...]}
+```
+
+**FSM loop use**: The `ensure_formatted` gate in `rn-remediate.yaml` calls this as a shell action with `evaluate: {type: exit_code}`, routing to `/ll:format-issue` only when a gap is found — replacing the older missing-headers-only inline check.
+
+---
+
 #### `ll-issues check-readiness` / `ll-issues cr`
 
 Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the configured thresholds. Reads thresholds from `commands.confidence_gate` in `ll-config.json`, falling back to `--readiness` / `--outcome` CLI args.

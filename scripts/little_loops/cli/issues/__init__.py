@@ -41,6 +41,10 @@ def main_issues() -> int:
             cmd_finalize_decomposition,
         )
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
+        from little_loops.cli.issues.format_check import (
+            add_format_check_parser,
+            cmd_format_check,
+        )
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.list_cmd import cmd_list
         from little_loops.cli.issues.next_action import cmd_next_action
@@ -85,6 +89,7 @@ Sub-commands:
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
+  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate)
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
 
 Examples:
@@ -728,6 +733,7 @@ Examples:
         add_finalize_decomposition_parser(subs)
         add_epic_progress_parser(subs)
         add_epic_consistency_parser(subs)
+        add_format_check_parser(subs)
         add_decisions_parser(subs)
 
         args = parser.parse_args()
@@ -789,6 +795,8 @@ Examples:
             return cmd_epic_progress(config, args)
         if args.command == "epic-consistency":
             return cmd_epic_consistency(config, args)
+        if args.command == "format-check":
+            return cmd_format_check(config, args)
         if args.command == "decisions":
             return cmd_decisions(config, args)
         if args.command == "finalize-decomposition":

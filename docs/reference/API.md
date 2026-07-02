@@ -806,6 +806,26 @@ An issue is considered formatted if either:
 
 **Returns:** `True` if the issue passes either criterion; `False` for files whose type cannot be determined or whose template cannot be loaded
 
+#### check_format_gaps
+
+```python
+def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> FormatGaps
+```
+
+Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
+
+Reports four gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
+- **missing** — a required section header is absent from the body.
+- **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
+- **empty** — a required section header is present but its body is whitespace-only.
+- **boilerplate** — a required section's body still equals its `creation_template` (whole-body match only, to avoid false positives on partially-filled sections).
+
+**Parameters:**
+- `issue_path` - Path to the issue markdown file
+- `templates_dir` - Optional override for the templates directory
+
+**Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
+
 #### find_issues
 
 ```python

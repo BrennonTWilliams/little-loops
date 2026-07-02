@@ -86,66 +86,16 @@ states:
   # =========================================================================
 
   ensure_formatted:
-    # Deterministic fast-path: are all REQUIRED template sections present?
-    # Cheap (no LLM) — only when a required section header is missing do we pay
-    # for the /ll:format-issue slash command. Note: this catches MISSING headers
-    # only, not renamed/empty/boilerplate sections; those slip through to assess.
-    # If malformed-but-not-missing issues later skew scores, swap this gate body
-    # for a `/ll:format-issue --check` slash_command pre-pass.
-    #
-    # Heredoc gotcha (mirrors select_next): a `python3 << EOF` heredoc OWNS stdin,
-    # so the template JSON is passed via the SECTIONS_JSON env var, never piped.
-    # Fail-open: unresolved template / parse error -> treat as formatted (exit 0)
-    # so a tooling glitch never blocks remediation.
+    # Deterministic structural linter (ENH-2426): catches missing, renamed
+    # (deprecated-with-canonical-replacement), empty, and boilerplate-but-present
+    # sections — not just missing headers. Cheap (no LLM) — only when a gap is
+    # found do we pay for the /ll:format-issue slash command. Fail-open: an
+    # unresolved template / unreadable issue -> ll-issues format-check reports
+    # no gaps (exit 0) so a tooling glitch never blocks remediation.
     action_type: shell
     action: |
       ID="${context.issue_id}"
-      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
-      if [ -z "$ISSUE_FILE" ]; then
-        echo "ERROR: Issue file not found for $ID"
-        exit 1
-      fi
-      TYPE=$(echo "$ID" | grep -oE '^(BUG|FEAT|ENH|EPIC)' | tr 'A-Z' 'a-z')
-      SECTIONS_JSON=$(ll-issues sections "$TYPE" 2>/dev/null)
-      export ISSUE_FILE SECTIONS_JSON
-      MISSING=$(python3 << 'PYEOF'
-      import json, os, sys
-      raw = os.environ.get("SECTIONS_JSON", "")
-      if not raw:
-          sys.exit(0)  # no template -> fail-open (treat as formatted)
-      try:
-          d = json.loads(raw)
-      except Exception:
-          sys.exit(0)  # unparseable template -> fail-open
-      required = []
-      # common_sections: dict keyed by title, value has `required: true`
-      for title, meta in (d.get("common_sections") or {}).items():
-          if isinstance(meta, dict) and meta.get("deprecated"):
-              continue
-          if isinstance(meta, dict) and meta.get("required") is True:
-              required.append(title)
-      # type_sections: dict keyed by title, value has `level: required`
-      for title, meta in (d.get("type_sections") or {}).items():
-          if isinstance(meta, dict) and meta.get("deprecated"):
-              continue
-          if isinstance(meta, dict) and meta.get("level") == "required":
-              required.append(title)
-      try:
-          body = open(os.environ["ISSUE_FILE"]).read()
-      except Exception:
-          sys.exit(0)  # unreadable issue -> fail-open
-      missing = [t for t in required if ("## " + t) not in body]
-      if missing:
-          print("; ".join(missing))
-      PYEOF
-      )
-      if [ -z "$MISSING" ]; then
-        echo "Formatted: all required sections present for $ID"
-        exit 0
-      else
-        echo "Needs formatting — missing required sections for $ID: $MISSING"
-        exit 1
-      fi
+      ll-issues format-check "$ID"
     evaluate:
       type: exit_code
     on_yes: assess

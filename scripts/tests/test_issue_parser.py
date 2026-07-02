@@ -3266,3 +3266,164 @@ class TestIsFormatted:
         assert is_formatted(issue_file) is False, (
             "feat missing required sections should still report not formatted after demotion"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestFormatGradedChecker — ENH-2426
+# ---------------------------------------------------------------------------
+
+_CLEAN_BUG_BODY = "\n".join(
+    [
+        "---",
+        "id: BUG-9001",
+        "status: open",
+        "---",
+        "",
+        "# BUG-9001: Test bug",
+        "",
+        "## Summary",
+        "A real problem happens under specific conditions.",
+        "",
+        "## Current Behavior",
+        "It breaks in a specific way.",
+        "",
+        "## Expected Behavior",
+        "It should not break.",
+        "",
+        "## Steps to Reproduce",
+        "1. Do the thing.",
+        "2. Observe failure.",
+        "",
+        "## Impact",
+        "- **Priority**: P3 - Low",
+        "- **Effort**: Small",
+        "- **Risk**: Low",
+        "- **Breaking Change**: No",
+        "",
+        "## Status",
+        "open",
+    ]
+)
+
+
+class TestFormatGradedChecker:
+    """check_format_gaps() must grade missing/renamed/empty/boilerplate gaps (ENH-2426).
+
+    Model: TestIsFormatted (line 3130) — direct Python calls, real templates_dir.
+    """
+
+    def test_clean_issue_returns_empty_gap_list(self, tmp_path: Path) -> None:
+        """A fully-populated, non-boilerplate bug issue reports no gaps."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9001-test-bug.md"
+        issue_file.write_text(_CLEAN_BUG_BODY)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.has_gaps is False
+        assert gaps.missing == []
+        assert gaps.renamed == []
+        assert gaps.empty == []
+        assert gaps.boilerplate == []
+
+    def test_missing_required_section_reports_missing(self, tmp_path: Path) -> None:
+        """A required section absent entirely is reported under `missing`."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9002-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("## Expected Behavior\nIt should not break.\n\n", "")
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert "Expected Behavior" in gaps.missing
+        assert gaps.has_gaps is True
+
+    def test_renamed_deprecated_section_reports_renamed(self, tmp_path: Path) -> None:
+        """A present deprecated section with a canonical replacement is reported as renamed.
+
+        'Proposed Fix' is deprecated in bug-sections.json with
+        deprecation_reason "Renamed to 'Proposed Solution' in v2.0". Neither
+        section is required for bug issues, so this must be the *only* gap.
+        """
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9003-test-bug.md"
+        body = _CLEAN_BUG_BODY + "\n\n## Proposed Fix\nOld-style content.\n"
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.renamed == ["Proposed Fix → Proposed Solution"]
+        assert gaps.missing == []
+        assert gaps.empty == []
+        assert gaps.boilerplate == []
+
+    def test_empty_required_section_reports_empty(self, tmp_path: Path) -> None:
+        """A required header present with a whitespace-only body is reported as empty."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9004-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace(
+            "## Summary\nA real problem happens under specific conditions.\n",
+            "## Summary\n\n",
+        )
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.empty == ["Summary"]
+        assert gaps.missing == []
+        assert gaps.boilerplate == []
+
+    def test_boilerplate_body_reports_boilerplate(self, tmp_path: Path) -> None:
+        """A required header whose body equals the creation_template is reported as boilerplate."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9005-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace(
+            "## Summary\nA real problem happens under specific conditions.\n",
+            "## Summary\n[Description extracted from input]\n",
+        )
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.boilerplate == ["Summary"]
+        assert gaps.missing == []
+        assert gaps.empty == []
+
+    def test_template_load_failure_returns_empty_gap_list(self, tmp_path: Path) -> None:
+        """Fail-open mirror of is_formatted(): unresolved template -> no gaps reported."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9006-test-bug.md"
+        issue_file.write_text("## Summary\nOnly has Summary.")
+
+        empty_templates = tmp_path / "empty-templates"
+        empty_templates.mkdir()
+
+        gaps = check_format_gaps(issue_file, templates_dir=empty_templates)
+
+        assert gaps.has_gaps is False
+
+    def test_unreadable_file_returns_empty_gap_list(self, tmp_path: Path) -> None:
+        """Fail-open mirror of is_formatted(): unreadable issue file -> no gaps reported."""
+        from little_loops.issue_parser import check_format_gaps
+
+        gaps = check_format_gaps(tmp_path / "does-not-exist.md")
+
+        assert gaps.has_gaps is False

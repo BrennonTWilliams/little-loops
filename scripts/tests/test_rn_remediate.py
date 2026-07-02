@@ -6,9 +6,7 @@ rn-implement.yaml monolith into sub-loops).
 
 from __future__ import annotations
 
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 import yaml
@@ -1444,8 +1442,6 @@ class TestCounterIncrementInEmitImplemented:
 # TestEnsureFormatted — BUG-2395
 # ---------------------------------------------------------------------------
 
-TEMPLATES_DIR = Path(__file__).parent.parent / "little_loops" / "templates"
-
 
 class TestEnsureFormatted:
     """ensure_formatted gate must exit 0 for canonical post-ENH-1392 issues.
@@ -1454,41 +1450,55 @@ class TestEnsureFormatted:
     and User Story (renamed to Use Case) as missing required sections, causing
     a redundant format pass on every rn-remediate run.
 
-    Model: TestDiagnoseAmbiguityWireDiscrimination (line 1277) — extract inline
-    shell from YAML action and run via subprocess with pre-set env vars.
+    Post-ENH-2426: the gate's shell body calls `ll-issues format-check "$ID"`
+    (scripts/little_loops/cli/issues/format_check.py) instead of an inline
+    MISSING=$(...) heredoc. These tests verify the gate's YAML wiring calls the
+    new subcommand, then exercise it end-to-end via main_issues() against a
+    real temp project — mirrors test_ll_issues_format_check.py's fixtures.
     """
 
-    def _extract_gate_script(self) -> str:
-        """Extract the MISSING=(...) portion of the ensure_formatted action."""
+    def test_gate_calls_format_check_subcommand(self) -> None:
+        """The gate body must invoke `ll-issues format-check`, not the old heredoc."""
         data = _load_loop()
         action = data["states"]["ensure_formatted"]["action"]
-        start = action.find("MISSING=$(")
-        assert start != -1, "Could not locate MISSING=$( in ensure_formatted action"
-        return action[start:]
+        assert "ll-issues format-check" in action, (
+            "ensure_formatted action must call `ll-issues format-check` (ENH-2426)"
+        )
+        assert "MISSING=$(" not in action, (
+            "ensure_formatted action still contains the old inline MISSING=$( heredoc"
+        )
 
-    def _run_gate(self, issue_body: str, issue_type: str) -> subprocess.CompletedProcess[str]:
-        template_path = TEMPLATES_DIR / f"{issue_type}-sections.json"
-        sections_json = template_path.read_text()
+    def _write_project(self, tmp_path: Path) -> Path:
+        import json
 
-        with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
-            f.write(issue_body)
-            issue_file = f.name
+        project = tmp_path / "project"
+        (project / ".ll").mkdir(parents=True)
+        (project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}})
+        )
+        for cat in ("bugs", "features", "enhancements"):
+            (project / ".issues" / cat).mkdir(parents=True, exist_ok=True)
+        return project
 
-        try:
-            script = self._extract_gate_script()
-            env = os.environ.copy()
-            env["ISSUE_FILE"] = issue_file
-            env["SECTIONS_JSON"] = sections_json
-            return subprocess.run(
-                ["bash", "-c", script],
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-        finally:
-            os.unlink(issue_file)
+    def _run_gate(self, tmp_path: Path, issue_id: str, filename: str, body: str) -> int:
+        import sys
+        from unittest.mock import patch
 
-    def test_feat_frontmatter_labels_use_case_exits_0(self) -> None:
+        project = self._write_project(tmp_path)
+        prefix = issue_id.split("-")[0]
+        subdir_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
+        (project / ".issues" / subdir_map[prefix] / filename).write_text(body)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "format-check", issue_id, "--config", str(project)],
+        ):
+            from little_loops.cli import main_issues
+
+            return main_issues()
+
+    def test_feat_frontmatter_labels_use_case_exits_0(self, tmp_path: Path) -> None:
         """feat with labels: frontmatter + ## Use Case must exit 0 (BUG-2395).
 
         Pre-fix: gate emits 'missing required sections: Labels; User Story' → exits 1.
@@ -1530,13 +1540,10 @@ class TestEnsureFormatted:
                 "open",
             ]
         )
-        result = self._run_gate(body, "feat")
-        assert result.returncode == 0, (
-            "Gate should exit 0 for feat with frontmatter labels + ## Use Case.\n"
-            f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-        )
+        result = self._run_gate(tmp_path, "FEAT-9999", "P3-FEAT-9999-test-feature.md", body)
+        assert result == 0, "Gate should exit 0 for feat with frontmatter labels + ## Use Case."
 
-    def test_enh_deprecated_section_exits_0(self) -> None:
+    def test_enh_deprecated_section_exits_0(self, tmp_path: Path) -> None:
         """enh without ## Current Pain Point must exit 0 (ENH-2398).
 
         enh-sections.json "Current Pain Point" has level: required + deprecated: true.
@@ -1577,11 +1584,143 @@ class TestEnsureFormatted:
                 "open",
             ]
         )
-        result = self._run_gate(body, "enh")
-        assert result.returncode == 0, (
-            "Gate should exit 0 for enh missing only deprecated 'Current Pain Point'.\n"
-            f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+        result = self._run_gate(tmp_path, "ENH-9999", "P3-ENH-9999-test-enhancement.md", body)
+        assert result == 0, (
+            "Gate should exit 0 for enh missing only deprecated 'Current Pain Point'."
         )
+
+    def test_renamed_section_exits_1(self, tmp_path: Path) -> None:
+        """A present deprecated section with a canonical replacement exits 1 (ENH-2426)."""
+        body = "\n".join(
+            [
+                "---",
+                "status: open",
+                "---",
+                "",
+                "# BUG-9998: Test bug",
+                "",
+                "## Summary",
+                "A test bug.",
+                "",
+                "## Current Behavior",
+                "It breaks.",
+                "",
+                "## Expected Behavior",
+                "It works.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "",
+                "## Proposed Fix",
+                "Old-style content.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ]
+        )
+        result = self._run_gate(tmp_path, "BUG-9998", "P3-BUG-9998-test-bug.md", body)
+        assert result == 1, "Gate should exit 1 for a present renamed/deprecated section."
+
+    def test_empty_section_exits_1(self, tmp_path: Path) -> None:
+        """A required header present with a whitespace-only body exits 1 (ENH-2426)."""
+        body = "\n".join(
+            [
+                "---",
+                "status: open",
+                "---",
+                "",
+                "# BUG-9997: Test bug",
+                "",
+                "## Summary",
+                "",
+                "## Current Behavior",
+                "It breaks.",
+                "",
+                "## Expected Behavior",
+                "It works.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ]
+        )
+        result = self._run_gate(tmp_path, "BUG-9997", "P3-BUG-9997-test-bug.md", body)
+        assert result == 1, "Gate should exit 1 for a required section with an empty body."
+
+    def test_boilerplate_only_section_exits_1(self, tmp_path: Path) -> None:
+        """A required header whose body equals its creation_template exits 1 (ENH-2426)."""
+        body = "\n".join(
+            [
+                "---",
+                "status: open",
+                "---",
+                "",
+                "# BUG-9996: Test bug",
+                "",
+                "## Summary",
+                "[Description extracted from input]",
+                "",
+                "## Current Behavior",
+                "It breaks.",
+                "",
+                "## Expected Behavior",
+                "It works.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ]
+        )
+        result = self._run_gate(tmp_path, "BUG-9996", "P3-BUG-9996-test-bug.md", body)
+        assert result == 1, (
+            "Gate should exit 1 for a required section left at its creation_template."
+        )
+
+    def test_clean_issue_exits_0(self, tmp_path: Path) -> None:
+        """A fully-populated, non-boilerplate bug issue exits 0 (ENH-2426)."""
+        body = "\n".join(
+            [
+                "---",
+                "status: open",
+                "---",
+                "",
+                "# BUG-9995: Test bug",
+                "",
+                "## Summary",
+                "A real problem happens under specific conditions.",
+                "",
+                "## Current Behavior",
+                "It breaks in a specific way.",
+                "",
+                "## Expected Behavior",
+                "It should not break.",
+                "",
+                "## Steps to Reproduce",
+                "1. Do the thing.",
+                "2. Observe failure.",
+                "",
+                "## Impact",
+                "- **Priority**: P3 - Low",
+                "",
+                "## Status",
+                "open",
+            ]
+        )
+        result = self._run_gate(tmp_path, "BUG-9995", "P3-BUG-9995-test-bug.md", body)
+        assert result == 0, "Gate should exit 0 for a clean, fully-populated bug issue."
 
 
 # ---------------------------------------------------------------------------

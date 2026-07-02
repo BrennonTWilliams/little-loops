@@ -3,9 +3,10 @@ id: ENH-2426
 title: Fully programmatic issue-format linter (renamed/empty/boilerplate) for the
   ensure_formatted gate
 type: enhancement
-status: open
+status: done
 priority: P3
 captured_at: '2026-07-01T18:13:20Z'
+completed_at: 2026-07-02 04:56:51+00:00
 discovered_date: 2026-07-01
 discovered_by: capture-issue
 relates_to:
@@ -287,10 +288,38 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-07-01 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-02T04:56:51Z - `d13547b2-4b1d-4eb1-a2f1-a99b44d3e508.jsonl`
 - `/ll:ready-issue` - 2026-07-02T03:00:54 - `cb96e210-afdd-43ee-aa1a-548bef92102e.jsonl`
 - `/ll:wire-issue` - 2026-07-02T02:26:48 - `c3a7f0c3-4e31-4aac-86c9-4c5dbb847636.jsonl`
 - `/ll:confidence-check` - 2026-07-01T00:00:00 - `a2e654ea-d551-40b4-8922-3942a9e835f3.jsonl`
 - `/ll:refine-issue` - 2026-07-01T18:23:28 - `9f1c67b2-4389-4a41-9eca-2017def791ef.jsonl`
 - `/ll:format-issue` - 2026-07-01T18:15:41 - `771898ce-5217-4c16-8aa1-2394b36bffd0.jsonl`
 - `/ll:capture-issue` - 2026-07-01T18:13:20Z - `9f1c67b2-4389-4a41-9eca-2017def791ef.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-07-02
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_parser.py`: added `FormatGaps` dataclass and `check_format_gaps()` graded structural checker (missing/renamed/empty/boilerplate), extracted shared `_required_sections()` helper reused by `is_formatted()`.
+- `scripts/little_loops/cli/issues/format_check.py`: new `ll-issues format-check <ID>` subcommand (`cmd_format_check` + `add_format_check_parser`), modeled on `check_flag.py` / `epic_consistency.py`.
+- `scripts/little_loops/cli/issues/__init__.py`: registered the `format-check` subcommand (import, parser registration, dispatch, epilog entry).
+- `scripts/little_loops/loops/rn-remediate.yaml`: rewired the `ensure_formatted` gate to call `ll-issues format-check "$ID"` instead of the inline `MISSING=$(...)` heredoc; routing (`evaluate: exit_code`, `on_yes`/`on_no`/`on_error`) unchanged.
+- `scripts/tests/test_issue_parser.py`: added `TestFormatGradedChecker` (7 cases: clean, missing, renamed, empty, boilerplate, template-load-failure, unreadable-file).
+- `scripts/tests/test_ll_issues_format_check.py`: new file, 9 cases covering clean/missing/renamed/empty/boilerplate/json-output/not-found/fail-open.
+- `scripts/tests/test_rn_remediate.py`: updated `TestEnsureFormatted` to exercise the new gate end-to-end via `main_issues()` instead of extracting the old inline heredoc; added renamed/empty/boilerplate/clean gap-class cases.
+- `docs/reference/CLI.md`, `docs/reference/API.md`, `.claude/CLAUDE.md`: documented the new subcommand and checker.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 13418 passed, 23 skipped)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Format: PASS (`ruff format`)
+- `ll-loop validate rn-remediate`: PASS
+- Integration: PASS (reuses `load_issue_sections`, `resolve_templates_dir`, `_resolve_issue_id`, `print_json`, `add_config_arg`; follows `check_flag.py`/`epic_consistency.py` subcommand shape)
 </content>
