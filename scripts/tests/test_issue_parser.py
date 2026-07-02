@@ -1264,6 +1264,98 @@ class TestFindIssues:
             f"find_issues should not glob legacy completed/ or deferred/ dirs; got {legacy_dir_globs}"
         )
 
+    def test_find_issues_skip_blocked_default_is_byte_identical(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Default skip_blocked=False includes blocked issues (ENH-2436)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-500-blocker.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-500: Blocker\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-501-blocked.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-500\n---\n\n# BUG-501: Blocked\n\nContent."
+        )
+
+        without_flag = find_issues(config, category="bugs")
+        with_default_flag = find_issues(config, category="bugs", skip_blocked=False)
+
+        assert [i.issue_id for i in without_flag] == [i.issue_id for i in with_default_flag]
+        assert "BUG-501" in [i.issue_id for i in without_flag]
+
+    def test_find_issues_skip_blocked_true_excludes_blocked(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """skip_blocked=True excludes an issue with an unresolved blocker (ENH-2436)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-510-blocker.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-510: Blocker\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-511-blocked.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-510\n---\n\n# BUG-511: Blocked\n\nContent."
+        )
+
+        issues = find_issues(config, category="bugs", skip_blocked=True)
+
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-511" not in issue_ids
+        assert "BUG-510" in issue_ids
+
+    def test_find_issues_skip_blocked_terminal_blocker_unblocks(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """A `done` or `cancelled` blocker does not block (ENH-2436)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-520-done-blocker.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-520: Done Blocker\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-521-unblocked.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-520\n---\n\n# BUG-521: Unblocked\n\nContent."
+        )
+
+        issues = find_issues(config, category="bugs", skip_blocked=True)
+
+        assert "BUG-521" in [i.issue_id for i in issues]
+
+    def test_find_issues_skip_blocked_deferred_blocker_still_blocks(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """A `deferred` blocker is non-terminal and still blocks (ENH-2436)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-530-deferred-blocker.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-530: Deferred Blocker\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-531-still-blocked.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-530\n---\n\n# BUG-531: Still Blocked\n\nContent."
+        )
+
+        issues = find_issues(config, category="bugs", skip_blocked=True)
+
+        assert "BUG-531" not in [i.issue_id for i in issues]
+
 
 class TestFindHighestPriorityIssue:
     """Tests for find_highest_priority_issue function."""

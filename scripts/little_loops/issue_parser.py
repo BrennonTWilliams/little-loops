@@ -1035,6 +1035,8 @@ def find_issues(
     only_ids: list[str] | set[str] | None = None,
     type_prefixes: set[str] | None = None,
     status_filter: set[str] | None = None,
+    *,
+    skip_blocked: bool = False,
 ) -> list[IssueInfo]:
     """Find all issues matching criteria.
 
@@ -1050,6 +1052,10 @@ def find_issues(
         status_filter: If provided, only include issues whose status is in this
             set. When None (default), skips done/cancelled/deferred issues
             (preserves all existing caller behaviour).
+        skip_blocked: Keyword-only. When True, exclude issues with an
+            unresolved `blocked_by` edge (a blocker not yet done/cancelled)
+            from the returned list. Default False is byte-identical to prior
+            behaviour — no existing caller is affected.
 
     Returns:
         List of IssueInfo sorted by priority, or in only_ids list order when
@@ -1090,6 +1096,19 @@ def find_issues(
                 if prefix not in type_prefixes:
                     continue
             issues.append(info)
+
+    if skip_blocked:
+        from little_loops.dependency_graph import DependencyGraph
+        from little_loops.issue_progress import _ALL_STATUSES, _TERMINAL_STATUSES
+
+        # Build the graph from every non-terminal issue (ignoring this call's
+        # category/type/skip/only filters) so a blocker outside the requested
+        # slice is still correctly recognized as blocking or resolved.
+        non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES
+        all_active = find_issues(config, status_filter=non_terminal)
+        graph = DependencyGraph.from_issues(all_active)
+        ready_ids = {info.issue_id for info in graph.get_ready_issues()}
+        issues = [info for info in issues if info.issue_id in ready_ids]
 
     # When only_ids is a list, preserve input order; otherwise sort by priority
     if isinstance(only_ids, list):
