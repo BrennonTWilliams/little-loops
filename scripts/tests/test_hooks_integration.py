@@ -2815,12 +2815,26 @@ class TestScratchCleanupSessionEnd:
             f"cleanup belongs on SessionEnd. Offending lines: {offending!r}"
         )
 
-    def test_scratch_cleanup_script_removes_scratch(self):
-        """A dedicated scratch-cleanup.sh exists and performs the scratch rm -rf."""
+    def test_scratch_cleanup_script_prunes_scratch(self):
+        """A dedicated scratch-cleanup.sh exists and prunes .loops/tmp/scratch.
+
+        Must NOT be a blind `rm -rf` of the whole directory — that path is
+        shared by every concurrent session in the repo, so an unconditional
+        delete wipes out files other still-running sessions are actively
+        writing (the cross-process collision this cleanup now guards against).
+        """
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
         assert script.is_file(), "hooks/scripts/scratch-cleanup.sh must exist"
         text = script.read_text()
-        assert "rm -rf" in text and ".loops/tmp/scratch" in text
+        assert ".loops/tmp/scratch" in text
+        assert "kill -0" in text, (
+            "cleanup must check PID liveness before deleting a scratch file"
+        )
+        code_lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+        offending = [ln for ln in code_lines if "rm -rf" in ln and "scratch" in ln]
+        assert not offending, (
+            f"must not blindly rm -rf the shared scratch dir: {offending!r}"
+        )
 
     def test_scratch_cleanup_never_fails_when_dir_absent(self, tmp_path: Path):
         """scratch-cleanup.sh must exit 0 even when the scratch dir is absent."""
@@ -2838,7 +2852,7 @@ class TestScratchCleanupSessionEnd:
             os.chdir(original_dir)
 
     def test_scratch_cleanup_removes_dir_when_present(self, tmp_path: Path):
-        """scratch-cleanup.sh removes the scratch dir when present."""
+        """scratch-cleanup.sh removes unowned files and the now-empty dir."""
         import os
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
@@ -2847,12 +2861,62 @@ class TestScratchCleanupSessionEnd:
             os.chdir(tmp_path)
             scratch = tmp_path / ".loops/tmp/scratch"
             scratch.mkdir(parents=True)
+            # No PID suffix -> treated as unowned litter, always pruned.
             (scratch / "x.txt").write_text("data")
             result = subprocess.run(
                 [str(script)], input="{}", capture_output=True, text=True, timeout=5
             )
             assert result.returncode == 0
             assert not scratch.exists(), "scratch dir should be removed by scratch-cleanup.sh"
+        finally:
+            os.chdir(original_dir)
+
+    def test_scratch_cleanup_preserves_file_owned_by_live_process(self, tmp_path: Path):
+        """A scratch file whose owning PID is still alive must survive cleanup.
+
+        Regression test for the cross-process collision: a concurrent
+        session's SessionEnd must not delete another live session's
+        in-progress scratch-pad-redirected output.
+        """
+        import os
+
+        script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            scratch = tmp_path / ".loops/tmp/scratch"
+            scratch.mkdir(parents=True)
+            live_pid = os.getpid()  # the test process itself is definitely alive
+            owned = scratch / f"pytest-{live_pid}.txt"
+            owned.write_text("still writing")
+            result = subprocess.run(
+                [str(script)], input="{}", capture_output=True, text=True, timeout=5
+            )
+            assert result.returncode == 0
+            assert owned.exists(), "file owned by a live PID must not be deleted"
+            assert scratch.exists(), "dir must survive while a live-owned file remains"
+        finally:
+            os.chdir(original_dir)
+
+    def test_scratch_cleanup_removes_file_owned_by_dead_process(self, tmp_path: Path):
+        """A scratch file whose owning PID is no longer alive is pruned."""
+        import os
+
+        script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            scratch = tmp_path / ".loops/tmp/scratch"
+            scratch.mkdir(parents=True)
+            # PID 2**31-1 is not a valid/alive process on any real system.
+            dead = scratch / "pytest-2147483647.txt"
+            dead.write_text("stale")
+            result = subprocess.run(
+                [str(script)], input="{}", capture_output=True, text=True, timeout=5
+            )
+            assert result.returncode == 0
+            assert not dead.exists(), "file owned by a dead PID must be pruned"
+            assert not scratch.exists(), "dir should be removed once empty"
         finally:
             os.chdir(original_dir)
 
