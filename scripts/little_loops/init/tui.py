@@ -144,7 +144,8 @@ def run_tui(
 
     from little_loops.logo import print_logo
 
-    print_logo()
+    if sys.stdout.isatty():
+        print_logo()
 
     from little_loops.init.detect import detect_project_type
     from little_loops.init.install_check import (

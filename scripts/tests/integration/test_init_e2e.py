@@ -14,6 +14,7 @@ unit tests around individual writers.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -144,14 +145,35 @@ class TestInitLogoBanner:
     """The CLI logo banner prints on human-facing runs but never pollutes the
     machine-readable --plan JSON output."""
 
-    def test_yes_run_prints_logo_banner(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    def test_yes_run_prints_logo_banner_on_tty(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         project = tmp_path / "banner_yes"
         project.mkdir()
+
+        # Force the interactive-terminal branch; capsys's capture reports
+        # isatty() False by default.
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
 
         assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
 
         out = capsys.readouterr().out
-        assert "little loops" in out, "logo banner missing from --yes stdout"
+        assert "little loops" in out, "logo banner missing from --yes stdout on a TTY"
+
+    def test_yes_run_omits_logo_when_not_tty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        project = tmp_path / "banner_yes_piped"
+        project.mkdir()
+
+        # capsys capture is not a TTY, so the guard suppresses the banner.
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        out = capsys.readouterr().out
+        assert "little loops" not in out, "logo banner leaked into non-TTY (piped) output"
 
     def test_plan_output_has_no_logo_and_stays_valid_json(
         self, tmp_path: Path

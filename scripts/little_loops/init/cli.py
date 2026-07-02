@@ -226,7 +226,9 @@ def _run_yes(
 
     # Human-facing banner. The machine-readable --plan/apply paths live in
     # separate functions and never call this, so their JSON output stays clean.
-    print_logo()
+    # Only emit on an interactive terminal so piped/redirected logs stay bare.
+    if sys.stdout.isatty():
+        print_logo()
 
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_project_type
