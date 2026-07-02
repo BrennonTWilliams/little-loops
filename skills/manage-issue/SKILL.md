@@ -371,7 +371,7 @@ and wait for its result before proceeding. For large output, use the scratch-pad
 redirect that pipes to a file and tails the summary:
 
 ```bash
-{{config.project.test_cmd}} > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt
+mkdir -p .loops/tmp/scratch && {{config.project.test_cmd}} > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt
 ```
 
 - **Never** background the result-blocking final test suite (no `run_in_background:
