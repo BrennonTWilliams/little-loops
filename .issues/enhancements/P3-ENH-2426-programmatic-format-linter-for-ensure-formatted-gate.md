@@ -121,12 +121,22 @@ reports per-gap findings, keyed off metadata `ll-issues sections` already expose
 
 ### Files to Modify
 - `scripts/little_loops/issue_parser.py` — add graded structural checker beside `is_formatted()`
-- `scripts/little_loops/cli/issues/` — new `format-check` subcommand (register in `cli/issues/__init__.py`)
-- `scripts/little_loops/loops/rn-remediate.yaml` — rewire `ensure_formatted` gate body to call `ll-issues format-check`
+- `scripts/little_loops/cli/issues/format_check.py` — **new file**, `cmd_format_check(config, args) -> int` modeled after `check_flag.py:13-33` (with `_resolve_issue_id` import from `cli/issues/show.py:39-124`, `BRConfig` under `TYPE_CHECKING`, heavy imports deferred inside the function)
+- `scripts/little_loops/cli/issues/__init__.py` — register `format-check` (import at lines 22-57 or lazy at lines 796-799; `subs.add_parser` + `add_config_arg(format_check)` at lines 564-572 following `check-flag`; dispatch `if args.command == "format-check": return cmd_format_check(config, args)` near lines 774-777; epilog line at lines 65-134 between `fingerprint` and `decisions`)
+- `scripts/little_loops/loops/rn-remediate.yaml` — rewire `ensure_formatted` gate body (lines 100-153) to call `ll-issues format-check "$ID"`; keep `evaluate: exit_code` routing and `format_issue` repair state at line 155-174 untouched
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_template.py` — `load_issue_sections` (source of `creation_template` / `deprecated` metadata; no change)
 - `cli/issues/refine_status.py`, `cli/issues/show.py`, `cli/issues/next_action.py` — current `is_formatted()` callers; could optionally adopt the richer check later (out of scope here)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/check_flag.py:23` — canonical pattern for `_resolve_issue_id` import + `cmd_<name>(config, args) -> int` signature; `format-check` mirrors this structure [Agent 1]
+- `scripts/little_loops/cli/issues/check_readiness.py:28` — second canonical pattern for the same shape [Agent 1]
+- `scripts/little_loops/cli/issues/path_cmd.py`, `set_status.py`, `set_scores.py`, `skip.py`, `history_context.py` — additional `_resolve_issue_id` consumers confirming the shared-resolver convention; new `format-check` follows [Agent 1]
+- `scripts/little_loops/sync.py:21,700` — also calls `load_issue_sections` (cached per-type for GitHub sync); shares the JSON shape but is unaffected by the new checker [Agent 1]
+- `scripts/little_loops/cli/verify_package_data.py:55-66` — `LintResult`/`EscapeViolation` dataclasses and `_format_text_report`/`_format_json_report` formatters; second lint-style precedent for the new checker's report shape (alongside `EpicDrift`) [Agent 1, Agent 2]
+- `scripts/little_loops/cli/issues/epic_consistency.py:33-67` — `EpicDrift` dataclass + `has_drift` property + `to_dict()` for `--format json`; **primary** model for the new `FormatGaps` dataclass [Agent 1, Agent 3]
+- `scripts/little_loops/loops/rn-implement.yaml` — contains a separate `MISSING=$(...)` heredoc pattern in another state; shares the linter-rework value but is **out of scope** for this issue (file/awareness only) [Agent 1]
 
 ### Similar Patterns
 - `is_formatted()` deprecated-skip loops (`issue_parser.py:86,89`) — the checker should share this logic, not re-implement it
@@ -136,12 +146,32 @@ reports per-gap findings, keyed off metadata `ll-issues sections` already expose
 - `scripts/tests/test_rn_remediate.py::TestEnsureFormatted` (~line 1446) — extend `_run_gate()` cases: renamed/empty/boilerplate section → exit 1; fully-clean → exit 0
 - New `scripts/tests/` unit tests for `ll-issues format-check` covering each gap class per type (bug/feat/enh/epic), plus fail-open on unresolved template / unreadable file
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_remediate.py::_extract_gate_script` (lines 1461-1467) — **WILL BREAK** when the inline `MISSING=$(...)` heredoc is replaced with `ll-issues format-check "$ID"`. Hardcodes `action.find("MISSING=$(")` and asserts `"Could not locate MISSING=$( in ensure_formatted action"`. Replace with a shell that runs `subprocess.run(["python", "-m", "little_loops.cli", "ll-issues", "format-check", tmp_issue_id, "--config", str(tmp_path)])` or re-key to a shorter sentinel like `"ll-issues format-check"` [Agent 1, Agent 3]
+- `scripts/tests/test_ll_issues_format_check.py` — **new file**, modeled after `test_ll_issues_sections.py` (`_invoke()` at line 19, `_write_config()`, `sample_config` from conftest) + `test_epic_consistency.py` (class-per-gap-class structure with `_write_epic()`/`_write_child()` helpers at lines 31-53). Suggested classes: `TestFormatCheckClean`, `TestFormatCheckRenamed`, `TestFormatCheckEmpty`, `TestFormatCheckBoilerplate`, `TestFormatCheckJsonOutput`, `TestFormatCheckIssueNotFound`, `TestFormatCheckFailOpen` [Agent 3]
+- `scripts/tests/test_issue_parser.py::TestFormatGradedChecker` — **new class** beside `TestIsFormatted` (line 3130), direct-Python tests mirroring the `_make_issue` / `tmp_path` / `TEMPLATES_DIR` pattern. Suggested tests: `test_renamed_deprecated_section_reports_renamed`, `test_empty_required_section_reports_empty`, `test_boilerplate_body_reports_boilerplate`, `test_clean_issue_returns_empty_gap_list`, `test_template_load_failure_returns_empty_gap_list` (fail-open mirror of `is_formatted()` lines 64-67) [Agent 3]
+- `scripts/tests/test_rn_remediate.py::TestEnsureFormatted` — extend existing class with new gap-class cases: `test_renamed_section_exits_1` (use `## Reproduction Steps` from `feat-sections.json:9-25`), `test_empty_section_exits_1`, `test_boilerplate_only_section_exits_1`, `test_clean_issue_exits_0`. Copy `creation_template` strings verbatim from `templates/bug-sections.json` for fixture bodies [Agent 3]
+- `scripts/tests/test_builtin_loops.py::TestRnRemediateEnsureFormatted` — **optional symmetric class** beside `TestRnRemediateFormatIssue` (line 7823), using the `LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-remediate.yaml"` fixture (line 7717) to YAML-load and assert the `evaluate: exit_code` routing contract on the rewired gate [Agent 3]
+- `scripts/tests/test_refine_status.py::TestIssuesCLIRefineStatus` (line ~1204) — **stays valid**, indirect coverage via `is_formatted()` (which is unchanged); confirm no assertions break after refactor [Agent 3]
+- `scripts/tests/test_next_action.py::test_needs_format` (line 68) — **stays valid**, indirect coverage via `is_formatted()` (which is unchanged); confirm `NEEDS_FORMAT BUG-001` exit-code assertion still holds [Agent 3]
+- `scripts/tests/test_show.py` — direct tests of `_resolve_issue_id` (line 50 test class); ensure the shared resolver behaves identically for the new subcommand [Agent 1]
+- `scripts/tests/conftest.py` — `temp_project_dir` (line 130), `make_project` (line 140), `sample_config` (line 189), `config_file` (line 244), `issues_dir` (line 252) are the fixtures `test_ll_issues_format_check.py` should reuse; no new conftest additions needed [Agent 3]
+
 ### Documentation
 - `docs/reference/API.md` — document the new checker and `ll-issues format-check`
 - `.claude/CLAUDE.md` — add `format-check` to the `ll-issues` subcommand list
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — **missing from existing plan**; the new `ll-issues format-check` entry must land beside `ll-issues check-flag / ll-issues cf` at line 1379 (and example invocations at line 1390). The CLI.md file is the user-facing reference for `ll-issues` subcommands and is the parallel doc to API.md for the Python surface [Agent 2]
+- `skills/format-issue/SKILL.md:344-346` — the prose "This programmatic write guarantees `is_formatted()` returns `True` for this issue in subsequent `ll-issues refine-status` calls" describes the **Criterion-1 session-log shortcut** that the new graded checker intentionally **does not honor** (per the issue's Codebase Research at line 192-201). Optional: add a sentence clarifying that the deterministic gate uses the richer structural check, so post-`format-issue` issues still get graded. No code change required [Agent 2]
+- `CHANGELOG.md` — entry needed at release prep. **Do not place under `[Unreleased]`**; promote to a concrete `## [X.Y.Z] - DATE` section per project memory `feedback_changelog_no_unreleased.md`. The previous `ensure_formatted` gate change entry (ENH-2398) lives at line 96; the new entry should sit beside it [Agent 2]
+
 ### Configuration
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_parser.py` `__all__` — per ENH-507 (`P5-ENH-507-add-all-exports-to-public-root-modules.md:149`), the new graded checker should be added to the `__all__` list alongside `"is_formatted"`. Cosmetic; out of scope for this issue's PR but flagged for the ENH-507 follow-on to land complete [Agent 2]
+- `config-schema.json:130` — only contains a `format-issue` mention in the `capture_template` enum description. **No schema change needed** for the new subcommand (no new config keys introduced); confirm the description prose is not paraphrased in a way that contradicts the new subcommand [Agent 2]
 
 ### Codebase Research Findings
 
@@ -226,6 +256,21 @@ assertion) since the inline `MISSING=$(` heredoc goes away.
 4. Rewire the `ensure_formatted` gate to call it; keep `evaluate: exit_code` routing.
 5. Add unit tests (per gap class, per type) and extend `TestEnsureFormatted`; run `ll-loop validate` on `rn-remediate`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Replace `scripts/tests/test_rn_remediate.py::_extract_gate_script` (lines 1461-1467) — currently hardcodes `action.find("MISSING=$(")`; re-key to a `"ll-issues format-check"` sentinel or invoke `main_issues(["ll-issues", "format-check", issue_id, "--config", tmp_path])` via `subprocess.run` instead of running the inline heredoc.
+7. Create `scripts/tests/test_ll_issues_format_check.py` — new file with class-per-gap-class structure (`TestFormatCheckClean`/`Renamed`/`Empty`/`Boilerplate`/`JsonOutput`/`IssueNotFound`/`FailOpen`); reuse `_invoke()` from `test_ll_issues_sections.py:19` and the conftest fixtures (`temp_project_dir`, `sample_config`, `config_file`).
+8. Add `scripts/tests/test_issue_parser.py::TestFormatGradedChecker` — direct-Python tests beside `TestIsFormatted` (line 3130), one per gap class, plus a `test_clean_issue_returns_empty_gap_list` and `test_template_load_failure_returns_empty_gap_list` (fail-open mirror of `is_formatted()` lines 64-67).
+9. Extend `scripts/tests/test_rn_remediate.py::TestEnsureFormatted` with renamed/empty/boilerplate/clean cases; copy `creation_template` strings verbatim from `templates/bug-sections.json` for fixture bodies.
+10. Add `scripts/reference/CLI.md` `ll-issues format-check` entry beside `ll-issues check-flag / ll-issues cf` at line 1379 (with example invocations near line 1390).
+11. Update `docs/reference/API.md` to document the new graded checker beside `#### is_formatted` at line 791; keep `is_formatted()` semantics section intact (function is unchanged).
+12. Update `.claude/CLAUDE.md` `ll-issues` subcommand list — add `format-check` alongside `fingerprint`/`decisions` (the project commands reference).
+13. Add CHANGELOG entry at release prep (not under `[Unreleased]`); site at the `[X.Y.Z] - DATE` section beside the ENH-2398 entry at `CHANGELOG.md:96`.
+14. Optional: add `scripts/little_loops/issue_parser.py` `__all__` entry for the new checker per ENH-507 (`P5-ENH-507-add-all-exports-to-public-root-modules.md:149`); cosmetic for this PR, completes the ENH-507 follow-on.
+15. Optional: clarify `skills/format-issue/SKILL.md:344-346` prose so the post-`format-issue` Criterion-1 shortcut is not confused with the deterministic gate behavior (gate intentionally does not honor the session-log shortcut).
+
 ## Impact
 
 - **Priority**: P3 — Quality/correctness improvement; prevents malformed-but-present issues from wasting an LLM `assess` pass and mis-routing the remediation chain.
@@ -242,6 +287,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-07-01 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-02T02:26:48 - `c3a7f0c3-4e31-4aac-86c9-4c5dbb847636.jsonl`
 - `/ll:confidence-check` - 2026-07-01T00:00:00 - `a2e654ea-d551-40b4-8922-3942a9e835f3.jsonl`
 - `/ll:refine-issue` - 2026-07-01T18:23:28 - `9f1c67b2-4389-4a41-9eca-2017def791ef.jsonl`
 - `/ll:format-issue` - 2026-07-01T18:15:41 - `771898ce-5217-4c16-8aa1-2394b36bffd0.jsonl`

@@ -3552,3 +3552,73 @@
   alternatives_rejected: Relax validation.py/fsm-loop-schema.json >=1 floor to accept
     0 as an explicit opt-out sentinel
   issue: BUG-2433
+- id: ARCHITECTURE-085
+  type: decision
+  timestamp: '2026-07-02T01:06:38Z'
+  category: architecture
+  labels: []
+  rationale: Two prior bugs (ENH-2298, BUG-2321) shipped from build_config() literals
+    drifting from config-schema.json defaults; fix the mechanism instead of individual
+    values.
+  rule: 'Captured: ll-init defaults should be sourced from config-schema.json instead
+    of hardcoded literals'
+  scope: issue
+  issue: ENH-2434
+- id: ARCHITECTURE-086
+  type: decision
+  timestamp: '2026-07-02T01:29:53Z'
+  category: architecture
+  labels: []
+  rationale: 'Three sources already agree on schema values (config-schema.json defaults,
+    BRConfig dataclass defaults in scripts/little_loops/config/features.py, and docs/reference/CONFIGURATION.md).
+    Only core.py literals diverge, so schema-wins collapses to a single source of
+    truth while deep_merge (core.py:45-72) preserves existing user values on re-init.
+    Allow-list rejected: contradicts documented single-source-of-truth rule and ENH-2298
+    prior decision. x-init-default rejected: no jsonschema dependency, no precedent
+    for x- extensions, issue scope boundaries exclude schema design changes.'
+  rule: Align schema and core.py (schema-wins direction)
+  scope: issue
+  alternatives_rejected: Allow-list with inline comments (Option A); x-init-default
+    JSON-schema extension field (Option C)
+  issue: ENH-2434
+- id: ARCHITECTURE-087
+  type: decision
+  timestamp: '2026-07-02T02:10:52Z'
+  category: architecture
+  labels: []
+  rationale: Selected based on 4 prior consumption-site precedents (case "$VAR" in
+    /*) ... esac) at interactive-component-generator.yaml:484, svg-image-generator.yaml:141,
+    html-website-generator.yaml:171, oracles/generator-evaluator.yaml:68. Pure bash,
+    no external dep, preserves relative-path branch verbatim. Reuse of existing test
+    helpers (_bash, test_init_outputs_absolute_path, MR-9 non-regression). Scored
+    10/12 vs Option B (6/12) and Option C (7/12). Implementer should match the existing
+    'case' idiom during the fix rather than the issue's proposed '["${DIR:0:1}" =
+    "/"]' substring form.
+  rule: Option A — Conditional guard for run_dir capture (init action)
+  scope: issue
+  alternatives_rejected: 'B: realpath canonicalize (rn-refine.yaml:63 is the only
+    shell precedent, but for a different purpose; no portability guard; would propagate
+    unportable one-liner across 22+ loops). C: ${DIR:-$PWD} default substitution (zero
+    precedent; bash semantics distinguish empty vs. non-empty, not absolute vs. relative;
+    breaks the relative-path branch documented in FEAT-2248).'
+  issue: BUG-2435
+- id: ARCHITECTURE-088
+  type: decision
+  timestamp: '2026-07-02T02:36:29Z'
+  category: architecture
+  labels: []
+  rationale: Mirrors the codebase's established --include-completed/--include-orphans
+    argparse pair (cli/issues/__init__.py:281-287, 415-421) and reuses cmd_sequence's
+    per-row blocked_by JSON decoration (cli/issues/sequence.py:54). Option A would
+    split the --include-* pair pattern by introducing a silent-drop category with
+    no recovery flag; Option B's incremental cost is negligible (same find_issues
+    plumbing) and the structured blocked field benefits downstream consumers in ways
+    stderr cannot.
+  rule: 'Option B — dual-view output: --include-blocked flag + per-row blocked JSON
+    field'
+  scope: issue
+  alternatives_rejected: 'Option A — silent skip (simple): rejected because it splits
+    the established --include-* pair pattern by introducing a third silent-drop category
+    with no recovery flag. Score 11/12 (tiebreak lost on Consistency 2/3 vs Option
+    B 3/3).'
+  issue: ENH-2436
