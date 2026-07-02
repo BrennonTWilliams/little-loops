@@ -3691,3 +3691,48 @@
     and forces a second design pass the next time someone splits rn-implement.yaml:844
     ''blocked'' into blocked-decision/blocked-other subtypes.'
   issue: ENH-2443
+- id: ARCH-171
+  type: rule
+  timestamp: '2026-07-02T20:17:46Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Prompt instructions are soft — the LLM can still call the tool. The
+    host CLI''s --tools flag is enforced at the tool layer and cannot be bypassed
+    by prompt text. ENH-2444 explicitly contrasts the soft fix (editing the prompt)
+    with the hard fix (per-state tools: allowlist translated to --tools on the CLI).'
+  rule: When constraining LLM tool usage, enforce at the host-CLI tool layer (e.g.
+    --tools) rather than via prompt-level instruc
+  enforcement: advisory
+  issue: ENH-2444
+- id: ARCH-172
+  type: rule
+  timestamp: '2026-07-02T20:17:46Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'FSM state-level settings (tool allowlists, model overrides, timeouts)
+    are declarative knobs that should be reviewable, version-controlled, and testable.
+    Embedding them in prompts couples them to a specific template and hides them from
+    diffs. The tools: field on each state is the canonical pattern.'
+  rule: Per-state/per-phase configuration belongs in declarative config (YAML), not
+    embedded in code or runtime-generated prompt
+  enforcement: advisory
+  issue: ENH-2444
+- id: TEST-173
+  type: rule
+  timestamp: '2026-07-02T20:35:31Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Fixed sleeps mask flakiness, add dead time per run, and silently race
+    the timeout instead of failing loudly. Frozen clocks via monkeypatched datetime.now()
+    resolve timestamp-boundary waits in microseconds; os.utime forces filesystem mtime
+    past resolution; _wait_until returns the instant the condition becomes true.
+  rule: Replace fixed time.sleep() waits in tests with deterministic signals (frozen
+    clock, os.utime, or _wait_until predicate p
+  enforcement: advisory
+  issue: ENH-2445
