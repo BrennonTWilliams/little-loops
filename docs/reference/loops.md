@@ -399,7 +399,7 @@ Used by `html-website-generator`, `svg-image-generator`, `html-anything`, `hitl-
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `run_dir` | yes | — | Directory path for generated artifacts (absolute or runner-injected relative path) |
+| `run_dir` | yes | — | Directory path for generated artifacts (always absolute — `loops_dir.resolve()` is applied at injection time; BUG-2435) |
 | `generate_prompt` | yes | — | Full LLM prompt for the `generate` state, including output file instructions |
 | `rubric` | no | `""` | Rubric criteria markdown passed to the `score` state |
 | `pass_threshold` | no | `6` | Minimum score per criterion to accept (out of 10) |

@@ -33,7 +33,10 @@ states:
       : > "$DIR/knowledge-base.md"
       : > "$DIR/coverage.md"
       : > "$DIR/query-log.md"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     next: run_research
 

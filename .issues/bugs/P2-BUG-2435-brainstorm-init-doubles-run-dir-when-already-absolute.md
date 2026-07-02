@@ -2,8 +2,9 @@
 id: BUG-2435
 priority: P2
 type: BUG
-status: open
+status: done
 discovered_date: 2026-07-02
+completed_at: 2026-07-02 03:34:45+00:00
 discovered_by: debug-loop-run
 source_loop: brainstorm
 source_state: init
@@ -496,17 +497,23 @@ the change.
 
 ## Acceptance Criteria
 
-- [ ] `init` action's captured `run_dir` output is a single valid absolute path
+- [x] `init` action's captured `run_dir` output is a single valid absolute path
       regardless of whether `${context.run_dir}` is relative or absolute.
-- [ ] `ll-loop run brainstorm "test brief"` (with both relative and absolute
+- [x] `ll-loop run brainstorm "test brief"` (with both relative and absolute
       `${context.run_dir}` injection) reaches the `diverge` state and produces
-      `ideas.jsonl` with content.
-- [ ] `scripts/tests/test_brainstorm.py` has a regression test covering both
+      `ideas.jsonl` with content. (Verified at the shell-recipe level via
+      `test_init_handles_absolute_context_run_dir` /
+      `test_init_handles_relative_context_run_dir`; both paths now resolve to
+      a single, non-doubled absolute directory, unblocking `pop_lens` →
+      `diverge`.)
+- [x] `scripts/tests/test_brainstorm.py` has a regression test covering both
       `init` path-injection modes.
-- [ ] If step 2 (defense-in-depth) is in scope: `pop_lens` on first iteration
-      with an empty/missing `lenses.txt` does not silently route to `cluster`;
-      it raises an error or routes to a recovery state.
-- [ ] Sibling loops using the same `init` recipe are audited and fixed.
+- [x] `pop_lens` on first iteration with an empty/missing `lenses.txt` does
+      not silently route to `cluster`; it now exits 2 (distinct from the
+      normal exit-1 exhausted-queue case) and routes to `failed` via the new
+      `on_error: failed` route.
+- [x] Sibling loops using the same `init` recipe are audited and fixed (19
+      loops + 3 task templates).
 
 ## Distinct From
 
@@ -539,11 +546,47 @@ the change.
 
 `bug`, `loops`, `brainstorm`, `init`, `path-handling`, `silent-failure`
 
+## Resolution
+
+Implemented Option A (conditional guard) exactly as decided:
+
+- `scripts/little_loops/loops/brainstorm.yaml` `init` action now uses
+  `case "$DIR" in /*) echo "$DIR" ;; *) echo "$(pwd)/$DIR" ;; esac` instead of
+  unconditional `echo "$(pwd)/$DIR"`, matching the existing consumption-site
+  idiom (`interactive-component-generator.yaml`, `svg-image-generator.yaml`,
+  `html-website-generator.yaml`, `oracles/generator-evaluator.yaml`).
+- Applied the identical guard to all 19 sibling loops sharing the recipe
+  (`rn-plan`, `rn-refine`, `rn-plan-apo` — `$PARENT_DIR` variant —,
+  `deep-research`, `hitl-md`, `hitl-compare`, `html-anything`,
+  `canvas-sketch-generator`, `vega-viz`, `pixi-data-viz`,
+  `openscad-model-generator`, `svg-image-generator`, `svg-textgrad`,
+  `rlhf-animated-svg`, `cua-agent-desktop`, `interactive-component-generator`,
+  `cli-anything-bootstrap`, `generative-art`, `adversarial-redesign`) plus the
+  3 `lib/task-templates/*.yaml.tmpl` generator templates.
+- Defense-in-depth: `pop_lens` now distinguishes a missing `lenses.txt`
+  (exit 2, routes to `failed` via a new `on_error: failed`) from a genuinely
+  exhausted queue (exit 1, routes to `cluster` as before).
+- Added regression tests: `test_brainstorm.py` (absolute/relative `init`
+  cases + new `TestPopLensEmptyQueue`), sibling-loop guard assertions in
+  `test_builtin_loops.py` (including 4 new test classes for loops that had no
+  init coverage — `canvas-sketch-generator`, `vega-viz`,
+  `cli-anything-bootstrap`, `generative-art` — and a template-specific class
+  for the 3 `.tmpl` files), plus `test_rn_plan.py`, `test_rn_refine.py`,
+  `test_rn_plan_apo.py`, `test_deep_research.py`,
+  `test_deep_research_arxiv.py`.
+- Updated `FEAT-2248`, `ENH-1726`, `docs/generalized-fsm-loop.md`,
+  `docs/reference/loops.md`, and `thoughts/plans/pixi-js-2-loops-plan.md` to
+  record the guarded recipe and the always-absolute `run_dir` contract.
+- Full suite (`python -m pytest scripts/tests/`) green (1103+ tests),
+  `ruff check` / `ruff format --check` clean, `mypy` clean (one pre-existing,
+  unrelated `wcwidth` stub warning in `cli/loop/layout.py`).
+
 ## Status
 
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue bug fix BUG-2435` - 2026-07-01T22:33:00 - `9d62c90f-f45e-4dca-b254-7870fa043145.jsonl`
 - `/ll:ready-issue` - 2026-07-02T02:43:02 - `ff5d5f7e-3c9f-4d50-9348-296316693ec5.jsonl`
 - `/ll:wire-issue` - 2026-07-02T02:30:25 - `cb3c86ae-20cf-4f27-b380-49ec39e6074d.jsonl`
 - `/ll:decide-issue` - 2026-07-02T02:10:56 - `b7d7ca48-3c72-438a-9a8c-43e1379523cf.jsonl`

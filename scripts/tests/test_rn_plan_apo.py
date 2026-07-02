@@ -126,6 +126,19 @@ class TestRunPlannerState:
         state = raw_data["states"]["run_planner"]
         assert state.get("on_blocked") == "done"
 
+    def test_action_uses_absolute_path(self, raw_data: dict) -> None:
+        action = raw_data["states"]["run_planner"].get("action", "")
+        assert "$(pwd)" in action, "run_planner action must use $(pwd) for an absolute path"
+
+    def test_action_guards_against_already_absolute_parent_dir(self, raw_data: dict) -> None:
+        """run_planner must not double an already-absolute $PARENT_DIR (BUG-2435)."""
+        action = raw_data["states"]["run_planner"].get("action", "")
+        assert 'case "$PARENT_DIR" in' in action, (
+            f"run_planner action must branch on whether $PARENT_DIR is already absolute, "
+            f"got: {action!r}"
+        )
+        assert "/*)" in action
+
 
 class TestScorePlansState:
     """score_plans uses the score_plan_quality fragment."""

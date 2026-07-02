@@ -83,6 +83,14 @@ class TestDeepResearchYaml:
         action = data["states"]["init"].get("action", "")
         assert "$(pwd)" in action, "init.action must use $(pwd) for an absolute path"
 
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_init_touches_all_artifact_files(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
         for artifact in ("report.md", "knowledge-base.md", "coverage.md", "query-log.md"):
@@ -159,6 +167,21 @@ echo "$(pwd)/$DIR"
         assert result.returncode == 0
         path = result.stdout.strip()
         assert path.startswith("/"), f"init must output absolute path, got: {path!r}"
+
+    def test_init_handles_absolute_context_run_dir(self, tmp_path: Path) -> None:
+        """When ${context.run_dir} is already absolute, init must not double it (BUG-2435)."""
+        abs_dir = tmp_path / ".loops" / "runs" / "deep-research-20260526T120000"
+        script = f"""
+DIR="{abs_dir}"
+mkdir -p "$DIR"
+case "$DIR" in
+  /*) echo "$DIR" ;;
+  *) echo "$(pwd)/$DIR" ;;
+esac
+"""
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0
+        assert Path(result.stdout.strip()) == abs_dir
 
 
 class TestDeepResearchResolution:

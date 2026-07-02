@@ -75,7 +75,10 @@ states:
       : > "$DIR/capped.txt"
       : > "$DIR/failed_nodes.txt"
       echo "0" > "$DIR/dequeue_count.txt"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     on_error: diagnose
     next: dequeue_next

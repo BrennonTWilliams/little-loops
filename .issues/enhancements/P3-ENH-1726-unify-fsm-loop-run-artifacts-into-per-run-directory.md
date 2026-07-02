@@ -189,6 +189,13 @@ echo "$(pwd)/${context.run_dir}"   # or just remove the capture: if run_dir is s
 
 Alternatively: keep the `capture: run_dir` pattern but source it from `${context.run_dir}` instead of computing from `output_dir`; subsequent states remain unchanged.
 
+> **Update (BUG-2435):** the runner always injects `${context.run_dir}` as an
+> absolute path, so unconditional `$(pwd)/$DIR` doubles it. The canonical
+> capture recipe now guards on whether `$DIR` is already absolute:
+> `case "$DIR" in /*) echo "$DIR" ;; *) echo "$(pwd)/$DIR" ;; esac`. Any new
+> loop following this unified recipe must use the guarded form, not the plain
+> `$(pwd)/$DIR` shown above.
+
 **Step 3 — loops using `.loops/tmp/` do NOT need migration:**
 
 `general-task.yaml`, `fix-quality-and-tests.yaml`, `scan-and-implement.yaml` and similar use `.loops/tmp/<loop-name>-<artifact>` paths — these are intentional shared/stateless scratch that must persist across runs. Do not migrate these.

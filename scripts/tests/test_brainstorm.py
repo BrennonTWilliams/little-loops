@@ -153,6 +153,54 @@ class TestBrainstormShellStates:
         action = data["states"]["init"].get("action", "")
         assert "$(pwd)" in action, "init must use $(pwd) to produce an absolute run_dir path"
 
+    def test_init_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            "init must branch on whether $DIR is already absolute (BUG-2435)"
+        )
+        assert "/*)" in action
+
+    def test_init_handles_absolute_context_run_dir(self, tmp_path: Path) -> None:
+        """When ${context.run_dir} is already absolute, init must not double it (BUG-2435)."""
+        abs_dir = tmp_path / ".loops" / "runs" / "brainstorm-test"
+        result = _bash(
+            f"""\
+            DIR="{abs_dir}"
+            mkdir -p "$DIR"
+            : > "$DIR/ideas.jsonl"
+            echo 0 > "$DIR/saturation.txt"
+            : > "$DIR/lenses.txt"
+            : > "$DIR/brainstorm.md"
+            case "$DIR" in
+              /*) echo "$DIR" ;;
+              *) echo "$(pwd)/$DIR" ;;
+            esac
+            """,
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
+        assert Path(result.stdout.strip()) == abs_dir
+
+    def test_init_handles_relative_context_run_dir(self, tmp_path: Path) -> None:
+        """When ${context.run_dir} is relative, init must still prepend $(pwd) (BUG-2435)."""
+        result = _bash(
+            """\
+            DIR=".loops/runs/brainstorm-test"
+            mkdir -p "$DIR"
+            : > "$DIR/ideas.jsonl"
+            echo 0 > "$DIR/saturation.txt"
+            : > "$DIR/lenses.txt"
+            : > "$DIR/brainstorm.md"
+            case "$DIR" in
+              /*) echo "$DIR" ;;
+              *) echo "$(pwd)/$DIR" ;;
+            esac
+            """,
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0
+        assert Path(result.stdout.strip()) == tmp_path / ".loops/runs/brainstorm-test"
+
     def test_init_seeds_required_files(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
         for artifact in ("ideas.jsonl", "saturation.txt", "lenses.txt", "brainstorm.md"):
@@ -215,6 +263,65 @@ class TestBrainstormShellStates:
             assert state.get("on_error") == "failed", (
                 f"{state_name} must route to failed on LLM error"
             )
+
+
+class TestPopLensEmptyQueue:
+    """pop_lens must distinguish a missing lenses.txt (upstream failure) from a
+    genuinely exhausted queue (normal end-of-diverge) — BUG-2435 defense-in-depth.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load(LOOP_FILE.read_text())
+
+    def _pop_lens_action(self, data: dict) -> str:
+        return data["states"]["pop_lens"].get("action", "")
+
+    def test_pop_lens_has_on_error_route(self, data: dict) -> None:
+        state = data["states"]["pop_lens"]
+        assert state.get("on_error") == "failed", (
+            "pop_lens must route to failed when lenses.txt is missing (BUG-2435)"
+        )
+
+    def test_pop_lens_action_checks_file_existence(self, data: dict) -> None:
+        action = self._pop_lens_action(data)
+        assert '-f "$QUEUE"' in action, (
+            "pop_lens must check for lenses.txt existence before popping"
+        )
+        assert "exit 2" in action, (
+            "pop_lens must exit with a distinct (error) code when lenses.txt is missing"
+        )
+
+    def test_missing_lenses_file_exits_error_code(self, data: dict, tmp_path: Path) -> None:
+        """iteration 0 with no lenses.txt at all -> exit 2 (error, not queue-exhausted)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        action = self._pop_lens_action(data).replace("${captured.run_dir.output}", str(run_dir))
+        result = _bash(action, tmp_path)
+        assert result.returncode == 2, (
+            f"missing lenses.txt must exit 2 (error), got {result.returncode}: {result.stderr}"
+        )
+
+    def test_exhausted_queue_exits_no_code(self, data: dict, tmp_path: Path) -> None:
+        """An existing-but-empty lenses.txt (queue drained after >=1 pops) -> exit 1 (no)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "lenses.txt").write_text("")
+        action = self._pop_lens_action(data).replace("${captured.run_dir.output}", str(run_dir))
+        result = _bash(action, tmp_path)
+        assert result.returncode == 1, (
+            f"exhausted (empty, existing) lenses.txt must exit 1 (no), got {result.returncode}"
+        )
+
+    def test_populated_queue_pops_item(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "lenses.txt").write_text("contrarian\nfirst-principles\n")
+        action = self._pop_lens_action(data).replace("${captured.run_dir.output}", str(run_dir))
+        result = _bash(action, tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "contrarian"
+        assert (run_dir / "lenses.txt").read_text().strip() == "first-principles"
 
 
 class TestBrainstormDryRun:

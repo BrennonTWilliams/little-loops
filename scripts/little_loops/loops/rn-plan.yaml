@@ -29,7 +29,10 @@ states:
       : > "$DIR/plan.md"
       : > "$DIR/plan-rubric.md"
       : > "$DIR/research.md"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     next: generate_rubric
 

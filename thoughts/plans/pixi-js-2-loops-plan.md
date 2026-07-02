@@ -44,7 +44,7 @@ Mirror `p5js-sketch-generator.yaml` structurally:
 
 | State      | Type   | Purpose                                                                                     |
 | ---------- | ------ | ------------------------------------------------------------------------------------------- |
-| `init`     | shell  | `mkdir -p` + `echo "$(pwd)/${context.run_dir}"`, capture as `run_dir` (absolute file:// path) |
+| `init`     | shell  | `mkdir -p` + guarded absolute-path echo (see note below), capture as `run_dir` (absolute file:// path) |
 | `plan`     | prompt | Write `brief.md` to `${captured.run_dir.output}/brief.md`                                   |
 | `generate` | prompt | Write self-contained `index.html` (Pixi from CDN, all sketch code inline)                   |
 | `evaluate` | shell  | Multi-frame Playwright screenshots via `--wait-for-function`                                |
@@ -202,7 +202,11 @@ Routing identical to p5: `score.on_yes → done`, `on_no → generate`,
   `scripts/little_loops/loops/p5js-sketch-generator.yaml:127-139`, swap
   the `frameCount` predicate.
 - `init` shell pattern (capture absolute `run_dir`): copy from
-  `p5js-sketch-generator.yaml:27-36`.
+  `p5js-sketch-generator.yaml:27-36`. **Note (BUG-2435):** the runner always
+  injects `${context.run_dir}` as absolute, so a plain `$(pwd)/$DIR` echo
+  doubles the path; use the guarded `case "$DIR" in /*) echo "$DIR" ;; *)
+  echo "$(pwd)/$DIR" ;; esac` form instead (already applied to
+  `pixi-data-viz.yaml`).
 - `score` state's `output_contains: ALL_PASS` routing + `critique.md`
   format: model on `p5js-sketch-generator.yaml:147-208`.
 - `done` and `failed` terminals: copy `p5js-sketch-generator.yaml:210-235`,

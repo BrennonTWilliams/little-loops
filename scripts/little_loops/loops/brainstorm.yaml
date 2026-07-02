@@ -40,7 +40,10 @@ states:
       echo 0 > "$DIR/saturation.txt"
       : > "$DIR/lenses.txt"
       : > "$DIR/brainstorm.md"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     next: frame
 
@@ -71,10 +74,16 @@ states:
     on_error: failed
 
   pop_lens:
-    # Atomically pops the head of lenses.txt; exits 1 when the queue is empty.
+    # Atomically pops the head of lenses.txt; exits 1 when the queue is empty
+    # (normal after >=1 pops), exits 2 when lenses.txt is missing entirely
+    # (upstream init failure, e.g. a doubled/malformed run_dir — BUG-2435).
     fragment: queue_pop
     action: |
       QUEUE="${captured.run_dir.output}/lenses.txt"
+      if [ ! -f "$QUEUE" ]; then
+        echo "ERROR: lenses.txt missing at ${captured.run_dir.output} (upstream init failure)" >&2
+        exit 2
+      fi
       ITEM=$(head -1 "$QUEUE" 2>/dev/null)
       if [ -z "$ITEM" ]; then
         exit 1
@@ -84,6 +93,7 @@ states:
     capture: current_lens
     on_yes: diverge
     on_no: cluster
+    on_error: failed
 
   diverge:
     # Generates ideas_per_round ideas under the current lens.

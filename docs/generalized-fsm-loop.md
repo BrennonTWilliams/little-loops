@@ -1055,7 +1055,7 @@ states:
 
 | Variable | Injected by | Description |
 |---|---|---|
-| `run_dir` | `cmd_run` / `cmd_resume` | Per-run artifact directory (`.loops/runs/<loop>-<timestamp>/`). Set before `--context` overrides so CLI flags take precedence. |
+| `run_dir` | `cmd_run` / `cmd_resume` | Per-run artifact directory (`.loops/runs/<loop>-<timestamp>/`). **Always absolute** (`loops_dir.resolve()` is applied at injection time — do not assume a relative path and unconditionally prepend `$(pwd)`; guard with `case "$DIR" in /*) echo "$DIR" ;; *) echo "$(pwd)/$DIR" ;; esac` per BUG-2435). Set before `--context` overrides so CLI flags take precedence. |
 | `design_tokens_context` | `cmd_run` / `cmd_resume` | Resolved design-token values rendered as a prompt-context snippet (empty string when disabled). |
 | `input_hash` | `cmd_run` / `cmd_resume` | SHA-256 hex digest (12 chars) of `context.input`. Available when input is a non-empty string; use for checkpoint fingerprinting to prevent cross-task contamination. Override with `--context input_hash=VALUE`. |
 | `max_steps` | `cmd_run` | The loop's effective step cap (from YAML `max_steps:` or `--max-steps` CLI override). Use `${context.max_steps}` in state actions or evaluator prompts to reference the budget without hard-coding it. A `--context max_steps=VALUE` override takes precedence. |

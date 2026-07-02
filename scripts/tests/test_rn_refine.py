@@ -171,6 +171,28 @@ class TestInitPlumbing:
         # Absolute run dir echoed for capture.
         assert Path(result.stdout.strip()).is_absolute()
 
+    def test_init_action_guards_against_already_absolute_run_dir(self) -> None:
+        """init must branch on whether $DIR is already absolute (BUG-2435)."""
+        action = self._init_action()
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
+    def test_init_handles_absolute_context_run_dir(self, tmp_path: Path) -> None:
+        """When ${context.run_dir} is already absolute, init must not double it (BUG-2435)."""
+        content = "# Big Plan\n\n## Phase 1\n\n- a\n"
+        plan = tmp_path / "plan.md"
+        plan.write_text(content)
+        run_dir_abs = tmp_path / ".loops" / "runs" / "rn-refine-T"
+        rendered = _render(
+            self._init_action(),
+            context={"plan_file": str(plan), "run_dir": str(run_dir_abs)},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0
+        assert Path(result.stdout.strip()) == run_dir_abs
+
 
 # ---------------------------------------------------------------------------
 # dequeue plumbing — depth-first pop

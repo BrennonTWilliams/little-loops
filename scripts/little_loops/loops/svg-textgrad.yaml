@@ -35,7 +35,10 @@ states:
       touch "$DIR/gradients.md"
       touch "$DIR/scores.md"
       echo 0 > "$DIR/playwright_fails.txt"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     next: plan
 

@@ -184,6 +184,13 @@ Note the `capture: round_ideas` on the `diverge` state is required so `dedup_nov
 
 **`init` → absolute run_dir** — use `echo "$(pwd)/$DIR"` (not `echo "$DIR"`) to convert the runner-injected relative path to an absolute path; confirmed in `rn-plan.yaml:states.init`. The bash `$()` is a subshell (no FSM escape needed); only `${...}` variable references inside the action body need `$${...}` escaping (per `[[reference_fsm_bash_brace_escape]]`).
 
+> **Update (BUG-2435):** the runner always injects `${context.run_dir}` as absolute
+> (`loops_dir.resolve()` at injection time), so unconditional `echo "$(pwd)/$DIR"`
+> doubles the path (`/abs/A//abs/A/...`). The canonical recipe now guards on
+> whether `$DIR` is already absolute: `case "$DIR" in /*) echo "$DIR" ;; *) echo
+> "$(pwd)/$DIR" ;; esac`. This mirrors the `case "$VAR" in /*) … esac` idiom
+> already used at consumption sites.
+
 **`saturation_gate` target interpolation** — `evaluate.target: "${context.max_saturation}"` interpolates from context at eval time; confirmed valid by `rn-implement.yaml:states.check_depth` using `evaluate.target: "${context.max_depth}"` with `fragment: numeric_gate`.
 
 **`evaluate_classify` empty-stdout robustness** — `evaluators.py:evaluate_classify` (lines 416–467) returns `verdict=""` when stdout has no non-empty lines. The empty string does not match any named token in the `route:` table, so it falls through to the `_` wildcard. For `route_sink`, this means any `echo "${context.sink}"` failure (e.g., unset sink, subprocess error) still routes to `done` via `_`. The `_error` key handles non-zero exit code short-circuit separately.
@@ -211,7 +218,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/loops/assumption-firewall.yaml:states.parse_assumptions` — working `parse_tagged_json` caller pattern: Python heredoc embedding FSM interpolation via `"""${captured.<name>.output}"""`.
 - `scripts/little_loops/loops/rn-remediate.yaml:states.diagnose` — working `classify` + `route:` table pattern; use this shape for `route_sink`.
 - `scripts/little_loops/fsm/evaluators.py:evaluate_classify` — `classify` evaluator reads the last non-empty stdout line verbatim as the verdict token; required for `route:` table dispatch in `route_sink`.
-- `scripts/little_loops/loops/rn-plan.yaml:states.init` — canonical `init` pattern: `echo "$(pwd)/$DIR"` converts runner-injected relative `${context.run_dir}` to absolute path; captured as `${captured.run_dir.output}` throughout.
+- `scripts/little_loops/loops/rn-plan.yaml:states.init` — canonical `init` pattern (updated by BUG-2435): `case "$DIR" in /*) echo "$DIR" ;; *) echo "$(pwd)/$DIR" ;; esac` converts runner-injected relative `${context.run_dir}` to absolute path without doubling an already-absolute one; captured as `${captured.run_dir.output}` throughout.
 
 ### Dependent Files (Callers/Importers)
 

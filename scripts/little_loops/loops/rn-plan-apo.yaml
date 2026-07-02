@@ -48,7 +48,10 @@ states:
         mkdir -p "$TASK_DIR"
         ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" >> "$PARENT_DIR/planner.log" 2>&1 || true
       done < "$PARENT_DIR/tasks.txt"
-      echo "$(pwd)/$PARENT_DIR"
+      case "$PARENT_DIR" in
+        /*) echo "$PARENT_DIR" ;;
+        *) echo "$(pwd)/$PARENT_DIR" ;;
+      esac
       echo "PLANS_GENERATED=$COUNT"
     capture: plans
     on_blocked: done

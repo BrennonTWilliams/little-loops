@@ -718,6 +718,23 @@ class TestCuaAgentDesktopLoop:
         ctx = data.get("context") or {}
         return {k for k in ctx if isinstance(k, str)}
 
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_max_steps_in_context_block(self, context_vars: set[str]) -> None:
         """BUG-378 hardening: max_steps must be declared in context: with default 50.
 
@@ -4132,6 +4149,15 @@ class TestSvgImageGeneratorLoop:
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
 
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_diagnose_routes_to_failed(self, data: dict) -> None:
         """diagnose state must route to failed."""
         state = data["states"].get("diagnose", {})
@@ -4394,6 +4420,23 @@ class TestPixiDataVizLoop:
         missing = required - actual
         assert not missing, f"Missing states: {missing}"
 
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
         done_state = data["states"].get("done", {})
@@ -4526,6 +4569,15 @@ class TestAdversarialRedesignLoop:
         state = data["states"].get("init", {})
         action = state.get("action", "")
         assert "$(pwd)" in action, f"init.action must contain $(pwd), got: {action!r}"
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
 
     def test_seed_state_is_shell_with_output_contains(self, data: dict) -> None:
         """seed state must be a shell action with an output_contains evaluator."""
@@ -4770,6 +4822,15 @@ class TestSvgTextgradLoop:
         assert "$(pwd)" in action, (
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
 
     def test_screenshot_action_has_stderr_redirect(self, data: dict) -> None:
         """screenshot action must redirect stderr to stdout so playwright errors surface."""
@@ -5028,6 +5089,15 @@ class TestHtmlAnythingLoop:
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
 
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
         done_state = data["states"].get("done", {})
@@ -5183,6 +5253,15 @@ class TestHitlCompareLoop:
         assert "$(pwd)" in action, (
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
@@ -5357,6 +5436,15 @@ class TestHitlMdLoop:
         assert "$(pwd)" in action, (
             f"init.action must use $(pwd) for an absolute path, got: {action!r}"
         )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
@@ -7477,6 +7565,23 @@ class TestRlhfAnimatedSvgParentOrchestration:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     # --- extracted evaluate states absent ---
 
     def test_no_inline_smoke_test(self, data: dict) -> None:
@@ -8589,6 +8694,23 @@ class TestInteractiveComponentGeneratorLoop:
         assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        """init action must echo an absolute path so file:// URIs are valid."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        """init must not double an already-absolute ${context.run_dir} (BUG-2435)."""
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
     def test_pipeline_states_exist(self, data: dict) -> None:
         """Fan-out pipeline: profile -> ideate -> rank -> worklist build/smoke/record -> select -> compose -> verify."""
         required = {
@@ -8898,3 +9020,132 @@ class TestLearningGateConsistency:
         )
         assert "skip_learning_gate" in autodev["context"]
         assert "--skip-learning-gate" in autodev["states"]["implement_current"]["action"]
+
+
+class TestCanvasSketchGeneratorInitAbsolutePath:
+    """init absolute-path guard coverage for canvas-sketch-generator (BUG-2435)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "canvas-sketch-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
+
+class TestVegaVizInitAbsolutePath:
+    """init absolute-path guard coverage for vega-viz (BUG-2435)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "vega-viz.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
+
+class TestCliAnythingBootstrapInitAbsolutePath:
+    """init absolute-path guard coverage for cli-anything-bootstrap (BUG-2435)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "cli-anything-bootstrap.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
+
+class TestGenerativeArtInitAbsolutePath:
+    """init absolute-path guard coverage for generative-art (BUG-2435)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "generative-art.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert "$(pwd)" in action, (
+            f"init.action must use $(pwd) for an absolute path, got: {action!r}"
+        )
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        action = data["states"]["init"].get("action", "")
+        assert 'case "$DIR" in' in action, (
+            f"init.action must branch on whether $DIR is already absolute, got: {action!r}"
+        )
+        assert "/*)" in action
+
+
+class TestTaskTemplatesInitAbsolutePath:
+    """init absolute-path guard coverage for generated task-loop templates (BUG-2435).
+
+    These .tmpl files contain {{jinja}}-style substitution placeholders and are
+    not valid YAML, so the init action is matched with regex against raw text
+    instead of yaml.safe_load.
+    """
+
+    TEMPLATE_DIR = BUILTIN_LOOPS_DIR / "lib" / "task-templates"
+    TEMPLATE_NAMES = [
+        "stateful-service-task.yaml.tmpl",
+        "data-lib-task.yaml.tmpl",
+        "desktop-gui-task.yaml.tmpl",
+    ]
+
+    @pytest.mark.parametrize("template_name", TEMPLATE_NAMES)
+    def test_init_action_uses_absolute_path(self, template_name: str) -> None:
+        path = self.TEMPLATE_DIR / template_name
+        assert path.exists(), f"Template not found: {path}"
+        text = path.read_text()
+        assert "$(pwd)" in text, f"{template_name} init action must use $(pwd)"
+
+    @pytest.mark.parametrize("template_name", TEMPLATE_NAMES)
+    def test_init_action_guards_against_already_absolute_run_dir(self, template_name: str) -> None:
+        path = self.TEMPLATE_DIR / template_name
+        assert path.exists(), f"Template not found: {path}"
+        text = path.read_text()
+        assert 'case "$DIR" in' in text, (
+            f"{template_name} init action must branch on whether $DIR is already absolute"
+        )
+        assert "/*)" in text

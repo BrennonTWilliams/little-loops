@@ -55,7 +55,10 @@ states:
     action: |
       DIR="${context.run_dir}"
       mkdir -p "$DIR"
-      echo "$(pwd)/$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
     capture: run_dir
     next: plan
 
