@@ -29,7 +29,11 @@ description: |
   the highest-scoring version so far (the "a middle iteration often beat the
   last" finding from Anthropic's harness-design work).
 initial: init
-max_steps: 20
+# max_steps: raised 20 → 30 (see .loops/diagnostics/vega-viz-20260702T025053Z.md).
+# A single scored iteration averages ~1.5 repair cycles because generate keeps
+# re-introducing the panel-level params anti-pattern (guarded against below), so
+# 20 steps preempted a completed repair before it could re-validate/score.
+max_steps: 30
 on_max_steps: max_steps_summary
 on_handoff: spawn
 timeout: 7200
@@ -237,6 +241,22 @@ states:
          and tooltips; start quantitative axes at zero unless the brief states
          a sound exception.
 
+         SELECTION SCOPE (multi-layer specs — read before adding any
+         interval/point selection). In a spec with a "layer" array, do NOT put
+         an interval or point selection that projects an encoding channel
+         (a `param` whose `select` has `encodings: ["x"]` / `["y"]`, i.e. a
+         brush or a click-select) in the TOP-LEVEL / panel-level "params" block.
+         Vega-Lite projects that param's signal once per layer into the same
+         parent scope, producing duplicate signals (`Error: Duplicate signal
+         name: "brush_x"`) and a failed compile. Instead attach each such
+         selection to the single layer that owns it — e.g. the brush filter goes
+         in the area/line layer's own "params", the click-select goes in the
+         point/scatter layer's own "params". Other layers can still reference it
+         by name via cross-layer param resolution (`"filter": {"param": "brush"}`,
+         `"opacity": {"condition": {"param": "sel", ...}}`). Panel-level params
+         are only safe when they do NOT project an encoding channel (e.g. a bound
+         input widget, a legend/point selection with no `encodings`).
+
       3. Write ${captured.run_dir.output}/index.html — a single self-contained
          file that loads vega-embed from CDN and embeds the SAME spec object
          inline (copy the spec JSON directly into the script; do NOT fetch the
@@ -324,6 +344,14 @@ states:
       ${captured.run_dir.output}/index.html to match exactly. Common causes:
       invalid field references, wrong scale/encoding types, malformed
       transforms, a "$schema" mismatch, or invalid JSON.
+
+      If the error is `Duplicate signal name` (e.g. "brush_x"), the cause is a
+      panel-level interval/point selection in a multi-layer spec: a top-level
+      "params" selection that projects an encoding channel is emitted once per
+      layer. Fix it by MOVING that param out of the top-level "params" block and
+      into the single layer that owns it (brush → the area/line layer; click
+      selection → the point layer); leave the cross-layer references by param
+      name intact. Do not merely rename the signal — re-scope it.
     next: validate
 
   capture:
