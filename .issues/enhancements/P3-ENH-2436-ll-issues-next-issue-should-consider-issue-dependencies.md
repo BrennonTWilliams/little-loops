@@ -8,10 +8,16 @@ labels:
 - cli
 - ll-issues
 - dependency-management
-captured_at: 2026-07-02T01:50:54Z
+captured_at: 2026-07-02 01:50:54+00:00
 discovered_date: 2026-07-02
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 57
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 0
 ---
 
 # P3-ENH-2436: ll-issues next-issue should consider Issue dependencies
@@ -733,7 +739,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-02_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 57/100 → LOW
+
+### Outcome Risk Factors
+- Change surface — broad enumeration across 15 existing `find_issues()` call sites; safety currently rests entirely on the new `skip_blocked` parameter being keyword-only with a `False` default (Wiring Phase step 7) rather than on independent per-caller verification.
+- Complexity — roughly 11 total touch points across code (4), tests, and docs (5) mean each edit is individually mechanical but numerous; budget time for the doc/test sync pass even though no single edit is architecturally risky.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-02T20:55:26 - `9d02b2f6-5396-47a3-a74d-144f2283337c.jsonl`
 - `/ll:decide-issue` - 2026-07-02T02:36:37 - `64610888-7400-4f39-b171-4825f84a8759.jsonl`
 - `/ll:wire-issue` - 2026-07-02T02:23:22 - `bd4904c3-9618-4f6f-883b-d4597ec4eda8.jsonl`
 - `/ll:refine-issue` - 2026-07-02T02:09:28 - `ea47d6be-ecee-41c2-9918-0eee9aeca58a.jsonl`
