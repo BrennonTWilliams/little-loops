@@ -4604,7 +4604,9 @@ def _long_back_edge_fsm(n: int, back_src: str, back_dst: str) -> FSMLoop:
     states: dict[str, StateConfig] = {
         f"s{i}": make_test_state(action="step", on_yes=f"s{i + 1}") for i in range(n - 1)
     }
-    states[back_src] = make_test_state(action="step", on_yes=f"s{int(back_src[1:]) + 1}", on_no=back_dst)
+    states[back_src] = make_test_state(
+        action="step", on_yes=f"s{int(back_src[1:]) + 1}", on_no=back_dst
+    )
     states[f"s{n - 1}"] = make_test_state(terminal=True)
     return make_test_fsm(initial="s0", states=states)
 

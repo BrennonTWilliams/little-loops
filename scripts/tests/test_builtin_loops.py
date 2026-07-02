@@ -6485,9 +6485,7 @@ class TestGeneratorEvaluatorOracle:
         """ENH-2428: check_stall must use the score_stall gate (score-plateau signal)."""
         from little_loops.fsm.fragments import resolve_fragments
 
-        resolved = resolve_fragments(
-            yaml.safe_load(self.LOOP_FILE.read_text()), BUILTIN_LOOPS_DIR
-        )
+        resolved = resolve_fragments(yaml.safe_load(self.LOOP_FILE.read_text()), BUILTIN_LOOPS_DIR)
         state = resolved["states"].get("check_stall", {})
         assert state.get("evaluate", {}).get("type") == "score_stall", (
             "check_stall must route through the score_stall evaluator"

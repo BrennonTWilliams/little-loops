@@ -963,9 +963,9 @@ class TestLearningReadyGate:
         action = _load_loop()["states"]["check_learning_ready"]["action"]
         # The check call keeps its cheap timeout=30
         assert '"check", t, "--stale-aware"' in action
-        assert 'timeout=30' in action
+        assert "timeout=30" in action
         # The prove call gets its own, larger timeout
-        assert 'timeout=1800' in action
+        assert "timeout=1800" in action
 
     def test_check_learning_ready_writes_attempted_marker(self) -> None:
         """A per-run attempted marker is written when auto-prove ran, so
