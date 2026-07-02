@@ -1,6 +1,7 @@
 ---
 id: ENH-2434
-title: ll-init defaults should be sourced from config-schema.json instead of hardcoded literals
+title: ll-init defaults should be sourced from config-schema.json instead of hardcoded
+  literals
 type: enh
 priority: P2
 status: open
@@ -16,6 +17,12 @@ relates_to:
 - BUG-2321
 - ENH-2298
 - ENH-651
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 17
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2434: ll-init defaults should be sourced from config-schema.json instead of hardcoded literals
@@ -437,6 +444,7 @@ The implementer should consider:
 | `.claude/CLAUDE.md` | Documents `ll-init`, `config-schema.json`, and `.ll/ll-config.json` as core project configuration |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-02T02:42:35Z - `a9a9fc96-7f5d-4608-ba25-50ab2fbf9324.jsonl`
 - `/ll:wire-issue` - 2026-07-02T01:56:52 - `ea47d6be-ecee-41c2-9918-0eee9aeca58a.jsonl`
 - `/ll:decide-issue` - 2026-07-02T01:29:57 - `960b3ce5-4cee-422b-9b65-45f370408957.jsonl`
 - `/ll:refine-issue` - 2026-07-02T01:24:54 - `27f08e41-8bd7-47f5-ae74-491580b8f097.jsonl`
