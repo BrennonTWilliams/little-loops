@@ -66,6 +66,11 @@ class TestHandoffHandler:
             cmd = mock_popen.call_args[0][0]
             assert cmd[0] == "claude"
             assert "-p" in cmd
+            # argv must carry --dangerously-skip-permissions (not just the env
+            # var) so hook events for the spawned session report
+            # permission_mode == "bypassPermissions", matching every other
+            # automation invocation path (build_streaming/build_blocking_json).
+            assert "--dangerously-skip-permissions" in cmd
 
             # Verify prompt includes loop name and continuation
             prompt = cmd[cmd.index("-p") + 1]

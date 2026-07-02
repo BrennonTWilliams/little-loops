@@ -115,10 +115,14 @@ class HandoffHandler:
         prompt = "".join(prompt_parts)
 
         invocation = resolve_host().build_detached(prompt=prompt)
-        # Legacy argv had no perm-skip; strip it for no-behavior-change refactor.
-        args = [a for a in invocation.args if a != "--dangerously-skip-permissions"]
+        # Keep --dangerously-skip-permissions in argv (previously stripped): the
+        # spawned process already gets DANGEROUSLY_SKIP_PERMISSIONS=1 via env, but
+        # dropping the flag from argv means hook events for this session report a
+        # permission_mode other than "bypassPermissions" — breaking every
+        # automation_contexts_only-gated hook (e.g. scratch-pad-redirect) for
+        # spawned continuations of on_handoff: spawn loops.
         return subprocess.Popen(
-            [invocation.binary, *args],
+            [invocation.binary, *invocation.args],
             text=True,
             start_new_session=True,
             stdout=subprocess.DEVNULL,
