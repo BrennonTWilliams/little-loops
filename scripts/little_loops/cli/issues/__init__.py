@@ -20,6 +20,7 @@ def main_issues() -> int:
     with cli_event_context(DEFAULT_DB_PATH, "ll-issues", sys.argv[1:]):
         from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
         from little_loops.cli.issues.append_log import cmd_append_log
+        from little_loops.cli.issues.check_decidable import cmd_check_decidable
         from little_loops.cli.issues.check_flag import cmd_check_flag
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
         from little_loops.cli.issues.clusters import cmd_clusters
@@ -84,6 +85,7 @@ Sub-commands:
   clusters       Visualize issue dependency clusters as box diagrams
   check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
+  check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-status       Transition an issue to a new status value
   skip             Deprioritize an issue by bumping its priority prefix
@@ -576,6 +578,14 @@ Examples:
         cf.add_argument("field", help="Frontmatter field name (e.g., decision_needed)")
         add_config_arg(cf)
 
+        cdec = subs.add_parser(
+            "check-decidable",
+            help="Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443)",
+        )
+        cdec.set_defaults(command="check-decidable")
+        cdec.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+        add_config_arg(cdec)
+
         cr = subs.add_parser(
             "check-readiness",
             aliases=["cr"],
@@ -779,6 +789,8 @@ Examples:
             return cmd_next_issues(config, args)
         if args.command == "check-flag":
             return cmd_check_flag(config, args)
+        if args.command == "check-decidable":
+            return cmd_check_decidable(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":

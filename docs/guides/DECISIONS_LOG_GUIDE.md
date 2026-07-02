@@ -179,6 +179,8 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 
 The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it after selecting an option. Automation never implements an issue while the flag is set.
 
+**The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this: `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling back to `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) if the retry also finds nothing. FSM callers (`rn-remediate`, `autodev`) pre-check with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score.
+
 **Signal phrases that trigger `decision_needed: true`:**
 
 - "open decision"

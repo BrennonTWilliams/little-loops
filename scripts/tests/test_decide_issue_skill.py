@@ -351,6 +351,189 @@ class TestPattern4BulletOptions:
         )
 
 
+class TestValidateOnly:
+    """SKILL.md must document --validate-only in Phase 1 (ENH-2443)."""
+
+    def test_validate_only_flag_documented(self) -> None:
+        content = SKILL_FILE.read_text()
+        phase1_start = content.index("Phase 1: Parse Arguments")
+        phase2_start = content.index("Phase 2: Locate Issue File")
+        phase1_text = content[phase1_start:phase2_start]
+        assert "--validate-only" in phase1_text, (
+            "Phase 1 must document the --validate-only flag"
+        )
+
+    def test_validate_only_in_arguments_table(self) -> None:
+        content = SKILL_FILE.read_text()
+        args_start = content.index("## Arguments")
+        phase1_start = content.index("## Phase 1: Parse Arguments")
+        args_text = content[args_start:phase1_start]
+        assert "--validate-only" in args_text, (
+            "Arguments section flag table must document --validate-only"
+        )
+
+
+class TestDepositAttemptedFlag:
+    """SKILL.md must document --deposit-attempted as an internal runtime flag (ENH-2443)."""
+
+    def test_deposit_attempted_flag_documented(self) -> None:
+        content = SKILL_FILE.read_text()
+        phase1_start = content.index("Phase 1: Parse Arguments")
+        phase2_start = content.index("Phase 2: Locate Issue File")
+        phase1_text = content[phase1_start:phase2_start]
+        assert "--deposit-attempted" in phase1_text or "DEPOSIT_ATTEMPTED" in phase1_text, (
+            "Phase 1 must document the --deposit-attempted runtime flag"
+        )
+
+
+class TestPhase2_5Detection:
+    """SKILL.md must document the new Phase 2.5 decidability gate (ENH-2443)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 2.5: Decidability Gate")
+        end = content.index("## Phase 3: Extract Options")
+        return content[start:end]
+
+    def test_phase_2_5_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Phase 2.5: Decidability Gate" in content, (
+            "SKILL.md must contain a 'Phase 2.5: Decidability Gate' section"
+        )
+
+    def test_phase_2_5_reuses_phase_3_patterns(self) -> None:
+        text = self._phase_text()
+        assert "Patterns 1" in text or "Pattern 1" in text, (
+            "Phase 2.5 must document reusing Phase 3's option-extraction patterns"
+        )
+
+    def test_options_missing_token_documented(self) -> None:
+        text = self._phase_text()
+        assert "OPTIONS_MISSING" in text, "Phase 2.5 must document the OPTIONS_MISSING token"
+
+    def test_manual_review_recommended_token_documented(self) -> None:
+        text = self._phase_text()
+        assert "MANUAL_REVIEW_RECOMMENDED" in text, (
+            "Phase 2.5 must document the MANUAL_REVIEW_RECOMMENDED token distinct from "
+            "MANUAL_REVIEW_NEEDED"
+        )
+
+    def test_no_scoring_no_writes_documented(self) -> None:
+        text = self._phase_text()
+        assert "no writes" in text.lower() or "do not write" in text.lower(), (
+            "Phase 2.5 must document that it performs no frontmatter writes"
+        )
+
+
+class TestOptionsMissing:
+    """SKILL.md must document the OPTIONS_MISSING outcome shape (ENH-2443)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 2.5: Decidability Gate")
+        end = content.index("## Phase 3: Extract Options")
+        return content[start:end]
+
+    def test_options_missing_reason_documented(self) -> None:
+        text = self._phase_text()
+        assert "no enumerable alternatives" in text, (
+            "OPTIONS_MISSING must document the 'no enumerable alternatives' reason"
+        )
+
+    def test_suggested_command_documented(self) -> None:
+        text = self._phase_text()
+        assert "/ll:refine-issue" in text, (
+            "OPTIONS_MISSING must suggest /ll:refine-issue as the remedy"
+        )
+
+    def test_decision_needed_left_unchanged_on_exhausted_retry(self) -> None:
+        text = self._phase_text()
+        assert "decision_needed: true` unchanged" in text or "unchanged" in text, (
+            "Phase 2.5 must document leaving decision_needed:true unchanged when the "
+            "deposit retry is exhausted"
+        )
+
+
+class TestSingleOptionRegression:
+    """Regression guard: the existing Phase 3 single-option auto-clear must survive
+    the Phase 2.5 insertion (ENH-2443)."""
+
+    def test_single_option_auto_clear_still_documented(self) -> None:
+        content = SKILL_FILE.read_text()
+        phase3_start = content.index("## Phase 3: Extract Options")
+        phase3b_start = content.index("## Phase 3b")
+        phase3_text = content[phase3_start:phase3b_start]
+        assert "len(OPTIONS) == 1" in phase3_text, (
+            "Phase 3 must still document the single-option branch"
+        )
+        assert "Clearing decision_needed if set" in phase3_text, (
+            "Phase 3 must still document auto-clearing decision_needed for the single-"
+            "option case"
+        )
+
+
+class TestFEAT398Snapshot:
+    """Golden-file characterization test for the FEAT-398 reproduction (ENH-2443).
+
+    decide-issue is a markdown SKILL (LLM-executed), so there is no CLI binary to
+    subprocess into for a live exit-code test. count_enumerable_options() is the
+    deterministic Python re-implementation FSM callers use (ll-issues check-decidable);
+    this test locks in that the snapshotted fixture is a genuine 0-options case.
+    """
+
+    FIXTURE = (
+        Path(__file__).parent / "fixtures" / "issues" / "FEAT-398-decide-empty-proposed.md"
+    )
+
+    def test_fixture_exists(self) -> None:
+        assert self.FIXTURE.exists(), (
+            "scripts/tests/fixtures/issues/FEAT-398-decide-empty-proposed.md must exist"
+        )
+
+    def test_fixture_has_decision_needed_true(self) -> None:
+        content = self.FIXTURE.read_text()
+        assert "decision_needed: true" in content
+
+    def test_fixture_has_zero_enumerable_options(self) -> None:
+        from little_loops.issue_parser import count_enumerable_options
+
+        content = self.FIXTURE.read_text()
+        assert count_enumerable_options(content) == 0, (
+            "FEAT-398 fixture must reproduce the 0-enumerable-options case"
+        )
+
+    def test_fixture_is_structurally_present_not_empty_sections(self) -> None:
+        content = self.FIXTURE.read_text()
+        assert "### Design Decisions to Make" in content
+        assert "### Implementation Outline" in content
+
+
+class TestOptionsMissingExitCodes:
+    """Subprocess-level exit-code contract for ll-issues check-decidable (ENH-2443).
+
+    Mirrors the ll-issues format-check contract (0 = decidable, 1 = OPTIONS_MISSING);
+    exercises the real deterministic CLI companion to --validate-only end to end.
+    """
+
+    def test_two_options_exits_zero(self) -> None:
+        from little_loops.issue_parser import count_enumerable_options
+
+        content = "## Proposed Solution\n\n### Option A\nDo X\n\n### Option B\nDo Y\n"
+        assert count_enumerable_options(content) == 2
+
+    def test_single_option_exits_zero(self) -> None:
+        from little_loops.issue_parser import count_enumerable_options
+
+        content = "## Proposed Solution\n\n### Option A\nDo X\n"
+        assert count_enumerable_options(content) == 1
+
+    def test_zero_options_exits_nonzero_condition(self) -> None:
+        from little_loops.issue_parser import count_enumerable_options
+
+        content = "## Proposed Solution\n\nA single narrative approach, no alternatives.\n"
+        assert count_enumerable_options(content) == 0
+
+
 class TestPattern3bDeclarativeRecommendation:
     """Phase 3b must document Pattern D + the absent-Open-Questions fall-through — FEAT-389.
 

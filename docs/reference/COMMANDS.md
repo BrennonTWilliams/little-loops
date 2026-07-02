@@ -233,9 +233,11 @@ Resolve multi-option implementation decisions by gathering codebase evidence for
 
 **Arguments:**
 - `issue_id` (required): Issue ID to decide on (e.g., FEAT-948, ENH-277)
-- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview decision without writing)
+- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview decision without writing), `--validate-only` (probe decidability only — Phases 1–2.5, no scoring, no writes; exit 0 if there is something to decide, exit 1 with `OPTIONS_MISSING` otherwise)
 
 **When to run**: After `/ll:refine-issue --auto` or `/ll:confidence-check` sets `decision_needed: true` in the issue frontmatter. Automated pipelines (`ll-auto`, `ll-parallel`) invoke this step automatically via the `decide_command` config template.
+
+**Decidability gate (ENH-2443)**: Phase 2.5 counts enumerable options in `## Proposed Solution` before scoring. If `decision_needed: true` but zero enumerable options are found, `--auto` mode invokes `/ll:refine-issue --auto` once (bounded, internal `--deposit-attempted` flag) to deposit options, then re-checks. If still zero, `decision_needed` is left `true` and `MANUAL_REVIEW_RECOMMENDED` is emitted — distinct from `MANUAL_REVIEW_NEEDED` so callers can tell "nothing to score, even after one auto-recovery attempt" apart from a genuine human-required decision. FSM callers (`rn-remediate`, `autodev`) use the deterministic companion CLI `ll-issues check-decidable <ID>` (no LLM) as a cheap pre-`decide` gate — mirrors `ensure_formatted` → `ll-issues format-check` (ENH-2426).
 
 **Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. In `--auto` mode when no formal `Option A / Option B` blocks are found (Phase 3b), also scans all sections for inline provisional decision language (`(e.g., ...)`, `TBD`, `"must be replaced with"`) and, if a single clear approach is identifiable, locks it in and sets `decision_needed: false` without user interaction. If no clear winner can be inferred, exits cleanly without prompting. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
 

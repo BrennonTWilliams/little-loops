@@ -826,6 +826,26 @@ Reports four gap classes on the returned `FormatGaps` dataclass (`missing`, `ren
 
 **Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
 
+#### count_enumerable_options
+
+```python
+def count_enumerable_options(content: str) -> int
+```
+
+Deterministic (no LLM) re-implementation of `skills/decide-issue/SKILL.md` Phase 3's
+option-extraction patterns (ENH-2443). Backs the `ll-issues check-decidable` subcommand —
+the FSM-facing companion to `/ll:decide-issue --validate-only`, mirroring how
+`check_format_gaps` backs `ll-issues format-check`. Counts matches for the first pattern
+tier (in precedence order: `### Option X` headers, `**Option X**` bold labels, numbered
+`N. **Option`/`...approach` items, `- (x)`/`- Option X` bullets) that has any; widens to
+`## Codebase Research Findings` / `## Implementation Status` when `## Proposed Solution`
+yields 0, mirroring Phase 3's own widening.
+
+**Parameters:**
+- `content` - Full issue file text
+
+**Returns:** Count of enumerable options found (0 when there is nothing to decide).
+
 #### find_issues
 
 ```python
@@ -3431,6 +3451,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
 | `fingerprint` | Extract structured fingerprint (id, files_to_modify, key_terms) from an issue file as JSON; used by `audit-issue-conflicts` Phase 2b (`--cross-theme`) |
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
+| `check-decidable` | Exit 0 if an issue has >=1 enumerable option to decide between (deterministic companion to `/ll:decide-issue --validate-only`, ENH-2443) |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |
 | `epic-consistency` | Detect and reconcile EPIC body/parent drift (`--all`, `--fix`, `--format text\|json`); exits non-zero when drift found in report-only mode |
 

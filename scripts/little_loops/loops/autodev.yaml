@@ -81,6 +81,7 @@ states:
 
       rm -f ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-decide-ran
+      rm -f ${context.run_dir}/autodev-decide-options-deposited
       (ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -186,8 +187,48 @@ states:
       fi
       ll-issues check-flag ${captured.input.output} decision_needed
     fragment: shell_exit
-    on_yes: run_decide
+    on_yes: check_decision_decidable
     on_no: implement_current
+
+  check_decision_decidable:
+    # ENH-2443 parity insertion (Implementation Step #7): same rn-remediate gate —
+    # decide_current's decision_needed:true may have zero enumerable options in
+    # ## Proposed Solution, in which case run_decide silently leaves the flag
+    # unchanged and the issue never converges. ll-issues check-decidable is the
+    # deterministic (non-LLM) companion to /ll:decide-issue --validate-only.
+    # Marker-bounded: once deposit_options has run once this iteration, skip
+    # re-validation and go straight to run_decide (bounds the detour to one retry).
+    action: |
+      if [ -f ${context.run_dir}/autodev-decide-options-deposited ]; then
+        exit 0
+      fi
+      ll-issues check-decidable ${captured.input.output}
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: deposit_options
+    on_error: run_decide
+
+  deposit_options:
+    # Bounded retry: refine --auto may deposit Option A/B/C blocks that
+    # run_decide can then score. Write-once marker prevents infinite loops if
+    # refine also can't deposit options — falls through to run_decide with no
+    # enumerable options; the existing decision_needed gate remains the safety net.
+    fragment: with_rate_limit_handling
+    action_type: slash_command
+    action: "/ll:refine-issue ${captured.input.output} --auto"
+    on_yes: record_options_deposited
+    on_no: run_decide
+    on_partial: record_options_deposited
+    on_error: run_decide
+    on_rate_limit_exhausted: done
+
+  record_options_deposited:
+    # Marker ensures the deposit_options detour runs at most once per issue
+    # per iteration (cleared at dequeue_next, mirroring autodev-decide-ran).
+    action_type: shell
+    action: |
+      printf '1' > ${context.run_dir}/autodev-decide-options-deposited
+    next: check_decision_decidable
 
   run_decide:
     # Run /ll:decide-issue to select a winning implementation option and clear

@@ -33,19 +33,22 @@ Can also be run manually on any issue that has multiple options in its Proposed 
 ## Arguments
 
 ```
-/ll:decide-issue [<issue-id>] [--auto] [--dry-run]
+/ll:decide-issue [<issue-id>] [--auto] [--dry-run] [--validate-only]
 ```
 
 | Flag | Meaning |
 |------|---------|
 | `--auto` | Non-interactive mode: write decision without prompting |
 | `--dry-run` | Preview the decision without modifying the issue file |
+| `--validate-only` | Probe decidability only (Phases 1–2.5); no scoring, no writes. Exit 0 if there is something to decide, exit 1 with `OPTIONS_MISSING` otherwise (ENH-2443) |
+| `--deposit-attempted` | Internal runtime flag, not a CLI arg — Phase 2.5 sets this after invoking `/ll:refine-issue --auto` once, bounding the auto-recovery retry to a single attempt per invocation (ENH-2443) |
 
 **Examples:**
 ```bash
 /ll:decide-issue FEAT-948
 /ll:decide-issue ENH-277 --auto
 /ll:decide-issue BUG-042 --auto --dry-run
+/ll:decide-issue FEAT-398 --auto --validate-only
 ```
 
 ---
@@ -56,6 +59,8 @@ Can also be run manually on any issue that has multiple options in its Proposed 
 ISSUE_ID = ""
 AUTO_MODE = false
 DRY_RUN = false
+VALIDATE_ONLY = false
+DEPOSIT_ATTEMPTED = false   # internal — never read from ARGUMENTS; set by Phase 2.5 itself
 
 # Auto-enable in automation contexts
 if ARGUMENTS contains "--dangerously-skip-permissions" or env LL_NON_INTERACTIVE is set or env DANGEROUSLY_SKIP_PERMISSIONS is set: AUTO_MODE = true
@@ -63,6 +68,7 @@ if ARGUMENTS contains "--dangerously-skip-permissions" or env LL_NON_INTERACTIVE
 # Explicit flags
 if ARGUMENTS contains "--auto": AUTO_MODE = true
 if ARGUMENTS contains "--dry-run": DRY_RUN = true
+if ARGUMENTS contains "--validate-only": VALIDATE_ONLY = true
 
 # Extract issue ID (first non-flag token)
 for token in ARGUMENTS:
@@ -70,7 +76,7 @@ for token in ARGUMENTS:
 
 if ISSUE_ID is empty:
     print "Error: issue_id is required"
-    print "Usage: /ll:decide-issue [ISSUE_ID] [--auto] [--dry-run]"
+    print "Usage: /ll:decide-issue [ISSUE_ID] [--auto] [--dry-run] [--validate-only]"
     exit 1
 ```
 
@@ -91,6 +97,45 @@ Read the full issue file to extract:
 - YAML frontmatter (particularly `decision_needed`)
 - The full "## Proposed Solution" section text
 - Issue title and type for context
+
+---
+
+## Phase 2.5: Decidability Gate (ENH-2443)
+
+Before spending a full scoring pass (or, for direct/FSM callers, before running at all),
+determine whether there is anything to decide. Run the **same extraction patterns as Phase
+3** (Patterns 1–4, including the Pattern 4 → `## Codebase Research Findings` /
+`## Implementation Status` widening when Proposed Solution yields 0) to compute `OPTIONS`.
+Do not score, do not spawn agents, do not write to the issue file in this phase.
+
+**Branch:**
+- `OPTIONS >= 1` → decidable. If `VALIDATE_ONLY`: exit 0. Otherwise: continue to Phase 3
+  (which re-runs extraction normally; the Phase 2.5 count is a pre-check, not a cache).
+- `OPTIONS == 0`:
+  - If `VALIDATE_ONLY`: emit `OPTIONS_MISSING` (see token shape below) and exit 1.
+  - If not `VALIDATE_ONLY` and `AUTO_MODE = true` and `DEPOSIT_ATTEMPTED = false`: invoke
+    `/ll:refine-issue ${ISSUE_ID} --auto` once, set `DEPOSIT_ATTEMPTED = true`, then re-run
+    the Phase 2.5 extraction against the (possibly changed) issue content:
+    - If the re-scan now finds `OPTIONS >= 1`: continue to Phase 3 as above.
+    - If the re-scan still finds `OPTIONS == 0`: leave `decision_needed: true` unchanged,
+      emit `MANUAL_REVIEW_RECOMMENDED` on stdout (distinct from `MANUAL_REVIEW_NEEDED` so
+      callers can tell "the skill had nothing to score, even after one auto-recovery
+      attempt" apart from other manual-review causes), exit non-zero. Proceed to Phase 8
+      (Append Session Log) only — skip Phases 3–7 and Phase 9's normal report.
+  - If not `VALIDATE_ONLY` and (`AUTO_MODE = false` or `DEPOSIT_ATTEMPTED = true`): fall
+    through to Phase 3 unchanged — Phase 3's own `OPTIONS` empty-handling (interactive
+    "nothing to decide" message, or Phase 3b's inline scan in auto mode) already covers
+    this case and remains the source of truth for non-validate-only runs that reach it a
+    second time.
+
+### `OPTIONS_MISSING` token shape
+
+```
+## RESULT: OPTIONS_MISSING
+reason: decision_needed is true but ## Proposed Solution has no enumerable alternatives
+suggested_command: /ll:refine-issue ${ISSUE_ID} --auto
+exit_code: 1
+```
 
 ---
 
@@ -406,55 +451,8 @@ git add "{{issue_file_path}}"
 
 ## Phase 9: Output Report
 
-```
-================================================================================
-DECIDE ISSUE: {{ISSUE_ID}}
-================================================================================
-
-## ISSUE
-- File: [path]
-- Type: [BUG|FEAT|ENH|EPIC]
-- Title: [title]
-- Mode: [Interactive | Auto] [--dry-run]
-- decision_needed was: [true | false | absent]
-
-## OPTIONS FOUND (N total)
-- Option A: [title] — [one-line description]
-- Option B: [title] — [one-line description]
-...
-
-## SCORING
-
-| Option | Consistency | Simplicity | Testability | Risk | Total |
-|--------|-------------|------------|-------------|------|-------|
-| [A]    | N/3         | N/3        | N/3         | N/3  | N/12  |
-| [B]    | N/3         | N/3        | N/3         | N/3  | N/12  |
-
-## DECISION
-✓ Selected: [option title] (score: N/12)
-
-Reasoning: [2-3 sentences]
-
-## CHANGES APPLIED
-- [Annotated issue with > **Selected:** callout | Skipped (idempotent)]
-- [Appended ### Decision Rationale section | Skipped (idempotent)]
-- decision_needed: [set to false | already false — no change]
-
-## DRY RUN PREVIEW  ← only shown when --dry-run
----
-[Full annotation content that would be written]
----
-
-## FILE STATUS
-- [Modified | Not modified (--dry-run | nothing to change)]
-
-## NEXT STEPS
-- Run `/ll:wire-issue {{ISSUE_ID}}` to add integration wiring (callers, entry points, test hooks)
-- Run `/ll:ready-issue {{ISSUE_ID}}` to validate the issue is ready to implement
-- Run `/ll:manage-issue feature implement {{ISSUE_ID}}` to implement
-
-================================================================================
-```
+See [reference.md](reference.md) for the full Output Report template (issue summary,
+options table, scoring table, decision, changes applied, dry-run preview, next steps).
 
 ---
 
@@ -479,3 +477,15 @@ Reasoning: [2-3 sentences]
 | `confidence-check` | Evaluates implementation readiness score |
 
 `decide-issue` is specifically for the "refine-issue deposited multiple options but hasn't selected one" problem. It consumes `decision_needed: true` and produces a clear, annotated winner so the pipeline can continue.
+
+### FSM callers
+
+FSM `shell` states cannot invoke slash commands directly (no LLM dispatch from a
+subprocess), so `--validate-only` is a skill-level flag for direct/interactive use only.
+FSM-driven loops (`rn-remediate`, `autodev`) instead call the deterministic companion CLI
+`ll-issues check-decidable <ID>` — a pure-Python re-implementation of the same Patterns
+1–4 counting logic (no LLM, no scoring, no write) — as a cheap pre-`decide` gate: exit 0
+means "decide has something to act on", exit 1 routes the loop through
+`/ll:refine-issue --auto` to deposit options before retrying (ENH-2443). This mirrors the
+`ensure_formatted` → `ll-issues format-check` precedent (ENH-2426): the skill documents
+the human-facing behavior, a companion CLI gives automation a real non-LLM evaluator.

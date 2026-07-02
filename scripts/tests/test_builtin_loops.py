@@ -2877,12 +2877,49 @@ class TestAutodevLoop:
             f"decide_current.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
-    def test_decide_current_on_yes_routes_to_run_decide(self, data: dict) -> None:
-        """decide_current.on_yes (decision_needed=true) must route to run_decide."""
+    def test_decide_current_on_yes_routes_to_check_decision_decidable(self, data: dict) -> None:
+        """ENH-2443: decide_current.on_yes (decision_needed=true) must route to
+        check_decision_decidable (parity insertion mirroring rn-remediate), which then
+        routes to run_decide once the issue has enumerable options to decide between."""
         state = data["states"].get("decide_current", {})
-        assert state.get("on_yes") == "run_decide", (
-            f"decide_current.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"decide_current.on_yes should be 'check_decision_decidable', got "
+            f"{state.get('on_yes')!r}"
         )
+
+    def test_check_decision_decidable_state_exists_and_routes(self, data: dict) -> None:
+        """ENH-2443: check_decision_decidable uses the deterministic ll-issues
+        check-decidable companion CLI and routes yes->run_decide, no->deposit_options."""
+        state = data["states"].get("check_decision_decidable", {})
+        assert state.get("fragment") == "shell_exit"
+        assert "ll-issues check-decidable" in state.get("action", "")
+        assert state.get("on_yes") == "run_decide"
+        assert state.get("on_no") == "deposit_options"
+        assert state.get("on_error") == "run_decide"
+
+    def test_deposit_options_state_exists_and_routes(self, data: dict) -> None:
+        """ENH-2443: deposit_options runs /ll:refine-issue --auto and routes success
+        through record_options_deposited back to check_decision_decidable."""
+        do = data["states"].get("deposit_options", {})
+        assert do.get("fragment") == "with_rate_limit_handling"
+        assert do.get("action_type") == "slash_command"
+        assert "/ll:refine-issue" in do.get("action", "")
+        assert "--auto" in do.get("action", "")
+        assert do.get("on_yes") == "record_options_deposited"
+        assert do.get("on_partial") == "record_options_deposited"
+        assert do.get("on_no") == "run_decide"
+        assert do.get("on_error") == "run_decide"
+
+        rod = data["states"].get("record_options_deposited", {})
+        assert rod.get("action_type") == "shell"
+        assert rod.get("next") == "check_decision_decidable"
+        assert "autodev-decide-options-deposited" in rod.get("action", "")
+
+    def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
+        """ENH-2443: the deposit-options marker must be cleared per-issue (mirrors the
+        existing autodev-decide-ran clear) so the retry is bounded to one per issue."""
+        dq = data["states"].get("dequeue_next", {})
+        assert "autodev-decide-options-deposited" in dq.get("action", "")
 
     def test_decide_current_on_no_routes_to_implement_current(self, data: dict) -> None:
         """decide_current.on_no (no decision needed) must route to implement_current."""

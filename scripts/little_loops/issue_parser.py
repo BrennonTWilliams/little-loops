@@ -241,6 +241,47 @@ def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> Fo
     return gaps
 
 
+# ENH-2443: deterministic (non-LLM) re-implementation of skills/decide-issue/SKILL.md
+# Phase 3's Patterns 1-4, tried in precedence order (only the first tier with >=1 match
+# counts). This is a cheap pre-check for FSM automation (ll-issues check-decidable), not
+# a replacement for the skill's own extraction — approximate matches are fine here since
+# an under-count only costs one harmless extra /ll:refine-issue detour, and an over-count
+# just skips that optimization; `decide` itself remains the source of truth.
+_OPTION_PATTERNS = (
+    re.compile(r"^###\s+Option\s+[A-Za-z0-9]", re.MULTILINE | re.IGNORECASE),
+    re.compile(r"^\*\*Option\s+[A-Za-z0-9]+.*?\*\*", re.MULTILINE),
+    re.compile(r"^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)", re.MULTILINE),
+    re.compile(r"^[-*]\s+(?:\([a-z0-9]\)\s+|\*{0,2}Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE),
+)
+
+_OPTION_FALLBACK_SECTIONS = ("Codebase Research Findings", "Implementation Status")
+
+
+def _count_options_in_text(text: str) -> int:
+    """Count matches for the first pattern tier (in precedence order) that has any."""
+    for pattern in _OPTION_PATTERNS:
+        n = sum(1 for _ in pattern.finditer(text))
+        if n:
+            return n
+    return 0
+
+
+def count_enumerable_options(content: str) -> int:
+    """Count enumerable implementation options in an issue's Proposed Solution.
+
+    Widens to ## Codebase Research Findings / ## Implementation Status when Proposed
+    Solution yields 0, mirroring Phase 3's Pattern 4 note (refined issues often deposit
+    options there instead).
+    """
+    count = _count_options_in_text(_section_body(content, "Proposed Solution") or "")
+    if count == 0:
+        for heading in _OPTION_FALLBACK_SECTIONS:
+            body = _section_body(content, heading)
+            if body:
+                count = max(count, _count_options_in_text(body))
+    return count
+
+
 def slugify(text: str) -> str:
     """Convert text to slug format for filenames.
 

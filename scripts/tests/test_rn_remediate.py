@@ -172,16 +172,159 @@ class TestReadinessAndDecisionGates:
         assert "decision_needed" in cdn["action"]
 
     def test_check_decision_needed_routes_yes_to_decide(self) -> None:
-        """check_decision_needed routes to decide when flag is true."""
+        """check_decision_needed routes to check_decision_decidable when flag is true
+        (ENH-2443: a validation gate now sits between check_decision_needed and decide)."""
         data = _load_loop()
         cdn = data["states"]["check_decision_needed"]
-        assert cdn["on_yes"] == "decide"
+        assert cdn["on_yes"] == "check_decision_decidable"
 
     def test_check_decision_needed_routes_no_to_diagnose(self) -> None:
         """check_decision_needed routes to diagnose when flag is false."""
         data = _load_loop()
         cdn = data["states"]["check_decision_needed"]
         assert cdn["on_no"] == "diagnose"
+
+
+# ---------------------------------------------------------------------------
+# TestCheckDecisionDecidableState — State: check_decision_decidable (ENH-2443)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckDecisionDecidableState:
+    """check_decision_decidable validates before decide (ENH-2443)."""
+
+    def test_state_exists_and_uses_shell_exit(self) -> None:
+        data = _load_loop()
+        cdd = data["states"]["check_decision_decidable"]
+        assert cdd.get("fragment") == "shell_exit"
+
+    def test_action_calls_check_decidable_cli(self) -> None:
+        """Uses the deterministic ll-issues check-decidable companion CLI, not the
+        LLM skill directly — shell states cannot dispatch slash commands."""
+        data = _load_loop()
+        cdd = data["states"]["check_decision_decidable"]
+        assert "ll-issues check-decidable" in cdd["action"]
+
+    def test_routes_yes_to_decide(self) -> None:
+        data = _load_loop()
+        cdd = data["states"]["check_decision_decidable"]
+        assert cdd["on_yes"] == "decide"
+
+    def test_routes_no_to_deposit_options(self) -> None:
+        data = _load_loop()
+        cdd = data["states"]["check_decision_decidable"]
+        assert cdd["on_no"] == "deposit_options"
+
+    def test_fail_open_on_error(self) -> None:
+        """A validation-tooling error still routes to decide (fail-open, mirrors
+        check_decision_needed_post)."""
+        data = _load_loop()
+        cdd = data["states"]["check_decision_decidable"]
+        assert cdd["on_error"] == "decide"
+
+    def test_marker_bounded_second_pass_short_circuits(self) -> None:
+        """The marker check comes before invoking the CLI, so a second pass through
+        this state skips re-validation entirely once deposit_options has run."""
+        data = _load_loop()
+        action = data["states"]["check_decision_decidable"]["action"]
+        assert "decide_options_deposited_${context.issue_id}.txt" in action
+        assert action.index("if [") < action.index("ll-issues check-decidable")
+
+
+# ---------------------------------------------------------------------------
+# TestDepositOptionsState — States: deposit_options, record_options_deposited
+#   (ENH-2443)
+# ---------------------------------------------------------------------------
+
+
+class TestDepositOptionsState:
+    """deposit_options runs /ll:refine-issue --auto to deposit options (ENH-2443)."""
+
+    def test_uses_with_rate_limit_handling(self) -> None:
+        data = _load_loop()
+        do = data["states"]["deposit_options"]
+        assert do.get("fragment") == "with_rate_limit_handling"
+
+    def test_action_is_refine_issue_auto_no_full_rewrite(self) -> None:
+        data = _load_loop()
+        do = data["states"]["deposit_options"]
+        assert do["action_type"] == "slash_command"
+        assert "/ll:refine-issue" in do["action"]
+        assert "--auto" in do["action"]
+        assert "--full-rewrite" not in do["action"]
+
+    def test_routes_yes_and_partial_to_record_marker(self) -> None:
+        data = _load_loop()
+        do = data["states"]["deposit_options"]
+        assert do["on_yes"] == "record_options_deposited"
+        assert do["on_partial"] == "record_options_deposited"
+
+    def test_routes_no_and_error_to_decide(self) -> None:
+        """Falls through to decide with no enumerable options if refine also can't
+        deposit — check_convergence still escalates, now with a distinguishable token."""
+        data = _load_loop()
+        do = data["states"]["deposit_options"]
+        assert do["on_no"] == "decide"
+        assert do["on_error"] == "decide"
+
+    def test_rate_limit_exhausted_routes_to_diagnostic(self) -> None:
+        data = _load_loop()
+        do = data["states"]["deposit_options"]
+        assert do["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
+
+
+class TestRecordOptionsDepositedState:
+    """record_options_deposited writes the write-once marker (ENH-2443)."""
+
+    def test_writes_per_issue_marker(self) -> None:
+        data = _load_loop()
+        rod = data["states"]["record_options_deposited"]
+        assert rod["action_type"] == "shell"
+        assert "decide_options_deposited_${context.issue_id}.txt" in rod["action"]
+
+    def test_routes_back_to_check_decision_decidable(self) -> None:
+        data = _load_loop()
+        rod = data["states"]["record_options_deposited"]
+        assert rod["next"] == "check_decision_decidable"
+
+
+class TestDecisionDecidableFlow:
+    """State-flow walk: check_decision_needed -> check_decision_decidable (no) ->
+    deposit_options -> record_options_deposited -> check_decision_decidable (yes) ->
+    decide (ENH-2443)."""
+
+    def test_full_retry_loop_reaches_decide(self) -> None:
+        data = _load_loop()
+        states = data["states"]
+
+        assert states["check_decision_needed"]["on_yes"] == "check_decision_decidable"
+        assert states["check_decision_decidable"]["on_no"] == "deposit_options"
+        assert states["deposit_options"]["on_yes"] == "record_options_deposited"
+        assert states["record_options_deposited"]["next"] == "check_decision_decidable"
+        # Second time through, the marker file (written by record_options_deposited)
+        # short-circuits check_decision_decidable straight to decide.
+        assert states["check_decision_decidable"]["on_yes"] == "decide"
+
+
+class TestManualReviewRecommendedToken:
+    """emit_needs_manual_review distinguishes MANUAL_REVIEW_RECOMMENDED from
+    MANUAL_REVIEW_NEEDED via the deposit-options marker (ENH-2443)."""
+
+    def test_checks_marker_file(self) -> None:
+        data = _load_loop()
+        action = data["states"]["emit_needs_manual_review"]["action"]
+        assert "decide_options_deposited_${context.issue_id}.txt" in action
+
+    def test_emits_both_tokens(self) -> None:
+        data = _load_loop()
+        action = data["states"]["emit_needs_manual_review"]["action"]
+        assert "MANUAL_REVIEW_RECOMMENDED" in action
+        assert "MANUAL_REVIEW_NEEDED" in action
+
+    def test_still_writes_subloop_outcome_file(self) -> None:
+        data = _load_loop()
+        action = data["states"]["emit_needs_manual_review"]["action"]
+        assert 'subloop_outcome_${context.issue_id}.txt' in action
 
 
 # ---------------------------------------------------------------------------
@@ -1008,6 +1151,7 @@ class TestFSMHealth:
             "check_readiness": "exit_code",
             "check_outcome": "exit_code",
             "check_decision_needed": "exit_code",
+            "check_decision_decidable": "exit_code",
         }
         for state_name, _expected_eval_type in mr1_states.items():
             state = data["states"].get(state_name)

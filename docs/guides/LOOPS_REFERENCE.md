@@ -575,7 +575,13 @@ Convergence rules (first match wins): both scores at or above thresholds → `CO
 ```
 Phase 1 — Assessment Bridge:
   assess → verify_scores_persisted → check_readiness → check_outcome → check_decision_needed
-    (readiness passes → implement; decision_needed → decide; otherwise → diagnose)
+    (readiness passes → implement; decision_needed → check_decision_decidable; otherwise → diagnose)
+
+Phase 1.5 — Decidability Gate (ENH-2443):
+  check_decision_decidable (shell: ll-issues check-decidable <ID> — deterministic, non-LLM)
+    on_yes → decide | on_no → deposit_options → record_options_deposited → check_decision_decidable
+    (marker-bounded: after one deposit_options retry, check_decision_decidable short-circuits
+    straight to decide) | on_error → decide (fail-open)
 
 Phase 2 — Dimensional Diagnosis:
   diagnose [classify evaluator + route: table]
@@ -585,6 +591,8 @@ Phase 2 — Dimensional Diagnosis:
 Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
   decide    (slash_command: /ll:decide-issue --auto) on_yes → re_assess | on_no → emit_needs_manual_review | on_error → emit_implement_failed
+    (emit_needs_manual_review writes MANUAL_REVIEW_RECOMMENDED instead of MANUAL_REVIEW_NEEDED
+    when the deposit_options marker is present — "nothing to score even after one retry")
   wire      (slash_command: /ll:wire-issue --auto) → mark_wired (on_no → refine_first)
   refine          (slash_command: /ll:refine-issue --auto --full-rewrite)   → mark_refined → re_assess  [ONLY diagnose → REFINE]
   refine_first    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [assess/gate/wire/check_wire_needed_outcome]
@@ -919,6 +927,8 @@ init → dequeue_next → [queue empty?]
 **In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
 
 **Outcome failure triage** (BUG-1277, ENH-1291, ENH-1415): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `mark_decide_ran` (sets `.loops/tmp/autodev-decide-ran` so decide does not re-fire later in the same iteration) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate). On gate pass, the loop proceeds to `implement_current` without decomposition. On gate fail (ENH-1415), the loop routes to `snap_and_size_review` (refreshes the pre-ids baseline) → `run_size_review` rather than dropping the issue, since the only outcome dimensions that can still drag the score below threshold after decide are Complexity and Change Surface — both decomposable. The decide-ran flag means that if size-review fails to decompose and `recheck_after_size_review` re-enters `decide_current`, that state short-circuits to `implement_current` rather than firing decide a second time. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) → `run_refine` (invoking `/ll:refine-issue --auto`) → `rerun_confidence_after_wire` (invoking `/ll:confidence-check` to refresh stale pre-repair scores, BUG-1491) → `enqueue_or_skip`; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
+
+**Decidability gate parity (ENH-2443)**: `decide_current`'s `decision_needed: true` branch routes through `check_decision_decidable` (the same `ll-issues check-decidable <ID>` deterministic pre-check used by `rn-remediate`) before `run_decide`. Zero enumerable options routes to `deposit_options` (`/ll:refine-issue --auto`) → `record_options_deposited` (writes `${context.run_dir}/autodev-decide-options-deposited`, cleared per-issue at `dequeue_next`) → back to `check_decision_decidable`, which short-circuits straight to `run_decide` on the second pass. `check_decision_after_refine` (the sibling `run_decide` caller reached via `copy_broke_down` after `refine-to-ready-issue`) is unaffected — out of scope for this parity insertion.
 
 ### `scan-and-implement` — Discover, Triage, then Implement Net-New Issues
 

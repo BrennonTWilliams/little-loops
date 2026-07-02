@@ -601,10 +601,13 @@ class TestValidation:
         ENH-2406 added check_learning_ready + route_learning_ready + mark_learning_blocked
         (+3), raising it to 42 — pre-dequeue learning-readiness gate (mirrors ENH-2008's
         check_blocked_by + route_blocked_by two-state shape, plus its own record state).
+        ENH-2443 added route_rem_manual_review_recommended + mark_blocked_options_missing
+        (+2), raising it to 44 — distinguishes "decide had nothing to score even after
+        one deposit_options retry" from a genuine human-required decision.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 42, f"Expected ≤42 states in orchestrator, got {state_count}"
+        assert state_count <= 44, f"Expected ≤44 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -622,8 +625,10 @@ class TestParentClassifier:
             "classify_remediation",
             "route_rem_implemented",
             "route_rem_decompose",
+            "route_rem_manual_review_recommended",
             "route_rem_manual_review",
             "mark_blocked",
+            "mark_blocked_options_missing",
             "route_rem_rate_limited",
             "classify_decomposition",
             "route_dec_decomposed",
@@ -645,6 +650,36 @@ class TestParentClassifier:
         mb = data["states"]["mark_blocked"]
         assert "blocked.txt" in mb["action"]
         assert mb["next"] == "dequeue_next"
+
+    def test_route_rem_decompose_no_goes_to_manual_review_recommended_first(self) -> None:
+        """ENH-2443: route_rem_manual_review_recommended is checked before
+        route_rem_manual_review (longest-prefix-first per ARCHITECTURE-090)."""
+        data = _load_loop()
+        assert data["states"]["route_rem_decompose"]["on_no"] == (
+            "route_rem_manual_review_recommended"
+        )
+
+    def test_manual_review_recommended_routes_to_options_missing_block(self) -> None:
+        data = _load_loop()
+        rmrr = data["states"]["route_rem_manual_review_recommended"]
+        assert rmrr["on_yes"] == "mark_blocked_options_missing"
+        assert rmrr["on_no"] == "route_rem_manual_review"
+
+    def test_manual_review_recommended_checks_correct_pattern(self) -> None:
+        data = _load_loop()
+        rmrr = data["states"]["route_rem_manual_review_recommended"]
+        evaluate = rmrr["evaluate"]
+        assert evaluate["type"] == "output_contains"
+        assert evaluate["pattern"] == "MANUAL_REVIEW_RECOMMENDED"
+
+    def test_mark_blocked_options_missing_writes_same_counter_file(self) -> None:
+        """Same blocked.txt shape as mark_blocked (summary.json blocked count is
+        unchanged by design), distinct diagnostic message."""
+        data = _load_loop()
+        mbom = data["states"]["mark_blocked_options_missing"]
+        assert "blocked.txt" in mbom["action"]
+        assert mbom["next"] == "dequeue_next"
+        assert "BLOCKED-OPTIONS-MISSING" in mbom["action"]
 
     def test_loop_states_route_to_classifiers(self) -> None:
         data = _load_loop()

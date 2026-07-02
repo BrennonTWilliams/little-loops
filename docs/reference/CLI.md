@@ -1395,6 +1395,24 @@ ll-issues cf FEAT-518 implementation_ready # Exit 0 if implementation_ready: tru
 
 ---
 
+#### `ll-issues check-decidable`
+
+Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443). Deterministic (no-LLM) companion to `/ll:decide-issue --validate-only` — re-implements the same option-extraction patterns in pure Python (`count_enumerable_options`), so FSM `shell` states can pre-check decidability without dispatching an LLM call. Mirrors the `ll-issues format-check` / `ensure_formatted` precedent (ENH-2426).
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+
+**Examples:**
+```bash
+ll-issues check-decidable FEAT-398   # Exit 1 (OPTIONS_MISSING) — no enumerable options
+ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
+```
+
+**FSM loop use**: The `check_decision_decidable` gate in `rn-remediate.yaml` (and its parity insertion in `autodev.yaml`) calls this as a shell action with `evaluate: {type: exit_code}`, routing to a bounded `/ll:refine-issue --auto` deposit-options retry on exit 1 rather than letting `decide` run with nothing to score.
+
+---
+
 #### `ll-issues format-check`
 
 Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in four classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), and `boilerplate` (a required section's body still equals its `creation_template`). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.

@@ -256,9 +256,56 @@ states:
   check_decision_needed:
     fragment: shell_exit
     action: "ll-issues check-flag ${context.issue_id} decision_needed"
-    on_yes: decide
+    on_yes: check_decision_decidable
     on_no: diagnose
     on_error: diagnose
+
+  check_decision_decidable:
+    # ENH-2443: validate before decide. Catches issues with decision_needed: true
+    # but no enumerable options in ## Proposed Solution. Without this gate,
+    # decide's silent pass-through on no options lets check_convergence escalate
+    # to NEEDS_MANUAL_REVIEW even when the underlying case is "deposit options
+    # first and try again". Mirrors check_decision_needed_post's failure philosophy
+    # (fail-open: a validation-tooling error still routes to decide).
+    # ll-issues check-decidable is the deterministic (non-LLM) companion to
+    # /ll:decide-issue --validate-only — same Patterns 1-4 counting logic, callable
+    # from a shell state (mirrors ensure_formatted -> ll-issues format-check).
+    # Marker-bounded: once deposit_options has run once for this issue, skip
+    # re-validation and go straight to decide (bounds the detour to one retry).
+    fragment: shell_exit
+    action: |
+      if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
+        exit 0
+      fi
+      ll-issues check-decidable "${context.issue_id}"
+    on_yes: decide
+    on_no: deposit_options
+    on_error: decide
+
+  deposit_options:
+    # Bounded retry: refine --auto may deposit Option A/B/C blocks that decide can
+    # then score. Write-once marker (mirrors refined_<ID>/wired_<ID>) prevents
+    # infinite loops if refine also can't deposit options — falls through to decide
+    # with no enumerable options; check_convergence then escalates to
+    # MANUAL_REVIEW_NEEDED/MANUAL_REVIEW_RECOMMENDED with the diagnostic now visible.
+    fragment: with_rate_limit_handling
+    action_type: slash_command
+    action: "/ll:refine-issue ${context.issue_id} --auto"
+    on_yes: record_options_deposited
+    on_no: decide
+    on_partial: record_options_deposited
+    on_error: decide
+    on_rate_limit_exhausted: rate_limit_diagnostic
+
+  record_options_deposited:
+    # Marker ensures the deposit_options detour runs at most once per issue —
+    # subsequent cycles of check_convergence -> check_decision_decidable skip
+    # deposit_options and fall through to decide (which will properly escalate
+    # to NEEDS_MANUAL_REVIEW after one cycle).
+    action_type: shell
+    action: |
+      echo "1" > "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt"
+    next: check_decision_decidable
 
   # =========================================================================
   # Phase 2: Dimensional Diagnosis & Token Routing
@@ -744,9 +791,17 @@ states:
     next: failed
 
   emit_needs_manual_review:
+    # ENH-2443: distinguish "already tried deposit_options and still nothing to
+    # decide" (MANUAL_REVIEW_RECOMMENDED) from a genuine human-required decision
+    # (MANUAL_REVIEW_NEEDED). Sink for both decide.on_no and check_convergence's
+    # NEEDS_MANUAL_REVIEW route, so the marker check covers both paths.
     action_type: shell
     action: |
-      echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
+        echo "MANUAL_REVIEW_RECOMMENDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      else
+        echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      fi
     next: failed
 
   emit_implement_failed:

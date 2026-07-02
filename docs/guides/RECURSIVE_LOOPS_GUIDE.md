@@ -207,6 +207,7 @@ it and route. For `rn-remediate`:
 | `NEEDS_DECOMPOSE` | Issue too large | Delegate to `rn-decompose` |
 | `STALLED_NEEDS_DECOMPOSE` | Remediation exhausted its budget | Try `rn-decompose`; if no children, defer |
 | `MANUAL_REVIEW_NEEDED` | Needs a human decision | Mark blocked |
+| `MANUAL_REVIEW_RECOMMENDED` | `decision_needed: true` but `/ll:decide-issue` found zero enumerable options even after one `/ll:refine-issue --auto` deposit-options retry (ENH-2443) — distinct from a genuine human-required decision | Mark blocked (same counter, distinct diagnostic pointing at `/ll:refine-issue`) |
 | `RATE_LIMITED` | Host rate limit hit | Record rate-limit diagnostic, continue |
 | `IMPLEMENT_FAILED` | Implementation failure | Record failure, continue |
 | `SCORES_MISSING` | Diagnostic/tooling failure (confidence or outcome frontmatter unreadable after implementation) | Record diagnostic failure separately, continue |

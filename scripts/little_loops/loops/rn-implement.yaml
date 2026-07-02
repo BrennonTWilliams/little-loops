@@ -834,6 +834,20 @@ states:
       source: "${captured.rem_outcome.output}"
       pattern: "NEEDS_DECOMPOSE"
     on_yes: run_decomposition
+    on_no: route_rem_manual_review_recommended
+    on_error: record_failure
+
+  route_rem_manual_review_recommended:
+    # ENH-2443: checked before route_rem_manual_review, longest-prefix-first, per
+    # ARCHITECTURE-090. rn-remediate's emit_needs_manual_review writes this token
+    # instead of MANUAL_REVIEW_NEEDED when a deposit_options retry already ran and
+    # still found nothing to decide — distinguishes "auto-recovery exhausted" from
+    # a genuine human-required decision so operators get the right diagnostic.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "MANUAL_REVIEW_RECOMMENDED"
+    on_yes: mark_blocked_options_missing
     on_no: route_rem_manual_review
     on_error: record_failure
 
@@ -1060,6 +1074,18 @@ states:
       ID="${captured.input.output}"
       echo "$ID" >> "${captured.run_dir.output}/blocked.txt"
       echo "[BLOCKED] $ID requires human decision before automation can proceed"
+    next: dequeue_next
+
+  mark_blocked_options_missing:
+    # ENH-2443: same blocked.txt / counter shape as mark_blocked (summary.json's
+    # `blocked` count is unchanged by design — see the issue's Impact section), but
+    # a distinct diagnostic message: automation already tried /ll:refine-issue --auto
+    # once and the issue still has no enumerable options to decide between.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      echo "$ID" >> "${captured.run_dir.output}/blocked.txt"
+      echo "[BLOCKED-OPTIONS-MISSING] $ID has decision_needed:true but no enumerable options even after /ll:refine-issue --auto; run /ll:refine-issue $ID manually to deposit options"
     next: dequeue_next
 
   mark_deferred:

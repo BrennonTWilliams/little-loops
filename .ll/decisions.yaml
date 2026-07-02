@@ -3651,3 +3651,43 @@
     more than one place, extract a single shared
   enforcement: advisory
   issue: BUG-2441
+- id: ARCHITECTURE-089
+  type: decision
+  timestamp: '2026-07-02T17:14:47Z'
+  category: architecture
+  labels: []
+  rationale: 'MC-vault rn-implement FEAT-398 run exited with blocked:1 and opaque
+    MANUAL_REVIEW_NEEDED outcome because decide-issue --auto found no enumerables
+    in ## Proposed Solution and silently preserved decision_needed:true. The BUG-2222
+    routing fix is correct in scope; the missing layer is a ''deposit options via
+    refine, then retry decide'' detour bounded by a write-once marker. Layered with
+    --validate-only flag and OPTIONS_MISSING exit token so direct invocations also
+    surface the diagnostic.'
+  rule: 'Captured: decide-issue and rn-remediate should detect decision_needed:true
+    issues with no enumerable options before MANUAL_REVIEW_NEEDED'
+  scope: issue
+  issue: ENH-2443
+- id: ARCHITECTURE-090
+  type: decision
+  timestamp: '2026-07-02T18:20:57Z'
+  category: architecture
+  labels: []
+  rationale: OPERATOR selected Option 2 over Option 1 in /ll:manage-issue Phase 2.3
+    halt prompt (ENH-2443 had OPTIONS=0 so /ll:decide-issue could not score; design
+    decision recorded from user dialogue rather than via Phase 5 scoring). Distinct
+    token preserves the diagnostic-distinction purpose of ENH-2443 (operators today
+    cannot distinguish 'skill had nothing to score' from 'genuine manual review' without
+    grepping SKILL source — a new token fixes that on stdout, not stderr). Longest-prefix-first
+    ordering avoids the superstring-misroute risk at rn-implement.yaml:844 where MANUAL_REVIEW_RECOMMENDED
+    would otherwise match the MANUAL_REVIEW_NEEDED substring pattern. Implementation
+    Steps Phase 0 item 14 explicitly flagged this trade-off as a required verification.
+  rule: MANUAL_REVIEW_RECOMMENDED token emitted from /ll:decide-issue Phase 2.5; rn-implement.yaml:844
+    matches longest-prefix-first so MANUAL_REVIEW_RECOMMENDED routes before MANUAL_REVIEW_NEEDED
+    substring fallback
+  scope: issue
+  alternatives_rejected: 'Option (a): reuse MANUAL_REVIEW_NEEDED token + stderr diagnostic
+    — rejected because callers must parse stderr to distinguish ''skill had nothing
+    to score'' from ''genuine manual review'', which defeats the purpose of ENH-2443
+    and forces a second design pass the next time someone splits rn-implement.yaml:844
+    ''blocked'' into blocked-decision/blocked-other subtypes.'
+  issue: ENH-2443
