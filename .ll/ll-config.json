@@ -97,6 +97,9 @@
   "learning_tests": {
     "enabled": true
   },
+  "prompt_optimization": {
+    "enabled": false
+  },
   "history": {
     "session_digest": {
       "enabled": true,
