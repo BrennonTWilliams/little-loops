@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from little_loops.init.detect import TemplateMatch
@@ -10,12 +13,37 @@ SCHEMA_URL = (
     "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json"
 )
 
-_DEFAULT_ANALYTICS_CAPTURE: dict[str, Any] = {
-    "skills": ["*"],
-    "cli_commands": ["*"],
-    "corrections": True,
-    "file_events": True,
-}
+_ANALYTICS_CAPTURE_KEYS = ("skills", "cli_commands", "corrections", "file_events")
+
+
+@lru_cache(maxsize=1)
+def _load_schema() -> dict[str, Any]:
+    """Load and cache config-schema.json from the project root."""
+    schema_path = Path(__file__).resolve().parents[3] / "config-schema.json"
+    with schema_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def schema_default(dotted_path: str) -> Any:
+    """Return config-schema.json's declared ``default`` for a dotted property path.
+
+    Walks ``properties.<part>`` for each segment of *dotted_path*, the same
+    dotted-walk shape as ``little_loops.config.features.feature_enabled`` but
+    over the JSON Schema tree instead of a config dict. Raises ``KeyError`` if
+    the path or its ``default`` is missing — a schema/``build_config`` drift
+    should fail loud rather than silently fall back to a stale literal.
+    """
+    node: dict[str, Any] = _load_schema()
+    for part in dotted_path.split("."):
+        properties = node.get("properties", {})
+        if part not in properties:
+            raise KeyError(
+                f"config-schema.json has no property at {dotted_path!r} (missing {part!r})"
+            )
+        node = properties[part]
+    if "default" not in node:
+        raise KeyError(f"config-schema.json property {dotted_path!r} declares no default")
+    return node["default"]
 
 
 def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
@@ -52,20 +80,23 @@ def build_config(
 
     Args:
         template: Matched template from detect_project_type().
-        choices: Optional overrides. Recognised keys:
+        choices: Optional overrides. Booleans/values not listed here fall back to
+            config-schema.json's declared ``default`` for the matching dotted path
+            (see ``schema_default``) rather than a literal baked into this function.
+            Recognised keys:
             - ``project_name`` (str): value written to project.name.
             - ``src_dir`` (str): override project.src_dir.
-            - ``product_enabled`` (bool, default True): include product section.
-            - ``analytics_enabled`` (bool, default True): include analytics section.
-            - ``context_monitor_enabled`` (bool, default True): include context_monitor.
-            - ``learning_tests_enabled`` (bool, default True): include learning_tests.
+            - ``product_enabled`` (bool): include product section.
+            - ``analytics_enabled`` (bool): include analytics section.
+            - ``context_monitor_enabled`` (bool): include context_monitor.
+            - ``learning_tests_enabled`` (bool): include learning_tests.
             - ``decisions_enabled`` (bool, default False): include decisions section.
             - ``scratch_pad_enabled`` (bool, default False): include scratch_pad section.
             - ``session_capture_enabled`` (bool, default False): include session_capture.
-            - ``prompt_optimization_enabled`` (bool, default True): when False, write
+            - ``prompt_optimization_enabled`` (bool): when False, write
               prompt_optimization.enabled=false (opt-out of a default-on feature).
-            - ``loop_clear_default`` (bool, default True): write loops.run_defaults.clear.
-            - ``loop_show_diagrams_default`` (str | None, default "clean"): write loops.run_defaults.show_diagrams.
+            - ``loop_clear_default`` (bool): write loops.run_defaults.clear.
+            - ``loop_show_diagrams_default`` (str | None): write loops.run_defaults.show_diagrams.
 
     Returns:
         Complete config dict (``$schema`` key first, then sections).
@@ -90,26 +121,32 @@ def build_config(
     config["scan"] = dict(data.get("scan", {}))
 
     # --- learning_tests (always written) ---
-    learning_tests_enabled = bool(choices.get("learning_tests_enabled", True))
+    learning_tests_enabled = bool(
+        choices.get("learning_tests_enabled", schema_default("learning_tests.enabled"))
+    )
     config["learning_tests"] = {"enabled": learning_tests_enabled}
 
     # --- analytics (always written) ---
-    analytics_enabled = bool(choices.get("analytics_enabled", True))
+    analytics_enabled = bool(choices.get("analytics_enabled", schema_default("analytics.enabled")))
     if analytics_enabled:
         config["analytics"] = {
             "enabled": True,
-            "capture": dict(_DEFAULT_ANALYTICS_CAPTURE),
+            "capture": {
+                key: schema_default(f"analytics.capture.{key}") for key in _ANALYTICS_CAPTURE_KEYS
+            },
         }
     else:
         config["analytics"] = {"enabled": False}
 
     # --- context_monitor (omit if disabled) ---
-    context_monitor_enabled = bool(choices.get("context_monitor_enabled", True))
+    context_monitor_enabled = bool(
+        choices.get("context_monitor_enabled", schema_default("context_monitor.enabled"))
+    )
     if context_monitor_enabled:
         config["context_monitor"] = {"enabled": True}
 
-    # --- product (omit if disabled; default True for --yes mode) ---
-    product_enabled = bool(choices.get("product_enabled", True))
+    # --- product (omit if disabled) ---
+    product_enabled = bool(choices.get("product_enabled", schema_default("product.enabled")))
     if product_enabled:
         config["product"] = {"enabled": True}
 
@@ -126,21 +163,28 @@ def build_config(
         config["session_capture"] = {"enabled": True}
 
     # --- prompt_optimization (default-on; only write when opting out) ---
-    if choices.get("prompt_optimization_enabled", True) is False:
+    prompt_optimization_enabled = choices.get(
+        "prompt_optimization_enabled", schema_default("prompt_optimization.enabled")
+    )
+    if prompt_optimization_enabled is False:
         config["prompt_optimization"] = {"enabled": False}
 
     # --- history.session_digest (always written) ---
-    session_digest_enabled = bool(choices.get("session_digest_enabled", True))
+    session_digest_enabled = bool(
+        choices.get("session_digest_enabled", schema_default("history.session_digest.enabled"))
+    )
     config["history"] = {
         "session_digest": {
             "enabled": session_digest_enabled,
-            "days": 7,
+            "days": schema_default("history.session_digest.days"),
         }
     }
 
     # --- loops.run_defaults (always written; exposes the feature at init time) ---
-    loop_clear = bool(choices.get("loop_clear_default", True))
-    loop_show_diagrams = choices.get("loop_show_diagrams_default", "clean")
+    loop_clear = bool(choices.get("loop_clear_default", schema_default("loops.run_defaults.clear")))
+    loop_show_diagrams = choices.get(
+        "loop_show_diagrams_default", schema_default("loops.run_defaults.show_diagrams")
+    )
     config["loops"] = {
         "run_defaults": {
             "clear": loop_clear,

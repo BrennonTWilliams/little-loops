@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.init.cli import _plugin_root
-from little_loops.init.core import SCHEMA_URL, build_config
+from little_loops.init.core import SCHEMA_URL, build_config, schema_default
 from little_loops.init.detect import (
     TemplateMatch,
     _find_templates_dir,
@@ -432,32 +432,54 @@ class TestBuildConfig:
         config = build_config(match, {"project_name": "my-app"})
         assert config["project"]["name"] == "my-app"
 
-    def test_learning_tests_always_written(self, fake_templates: Path, tmp_project: Path) -> None:
+    def test_learning_tests_disabled_by_default(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
         assert "learning_tests" in config
+        assert config["learning_tests"]["enabled"] is False
+
+    def test_learning_tests_enabled_via_choice(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"learning_tests_enabled": True})
         assert config["learning_tests"]["enabled"] is True
 
-    def test_analytics_always_written(self, fake_templates: Path, tmp_project: Path) -> None:
+    def test_analytics_disabled_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
-        assert "analytics" in config
+        assert config["analytics"] == {"enabled": False}
+        assert "capture" not in config["analytics"]
+
+    def test_analytics_enabled_via_choice(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"analytics_enabled": True})
         assert config["analytics"]["enabled"] is True
         assert "capture" in config["analytics"]
 
-    def test_product_enabled_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
+    def test_product_disabled_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
-        assert config.get("product", {}).get("enabled") is True
+        assert "product" not in config
 
     def test_product_omitted_when_disabled(self, fake_templates: Path, tmp_project: Path) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match, {"product_enabled": False})
         assert "product" not in config
+
+    def test_product_enabled_via_choice(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"product_enabled": True})
+        assert config.get("product", {}).get("enabled") is True
 
     def test_context_monitor_enabled_by_default(
         self, fake_templates: Path, tmp_project: Path
@@ -524,8 +546,8 @@ class TestBuildConfig:
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
         rd = config["loops"]["run_defaults"]
-        assert rd["clear"] is True
-        assert rd["show_diagrams"] == "clean"
+        assert rd["clear"] is False
+        assert "show_diagrams" not in rd
         assert "mode" not in rd
 
     def test_loops_run_defaults_override_via_choices(
@@ -534,11 +556,11 @@ class TestBuildConfig:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(
-            match, {"loop_clear_default": False, "loop_show_diagrams_default": None}
+            match, {"loop_clear_default": True, "loop_show_diagrams_default": "clean"}
         )
         rd = config["loops"]["run_defaults"]
-        assert rd["clear"] is False
-        assert "show_diagrams" not in rd
+        assert rd["clear"] is True
+        assert rd["show_diagrams"] == "clean"
         assert "mode" not in rd
 
     # --- opt-in toggles (decisions / scratch_pad / session_capture) ---
@@ -638,6 +660,64 @@ class TestBuildConfig:
 
         null_paths = _scanner(config)
         assert null_paths == [], f"Expected zero null leaves, found: {null_paths}"
+
+
+# ===========================================================================
+# TestBuildConfigSchemaParity
+# ===========================================================================
+
+
+class TestBuildConfigSchemaParity:
+    """Regression guard for ENH-2434.
+
+    Every value build_config() emits without a choices override must equal
+    config-schema.json's declared default at the matching dotted path — the
+    drift class behind ENH-2298 and BUG-2321. Sections build_config() derives
+    from the project template (project/issues/scan), not the schema, are out
+    of scope for this comparison.
+    """
+
+    _TEMPLATE_DERIVED = {"$schema", "project", "issues", "scan"}
+
+    def test_emitted_defaults_match_schema(self, fake_templates: Path, tmp_project: Path) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)  # no choices — pure schema-sourced baseline
+
+        mismatches: list[str] = []
+
+        def _walk(obj: object, path: str) -> None:
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    _walk(value, f"{path}.{key}")
+                return
+            try:
+                expected = schema_default(path)
+            except KeyError:
+                return  # no schema default declared at this path — nothing to compare
+            if obj != expected:
+                mismatches.append(f"{path}: build_config()={obj!r} schema default={expected!r}")
+
+        for key, value in config.items():
+            if key in self._TEMPLATE_DERIVED:
+                continue
+            _walk(value, key)
+
+        assert mismatches == [], (
+            "core.py literal(s) drifted from config-schema.json:\n" + "\n".join(mismatches)
+        )
+
+    def test_analytics_capture_defaults_match_schema_when_enabled(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        # The no-choices baseline above leaves analytics disabled (schema default),
+        # so "capture" is never emitted there — exercise the enabled branch directly.
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"analytics_enabled": True})
+        capture = config["analytics"]["capture"]
+        for key, value in capture.items():
+            assert value == schema_default(f"analytics.capture.{key}")
 
 
 # ===========================================================================

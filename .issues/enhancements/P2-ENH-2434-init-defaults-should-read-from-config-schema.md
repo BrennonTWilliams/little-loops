@@ -4,8 +4,9 @@ title: ll-init defaults should be sourced from config-schema.json instead of har
   literals
 type: enh
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-02T01:05:48Z'
+completed_at: '2026-07-02T05:06:37Z'
 discovered_date: '2026-07-02'
 discovered_by: capture-issue
 decision_needed: false
@@ -134,7 +135,7 @@ Decided by `/ll:decide-issue` on 2026-07-02.
 - **Option B (Align schema-wins)**: Three sources already agree; `deep_merge` handles migration safely; CLI readers in `scripts/little_loops/cli/loop/__init__.py:807-811` already handle `show_diagrams is None` cleanly; ENH-2243 conflict is documented and reopenable. Reuse score 1/3 — no existing `schema_default()` helper, but `feature_enabled()` (`features.py:14-35`) and `_scanner()` (`test_init_core.py:614-640`) provide the dotted-walk and report-all-disagreements shape.
 - **Option C (x-init-default)**: No `x-` extensions anywhere in `config-schema.json`; no `jsonschema` runtime dependency; the schema has 234 `default:` entries that would each need editing; issue's scope boundaries explicitly exclude schema design changes; parity test would still fail on day one without one of options A/B/C. Reuse score 1/3 — structural-assertion test pattern generalizes, but no library support and no precedent.
 
-**Implementation note**: The implementer should also (a) update the 5 tests that pin current literals in lockstep (`test_init_core.py:499-505`, `:522-542`, `test_init_e2e.py:66-67`, `test_loop_cli_defaults.py:58-74`), (b) update `scripts/little_loops/init/tui.py:633-634` to mirror schema-aligned defaults (or scope the parity test to `build_config()` with empty `choices`), and (c) document the ENH-2243 default change as an intentional departure — schema-wins reverts the recommendation that ENH-2243 made.
+**Implementation note**: The implementer should also (a) update the 5 tests that pin current literals in lockstep (`test_init_core.py:499-505`, `:522-542`, `test_init_e2e.py:67-68`, `test_loop_cli_defaults.py:58-74`), (b) update `scripts/little_loops/init/tui.py:638-639` to mirror schema-aligned defaults (or scope the parity test to `build_config()` with empty `choices`), and (c) document the ENH-2243 default change as an intentional departure — schema-wins reverts the recommendation that ENH-2243 made.
 
 ## Integration Map
 
@@ -158,9 +159,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis (no removals; additi
 - **No existing schema-default helper**: `scripts/little_loops/init/core.py` is the only Python module under `scripts/` that consumes `config-schema.json` directly (search for `jsonschema` / `config-schema.json` returns a single hit). The proposed `schema_default(dotted_path)` helper is genuinely new — there is no existing pattern to reuse.
 - **`merge_with_existing()` interaction**: `scripts/little_loops/init/writers.py:merge_with_existing()` operates on `build_config()`'s output via `strip_none_leaves()` (`core.py:21-41`, already in place per BUG-2311). Schema-sourcing the baseline is additive to that pipeline; the merge semantics do not change.
 - **TUI parity check**: `scripts/little_loops/init/tui.py` exists. The parity test's parametrize should include both the headless `build_config()` path and any TUI emission path so a future drift in tui.py literals also fails CI (current scope keeps tui.py out of the diff but inside the test surface).
-- **TUI mirrors `core.py` literals**: `scripts/little_loops/init/tui.py:634` declares `loop_show_diagrams_default: str | None = "clean"` and `:31` declares a `_DEFAULT_FEATURES` frozenset that mirrors the same literals. Both live alongside `build_config()` callers at `:637-639`. The parity test must include both code paths (per the analyzer's request) but migration can leave tui.py untouched per the issue's out-of-scope boundary — as long as a guardrail includes tui.py in the walker.
+- **TUI mirrors `core.py` literals**: `scripts/little_loops/init/tui.py:639` declares `loop_show_diagrams_default: str | None = "clean"` and `:31` declares a `_DEFAULT_FEATURES` frozenset that mirrors the same literals. Both live alongside `build_config()` callers at `:638-639`. The parity test must include both code paths (per the analyzer's request) but migration can leave tui.py untouched per the issue's out-of-scope boundary — as long as a guardrail includes tui.py in the walker.
 - **Six CLI readers touch the `show_diagrams` literal**: `scripts/little_loops/cli/loop/_helpers.py`, `cli/loop/info.py`, `cli/loop/diagram_modes.py`, `cli/loop/__init__.py`, `cli/loop/next_loop.py`, `cli/loop/lifecycle.py`. These are *readers* of `loops.run_defaults.show_diagrams`, not emitters — flag them so an implementer doesn't accidentally treat them as drift sources.
-- **Other init module callers of `build_config`**: `scripts/little_loops/init/cli.py:225,387,453,461` (function-local imports). Worth re-running end-to-end tests after the refactor.
+- **Other init module callers of `build_config`**: `scripts/little_loops/init/cli.py:233,461` (function-local imports, inside `_run_yes` and `_run_plan`). Worth re-running end-to-end tests after the refactor.
 - **Existing test discipline that pins the literals**: `scripts/tests/test_init_core.py:499-505` (asserts `days == 7` and `"char_cap" not in sd`) and `:522-542` (asserts `clear is True` and `show_diagrams == "clean"`) are *the* tests that will fail if the parity test asserts schema=core.py. They confirm the design intent but lock in the current literal values — the parity test must align with them, OR they must be re-baselined (decision deferred; see Critical Finding below).
 - **`pyproject.toml` and CLI registration**: `scripts/pyproject.toml:51-91` registers `ll-init` and the existing `ll-verify-*` CLIs. Any new `ll-verify-init-defaults` CLI would slot in here, and `scripts/little_loops/cli/__init__.py:81-83` is the corresponding `main_verify_*` re-export site. `scripts/little_loops/session_store.py:DEFAULT_DB_PATH` / `cli_event_context()` is the wrapping convention every `ll-verify-*` uses for telemetry.
 - **Documentation drift surface**: `docs/reference/CONFIGURATION.md:565-566,603-604,874`; `docs/reference/CLI.md:45,2268`; `docs/reference/API.md:6659,6679,6692`; `docs/guides/HISTORY_SESSION_GUIDE.md:417-418`; `docs/guides/LOOPS_GUIDE.md:522`; `docs/guides/BUILTIN_HOOKS_GUIDE.md:138`. The issue already scopes doc sync as out-of-scope (`docs/reference/CONFIGURATION.md` spot-check only), but the implementer should be aware these are parallel sources of the same defaults and could drift again.
@@ -193,11 +194,11 @@ Without picking one, the parity test will fail on day-one of implementation even
 _Added by `/ll:refine-issue` — based on analyzer agent. Adds a third drift the locator pass missed, plus structural facts about `_run_apply`, `BRConfig`, and `merge_with_existing` that change how the parity test can be written:_
 
 - **Third live drift found: `analytics.enabled`** — `config-schema.json:1569` declares `analytics.enabled` `default: false` with description *"Default off; opt-in until the ctx-stats CLI ships"* (line 1570). `scripts/little_loops/init/core.py:100` emits `analytics.enabled = True`. The schema-default description frames `false` as the *intended* value; the init literal flips it to `True` for early-adopter projects. This is the strongest "schema-wins" candidate of the three drifts — the schema even documents *why* it's off. **The implementer should treat `analytics.enabled` as the third entry in the alignment decision alongside the two `loops.run_defaults.*` drifts above.**
-- **`_run_apply()` does NOT call `build_config()`** — `scripts/little_loops/init/cli.py:520` reads `proposed_config` from the plan JSON verbatim. The plan is produced upstream by `_run_yes` or `_run_plan` (both go through `build_config()`), so apply inherits whatever drift handling happened at plan time. **Implication for parity test**: testing must occur at the `build_config()` level OR `main_init(["--yes","--dry-run","--root",...])` (which runs `build_config()` through `_run_yes`); testing the apply path alone would miss the drift entirely.
+- **`_run_apply()` does NOT call `build_config()`** — `scripts/little_loops/init/cli.py:528` reads `proposed_config` from the plan JSON verbatim. The plan is produced upstream by `_run_yes` or `_run_plan` (both go through `build_config()`), so apply inherits whatever drift handling happened at plan time. **Implication for parity test**: testing must occur at the `build_config()` level OR `main_init(["--yes","--dry-run","--root",...])` (which runs `build_config()` through `_run_yes`); testing the apply path alone would miss the drift entirely.
 - **Three-source default problem** — the issue frames defaults as `config-schema.json` vs `core.py`, but there is a *third* source: `BRConfig` dataclass fields in `scripts/little_loops/config/core.py:154-786` and `scripts/little_loops/config/features.py:612-634`. `LoopRunDefaults.clear: bool = False` (`:615`) is the runtime Python dataclass default — *another* `false` value against which `core.py`'s `True` literal disagrees. The schema-winning alignment would resolve both at once (schema `false` ≡ `LoopRunDefaults` dataclass `False`); the schema-losing alignment would create a runtime/init mismatch that `BRConfig` then notices when loading the generated config.
-- **`deep_merge` semantics constrain the parity test** — `scripts/little_loops/config/core.py:45-72` `deep_merge(base=existing, override=new)` (called from `writers.py:135`) lets existing values win on scalars. A re-init that produces a new schema-aligned literal will NOT overwrite a user's prior customized value. **Implication**: the parity test cannot use a round-trip approach (`generate → read back → compare`); it must compare `build_config()`'s direct dict output against `config-schema.json` defaults before any merge occurs.
+- **`deep_merge` semantics constrain the parity test** — `scripts/little_loops/config/core.py:45-72` `deep_merge(base=existing, override=new)` (called from `writers.py:145`) lets existing values win on scalars. A re-init that produces a new schema-aligned literal will NOT overwrite a user's prior customized value. **Implication**: the parity test cannot use a round-trip approach (`generate → read back → compare`); it must compare `build_config()`'s direct dict output against `config-schema.json` defaults before any merge occurs.
 - **Doc surface for `show_diagrams`**: `docs/reference/CONFIGURATION.md:874` documents `loops.run_defaults.show_diagrams: null` — agreeing with the schema and *disagreeing* with `core.py:147`'s `"clean"`. So the alignment direction "schema-wins" is *also* doc-winning. The other two drifts have doc evidence too (see `:566` for `char_cap: 1200`, which is schema-winning-by-coincidence because `core.py` simply doesn't write the key).
-- **Existing test `test_init_core.py:522-542` `test_loops_run_defaults_keys` cannot be the only test enforcing the literal** — it is also asserted in `scripts/tests/integration/test_init_e2e.py:66-67` (`test_plan_apply_produces_same_artifacts_as_yes`) for the `--plan`/`apply` round-trip. Both must be updated in lockstep.
+- **Existing test `test_init_core.py:522-542` `test_loops_run_defaults_keys` cannot be the only test enforcing the literal** — it is also asserted in `scripts/tests/integration/test_init_e2e.py:67-68` (`test_dry_run_writes_nothing_then_apply_generates_config`, not `test_plan_apply_produces_same_artifacts_as_yes` as originally cited) for the `--dry-run`/apply flow. Both must be updated in lockstep.
 - **`.ll/decisions.yaml:3555-3564`** already records a related rule "*ll-init defaults should be sourced from config-schema.json instead of hardcoded literals*" referencing this issue (per the captured decision flow). The rule is captured but not yet enforced — this issue is its eventual enforcement site. `decisions.yaml:1487-1491` records another related sub-rule (`install_source` enum drift) for a *different* defaults class — confirming this issue is part of a wider family, not the only one.
 - **The opt-out emission pattern** at `core.py:128-130` (`prompt_optimization`) is *itself* a documented drift per BUG-2321: the schema says enabled by default, but the code emits the block only when opted out, so a fresh init has the key absent. After the refactor, the helper should source the *default-true* value, but the *emission policy* (write block on absent vs. on opt-out) is a separate decision — keep the existing opt-out *structural* behavior even though the *value* comes from the schema.
 
@@ -247,21 +248,21 @@ unless the user explicitly opts in.
 
 #### Fourth Drift Source: `_run_yes` Fallback Literals
 
-`scripts/little_loops/init/cli.py:362-384` builds the `choices` dict from
+`scripts/little_loops/init/cli.py:362-392` builds the `choices` dict from
 `existing_config` with hardcoded `True`/`False` fallbacks that **parallel**
 (but don't share with) `build_config()`:
 
 | `cli.py` line | Choice key | Fallback literal | Schema default | Drift? |
 |--------------|-----------|------------------|----------------|--------|
-| 364 | `product_enabled` | `True` | `false` | **YES** |
-| 365 | `analytics_enabled` | `True` | `false` | **YES** |
-| 369 | `learning_tests_enabled` | `True` | `false` | **YES** |
-| 367 | `context_monitor_enabled` | `True` | `true` | match |
-| 372 | `decisions_enabled` | `False` | `false` | match |
-| 373 | `scratch_pad_enabled` | `False` | `false` | match |
-| 374 | `session_capture_enabled` | `False` | `false` | match |
-| 377-379 | `session_digest_enabled` | `True` | `true` | match |
-| 380-382 | `prompt_optimization_enabled` | `True` | `true` | match |
+| 372 | `product_enabled` | `True` | `false` | **YES** |
+| 373 | `analytics_enabled` | `True` | `false` | **YES** |
+| 377-379 | `learning_tests_enabled` | `True` | `false` | **YES** |
+| 374-376 | `context_monitor_enabled` | `True` | `true` | match |
+| 380 | `decisions_enabled` | `False` | `false` | match |
+| 381 | `scratch_pad_enabled` | `False` | `false` | match |
+| 382-384 | `session_capture_enabled` | `False` | `false` | match |
+| 385-387 | `session_digest_enabled` | `True` | `true` | match |
+| 388-390 | `prompt_optimization_enabled` | `True` | `true` | match |
 
 These are **outside the parity test's surface** (scoped to `build_config()`
 with empty choices), so a future drift here wouldn't trip the proposed test.
@@ -443,7 +444,63 @@ The implementer should consider:
 |----------|-----------|
 | `.claude/CLAUDE.md` | Documents `ll-init`, `config-schema.json`, and `.ll/ll-config.json` as core project configuration |
 
+## Resolution
+
+Implemented Option B (schema-wins) exactly as decided:
+
+- Added `schema_default(dotted_path)` and a cached `_load_schema()` loader to
+  `scripts/little_loops/init/core.py`, walking `config-schema.json`'s
+  `properties.*` tree the same way `feature_enabled()` walks a config dict.
+- Replaced every hardcoded baseline literal in `build_config()` with a
+  `schema_default(...)` call: `learning_tests.enabled`, `analytics.enabled`
+  (plus `_DEFAULT_ANALYTICS_CAPTURE` → `analytics.capture.*`),
+  `context_monitor.enabled`, `product.enabled`, `prompt_optimization.enabled`,
+  `history.session_digest.{enabled,days}`, and
+  `loops.run_defaults.{clear,show_diagrams}`. `choices` overrides remain the
+  precedence layer on top.
+- Re-baselined the 5 pinned tests flagged during refinement
+  (`test_init_core.py:499-505`, `:522-542`, `test_init_e2e.py:67-68`) to the
+  new schema-aligned defaults (`learning_tests`/`analytics`/`product` now
+  default off; `loops.run_defaults.clear` defaults `false`; `show_diagrams`
+  is omitted by default) and added opt-in-via-choice tests alongside them so
+  the previously-default `True`/`"clean"` behavior stays covered.
+  `test_init_tui.py`, `test_config_schema.py`, and `test_loop_cli_defaults.py`
+  needed no changes — they exercise hand-built configs or pass explicit
+  `choices`, not `build_config()`'s no-override baseline.
+- Added `TestBuildConfigSchemaParity` in `test_init_core.py`: a recursive
+  walker that compares every leaf `build_config(match)` emits (no choices)
+  against `schema_default()` at the same dotted path, plus a second test that
+  exercises the `analytics.capture` branch (only reachable with
+  `analytics_enabled: True`, so invisible to the no-choices walk).
+- Fixed one factually-stale doc line found during a `docs/reference/
+  CONFIGURATION.md` spot-check (`product` section): it claimed `ll-init`
+  enables `product` by default, which was true under the old literal but is
+  now false under schema-wins; updated to describe the `--enable product`
+  opt-in path.
+
+**Deliberately out of scope** (per the issue's own scope boundary and the
+wiring pass's "Fourth Drift Source" / "Fifth Drift Source" findings — not
+covered by the parity test's surface, and touching them would broaden this
+diff beyond `build_config()`):
+- `scripts/little_loops/init/cli.py:372-390` — the `_run_yes` `existing_config`
+  fallback literals (`product_enabled`/`analytics_enabled`/
+  `learning_tests_enabled` still fall back to `True` when re-initializing a
+  project whose existing config predates these keys). Only reachable on
+  re-init merges, not fresh installs (verified: `test_init_e2e.py`'s fresh-
+  project case has no `existing_config`, so it exercises the schema-sourced
+  path directly).
+- `scripts/little_loops/init/tui.py` literals mirroring the old defaults.
+- `docs/guides/LOOPS_GUIDE.md:521-522` — re-checked; it's a user-facing
+  override example, not a claim about init's output, and the adjacent
+  "Fields" table already documented the correct schema defaults before this
+  change. No edit needed.
+
+Both flagged follow-ups (`_run_yes` fallbacks, `tui.py` literals) are
+candidates for a sibling issue if the same drift class recurs there.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-02T05:06:37Z - `8235a474-8fb4-46e0-94b7-5a647070b461.jsonl`
+- `/ll:ready-issue` - 2026-07-02T04:21:26 - `1e126e4c-237a-4d72-9eb4-e1015306720e.jsonl`
 - `/ll:confidence-check` - 2026-07-02T02:42:35Z - `a9a9fc96-7f5d-4608-ba25-50ab2fbf9324.jsonl`
 - `/ll:wire-issue` - 2026-07-02T01:56:52 - `ea47d6be-ecee-41c2-9918-0eee9aeca58a.jsonl`
 - `/ll:decide-issue` - 2026-07-02T01:29:57 - `960b3ce5-4cee-422b-9b65-45f370408957.jsonl`

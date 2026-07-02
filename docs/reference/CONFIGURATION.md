@@ -373,7 +373,7 @@ Product analysis configuration for `/ll:scan-product`:
 | `goals_discovery.max_files` | `5` | Maximum markdown files to analyze for goal discovery (1-20) |
 | `goals_discovery.required_files` | `["README.md"]` | Files that must exist for discovery (warning if missing) |
 
-For new projects, `ll-init` sets `product.enabled: true` and deploys `.ll/ll-goals.md` automatically (enabled by default with `--yes`). For existing projects, set `product.enabled: true` in `.ll/ll-config.json`. `ll-goals.md` is optional — if absent, goals are auto-discovered from existing project documentation (README, CHANGELOG, architecture docs). Create a hand-authored goals file only when you want precise control over product vision, personas, and strategic priorities.
+`product.enabled` defaults to `false`; opt in with `ll-init --yes --enable product` (or set `product.enabled: true` in `.ll/ll-config.json` for an existing project). When enabled, `ll-init` deploys `.ll/ll-goals.md` automatically. `ll-goals.md` is optional — if absent, goals are auto-discovered from existing project documentation (README, CHANGELOG, architecture docs). Create a hand-authored goals file only when you want precise control over product vision, personas, and strategic priorities.
 
 ### `commands`
 
