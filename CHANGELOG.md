@@ -12,6 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.137.0] - 2026-07-01
+
+### Added
+
+- **Score-plateau early-stop for generator-evaluator oracle** — Adds a `score_stall` evaluator that detects score plateaus and stops early. (ENH-2428)
+- feat(rn-implement): auto-prove unproven learning-gate targets before blocking (52de8fa3)
+- feat(learning-tests): add `ll-learning-tests prove` subcommand (84298f5f)
+
+### Fixed
+
+- **FSM diagrams overflow terminal width in non-TTY streaming render** — Bounds diagram width instead of an unbounded back-edge gutter. (BUG-2425)
+- **`rn-implement` appears hung for hours** — `format_issue`'s 429 wait is now bounded to seconds instead of inheriting the 6-hour rate-limit budget. (BUG-2433)
+- fix(history): treat empty sections list as render-all in project_digest (1a791b7e)
+
+### Changed
+
+- **Generator-evaluator non-convergence** — Converges via full-page screenshot + score-driven routing. (ENH-2429)
+- **Windowed diagram fallback margin pipes** — Blank pass-through for back-edge/forward-skip margin pipes. (ENH-2432)
+- refactor(manage-issue): move gate pseudocode from SKILL.md to templates.md (6868dbaf)
+
+### Other
+
+- style(tests): apply ruff formatting (b4b15de4)
+- docs(claude-md): add score_stall to MR-1 non-LLM evaluator list (9356ba3d)
+- docs(loops): document ENH-2429 full-page screenshot fix and score-driven pass/fail (bd3362d3)
+- docs(issues): align ENH-2428 with template v2.0 structure (ae58c274)
+- docs(issues): capture ENH-2430/2431 for learning-tests prove + rn-implement gate wiring (6956d779)
+- docs(issues): record full-suite confirmation for BUG-2427 (64f72971)
+- docs(issues): capture ENH-2428 score-plateau early-stop for generator-evaluator (4ea53bd9)
+- docs(issues): capture ENH-2426 for programmatic issue-format linter (7d05b322)
+
 ## [1.136.0] - 2026-06-30
 
 ### Added
@@ -3648,3 +3679,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.137.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.136.0...v1.137.0
