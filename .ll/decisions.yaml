@@ -3622,3 +3622,32 @@
     with no recovery flag. Score 11/12 (tiebreak lost on Consistency 2/3 vs Option
     B 3/3).'
   issue: ENH-2436
+- id: ARCH-169
+  type: rule
+  timestamp: '2026-07-02T03:56:02Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'BUG-2438: scratch-cleanup.sh''s SessionEnd handler unconditionally rm
+    -rf''d .loops/tmp/scratch whenever any one concurrent session ended, deleting
+    other still-running sessions'' in-flight backgrounded output because the directory
+    has no per-process isolation.'
+  rule: Cleanup logic touching a shared, multi-writer path must scope deletion to
+    resources owned by the terminating process, ne
+  enforcement: advisory
+  issue: BUG-2438
+- id: ARCH-170
+  type: rule
+  timestamp: '2026-07-02T04:32:38Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: list_cmd.py's transitive parent-chain walk and issue_progress.py's one-hop
+    parent check both claimed to compute 'EPIC membership' but diverged, producing
+    contradictory badges vs. list output for the same data.
+  rule: When the same semantic relationship (e.g. 'descendant of X') is computed in
+    more than one place, extract a single shared
+  enforcement: advisory
+  issue: BUG-2441
