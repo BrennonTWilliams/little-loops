@@ -14,9 +14,10 @@ labels:
 - git
 - merge
 - completion
-parent: FEAT-2339
+parent: EPIC-2451
 relates_to:
 - FEAT-2339
+- EPIC-2451
 - FEAT-2447
 - FEAT-2448
 - FEAT-2450
