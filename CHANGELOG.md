@@ -12,6 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.138.0] - 2026-07-02
+
+### Added
+
+- **Source ll-init defaults from config-schema.json** — (ENH-2434)
+- **Fully programmatic issue-format linter (renamed/empty/boilerplate) for the ensure_formatted gate** — (ENH-2426)
+- **vega-viz — prevent panel-level params regression and raise step budget** — (ENH-2440)
+- **Extend windowed rung to the non-TTY streaming FSM diagram path** — (ENH-2442)
+- **decide-issue and rn-remediate should detect decision_needed:true issues with no enumerable options before MANUAL_REVIEW_NEEDED** — (ENH-2443)
+- **Constrain `diverge` state in brainstorm loop via per-state `tools:` allowlist** — (ENH-2444)
+- **Replace fragile test sleeps with deterministic signals and parallelize via pytest-xdist** — (ENH-2445)
+- feat(issues): add skip_blocked kwarg to find_issues (19d4dd43)
+- feat(tests): add breadth integration test for skip_blocked (f4091ee3)
+- feat(issues): skip blocked issues by default for next-issue / next-issues (40c91e70)
+
+### Fixed
+
+- **brainstorm `init` doubles run_dir path when `${context.run_dir}` is already absolute** — (BUG-2435)
+- **manage-issue final test run loses its scratch directory when the redirect hook doesn't fire; FSM spawn continuations lose automation permission_mode** — (BUG-2437)
+- **scratch-cleanup.sh's blind `rm -rf .loops/tmp/scratch` races every OTHER concurrent session in the repo** — (BUG-2438)
+- **`compute_epic_progress` counts only direct `parent:` children while `ll-issues list --group-by epic` buckets transitively — contradictory badges** — (BUG-2441)
+- **ll-init never displays the bundled CLI logo** — (BUG-2439)
+
+### Other
+
+- docs(cli): document ll-init defaults source and epic-progress transitive rollup (4e3776d6)
+- docs(issues): file EPIC-2456 (token-cost reduction), EPIC-2457 (history.db coverage expansion), and 9 child ENHs (19e4a04f)
+- docs(decisions): log ARCH-091–096 from FEAT-2339 decomposition research (08e925a3)
+- docs(decisions): log ARCH-171/172 from ENH-2444 + TEST-173 from ENH-2445 (95d3d074)
+- docs(decisions): log ARCH-169/170 rules from BUG-2438 and BUG-2441 (87796dbb)
+- perf(tests): replace fixed sleeps with deterministic signals + parallelize (fffea99d)
+- chore(config): add prompt_optimization config key, disabled by default (75ddb743)
+- style: fix mypy type error and apply ruff format (03261700)
+
 ## [1.137.0] - 2026-07-01
 
 ### Added
@@ -3679,4 +3713,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.138.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.137.0...v1.138.0
 [1.137.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.136.0...v1.137.0
