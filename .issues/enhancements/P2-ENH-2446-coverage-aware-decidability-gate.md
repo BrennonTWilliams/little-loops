@@ -156,19 +156,141 @@ multiple too low) or burning budget on genuinely stuck issues.
   how `/ll:refine-issue` deposits options; the FIFO/value-ranked scheduling in
   `rn-implement`.
 
+## Implementation Steps
+
+1. **Add resolved/unresolved detector in `issue_parser.py`.** New sibling to
+   `count_enumerable_options()` (line 269), e.g. `count_unresolved_options()`,
+   that walks each option block in `## Proposed Solution` (or fallback sections
+   per `_OPTION_FALLBACK_SECTIONS` at line 257) and returns the count of blocks
+   lacking a `> **Selected:**` callout OR `### Decision Rationale` subsection
+   within the same block (boundary = next `###` or `##` line). Use
+   `_section_body()` (line 114) to extract each option's body.
+2. **Add open-question section detector in `issue_parser.py`.** New function
+   `count_open_questions_in_sections()` that combines `_section_body()` reads
+   for `## Edge Cases`, `## Confidence Check Notes`, and `## Open Questions`,
+   then applies the same `✅ RESOLVED` regex already defined in
+   `skills/decide-issue/SKILL.md` Phase 3b-i (line 197) to count unresolved
+   items. Mirror the `FormatGaps` dataclass shape at `issue_parser.py:135-159`
+   for a typed return value.
+3. **Add `cmd_check_open_questions` CLI in `scripts/little_loops/cli/issues/check_open_questions.py`.** Mirror `cmd_check_decidable`
+   (`check_decidable.py:19`) and `cmd_format_check` (`format_check.py`) — exit
+   0 when no open questions + no unresolved options remain, exit 1 with
+   `OPEN_QUESTIONS_REMAIN: <ID> — N open question(s) and M unresolved option(s);
+   run /ll:refine-issue <ID> --auto` otherwise. Register the subcommand in
+   `cli/issues/__init__.py` (`check-decidable` parser at line 581-587 is the
+   template; dispatch in `commands` switch at line 792-793).
+4. **Wire the new probe into `check_decision_decidable` in
+   `rn-remediate.yaml:263`.** After the existing marker short-circuit
+   (`if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]`),
+   chain the new probe: `ll-issues check-open-questions "${context.issue_id}" || \
+   ll-issues check-decidable "${context.issue_id}"`. Fail-open `on_error: decide`
+   must be preserved (rn-remediate.yaml:283). Mirror the same change in
+   `autodev.yaml:193-209` (parity test at `test_builtin_loops.py:2890-2922`).
+5. **Add Layer 2 Option A progress gate.** Reuse the ENH-2428 `score_stall`
+   pattern as the template: a new `open_question_stall` evaluator type that
+   reads a per-round count history file (one number per line) under
+   `${context.run_dir}/.open_questions_<ID>.history`. Wire it via:
+   - `fsm/schema.py:61-103` — add `open_question_stall` to `EvaluateConfig.type`
+     `Literal[…]` plus `history_file`/`max_stall`/`epsilon` fields.
+   - `fsm/evaluators.py:602` — add `evaluate_open_question_stall()` (modeled on
+     `evaluate_score_stall`).
+   - `fsm/evaluators.py:1648-1777` — add to `_EXIT_CODE_AWARE_EVALUATORS` and
+     dispatch in `evaluate()`.
+   - `fsm/validation.py:64-79` — add to `EVALUATOR_REQUIRED_FIELDS` and a
+     type-specific validation block (see `validation.py:321-336` for the
+     `score_stall` precedent).
+   - `loops/lib/common.yaml:162` — add `open_question_stall_gate` fragment
+     modeled on `score_stall_gate`.
+6. **Replace the write-once marker with a progress-gated re-fire.** The current
+   `${context.run_dir}/decide_options_deposited_<ID>.txt` (written by
+   `record_options_deposited` at `rn-remediate.yaml:300`) becomes the "we tried
+   at least once" anchor; the *re-fire decision* moves to a new shell state
+   that consults the `open_question_stall` evaluator against the count
+   history. Bounded by `check_remediation_budget` (`rn-remediate.yaml:735`) so
+   the existing 3-pass cap still applies, and the existing `STALLED_NEEDS_DECOMPOSE`
+   superstring trick (BUG-2006) preserves the parent's substring-match.
+7. **Mirror in `autodev.yaml`.** Both loops consume the new probe + evaluator
+   identically (the marker name `autodev-decide-options-deposited` becomes a
+   "tried at least once" anchor; the count history file is
+   `${context.run_dir}/.open_questions_<ID>.history` in both loops).
+8. **Extend test surface.** Mirror `TestCheckDecisionDecidableState`
+   (`test_rn_remediate.py:189-231`) for the new gate ordering, add a
+   `TestOpenQuestionsStall` class to `test_decide_issue_skill.py` (mirror
+   `TestOptionsMissingExitCodes` at line 511-534) and a `TestFEAT2339MixedShapeSnapshot`
+   golden-file fixture (mirror `TestFEAT398Snapshot` at line 475-509) under
+   `scripts/tests/fixtures/issues/FEAT-2339-mixed-resolved-unresolved.md`. Add
+   a `TestMR1NonLLMEvaluatorForOpenQuestionStall` case to `test_rn_remediate.py`'s
+   `TestFSMHealth` (line 1128-1145) so the new evaluator is locked as a
+   non-LLM gate. Mirror the same tests in `test_builtin_loops.py:2890-2922`
+   for `autodev.yaml` parity.
+9. **Update docs.** `docs/reference/CLI.md:1398-1412` (add `ll-issues
+   check-open-questions` alongside `check-decidable`), `docs/reference/API.md:829-834`
+   (add `count_unresolved_options` + `count_open_questions_in_sections` to the
+   issue-parser API), `docs/guides/LOOPS_REFERENCE.md:580-609` (Phase 1.5
+   Decidability Gate description), and the new evaluator's display label in
+   `cli/loop/info.py:1063-1079` `_EVALUATE_TYPE_DISPLAY`.
+10. **Run gates.** `python -m pytest scripts/tests/` (per project policy —
+    this *is* the CI), then `ruff check scripts/`, `ruff format scripts/`,
+    `python -m mypy scripts/little_loops/`. Confirm no regression in
+    `test_builtin_loops.py` autodev parity tests.
+
 ## Key Files
 
-- `scripts/little_loops/cli/issues/check_decidable.py` — count-based probe to make
-  coverage-aware (or sibling to a new `check-open-questions`).
+- `scripts/little_loops/cli/issues/check_decidable.py:19` — `cmd_check_decidable`;
+  count-based probe to make coverage-aware (or sibling to a new
+  `check-open-questions`).
 - `scripts/little_loops/issue_parser.py:269` — `count_enumerable_options()`;
-  needs a resolved-vs-unresolved companion.
-- `scripts/little_loops/loops/rn-remediate.yaml` — states
-  `check_decision_decidable`, `deposit_options`, `record_options_deposited`,
-  `check_convergence`, `check_remediation_budget`, `emit_needs_manual_review`.
+  add `count_unresolved_options()` and `count_open_questions_in_sections()`
+  as siblings. Reuse `_section_body()` (line 114), `_OPTION_PATTERNS` (line
+  250), and `_OPTION_FALLBACK_SECTIONS` (line 257).
+- `scripts/little_loops/issue_parser.py:135-159` — `FormatGaps` dataclass;
+  precedent for a typed graded-gap return value.
+- `scripts/little_loops/loops/rn-remediate.yaml` — states `check_decision_decidable`
+  (line 263), `deposit_options` (line 285), `record_options_deposited` (line
+  300), `check_convergence` (line 636), `check_remediation_budget` (line 735),
+  `emit_needs_manual_review` (line 793).
+- `scripts/little_loops/loops/autodev.yaml:193-231` — parallel implementation
+  of the ENH-2443 gate; mirror the new probe and progress-gate here. The
+  marker name is `autodev-decide-options-deposited` (parity test at
+  `test_builtin_loops.py:2890-2922`).
 - `scripts/little_loops/loops/rn-implement.yaml:26` — `max_remediation_passes`
-  context default (Layer 2 Option B); `route_rem_manual_review_recommended`.
-- `scripts/tests/test_decide_issue_skill.py`, `scripts/tests/test_rn_remediate.py`
-  — existing test harnesses to extend.
+  context default (Layer 2 Option B). `route_rem_manual_review_recommended`
+  (line 840-852) and `route_rem_manual_review` (line 854-861) consume the
+  parent's outcome token.
+- `scripts/little_loops/loops/lib/common.yaml:15,61,162` — `shell_exit`,
+  `with_rate_limit_handling`, and `score_stall_gate` fragments (precedent for
+  the new `open_question_stall_gate`).
+- `scripts/little_loops/fsm/evaluators.py:602` — `evaluate_score_stall`; the
+  "strictly-decreasing counter" template. `fsm/evaluators.py:1648-1777` for
+  the dispatcher + `_EXIT_CODE_AWARE_EVALUATORS`.
+- `scripts/little_loops/fsm/validation.py:64-79` — `EVALUATOR_REQUIRED_FIELDS`;
+  the schema registration site. See `validation.py:321-336` for the
+  `score_stall` validation block to mirror.
+- `scripts/little_loops/fsm/schema.py:61-103` — `EvaluateConfig` dataclass;
+  add `open_question_stall` to the `Literal[…]` `type` field.
+- `scripts/little_loops/cli/loop/info.py:1063-1079` — `_EVALUATE_TYPE_DISPLAY`;
+  add the new evaluator's display label.
+- `skills/decide-issue/SKILL.md:194-213` — Phase 3b-i `✅ RESOLVED` marker
+  detection; the canonical "open vs resolved" regex to reuse in the new
+  probe.
+- `skills/confidence-check/SKILL.md:356-371` — signal-phrase detection that
+  sets `decision_needed: true`; confirms `## Confidence Check Notes` as a
+  legitimate source of unresolved questions.
+- `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check`; the
+  ENH-2426 sibling deterministic-probe pattern (`--format text|json`, exit 0/1,
+  stderr token + side-effect-free).
+- `scripts/tests/test_decide_issue_skill.py:475-534` — `TestFEAT398Snapshot`
+  + `TestOptionsMissingExitCodes`; precedent for fixture-driven
+  characterization + subprocess-level unit tests.
+- `scripts/tests/test_rn_remediate.py:189-330` — `TestCheckDecisionDecidableState`,
+  `TestDepositOptionsState`, `TestRecordOptionsDepositedState`,
+  `TestDecisionDecidableFlow`, `TestManualReviewRecommendedToken`; the FSM
+  wiring test suite to extend.
+- `scripts/tests/test_builtin_loops.py:2890-2922` — autodev.yaml parity tests;
+  mirror for the new probe.
+- `scripts/tests/fixtures/issues/FEAT-398-decide-empty-proposed.md` — existing
+  0-enumerable-options fixture; add `FEAT-2339-mixed-resolved-unresolved.md`
+  alongside for the new mixed-shape golden file.
 
 ## Related
 
@@ -185,6 +307,99 @@ multiple too low) or burning budget on genuinely stuck issues.
 - **Risk**: Medium — touches the ENH-2443 decision path; must preserve the
   manual-review terminators and remain self-bounding.
 
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Coverage gap is concrete and localized.** `count_enumerable_options`
+  (`scripts/little_loops/issue_parser.py:269`) does NOT inspect the
+  `> **Selected:**` callout or `### Decision Rationale` subsection that
+  `skills/decide-issue/SKILL.md:357-413` writes when it resolves an option.
+  Confirmed via grep: at least `P3-BUG-1870-...md:81`, `P2-BUG-1799-...md:54`,
+  and `P3-BUG-1870-...md:132` carry these markers in `## Proposed Solution`
+  but contribute to the count regardless. The fix is local: a new sibling
+  function that filters the matched option blocks by marker presence.
+- **Section-scoped detection is already centralized.** `_section_body()`
+  (`scripts/little_loops/issue_parser.py:114`) is the canonical "give me the
+  text of `## <heading>`" helper. A new `count_open_questions_in_sections()`
+  reuses it for `## Edge Cases`, `## Confidence Check Notes`, and
+  `## Open Questions`. The `✅ RESOLVED` regex family (defined inline at
+  `skills/decide-issue/SKILL.md:197`) is the resolved-question signal — copy
+  it to `issue_parser.py` so both the LLM skill and the deterministic probe
+  read the same markers.
+- **Deterministic-probe pattern is well-established.** `cmd_check_decidable`
+  (`scripts/little_loops/cli/issues/check_decidable.py:19`) and
+  `cmd_format_check` (`format_check.py`) are the two precedents. Both are
+  stdlib-only, side-effect-free, and exit 0/1 with a stderr token for
+  non-passing cases. A new `cmd_check_open_questions` should match this
+  shape exactly: `_resolve_issue_id()` → file read → deterministic analysis
+  → token + exit code. Register the subcommand in
+  `scripts/little_loops/cli/issues/__init__.py` (the `check-decidable`
+  parser at line 581-587 and dispatch in the `commands` switch at line
+  792-793 are the templates).
+- **Progress-gated re-fire pattern is well-established.** The `score_stall`
+  evaluator + `score_stall_gate` fragment (ENH-2428) is the exact precedent
+  for Layer 2 Option A. Touch points are:
+  `fsm/schema.py:61-103` (EvaluateConfig.type Literal),
+  `fsm/evaluators.py:602` (evaluate_score_stall body + dispatcher in
+  `fsm/evaluators.py:1648-1777`), `fsm/validation.py:64-79`
+  (EVALUATOR_REQUIRED_FIELDS + the score_stall-specific validation block at
+  line 321-336), `loops/lib/common.yaml:162` (score_stall_gate fragment),
+  `cli/loop/info.py:1063-1079` (_EVALUATE_TYPE_DISPLAY), and MR-1 prose in
+  `.claude/CLAUDE.md`. ENH-2428 itself is the canonical "make count-aware
+  into coverage-aware" issue and its integration map is the template.
+- **Existing routing tokens already accommodate a third MANUAL_REVIEW_*
+  variant.** `STALLED_NEEDS_DECOMPOSE` is a deliberate superstring of
+  `NEEDS_DECOMPOSE` to keep substring-match compatibility in
+  `route_rem_decompose` (BUG-2006). The same trick lets us add e.g.
+  `MANUAL_REVIEW_RECOMMENDED_AFTER_DEPOSITS_EXHAUSTED` without changing the
+  parent's `route_rem_manual_review_recommended` arm
+  (`rn-implement.yaml:840-852`) — but a cleaner name is to *keep*
+  `MANUAL_REVIEW_RECOMMENDED` and add the progress-gate behavior, since
+  the operator-facing diagnostic stays the same.
+- **`autodev.yaml` is a parity copy of the ENH-2443 gate.** The new probe and
+  progress gate must be mirrored in `autodev.yaml:193-231`. Its marker name
+  is `autodev-decide-options-deposited` (parity test at
+  `test_builtin_loops.py:2890-2922`). The count history file convention
+  should remain loop-agnostic (`${context.run_dir}/.open_questions_<ID>.history`)
+  so both loops share the same evaluator.
+- **`## Edge Cases` is marked `deprecated: true` in the FEAT template**
+  (`scripts/little_loops/templates/feat-sections.json:177-185`). The
+  coverage-aware probe should mirror `is_formatted()`'s deprecated-section
+  guard at `issue_parser.py:218-221` and skip deprecated sections when
+  scanning for open questions — otherwise the probe will over-fire on
+  issues that have a `## Edge Cases` section purely for legacy reasons.
+- **Confidence-check sets `decision_needed: true` via 10 signal phrases**
+  (`skills/confidence-check/SKILL.md:356-371`): `"open decision"`, `"unresolved
+  decision"`, `"decision point"`, `"either/or"`, `"open question"`, `"Option
+  A/B" without resolution`, etc. These phrases can appear inside `## Edge
+  Cases` and `## Confidence Check Notes` bodies — the coverage-aware probe
+  will catch them via section-scoped regex, and the parent
+  decision-routing already trusts the resulting `decision_needed: true`
+  flag (no further changes needed in confidence-check).
+- **MR-1 must continue to hold.** The new `open_question_stall` evaluator
+  is a non-LLM gate (it reads a number from a file), so the new shell
+  states wiring it into `rn-remediate.yaml` / `autodev.yaml` remain
+  MR-1-compliant. Add a `TestMR1NonLLMEvaluatorForOpenQuestionStall` case
+  to `test_rn_remediate.py`'s `TestFSMHealth` (line 1128-1145) to lock this.
+- **Per-run artifact isolation (MR-3) is preserved.** Both the existing
+  `${context.run_dir}/decide_options_deposited_<ID>.txt` marker and the
+  new `${context.run_dir}/.open_questions_<ID>.history` file live under
+  `${context.run_dir}/` (not bare `.loops/tmp/`), satisfying MR-3. The
+  test `test_marker_bounded_second_pass_short_circuits` at
+  `test_rn_remediate.py:225` locks the marker ordering.
+- **Single-pass / single-issue budget (BUG-2006 superstring trick).** The
+  parent `rn-implement.yaml` reads `subloop_outcome_<ID>.txt` via
+  longest-prefix-first `output_contains` routing
+  (`route_rem_manual_review_recommended` at line 840-852 is checked
+  before `route_rem_manual_review` at line 854-861 per ARCH-090). Any new
+  outcome token should be designed as a *superstring* of an existing one
+  if it must keep triggering the same parent arm.
+
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2
+**Open** | Created: 2026-07-02 | Priority: P2 | Refined: 2026-07-02 by `/ll:refine-issue --auto`
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-07-03T00:46:39 - `230f87c5-0430-4e63-818f-efd86398fff5.jsonl`
