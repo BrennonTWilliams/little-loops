@@ -18,6 +18,7 @@ relates_to:
 - EPIC-2178
 - EPIC-2258
 - FEAT-2274
+- FEAT-2387
 - FEAT-2391
 - FEAT-2392
 - FEAT-2393
@@ -65,9 +66,11 @@ epic.
   - **FEAT-2260** — generic host-parameterized skill + command adapter
     (`--host` arg; replaces `ll-adapt-*-for-codex` duplication and
     FEAT-2188 / FEAT-2189).
-  - **FEAT-2267** — generic host-parameterized `ll-init --upgrade` surface
+  - **FEAT-2387** — generic host-parameterized `ll-init --upgrade` surface
     refresh (per-host plugin update / adapter regeneration + gen-version
-    stamping; depends on BUG-2266 for scope-aware detection).
+    stamping; depends on BUG-2266 for scope-aware detection). The plan
+    (2026-06-25) referred to this as "FEAT-2267" — when filed it received the
+    real ID 2387.
 - Tracking the per-host epics as they sequence: EPIC-1463 (Codex polish),
   EPIC-2178 (Gemini), EPIC-2258 (omp).
 
@@ -86,9 +89,13 @@ portfolio work is in the tracked per-host epics below.
 
 - **FEAT-2259** — Generic host-parameterized conformance harness (**done**)
 - **FEAT-2260** — Generic host-parameterized skill + command adapter (**done**)
-- **FEAT-2267** — Generic host-parameterized `ll-init --upgrade` surface refresh
-  (**done**; scope-aware install-detection prerequisite **BUG-2266** also done.
-  BUG-2266 is a `relates_to` precursor, not a child of this epic.)
+- **FEAT-2387** — Generic host-parameterized `ll-init --upgrade` surface refresh
+  (**done**; shipped via commits `e3180a9b` / `dd9f5dbb` on 2026-06-29 as
+  `_dispatch_host_upgrade()` + `_warn_adapter_staleness()` + gen-version
+  stamping in `.codex/hooks.json`). Scope-aware install-detection prerequisite
+  **BUG-2266** also done. BUG-2266 is a `relates_to` precursor, not a child of
+  this epic. The plan (2026-06-25) referred to this work as "FEAT-2267" — when
+  filed it received the real ID 2387.
 
 ## Tracked sub-epics (sequenced under this epic)
 
@@ -109,7 +116,7 @@ portfolio work is in the tracked per-host epics below.
 
 - Host order is recorded once (ARCHITECTURE-048) and every per-host epic
   references it rather than re-deriving priority.
-- FEAT-2259, FEAT-2260, and FEAT-2267 all landed as generic components
+- FEAT-2259, FEAT-2260, and FEAT-2387 all landed as generic components
   (**all done**) — and the bespoke per-host conformance / skill / command
   children are either folded into them or explicitly closed as superseded
   (e.g. EPIC-2178's FEAT-2188 / FEAT-2189 / FEAT-2192, cancelled 2026-06-25).
@@ -130,11 +137,13 @@ portfolio work is in the tracked per-host epics below.
   criterion to reflect that FEAT-2259 landed (`done`) and EPIC-2279 is 100%
   complete; FEAT-2260 remains pending. Cross-references/backlinks left unchanged.
 
-- **2026-06-30** (bookkeeping refresh): FEAT-2260 (status `done`) and FEAT-2267
-  (status `done`, with prerequisite BUG-2266 `done`) had stale "pending" /
+- **2026-06-30** (bookkeeping refresh): FEAT-2260 (status `done`) and **FEAT-2387**
+  (status `done` — note: the plan called this "FEAT-2267", but when filed it
+  received the real ID 2387; updated all references in this epic accordingly
+  on 2026-07-02), with prerequisite BUG-2266 `done`, had stale "pending" /
   "unblocked" prose in Children and Acceptance Criteria. Updated both — **all
   three generic shared-infrastructure children (FEAT-2259 / FEAT-2260 /
-  FEAT-2267) are now complete**, so this epic's host-parameterized infrastructure
+  FEAT-2387) are now complete**, so this epic's host-parameterized infrastructure
   is fully landed. Remaining portfolio work is entirely in the tracked per-host
   epics (EPIC-1463 / EPIC-2178 / EPIC-2258, all `open`); epic stays `open` as the
   coordination shell until those sequence through.
