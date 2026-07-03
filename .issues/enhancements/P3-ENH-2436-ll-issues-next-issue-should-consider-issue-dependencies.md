@@ -746,9 +746,37 @@ _Added by `/ll:confidence-check` on 2026-07-02_
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 57/100 → LOW
 
+### Notes (updated post-Layer-1)
+
+Layer 1 (commit `19d4dd43`) shipped the keyword-only `skip_blocked: bool = False`
+parameter on `find_issues()` with four unit tests in `TestFindIssues`. The
+remaining work is Layer 2 (CLI surface for `cmd_next_issue` / `cmd_next_issues`)
+plus the integration test added in this commit that exercises every kwarg shape
+the 13 external callers use, asserting the default is byte-identical.
+
 ### Outcome Risk Factors
-- Change surface — broad enumeration across 15 existing `find_issues()` call sites; safety currently rests entirely on the new `skip_blocked` parameter being keyword-only with a `False` default (Wiring Phase step 7) rather than on independent per-caller verification.
-- Complexity — roughly 11 total touch points across code (4), tests, and docs (5) mean each edit is individually mechanical but numerous; budget time for the doc/test sync pass even though no single edit is architecturally risky.
+
+- **Remaining change surface (Layer 2 only).** The breadth-across-callers risk
+  flagged before Layer 1 was retired by the keyword-only default: callers that
+  don't pass `skip_blocked` continue to get the pre-change result without
+  per-caller verification. The integration test added in this commit is the
+  per-implementation-locus breadth sentinel — it walks the 13 callers' kwarg
+  shapes and asserts byte-identity, so any future regression in `find_issues()`
+  that reorders, deduplicates, or reorders status filtering will surface
+  immediately.
+- **User-visible behavior shift (Layer 2).** The default change in
+  `cmd_next_issue` / `cmd_next_issues` (top of list is now an unblocked issue)
+  plus the new exit-1 path for an all-blocked backlog are the only user-visible
+  changes. Three FSM loops (`auto-refine-and-implement.yaml`,
+  `refine-to-ready-issue.yaml`, `lib/cli.yaml`) consume these commands; their
+  existing empty-candidate and exit-1 routes already cover the new behavior,
+  so this is a transparent improvement rather than a breaking one.
+- **Why outcome confidence is still 57.** The uncertainty sits in the user-
+  surface layer, not the implementation: whether `--include-blocked` is the
+  right flag name, whether the all-blocked exit-1 is the right exit code, and
+  whether downstream workflows will need a migration note. None of these are
+  blockers for Layer 2 — they are follow-on calibration questions that
+  resolve in the first sprint of real-world use.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-07-02T20:55:26 - `9d02b2f6-5396-47a3-a74d-144f2283337c.jsonl`

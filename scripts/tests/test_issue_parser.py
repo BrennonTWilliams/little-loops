@@ -1356,6 +1356,128 @@ class TestFindIssues:
 
         assert "BUG-531" not in [i.issue_id for i in issues]
 
+    def test_find_issues_skip_blocked_false_byte_identical_for_all_caller_shapes(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """`skip_blocked=False` is byte-identical to omitting the kwarg for every
+        kwarg shape the 13 external callers in ENH-2436's Dependent Files section
+        use.
+
+        This is the per-implementation-locus breadth sentinel: rather than asserting
+        per-caller, it walks every ``(category, type_prefixes, status_filter,
+        only_ids, skip_ids)`` shape the 13 callers pass and verifies the
+        kwarg-only default keeps each shape byte-identical. If a future change
+        to ``find_issues()`` reorders, deduplicates, or re-shuffles status
+        filtering for any one of these shapes, this test will fail.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+
+        # Terminal blocker — would unblock the issue that depends on it.
+        (bugs_dir / "P0-BUG-700-blocker-terminal.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-700: Done blocker.\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-701-blocked-by-terminal.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-700\n---\n\n# BUG-701: Blocked by done.\n\nContent."
+        )
+        # Active blocker — would still block the issue that depends on it.
+        (bugs_dir / "P0-BUG-702-blocker-active.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-702: Active blocker.\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-703-blocked-by-active.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-702\n---\n\n# BUG-703: Blocked by open.\n\nContent."
+        )
+        # Plain issues — always present, never blocked.
+        (bugs_dir / "P0-BUG-704-plain.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-704: Plain bug.\n\nContent."
+        )
+        (features_dir / "P0-FEAT-800-plain.md").write_text(
+            "---\nstatus: open\n---\n\n# FEAT-800: Plain feature.\n\nContent."
+        )
+
+        # Mirror `_ALL_STATUSES` / `_ACTIVE_STATUSES` from
+        # `scripts/little_loops/issue_progress.py` (not imported here to keep the
+        # test self-contained — the values are stable per the issue_progress
+        # module's contract).
+        _ALL_STATUSES = frozenset({
+            "open", "in_progress", "blocked", "done", "cancelled", "deferred",
+        })
+        _ACTIVE_STATUSES = frozenset({"open", "in_progress", "blocked"})
+
+        # Each entry: (description, kwargs). The kwargs mirror how the caller
+        # listed in the Dependent Files section of ENH-2436 invokes
+        # `find_issues()` — same parameter names, same shape. The default
+        # value of any kwarg not passed by the caller is left at the function's
+        # own default (None / empty).
+        callsite_shapes: list[tuple[str, dict[str, Any]]] = [
+            # issue_manager.py:1170 — AutoManager.__init__
+            ("issue_manager:1170", {"category": "bugs"}),
+            # parallel/priority_queue.py:244 — IssuePriorityQueue.scan_issues
+            (
+                "priority_queue:244",
+                {
+                    "category": "bugs",
+                    "skip_ids": set(),
+                    "only_ids": None,
+                    "type_prefixes": None,
+                },
+            ),
+            # hooks/sweep_stale_refs.py:159 — done_issues lookup
+            ("sweep_stale_refs:159", {"status_filter": {"done"}}),
+            # hooks/sweep_stale_refs.py:166 — open_issues lookup
+            ("sweep_stale_refs:166", {}),
+            # sprint.py:325 — SprintManager.load_or_resolve
+            ("sprint:325", {"status_filter": _ACTIVE_STATUSES}),
+            # cli/deps.py:38 — cmd_deps
+            ("cli/deps:38", {"only_ids": {"BUG-704", "FEAT-800"}}),
+            # cli/deps.py:269 — tree rendering
+            ("cli/deps:269", {"status_filter": _ALL_STATUSES}),
+            # cli/issues/set_status.py:75 — cmd_set_status
+            ("set_status:75", {}),
+            # cli/issues/next_action.py:30 — cmd_next_action
+            ("next_action:30", {"skip_ids": None}),
+            # cli/issues/refine_status.py:281 — cmd_refine_status
+            (
+                "refine_status:281",
+                {"type_prefixes": {"BUG", "FEAT", "ENH"}},
+            ),
+            # cli/issues/epic_consistency.py:274 — cmd_epic_consistency
+            ("epic_consistency:274", {"status_filter": _ALL_STATUSES}),
+            # cli/issues/epic_progress.py:53 — cmd_epic_progress
+            ("epic_progress:53", {"status_filter": _ALL_STATUSES}),
+            # cli/issues/sequence.py:28 — cmd_sequence
+            (
+                "sequence:28",
+                {"type_prefixes": {"BUG", "FEAT", "ENH"}},
+            ),
+            # cli/issues/clusters.py:311 — cmd_clusters
+            ("clusters:311", {"status_filter": {"open", "in_progress"}}),
+            # cli/issues/impact_effort.py:188 — cmd_impact_effort
+            (
+                "impact_effort:188",
+                {"type_prefixes": {"BUG", "FEAT", "ENH"}},
+            ),
+            # cli/issues/list_cmd.py:166 — _find_issues_all
+            ("list_cmd:166", {"status_filter": _ALL_STATUSES}),
+        ]
+
+        for description, kwargs in callsite_shapes:
+            without_kwarg = [i.issue_id for i in find_issues(config, **kwargs)]
+            with_explicit_false = [
+                i.issue_id for i in find_issues(config, skip_blocked=False, **kwargs)
+            ]
+            assert without_kwarg == with_explicit_false, (
+                f"skip_blocked=False must be byte-identical to omitting the kwarg "
+                f"for callsite shape {description!r}; "
+                f"without={without_kwarg}, with_false={with_explicit_false}"
+            )
+
 
 class TestFindHighestPriorityIssue:
     """Tests for find_highest_priority_issue function."""
