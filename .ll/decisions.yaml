@@ -3842,3 +3842,32 @@
     stamp): would make epic_branches the only parallel.* key without explicit template
     parity, inconsistent with existing convention.'
   issue: FEAT-2339
+- id: ARCHITECTURE-097
+  type: decision
+  timestamp: '2026-07-03T03:17:45Z'
+  category: architecture
+  labels: []
+  rationale: 'Filing resolves Open Question #6 in both plan files (2026-07-02-token-cost-reduction-architecture.md,
+    2026-07-02-token-cost-optimal-techniques.md): promote the cross-source synthesis
+    to an EPIC with one child per F-feature plus a Tier 0 roll-up. Architecture is
+    replication-over-integration: ~1,550 LOC, 1 pip dep (anthropic SDK), 0 sidecars.
+    EPIC-1707 (history.db context layer) is done; ENH-1797 (cost-token telemetry)
+    is also done as EPIC-1744 child — this EPIC extends those partials rather than
+    duplicating them.'
+  rule: 'Captured: Token-Cost Reduction (Tier 0 + F1/F2/F3/F4-gated/F5/F6/F7-lite/F8/F10)'
+  scope: issue
+  issue: EPIC-2456
+- id: ARCHITECTURE-098
+  type: decision
+  timestamp: '2026-07-03T03:29:56Z'
+  category: architecture
+  labels: []
+  rationale: Findings report (thoughts/history-db-expand-wiring.md) named 9 independent
+    gaps. The source doc explicitly framed them as 'each its own implementation task'
+    (no shared mechanism), but they share a substrate and were discovered in the same
+    review cycle — capturing them under EPIC-2457 preserves progression visibility
+    without coupling scope. Two of the nine were promoted to P2 (commit linkage, test
+    results) per the doc's value ranking; the rest at P3.
+  rule: Roll post-EPIC-1707 history.db coverage gaps under a single epic with 9 children
+  scope: issue
+  issue: EPIC-2457
