@@ -359,9 +359,7 @@ class TestValidateOnly:
         phase1_start = content.index("Phase 1: Parse Arguments")
         phase2_start = content.index("Phase 2: Locate Issue File")
         phase1_text = content[phase1_start:phase2_start]
-        assert "--validate-only" in phase1_text, (
-            "Phase 1 must document the --validate-only flag"
-        )
+        assert "--validate-only" in phase1_text, "Phase 1 must document the --validate-only flag"
 
     def test_validate_only_in_arguments_table(self) -> None:
         content = SKILL_FILE.read_text()
@@ -467,8 +465,7 @@ class TestSingleOptionRegression:
             "Phase 3 must still document the single-option branch"
         )
         assert "Clearing decision_needed if set" in phase3_text, (
-            "Phase 3 must still document auto-clearing decision_needed for the single-"
-            "option case"
+            "Phase 3 must still document auto-clearing decision_needed for the single-option case"
         )
 
 
@@ -481,9 +478,7 @@ class TestFEAT398Snapshot:
     this test locks in that the snapshotted fixture is a genuine 0-options case.
     """
 
-    FIXTURE = (
-        Path(__file__).parent / "fixtures" / "issues" / "FEAT-398-decide-empty-proposed.md"
-    )
+    FIXTURE = Path(__file__).parent / "fixtures" / "issues" / "FEAT-398-decide-empty-proposed.md"
 
     def test_fixture_exists(self) -> None:
         assert self.FIXTURE.exists(), (

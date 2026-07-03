@@ -175,9 +175,7 @@ class TestInitLogoBanner:
         out = capsys.readouterr().out
         assert "little loops" not in out, "logo banner leaked into non-TTY (piped) output"
 
-    def test_plan_output_has_no_logo_and_stays_valid_json(
-        self, tmp_path: Path
-    ) -> None:
+    def test_plan_output_has_no_logo_and_stays_valid_json(self, tmp_path: Path) -> None:
         import io
         from contextlib import redirect_stdout
 

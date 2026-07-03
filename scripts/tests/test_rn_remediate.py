@@ -324,7 +324,7 @@ class TestManualReviewRecommendedToken:
     def test_still_writes_subloop_outcome_file(self) -> None:
         data = _load_loop()
         action = data["states"]["emit_needs_manual_review"]["action"]
-        assert 'subloop_outcome_${context.issue_id}.txt' in action
+        assert "subloop_outcome_${context.issue_id}.txt" in action
 
 
 # ---------------------------------------------------------------------------

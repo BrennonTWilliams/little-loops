@@ -268,9 +268,7 @@ class TestComputeEpicProgress:
         epic_b = _make_issue(tmp_path, "EPIC-B")
         feat9 = _make_issue(tmp_path, "FEAT-9", parent="EPIC-B")
 
-        result = compute_epic_progress(
-            "EPIC-A", [epic_a, feat1, feat2, feat3, epic_b, feat9]
-        )
+        result = compute_epic_progress("EPIC-A", [epic_a, feat1, feat2, feat3, epic_b, feat9])
         assert result is not None
         child_ids = {c.issue_id for c in result.children}
         assert child_ids == {"FEAT-1", "FEAT-2", "FEAT-3"}

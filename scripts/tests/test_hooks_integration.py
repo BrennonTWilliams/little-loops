@@ -2829,14 +2829,10 @@ class TestScratchCleanupSessionEnd:
         assert script.is_file(), "hooks/scripts/scratch-cleanup.sh must exist"
         text = script.read_text()
         assert ".loops/tmp/scratch" in text
-        assert "kill -0" in text, (
-            "cleanup must check PID liveness before deleting a scratch file"
-        )
+        assert "kill -0" in text, "cleanup must check PID liveness before deleting a scratch file"
         code_lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
         offending = [ln for ln in code_lines if "rm -rf" in ln and "scratch" in ln]
-        assert not offending, (
-            f"must not blindly rm -rf the shared scratch dir: {offending!r}"
-        )
+        assert not offending, f"must not blindly rm -rf the shared scratch dir: {offending!r}"
 
     def test_scratch_cleanup_never_fails_when_dir_absent(self, tmp_path: Path):
         """scratch-cleanup.sh must exit 0 even when the scratch dir is absent."""

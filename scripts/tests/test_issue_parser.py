@@ -1405,9 +1405,16 @@ class TestFindIssues:
         # `scripts/little_loops/issue_progress.py` (not imported here to keep the
         # test self-contained — the values are stable per the issue_progress
         # module's contract).
-        _ALL_STATUSES = frozenset({
-            "open", "in_progress", "blocked", "done", "cancelled", "deferred",
-        })
+        _ALL_STATUSES = frozenset(
+            {
+                "open",
+                "in_progress",
+                "blocked",
+                "done",
+                "cancelled",
+                "deferred",
+            }
+        )
         _ACTIVE_STATUSES = frozenset({"open", "in_progress", "blocked"})
 
         # Each entry: (description, kwargs). The kwargs mirror how the caller

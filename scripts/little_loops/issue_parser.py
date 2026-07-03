@@ -251,7 +251,9 @@ _OPTION_PATTERNS = (
     re.compile(r"^###\s+Option\s+[A-Za-z0-9]", re.MULTILINE | re.IGNORECASE),
     re.compile(r"^\*\*Option\s+[A-Za-z0-9]+.*?\*\*", re.MULTILINE),
     re.compile(r"^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)", re.MULTILINE),
-    re.compile(r"^[-*]\s+(?:\([a-z0-9]\)\s+|\*{0,2}Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE),
+    re.compile(
+        r"^[-*]\s+(?:\([a-z0-9]\)\s+|\*{0,2}Option\s+[A-Za-z0-9])", re.MULTILINE | re.IGNORECASE
+    ),
 )
 
 _OPTION_FALLBACK_SECTIONS = ("Codebase Research Findings", "Implementation Status")
@@ -1105,7 +1107,7 @@ def find_issues(
         # category/type/skip/only filters) so a blocker outside the requested
         # slice is still correctly recognized as blocking or resolved.
         non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES
-        all_active = find_issues(config, status_filter=non_terminal)
+        all_active = find_issues(config, status_filter=set(non_terminal))
         graph = DependencyGraph.from_issues(all_active)
         ready_ids = {info.issue_id for info in graph.get_ready_issues()}
         issues = [info for info in issues if info.issue_id in ready_ids]
