@@ -547,6 +547,17 @@ Examples:
         nx.set_defaults(command="next-issue")
         nx.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
         nx.add_argument("--path", action="store_true", help="Output only the file path")
+        nx.add_argument(
+            "--include-blocked",
+            action="store_true",
+            default=False,
+            dest="include_blocked",
+            help=(
+                "Include issues with unresolved blockers in the ranked output. By "
+                "default, blocked issues are filtered out. When set, the JSON "
+                "output row carries a `blocked` field (true/false)."
+            ),
+        )
         add_skip_arg(nx)
         add_config_arg(nx)
 
@@ -566,6 +577,17 @@ Examples:
         )
         nxs.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
         nxs.add_argument("--path", action="store_true", help="Output one file path per line")
+        nxs.add_argument(
+            "--include-blocked",
+            action="store_true",
+            default=False,
+            dest="include_blocked",
+            help=(
+                "Include issues with unresolved blockers in the ranked output. By "
+                "default, blocked issues are filtered out. When set, each JSON "
+                "output row carries a `blocked` field (true/false)."
+            ),
+        )
         add_config_arg(nxs)
 
         cf = subs.add_parser(

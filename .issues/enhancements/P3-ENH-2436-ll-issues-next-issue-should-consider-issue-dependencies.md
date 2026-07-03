@@ -86,7 +86,7 @@ The change has three layers; per-layer options below.
 
 ### Layer 1 — Filter blocking at the candidate set
 
-Extend `find_issues()` (`scripts/little_loops/issue_parser.py:845`) with an
+Extend `find_issues()` (`scripts/little_loops/issue_parser.py:1031`, anchor `find_issues`) with an
 optional `skip_blocked: bool = False` parameter (default `False` to preserve
 existing behavior for callers that don't want it):
 
@@ -213,7 +213,7 @@ here, since the convention is documented as non-recursive
 
 ### Files to Modify
 
-- `scripts/little_loops/issue_parser.py` — `find_issues()` (~line 845):
+- `scripts/little_loops/issue_parser.py` — `find_issues()` (line 1031, anchor `find_issues`):
   add `skip_blocked: bool = False` parameter; pass an "is blocked by open
   issue?" check using parsed IssueInfo data. Reuses existing frontmatter
   parsing — no new parsers needed.
@@ -235,9 +235,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `scripts/little_loops/cli/args/issues.py`, but no such file exists
   (`Glob` confirms only `scripts/little_loops/cli/issues/__init__.py`).
   The actual registration sites for the two subcommands are:
-  - `next-issue` (alias `nx`) subparser — `scripts/little_loops/cli/issues/__init__.py:535-544`
-  - `next-issues` (alias `nxs`) subparser — `scripts/little_loops/cli/issues/__init__.py:546-562`
-  - Dispatch to `cmd_next_issue` / `cmd_next_issues` — `scripts/little_loops/cli/issues/__init__.py:770-773`
+  - `next-issue` (alias `nx`) subparser — `scripts/little_loops/cli/issues/__init__.py:542-549`
+  - `next-issues` (alias `nxs`) subparser — `scripts/little_loops/cli/issues/__init__.py:551-562`
+  - Dispatch to `cmd_next_issue` / `cmd_next_issues` — `scripts/little_loops/cli/issues/__init__.py:786-789`
 
   Add the `--include-blocked` argument to both `nx` and `nxs` parser
   definitions in `__init__.py`; the issue's path reference is stale and
@@ -246,9 +246,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`--include-blocked` flag precedent in the same file.** Two existing
   `--include-*` flags are already wired in `cli/issues/__init__.py` and
   match the proposed flag shape (`action="store_true"`, `dest=...`):
-  - `--include-completed` at `cli/issues/__init__.py:281-287`
+  - `--include-completed` at `cli/issues/__init__.py:289-294`
     (consumed in `cli/issues/search.py:296-302`)
-  - `--include-orphans` at `cli/issues/__init__.py:415-421` (clusters subcommand)
+  - `--include-orphans` at `cli/issues/__init__.py:423-428` (clusters subcommand)
 
   Mirror the `--include-completed` pattern: `add_argument("--include-blocked",
   action="store_true", default=False, dest="include_blocked", help=...)`
@@ -268,7 +268,7 @@ The default `skip_blocked=False` keeps every other `find_issues()` caller
 byte-identical; the following are listed for awareness and so any future
 maintainer can verify the contract without re-deriving it:
 
-- `scripts/little_loops/issue_parser.py:940` — `find_highest_priority_issue()`
+- `scripts/little_loops/issue_parser.py:1126` — `find_highest_priority_issue()`
   internal wrapper. Does **not** forward `skip_blocked`; protected if the new
   parameter is declared keyword-only (`*, skip_blocked: bool = False`).
 - `scripts/little_loops/issue_manager.py:1170` — `AutoManager.__init__` seeds
@@ -484,7 +484,7 @@ _These touchpoints were identified by wiring analysis and must be included in
 the implementation:_
 
 7. **Declare `skip_blocked` as keyword-only** (`*, skip_blocked: bool = False`)
-   so `find_highest_priority_issue()` at `issue_parser.py:921-941` (which
+   so `find_highest_priority_issue()` at `issue_parser.py:1126` (which
    calls `find_issues` positionally) does not accidentally receive a
    `skip_blocked` positional argument and stay byte-identical for the 13
    other callers listed in the Dependent Files section.
@@ -494,8 +494,8 @@ the implementation:_
    at `scripts/little_loops/issue_progress.py:14` and is already imported by
    `cli/issues/set_status.py:35`.
 9. **Mirror the `--include-completed` flag precedent** at
-   `cli/issues/__init__.py:281-287` for the new `--include-blocked` argument
-   on both `nx` (line 536) and `nxs` (line 547) subparsers. Consumer code
+   `cli/issues/__init__.py:289-294` for the new `--include-blocked` argument
+   on both `nx` (line 542) and `nxs` (line 551) subparsers. Consumer code
    reads via `getattr(args, "include_blocked", False)` per the issue's
    existing Codebase Research note.
 10. **Update `docs/reference/API.md`** (`find_issues` signature block at
@@ -676,7 +676,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   — prior art for dependency-aware scheduling, scoped to `ll-parallel`.
   **Done.**
 - `scripts/little_loops/issue_parser.py` — `find_issues()` definition (line
-  845).
+  1031, anchor `find_issues`).
 - `scripts/little_loops/cli/issues/search.py` — `build_sort_key()` (line 182)
   for the current sort contract.
 - `commands/map-dependencies/` — the explicit `/ll:map-dependencies` skill,
@@ -779,6 +779,7 @@ the 13 external callers use, asserting the default is byte-identical.
   resolve in the first sprint of real-world use.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-03T01:20:27 - `bbc7405c-7b74-4187-aa48-4b4a118b6bc7.jsonl`
 - `/ll:confidence-check` - 2026-07-02T20:55:26 - `9d02b2f6-5396-47a3-a74d-144f2283337c.jsonl`
 - `/ll:decide-issue` - 2026-07-02T02:36:37 - `64610888-7400-4f39-b171-4825f84a8759.jsonl`
 - `/ll:wire-issue` - 2026-07-02T02:23:22 - `bd4904c3-9618-4f6f-883b-d4597ec4eda8.jsonl`

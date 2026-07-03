@@ -856,6 +856,8 @@ def find_issues(
     only_ids: list[str] | set[str] | None = None,
     type_prefixes: set[str] | None = None,
     status_filter: set[str] | None = None,
+    *,
+    skip_blocked: bool = False,
 ) -> list[IssueInfo]
 ```
 
@@ -868,6 +870,7 @@ Find all issues matching criteria, sorted by priority.
 - `only_ids` - If provided, only include these issue IDs. When a list, results are returned in list order; when a set, results are sorted by priority.
 - `type_prefixes` - If provided, only include issues whose ID starts with one of these prefixes (e.g., `{"BUG", "ENH"}`)
 - `status_filter` - If provided, only include issues whose status is in this set. When `None` (default), skips `done`/`cancelled`/`deferred` issues, preserving all existing caller behaviour.
+- `skip_blocked` - Keyword-only. When `True` (ENH-2436), exclude issues whose `Blocked By` references a non-terminal (`done`/`cancelled`) issue. Default `False` is byte-identical to prior behaviour — no existing caller is affected.
 
 **Returns:** List of `IssueInfo` sorted by priority
 
@@ -878,6 +881,9 @@ from little_loops.issue_parser import find_issues
 issues = find_issues(config, category="bugs")
 for issue in issues:
     print(f"{issue.priority} {issue.issue_id}: {issue.title}")
+
+# Skip blocked issues (ENH-2436)
+ready = find_issues(config, skip_blocked=True)
 ```
 
 #### find_highest_priority_issue
@@ -3458,20 +3464,26 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 #### next-issue
 
 ```
-ll-issues next-issue [--json] [--path] [--skip ISSUE_IDS]
-ll-issues nx [--json] [--path] [--skip ISSUE_IDS]
+ll-issues next-issue [--json] [--path] [--skip ISSUE_IDS] [--include-blocked]
+ll-issues nx [--json] [--path] [--skip ISSUE_IDS] [--include-blocked]
 ```
 
 Print the single highest-confidence active issue ID. Uses the same sort key as `next-issues`.
 
+By default (ENH-2436), issues whose `Blocked By` references a non-terminal
+(`done`/`cancelled`) issue are filtered out of the candidate set, so the
+returned ID is always actionable. Pass `--include-blocked` to revert to the
+legacy behavior (return any active issue, blocked or not).
+
 **Output flags:**
-- `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
+- `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, the row additionally carries `blocked` (bool) and `blocked_by` (sorted list of issue IDs).
 - `--path` - Output only the file path instead of the issue ID
 
 **Filter flags:**
 - `--skip ISSUE_IDS` - Comma-separated list of issue IDs to exclude (e.g., `BUG-003,FEAT-004`). Useful in FSM loops to skip issues already attempted in the current session.
+- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked output. Each JSON row carries a `blocked` (bool) and `blocked_by` (sorted list) field when this flag is set.
 
-**Exit codes:** 0 when an issue is found; 1 when no active issues exist (after filtering).
+**Exit codes:** 0 when an issue is found; 1 when no active issues exist or when every active issue is currently blocked (the latter surfaces `Error: No ready issues (N blocked, 0 ready)` on stderr).
 
 **Strategy**: Config-driven via `issues.next_issue.strategy` (default `confidence_first`). See [`NextIssueConfig`](#nextissueconfig) for available presets and custom sort keys.
 
@@ -3488,31 +3500,41 @@ Print the single highest-confidence active issue ID. Uses the same sort key as `
 
 **Examples:**
 ```bash
-ll-issues next-issue                      # print top issue ID
-ll-issues nx --json                       # top issue as JSON object
-ll-issues nx --path                       # top issue file path
-ll-issues nx --skip BUG-003,FEAT-004      # skip specific issues
+ll-issues next-issue                            # print top unblocked issue ID
+ll-issues nx --json                             # top unblocked issue as JSON object
+ll-issues nx --path                             # top unblocked issue file path
+ll-issues nx --skip BUG-003,FEAT-004            # skip specific issues
+ll-issues nx --include-blocked                  # include blocked issues (legacy behavior)
+ll-issues nx --include-blocked --json           # JSON with blocked / blocked_by fields
 ```
 
-**FSM loop use**: Use `--skip` to avoid re-selecting issues already processed in the current loop run. Pair with `next-issues` when you need the full ranked list.
+**FSM loop use**: Use `--skip` to avoid re-selecting issues already processed in the current loop run. Pair with `next-issues` when you need the full ranked list. Loops that need the legacy behavior (i.e. pick any active issue even if blocked) should pass `--include-blocked` to opt back in.
 
 #### next-issues
 
 ```
-ll-issues next-issues [COUNT] [--json] [--path]
-ll-issues nxs [COUNT] [--json] [--path]
+ll-issues next-issues [COUNT] [--json] [--path] [--include-blocked]
+ll-issues nxs [COUNT] [--json] [--path] [--include-blocked]
 ```
 
 Print all active issues sorted by outcome confidence, readiness score, and priority. Returns one issue ID per line by default.
+
+By default (ENH-2436), issues whose `Blocked By` references a non-terminal
+(`done`/`cancelled`) issue are filtered out of the ranked list. Pass
+`--include-blocked` to revert to the legacy behavior (return every active
+issue, blocked or not).
 
 **Arguments:**
 - `COUNT` - Optional integer; limit output to top N issues
 
 **Output flags:**
-- `--json` - Output as a JSON array with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`
+- `--json` - Output as a JSON array with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, each row additionally carries `blocked` (bool) and `blocked_by` (sorted list).
 - `--path` - Output one file path per line instead of IDs
 
-**Exit codes:** 0 when at least one issue found; 1 when no active issues exist.
+**Filter flags:**
+- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked list. Each JSON row carries `blocked` and `blocked_by` fields when set.
+
+**Exit codes:** 0 when at least one unblocked issue is found; 1 when no active issues exist or when every active issue is currently blocked (the latter surfaces `Error: No ready issues (N blocked, 0 ready)` on stderr).
 
 **Strategy**: Config-driven via `issues.next_issue.strategy` (default `confidence_first`). See [`NextIssueConfig`](#nextissueconfig) for available presets and custom sort keys.
 
@@ -3529,13 +3551,14 @@ Print all active issues sorted by outcome confidence, readiness score, and prior
 
 **Examples:**
 ```bash
-ll-issues next-issues           # all active issues ranked
-ll-issues next-issues 5         # top 5 only
-ll-issues nxs --json            # ranked list as JSON array
-ll-issues nxs --path            # ranked list as file paths
+ll-issues next-issues                       # all unblocked issues ranked
+ll-issues next-issues 5                     # top 5 unblocked
+ll-issues nxs --json                        # unblocked list as JSON array
+ll-issues nxs --path                        # unblocked list as file paths
+ll-issues nxs --include-blocked --json      # JSON with blocked / blocked_by fields
 ```
 
-**FSM loop use**: Pair with `ll-issues next-issue` (singular) when you need only the top item; use `next-issues` when you want to seed a loop queue or inspect the full ranked backlog.
+**FSM loop use**: Pair with `ll-issues next-issue` (singular) when you need only the top item; use `next-issues` when you want to seed a loop queue or inspect the full ranked backlog. Loops that need the legacy behavior (i.e. include blocked issues in the queue) should pass `--include-blocked`.
 
 #### search
 

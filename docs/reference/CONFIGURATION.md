@@ -928,7 +928,7 @@ Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "
 
 ### `issues.next_issue`
 
-Selection behavior for `ll-issues next-issue` / `next-issues`. Picks which issue (or ranked list) the commands return. The default `confidence_first` preset is byte-identical to the legacy hardcoded ordering, so existing projects see no change until they opt in.
+Selection behavior for `ll-issues next-issue` / `next-issues`. Picks which issue (or ranked list) the commands return. The default `confidence_first` preset is byte-identical to the legacy hardcoded ordering; the default *dependency filter* (ENH-2436) now skips issues with unresolved blockers unless `--include-blocked` is passed. See the [CLI reference](./API.md#next-issue) for the flag.
 
 | Key | Default | Description |
 |-----|---------|-------------|

@@ -23,13 +23,37 @@ def _make_issue(
     *,
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
+    blocked_by: list[str] | None = None,
+    status: str | None = None,
 ) -> None:
-    """Write a minimal issue file with optional frontmatter fields."""
+    """Write a minimal issue file with optional frontmatter fields.
+
+    Args:
+        directory: Issue directory to write into (e.g. ``.issues/features``).
+        filename: File name to write (e.g. ``P2-FEAT-001-test.md``).
+        title: Issue title used as the H1 header.
+        confidence_score: Optional ``confidence_score`` frontmatter.
+        outcome_confidence: Optional ``outcome_confidence`` frontmatter.
+        blocked_by: Optional ``blocked_by`` list frontmatter (ENH-2436).
+        status: Optional ``status`` frontmatter. Defaults to ``open`` when
+            ``blocked_by`` is set (issues with a non-empty ``blocked_by`` list
+            are exercised as open by default).
+    """
     frontmatter_lines: list[str] = []
     if confidence_score is not None:
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         frontmatter_lines.append(f"outcome_confidence: {outcome_confidence}")
+    if blocked_by is not None:
+        # status defaults to "open" when blocked_by is non-empty so the
+        # dependency edge is what makes the issue blocked, not status: blocked.
+        frontmatter_lines.append(f"status: {status or 'open'}")
+        if blocked_by:
+            frontmatter_lines.append("blocked_by:")
+            for blocker in blocked_by:
+                frontmatter_lines.append(f"  - {blocker}")
+    elif status is not None:
+        frontmatter_lines.append(f"status: {status}")
 
     parts: list[str] = []
     if frontmatter_lines:
@@ -532,3 +556,235 @@ class TestNextIssueEdgeCases:
         out = capsys.readouterr().out.strip()
         assert result == 0
         assert out == "FEAT-001"
+
+
+class TestNextIssueBlockedFilter:
+    """Tests for the --include-blocked flag and the default skip-blocked filter (ENH-2436)."""
+
+    def _setup_bugs_dir(self, temp_project_dir: Path) -> Path:
+        """Create the bugs directory alongside features for cross-category fixtures."""
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        return bugs_dir
+
+    def test_blocked_excluded_by_default(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default mode skips the blocked FEAT and picks the next ready FEAT.
+
+        Fixture shape (sorted by ``confidence_first`` by default):
+        - BUG-100 (active, no ``blocked_by``) — ready; lowest rank.
+        - FEAT-001 blocked_by BUG-100 — excluded by default.
+        - FEAT-002 — ready; next-highest rank.
+
+        With ``skip_blocked=True`` BUG-100 and FEAT-002 are both ready; FEAT-002
+        wins on rank so ``next-issue`` returns FEAT-002.
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        _make_issue(bugs_dir, "P0-BUG-100-blocker.md", "BUG-100: Blocker", status="open")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-001-blocked.md",
+            "FEAT-001: Blocked by BUG-100",
+            outcome_confidence=99,
+            confidence_score=99,
+            blocked_by=["BUG-100"],
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-002-ready.md",
+            "FEAT-002: Ready",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        # Blocked FEAT-001 (highest confidence) is filtered; FEAT-002 wins.
+        assert out == "FEAT-002"
+
+    def test_include_blocked_returns_blocked_first(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--include-blocked` re-includes blocked issues so the top-rank returns them."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        _make_issue(bugs_dir, "P0-BUG-110-blocker.md", "BUG-110: Blocker", status="open")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-003-blocked.md",
+            "FEAT-003: Blocked but highest confidence",
+            outcome_confidence=99,
+            confidence_score=99,
+            blocked_by=["BUG-110"],
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-004-ready.md",
+            "FEAT-004: Ready, lower confidence",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "next-issue", "--include-blocked", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        # FEAT-003 wins on confidence when --include-blocked restores it.
+        assert out == "FEAT-003"
+
+    def test_include_blocked_json_has_blocked_field(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--json --include-blocked` stamps `blocked` and `blocked_by` per row."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        _make_issue(bugs_dir, "P0-BUG-120-blocker.md", "BUG-120: Blocker", status="open")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-005-blocked.md",
+            "FEAT-005: Blocked",
+            outcome_confidence=85,
+            confidence_score=75,
+            blocked_by=["BUG-120"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-005"
+        assert data["blocked"] is True
+        assert data["blocked_by"] == ["BUG-120"]
+        assert data["outcome_confidence"] == 85
+        assert data["confidence_score"] == 75
+        assert data["priority"] == "P2"
+
+    def test_all_blocked_returns_exit_1_with_stderr(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """All-blocked backlog exits 1 and surfaces a count summary on stderr.
+
+        Cycle fixture (FEAT-006 blocked_by FEAT-007, FEAT-007 blocked_by
+        FEAT-006) keeps both active but unresolvable in the dep graph, so
+        ``find_issues(skip_blocked=True)`` returns ``[]`` even though there are
+        active issues.
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-006-cycle-a.md",
+            "FEAT-006: Cycle A",
+            outcome_confidence=80,
+            confidence_score=80,
+            blocked_by=["FEAT-007"],
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-007-cycle-b.md",
+            "FEAT-007: Cycle B",
+            outcome_confidence=60,
+            confidence_score=60,
+            blocked_by=["FEAT-006"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.out == ""
+        # The exit-1 path surfaces a count summary whose exact integer is
+        # implementation-defined; assert the contract prefix instead.
+        assert "No ready issues" in captured.err
+        assert "blocked" in captured.err
+        assert "ready" in captured.err
+
+    def test_done_blocker_does_not_block(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A `status: done` blocker is filtered out by find_issues default and unblocks the dependent."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        # BUG-130 is `done` → filtered by find_issues default (terminal). With
+        # no active blocker, FEAT-007 is unblocked and picked.
+        _make_issue(bugs_dir, "P0-BUG-130-done.md", "BUG-130: Done blocker", status="done")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-007-ready.md",
+            "FEAT-007: Blocked by done BUG",
+            outcome_confidence=80,
+            confidence_score=80,
+            blocked_by=["BUG-130"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        # Done blocker → FEAT-007 is unblocked and selected.
+        assert out == "FEAT-007"

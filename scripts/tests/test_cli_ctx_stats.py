@@ -728,7 +728,8 @@ class TestLearningTestsSection:
         db.parent.mkdir(exist_ok=True)
         _populate_tool_events(db, [("Read", 200, 1024, 0)])
         self._write_config(tmp_path, enabled=True)
-        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+        recent = datetime.date.today().isoformat()
+        self._write_record(tmp_path, "anthropic", "proven", recent)
         self._write_record(tmp_path, "boto3", "stale", "2026-05-01")
         self._write_record(tmp_path, "stripe", "refuted", "2026-04-01")
 
@@ -800,7 +801,7 @@ class TestLearningTestsSection:
         db.parent.mkdir(exist_ok=True)
         _populate_tool_events(db, [("Read", 200, 1024, 0)])
         self._write_config(tmp_path, enabled=True)
-        self._write_record(tmp_path, "anthropic", "proven", "2026-06-01")
+        self._write_record(tmp_path, "anthropic", "proven", datetime.date.today().isoformat())
 
         lines: list[str] = []
         with (

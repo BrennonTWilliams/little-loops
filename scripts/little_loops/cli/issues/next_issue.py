@@ -18,14 +18,15 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration
-        args: Parsed arguments with optional .json and .path flags
+        args: Parsed arguments with optional .json, .path, and .include_blocked flags
 
     Returns:
-        Exit code (0 = found, 1 = no issues or invalid sort config)
+        Exit code (0 = found, 1 = no issues, all-blocked, or invalid sort config)
     """
     from little_loops.cli.issues.search import build_sort_key
     from little_loops.cli.output import print_json
     from little_loops.cli_args import parse_issue_ids
+    from little_loops.dependency_graph import DependencyGraph
     from little_loops.issue_parser import find_issues
 
     try:
@@ -34,25 +35,60 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    include_blocked = bool(getattr(args, "include_blocked", False))
+
     skip_ids = parse_issue_ids(getattr(args, "skip", None))
-    issues = find_issues(config, skip_ids=skip_ids or None)
-    if not issues:
-        return 1
 
-    issues.sort(key=sort_key)
+    if include_blocked:
+        # Compute the full ranked set without filtering, then evaluate
+        # each candidate's blocked status against the dep graph.
+        ranked = find_issues(config, skip_ids=skip_ids or None)
+        if not ranked:
+            return 1
 
-    top = issues[0]
+        # Build the dep graph from every active issue so blocking edges outside
+        # the requested slice are still correctly recognized.
+        graph = DependencyGraph.from_issues(find_issues(config))
+        blocked_by_map: dict[str, list[str]] = {
+            issue_id: sorted(graph.blocked_by.get(issue_id, set()))
+            for issue_id in (i.issue_id for i in ranked)
+        }
+
+        ranked.sort(key=sort_key)
+        top = ranked[0]
+        top_blocked = bool(blocked_by_map.get(top.issue_id))
+        top_blocked_by = blocked_by_map.get(top.issue_id, [])
+    else:
+        issues = find_issues(config, skip_ids=skip_ids or None, skip_blocked=True)
+        if not issues:
+            # Distinguish "all active issues blocked" from "no active issues at
+            # all" by counting the unfiltered active set; if non-empty, all of
+            # them must currently be blocked.
+            all_active = find_issues(config, skip_ids=skip_ids or None)
+            if all_active:
+                print(
+                    f"Error: No ready issues ({len(all_active)} blocked, 0 ready)",
+                    file=sys.stderr,
+                )
+            return 1
+
+        issues.sort(key=sort_key)
+        top = issues[0]
+        top_blocked = False
+        top_blocked_by = []
 
     if getattr(args, "json", False):
-        print_json(
-            {
-                "id": top.issue_id,
-                "path": str(top.path),
-                "outcome_confidence": top.outcome_confidence,
-                "confidence_score": top.confidence_score,
-                "priority": top.priority,
-            }
-        )
+        row: dict[str, object] = {
+            "id": top.issue_id,
+            "path": str(top.path),
+            "outcome_confidence": top.outcome_confidence,
+            "confidence_score": top.confidence_score,
+            "priority": top.priority,
+        }
+        if include_blocked:
+            row["blocked"] = top_blocked
+            row["blocked_by"] = top_blocked_by
+        print_json(row)
         return 0
 
     if getattr(args, "path", False):

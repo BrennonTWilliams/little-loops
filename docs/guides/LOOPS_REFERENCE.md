@@ -866,6 +866,8 @@ init (snapshot .issues/completed/ baseline)
   → finalize (ground-truth completed/ diff → summary.json + subloop_outcome) → done
 ```
 
+**Dependency filter note** (ENH-2436): `ll-issues next-issues` returns only unblocked active issues by default. To preserve legacy behavior (include blocked issues in the resolved set), override the resolve_set action with `action: "ll-issues next-issues --include-blocked"`.
+
 **Closure accounting**: `init` snapshots the `.issues/completed/` set; `finalize` diffs it against the post-run set to count real closures (both `ll-auto` leaf closures and decomposed parents that `autodev` git-mv's into `completed/`). `NOT_CLOSED` / `SKIPPED` are read from `autodev`'s `autodev-passed.txt` / `autodev-skipped.txt` under the shared `run_dir`; `ERRORED` is recorded by `record_error` on an `autodev` infrastructure crash. The verdict (`success` / `partial` / `partial-with-errors` / `phantom` / `no-op`) reflects real terminal state, not an exit-code proxy.
 
 **Notes**: The backlog set is resolved once upfront (not re-polled per issue); decomposition children created mid-run are still processed depth-first by `autodev`, but brand-new unrelated issues created during the run are not picked up — a deliberate, deterministic semantic. The loop uses `on_handoff: spawn` and an 8-hour timeout to continue across session boundaries. Auth failures during implementation fast-fail to `ENV_NOT_READY` (inherited from `autodev`'s `check_impl_auth` guard, ENH-2353). Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize.
@@ -3194,7 +3196,7 @@ states:
 | `ll_auto` | `ll-auto` | Run ll-auto sequentially. Override `action` to add `--priority`, `--quiet`, etc. |
 | `ll_issues_list` | `ll-issues list --json` | List all active issues as JSON. |
 | `ll_issues_next` | `ll-issues next-action` | Get next recommended action. Override `action` to add `--skip "..."`. |
-| `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. Selection order is config-driven via `issues.next_issue.strategy` (default: `confidence_first`). |
+| `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. Selection order is config-driven via `issues.next_issue.strategy` (default: `confidence_first`). Since ENH-2436, `next-issue` excludes issues with unresolved blockers by default; override the action with `"ll-issues next-issue --include-blocked"` to preserve legacy behavior. |
 | `ll_history_summary` | `ll-history summary` | Print completed issue history summary. Override `action` to add `2>/dev/null` fallback. |
 | `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. |
 | `ll_messages` | `ll-messages --stdout` | Extract user messages from session logs. Override `action` to add `--skill`, `--examples-format`, etc. |

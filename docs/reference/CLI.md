@@ -1142,13 +1142,16 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 
 **Sort order:** Config-driven via `issues.next_issue.strategy` (default: `confidence_first` — `outcome_confidence` desc, `confidence_score` desc, `priority` asc). Issues without scores are ranked below all scored issues.
 
-**Exit codes:** 0 = issue found, 1 = no active issues.
+**Dependency filter:** By default (ENH-2436), issues whose `Blocked By` references a non-terminal (`done`/`cancelled`) issue are filtered out before ranking, so the returned ID is always actionable. Pass `--include-blocked` to revert to the legacy behavior (return any active issue, blocked or not).
+
+**Exit codes:** 0 = issue found, 1 = no active issues OR every active issue is currently blocked. The all-blocked case emits `Error: No ready issues (N blocked, 0 ready)` on stderr.
 
 | Flag | Description |
 |------|-------------|
-| `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, the row also carries `blocked` (bool) and `blocked_by` (sorted list of issue IDs). |
 | `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
 | `--skip / -s ISSUE_ID[,...]` | Comma-separated issue IDs to exclude (e.g. `FEAT-007,BUG-001`); absent `--skip` preserves existing behavior |
+| `--include-blocked` | Include issues with unresolved blockers in the ranked output. With `--json`, each row carries `blocked` and `blocked_by` fields. |
 | `--config` | Path to project root |
 
 #### `ll-issues next-issues [N]` / `ll-issues nxs [N]`
@@ -1157,13 +1160,16 @@ Print all active issues in ranked order by outcome confidence and readiness scor
 
 **Sort order:** Config-driven via `issues.next_issue.strategy` (default: `confidence_first` — `outcome_confidence` desc, `confidence_score` desc, `priority` asc). Issues without scores are ranked below all scored issues.
 
-**Exit codes:** 0 = at least one issue found, 1 = no active issues.
+**Dependency filter:** By default (ENH-2436), issues whose `Blocked By` references a non-terminal (`done`/`cancelled`) issue are filtered out before ranking. Pass `--include-blocked` to revert to the legacy behavior.
+
+**Exit codes:** 0 = at least one unblocked issue found, 1 = no active issues OR every active issue is currently blocked. The all-blocked case emits `Error: No ready issues (N blocked, 0 ready)` on stderr.
 
 | Flag/Arg | Description |
 |----------|-------------|
 | `N` | Optional count — limit output to top N issues |
-| `--json` / `-j` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}` |
+| `--json` / `-j` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, each row also carries `blocked` (bool) and `blocked_by` (sorted list). |
 | `--path` | Output file paths instead of issue IDs |
+| `--include-blocked` | Include issues with unresolved blockers in the ranked list. With `--json`, each row carries `blocked` and `blocked_by` fields. |
 | `--config` | Path to project root |
 
 #### `ll-issues skip <issue_id>` / `ll-issues sk`
