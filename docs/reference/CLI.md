@@ -88,6 +88,12 @@ ll-init --yes --disable prompt_optimization                # Opt out of prompt o
 ll-init apply --config plan.json   # Apply writes from a --plan output
 ```
 
+<!-- TODO: update-docs stub — ENH-2434 — drafted 2026-07-02 -->
+
+> **Defaults source** (ENH-2434): All `ll-init` defaults — TUI field values, `--enable`/`--disable` valid feature names, host detection heuristics, default project commands — are read from `config-schema.json` at the package root, which is also the validation schema for `.ll/ll-config.json`. Edit defaults there; they're not duplicated between the wizard and the schema. To audit a default, search `config-schema.json` for the field name; the matching `default` value is what `ll-init --yes` will produce.
+
+<!-- END TODO stub -->
+
 ---
 
 ## Skill Invocation
@@ -1523,6 +1529,12 @@ EPIC-1773: Audit & simplify built-in FSM loops
 ```
 
 The "resolved" count on the Progress line is `done + cancelled` (terminal states). When cancelled issues are present, a breakdown is appended: e.g., `8/12 resolved (67%) (7 done, 1 cancelled)`. The Status line always shows individual status buckets including the raw `done` and `cancelled` counts separately.
+
+<!-- TODO: update-docs stub — BUG-2441 — drafted 2026-07-02 -->
+
+> **Rollup semantics** (BUG-2441): The child set is collected by walking the `parent:` chain transitively, so grandchildren (and any deeper descendants) of the EPIC roll up into the Progress and Status counts — not just direct children. This matches the bucketing behavior of `ll-issues list --bucket epic`. Note: `ll-sprint`'s EPIC resolution still counts direct children only; for a sprint-aware breakdown use `ll-sprint show`.
+
+<!-- END TODO stub -->
 
 **Examples:**
 ```bash
