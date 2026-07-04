@@ -124,6 +124,10 @@ def _synthesized_skill_md(stem: str, description: str) -> str:
         f"---\n"
         f"name: ll-{stem}\n"
         f"{desc_block}\n"
+        # Bridge stubs exist only for Codex Skills API discovery (which reads the
+        # agents/openai.yaml sidecar); hide them from the Claude Code skill
+        # listing budget — users invoke the /ll:<stem> slash command (ENH-1615).
+        f"disable-model-invocation: true\n"
         f"metadata:\n"
         f"  short-description: {short_desc}\n"
         f"---\n"
