@@ -1,6 +1,7 @@
 ---
 name: ll-check-code
 description: Run code quality checks (lint, format, types, build)
+disable-model-invocation: true
 metadata:
   short-description: Run code quality checks (lint, format, types, build)
 ---

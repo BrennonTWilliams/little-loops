@@ -1,6 +1,7 @@
 ---
 name: ll-audit-architecture
 description: Analyze codebase architecture for patterns, organization, and improvements
+disable-model-invocation: true
 metadata:
   short-description: Analyze codebase architecture for patterns, organization, and improvements
 ---

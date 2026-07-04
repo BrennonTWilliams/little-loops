@@ -15,6 +15,7 @@ allowed-tools:
   - AskUserQuestion
   - Bash(ll-history-context:*)
   - Bash(ll-issues:*)
+disable-model-invocation: true
 metadata:
   short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
 ---

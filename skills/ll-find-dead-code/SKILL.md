@@ -1,6 +1,7 @@
 ---
 name: ll-find-dead-code
 description: Analyze codebase for deprecated, unused, or dead code that can be safely removed
+disable-model-invocation: true
 metadata:
   short-description: Analyze codebase for deprecated, unused, or dead code that can be safely removed
 ---

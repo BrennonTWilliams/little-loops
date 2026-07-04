@@ -1,6 +1,7 @@
 ---
 name: ll-handoff
 description: Generate continuation prompt for session handoff
+disable-model-invocation: true
 metadata:
   short-description: Generate continuation prompt for session handoff
 ---

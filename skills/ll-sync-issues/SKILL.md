@@ -4,6 +4,7 @@ description: |
   Sync local issues with GitHub Issues (push/pull/status).
 
   Trigger keywords: "sync issues", "push to github", "pull from github", "github sync", "sync with github", "export issues", "import issues from github"
+disable-model-invocation: true
 metadata:
   short-description: Sync local issues with GitHub Issues (push/pull/status).
 ---

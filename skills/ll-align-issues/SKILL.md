@@ -1,6 +1,7 @@
 ---
 name: ll-align-issues
 description: Validate active issues against key documents for relevance and alignment
+disable-model-invocation: true
 metadata:
   short-description: Validate active issues against key documents for relevance and alignment
 ---

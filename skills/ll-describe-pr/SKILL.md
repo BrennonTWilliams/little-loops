@@ -1,6 +1,7 @@
 ---
 name: ll-describe-pr
 description: Generate comprehensive PR descriptions following repository templates
+disable-model-invocation: true
 metadata:
   short-description: Generate comprehensive PR descriptions following repository templates
 ---

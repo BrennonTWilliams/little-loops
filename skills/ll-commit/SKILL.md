@@ -1,6 +1,7 @@
 ---
 name: ll-commit
 description: Create git commits with user approval and no Claude attribution
+disable-model-invocation: true
 metadata:
   short-description: Create git commits with user approval and no Claude attribution
 ---

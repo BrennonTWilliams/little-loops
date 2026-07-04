@@ -1,6 +1,7 @@
 ---
 name: ll-iterate-plan
 description: Iterate on existing implementation plans with thorough research and updates
+disable-model-invocation: true
 metadata:
   short-description: Iterate on existing implementation plans with thorough research and updates
 ---

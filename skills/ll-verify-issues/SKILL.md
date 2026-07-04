@@ -1,6 +1,7 @@
 ---
 name: ll-verify-issues
 description: Verify issue files for accuracy, relevance, and completeness by testing claims against actual code
+disable-model-invocation: true
 metadata:
   short-description: Verify issue files for accuracy, relevance, and completeness by testing claims a
 ---

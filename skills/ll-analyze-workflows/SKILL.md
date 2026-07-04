@@ -1,6 +1,7 @@
 ---
 name: ll-analyze-workflows
 description: Analyze user message history to identify patterns, workflows, and automation opportunities
+disable-model-invocation: true
 metadata:
   short-description: Analyze user message history to identify patterns, workflows, and automation opp
 ---

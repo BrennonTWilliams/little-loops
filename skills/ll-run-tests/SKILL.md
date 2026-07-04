@@ -1,6 +1,7 @@
 ---
 name: ll-run-tests
 description: Run test suites with common patterns
+disable-model-invocation: true
 metadata:
   short-description: Run test suites with common patterns
 ---

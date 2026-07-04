@@ -5,6 +5,7 @@ description: |
 
   Trigger keywords: "suggest loops", "loop from history", "automate workflow", "create loop from messages", "analyze messages for loops", "ll-messages loop", "suggest automation", "detect patterns for loops", "suggest loops from commands", "loop from catalog", "from-commands", "suggest loops from sequences", "from-sequences", "loop from ll-logs"
 argument-hint: "[messages.jsonl|--from-commands|--from-sequences]"
+disable-model-invocation: true
 metadata:
   short-description: Suggest FSM loops from message history, command catalog, or sequences.
 ---

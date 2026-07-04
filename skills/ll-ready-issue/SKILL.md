@@ -9,6 +9,7 @@ allowed-tools:
   - Task
   - Bash(git:*)
   - Bash(ll-history-context:*)
+disable-model-invocation: true
 metadata:
   short-description: Analyze and validate an issue file for accuracy, utility, and completeness, then
 ---

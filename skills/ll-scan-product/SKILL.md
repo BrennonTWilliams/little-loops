@@ -1,6 +1,7 @@
 ---
 name: ll-scan-product
 description: Scan codebase for product-focused issues based on goals document
+disable-model-invocation: true
 metadata:
   short-description: Scan codebase for product-focused issues based on goals document
 ---

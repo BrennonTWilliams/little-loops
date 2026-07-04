@@ -449,10 +449,28 @@ This atomically updates the `status:` field in frontmatter without touching any 
 
 ### 3. Commit All Changes
 
-Commit source changes and updated issue file together in a single commit:
+Commit source changes and updated issue file together in a single commit.
+
+**Changelog gate (ENH-2467):** a commit whose staged set is entirely under
+`.issues/` (status flips, session-log appends — no source/docs/tests/config) is
+internal housekeeping and must not surface in release notes. Demote its subject
+to `chore(issues):`, which `/ll:manage-release` excludes from changelogs; the
+commit stays in git history so the lifecycle remains auditable.
 
 ```bash
 git add [modified files] "[issue_file_path]"
+# Changelog gate: detect .issues/-only commits (ENH-2467)
+CHANGED=$(git diff --cached --name-only)
+NON_ISSUES=$(printf '%s\n' "$CHANGED" | grep -v '^\.issues/' || true)
+```
+
+If `$NON_ISSUES` is empty, commit with the demoted subject
+`chore(issues): [action] [ISSUE-ID] [short-slug]` plus a body line noting the
+demotion ("Issue-tracker housekeeping only — excluded from changelog (ENH-2467)")
+and the usual `Closes [ISSUE-ID]` trailer. Otherwise (source-only or mixed) keep
+the standard conventional-commit subject:
+
+```bash
 git commit -m "[action]([component]): [description]
 
 [issue_type] [ISSUE-ID]: [title]

@@ -9,6 +9,7 @@ allowed-tools:
   - Write
   - Bash(ll-issues:*, git:*)
   - Bash(ll-session:*)
+disable-model-invocation: true
 metadata:
   short-description: Use when asked to capture or create an issue from conversation or natural langua
 ---
