@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.host_runner import resolve_host
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, skill_event_context
 
 __all__ = ["main_action"]
 
@@ -78,69 +78,75 @@ def cmd_invoke(args: argparse.Namespace) -> int:
 
     start_ms = int(time.time() * 1000)
 
-    if output_mode == "stream-json":
-        _emit({"event": "action_start", "ts": _now_iso(), "skill": skill, "args": skill_args})
+    # Record the invocation as a skill_events row with completion metadata
+    # (ENH-2460). skill_event_context is best-effort: a missing/locked
+    # history.db never blocks the skill run.
+    with skill_event_context(DEFAULT_DB_PATH, None, skill, " ".join(skill_args)) as completion:
+        if output_mode == "stream-json":
+            _emit({"event": "action_start", "ts": _now_iso(), "skill": skill, "args": skill_args})
 
-        exit_code = 0
+            exit_code = 0
 
-        def _stream_cb(line: str, is_stderr: bool) -> None:
-            if not is_stderr:
-                _emit({"event": "action_output", "ts": _now_iso(), "line": line})
+            def _stream_cb(line: str, is_stderr: bool) -> None:
+                if not is_stderr:
+                    _emit({"event": "action_output", "ts": _now_iso(), "line": line})
 
-        try:
-            result = run_claude_command(
-                command=command,
-                timeout=timeout,
-                stream_callback=_stream_cb,
+            try:
+                result = run_claude_command(
+                    command=command,
+                    timeout=timeout,
+                    stream_callback=_stream_cb,
+                )
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired:
+                exit_code = 124
+
+            duration_ms = int(time.time() * 1000) - start_ms
+            _emit(
+                {
+                    "event": "action_complete",
+                    "ts": _now_iso(),
+                    "exit_code": exit_code,
+                    "duration_ms": duration_ms,
+                }
             )
-            exit_code = result.returncode
-        except subprocess.TimeoutExpired:
-            exit_code = 124
+            completion.exit_code = exit_code
+            return exit_code
 
-        duration_ms = int(time.time() * 1000) - start_ms
-        _emit(
-            {
-                "event": "action_complete",
-                "ts": _now_iso(),
-                "exit_code": exit_code,
-                "duration_ms": duration_ms,
-            }
-        )
-        return exit_code
+        else:  # --output json
+            from little_loops.cli.output import print_json
 
-    else:  # --output json
-        from little_loops.cli.output import print_json
+            output_lines: list[str] = []
+            stderr_lines: list[str] = []
 
-        output_lines: list[str] = []
-        stderr_lines: list[str] = []
+            def _stream_cb_json(line: str, is_stderr: bool) -> None:
+                if is_stderr:
+                    stderr_lines.append(line)
+                else:
+                    output_lines.append(line)
 
-        def _stream_cb_json(line: str, is_stderr: bool) -> None:
-            if is_stderr:
-                stderr_lines.append(line)
-            else:
-                output_lines.append(line)
+            exit_code = 0
+            try:
+                result = run_claude_command(
+                    command=command,
+                    timeout=timeout,
+                    stream_callback=_stream_cb_json,
+                )
+                exit_code = result.returncode
+            except subprocess.TimeoutExpired:
+                exit_code = 124
 
-        exit_code = 0
-        try:
-            result = run_claude_command(
-                command=command,
-                timeout=timeout,
-                stream_callback=_stream_cb_json,
+            duration_ms = int(time.time() * 1000) - start_ms
+            print_json(
+                {
+                    "exit_code": exit_code,
+                    "duration_ms": duration_ms,
+                    "output": "\n".join(output_lines),
+                    "error": "\n".join(stderr_lines) if stderr_lines else None,
+                }
             )
-            exit_code = result.returncode
-        except subprocess.TimeoutExpired:
-            exit_code = 124
-
-        duration_ms = int(time.time() * 1000) - start_ms
-        print_json(
-            {
-                "exit_code": exit_code,
-                "duration_ms": duration_ms,
-                "output": "\n".join(output_lines),
-                "error": "\n".join(stderr_lines) if stderr_lines else None,
-            }
-        )
-        return exit_code
+            completion.exit_code = exit_code
+            return exit_code
 
 
 def cmd_capabilities(args: argparse.Namespace) -> int:

@@ -463,6 +463,28 @@ class TestSynthesizedSkillMd:
         result = _synthesized_skill_md("check-code", "Run code quality checks.")
         assert "commands/check-code.md" in result
 
+    def test_contains_disable_model_invocation(self) -> None:
+        """Bridge stubs are Codex-discovery-only; hide from listing budget (ENH-1615)."""
+        result = _synthesized_skill_md("check-code", "Run code quality checks.")
+        assert "disable-model-invocation: true\n" in result
+        # the field must live inside the frontmatter block
+        frontmatter = result.split("---")[1]
+        assert "disable-model-invocation: true" in frontmatter
+
+    def test_all_bridge_skills_on_disk_disable_model_invocation(self) -> None:
+        """Every skills/ll-*/SKILL.md must carry disable-model-invocation: true (ENH-1615)."""
+        import yaml
+
+        repo_root = Path(__file__).parent.parent.parent
+        bridge_skills = sorted((repo_root / "skills").glob("ll-*/SKILL.md"))
+        assert len(bridge_skills) >= 30, "expected the 30 ll-* bridge skills"
+        missing = []
+        for skill_md in bridge_skills:
+            fm = yaml.safe_load(skill_md.read_text().split("---")[1])
+            if fm.get("disable-model-invocation") is not True:
+                missing.append(skill_md.parent.name)
+        assert not missing, f"bridge skills missing disable-model-invocation: {missing}"
+
 
 # =============================================================================
 # _process_commands
