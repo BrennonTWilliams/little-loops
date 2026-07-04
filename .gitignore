@@ -124,6 +124,7 @@ _Archive/
 # above; .ll/decisions.yaml is a curated, committed artifact).
 **/.ll/
 !/.ll/
+.ll/.fuse_hidden*
 .codegraph/
 
 # Debug output logs

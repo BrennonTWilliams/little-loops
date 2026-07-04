@@ -23,7 +23,8 @@ class ExecutionResult:
         iterations: Total step executions (state enters)
         terminated_by: Reason for termination. Values: "terminal", "max_steps" (step cap reached;
             legacy "max_iterations" renamed), "max_iterations_reached" (full-pass cap reached),
-            "timeout", "interrupted" (SIGTERM/session kill), "error", "handoff", "cycle_detected", "stall_detected".
+            "timeout", "interrupted" (SIGTERM/session kill), "error", "handoff", "cycle_detected",
+            "stall_detected", "host_pressure_abort" (ENH-2452), "host_budget_exceeded" (ENH-2453).
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         error: Error message if terminated_by is "error"
@@ -71,6 +72,8 @@ class ActionResult:
         exit_code: Exit code from the action
         duration_ms: Execution time in milliseconds
         usage_events: Token usage events from host-CLI invocations (empty for shell actions)
+        peak_rss_mb: Peak resident memory of the spawned subprocess in MB
+            (ENH-2453); None when RSS sampling was disabled or unavailable
     """
 
     output: str
@@ -78,6 +81,7 @@ class ActionResult:
     exit_code: int
     duration_ms: int
     usage_events: list[TokenUsage] = field(default_factory=list)
+    peak_rss_mb: float | None = None
 
 
 # Type for event callback

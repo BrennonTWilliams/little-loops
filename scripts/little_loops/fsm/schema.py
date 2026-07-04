@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from little_loops.fsm.host_guard import HostGuardConfig
+
 # Default LLM model for structured evaluation
 DEFAULT_LLM_MODEL: str = "sonnet"
 
@@ -978,6 +980,8 @@ class FSMLoop:
         llm: LLM evaluation configuration
         on_handoff: Behavior when handoff signal detected (pause/spawn/terminate)
         commands: Optional override for the Commands section in ll-loop show
+        host_guard: Adaptive host memory-pressure guard configuration
+            (ENH-2452/ENH-2453); default-enabled with conservative thresholds
     """
 
     name: str
@@ -1011,6 +1015,9 @@ class FSMLoop:
     commands: list[CommandEntry] = field(default_factory=list)
     targets: list[TargetFileSpec] = field(default_factory=list)
     circuit: CircuitConfig | None = None
+    # Adaptive host memory-pressure guard (ENH-2452) + cumulative subprocess
+    # RSS budget (ENH-2453). Default-enabled with conservative thresholds.
+    host_guard: HostGuardConfig = field(default_factory=HostGuardConfig)
     meta_self_eval_ok: bool = False
     shared_state_ok: bool = False
     partial_route_ok: bool = False
@@ -1091,6 +1098,10 @@ class FSMLoop:
             if circuit_dict:
                 result["circuit"] = circuit_dict
 
+        host_guard_dict = self.host_guard.to_dict()
+        if host_guard_dict:
+            result["host_guard"] = host_guard_dict
+
         if self.meta_self_eval_ok:
             result["meta_self_eval_ok"] = self.meta_self_eval_ok
         if self.shared_state_ok:
@@ -1135,6 +1146,10 @@ class FSMLoop:
         circuit = None
         if "circuit" in data and data["circuit"] is not None:
             circuit = CircuitConfig.from_dict(data["circuit"])
+
+        host_guard = HostGuardConfig()
+        if "host_guard" in data and data["host_guard"] is not None:
+            host_guard = HostGuardConfig.from_dict(data["host_guard"])
 
         parameters = {
             name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
@@ -1182,6 +1197,7 @@ class FSMLoop:
             commands=[CommandEntry(**e) for e in data.get("commands", [])],
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
             circuit=circuit,
+            host_guard=host_guard,
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
             shared_state_ok=data.get("shared_state_ok", False),
             partial_route_ok=data.get("partial_route_ok", False),

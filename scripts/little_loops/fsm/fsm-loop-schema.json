@@ -270,6 +270,68 @@
         }
       },
       "additionalProperties": false
+    },
+    "host_guard": {
+      "type": "object",
+      "description": "Adaptive host memory-pressure guard (ENH-2452) plus cumulative subprocess RSS budget (ENH-2453). Default-enabled with conservative thresholds; disable per-run with --no-host-guard.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for the host guard. Disable per-run with --no-host-guard."
+        },
+        "cooldown_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 500,
+          "description": "Extra sleep (milliseconds) added on top of the base --delay floor when host used-memory >= warn_pct."
+        },
+        "warn_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 75,
+          "description": "Host used-memory percentage threshold for the extra cooldown."
+        },
+        "critical_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 85,
+          "description": "Host used-memory percentage threshold for the on_pressure action (route/abort)."
+        },
+        "on_pressure": {
+          "type": "string",
+          "enum": ["cool_down", "route", "abort"],
+          "default": "cool_down",
+          "description": "Behavior when used memory >= critical_pct: cool_down (extra sleep only), route (go to pressure_state), or abort (terminate with terminated_by=\"host_pressure_abort\")."
+        },
+        "pressure_state": {
+          "type": "string",
+          "description": "Recovery state to route to when on_pressure=route. Required in that mode; must be a declared state."
+        },
+        "on_abort_route": {
+          "type": "string",
+          "description": "Optional final state recorded in the result when on_pressure=abort fires; must be a declared state."
+        },
+        "max_cumulative_subproc_mb": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "ENH-2453: cap on summed peak subprocess RSS (MB) across the run. 0 = disabled (default)."
+        },
+        "on_budget_exceeded": {
+          "type": "string",
+          "enum": ["route", "abort"],
+          "default": "route",
+          "description": "Behavior when the cumulative subprocess RSS sum exceeds the budget: route (go to budget_state) or abort (terminate with terminated_by=\"host_budget_exceeded\")."
+        },
+        "budget_state": {
+          "type": "string",
+          "description": "Recovery state to route to when on_budget_exceeded=route. Required in that mode when the budget is enabled; must be a declared state."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

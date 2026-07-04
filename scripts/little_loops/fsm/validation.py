@@ -1154,6 +1154,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_circuit(fsm, defined_states))
 
+    errors.extend(_validate_host_guard(fsm, defined_states))
+
     errors.extend(_validate_progress_paths_isolation(fsm))
 
     errors.extend(_validate_capture_reachability(fsm))
@@ -2043,6 +2045,132 @@ def _validate_on_max_iterations(fsm: FSMLoop, defined_states: set[str]) -> list[
                 path="on_max_iterations",
             )
         )
+    return errors
+
+
+def _validate_host_guard(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
+    """Validate the top-level ``host_guard:`` block (ENH-2452 / ENH-2453).
+
+    Checks:
+    - percentage thresholds are within 0..100 and ``critical_pct >= warn_pct``
+    - ``on_pressure`` is one of ``cool_down`` / ``route`` / ``abort``
+    - ``pressure_state`` is set and declared when ``on_pressure="route"``
+    - ``on_abort_route`` references a declared state when set
+    - ``on_budget_exceeded`` is ``route`` or ``abort``; ``budget_state`` is set
+      and declared when routing with an enabled budget
+    """
+    from little_loops.fsm.host_guard import ON_BUDGET_VALUES, ON_PRESSURE_VALUES
+
+    errors: list[ValidationError] = []
+    hg = fsm.host_guard
+
+    for name, value in (("warn_pct", hg.warn_pct), ("critical_pct", hg.critical_pct)):
+        if not 0 <= value <= 100:
+            errors.append(
+                ValidationError(
+                    message=f"host_guard.{name} must be between 0 and 100, got {value}",
+                    path=f"host_guard.{name}",
+                )
+            )
+    if hg.critical_pct < hg.warn_pct:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"host_guard.critical_pct ({hg.critical_pct}) must be >= "
+                    f"warn_pct ({hg.warn_pct})"
+                ),
+                path="host_guard.critical_pct",
+            )
+        )
+    if hg.cooldown_ms < 0:
+        errors.append(
+            ValidationError(
+                message=f"host_guard.cooldown_ms must be >= 0, got {hg.cooldown_ms}",
+                path="host_guard.cooldown_ms",
+            )
+        )
+
+    if hg.on_pressure not in ON_PRESSURE_VALUES:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"host_guard.on_pressure must be one of "
+                    f"{sorted(ON_PRESSURE_VALUES)}, got '{hg.on_pressure}'"
+                ),
+                path="host_guard.on_pressure",
+            )
+        )
+    if hg.on_pressure == "route":
+        if hg.pressure_state is None:
+            errors.append(
+                ValidationError(
+                    message="host_guard.pressure_state is required when on_pressure='route'",
+                    path="host_guard.pressure_state",
+                )
+            )
+        elif hg.pressure_state not in defined_states:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"host_guard.pressure_state references unknown state "
+                        f"'{hg.pressure_state}' (must be a declared state)"
+                    ),
+                    path="host_guard.pressure_state",
+                )
+            )
+    if hg.on_abort_route is not None and hg.on_abort_route not in defined_states:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"host_guard.on_abort_route references unknown state "
+                    f"'{hg.on_abort_route}' (must be a declared state)"
+                ),
+                path="host_guard.on_abort_route",
+            )
+        )
+
+    if hg.max_cumulative_subproc_mb < 0:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"host_guard.max_cumulative_subproc_mb must be >= 0, "
+                    f"got {hg.max_cumulative_subproc_mb}"
+                ),
+                path="host_guard.max_cumulative_subproc_mb",
+            )
+        )
+    if hg.on_budget_exceeded not in ON_BUDGET_VALUES:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"host_guard.on_budget_exceeded must be one of "
+                    f"{sorted(ON_BUDGET_VALUES)}, got '{hg.on_budget_exceeded}'"
+                ),
+                path="host_guard.on_budget_exceeded",
+            )
+        )
+    if hg.max_cumulative_subproc_mb > 0 and hg.on_budget_exceeded == "route":
+        if hg.budget_state is None:
+            errors.append(
+                ValidationError(
+                    message=(
+                        "host_guard.budget_state is required when "
+                        "on_budget_exceeded='route' and the budget is enabled"
+                    ),
+                    path="host_guard.budget_state",
+                )
+            )
+        elif hg.budget_state not in defined_states:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"host_guard.budget_state references unknown state "
+                        f"'{hg.budget_state}' (must be a declared state)"
+                    ),
+                    path="host_guard.budget_state",
+                )
+            )
+
     return errors
 
 
