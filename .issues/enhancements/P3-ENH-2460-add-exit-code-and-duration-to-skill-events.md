@@ -3,7 +3,7 @@ id: ENH-2460
 title: Add exit_code, success, and duration_ms columns to skill_events
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
@@ -131,7 +131,18 @@ Extend `history_reader.recent_skill_events(...)` to return rows including exit_c
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P3
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P3
+
+Implemented as schema v15: `ALTER TABLE skill_events ADD COLUMN exit_code/success/duration_ms`
+plus `skill_event_context()` (yields a mutable `SkillEventCompletion` so hosts with a concrete
+exit code can set it; best-effort per EPIC-1707). Wired into the completion-side skill host
+`ll-action invoke` (`cli/action.py`). The `user_prompt_submit` hook intentionally stays
+dispatch-only (`record_skill_event`, NULL completion columns): the hook returns before the
+skill body runs, so wrapping it would fabricate ~0ms success rows. Read side:
+`history_reader.recent_skill_events()` + `summarize_skills()`; CLI: `ll-session skill-stats
+[--since]` and `recent --kind skill` (columns serialize automatically). Tests:
+`TestSchemaV15SkillCompletionColumns`, `TestSkillEventContext` (test_session_store.py),
+reader tests in test_history_reader.py, CLI tests in test_ll_session.py.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

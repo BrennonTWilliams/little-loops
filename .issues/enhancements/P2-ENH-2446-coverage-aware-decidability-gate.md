@@ -12,6 +12,7 @@ labels:
 captured_at: 2026-07-02 00:00:00+00:00
 discovered_date: 2026-07-02
 discovered_by: capture-issue
+parent: EPIC-2412
 decision_needed: true
 ---
 
@@ -402,4 +403,5 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-2412 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:refine-issue` - 2026-07-03T00:46:39 - `230f87c5-0430-4e63-818f-efd86398fff5.jsonl`

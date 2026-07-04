@@ -4,7 +4,7 @@ title: fsm.host_guard — cumulative subprocess RSS budget
 type: ENH
 parent: EPIC-2455
 priority: P3
-status: open
+status: done
 labels: [fsm, host-guard, captured]
 captured_at: "2026-07-03T02:05:57Z"
 discovered_date: "2026-07-02"
@@ -148,7 +148,9 @@ Implementation outline:
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P3
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P3
+
+Implemented: `max_cumulative_subproc_mb` / `on_budget_exceeded` / `budget_state` on `HostGuardConfig` + schema + validation; `HostGuard.record_subproc_rss()` accumulator (fires once at crossing); `ActionResult.peak_rss_mb`; `RssSampler` thread sampling (`/proc/<pid>/status` `VmHWM` on Linux, `ps -o rss=` fallback) wired into `DefaultActionRunner` (shell + prompt paths, gated on `sample_rss`) and the executor's mcp_tool `_run_subprocess`; `host_subproc_rss` + `host_budget_exceeded` events; route/abort ladder in `run()` (`terminated_by="host_budget_exceeded"` on abort); `--host-guard-budget-mb` CLI override with background forwarding. Tests in `scripts/tests/test_host_guard.py` + `test_cli_loop_dispatch.py`; docs in CLI.md/API.md/LOOPS_GUIDE.md.
 
 ## Session Log
 

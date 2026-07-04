@@ -2,7 +2,7 @@
 id: ENH-2187
 title: Config probe — add .gemini/ll-config.json to _config_candidates()
 type: enhancement
-status: open
+status: done
 priority: P4
 parent: EPIC-2178
 depends_on: [FEAT-2179]
@@ -76,4 +76,14 @@ they must use `.ll/ll-config.json` exclusively.
 
 - **2026-06-26** (/ll:verify-issues): Removed false claim of an existing `.claude/ll-config.json` probe (no such probe exists); reframed Summary, step 2, and Acceptance Criteria so the gemini candidate is added host-conditionally under a `host == "gemini"` branch, mirroring the `.codex/` branch rather than appended to an unconditional list.
 
-**Open** | Created: 2026-06-15 | Priority: P4
+2026-07-03 (DONE): Added `GEMINI_CONFIG_DIR = ".gemini"` and a
+`host == "gemini" or state_dir == GEMINI_CONFIG_DIR` branch to
+`_config_candidates()` in `scripts/little_loops/config/core.py`, prepending
+`.gemini/ll-config.json` ahead of the unconditional `.ll/` and root candidates —
+exactly mirroring the `.codex` branch. Codex/default behavior unchanged. Tests:
+four gemini probe tests in `scripts/tests/test_config.py::TestResolveConfigPath`
+(host-env precedence, `LL_STATE_DIR=.gemini` trigger, ignored without trigger,
+fallthrough when `.gemini/ll-config.json` absent). `HOST_COMPATIBILITY.md`
+config-probe row updated.
+
+**Done** | Created: 2026-06-15 | Completed: 2026-07-03 | Priority: P4

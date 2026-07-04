@@ -8,6 +8,8 @@ discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+relates_to: [EPIC-2456]
+blocks: [FEAT-2123]
 labels:
   - enhancement
   - history-db
@@ -139,4 +141,5 @@ Option B is cleaner for queries ("what did this session cost?") and avoids popul
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Consolidated token-telemetry workstream: this issue is sequenced first (Claude host; `on_usage_detailed` already exists), it `blocks` FEAT-2123 (Codex/OpenCode extension of the same callback contract), and it `relates_to` EPIC-2456 whose F5 (OTel `gen_ai.usage.*` emission) and F6 (per-state cost attribution) consume the persisted usage rows.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

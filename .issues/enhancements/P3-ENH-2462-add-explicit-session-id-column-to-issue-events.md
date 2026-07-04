@@ -3,7 +3,7 @@ id: ENH-2462
 title: Add explicit session_id column to issue_events, replacing inferred view
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
@@ -137,7 +137,22 @@ Recommend Option A — materialised table populated by the producer; consumers q
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P3
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P3
+
+Implemented as schema v16: `issue_events.session_id TEXT` + `idx_issue_events_session_id`.
+`SQLiteTransport.send()` writes `session_id` from the event payload (snake_case or camelCase);
+all six `issue_lifecycle.py` emit sites now stamp `session_id` via the new
+`session_log.get_current_session_id()` (CLAUDE_SESSION_ID env → newest session JSONL stem,
+best-effort). Instead of Option A's materialised table, the `issue_sessions` relation was
+rebuilt as a VIEW that prefers exact `session_id` joins and falls back to the old
+timestamp-overlap inference (preserved as `legacy_issue_sessions_ts_overlap`, deprecated) only
+for issues with no authoritative rows — this keeps every existing consumer
+(`sessions_for_issue`, `issue_effort`, `lookup_session_metadata`, `condensed_nodes_for_issue`)
+working with zero data backfill while making new rows exact. Read side:
+`related_issue_events(session_id=...)` filter + `find_session_for_issue_transition()`.
+`cli/issues/set_status.py` needed no change — its direct-write path writes `issue_snapshots`
+only, not `issue_events`. Tests: `TestSchemaV16IssueSessionId` (incl. EXPLAIN QUERY PLAN index
+use and v14-upgrade NULL preservation), reader tests in test_history_reader.py.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

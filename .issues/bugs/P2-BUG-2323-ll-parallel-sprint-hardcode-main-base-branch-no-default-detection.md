@@ -2,7 +2,7 @@
 id: BUG-2323
 title: "ll-parallel/ll-sprint hardcode 'main' as base branch; no default-branch detection"
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: "2026-06-26T22:26:49Z"
 discovered_date: "2026-06-26"
@@ -302,5 +302,9 @@ called mid-run (then pass the orchestrator's lock to serialize with concurrent c
 
 ## Status
 
-- **Status**: open
+- **Status**: done — `detect_default_branch()` added to `worktree_utils.py`; both CLI
+  call sites (`cli/parallel.py`, `cli/sprint/run.py` multi-issue path) route through it,
+  with an explicit `parallel.base_branch` config value taking precedence over
+  auto-detection (`origin/HEAD` → current branch → `main`). Docs + schema updated;
+  tests added in `test_worktree_utils.py`, `test_parallel_cli.py`, `test_cli_sprint.py`.
 - **Priority**: P2

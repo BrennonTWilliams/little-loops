@@ -3,7 +3,7 @@ id: ENH-2458
 title: Capture git commit metadata into history.db as commit_events
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
@@ -136,7 +136,22 @@ Add `recent_commit_events(branch=None, issue_id=None, limit=20)` to `history_rea
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P2
+
+Implemented as schema v17: `commit_events` table (commit_sha UNIQUE) + issue/branch/sha
+indexes; `"commit"` added to `_VALID_KINDS`/`_KIND_TABLE` and the export map.
+`record_commit_event()` infers `issue_id` via `_infer_issue_id()` (Closes/Fixes/Resolves/Issue:
+refs, bare TYPE-NNN tokens, branch conventions). Approach A shipped:
+`hooks/scripts/record-commit-post-commit` → `python -m little_loops.hooks.post_commit`
+(`record_head_commit()`); wiring via `core.hooksPath`/symlink is documented, not forced.
+Backfill: `_backfill_commit_events()` walks `git log --all --name-only`, wired into
+`backfill(repo_root=...)` (opt-in param; `ll-session backfill` passes cwd) with INSERT OR
+IGNORE idempotency; backfilled rows carry `branch=NULL` (not reconstructable from `--all`).
+Read side: `history_reader.recent_commit_events(branch=, issue_id=)`; CLI: `ll-session recent
+--kind commit`, `search --fts ... --kind commit`. Tests: `TestInferIssueId`,
+`TestRecordCommitEvent`, `TestBackfillCommitEvents` (real git repo fixture, skips when git
+absent) in test_session_store.py; reader/CLI tests in test_history_reader.py /
+test_ll_session.py. Docs: ARCHITECTURE schema row, API.md, CLI.md.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -91,6 +91,18 @@ This issue should be updated incrementally as children land. Final pass:
 
 - **2026-06-26** (/ll:verify-issues): Replaced all `(unknown)` references (no such cells exist) with `(deferred)[^gemini]` in Summary, Use Case, Implementation step 4, and Acceptance Criteria, matching the actual Gemini cells at HOST_COMPATIBILITY.md:25-30.
 
+- **2026-07-03** (incremental pass, with ENH-2184/2185/2187 landing): Flipped the
+  cells whose prerequisites are now done: **Orchestration CLI** Gemini column
+  `stub[^orch]` → ✓ across all eight rows (ENH-2185 — `GeminiRunner` fully
+  wired); **Config probe path** Gemini row `(deferred)[^gemini]` → `(ENH-2187)`
+  reference (probe landed); Runner Capabilities Gemini cells were already
+  accurate and unchanged. Updated the `[^gemini]` footnote with a "Landed so
+  far" ledger. **Still `(deferred)`** (correctly): all six hook-intent cells
+  (FEAT-2186 not landed), skills/commands discovery cells (generic adapter not
+  yet run for gemini), and project-instructions/`GEMINI.md` (FEAT-2190 not
+  landed). Issue stays open until those children land and the remaining
+  `(deferred)[^gemini]` cells can be resolved.
+
 - **2026-06-30** (dependency hygiene): Removed cancelled `FEAT-2188` and `FEAT-2189` from `depends_on` (both cancelled 2026-06-25, superseded by `FEAT-2260` generic skill+command adapter, now `done`). Added `FEAT-2259` (generic conformance harness, `done`) and `FEAT-2260` to `depends_on` to reflect the real prerequisites. Repointed the Cell Update Map "Depends on" column for skills/commands/conformance cells from the cancelled bespoke issues (FEAT-2188/2189/2192) to the generic components. `ll-deps validate` does not flag depends-on-cancelled, so this was a latent stall risk for dependency-ordered runners.
 
 ## Session Log

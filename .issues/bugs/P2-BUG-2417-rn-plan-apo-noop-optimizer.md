@@ -2,8 +2,8 @@
 id: BUG-2417
 title: "rn-plan-apo is a no-op optimizer — writes a prompt file rn-plan never reads"
 type: BUG
-priority: P3
-status: open
+priority: P2
+status: done
 parent: EPIC-2412
 captured_at: '2026-06-30T00:00:00Z'
 discovered_date: 2026-06-30
@@ -105,4 +105,26 @@ Pick one:
 
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P3
+**Done** | Created: 2026-06-30 | Priority: P2
+
+## Session Log
+
+- 2026-07-03: Fixed via option 1 (fix the spine). `rn-plan` now owns a
+  `plan_prompt_file` context entry (default `.ll/prompts/rn-plan-planning.md`,
+  matching rn-plan-apo), seeds the file with default planning guidance in `init`
+  when missing (never clobbering an optimized prompt), re-reads it every run via
+  a new `load_planning_prompt` shell state, and interpolates
+  `${captured.planning_prompt.output}` into the `generate_rubric` planning
+  prompt — so `apply_gradient`'s overwrite now changes subsequent `run_planner`
+  output. `rn-plan-apo`'s `run_planner` forwards
+  `--context plan_prompt_file=...` to each `ll-loop run rn-plan` invocation so
+  overridden paths stay contract-consistent. Priority raised P3 → P2. Tests:
+  new `TestPlanningPromptWiring` class in `scripts/tests/test_rn_plan.py`
+  (structural wiring, cross-loop default contract, functional bash tests for
+  seed/no-clobber/clean-stdout) plus a forwarding test in
+  `scripts/tests/test_rn_plan_apo.py`; all pass, and
+  `ll-loop validate rn-plan` / `ll-loop validate rn-plan-apo` report valid with
+  no MR-1 violation and no suppression flags. Note: convergence remains
+  LLM-emitted (`CONVERGED` sentinel, matching apo-textgrad); a numeric
+  non-LLM convergence gate on PLAN_QUALITY is a possible follow-on but MR-1
+  does not fire on this loop (no `check_semantic`/`llm_structured` states).

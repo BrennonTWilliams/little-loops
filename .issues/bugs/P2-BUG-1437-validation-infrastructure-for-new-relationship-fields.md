@@ -1,6 +1,6 @@
 ---
-id: ENH-1437
-type: ENH
+id: BUG-1437
+type: BUG
 priority: P2
 parent: ENH-1432
 depends_on:
@@ -17,7 +17,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-1437: Validation infrastructure for new relationship fields
+# BUG-1437: Validation infrastructure for new relationship fields
 
 ## Summary
 

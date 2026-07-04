@@ -3,7 +3,7 @@ id: ENH-2124
 title: Research and track Codex permission-skip and tool-allowlist capability gaps
 type: ENH
 priority: P4
-status: open
+status: deferred
 captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
@@ -116,6 +116,7 @@ Conditional — `describe_capabilities()` return dict may include updated values
 _Updated by `/ll:verify-issues` (2026-06-27):_ Current Behavior section corrected — `describe_capabilities()` already returns `"full"` / `"partial"` at `host_runner.py:590, 607`; the remaining work is the research rationale (`thoughts/research/codex-runner-capability-gaps.md`) and `HOST_COMPATIBILITY.md` doc update, not the code wiring. Prior notes from 2026-06-17 and 2026-06-19 calling for a body update have been addressed.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - EPIC-1463 tail cleanup: status -> deferred per decision SCOPE-042 in .ll/decisions.yaml (epic 23/30 done; value delivered).
 - `/ll:verify-issues` - 2026-06-27T19:22:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:39:25 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`

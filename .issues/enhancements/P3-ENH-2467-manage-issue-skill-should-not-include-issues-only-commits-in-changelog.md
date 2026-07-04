@@ -3,7 +3,7 @@ id: ENH-2467
 title: "/ll:manage-issue skill should not include .issues/-only commits in changelog"
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-03T04:36:39Z'
 discovered_date: '2026-07-02'
 discovered_by: capture-issue
@@ -132,6 +132,29 @@ Either approach is correct. Option A keeps the policy close to the producer and 
 
 - `docs/ARCHITECTURE.md` — release/changelog architecture (if documented).
 - `docs/reference/API.md` — release aggregator API.
+
+## Resolution
+
+Implemented **Option A (producer-side gate)** plus a consumer-side
+defense-in-depth filter:
+
+- `skills/manage-issue/SKILL.md` § 3 "Commit All Changes": after `git add`, the
+  staged set is checked (`git diff --cached --name-only`); if every path is under
+  `.issues/`, the commit subject is demoted to `chore(issues): <action> <ID> <slug>`
+  with a body note. Mixed/source commits keep the conventional subject.
+- `commands/manage-release.md` (Agent 1, step 4): changelog generation skips
+  `chore(issues):` commits entirely (including Maintenance) and, as
+  defense-in-depth, any commit whose `git diff-tree --name-only` set is entirely
+  under `.issues/`. (There is no `scripts/little_loops/release.py` — the
+  aggregator is the manage-release command prompt.)
+- `docs/development/TROUBLESHOOTING.md`: new "Commit missing from release
+  changelog" entry.
+- Tests: `scripts/tests/test_manage_issue_changelog_gate.py` (contract pins on
+  both markdown files + real-git behavioral tests of the gate snippet).
+
+## Status
+
+Done | Implemented 2026-07-03 (Option A + aggregator filter)
 
 ## Session Log
 

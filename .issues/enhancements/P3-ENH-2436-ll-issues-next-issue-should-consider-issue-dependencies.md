@@ -1,7 +1,7 @@
 ---
 id: ENH-2436
 type: enhancement
-status: open
+status: done
 priority: P3
 title: ll-issues next-issue should consider Issue dependencies
 labels:
@@ -789,4 +789,4 @@ the 13 external callers use, asserting the default is byte-identical.
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P3
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P3

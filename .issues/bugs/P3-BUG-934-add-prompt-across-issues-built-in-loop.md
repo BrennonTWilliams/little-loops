@@ -7,7 +7,7 @@ status: done
 completed_at: 2026-04-03T00:00:00Z
 ---
 
-# FEAT-934: Add prompt-across-issues Built-in Loop
+# BUG-934: Add prompt-across-issues Built-in Loop
 
 ## Summary
 

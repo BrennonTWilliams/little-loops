@@ -3,7 +3,7 @@ id: ENH-2335
 title: 'll-issues clusters: add legend + filter/summary header, adopt shared palette, unify edge notation'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-26T23:55:00Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
@@ -143,7 +143,7 @@ This enhancement makes `ll-issues clusters` output self-explanatory and consiste
 - **Breaking Change**: No.
 
 ---
-**Open** | Created: 2026-06-26 | Priority: P3
+**Done** | Created: 2026-06-26 | Completed: 2026-07-03 | Priority: P3
 
 
 ## Scope Boundary

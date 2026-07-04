@@ -6,7 +6,7 @@ priority: P3
 captured_at: '2026-05-22T19:19:39Z'
 discovered_date: 2026-05-22
 discovered_by: capture-issue
-status: open
+status: done
 parent: EPIC-1463
 ---
 
@@ -124,4 +124,12 @@ _Updated by `/ll:verify-issues` on 2026-06-09_
 
 ## Status
 
-**Open** | Created: 2026-05-22 | Priority: P3
+**Done** | Created: 2026-05-22 | Completed: 2026-07-03 | Priority: P3
+
+Added `disable-model-invocation: true` to all 30 `skills/ll-*/SKILL.md` bridge
+stubs AND to the generator (`_synthesized_skill_md` in
+`scripts/little_loops/adapters/codex.py`) so `ll-adapt --host codex` emits the
+field for future bridges. `ll-verify-skill-budget` passes (468/2000 tokens,
+bridges no longer counted). Tests added in
+`scripts/tests/test_adapt_skills_for_codex.py` (generator field + on-disk sweep).
+CHANGELOG "Changed" entry added.

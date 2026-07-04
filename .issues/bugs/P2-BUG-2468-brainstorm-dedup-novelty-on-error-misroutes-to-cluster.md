@@ -2,7 +2,7 @@
 id: BUG-2468
 title: "brainstorm dedup_novelty `on_error: cluster` misroutes real crashes as 'no novel ideas'; produces zero artifacts while reporting Loop completed: done"
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-02T23:30:00Z'
 discovered_date: '2026-07-02'
@@ -212,4 +212,12 @@ This catches the case where upstream states (somehow) return `exit_code=0` but t
 
 ## Status
 
-Open | Created: 2026-07-02 | Priority: P2 | Type: BUG
+Done | Created: 2026-07-02 | Priority: P2 | Type: BUG
+
+Implemented: dedup_novelty heredoc wrapped in try/except with `sys.exit(2)` on crash;
+the LLM payload now flows through `${run_dir}/round_ideas.txt` via a quoted shell
+heredoc (a `"""`-bearing payload can no longer SyntaxError the script — the crash
+class that no try/except could catch); `on_error: cluster` → `on_error: failed`; new
+`verify_artifacts` state gates every path into `done` on a non-empty `brainstorm.md`
+(empty/missing → `failed`). Tests in `scripts/tests/test_brainstorm.py`
+(TestBug2468ErrorRouting) execute the real actions; `ll-loop validate brainstorm` clean.

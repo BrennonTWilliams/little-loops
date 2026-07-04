@@ -3,7 +3,7 @@ id: ENH-2336
 title: 'll-issues clusters: add scoping flags (--cluster/--limit/--compact) and richer per-cluster headers'
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-26T23:55:30Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
@@ -148,7 +148,7 @@ No changes to `--json` output schema or default box-stack rendering.
 - **Breaking Change**: No.
 
 ---
-**Open** | Created: 2026-06-26 | Priority: P3
+**Done** | Created: 2026-06-26 | Completed: 2026-07-03 | Priority: P3
 
 
 ## Scope Boundary

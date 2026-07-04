@@ -2,7 +2,7 @@
 id: ENH-2184
 title: GeminiRunner stub in host_runner.py
 type: enhancement
-status: open
+status: done
 priority: P4
 parent: EPIC-2178
 depends_on: [FEAT-2179]
@@ -150,7 +150,18 @@ ENH-2185.
 
 2026-06-18 (UNSTARTED): `GeminiRunner` class does not exist in `host_runner.py`. Not in `_HOST_RUNNER_REGISTRY` or `_PROBE_ORDER`. FEAT-2179 is complete — `thoughts/research/gemini-cli-surface.md` confirms binary is `gemini`, version check is `gemini --version`, probe is `shutil.which("gemini")`. All research inputs for the stub are available.
 
-**Open** | Created: 2026-06-15 | Priority: P4
+2026-07-03 (DONE): Implemented together with ENH-2185 in one pass — `GeminiRunner`
+landed **fully wired** (all four `build_*` methods functional) rather than as a
+`HostNotConfigured` stub, since the flag-translation table from FEAT-2179 was
+already verified. Registered in `_HOST_RUNNER_REGISTRY`, added `("gemini",
+"gemini")` to `_PROBE_ORDER` after `("pi", "pi")`, added `gemini` to both host
+lists in `_remediation_hint()`, exported via `__all__`. `describe_capabilities()`
+reports full streaming/permission_skip and unsupported agent_select/
+tool_allowlist/json_schema, so `ll-doctor` renders an accurate report.
+Tests: `TestGeminiRunner` (17 tests) + `TestDescribeCapabilities` entry in
+`scripts/tests/test_host_runner.py`; conformance `_HOST_BINARY` entry added.
+
+**Done** | Created: 2026-06-15 | Completed: 2026-07-03 | Priority: P4
 
 
 ## Session Log

@@ -3,7 +3,7 @@ id: ENH-2105
 title: Track or close `stop/session_end` deferred intent for Codex adapter
 type: ENH
 priority: P5
-status: open
+status: cancelled
 captured_at: "2026-06-12T00:00:00Z"
 discovered_date: 2026-06-12
 discovered_by: review-epic
@@ -337,6 +337,7 @@ tests, and HOST_COMPATIBILITY.md. Skip this entire phase for Option B._
 
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - EPIC-1463 tail cleanup: status -> cancelled per decision SCOPE-040 in .ll/decisions.yaml (epic 23/30 done; value delivered).
 - `/ll:wire-issue` - 2026-06-26T23:21:13 - `80f7e865-5668-4056-97f7-9794b7b8c70e.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:06:53 - `dd615d1a-afd0-4f66-9794-e4db982d1247.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:55:38 - `de5d48f0-01ea-4558-81b3-5f768a6c1cdf.jsonl`

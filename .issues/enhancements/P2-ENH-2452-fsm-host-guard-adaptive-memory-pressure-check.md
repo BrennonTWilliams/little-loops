@@ -4,7 +4,7 @@ title: fsm.host_guard — adaptive memory pressure check
 type: ENH
 parent: EPIC-2455
 priority: P2
-status: open
+status: done
 labels: [fsm, host-guard, captured]
 captured_at: "2026-07-03T02:05:57Z"
 discovered_date: "2026-07-02"
@@ -135,7 +135,9 @@ Implementation outline:
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P2
+
+Implemented: new `scripts/little_loops/fsm/host_guard.py` (`HostGuardConfig`, `HostGuard`, `vm_stat`/`meminfo` probes — no psutil), `host_guard` block in `fsm-loop-schema.json` + `validate_fsm` checks, `_host_guard` wiring in `FSMExecutor` (pre-state check after `state_enter`; events `host_pressure`/`host_pressure_relieved`/`host_pressure_abort`/`host_cooldown`), `--no-host-guard` on `ll-loop run`/`resume` with background forwarding. Tests in `scripts/tests/test_host_guard.py` + `test_cli_loop_dispatch.py`. Docs: CLI.md, API.md, LOOPS_GUIDE.md (Host Guard section), TROUBLESHOOTING.md (jetsam entry).
 
 ## Session Log
 

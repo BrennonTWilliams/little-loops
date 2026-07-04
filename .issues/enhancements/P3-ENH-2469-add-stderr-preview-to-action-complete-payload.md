@@ -2,7 +2,7 @@
 id: ENH-2469
 title: "Add `stderr_preview` field to FSM `action_complete` event payload; surface shell-action stderr to operators"
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-07-02T23:30:00Z'
 discovered_date: '2026-07-02'
@@ -171,4 +171,6 @@ The `2>&1` merge is simpler but **changes semantics** — the existing `output_p
 
 ## Status
 
-Open | Created: 2026-07-02 | Priority: P3 | Type: ENH
+Done | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P3 | Type: ENH
+
+Implemented the primary (additive) option: `stderr_preview` (last 2000 chars of `result.stderr`, stripped, `None` when empty) added to the `action_complete` payload in `FSMExecutor._run_action`. Tests in `scripts/tests/test_fsm_executor.py::TestStderrPreview` cover a failing shell action (`echo ERROR >&2; exit 1`), the None case, and tail truncation. `ll-loop validate brainstorm` / `autodev` remain clean.

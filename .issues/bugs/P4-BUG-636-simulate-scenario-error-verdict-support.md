@@ -9,7 +9,7 @@ status: done
 completed_at: 2026-03-07T00:00:00Z
 ---
 
-# FEAT-636: `simulate --scenario` cannot produce `"error"` verdict — error-routing paths untestable non-interactively
+# BUG-636: `simulate --scenario` cannot produce `"error"` verdict — error-routing paths untestable non-interactively
 
 ## Summary
 

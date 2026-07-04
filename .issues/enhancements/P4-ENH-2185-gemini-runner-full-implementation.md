@@ -2,7 +2,7 @@
 id: ENH-2185
 title: GeminiRunner full implementation — build_streaming, build_blocking_json, build_detached, build_version_check
 type: enhancement
-status: open
+status: done
 priority: P4
 parent: EPIC-2178
 depends_on: [FEAT-2179, ENH-2184]
@@ -125,7 +125,29 @@ Session resume: `-r latest` / `-r <index>` / `-r <session-id>` — wire if `Host
 
 - **2026-06-26** (/ll:verify-issues): Corrected Dependent Files — replaced three nonexistent modules (`auto_runner.py`, `sprint_runner.py`, `loop_runner.py`) with the actual `build_streaming` consumers `subprocess_utils.py:329` and `cli/harness.py:283`.
 
-**Open** | Created: 2026-06-15 | Priority: P4
+2026-07-03 (DONE): Implemented in one pass with ENH-2184. All four methods wired
+per the FEAT-2179 flag table:
+- `build_streaming` → `gemini --approval-mode yolo --output-format stream-json
+  [--resume latest] -p <prompt> [--model <m>]`; `agent`/`tools` emit
+  `CapabilityNotSupported` and are dropped (no `--agent` flag; Policy Engine is
+  TOML-file based). Worktree `GIT_DIR`/`GIT_WORK_TREE` env handling mirrors
+  `ClaudeCodeRunner`; `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS` set
+  on all build methods (BUG-2110 pattern).
+- `build_blocking_json` → `gemini --approval-mode yolo --output-format json -p
+  <prompt> [--model <m>]`; `json_schema` silently dropped (documented in
+  `describe_capabilities`, same as ClaudeCodeRunner).
+- `build_detached` → `gemini --approval-mode yolo -p <prompt>`.
+- `build_version_check` → `gemini --version`.
+Tests: functional coverage in `TestGeminiRunner`
+(`scripts/tests/test_host_runner.py`, argv snapshots + warning/env assertions);
+conformance harness auto-parametrizes over the registry. The "`ll-auto --host
+gemini` end-to-end" criterion is satisfiable only with `gemini` on PATH (not
+available in CI/sandbox); invocation construction is verified by the
+conformance golden-path tests. Docs updated: `HOST_COMPATIBILITY.md`
+(orchestration ✓ cells + footnotes), `API.md` runner table, `ARCHITECTURE.md`
+component table.
+
+**Done** | Created: 2026-06-15 | Completed: 2026-07-03 | Priority: P4
 
 
 ## Session Log

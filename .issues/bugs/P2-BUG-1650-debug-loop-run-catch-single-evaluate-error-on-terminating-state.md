@@ -1,5 +1,5 @@
 ---
-id: ENH-1650
+id: BUG-1650
 type: enhancement
 priority: P2
 status: done
@@ -23,7 +23,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-1650: debug-loop-run misses single evaluate-error that terminates the loop
+# BUG-1650: debug-loop-run misses single evaluate-error that terminates the loop
 
 ## Summary
 

@@ -3,7 +3,7 @@ id: ENH-1903
 title: Document ll-parallel as canonical parallel substrate
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
@@ -51,7 +51,30 @@ reflect the final implementation.
 
 ## Status
 
-**Open** | Created: 2026-06-03 | Priority: P4
+**Done** | Created: 2026-06-03 | Closed: 2026-07-03 | Priority: P4
+
+### Progress (2026-07-03)
+
+Done:
+- `docs/ARCHITECTURE.md`: new "## Orchestration Layers" section (before
+  "## Sequential Mode") with the Layer 0/1/2/3 diagram + status table, the
+  normative "Layer 3 is normative" paragraph documenting `ll-parallel` as the
+  canonical parallel substrate kept as Python (no FSM equivalent — no
+  concurrency primitive), used by `ll-sprint` multi-issue waves, and a
+  reference to `docs/research/ll-orchestrator-decomposition-plan-v0.2.md`.
+  Because FEAT-1899 (Layer 2) and FEAT-2000/2001/2002 (Layer 1) are still open,
+  those layers are documented as *planned* with issue references, so the doc is
+  accurate today and only the status column needs updating when they land.
+
+Done (later same day):
+- `.claude/CLAUDE.md` CLI Tools section: one-line note added to the
+  `ll-parallel` entry (canonical parallel substrate, used by `ll-sprint`
+  multi-issue waves, kept as Python — no FSM concurrency primitive), with a
+  pointer to `docs/ARCHITECTURE.md` § Orchestration Layers.
+
+Remaining:
+- When FEAT-1899 lands, flip the Layer 2 row in the ARCHITECTURE.md status
+  table from "planned" to "shipped".
 
 
 ## Verification Notes
@@ -86,6 +109,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-18 (BLOCKED): FEAT-1899 still open. `docs/ARCHITECTURE.md` does not yet have the Layer 0/1/2/3 orchestration diagram. CLAUDE.md CLI Tools section does not note ll-parallel as "canonical parallel substrate." Pre-condition remains unmet.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Verified and closed: both deliverables confirmed in tree (docs/ARCHITECTURE.md:346 "## Orchestration Layers" with Layer 0-3 diagram, normative Layer-3 paragraph, and decomposition-plan-v0.2 reference; .claude/CLAUDE.md:191 ll-parallel canonical-substrate note). Sole remaining item (flip Layer 2 status row when FEAT-1899 lands) folded into FEAT-1899.
 - `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`

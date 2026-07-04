@@ -4,7 +4,7 @@ title: Extend --delay help text to mention host-pressure use case
 type: ENH
 parent: EPIC-2455
 priority: P5
-status: open
+status: done
 labels: [docs, cli, captured]
 captured_at: "2026-07-03T02:05:57Z"
 discovered_date: "2026-07-02"
@@ -110,7 +110,9 @@ On 2026-07-02 an interactive Claude session was jetsam-killed during a 12-minute
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P5
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P5
+
+Implemented: `--delay` help text on both `ll-loop run` and `ll-loop resume` parsers now reads "(useful for recording and to relieve host memory pressure between subprocess spawns)"; matching manual sync of the two `--delay` rows in `docs/reference/CLI.md`; `backoff:` field row in `docs/guides/LOOPS_GUIDE.md` extended with the spawn-spacing note linking to the host-guard section. Help-output test added in `scripts/tests/test_cli_loop_dispatch.py` (`test_run_help_mentions_host_pressure_delay_use_case`).
 
 ## Session Log
 

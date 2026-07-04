@@ -1,5 +1,5 @@
 ---
-id: BUG-2397
+id: BUG-2474
 title: 'FSM runner emits `terminated_by: "max_iterations"` instead of `"interrupted"`
   when session is killed between state transitions'
 type: BUG
@@ -23,7 +23,7 @@ score_change_surface: 20
 decision_needed: false
 ---
 
-# BUG-2397: FSM runner emits `terminated_by: "max_iterations"` on session kill instead of `"interrupted"`
+# BUG-2474: FSM runner emits `terminated_by: "max_iterations"` on session kill instead of `"interrupted"`
 
 ## Summary
 

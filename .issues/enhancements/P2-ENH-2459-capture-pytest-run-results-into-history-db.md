@@ -3,7 +3,7 @@ id: ENH-2459
 title: Capture pytest run results into history.db as test_run_events
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
@@ -136,7 +136,24 @@ Add `recent_test_runs(branch=None, head_sha=None, limit=50)` to `history_reader.
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2
+**Done** | Created: 2026-07-02 | Completed: 2026-07-03 | Priority: P2
+
+Implemented as schema v18: `test_run_events` table + head_sha/branch/failed indexes;
+`"test_run"` added to `_VALID_KINDS`/`_KIND_TABLE` and the export map. Approach A shipped:
+`little_loops/pytest_history_plugin.py` registered under `[project.entry-points.pytest11]`
+(`ll_history`) in scripts/pyproject.toml — counts outcomes via `pytest_runtest_logreport`
+(call-phase pass/fail/skip; setup/teardown failures as errors) and writes one row in
+`pytest_sessionfinish` wrapped in `contextlib.suppress(Exception)`. Guard rails: opt-out via
+`PYTEST_DISABLE_PLUGIN_LL_HISTORY=1` (or `-p no:ll_history`); only activates when cwd has
+`.ll/` or `LL_HISTORY_DB` is set (never creates a DB in unrelated projects); xdist-aware
+(controller-only, so `-n auto` yields exactly one row). No JUnit XML needed — the report hooks
+are the source of truth. env_label: ci (CI/GITHUB_ACTIONS/JENKINS_URL/LL_AUTO_RUN) / worktree
+(`.git` is a file) / local; head_sha+branch via best-effort git subprocess. Note: the new
+entry point activates after the next `pip install -e "./scripts[dev]"`. Read side:
+`history_reader.recent_test_runs()` with derived `pass_rate`; CLI: `ll-session recent --kind
+test_run`, `search --fts "<test name>" --kind test_run` (failing node IDs are FTS-indexed).
+Tests: scripts/tests/test_pytest_history_plugin.py, `TestRecordTestRunEvent` in
+test_session_store.py, reader/CLI tests.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
