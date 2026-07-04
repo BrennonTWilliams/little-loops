@@ -1373,3 +1373,151 @@ class TestCondensedNodesForIssue:
         result = condensed_nodes_for_issue("ENH-100", node_char_cap=200, db=db)
         assert len(result) == 1
         assert len(result[0].content) <= 200
+
+
+class TestNewEventReaders:
+    """ENH-2458/2459/2460/2462: readers for commit, test-run, and skill completion data."""
+
+    def test_recent_skill_events_includes_completion_columns(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_skill_events
+        from little_loops.session_store import record_skill_event, skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "s1", "refine-issue", "ENH-1"):
+            pass
+        record_skill_event(db, "s2", "refine-issue", "ENH-2")  # dispatch-only
+
+        events = recent_skill_events("refine-issue", db=db)
+        assert len(events) == 2
+        # Newest first: dispatch-only row has NULL completion columns
+        assert events[0].success is None
+        assert events[1].success == 1
+        assert events[1].exit_code == 0
+        assert events[1].duration_ms is not None
+
+    def test_summarize_skills_success_rate(self, tmp_path: Path) -> None:
+        import pytest as _pytest
+
+        from little_loops.history_reader import summarize_skills
+        from little_loops.session_store import record_skill_event, skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "s1", "check-code", ""):
+            pass
+        with _pytest.raises(RuntimeError):
+            with skill_event_context(db, "s2", "check-code", ""):
+                raise RuntimeError("boom")
+        record_skill_event(db, "s3", "check-code", "")  # dispatch-only, no completion
+
+        stats = summarize_skills(db=db)
+        assert len(stats) == 1
+        s = stats[0]
+        assert s["skill_name"] == "check-code"
+        assert s["invocations"] == 3
+        assert s["completions"] == 2
+        assert s["successes"] == 1
+        assert s["success_rate"] == 0.5
+
+    def test_recent_commit_events_filters(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_commit_events
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "sha1", "fix BUG-1", branch="main", ts="2026-07-01T10:00:00Z")
+        record_commit_event(
+            db, "sha2", "Closes ENH-2458", branch="feat/x", ts="2026-07-01T11:00:00Z"
+        )
+
+        all_events = recent_commit_events(db=db)
+        assert [e.commit_sha for e in all_events] == ["sha2", "sha1"]
+
+        by_issue = recent_commit_events(issue_id="ENH-2458", db=db)
+        assert len(by_issue) == 1
+        assert by_issue[0].commit_sha == "sha2"
+
+        by_branch = recent_commit_events(branch="main", db=db)
+        assert len(by_branch) == 1
+        assert by_branch[0].issue_id == "BUG-1"
+
+    def test_recent_test_runs_and_pass_rate(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_test_runs
+        from little_loops.session_store import record_test_run_event
+
+        db = tmp_path / "history.db"
+        record_test_run_event(
+            db, ts="2026-07-01T10:00:00Z", total=10, passed=9, failed=1, head_sha="aaa",
+            branch="main",
+        )
+        record_test_run_event(db, ts="2026-07-01T11:00:00Z", total=0, head_sha="bbb")
+
+        runs = recent_test_runs(db=db)
+        assert len(runs) == 2
+        assert runs[1].pass_rate == 0.9
+        assert runs[0].pass_rate is None  # total=0 → undefined
+
+        by_sha = recent_test_runs(head_sha="aaa", db=db)
+        assert len(by_sha) == 1
+        assert by_sha[0].branch == "main"
+
+    def test_find_session_for_issue_transition(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import find_session_for_issue_transition
+
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
+                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 'done', 'sess-closer')"
+            )
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition) "
+                "VALUES('2026-07-01T09:00:00Z', 'ENH-9', 'done')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        assert find_session_for_issue_transition("ENH-2462", "done", db=db) == "sess-closer"
+        assert find_session_for_issue_transition("ENH-9", "done", db=db) is None  # legacy row
+        assert find_session_for_issue_transition("ENH-404", "done", db=db) is None
+
+    def test_related_issue_events_session_filter(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
+                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 'open', 'sess-a')"
+            )
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
+                "VALUES('2026-07-01T11:00:00Z', 'ENH-2462', 'done', 'sess-b')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        all_events = related_issue_events("ENH-2462", db=db)
+        assert len(all_events) == 2
+        assert {e.session_id for e in all_events} == {"sess-a", "sess-b"}
+
+        only_b = related_issue_events("ENH-2462", session_id="sess-b", db=db)
+        assert len(only_b) == 1
+        assert only_b[0].transition == "done"
+
+    def test_readers_return_empty_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import (
+            find_session_for_issue_transition,
+            recent_commit_events,
+            recent_skill_events,
+            recent_test_runs,
+            summarize_skills,
+        )
+
+        db = tmp_path / "nope" / "history.db"
+        # ensure_db creates on demand, so these return empty rather than raising
+        assert recent_skill_events(db=db) == []
+        assert summarize_skills(db=db) == []
+        assert recent_commit_events(db=db) == []
+        assert recent_test_runs(db=db) == []
+        assert find_session_for_issue_transition("X-1", "done", db=db) is None

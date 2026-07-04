@@ -325,3 +325,30 @@ class TestSessionLogHostAware:
         content = issue.read_text()
         assert session_file.name in content
         assert "## Session Log" in content
+
+
+class TestGetCurrentSessionId:
+    """ENH-2462: get_current_session_id resolves the active session's ID."""
+
+    def test_env_var_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.session_log import get_current_session_id
+
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "env-session-id")
+        assert get_current_session_id() == "env-session-id"
+
+    def test_falls_back_to_jsonl_stem(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.session_log import get_current_session_id
+
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        with patch(
+            "little_loops.session_log.get_current_session_jsonl",
+            return_value=Path("/p/abc-123.jsonl"),
+        ):
+            assert get_current_session_id() == "abc-123"
+
+    def test_none_when_no_session_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.session_log import get_current_session_id
+
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        with patch("little_loops.session_log.get_current_session_jsonl", return_value=None):
+            assert get_current_session_id() is None

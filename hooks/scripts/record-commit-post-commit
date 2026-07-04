@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Git post-commit hook: record commit metadata into .ll/history.db (ENH-2458).
+#
+# Wiring is a project-level decision (not forced by ll-init). Enable with:
+#   ln -s "$(pwd)/hooks/scripts/record-commit-post-commit" .git/hooks/post-commit
+# or point core.hooksPath at a directory containing this file named "post-commit".
+#
+# Best-effort by design: a missing python, missing little_loops install, or a
+# locked database must never block the commit, so all failures are swallowed.
+
+python3 -m little_loops.hooks.post_commit >/dev/null 2>&1 || true

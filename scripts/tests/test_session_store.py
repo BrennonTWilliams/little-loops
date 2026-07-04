@@ -368,6 +368,7 @@ class TestBackfill:
             "corrections": 0,
             "summaries": 0,
             "snapshots": 0,
+            "commits": 0,
         }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
@@ -1186,7 +1187,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 14
+        assert SCHEMA_VERSION == 18
 
 
 class TestBackfillIncremental:
@@ -1687,8 +1688,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1802,8 +1803,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1854,8 +1855,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1933,7 +1934,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 14
+        assert int(version[0]) == 18
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -1950,8 +1951,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2838,8 +2839,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2879,8 +2880,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 14
-        assert int(row[0]) == 14
+        assert SCHEMA_VERSION == 18
+        assert int(row[0]) == 18
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2934,7 +2935,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 14
+        assert int(version[0]) == 18
         assert "issue_snapshots" in names
 
 
@@ -3069,6 +3070,553 @@ class TestBackfillSnapshots:
             conn.close()
         assert row is not None
         assert "Body content here" in (row[0] or "")
+
+
+def _bootstrap_schema_at(db: Path, version: int) -> None:
+    """Bootstrap a database at an exact historical schema *version*.
+
+    Applies migrations 0..version-1 verbatim from ``_MIGRATIONS`` and stamps
+    the meta row, mirroring the TestSchemaV14 pattern so upgrade tests always
+    exercise the real historical DDL.
+    """
+    from little_loops.session_store import _MIGRATIONS, _split_sql_statements
+
+    conn = sqlite3.connect(str(db))
+    try:
+        for script in _MIGRATIONS[:version]:
+            for stmt in _split_sql_statements(script):
+                conn.execute(stmt)
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(version),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestSchemaV15SkillCompletionColumns:
+    """v15 migration: exit_code/success/duration_ms columns on skill_events (ENH-2460)."""
+
+    def test_skill_events_has_completion_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(skill_events)")}
+        finally:
+            conn.close()
+        assert {"exit_code", "success", "duration_ms"} <= cols
+
+    def test_v14_db_upgrades_preserving_dispatch_only_rows(self, tmp_path: Path) -> None:
+        """Pre-migration skill_events rows survive with NULL completion columns."""
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 14)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "INSERT INTO skill_events(ts, session_id, skill_name, args) "
+                "VALUES('2026-06-01T00:00:00Z', 's-old', 'refine-issue', 'ENH-1')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            row = conn.execute("SELECT * FROM skill_events WHERE skill_name='refine-issue'").fetchone()
+        finally:
+            conn.close()
+        assert int(version[0]) == SCHEMA_VERSION
+        assert row is not None
+        assert row["exit_code"] is None
+        assert row["success"] is None
+        assert row["duration_ms"] is None
+
+    def test_dispatch_only_record_skill_event_leaves_completion_null(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_skill_event
+
+        db = tmp_path / "history.db"
+        record_skill_event(db, "s-disp", "capture-issue", "")
+        rows = recent(db, kind="skill")
+        assert rows[0]["exit_code"] is None
+        assert rows[0]["success"] is None
+        assert rows[0]["duration_ms"] is None
+
+
+class TestSkillEventContext:
+    """ENH-2460: skill_event_context() insert-then-update round-trip."""
+
+    def test_success_path_populates_completion_columns(self, tmp_path: Path) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "sess-1", "refine-issue", "ENH-2460"):
+            pass
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1
+        assert rows[0]["skill_name"] == "refine-issue"
+        assert rows[0]["exit_code"] == 0
+        assert rows[0]["success"] == 1
+        assert rows[0]["duration_ms"] is not None
+        assert rows[0]["duration_ms"] >= 0
+
+    def test_raise_path_records_failure(self, tmp_path: Path) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with pytest.raises(ValueError):
+            with skill_event_context(db, "sess-2", "check-code", ""):
+                raise ValueError("boom")
+        rows = recent(db, kind="skill")
+        assert rows[0]["exit_code"] == 1
+        assert rows[0]["success"] == 0
+
+    def test_host_provided_exit_code_wins(self, tmp_path: Path) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, None, "manage-issue", "") as completion:
+            completion.exit_code = 3
+        rows = recent(db, kind="skill")
+        assert rows[0]["exit_code"] == 3
+        assert rows[0]["success"] == 0
+
+    def test_args_truncated_to_200(self, tmp_path: Path) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, None, "capture-issue", "x" * 300):
+            pass
+        rows = recent(db, kind="skill")
+        assert len(rows[0]["args"]) <= 200
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "sess-3", "ready-issue", ""):
+            pass
+        results = search(db, query="ready")
+        assert any(r["kind"] == "skill" for r in results)
+
+    def test_best_effort_on_unopenable_db(self, tmp_path: Path) -> None:
+        """A db path that cannot be opened must not prevent the body from running."""
+        from little_loops.session_store import skill_event_context
+
+        ran = False
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        with skill_event_context(tmp_path, None, "broken-db-skill", ""):
+            ran = True
+        assert ran
+
+
+class TestSchemaV16IssueSessionId:
+    """v16 migration: authoritative issue_events.session_id column (ENH-2462)."""
+
+    def test_issue_events_has_session_id_column(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(issue_events)")}
+        finally:
+            conn.close()
+        assert "session_id" in cols
+
+    def test_session_id_index_exists_and_is_used(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            indexes = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='issue_events'"
+                )
+            }
+            plan = " ".join(
+                str(r[3])
+                for r in conn.execute(
+                    "EXPLAIN QUERY PLAN SELECT * FROM issue_events WHERE session_id = ?",
+                    ("s-x",),
+                )
+            )
+        finally:
+            conn.close()
+        assert "idx_issue_events_session_id" in indexes
+        assert "idx_issue_events_session_id" in plan
+
+    def test_legacy_view_preserved(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            views = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+        finally:
+            conn.close()
+        assert "legacy_issue_sessions_ts_overlap" in views
+        assert "issue_sessions" in views
+
+    def test_transport_writes_session_id_from_payload(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-07-01T12:00:00Z",
+                "issue_id": "ENH-2462",
+                "session_id": "sess-exact",
+            }
+        )
+        transport.close()
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT session_id FROM issue_events WHERE issue_id='ENH-2462'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["session_id"] == "sess-exact"
+
+    def test_transport_accepts_camelcase_session_id(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.started",
+                "ts": "2026-07-01T12:00:00Z",
+                "issue_id": "ENH-2463",
+                "sessionId": "sess-camel",
+            }
+        )
+        transport.close()
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT session_id FROM issue_events WHERE issue_id='ENH-2463'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["session_id"] == "sess-camel"
+
+    def test_transport_without_session_id_writes_null(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {"event": "issue.completed", "ts": "2026-07-01T12:00:00Z", "issue_id": "ENH-2464"}
+        )
+        transport.close()
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT session_id FROM issue_events WHERE issue_id='ENH-2464'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["session_id"] is None
+
+    def test_issue_sessions_view_returns_exact_match(self, tmp_path: Path) -> None:
+        """An authoritative session_id row yields an exact issue_sessions join."""
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
+                "VALUES('2026-07-01T12:00:00Z', 'ENH-2462', 'done', 'sess-exact')"
+            )
+            conn.execute(
+                "INSERT INTO sessions(session_id, jsonl_path) VALUES('sess-exact', '/p/e.jsonl')"
+            )
+            # A decoy overlapping message from an unrelated session must NOT be joined.
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) "
+                "VALUES('2026-07-01T12:00:01Z', 'sess-decoy', 'unrelated')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT session_id, jsonl_path FROM issue_sessions WHERE issue_id='ENH-2462'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "sess-exact"
+        assert rows[0]["jsonl_path"] == "/p/e.jsonl"
+
+    def test_v14_db_upgrades_preserving_null_session_id(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 14)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition) "
+                "VALUES('2026-06-01T00:00:00Z', 'ENH-1', 'done')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute("SELECT session_id FROM issue_events WHERE issue_id='ENH-1'").fetchone()
+            views = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
+        finally:
+            conn.close()
+        assert row["session_id"] is None
+        assert {"issue_sessions", "legacy_issue_sessions_ts_overlap"} <= views
+
+
+class TestInferIssueId:
+    """ENH-2458: _infer_issue_id() message/branch parsing."""
+
+    def test_typed_closes_reference(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        assert _infer_issue_id("fix: something\n\nCloses ENH-2458") == "ENH-2458"
+
+    def test_fixes_hash_reference_falls_back_to_typed_token(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        # "#123" has no type prefix; a typed token elsewhere wins.
+        assert _infer_issue_id("Fixes #123 (BUG-99 regression)") == "BUG-99"
+
+    def test_trailer_reference(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        assert _infer_issue_id("feat: add thing\n\nIssue: FEAT-777") == "FEAT-777"
+
+    def test_bare_typed_token(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        assert _infer_issue_id("enh(store): ENH-2458 add commit_events") == "ENH-2458"
+
+    def test_branch_convention(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        assert _infer_issue_id("misc cleanup", branch="feat/ENH-2458-commit-events") == "ENH-2458"
+
+    def test_no_reference_returns_none(self) -> None:
+        from little_loops.session_store import _infer_issue_id
+
+        assert _infer_issue_id("chore: tidy imports", branch="main") is None
+
+
+class TestRecordCommitEvent:
+    """ENH-2458: record_commit_event() DB write round-trip."""
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        inserted = record_commit_event(
+            db,
+            "abc123def456",
+            "enh(store): add commit_events (ENH-2458)",
+            author="Test Author",
+            branch="feat/ENH-2458-commits",
+            files=["scripts/little_loops/session_store.py"],
+            parent_sha="000111",
+        )
+        assert inserted
+        rows = recent(db, kind="commit")
+        assert len(rows) == 1
+        assert rows[0]["commit_sha"] == "abc123def456"
+        assert rows[0]["issue_id"] == "ENH-2458"
+        assert rows[0]["branch"] == "feat/ENH-2458-commits"
+        assert json.loads(rows[0]["files_json"]) == ["scripts/little_loops/session_store.py"]
+
+    def test_dedupe_on_sha(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        assert record_commit_event(db, "dupsha", "first")
+        assert not record_commit_event(db, "dupsha", "second attempt")
+        rows = recent(db, kind="commit")
+        assert len(rows) == 1
+        assert rows[0]["message"] == "first"
+
+    def test_fts_searchable_by_message_fragment(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "ftssha", "fix flaky teleporter alignment")
+        results = search(db, query="teleporter")
+        assert any(r["kind"] == "commit" for r in results)
+
+    def test_explicit_issue_id_not_overridden(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "explsha", "mentions BUG-1 in passing", issue_id="ENH-42")
+        rows = recent(db, kind="commit")
+        assert rows[0]["issue_id"] == "ENH-42"
+
+
+class TestBackfillCommitEvents:
+    """ENH-2458: _backfill_commit_events() seeds commit_events from git log."""
+
+    @staticmethod
+    def _git(repo: Path, *args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.t", "-c", "user.name=T", *args],
+            cwd=str(repo),
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+
+    @pytest.fixture()
+    def repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        if shutil.which("git") is None:
+            pytest.skip("git not available")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._git(repo, "init", "-q")
+        (repo / "a.txt").write_text("one\n", encoding="utf-8")
+        self._git(repo, "add", "a.txt")
+        self._git(repo, "commit", "-q", "-m", "feat: initial commit")
+        (repo / "b.txt").write_text("two\n", encoding="utf-8")
+        self._git(repo, "add", "b.txt")
+        self._git(repo, "commit", "-q", "-m", "enh(store): wire it up\n\nCloses ENH-2458")
+        return repo
+
+    def test_backfill_populates_commit_events(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
+        )
+        assert counts["commits"] == 2
+        rows = recent(db, kind="commit")
+        messages = {r["message"] for r in rows}
+        assert any("initial commit" in m for m in messages)
+        by_issue = {r["issue_id"] for r in rows}
+        assert "ENH-2458" in by_issue
+
+    def test_backfill_records_touched_files(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        rows = recent(db, kind="commit")
+        newest = next(r for r in rows if "wire it up" in r["message"])
+        assert "b.txt" in json.loads(newest["files_json"])
+
+    def test_backfill_idempotent(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        first = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
+        )
+        second = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
+        )
+        assert first["commits"] == 2
+        assert second["commits"] == 0
+        assert len(recent(db, kind="commit")) == 2
+
+    def test_backfill_skipped_without_repo_root(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
+        assert counts["commits"] == 0
+
+    def test_record_head_commit_hook_helper(self, repo: Path, tmp_path: Path) -> None:
+        """The post-commit hook helper records HEAD with branch attribution."""
+        from little_loops.hooks.post_commit import record_head_commit
+
+        db = tmp_path / "history.db"
+        assert record_head_commit(db, repo)
+        rows = recent(db, kind="commit")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "ENH-2458"
+        assert rows[0]["branch"] is not None
+        assert "b.txt" in json.loads(rows[0]["files_json"])
+        # Second call is a duplicate → no new row
+        assert not record_head_commit(db, repo)
+        assert len(recent(db, kind="commit")) == 1
+
+
+class TestRecordTestRunEvent:
+    """ENH-2459: record_test_run_event() DB write round-trip."""
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_test_run_event
+
+        db = tmp_path / "history.db"
+        record_test_run_event(
+            db,
+            ts="2026-07-01T12:00:00Z",
+            ended_at="2026-07-01T12:00:31Z",
+            total=10,
+            passed=8,
+            failed=1,
+            errored=1,
+            skipped=0,
+            duration_s=31.2,
+            failing_names=["tests/test_x.py::test_flaky"],
+            env_label="local",
+            head_sha="deadbeef",
+            branch="main",
+            command="python -m pytest scripts/tests/",
+        )
+        rows = recent(db, kind="test_run")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["total"] == 10
+        assert row["passed"] == 8
+        assert row["failed"] == 1
+        assert row["errored"] == 1
+        assert json.loads(row["failing_names_json"]) == ["tests/test_x.py::test_flaky"]
+        assert row["env_label"] == "local"
+        assert row["head_sha"] == "deadbeef"
+
+    def test_failing_names_fts_searchable(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_test_run_event
+
+        db = tmp_path / "history.db"
+        record_test_run_event(
+            db,
+            ts="2026-07-01T12:00:00Z",
+            total=1,
+            failed=1,
+            failing_names=["tests/test_teleporter.py::test_alignment"],
+        )
+        results = search(db, query="teleporter")
+        assert any(r["kind"] == "test_run" for r in results)
+
+    def test_multiple_runs_are_distinct_rows(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_test_run_event
+
+        db = tmp_path / "history.db"
+        record_test_run_event(db, ts="2026-07-01T12:00:00Z", total=1, passed=1)
+        record_test_run_event(db, ts="2026-07-01T12:05:00Z", total=1, passed=1)
+        rows = recent(db, kind="test_run")
+        assert len(rows) == 2
+        assert rows[0]["ts"] > rows[1]["ts"]
+
+    def test_v14_db_upgrades_gains_test_run_events(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 14)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "test_run_events" in names
+        assert "commit_events" in names
 
 
 class TestLoopEventTypes:

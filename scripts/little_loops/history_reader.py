@@ -16,10 +16,18 @@ Public API:
     SectionProvider:  config-addressable digest section (ENH-1907)
     ProjectDigest:    aggregated project-context snapshot (ENH-1907)
     SECTION_PROVIDERS: registry of v1 section providers (ENH-1907)
+    SkillEvent:       dataclass for skill event rows incl. completion columns (ENH-2460)
+    CommitEvent:      dataclass for commit event rows (ENH-2458)
+    TestRunEvent:     dataclass for test run event rows (ENH-2459)
     find_user_corrections(topic, ...) -> list[UserCorrection]
     recent_file_events(path, ...) -> list[FileEvent]
     search(query, ...) -> list[SearchResult]
     related_issue_events(issue_id, ...) -> list[IssueEvent]
+    recent_skill_events(skill_name, ...) -> list[SkillEvent]
+    summarize_skills(since, ...) -> list[dict]
+    recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
+    recent_test_runs(branch, head_sha, ...) -> list[TestRunEvent]
+    find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
     recent_issue_velocity(limit, ...) -> list[dict]
@@ -92,6 +100,65 @@ class IssueEvent:
     discovered_by: str | None
     issue_type: str | None
     priority: str | None
+    session_id: str | None = None
+
+
+@dataclass
+class SkillEvent:
+    """A skill_events row including completion columns (ENH-2460).
+
+    ``exit_code``/``success``/``duration_ms`` are ``None`` for rows recorded
+    at dispatch time only (the user_prompt_submit hook) or written before the
+    v15 migration.
+    """
+
+    ts: str
+    session_id: str | None
+    skill_name: str | None
+    args: str | None
+    exit_code: int | None = None
+    success: int | None = None
+    duration_ms: int | None = None
+
+
+@dataclass
+class CommitEvent:
+    """A commit_events row (ENH-2458)."""
+
+    ts: str
+    commit_sha: str
+    parent_sha: str | None
+    message: str
+    author: str | None
+    branch: str | None
+    issue_id: str | None
+    files_json: str | None
+
+
+@dataclass
+class TestRunEvent:
+    """A test_run_events row (ENH-2459)."""
+
+    ts: str
+    ended_at: str | None
+    total: int | None
+    passed: int | None
+    failed: int | None
+    errored: int | None
+    skipped: int | None
+    duration_s: float | None
+    failing_names_json: str | None
+    env_label: str | None
+    head_sha: str | None
+    branch: str | None
+    command: str | None
+
+    @property
+    def pass_rate(self) -> float | None:
+        """Fraction of collected tests that passed, or None when total is 0/unknown."""
+        if not self.total:
+            return None
+        return (self.passed or 0) / self.total
 
 
 @dataclass
@@ -303,30 +370,232 @@ def search(
 def related_issue_events(
     issue_id: str,
     *,
+    session_id: str | None = None,
     limit: int = 20,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> list[IssueEvent]:
     """Return issue events for *issue_id*, ordered by most recent first.
 
-    Searches both the ``issue_events`` table and the FTS5 index for cross-references.
+    When *session_id* is given, only events recorded with that exact
+    authoritative session ID are returned (ENH-2462); the default returns all
+    rows regardless of session.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
     if conn is None:
         return []
     try:
-        rows = conn.execute(
-            "SELECT ts, issue_id, transition, discovered_by, issue_type, priority "
+        sql = (
+            "SELECT ts, issue_id, transition, discovered_by, issue_type, priority, session_id "
             "FROM issue_events WHERE issue_id = ? "
-            "ORDER BY ts DESC LIMIT ?",
-            (issue_id, limit),
-        ).fetchall()
+        )
+        params: list[Any] = [issue_id]
+        if session_id is not None:
+            sql += "AND session_id = ? "
+            params.append(session_id)
+        sql += "ORDER BY ts DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
     except sqlite3.Error:
         logger.warning("history_reader: related_issue_events query failed", exc_info=True)
         return []
     finally:
         conn.close()
     return [_row_to_dataclass(row, IssueEvent) for row in rows]
+
+
+def find_session_for_issue_transition(
+    issue_id: str,
+    transition: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> str | None:
+    """Return the session_id recorded for an exact issue transition (ENH-2462).
+
+    Reads the authoritative ``issue_events.session_id`` column; returns
+    ``None`` for legacy rows written before the v16 migration, when the
+    transition was emitted outside a session-known context, or when no such
+    transition exists.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT session_id FROM issue_events "
+            "WHERE issue_id = ? AND transition = ? AND session_id IS NOT NULL "
+            "ORDER BY ts DESC LIMIT 1",
+            (issue_id, transition),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning(
+            "history_reader: find_session_for_issue_transition query failed", exc_info=True
+        )
+        return None
+    finally:
+        conn.close()
+    return row["session_id"] if row else None
+
+
+def recent_skill_events(
+    skill_name: str | None = None,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SkillEvent]:
+    """Return recent skill events, newest first, incl. completion columns (ENH-2460)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, skill_name, args, exit_code, success, duration_ms "
+            "FROM skill_events "
+        )
+        params: list[Any] = []
+        if skill_name is not None:
+            sql += "WHERE skill_name = ? "
+            params.append(skill_name)
+        sql += "ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_skill_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, SkillEvent) for row in rows]
+
+
+def summarize_skills(
+    since: str | None = None,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-skill rollup of invocations / completions / success rate (ENH-2460).
+
+    ``success_rate`` and ``avg_duration_ms`` are computed over rows that carry
+    a completion signal only (dispatch-only rows have ``success IS NULL`` and
+    count toward ``invocations`` but not the rate). *since* is an ISO 8601
+    lower bound on ``ts``. Sorted by invocation count, descending.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT skill_name, COUNT(*) AS invocations, "
+            "COUNT(success) AS completions, "
+            "SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successes, "
+            "AVG(duration_ms) AS avg_duration_ms "
+            "FROM skill_events "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ? "
+            params.append(since)
+        sql += "GROUP BY skill_name ORDER BY invocations DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: summarize_skills query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        completions = row["completions"] or 0
+        successes = row["successes"] or 0
+        result.append(
+            {
+                "skill_name": row["skill_name"],
+                "invocations": row["invocations"],
+                "completions": completions,
+                "successes": successes,
+                "success_rate": (successes / completions) if completions else None,
+                "avg_duration_ms": row["avg_duration_ms"],
+            }
+        )
+    return result
+
+
+def recent_commit_events(
+    *,
+    branch: str | None = None,
+    issue_id: str | None = None,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[CommitEvent]:
+    """Return recent commit events, newest first, optionally filtered (ENH-2458)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, commit_sha, parent_sha, message, author, branch, issue_id, files_json "
+            "FROM commit_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if branch is not None:
+            clauses.append("branch = ?")
+            params.append(branch)
+        if issue_id is not None:
+            clauses.append("issue_id = ?")
+            params.append(issue_id)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_commit_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, CommitEvent) for row in rows]
+
+
+def recent_test_runs(
+    *,
+    branch: str | None = None,
+    head_sha: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[TestRunEvent]:
+    """Return recent test-run events, newest first, optionally filtered (ENH-2459)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, ended_at, total, passed, failed, errored, skipped, duration_s, "
+            "failing_names_json, env_label, head_sha, branch, command "
+            "FROM test_run_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if branch is not None:
+            clauses.append("branch = ?")
+            params.append(branch)
+        if head_sha is not None:
+            clauses.append("head_sha = ?")
+            params.append(head_sha)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_test_runs query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, TestRunEvent) for row in rows]
 
 
 def sessions_for_issue(
@@ -337,11 +606,14 @@ def sessions_for_issue(
 ) -> list[SessionRef]:
     """Return sessions that co-occurred with *issue_id*'s active period.
 
-    Queries the ``issue_sessions`` VIEW (v5 migration, ENH-1711), which joins
-    ``issue_events`` to ``message_events`` via overlapping timestamps.  Live-emitted
-    rows (from ``issue_lifecycle.py````'s 6 emit sites) now populate ``captured_at``
-    directly; no prior ``backfill`` pass is needed for issues processed after
-    ENH-1839.
+    Queries the ``issue_sessions`` VIEW. As of the v16 migration (ENH-2462)
+    the view prefers exact joins on the authoritative
+    ``issue_events.session_id`` column and falls back to the deprecated
+    timestamp-overlap inference (``legacy_issue_sessions_ts_overlap``) only
+    for issues with no authoritative rows. Live-emitted rows (from
+    ``issue_lifecycle.py``'s 6 emit sites) populate ``captured_at`` and
+    ``session_id`` directly; no prior ``backfill`` pass is needed for issues
+    processed after ENH-1839.
 
     Returns an empty list when the view is absent (pre-v5 schema), the issue
     has no recorded sessions, or the database is unavailable.

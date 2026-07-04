@@ -32,6 +32,9 @@ Public API:
     record_correction(db,...):   write one row to ``user_corrections`` + search_index
     record_skill_event(db,...):  write one row to ``skill_events`` + search_index
     cli_event_context(db,...):   context manager: INSERT on enter, UPDATE exit_code+duration on exit
+    skill_event_context(db,...): skill-host analogue of cli_event_context (ENH-2460)
+    record_commit_event(db,...): write one row to ``commit_events`` + search_index (ENH-2458)
+    record_test_run_event(db,...): write one row to ``test_run_events`` + search_index (ENH-2459)
 """
 
 from __future__ import annotations
@@ -47,6 +50,7 @@ import threading
 import time
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -72,7 +76,11 @@ __all__ = [
     "record_correction",
     "record_skill_event",
     "record_issue_snapshot",
+    "record_commit_event",
+    "record_test_run_event",
     "cli_event_context",
+    "skill_event_context",
+    "SkillEventCompletion",
     "resolve_history_db",
     "record_retirement",
     "list_retirements",
@@ -91,10 +99,22 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     return Path(path) if path is not None else DEFAULT_DB_PATH
 
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 18
 
 _VALID_KINDS = frozenset(
-    {"tool", "file", "issue", "loop", "correction", "message", "skill", "cli", "snapshot"}
+    {
+        "tool",
+        "file",
+        "issue",
+        "loop",
+        "correction",
+        "message",
+        "skill",
+        "cli",
+        "snapshot",
+        "commit",
+        "test_run",
+    }
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -105,6 +125,8 @@ _KIND_TABLE = {
     "message": "message_events",
     "skill": "skill_events",
     "cli": "cli_events",
+    "commit": "commit_events",
+    "test_run": "test_run_events",
 }
 
 # FSM event types the SQLiteTransport records as loop_events rows.
@@ -425,6 +447,100 @@ _MIGRATIONS: list[str] = [
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_snapshots_dedup
         ON issue_snapshots(issue_id, transition);
+    """,
+    # v15 (ENH-2460): completion-side columns on skill_events so skill hosts can
+    # record exit_code/success/duration_ms via skill_event_context(), mirroring
+    # cli_events (ENH-1834). Nullable so pre-migration dispatch-only rows remain
+    # valid (NULL = "no completion signal recorded").
+    """
+    ALTER TABLE skill_events ADD COLUMN exit_code INTEGER;
+    ALTER TABLE skill_events ADD COLUMN success INTEGER;
+    ALTER TABLE skill_events ADD COLUMN duration_ms INTEGER;
+    """,
+    # v16 (ENH-2462): authoritative session_id column on issue_events, captured at
+    # transition time by the EventBus producer. The timestamp-overlap heuristic
+    # view is preserved as legacy_issue_sessions_ts_overlap (deprecated); the
+    # issue_sessions relation is rebuilt to prefer exact session_id joins and
+    # fall back to the legacy inference only for issues with no authoritative
+    # rows, so pre-migration consumers keep working without a data backfill.
+    """
+    ALTER TABLE issue_events ADD COLUMN session_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_issue_events_session_id ON issue_events(session_id);
+    DROP VIEW IF EXISTS issue_sessions;
+    CREATE VIEW legacy_issue_sessions_ts_overlap AS
+    SELECT ie.issue_id,
+           me.session_id,
+           s.jsonl_path,
+           MIN(me.ts) AS first_message_ts,
+           MAX(me.ts) AS last_message_ts
+    FROM issue_events ie
+    JOIN message_events me
+      ON me.ts >= ie.captured_at
+     AND (ie.completed_at IS NULL OR me.ts <= ie.completed_at)
+    LEFT JOIN sessions s ON s.session_id = me.session_id
+    WHERE ie.captured_at IS NOT NULL
+    GROUP BY ie.issue_id, me.session_id;
+    CREATE VIEW issue_sessions AS
+    SELECT ie.issue_id,
+           ie.session_id,
+           s.jsonl_path,
+           MIN(ie.ts) AS first_message_ts,
+           MAX(ie.ts) AS last_message_ts
+    FROM issue_events ie
+    LEFT JOIN sessions s ON s.session_id = ie.session_id
+    WHERE ie.session_id IS NOT NULL
+    GROUP BY ie.issue_id, ie.session_id
+    UNION ALL
+    SELECT l.issue_id, l.session_id, l.jsonl_path, l.first_message_ts, l.last_message_ts
+    FROM legacy_issue_sessions_ts_overlap l
+    WHERE l.issue_id NOT IN (
+        SELECT issue_id FROM issue_events
+        WHERE session_id IS NOT NULL AND issue_id IS NOT NULL
+    );
+    """,
+    # v17 (ENH-2458): commit_events — ground-truth record of what actually
+    # shipped. Populated live by record_commit_event() (post-commit hook or the
+    # /ll:commit path) and retroactively by _backfill_commit_events() walking
+    # ``git log --all``. commit_sha UNIQUE + INSERT OR IGNORE gives idempotency.
+    """
+    CREATE TABLE IF NOT EXISTS commit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        commit_sha TEXT NOT NULL UNIQUE,
+        parent_sha TEXT,
+        message TEXT NOT NULL,
+        author TEXT,
+        branch TEXT,
+        issue_id TEXT,
+        files_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_commit_events_issue_id ON commit_events(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_commit_events_branch ON commit_events(branch);
+    CREATE INDEX IF NOT EXISTS idx_commit_events_sha ON commit_events(commit_sha);
+    """,
+    # v18 (ENH-2459): test_run_events — persisted pytest run results (the local
+    # suite is this project's only CI gate). Written best-effort by the
+    # little_loops.pytest_history_plugin pytest11 plugin via record_test_run_event().
+    """
+    CREATE TABLE IF NOT EXISTS test_run_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        ended_at TEXT,
+        total INTEGER,
+        passed INTEGER,
+        failed INTEGER,
+        errored INTEGER,
+        skipped INTEGER,
+        duration_s REAL,
+        failing_names_json TEXT,
+        env_label TEXT,
+        head_sha TEXT,
+        branch TEXT,
+        command TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_head_sha ON test_run_events(head_sha);
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_branch ON test_run_events(branch);
+    CREATE INDEX IF NOT EXISTS idx_test_run_events_failed_count ON test_run_events(failed);
     """,
 ]
 
@@ -792,6 +908,331 @@ def cli_event_context(
         conn.close()
 
 
+@dataclass
+class SkillEventCompletion:
+    """Mutable completion handle yielded by :func:`skill_event_context` (ENH-2460).
+
+    Hosts that observe a concrete process exit code (e.g. ``ll-action``) set
+    ``exit_code`` before the ``with`` block exits; ``success`` is derived from
+    it unless set explicitly. Left untouched, a clean exit records
+    ``exit_code=0, success=1`` and a raise records ``exit_code=1, success=0``.
+    """
+
+    exit_code: int | None = None
+    success: bool | None = None
+
+
+@contextmanager
+def skill_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    session_id: str | None = None,
+    skill_name: str = "",
+    args: str = "",
+    config: dict | None = None,
+) -> Generator[SkillEventCompletion, None, None]:
+    """Insert a ``skill_events`` row on enter; update completion columns on exit.
+
+    Skill-host analogue of :func:`cli_event_context` (ENH-2460): records
+    ``exit_code``, ``success`` and ``duration_ms`` when the wrapped skill body
+    finishes. Unlike ``cli_event_context`` this is best-effort per the
+    EPIC-1707 graceful-degradation contract — a missing or locked database
+    never blocks the skill run (the body still executes; the row is skipped).
+
+    The ``config`` parameter is a forward-compatibility stub for per-skill
+    analytics gating (ENH-1835); it is accepted but not yet used.
+    """
+    args = args[:200]
+    conn: sqlite3.Connection | None = None
+    row_id: int | None = None
+    effective_path = (
+        resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
+    )
+    ts = _now()
+    try:
+        conn = connect(effective_path)
+        cursor = conn.execute(
+            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+            (ts, session_id, skill_name, args),
+        )
+        row_id = cursor.lastrowid
+        _index(
+            conn, content=skill_name, kind="skill", ref=session_id or "", anchor=skill_name, ts=ts
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning("skill_event_context: insert failed for %r", skill_name, exc_info=True)
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        conn = None
+        row_id = None
+    start = time.time()
+    completion = SkillEventCompletion()
+    try:
+        yield completion
+        if completion.exit_code is None:
+            completion.exit_code = 0
+        if completion.success is None:
+            completion.success = completion.exit_code == 0
+    except BaseException:
+        if completion.exit_code is None or completion.exit_code == 0:
+            completion.exit_code = 1
+        completion.success = False
+        raise
+    finally:
+        if conn is not None and row_id is not None:
+            duration_ms = int((time.time() - start) * 1000)
+            exit_code = completion.exit_code if completion.exit_code is not None else 1
+            success = completion.success if completion.success is not None else False
+            try:
+                conn.execute(
+                    "UPDATE skill_events SET exit_code=?, success=?, duration_ms=? WHERE id=?",
+                    (exit_code, 1 if success else 0, duration_ms, row_id),
+                )
+                conn.commit()
+            except sqlite3.Error:
+                logger.warning(
+                    "skill_event_context: update failed for %r", skill_name, exc_info=True
+                )
+            finally:
+                conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Commit events (ENH-2458)
+# ---------------------------------------------------------------------------
+
+# Issue references in commit messages: "Closes #123", "Fixes ENH-2458",
+# "Issue: BUG-99" trailers, plain "(ENH-2458)" mentions.
+_COMMIT_MSG_ISSUE_RE = re.compile(
+    r"\b(?:closes|fixes|resolves|issue:?)\s*:?\s*#?((?:BUG|ENH|FEAT|EPIC)-\d+|\d+)",
+    re.IGNORECASE,
+)
+_COMMIT_ID_RE = re.compile(r"\b((?:BUG|ENH|FEAT|EPIC)-\d+)\b")
+_BRANCH_ISSUE_RE = re.compile(r"((?:BUG|ENH|FEAT|EPIC)-\d+)", re.IGNORECASE)
+
+
+def _infer_issue_id(message: str, branch: str | None = None) -> str | None:
+    """Infer an issue ID from a commit *message* and optional *branch* name.
+
+    Checks (in order): explicit ``Closes/Fixes/Resolves/Issue:`` references,
+    any bare ``TYPE-NNN`` token in the message, then branch-name conventions
+    (``feat/ENH-2458-...``). Returns ``None`` when nothing matches.
+    """
+    m = _COMMIT_MSG_ISSUE_RE.search(message)
+    if m:
+        ref = m.group(1).upper()
+        if "-" in ref:
+            return ref
+        # Bare "#123" — cannot resolve the type prefix; fall through to
+        # a typed token elsewhere in the message before giving up.
+    m = _COMMIT_ID_RE.search(message)
+    if m:
+        return m.group(1).upper()
+    if branch:
+        m = _BRANCH_ISSUE_RE.search(branch)
+        if m:
+            return m.group(1).upper()
+    return None
+
+
+def record_commit_event(
+    db_path: Path | str,
+    commit_sha: str,
+    message: str,
+    *,
+    author: str | None = None,
+    branch: str | None = None,
+    issue_id: str | None = None,
+    files: Sequence[str] | None = None,
+    parent_sha: str | None = None,
+    ts: str | None = None,
+    config: dict | None = None,
+) -> bool:
+    """Write one row to ``commit_events`` and index it in ``search_index``.
+
+    ``issue_id`` is inferred from the message/branch when not given. Idempotent
+    via ``INSERT OR IGNORE`` on the ``commit_sha`` UNIQUE constraint; the FTS
+    row is only written when the insert actually lands, so repeated calls do
+    not duplicate search results. Returns True when a new row was inserted.
+
+    The ``config`` parameter is a forward-compatibility stub for an
+    ``analytics.capture.commits`` gate; it is accepted but not yet used.
+    """
+    if not commit_sha:
+        return False
+    if issue_id is None:
+        issue_id = _infer_issue_id(message, branch)
+    files_json = json.dumps(list(files)) if files is not None else None
+    conn = connect(db_path)
+    ts = ts or _now()
+    try:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO commit_events("
+            "ts, commit_sha, parent_sha, message, author, branch, issue_id, files_json"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, commit_sha, parent_sha, message, author, branch, issue_id, files_json),
+        )
+        inserted = bool(cursor.rowcount)
+        if inserted:
+            _index(
+                conn,
+                content=f"{commit_sha[:12]} {issue_id or ''} {message}".strip()[:512],
+                kind="commit",
+                ref=commit_sha,
+                anchor=issue_id or "",
+                ts=ts,
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return inserted
+
+
+def _backfill_commit_events(conn: sqlite3.Connection, repo_root: Path) -> int:
+    """Seed ``commit_events`` from ``git log --all`` under *repo_root*.
+
+    Follows the ``_backfill_messages()`` pattern: idempotent via
+    ``INSERT OR IGNORE`` on the ``commit_sha`` UNIQUE constraint (the FTS row
+    is only written for genuinely new commits). Branch attribution is not
+    reconstructed retroactively (``git log --all`` has no unambiguous branch
+    per commit), so backfilled rows carry ``branch=NULL``.
+    """
+    # \x1e separates records, \x1f separates fields: sha, parents, author,
+    # author-date (ISO), full message body. --name-only appends touched paths.
+    fmt = "%x1e%H%x1f%P%x1f%an%x1f%aI%x1f%B%x1f"
+    try:
+        proc = subprocess.run(
+            ["git", "log", "--all", "--name-only", f"--pretty=format:{fmt}"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    if proc.returncode != 0:
+        return 0
+    count = 0
+    for record in proc.stdout.split("\x1e"):
+        if not record.strip():
+            continue
+        parts = record.split("\x1f")
+        if len(parts) < 6:
+            continue
+        sha, parents, author, author_date, message, tail = (
+            parts[0].strip(),
+            parts[1].strip(),
+            parts[2].strip(),
+            parts[3].strip(),
+            parts[4],
+            parts[5],
+        )
+        if not sha:
+            continue
+        files = [line.strip() for line in tail.splitlines() if line.strip()]
+        message = message.strip()
+        issue_id = _infer_issue_id(message)
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO commit_events("
+            "ts, commit_sha, parent_sha, message, author, branch, issue_id, files_json"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                author_date,
+                sha,
+                parents.split(" ")[0] if parents else None,
+                message,
+                author or None,
+                None,
+                issue_id,
+                json.dumps(files),
+            ),
+        )
+        if cursor.rowcount:
+            _index(
+                conn,
+                content=f"{sha[:12]} {issue_id or ''} {message}".strip()[:512],
+                kind="commit",
+                ref=sha,
+                anchor=issue_id or "",
+                ts=author_date,
+            )
+            count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Test-run events (ENH-2459)
+# ---------------------------------------------------------------------------
+
+
+def record_test_run_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    ended_at: str | None = None,
+    total: int = 0,
+    passed: int = 0,
+    failed: int = 0,
+    errored: int = 0,
+    skipped: int = 0,
+    duration_s: float | None = None,
+    failing_names: Sequence[str] | None = None,
+    env_label: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    command: str | None = None,
+    config: dict | None = None,
+) -> None:
+    """Write one row to ``test_run_events`` and index it in ``search_index``.
+
+    ``failing_names`` (pytest node IDs) are stored as a JSON array and also
+    fed into the FTS index so ``ll-session search --fts "<test name>"
+    --kind test_run`` surfaces the runs where that test failed.
+
+    The ``config`` parameter is a forward-compatibility stub for an
+    ``analytics.capture.test_runs`` gate; it is accepted but not yet used.
+    """
+    names = list(failing_names) if failing_names else []
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO test_run_events("
+            "ts, ended_at, total, passed, failed, errored, skipped, duration_s, "
+            "failing_names_json, env_label, head_sha, branch, command"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                ended_at,
+                total,
+                passed,
+                failed,
+                errored,
+                skipped,
+                duration_s,
+                json.dumps(names),
+                env_label,
+                head_sha,
+                branch,
+                command,
+            ),
+        )
+        summary = f"{command or 'pytest'} passed={passed} failed={failed} " + " ".join(names)
+        _index(
+            conn,
+            content=summary.strip()[:512],
+            kind="test_run",
+            ref=head_sha or "",
+            anchor=branch or "",
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Query API
 # ---------------------------------------------------------------------------
@@ -830,7 +1271,10 @@ def recent(
     kind: str,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
-    """Return the most recent rows for *kind* (tool, file, issue, loop, correction, message, skill, cli)."""
+    """Return the most recent rows for *kind*.
+
+    Kinds: tool, file, issue, loop, correction, message, skill, cli, commit, test_run.
+    """
     if kind not in _VALID_KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(_VALID_KINDS)}")
     table = _KIND_TABLE[kind]
@@ -933,11 +1377,15 @@ class SQLiteTransport:
                 elif event_type.startswith("issue."):
                     issue_id = event.get("issue_id")
                     transition = _derive_transition(event_type)
+                    # Authoritative session linkage (ENH-2462): producers put the
+                    # emitting session's ID in the payload; both snake_case and
+                    # the host JSONL camelCase spelling are accepted.
+                    session_id = event.get("session_id") or event.get("sessionId")
                     conn.execute(
                         "INSERT OR IGNORE INTO issue_events("
                         "ts, issue_id, transition, discovered_by, "
-                        "issue_type, priority, captured_at, completed_at"
-                        ") VALUES(?,?,?,?,?,?,?,?)",
+                        "issue_type, priority, captured_at, completed_at, session_id"
+                        ") VALUES(?,?,?,?,?,?,?,?,?)",
                         (
                             ts,
                             issue_id,
@@ -947,6 +1395,7 @@ class SQLiteTransport:
                             event.get("priority"),
                             event.get("captured_at"),
                             event.get("completed_at"),
+                            str(session_id) if session_id else None,
                         ),
                     )
                     _index(
@@ -1997,12 +2446,15 @@ def backfill(
     jsonl_files: list[Path] | None = None,
     config: dict | None = None,
     max_sessions: int | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
-    Reads issue-file frontmatter, FSM loop-state JSON, and (optionally) session
-    JSONL tool-use blocks plus user-message blocks. Returns a per-kind count of
-    rows inserted. Sources that are absent are skipped silently.
+    Reads issue-file frontmatter, FSM loop-state JSON, git commit history
+    (ENH-2458; only when *repo_root* is given and contains ``.git``), and
+    (optionally) session JSONL tool-use blocks plus user-message blocks.
+    Returns a per-kind count of rows inserted. Sources that are absent are
+    skipped silently.
     """
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
@@ -2018,6 +2470,7 @@ def backfill(
         "summaries": 0,
         "snapshots": 0,
         "skill_events": 0,
+        "commits": 0,
     }
     try:
         if issues_dir.is_dir():
@@ -2025,6 +2478,8 @@ def backfill(
             counts["snapshots"] = _backfill_snapshots(conn, issues_dir)
         if loops_dir.is_dir():
             counts["loops"] = _backfill_loops(conn, loops_dir)
+        if repo_root is not None and (repo_root / ".git").exists():
+            counts["commits"] = _backfill_commit_events(conn, repo_root)
         if jsonl_files:
             counts["tools"] = _backfill_tool_events(conn, jsonl_files)
             counts["messages"] = _backfill_messages(conn, jsonl_files)
@@ -2342,6 +2797,8 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "correction": ("user_corrections", "ts"),
     "summary_node": ("summary_nodes", "created_at"),
     "message_event": ("message_events", "ts"),
+    "commit_event": ("commit_events", "ts"),
+    "test_run_event": ("test_run_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -2352,6 +2809,8 @@ _EXPORT_DEFAULT_TABLES = [
     "loop_event",
     "correction",
     "summary_node",
+    "commit_event",
+    "test_run_event",
 ]
 
 

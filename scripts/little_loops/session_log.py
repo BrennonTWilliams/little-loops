@@ -83,6 +83,23 @@ def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
     return max(jsonl_files, key=lambda f: f.stat().st_mtime)
 
 
+def get_current_session_id(cwd: Path | None = None) -> str | None:
+    """Resolve the active session's ID (the JSONL filename stem), or None.
+
+    Used by issue-lifecycle EventBus producers (ENH-2462) to stamp
+    ``issue_events.session_id`` at transition time. Prefers an explicit
+    ``CLAUDE_SESSION_ID`` environment variable when a host sets one, falling
+    back to the most recently modified session JSONL for the project.
+    """
+    import os
+
+    env_val = os.environ.get("CLAUDE_SESSION_ID")
+    if env_val:
+        return env_val
+    jsonl = get_current_session_jsonl(cwd)
+    return jsonl.stem if jsonl is not None else None
+
+
 def append_session_log_entry(
     issue_path: Path,
     command: str,
