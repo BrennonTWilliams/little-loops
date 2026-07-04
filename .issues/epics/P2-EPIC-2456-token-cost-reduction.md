@@ -8,7 +8,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_date: "2026-07-02"
 discovered_by: deep-research / manual synthesis
 labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257]
+relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479]
 source_artifacts:
   - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
   - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -146,6 +146,11 @@ Each entry below is a **planned** child issue to be captured next; issue IDs TBD
 
 - **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2)*
 - **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2)*
+- **ENH-2475** — F5.1 existing-event audit (DES adoption prerequisite): classify every currently-emitted `history.db` event into a DES variant; port non-conforming shapes. *(filed 2026-07-04, P2)*
+- **FEAT-2476** — F2 `--max-cost` accumulator + 80%/100% guard + ELIS one-line forecast: extends `fsm/executor.py:1295`, new `fsm/budget.py`, `--max-cost` flag on `ll-loop run`. *(filed 2026-07-04, P2)*
+- **ENH-2477** — F6 per-state cost attribution (finishes): stable JSON output with `cache_read`/`cache_creation` broken out, `cost_ceiling_per_state` / `cost_warn_at` loop-YAML schema, new `fsm/cost_graph.py`. *(filed 2026-07-04, P2)*
+- **FEAT-2478** — F5 OTel `gen_ai.usage.*` emission: new `observability/tracing.py`, `gen_ai.invocation.id` UUID stamping, `gen_ai.provider.vendor` addendum, streaming-vs-blocking parity check. Depends on ENH-2475 (DES audit). *(filed 2026-07-04, P2)*
+- **ENH-2479** — F5 streaming-vs-blocking cache-accounting parity trace set: 3 locked fixtures (static-prefix-stable turn 2+, cache-write-then-read across tool result, tool-result-only cache hit); gates 0.1% parity threshold in `test_streaming_cache_parity.py`. *(filed 2026-07-04, P2)*
 
 ### Tier 1 — measurement foundation
 
