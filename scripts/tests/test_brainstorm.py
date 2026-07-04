@@ -67,6 +67,7 @@ class TestBrainstormYaml:
             "sink_file",
             "sink_issue",
             "sink_decision",
+            "verify_artifacts",
             "done",
             "failed",
         }
@@ -122,6 +123,7 @@ class TestBrainstormYaml:
             "converge",
             "route_sink",
             "sink_file",
+            "verify_artifacts",
             "done",
             "failed",
         }
@@ -232,11 +234,12 @@ class TestBrainstormShellStates:
     def test_route_sink_has_all_branches(self, data: dict) -> None:
         state = data["states"]["route_sink"]
         route = state.get("route", {})
-        assert route.get("none") == "done"
+        assert route.get("none") == "verify_artifacts"
         assert route.get("file") == "sink_file"
         assert route.get("issue") == "sink_issue"
         assert route.get("decision") == "sink_decision"
         assert "_" in route, "route_sink must have a wildcard '_' fallback"
+        assert route.get("_") == "verify_artifacts"
 
     def test_dedup_novelty_uses_exit_code_evaluator(self, data: dict) -> None:
         state = data["states"]["dedup_novelty"]
@@ -605,3 +608,143 @@ if not ideas_json_str:
             assert (run_dir / artifact).exists(), f"{artifact} not created by init"
         sat = (run_dir / "saturation.txt").read_text().strip()
         assert sat == "0", f"saturation.txt should be initialized to 0, got: {sat!r}"
+
+
+class TestBug2468ErrorRouting:
+    """dedup_novelty crashes route to failed, and the terminal path gates on artifacts.
+
+    Executes the real dedup_novelty and verify_artifacts actions from the YAML
+    (with FSM substitutions replaced) so the exit-code contract is verified
+    against the actual heredoc, not a mirror.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load(LOOP_FILE.read_text())
+
+    def _seeded_run_dir(self, tmp_path: Path) -> Path:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "ideas.jsonl").write_text("")
+        (run_dir / "saturation.txt").write_text("0")
+        return run_dir
+
+    def _dedup_action(
+        self,
+        data: dict,
+        run_dir: Path,
+        payload: str,
+        threshold: str = "0.55",
+    ) -> str:
+        action: str = data["states"]["dedup_novelty"]["action"]
+        action = action.replace("${captured.run_dir.output}", str(run_dir))
+        action = action.replace("${captured.round_ideas.output}", payload)
+        action = action.replace("${context.novelty_threshold}", threshold)
+        return action
+
+    # --- Routing (YAML structure) ---------------------------------------
+
+    def test_dedup_novelty_on_error_routes_to_failed(self, data: dict) -> None:
+        """A dedup_novelty crash must terminate in failed, never route to cluster."""
+        assert data["states"]["dedup_novelty"].get("on_error") == "failed"
+
+    def test_verify_artifacts_routes(self, data: dict) -> None:
+        state = data["states"]["verify_artifacts"]
+        assert state.get("action_type") == "shell"
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_yes") == "done"
+        assert state.get("on_no") == "failed"
+        assert state.get("on_error") == "failed"
+
+    def test_all_success_paths_route_through_verify_artifacts(self, data: dict) -> None:
+        """Every path into the terminal done state must pass the artifact gate."""
+        states = data["states"]
+        assert states["sink_file"].get("on_yes") == "verify_artifacts"
+        assert states["sink_file"].get("on_no") == "verify_artifacts"
+        assert states["sink_issue"].get("next") == "verify_artifacts"
+        assert states["sink_decision"].get("next") == "verify_artifacts"
+        route = states["route_sink"].get("route", {})
+        assert route.get("none") == "verify_artifacts"
+        assert route.get("_") == "verify_artifacts"
+
+    # --- dedup_novelty exit-code contract (real heredoc execution) ------
+
+    def test_crash_exits_2_with_stderr_message(self, data: dict, tmp_path: Path) -> None:
+        """An uncaught exception inside the script exits 2 (error), not 1 (no)."""
+        run_dir = self._seeded_run_dir(tmp_path)
+        payload = 'IDEAS_JSON: {"text": "a novel idea", "rationale": "r"}'
+        # Non-numeric threshold -> float() raises ValueError inside the try block
+        action = self._dedup_action(data, run_dir, payload, threshold="not-a-number")
+        result = _bash(action, tmp_path)
+        assert result.returncode == 2, (
+            f"crash must exit 2, got {result.returncode}: {result.stderr}"
+        )
+        assert "ERROR in dedup_novelty" in result.stderr
+
+    def test_triple_quote_payload_no_longer_crashes(self, data: dict, tmp_path: Path) -> None:
+        """A payload containing triple quotes must not SyntaxError the heredoc (BUG-2468)."""
+        run_dir = self._seeded_run_dir(tmp_path)
+        payload = (
+            'some prose with """ embedded quotes """ that used to kill the parse\n'
+            'IDEAS_JSON: {"text": "survives injection", "rationale": "r"}'
+        )
+        action = self._dedup_action(data, run_dir, payload)
+        result = _bash(action, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+        assert result.stdout.strip() == "1"
+        ideas = (run_dir / "ideas.jsonl").read_text().strip().splitlines()
+        assert len(ideas) == 1
+        assert json.loads(ideas[0])["text"] == "survives injection"
+
+    def test_happy_path_exits_0_and_appends_ideas(self, data: dict, tmp_path: Path) -> None:
+        run_dir = self._seeded_run_dir(tmp_path)
+        payload = (
+            'IDEAS_JSON: {"text": "use mutation testing", "rationale": "r"}\n'
+            'IDEAS_JSON: {"text": "introduce chaos engineering", "rationale": "r"}'
+        )
+        action = self._dedup_action(data, run_dir, payload)
+        result = _bash(action, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+        assert result.stdout.strip() == "2"
+        assert (run_dir / "saturation.txt").read_text().strip() == "0"
+
+    def test_zero_novel_exits_0_and_increments_saturation(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """All-duplicate rounds are legitimate saturation: exit 0, counter increments."""
+        run_dir = self._seeded_run_dir(tmp_path)
+        existing = {"text": "use mutation testing", "rationale": "r"}
+        (run_dir / "ideas.jsonl").write_text(json.dumps(existing) + "\n")
+        payload = 'IDEAS_JSON: {"text": "use mutation testing", "rationale": "r"}'
+        action = self._dedup_action(data, run_dir, payload)
+        result = _bash(action, tmp_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr}"
+        assert result.stdout.strip() == "0"
+        assert (run_dir / "saturation.txt").read_text().strip() == "1"
+
+    # --- verify_artifacts invariant (real shell execution) --------------
+
+    def _verify_action(self, data: dict, run_dir: Path) -> str:
+        action: str = data["states"]["verify_artifacts"]["action"]
+        return action.replace("${captured.run_dir.output}", str(run_dir))
+
+    def test_empty_brainstorm_md_exits_2(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "brainstorm.md").write_text("")
+        result = _bash(self._verify_action(data, run_dir), tmp_path)
+        assert result.returncode == 2
+        assert "empty or missing" in result.stderr
+
+    def test_missing_brainstorm_md_exits_2(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        result = _bash(self._verify_action(data, run_dir), tmp_path)
+        assert result.returncode == 2
+
+    def test_nonempty_brainstorm_md_exits_0(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "brainstorm.md").write_text("# Brainstorm\n\n## Top Idea\ncontent\n")
+        result = _bash(self._verify_action(data, run_dir), tmp_path)
+        assert result.returncode == 0

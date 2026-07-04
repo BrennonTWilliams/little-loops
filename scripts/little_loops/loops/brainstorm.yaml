@@ -125,77 +125,94 @@ states:
     # Collects all IDEAS_JSON lines (NDJSON: one object per line), deduplicates via
     # difflib.SequenceMatcher, appends novel ideas to ideas.jsonl, and updates the
     # saturation counter.  saturation.txt is reset to 0 on any novel idea; incremented otherwise.
+    #
+    # Exit-code contract (BUG-2468):
+    #   0 — script ran successfully (novel count printed; saturation counter updated)
+    #   2 — uncaught exception (real crash) -> verdict=error -> on_error: failed
+    # A crash must never be indistinguishable from "no novel ideas" — routing a
+    # crash to cluster silently loses the entire idea set while reporting success.
+    #
+    # The LLM payload is written to a file via a quoted shell heredoc instead of
+    # being interpolated into the Python source: a payload containing `"""` used
+    # to terminate the triple-quoted literal and crash the whole script with a
+    # compile-time SyntaxError that no try/except could catch (BUG-2468).
     fragment: parse_tagged_json
     action: |
+      cat > "${captured.run_dir.output}/round_ideas.txt" << 'RAWEOF'
+      ${captured.round_ideas.output}
+      RAWEOF
       python3 << 'PYEOF'
       import json, sys, difflib
 
-      raw = """${captured.round_ideas.output}"""
-      new_ideas = []
-      for line in raw.split('\n'):
-          line = line.strip()
-          if line.startswith('IDEAS_JSON:'):
-              json_str = line[len('IDEAS_JSON:'):].strip()
-              try:
-                  idea = json.loads(json_str)
-                  if isinstance(idea, dict):
-                      new_ideas.append(idea)
-                  elif isinstance(idea, list):
-                      # backwards-compat: model emitted the old array form on this line
-                      new_ideas.extend(i for i in idea if isinstance(i, dict))
-              except (json.JSONDecodeError, ValueError) as e:
-                  print(f"Warning: skipping malformed IDEAS_JSON line: {e}", file=sys.stderr)
-
-      if not new_ideas:
-          print(0)
-          sys.exit(0)
-
-      ideas_file = "${captured.run_dir.output}/ideas.jsonl"
-      existing_texts = []
       try:
-          with open(ideas_file, 'r') as f:
-              for line in f:
-                  line = line.strip()
-                  if line:
-                      existing_texts.append(json.loads(line).get('text', ''))
-      except (FileNotFoundError, json.JSONDecodeError):
-          pass
+          with open("${captured.run_dir.output}/round_ideas.txt") as f:
+              raw = f.read()
+          new_ideas = []
+          for line in raw.split('\n'):
+              line = line.strip()
+              if line.startswith('IDEAS_JSON:'):
+                  json_str = line[len('IDEAS_JSON:'):].strip()
+                  try:
+                      idea = json.loads(json_str)
+                      if isinstance(idea, dict):
+                          new_ideas.append(idea)
+                      elif isinstance(idea, list):
+                          # backwards-compat: model emitted the old array form on this line
+                          new_ideas.extend(i for i in idea if isinstance(i, dict))
+                  except (json.JSONDecodeError, ValueError) as e:
+                      print(f"Warning: skipping malformed IDEAS_JSON line: {e}", file=sys.stderr)
 
-      threshold = float("${context.novelty_threshold}")
-      novel = []
-      for idea in new_ideas:
-          text = idea.get('text', str(idea))
-          is_dup = any(
-              difflib.SequenceMatcher(None, text.lower(), ex.lower()).ratio() >= threshold
-              for ex in existing_texts
-          ) if existing_texts else False
-          if not is_dup:
-              novel.append(idea)
-              existing_texts.append(text)
+          ideas_file = "${captured.run_dir.output}/ideas.jsonl"
+          existing_texts = []
+          try:
+              with open(ideas_file, 'r') as f:
+                  for line in f:
+                      line = line.strip()
+                      if line:
+                          existing_texts.append(json.loads(line).get('text', ''))
+          except (FileNotFoundError, json.JSONDecodeError):
+              pass
 
-      with open(ideas_file, 'a') as f:
-          for idea in novel:
-              f.write(json.dumps(idea) + '\n')
+          threshold = float("${context.novelty_threshold}")
+          novel = []
+          for idea in new_ideas:
+              text = idea.get('text', str(idea))
+              is_dup = any(
+                  difflib.SequenceMatcher(None, text.lower(), ex.lower()).ratio() >= threshold
+                  for ex in existing_texts
+              ) if existing_texts else False
+              if not is_dup:
+                  novel.append(idea)
+                  existing_texts.append(text)
 
-      sat_file = "${captured.run_dir.output}/saturation.txt"
-      try:
-          with open(sat_file, 'r') as f:
-              count = int(f.read().strip() or '0')
-      except (FileNotFoundError, ValueError):
-          count = 0
+          with open(ideas_file, 'a') as f:
+              for idea in novel:
+                  f.write(json.dumps(idea) + '\n')
 
-      count = 0 if novel else count + 1
+          sat_file = "${captured.run_dir.output}/saturation.txt"
+          try:
+              with open(sat_file, 'r') as f:
+                  count = int(f.read().strip() or '0')
+          except (FileNotFoundError, ValueError):
+              count = 0
 
-      with open(sat_file, 'w') as f:
-          f.write(str(count))
+          count = 0 if novel else count + 1
 
-      print(len(novel))
+          with open(sat_file, 'w') as f:
+              f.write(str(count))
+
+          print(len(novel))
+      except Exception as e:
+          # exit 2 -> verdict=error -> on_error: failed (BUG-2468). exit 1 would
+          # be indistinguishable from "no novel ideas" and misroute the crash.
+          print(f"ERROR in dedup_novelty: {type(e).__name__}: {e}", file=sys.stderr)
+          sys.exit(2)
       PYEOF
     evaluate:
       type: exit_code
     on_yes: saturation_gate
     on_no: cluster
-    on_error: cluster
+    on_error: failed
 
   saturation_gate:
     # Reads the saturation counter and routes: if below max_saturation, continue
@@ -298,11 +315,11 @@ states:
     evaluate:
       type: classify
     route:
-      none: done
+      none: verify_artifacts
       file: sink_file
       issue: sink_issue
       decision: sink_decision
-      _: done
+      _: verify_artifacts
 
   sink_file:
     # Copies brainstorm.md to the caller-supplied output_path.
@@ -316,8 +333,8 @@ states:
         exit 0
       fi
       cp "$SRC" "$DEST" && echo "Copied brainstorm.md to $DEST"
-    on_yes: done
-    on_no: done
+    on_yes: verify_artifacts
+    on_no: verify_artifacts
 
   sink_issue:
     # Invokes /ll:capture-issue per winner; collects created IDs.
@@ -329,7 +346,7 @@ states:
       "rationale" as the summary. Collect the issue IDs created.
 
       After capturing all winners, report the list of created issue IDs.
-    next: done
+    next: verify_artifacts
 
   sink_decision:
     # Appends ranked winners as decision options on decision_target issue.
@@ -355,7 +372,25 @@ states:
          (etc. for all top ${context.top_k} winners)
       3. Set decision_needed: true in the issue frontmatter using ll-issues set-flag.
       4. Report: "Decision options added to ${context.decision_target}; decision_needed set to true."
-    next: done
+    next: verify_artifacts
+
+  verify_artifacts:
+    # Artifact invariant before declaring success (BUG-2468): a run that reaches
+    # the terminal path must have produced a non-empty brainstorm.md. An empty
+    # or missing report means an upstream state silently failed (e.g. a
+    # dedup_novelty crash emptied the pipeline) — route to failed, not done.
+    action_type: shell
+    action: |
+      if [ ! -s "${captured.run_dir.output}/brainstorm.md" ]; then
+        echo "ERROR: brainstorm.md is empty or missing — loop reached the terminal path without producing artifacts" >&2
+        exit 2
+      fi
+      echo "brainstorm.md present and non-empty"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: failed
+    on_error: failed
 
   done:
     action_type: prompt
@@ -377,14 +412,18 @@ states:
   failed:
     action_type: prompt
     action: |
-      The brainstorm loop encountered an unrecoverable error during the convergence phase
-      (cluster or rank step).
+      The brainstorm loop encountered an unrecoverable error. Possible sources:
+      a dedup_novelty script crash (exit 2, stderr has "ERROR in dedup_novelty"),
+      a cluster/rank/converge LLM error, or the terminal artifact invariant
+      (brainstorm.md empty or missing at verify_artifacts).
 
       Diagnose what happened:
       - If ${captured.run_dir.output}/ideas.jsonl exists and has content,
         report how many ideas were collected before the failure.
       - If ${captured.run_dir.output}/clusters.md exists, report whether clustering completed.
-      - Identify the most likely failure state (cluster or rank LLM error).
+      - If ${captured.run_dir.output}/brainstorm.md is empty or missing, an upstream
+        state silently produced no artifacts (see BUG-2468).
+      - Identify the most likely failure state.
 
       The divergence phase may have completed successfully; check
       ${captured.run_dir.output}/ideas.jsonl for partial results that can be reused.
