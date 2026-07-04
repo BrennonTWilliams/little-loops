@@ -26,10 +26,12 @@ from little_loops.host_runner import (
     CapabilityReport,
     ClaudeCodeRunner,
     CodexRunner,
+    GeminiRunner,
     HostCapabilities,
     HostInvocation,
     HostNotConfigured,
     HostRunner,
+    OmpRunner,
     OpenCodeRunner,
     PiRunner,
     apply_host_cli_from_config,
@@ -662,6 +664,281 @@ class TestPiRunner:
         assert isinstance(PiRunner(), HostRunner)
 
 
+class TestGeminiRunner:
+    """GeminiRunner builds argv per the FEAT-2179 flag-translation table.
+
+    Source: ``thoughts/research/gemini-cli-surface.md`` (ENH-2184 / ENH-2185).
+    """
+
+    def test_gemini_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "gemini" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["gemini"] is GeminiRunner
+
+    def test_gemini_in_probe_order(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert ("gemini", "gemini") in hr._PROBE_ORDER
+
+    def test_resolve_host_picks_gemini_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "gemini"})
+        assert isinstance(runner, GeminiRunner)
+        assert runner.name == "gemini"
+
+    def test_gemini_runner_probed_when_on_path(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_host() auto-detects GeminiRunner when only gemini is on PATH."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/gemini" if binary == "gemini" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, GeminiRunner)
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.binary == "gemini"
+
+    def test_gemini_runner_flag_translation(self) -> None:
+        """Snapshot of build_streaming argv against the verified translation table."""
+        runner = GeminiRunner()
+        invocation = runner.build_streaming(prompt="/ll:ready-issue BUG-001")
+
+        assert [invocation.binary, *invocation.args] == [
+            "gemini",
+            "--approval-mode",
+            "yolo",
+            "--output-format",
+            "stream-json",
+            "-p",
+            "/ll:ready-issue BUG-001",
+        ]
+
+    def test_build_streaming_resume_maps_to_resume_latest(self) -> None:
+        runner = GeminiRunner()
+        invocation = runner.build_streaming(prompt="follow up", resume=True)
+        assert "--resume" in invocation.args
+        idx = invocation.args.index("--resume")
+        assert invocation.args[idx + 1] == "latest"
+        assert "--continue" not in invocation.args
+
+    def test_build_streaming_with_model(self) -> None:
+        runner = GeminiRunner()
+        invocation = runner.build_streaming(prompt="hi", model="gemini-2.5-pro")
+        idx = invocation.args.index("--model")
+        assert invocation.args[idx + 1] == "gemini-2.5-pro"
+
+    def test_build_streaming_emits_warning_for_agent(self) -> None:
+        runner = GeminiRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            runner.build_streaming(prompt="hi", agent="general-purpose")
+
+    def test_build_streaming_emits_warning_for_tools(self) -> None:
+        runner = GeminiRunner()
+        with pytest.warns(CapabilityNotSupported, match="tool"):
+            runner.build_streaming(prompt="hi", tools=["Read", "Edit"])
+
+    def test_build_blocking_json_argv(self) -> None:
+        runner = GeminiRunner()
+        invocation = runner.build_blocking_json(prompt="hello")
+        assert [invocation.binary, *invocation.args] == [
+            "gemini",
+            "--approval-mode",
+            "yolo",
+            "--output-format",
+            "json",
+            "-p",
+            "hello",
+        ]
+
+    def test_build_blocking_json_silently_drops_schema(self) -> None:
+        """Like ClaudeCodeRunner, gemini has no schema flag; parameter is dropped."""
+        runner = GeminiRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
+        assert "--output-schema" not in invocation.args
+        assert invocation.cleanup_paths == ()
+
+    def test_build_version_check(self) -> None:
+        runner = GeminiRunner()
+        invocation = runner.build_version_check()
+        assert invocation.binary == "gemini"
+        assert invocation.args == ["--version"]
+
+    def test_build_detached(self) -> None:
+        runner = GeminiRunner()
+        invocation = runner.build_detached(prompt="hi there")
+        assert invocation.binary == "gemini"
+        assert invocation.args == ["--approval-mode", "yolo", "-p", "hi there"]
+
+    def test_build_streaming_worktree_env(self, tmp_path: Path) -> None:
+        """Linked-worktree .git file sets GIT_DIR/GIT_WORK_TREE like ClaudeCodeRunner."""
+        gitdir = tmp_path / "repo-gitdir"
+        gitdir.mkdir()
+        (tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")
+        runner = GeminiRunner()
+        invocation = runner.build_streaming(prompt="hi", working_dir=tmp_path)
+        assert invocation.env["GIT_WORK_TREE"] == str(tmp_path)
+        assert invocation.env["GIT_DIR"] == str(gitdir.resolve())
+
+    def test_all_builds_include_non_interactive_env(self) -> None:
+        """All build_* methods set LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS (BUG-2110)."""
+        runner = GeminiRunner()
+        for invocation in (
+            runner.build_streaming(prompt="hi"),
+            runner.build_blocking_json(prompt="hi"),
+            runner.build_detached(prompt="hi"),
+        ):
+            assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+            assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_capabilities_flags(self) -> None:
+        caps = GeminiRunner().capabilities
+        assert caps.streaming is True
+        assert caps.permission_skip is True
+        assert caps.agent_select is False
+        assert caps.tool_allowlist is False
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(GeminiRunner(), HostRunner)
+
+
+class TestOmpRunner:
+    """OmpRunner builds argv per the oh-my-pi headless audit.
+
+    Source: ``thoughts/research/omp-headless-flags.md`` (FEAT-1850).
+    """
+
+    def test_omp_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "omp" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["omp"] is OmpRunner
+
+    def test_omp_in_probe_order(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert ("omp", "omp") in hr._PROBE_ORDER
+
+    def test_resolve_host_picks_omp_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "omp"})
+        assert isinstance(runner, OmpRunner)
+        assert runner.name == "omp"
+
+    def test_omp_runner_probed_when_on_path(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_host() auto-detects OmpRunner when only omp is on PATH."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/omp" if binary == "omp" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, OmpRunner)
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.binary == "omp"
+
+    def test_omp_runner_flag_translation(self) -> None:
+        """Snapshot of build_streaming argv against the audited flag surface."""
+        runner = OmpRunner()
+        invocation = runner.build_streaming(prompt="/ll:ready-issue BUG-001")
+
+        assert [invocation.binary, *invocation.args] == [
+            "omp",
+            "--mode",
+            "json",
+            "-p",
+            "/ll:ready-issue BUG-001",
+        ]
+
+    def test_build_streaming_resume_maps_to_continue(self) -> None:
+        runner = OmpRunner()
+        invocation = runner.build_streaming(prompt="follow up", resume=True)
+        assert "--continue" in invocation.args
+
+    def test_build_streaming_tools_allowlist_supported(self) -> None:
+        """omp natively supports --tools <comma-list>; no warning fires."""
+        runner = OmpRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_streaming(prompt="hi", tools=["read", "edit"])
+        idx = invocation.args.index("--tools")
+        assert invocation.args[idx + 1] == "read,edit"
+
+    def test_build_streaming_with_model(self) -> None:
+        runner = OmpRunner()
+        invocation = runner.build_streaming(prompt="hi", model="claude-sonnet-4-5")
+        idx = invocation.args.index("--model")
+        assert invocation.args[idx + 1] == "claude-sonnet-4-5"
+
+    def test_build_streaming_emits_warning_for_agent(self) -> None:
+        runner = OmpRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            runner.build_streaming(prompt="hi", agent="general-purpose")
+
+    def test_build_blocking_json_argv(self) -> None:
+        runner = OmpRunner()
+        invocation = runner.build_blocking_json(prompt="hello")
+        assert [invocation.binary, *invocation.args] == [
+            "omp",
+            "--mode",
+            "json",
+            "--no-session",
+            "-p",
+            "hello",
+        ]
+
+    def test_build_blocking_json_silently_drops_schema(self) -> None:
+        runner = OmpRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
+        assert invocation.cleanup_paths == ()
+
+    def test_build_version_check(self) -> None:
+        runner = OmpRunner()
+        invocation = runner.build_version_check()
+        assert invocation.binary == "omp"
+        assert invocation.args == ["--version"]
+
+    def test_build_detached(self) -> None:
+        runner = OmpRunner()
+        invocation = runner.build_detached(prompt="hi there")
+        assert invocation.binary == "omp"
+        assert invocation.args == ["-p", "hi there"]
+
+    def test_build_streaming_worktree_env(self, tmp_path: Path) -> None:
+        gitdir = tmp_path / "repo-gitdir"
+        gitdir.mkdir()
+        (tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")
+        runner = OmpRunner()
+        invocation = runner.build_streaming(prompt="hi", working_dir=tmp_path)
+        assert invocation.env["GIT_WORK_TREE"] == str(tmp_path)
+        assert invocation.env["GIT_DIR"] == str(gitdir.resolve())
+
+    def test_all_builds_include_non_interactive_env(self) -> None:
+        """All build_* methods set LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS (BUG-2110)."""
+        runner = OmpRunner()
+        for invocation in (
+            runner.build_streaming(prompt="hi"),
+            runner.build_blocking_json(prompt="hi"),
+            runner.build_detached(prompt="hi"),
+        ):
+            assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+            assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_capabilities_flags(self) -> None:
+        caps = OmpRunner().capabilities
+        assert caps.streaming is True
+        assert caps.permission_skip is True
+        assert caps.agent_select is False
+        assert caps.tool_allowlist is True
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(OmpRunner(), HostRunner)
+
+
 class TestHostInvocation:
     """Frozen-dataclass convention check for value objects."""
 
@@ -786,6 +1063,30 @@ class TestDescribeCapabilities:
         assert len(report.capabilities) >= 1
         assert report.capabilities[0].status == "unsupported"
         assert "FEAT-992" in report.capabilities[0].note
+
+    def test_gemini_runner_returns_capability_report(self) -> None:
+        report = GeminiRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "gemini"
+        assert report.binary == "gemini"
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["streaming"].status == "full"
+        assert by_name["permission_skip"].status == "full"
+        assert by_name["agent_select"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "unsupported"
+        assert by_name["json_schema"].status == "unsupported"
+
+    def test_omp_runner_returns_capability_report(self) -> None:
+        report = OmpRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "omp"
+        assert report.binary == "omp"
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["streaming"].status == "full"
+        assert by_name["permission_skip"].status == "full"
+        assert by_name["agent_select"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "full"
+        assert by_name["json_schema"].status == "unsupported"
 
     def test_codex_warnings_consistent_with_describe_capabilities(self, tmp_path: Path) -> None:
         """ENH-1533: Pattern D consistency.

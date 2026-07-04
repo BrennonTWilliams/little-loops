@@ -39,11 +39,13 @@ __all__ = [
     "CapabilityReport",
     "ClaudeCodeRunner",
     "CodexRunner",
+    "GeminiRunner",
     "HookEntry",
     "HostCapabilities",
     "HostInvocation",
     "HostNotConfigured",
     "HostRunner",
+    "OmpRunner",
     "OpenCodeRunner",
     "PiRunner",
     "apply_host_cli_from_config",
@@ -767,6 +769,344 @@ class PiRunner:
         )
 
 
+class GeminiRunner:
+    """``HostRunner`` for the ``gemini`` CLI (Gemini CLI, npm ``@google/gemini-cli``).
+
+    Flag translation verified by the FEAT-2179 research spike
+    (``thoughts/research/gemini-cli-surface.md``); implementation tracked by
+    ENH-2184 (stub) and ENH-2185 (full wiring).
+
+    Key facts (vs. :class:`ClaudeCodeRunner`):
+
+    - ``-p <prompt>`` and ``--output-format stream-json`` are **identical**
+      flag names to Claude Code; single-blob mode is ``--output-format json``
+      (``{response, stats, error?}``).
+    - Permission skip maps to ``--approval-mode yolo`` (the bare ``--yolo``
+      flag is deprecated upstream).
+    - Resume maps to ``--resume latest`` (Gemini also accepts a session ID or
+      numeric index; the boolean ``resume`` Protocol parameter wires the
+      "most recent session" case only).
+    - Agent selection has no CLI flag — Gemini skills activate implicitly.
+      The ``agent`` parameter is dropped with :class:`CapabilityNotSupported`.
+    - Tool allowlist has no simple flag — Gemini's Policy Engine requires a
+      TOML file path. The ``tools`` parameter is dropped with
+      :class:`CapabilityNotSupported`.
+    """
+
+    name = "gemini"
+
+    capabilities = HostCapabilities(
+        streaming=True,
+        permission_skip=True,
+        agent_select=False,
+        tool_allowlist=False,
+    )
+
+    def detect(self) -> bool:
+        return shutil.which("gemini") is not None
+
+    @staticmethod
+    def _worktree_env(working_dir: Path | None) -> dict[str, str]:
+        """Return GIT_DIR/GIT_WORK_TREE overrides for linked worktrees.
+
+        Mirrors :meth:`ClaudeCodeRunner.build_streaming` so ``ll-parallel``
+        worktree isolation behaves identically under Gemini.
+        """
+        env: dict[str, str] = {}
+        if working_dir is not None:
+            git_path = Path(working_dir) / ".git"
+            if git_path.is_file():
+                gitdir_ref = git_path.read_text().strip()
+                if gitdir_ref.startswith("gitdir: "):
+                    actual_gitdir = gitdir_ref[8:].strip()
+                    resolved = (Path(working_dir) / actual_gitdir).resolve()
+                    env["GIT_DIR"] = str(resolved)
+                    env["GIT_WORK_TREE"] = str(working_dir)
+        return env
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+    ) -> HostInvocation:
+        if agent:
+            warnings.warn(
+                "gemini has no CLI-flag agent selection; skills activate "
+                "implicitly. The 'agent' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        if tools:
+            warnings.warn(
+                "gemini has no tool-allowlist flag; tool access is governed "
+                "by the Policy Engine (--policy <path>, a TOML file). "
+                "The 'tools' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+
+        args: list[str] = [
+            "--approval-mode",
+            "yolo",
+            "--output-format",
+            "stream-json",
+        ]
+        if resume:
+            args += ["--resume", "latest"]
+        args += ["-p", prompt]
+        if model:
+            args += ["--model", model]
+
+        env: dict[str, str] = {
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+        }
+        env.update(self._worktree_env(working_dir))
+
+        return HostInvocation(
+            binary="gemini",
+            args=args,
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        args: list[str] = [
+            "--approval-mode",
+            "yolo",
+            "--output-format",
+            "json",
+            "-p",
+            prompt,
+        ]
+        if model:
+            args += ["--model", model]
+        # Like the claude CLI, gemini has no inline schema flag; the parameter
+        # is silently dropped (see describe_capabilities for the note).
+        _ = json_schema
+        return HostInvocation(
+            binary="gemini",
+            args=args,
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="gemini",
+            args=["--version"],
+            env={},
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        args = [
+            "--approval-mode",
+            "yolo",
+            "-p",
+            prompt,
+        ]
+        return HostInvocation(
+            binary="gemini",
+            args=args,
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="gemini",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full", "--output-format stream-json"),
+                CapabilityEntry("permission_skip", "full", "--approval-mode yolo"),
+                CapabilityEntry(
+                    "agent_select",
+                    "unsupported",
+                    "gemini has no --agent flag; skills activate implicitly. "
+                    "The 'agent' parameter is dropped with CapabilityNotSupported.",
+                ),
+                CapabilityEntry(
+                    "tool_allowlist",
+                    "unsupported",
+                    "gemini's Policy Engine requires a TOML file path (--policy), "
+                    "not a flag-based tool list. The 'tools' parameter is dropped "
+                    "with CapabilityNotSupported.",
+                ),
+                CapabilityEntry(
+                    "json_schema",
+                    "unsupported",
+                    "gemini CLI does not accept an inline schema flag; parameter "
+                    "is silently dropped",
+                ),
+            ],
+        )
+
+
+class OmpRunner:
+    """``HostRunner`` for the oh-my-pi ``omp`` CLI (FEAT-1850, EPIC-2258).
+
+    Flag surface audited in ``thoughts/research/omp-headless-flags.md``.
+    oh-my-pi is an actively maintained pi-mono superset fork; it supersedes
+    the frozen :class:`PiRunner` stub (vanilla Pi support was cancelled —
+    ARCHITECTURE-050).
+
+    Key divergences from :class:`ClaudeCodeRunner`:
+
+    - Headless print mode is ``-p``/``--print``; structured output is
+      selected with ``--mode json`` which emits a **JSONL event stream**
+      (session header, then agent events). There is no single-blob JSON
+      mode, so :meth:`build_blocking_json` also uses ``--mode json`` and
+      callers must consume the final event — same contract as
+      :class:`CodexRunner`.
+    - Resume maps to ``--continue`` (most recent session in the current
+      working directory), matching Claude's ``--continue`` semantics.
+    - Tool allowlist is natively supported via ``--tools <comma-list>``.
+    - There is no permission-bypass flag because none is needed: print mode
+      runs without an interactive UI context, so tools execute without
+      approval prompts.
+    - Agent selection has no CLI flag — omp subagents are spawned in-session
+      by the model (task delegation), not selected at invocation. The
+      ``agent`` parameter is dropped with :class:`CapabilityNotSupported`.
+    """
+
+    name = "omp"
+
+    capabilities = HostCapabilities(
+        streaming=True,
+        permission_skip=True,
+        agent_select=False,
+        tool_allowlist=True,
+    )
+
+    def detect(self) -> bool:
+        return shutil.which("omp") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+    ) -> HostInvocation:
+        if agent:
+            warnings.warn(
+                "omp has no CLI-flag agent selection; subagents are spawned "
+                "in-session by the model (task delegation). The 'agent' "
+                "parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+
+        args: list[str] = ["--mode", "json"]
+        if resume:
+            args.append("--continue")
+        args += ["-p", prompt]
+        if model:
+            args += ["--model", model]
+        if tools:
+            args += ["--tools", ",".join(tools)]
+
+        env: dict[str, str] = {
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+        }
+        env.update(GeminiRunner._worktree_env(working_dir))
+
+        return HostInvocation(
+            binary="omp",
+            args=args,
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        # --no-session keeps one-shot queries out of the on-disk session
+        # store (the documented CI pattern: `omp --mode json --no-session -p`).
+        args: list[str] = ["--mode", "json", "--no-session", "-p", prompt]
+        if model:
+            args += ["--model", model]
+        # omp has no structured-output schema flag; the parameter is silently
+        # dropped (see describe_capabilities for the note).
+        _ = json_schema
+        return HostInvocation(
+            binary="omp",
+            args=args,
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="omp",
+            args=["--version"],
+            env={},
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        return HostInvocation(
+            binary="omp",
+            args=["-p", prompt],
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="omp",
+            version="",
+            capabilities=[
+                CapabilityEntry(
+                    "streaming",
+                    "full",
+                    "--mode json emits a JSONL event stream in print mode",
+                ),
+                CapabilityEntry(
+                    "permission_skip",
+                    "full",
+                    "implicit — print mode has no interactive approval prompts; "
+                    "no bypass flag exists or is needed",
+                ),
+                CapabilityEntry(
+                    "agent_select",
+                    "unsupported",
+                    "omp has no --agent flag; subagents are spawned in-session "
+                    "by the model. The 'agent' parameter is dropped with "
+                    "CapabilityNotSupported.",
+                ),
+                CapabilityEntry("tool_allowlist", "full", "--tools <comma-separated list>"),
+                CapabilityEntry(
+                    "json_schema",
+                    "unsupported",
+                    "omp has no structured-output schema flag; parameter is silently dropped",
+                ),
+            ],
+        )
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
@@ -775,6 +1115,8 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "codex": CodexRunner,
     "opencode": OpenCodeRunner,
     "pi": PiRunner,
+    "gemini": GeminiRunner,
+    "omp": OmpRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary
@@ -783,14 +1125,16 @@ _PROBE_ORDER: list[tuple[str, str]] = [
     ("claude-code", "claude"),
     ("codex", "codex"),
     ("pi", "pi"),
+    ("gemini", "gemini"),
+    ("omp", "omp"),
 ]
 
 
 def _remediation_hint() -> str:
     return (
-        "Set LL_HOST_CLI=<host> (one of: claude-code, codex, opencode, pi), "
+        "Set LL_HOST_CLI=<host> (one of: claude-code, codex, opencode, pi, gemini, omp), "
         "or LL_HOOK_HOST, or configure orchestration.host_cli in ll-config.json, "
-        "or install a supported host CLI on PATH (claude, codex, or pi)."
+        "or install a supported host CLI on PATH (claude, codex, pi, gemini, or omp)."
     )
 
 
@@ -803,7 +1147,8 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
     2. ``LL_HOOK_HOST`` environment variable — falls back to the hooks-layer
        host identifier so users with an existing hook config don't need a
        second knob.
-    3. Binary probe: ``claude`` → ``codex`` → ``pi`` (see ``_PROBE_ORDER``).
+    3. Binary probe: ``claude`` → ``codex`` → ``pi`` → ``gemini`` → ``omp``
+       (see ``_PROBE_ORDER``).
     4. Raise :class:`HostNotConfigured` with a remediation hint.
 
     Args:
