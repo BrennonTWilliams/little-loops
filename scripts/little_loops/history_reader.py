@@ -18,7 +18,7 @@ Public API:
     SECTION_PROVIDERS: registry of v1 section providers (ENH-1907)
     SkillEvent:       dataclass for skill event rows incl. completion columns (ENH-2460)
     CommitEvent:      dataclass for commit event rows (ENH-2458)
-    TestRunEvent:     dataclass for test run event rows (ENH-2459)
+    RunEvent:         dataclass for test run event rows (ENH-2459)
     find_user_corrections(topic, ...) -> list[UserCorrection]
     recent_file_events(path, ...) -> list[FileEvent]
     search(query, ...) -> list[SearchResult]
@@ -26,7 +26,7 @@ Public API:
     recent_skill_events(skill_name, ...) -> list[SkillEvent]
     summarize_skills(since, ...) -> list[dict]
     recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
-    recent_test_runs(branch, head_sha, ...) -> list[TestRunEvent]
+    recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -136,7 +136,7 @@ class CommitEvent:
 
 
 @dataclass
-class TestRunEvent:
+class RunEvent:
     """A test_run_events row (ENH-2459)."""
 
     ts: str
@@ -565,7 +565,7 @@ def recent_test_runs(
     head_sha: str | None = None,
     limit: int = 50,
     db: Path | str = DEFAULT_DB_PATH,
-) -> list[TestRunEvent]:
+) -> list[RunEvent]:
     """Return recent test-run events, newest first, optionally filtered (ENH-2459)."""
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -595,7 +595,7 @@ def recent_test_runs(
         return []
     finally:
         conn.close()
-    return [_row_to_dataclass(row, TestRunEvent) for row in rows]
+    return [_row_to_dataclass(row, RunEvent) for row in rows]
 
 
 def sessions_for_issue(
