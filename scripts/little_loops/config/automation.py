@@ -58,7 +58,9 @@ class ParallelAutomationConfig:
     use_feature_branches: bool = False
     push_feature_branches: bool = False
     open_pr_for_feature_branches: bool = False
-    base_branch: str = "main"
+    # None means "not explicitly configured": the CLI auto-detects the default
+    # branch (origin/HEAD -> current branch -> "main") in that case (BUG-2323).
+    base_branch: str | None = None
     remote_name: str = "origin"
 
     @classmethod
@@ -93,7 +95,7 @@ class ParallelAutomationConfig:
             use_feature_branches=data.get("use_feature_branches", False),
             push_feature_branches=data.get("push_feature_branches", False),
             open_pr_for_feature_branches=data.get("open_pr_for_feature_branches", False),
-            base_branch=data.get("base_branch", "main"),
+            base_branch=data.get("base_branch"),
             remote_name=data.get("remote_name", "origin"),
         )
 

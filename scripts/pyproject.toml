@@ -94,6 +94,11 @@ mcp-call = "little_loops.mcp_call:main"
 # Extensions register here for automatic discovery.
 # Example: my_ext = "my_package:MyExtension"
 
+[project.entry-points.pytest11]
+# ENH-2459: records pytest run results into .ll/history.db (test_run_events).
+# Opt out with PYTEST_DISABLE_PLUGIN_LL_HISTORY=1 or `-p no:ll_history`.
+ll_history = "little_loops.pytest_history_plugin"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

@@ -396,7 +396,7 @@
         },
         "base_branch": {
           "type": "string",
-          "description": "Base branch targeted by PR creation when open_pr_for_feature_branches is true. Also used as the rebase target for worktree updates. Defaults to 'main'.",
+          "description": "Base branch targeted by PR creation when open_pr_for_feature_branches is true. Also used as the rebase target for worktree updates. When absent, auto-detected at startup (origin/HEAD, then current branch, then 'main'); an explicit value overrides auto-detection.",
           "default": "main"
         },
         "remote_name": {

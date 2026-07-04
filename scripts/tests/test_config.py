@@ -1129,6 +1129,130 @@ class TestResolveConfigPath:
         # `.ll/` still wins under opencode host — codex probe only triggers for codex.
         assert resolve_config_path(tmp_path) == ll_cfg
 
+    def test_gemini_path_takes_precedence_when_host_gemini(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=gemini`` puts ``.gemini/ll-config.json`` ahead of ``.ll/`` (ENH-2187)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".gemini").mkdir()
+        gemini_cfg = tmp_path / ".gemini" / "ll-config.json"
+        gemini_cfg.write_text('{"gemini": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+        (tmp_path / "ll-config.json").write_text('{"root": true}')
+
+        assert resolve_config_path(tmp_path) == gemini_cfg
+
+    def test_gemini_path_takes_precedence_when_state_dir_gemini(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_STATE_DIR=.gemini`` is an alternate trigger for the gemini probe (ENH-2187)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setenv("LL_STATE_DIR", ".gemini")
+        (tmp_path / ".gemini").mkdir()
+        gemini_cfg = tmp_path / ".gemini" / "ll-config.json"
+        gemini_cfg.write_text('{"gemini": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == gemini_cfg
+
+    def test_gemini_path_ignored_without_host_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``.gemini/ll-config.json`` is NOT probed when no gemini env trigger is set."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".gemini").mkdir()
+        (tmp_path / ".gemini" / "ll-config.json").write_text('{"gemini": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
+    def test_gemini_host_falls_through_to_ll_dir_when_gemini_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Gemini host with no ``.gemini/ll-config.json`` falls back to ``.ll/``."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
+    def test_omp_path_takes_precedence_when_host_omp(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=omp`` puts ``.omp/ll-config.json`` ahead of ``.ll/`` (FEAT-2262)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "omp")
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".omp").mkdir()
+        omp_cfg = tmp_path / ".omp" / "ll-config.json"
+        omp_cfg.write_text('{"omp": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+        (tmp_path / "ll-config.json").write_text('{"root": true}')
+
+        assert resolve_config_path(tmp_path) == omp_cfg
+
+    def test_omp_path_takes_precedence_when_state_dir_omp(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_STATE_DIR=.omp`` is an alternate trigger for the omp probe (FEAT-2262)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setenv("LL_STATE_DIR", ".omp")
+        (tmp_path / ".omp").mkdir()
+        omp_cfg = tmp_path / ".omp" / "ll-config.json"
+        omp_cfg.write_text('{"omp": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == omp_cfg
+
+    def test_omp_path_ignored_without_host_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``.omp/ll-config.json`` is NOT probed when no omp env trigger is set."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".omp").mkdir()
+        (tmp_path / ".omp" / "ll-config.json").write_text('{"omp": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
+    def test_omp_host_falls_through_to_ll_dir_when_omp_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """omp host with no ``.omp/ll-config.json`` falls back to ``.ll/``."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "omp")
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
 
 class TestFeatureEnabledHelper:
     """Tests for feature_enabled (Python port of bash ll_feature_enabled — FEAT-1454)."""

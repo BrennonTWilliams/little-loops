@@ -22,12 +22,20 @@ from little_loops.file_utils import atomic_write
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
-from little_loops.session_log import append_session_log_entry
+from little_loops.session_log import append_session_log_entry, get_current_session_id
 
 
 def _iso_now() -> str:
     """Return current time as ISO 8601 string."""
     return datetime.now(UTC).isoformat()
+
+
+def _session_id_or_none() -> str | None:
+    """Best-effort current session ID for issue.* event payloads (ENH-2462)."""
+    try:
+        return get_current_session_id()
+    except Exception:
+        return None
 
 
 def _completed_at_now() -> str:
@@ -573,6 +581,7 @@ Investigate the error output above and address the root cause.
                     "file_path": str(new_issue_path),
                     "parent_issue_id": parent_info.issue_id,
                     "captured_at": captured_at_val,
+                    "session_id": _session_id_or_none(),
                 }
             )
         return new_issue_path
@@ -670,6 +679,7 @@ Status: {close_status}"""
                     "file_path": str(original_path),
                     "close_reason": close_reason,
                     "captured_at": captured_at,
+                    "session_id": _session_id_or_none(),
                 }
             )
         return True
@@ -742,6 +752,7 @@ Status: Completed via fallback lifecycle completion"""
                     "issue_id": info.issue_id,
                     "file_path": str(original_path),
                     "captured_at": captured_at,
+                    "session_id": _session_id_or_none(),
                 }
             )
         return True
@@ -835,6 +846,7 @@ Reason: {reason}"""
                     "file_path": str(original_path),
                     "reason": reason,
                     "captured_at": captured_at,
+                    "session_id": _session_id_or_none(),
                 }
             )
         return True
@@ -927,6 +939,7 @@ def skip_issue(
                 "file_path": str(new_path),
                 "reason": reason,
                 "captured_at": captured_at,
+                "session_id": _session_id_or_none(),
             }
         )
 
@@ -985,6 +998,7 @@ Reason: {reason}"""
                     "file_path": str(deferred_issue_path),
                     "reason": reason,
                     "captured_at": captured_at,
+                    "session_id": _session_id_or_none(),
                 }
             )
         return deferred_issue_path

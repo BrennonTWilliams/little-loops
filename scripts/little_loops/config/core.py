@@ -40,6 +40,8 @@ from little_loops.parallel.types import ParallelConfig
 CONFIG_FILENAME = "ll-config.json"
 CONFIG_DIR = ".ll"
 CODEX_CONFIG_DIR = ".codex"
+GEMINI_CONFIG_DIR = ".gemini"
+OMP_CONFIG_DIR = ".omp"
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -84,14 +86,20 @@ def _config_candidates(
     When ``host == "codex"`` or ``state_dir == ".codex"`` (FEAT-957),
     ``.codex/ll-config.json`` is prepended so Codex CLI projects pick up
     their host-specific config before falling through to the default
-    candidates. Other host values pass through unchanged.
+    candidates. ``host == "gemini"`` / ``state_dir == ".gemini"`` (ENH-2187)
+    and ``host == "omp"`` / ``state_dir == ".omp"`` (FEAT-2262) prepend
+    ``.gemini/ll-config.json`` and ``.omp/ll-config.json`` the same way.
+    Other host values pass through unchanged.
 
-    Future hosts (e.g. FEAT-992 Pi) add a new branch here rather than a
-    new code path elsewhere.
+    Future hosts add a new branch here rather than a new code path elsewhere.
     """
     candidates: list[Path] = []
     if host == "codex" or state_dir == CODEX_CONFIG_DIR:
         candidates.append(project_root / CODEX_CONFIG_DIR / CONFIG_FILENAME)
+    if host == "gemini" or state_dir == GEMINI_CONFIG_DIR:
+        candidates.append(project_root / GEMINI_CONFIG_DIR / CONFIG_FILENAME)
+    if host == "omp" or state_dir == OMP_CONFIG_DIR:
+        candidates.append(project_root / OMP_CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_FILENAME)
     return candidates
@@ -105,7 +113,9 @@ def resolve_config_path(project_root: Path) -> Path | None:
     ``<root>/.ll/ll-config.json`` then ``<root>/ll-config.json`` (parity
     with the legacy bash ``ll_resolve_config``); when ``LL_HOOK_HOST=codex``
     or ``LL_STATE_DIR=.codex`` is set on the environment,
-    ``<root>/.codex/ll-config.json`` is probed first (FEAT-957).
+    ``<root>/.codex/ll-config.json`` is probed first (FEAT-957). The
+    equivalent gemini (``.gemini``, ENH-2187) and omp (``.omp``, FEAT-2262)
+    triggers prepend their host directories the same way.
 
     Pure lookup — does not create directories or mutate global state (the
     bash version's ``mkdir -p .ll`` side effect is intentionally dropped;
@@ -507,7 +517,11 @@ class BRConfig:
             overlap_detection=overlap_detection,
             serialize_overlapping=serialize_overlapping,
             skip_learning_gate=skip_learning_gate,
-            base_branch=base_branch if base_branch is not None else self._parallel.base_branch,
+            base_branch=(
+                base_branch
+                if base_branch is not None
+                else (self._parallel.base_branch or "main")
+            ),
             remote_name=remote_name if remote_name is not None else self._parallel.remote_name,
         )
 
@@ -576,7 +590,7 @@ class BRConfig:
                 "use_feature_branches": self._parallel.use_feature_branches,
                 "push_feature_branches": self._parallel.push_feature_branches,
                 "open_pr_for_feature_branches": self._parallel.open_pr_for_feature_branches,
-                "base_branch": self._parallel.base_branch,
+                "base_branch": self._parallel.base_branch or "main",
                 "remote_name": self._parallel.remote_name,
             },
             "commands": {
