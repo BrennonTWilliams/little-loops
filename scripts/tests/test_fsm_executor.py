@@ -8543,3 +8543,54 @@ class TestEvaluateLLMDisabled:
         assert result.final_state == "errored", (
             "explicit llm_structured evaluate + LLM disabled should return error verdict"
         )
+
+
+class TestStderrPreview:
+    """ENH-2469: action_complete events carry a stderr_preview field."""
+
+    def _run_and_collect(self, fsm: FSMLoop, runner: Any) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=runner)
+        executor.run()
+        return [e for e in events if e["event"] == "action_complete"]
+
+    def _shell_fsm(self, action: str) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(action=action, on_yes="done", on_no="failed"),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+
+    def test_stderr_preview_populated_for_failing_shell_action(self) -> None:
+        """A shell action writing to stderr surfaces it in the event payload."""
+        fsm = self._shell_fsm("echo ERROR >&2; exit 1")
+        completes = self._run_and_collect(fsm, DefaultActionRunner())
+
+        assert len(completes) == 1
+        assert completes[0]["exit_code"] == 1
+        assert completes[0]["output_preview"] is None
+        assert "ERROR" in completes[0]["stderr_preview"]
+
+    def test_stderr_preview_none_when_no_stderr(self) -> None:
+        """Actions with empty stderr report stderr_preview=None."""
+        fsm = self._shell_fsm("echo hi")
+        completes = self._run_and_collect(fsm, DefaultActionRunner())
+
+        assert len(completes) == 1
+        assert completes[0]["stderr_preview"] is None
+        assert completes[0]["output_preview"] == "hi"
+
+    def test_stderr_preview_truncated_to_last_2000_chars(self) -> None:
+        """stderr_preview keeps only the tail of long stderr streams."""
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(output="", stderr="x" * 3000 + "TAIL", exit_code=1)
+        fsm = self._shell_fsm("whatever")
+        completes = self._run_and_collect(fsm, mock_runner)
+
+        preview = completes[0]["stderr_preview"]
+        assert len(preview) == 2000
+        assert preview.endswith("TAIL")

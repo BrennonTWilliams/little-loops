@@ -30,6 +30,16 @@ from little_loops.fsm.evaluators import (
     evaluate_mcp_result,
 )
 from little_loops.fsm.handoff_handler import HandoffHandler
+from little_loops.fsm.host_guard import (
+    HOST_BUDGET_EXCEEDED_EVENT,
+    HOST_COOLDOWN_EVENT,
+    HOST_PRESSURE_ABORT_EVENT,
+    HOST_PRESSURE_EVENT,
+    HOST_PRESSURE_RELIEVED_EVENT,
+    HOST_SUBPROC_RSS_EVENT,
+    HostGuard,
+    RssSampler,
+)
 from little_loops.fsm.interpolation import (
     InterpolationContext,
     InterpolationError,
@@ -267,6 +277,22 @@ class FSMExecutor:
         # When any edge exceeds max_edge_revisits, the loop terminates with cycle_detected.
         self._edge_revisit_counts: dict[str, int] = {}
 
+        # Adaptive host memory-pressure guard (ENH-2452) + cumulative subprocess
+        # RSS budget (ENH-2453). Built from fsm.host_guard; None when disabled.
+        self._host_guard: HostGuard | None = None
+        if fsm.host_guard.enabled:
+            self._host_guard = HostGuard(fsm.host_guard)
+            # Turn on per-subprocess RSS sampling only when the budget is active
+            # so the common case pays no sampling overhead.
+            if fsm.host_guard.max_cumulative_subproc_mb > 0 and isinstance(
+                self.action_runner, DefaultActionRunner
+            ):
+                self.action_runner.sample_rss = True
+        # Set by _check_host_guard when on_pressure="abort" fires; checked by run().
+        self._pending_host_pressure_abort: bool = False
+        # Set by _run_action when the cumulative RSS sum first crosses the budget.
+        self._pending_host_budget_exceeded: bool = False
+
         # Stall detector for repeated (state, exit_code, verdict) triples.
         # Enabled via fsm.circuit.repeated_failure (FEAT-1637); None when not configured.
         self._stall_detector: StallDetector | None = None
@@ -499,6 +525,30 @@ class FSMExecutor:
                     },
                 )
 
+                # ENH-2452: adaptive host memory-pressure gate. Before a
+                # prompt-mode action spawns its LLM subprocess, sample host
+                # memory and either sleep extra, route to the configured
+                # recovery state, or abort the run.
+                guard_target = self._check_host_guard(state_config)
+                if self._pending_host_pressure_abort:
+                    return self._finish(
+                        "host_pressure_abort",
+                        error="Host memory pressure exceeded critical threshold",
+                    )
+                if guard_target is not None:
+                    self._emit(
+                        "route",
+                        {
+                            "from": self.current_state,
+                            "to": guard_target,
+                            "reason": "host_pressure",
+                        },
+                    )
+                    self._prev_state = self.current_state
+                    self.current_state = guard_target
+                    self._just_routed = True
+                    continue
+
                 # Execute state
                 next_state = self._execute_state(state_config)
 
@@ -525,6 +575,38 @@ class FSMExecutor:
                 # Check for pending handoff signal
                 if self._pending_handoff:
                     return self._handle_handoff(self._pending_handoff)
+
+                # ENH-2453: cumulative subprocess RSS budget. The flag is set by
+                # _run_action when the running sum first crosses the cap; route
+                # to budget_state or abort with terminated_by="host_budget_exceeded".
+                if self._pending_host_budget_exceeded:
+                    self._pending_host_budget_exceeded = False
+                    assert self._host_guard is not None  # flag only set when guard exists
+                    _hg_cfg = self._host_guard.config
+                    _budget_payload: dict[str, Any] = {
+                        "state": self.current_state,
+                        "cumulative_mb": round(self._host_guard.cumulative_subproc_mb, 1),
+                        "budget_mb": _hg_cfg.max_cumulative_subproc_mb,
+                    }
+                    if _hg_cfg.on_budget_exceeded == "route" and _hg_cfg.budget_state:
+                        self._emit(
+                            HOST_BUDGET_EXCEEDED_EVENT,
+                            {**_budget_payload, "action": f"route:{_hg_cfg.budget_state}"},
+                        )
+                        next_state = _hg_cfg.budget_state
+                    else:
+                        self._emit(
+                            HOST_BUDGET_EXCEEDED_EVENT,
+                            {**_budget_payload, "action": "abort"},
+                        )
+                        return self._finish(
+                            "host_budget_exceeded",
+                            error=(
+                                f"Cumulative subprocess RSS "
+                                f"{self._host_guard.cumulative_subproc_mb:.0f} MB exceeded "
+                                f"budget of {_hg_cfg.max_cumulative_subproc_mb} MB"
+                            ),
+                        )
 
                 # Handle maintain mode
                 if next_state is None and self.fsm.maintain:
@@ -1283,10 +1365,14 @@ class FSMExecutor:
             )
 
         preview = result.output[-2000:].strip() if result.output else None
+        # ENH-2469: surface shell-action stderr to operators. Additive field —
+        # existing consumers of output_preview are unaffected.
+        stderr_preview = result.stderr[-2000:].strip() if result.stderr else None
         payload: dict[str, Any] = {
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
             "output_preview": preview,
+            "stderr_preview": stderr_preview or None,
             "is_prompt": action_mode == "prompt",
         }
         if action_mode == "prompt":
@@ -1305,6 +1391,27 @@ class FSMExecutor:
             payload["cache_creation_tokens"] = total_cache_creation
             payload["model"] = model
         self._emit("action_complete", payload)
+
+        # ENH-2453: cumulative subprocess RSS budget accounting. Modeled on the
+        # action_complete token accounting shape; one host_subproc_rss event per
+        # sampled subprocess.
+        if (
+            self._host_guard is not None
+            and self._host_guard.budget_enabled
+            and result.peak_rss_mb is not None
+        ):
+            crossed = self._host_guard.record_subproc_rss(self.current_state, result.peak_rss_mb)
+            self._emit(
+                HOST_SUBPROC_RSS_EVENT,
+                {
+                    "state": self.current_state,
+                    "peak_rss_mb": round(result.peak_rss_mb, 1),
+                    "cumulative_mb": round(self._host_guard.cumulative_subproc_mb, 1),
+                    "budget_mb": self._host_guard.config.max_cumulative_subproc_mb,
+                },
+            )
+            if crossed:
+                self._pending_host_budget_exceeded = True
 
         # Capture if requested
         if state.capture:
@@ -1359,6 +1466,12 @@ class FSMExecutor:
         self._current_process = process
         deadline = time.time() + timeout
 
+        # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
+        sampler: RssSampler | None = None
+        if self._host_guard is not None and self._host_guard.budget_enabled:
+            sampler = RssSampler(process.pid)
+            sampler.start()
+
         output_chunks: list[str] = []
         stderr_chunks: list[str] = []
 
@@ -1394,6 +1507,8 @@ class FSMExecutor:
             sel.close()
             self._current_process = None
 
+        peak_rss_mb = sampler.stop() if sampler is not None else None
+
         if timed_out:
             _kill_process_group(process)
             try:
@@ -1406,6 +1521,7 @@ class FSMExecutor:
                 stderr="".join(stderr_chunks) or "MCP call timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
+                peak_rss_mb=peak_rss_mb,
             )
 
         process.wait(timeout=5)
@@ -1414,6 +1530,7 @@ class FSMExecutor:
             stderr="".join(stderr_chunks),
             exit_code=process.returncode,
             duration_ms=_now_ms() - start,
+            peak_rss_mb=peak_rss_mb,
         )
 
     def _evaluate(
@@ -1934,6 +2051,82 @@ class FSMExecutor:
         if total_wait >= _max_wait:
             return True, self._exhaust_rate_limit(state, state_name, record)
         return True, state_name  # retry in place
+
+    def _check_host_guard(self, state: StateConfig) -> str | None:
+        """Pre-state host memory-pressure check (ENH-2452).
+
+        Applies only to prompt-mode action states (the LLM subprocess spawns
+        are what drive host pressure). Emits ``host_cooldown`` /
+        ``host_pressure`` / ``host_pressure_relieved`` / ``host_pressure_abort``
+        events and sleeps the extra cooldown via ``_interruptible_sleep`` (the
+        base ``--delay`` / ``fsm.backoff`` sleep remains the floor and is
+        unchanged).
+
+        Returns:
+            Route target when the guard elects to route (``on_pressure="route"``),
+            otherwise None. Sets ``_pending_host_pressure_abort`` when
+            ``on_pressure="abort"`` fires — the caller must check the flag.
+        """
+        guard = self._host_guard
+        if guard is None or not guard.config.enabled:
+            return None
+        if state.action is None or self._action_mode(state) != "prompt":
+            return None
+
+        decision = guard.pre_state()
+        if decision.used_pct is None:
+            return None  # probe unavailable — degrade to no-op
+
+        if decision.relieved:
+            self._emit(
+                HOST_PRESSURE_RELIEVED_EVENT,
+                {"state": self.current_state, "used_pct": round(decision.used_pct, 1)},
+            )
+
+        if decision.action == "cooldown":
+            self._emit(
+                HOST_COOLDOWN_EVENT,
+                {
+                    "state": self.current_state,
+                    "used_pct": round(decision.used_pct, 1),
+                    "cooldown_seconds": decision.cooldown_seconds,
+                },
+            )
+            self._interruptible_sleep(decision.cooldown_seconds)
+            return None
+
+        if decision.action == "route":
+            self._emit(
+                HOST_PRESSURE_EVENT,
+                {
+                    "state": self.current_state,
+                    "used_pct": round(decision.used_pct, 1),
+                    "action": f"route:{decision.target}",
+                },
+            )
+            return decision.target
+
+        if decision.action == "abort":
+            self._emit(
+                HOST_PRESSURE_EVENT,
+                {
+                    "state": self.current_state,
+                    "used_pct": round(decision.used_pct, 1),
+                    "action": "abort",
+                },
+            )
+            self._emit(
+                HOST_PRESSURE_ABORT_EVENT,
+                {"state": self.current_state, "used_pct": round(decision.used_pct, 1)},
+            )
+            self._shutdown_requested = True
+            self._pending_host_pressure_abort = True
+            if decision.target:
+                # on_abort_route names the final state recorded in the result.
+                self.current_state = decision.target
+            return None
+
+        return None
 
     def _maybe_wait_for_circuit(self, state: StateConfig) -> None:
         """Pre-action circuit-breaker check: sleep until shared 429 recovery.

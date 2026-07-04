@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from little_loops.fsm.host_guard import RssSampler
 from little_loops.fsm.types import ActionResult
 from little_loops.subprocess_utils import (
     DetailedUsageCallback,
@@ -65,10 +66,23 @@ class ActionRunner(Protocol):
 
 
 class DefaultActionRunner:
-    """Execute actions via subprocess or Claude CLI."""
+    """Execute actions via subprocess or Claude CLI.
 
-    def __init__(self) -> None:
+    Attributes:
+        sample_rss: When True (set by the executor when the host-guard
+            cumulative RSS budget is active, ENH-2453), each spawned
+            subprocess's RSS is sampled while it runs and the peak is
+            reported via ``ActionResult.peak_rss_mb``.
+    """
+
+    def __init__(self, sample_rss: bool = False) -> None:
+        """Initialize the runner.
+
+        Args:
+            sample_rss: Enable per-subprocess peak-RSS sampling (ENH-2453).
+        """
         self._current_process: subprocess.Popen[str] | None = None
+        self.sample_rss = sample_rss
 
     def run(
         self,
@@ -109,11 +123,20 @@ class DefaultActionRunner:
                 if not is_stderr and on_output_line:
                     on_output_line(line)
 
+            samplers: list[RssSampler] = []
+            peak_rss: list[float | None] = [None]
+
             def _on_proc_start(p: subprocess.Popen[str]) -> None:
                 self._current_process = p
+                if self.sample_rss:
+                    sampler = RssSampler(p.pid)
+                    sampler.start()
+                    samplers.append(sampler)
 
             def _on_proc_end(p: subprocess.Popen[str]) -> None:
                 self._current_process = None
+                if samplers:
+                    peak_rss[0] = samplers.pop().stop()
 
             collected_usage: list[TokenUsage] = []
 
@@ -155,6 +178,7 @@ class DefaultActionRunner:
                 exit_code=completed.returncode,
                 duration_ms=_now_ms() - start,
                 usage_events=collected_usage,
+                peak_rss_mb=peak_rss[0],
             )
 
         # Shell command — selector-based I/O with wall-clock timeout enforcement.
@@ -172,6 +196,12 @@ class DefaultActionRunner:
         )
         self._current_process = process
         deadline = time.time() + timeout
+
+        # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
+        shell_sampler: RssSampler | None = None
+        if self.sample_rss:
+            shell_sampler = RssSampler(process.pid)
+            shell_sampler.start()
 
         output_chunks: list[str] = []
         stderr_chunks: list[str] = []
@@ -211,6 +241,8 @@ class DefaultActionRunner:
             sel.close()
             self._current_process = None
 
+        shell_peak_rss = shell_sampler.stop() if shell_sampler is not None else None
+
         if timed_out:
             _kill_process_group(process)
             # Drain any remaining output after the kill
@@ -224,6 +256,7 @@ class DefaultActionRunner:
                 stderr="".join(stderr_chunks) or "Action timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
+                peak_rss_mb=shell_peak_rss,
             )
 
         process.wait(timeout=5)
@@ -232,6 +265,7 @@ class DefaultActionRunner:
             stderr="".join(stderr_chunks),
             exit_code=process.returncode,
             duration_ms=_now_ms() - start,
+            peak_rss_mb=shell_peak_rss,
         )
 
 
