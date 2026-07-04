@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-06-25** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-07-03** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -76,7 +76,11 @@ into `LLHookEvent` payloads.
     hook I/O protocol (stdin/stdout JSON) is compatible; `CLAUDE_PROJECT_DIR` env
     var alias is provided by Gemini for Claude Code compatibility; `gemini hooks
     migrate --from-claude` command exists. Cells flip from `(deferred)` to ✓ as
-    EPIC-2178 children land.
+    EPIC-2178 children land. **Landed so far:** `GeminiRunner` (ENH-2184 /
+    ENH-2185 — all four `build_*` methods wired) and the `.gemini/ll-config.json`
+    config probe (ENH-2187). Hook adapter (FEAT-2186) and `GEMINI.md` project
+    instructions (FEAT-2190) are still pending — hook-intent and discovery cells
+    stay `(deferred)` until those land.
 
 ## Slash-command and skill discovery
 
@@ -107,14 +111,23 @@ into `LLHookEvent` payloads.
 
 Runtime capabilities reported by `ll-doctor` for each host runner.
 
-| Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         |
-| ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- |
-| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`-o stream-json`)[^gemini]      |
-| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] |
-| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] |
-| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] |
-| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         |
-| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         |
+| Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         | omp                                |
+| ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- | ---------------------------------- |
+| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`-o stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     |
+| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] |
+| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] |
+| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   |
+| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            |
+| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            |
+
+[^omp]: oh-my-pi (`omp` binary, Bun package `@oh-my-pi/pi-coding-agent`) support
+    is tracked by **EPIC-2258**. The runner core (`OmpRunner`, FEAT-1850) and the
+    `.omp/ll-config.json` config probe (FEAT-2262) are landed; the hook adapter
+    (FEAT-2261) and hook-event parity audit (FEAT-2263) are pending — hook-intent
+    cells for omp are not tracked in the matrix until FEAT-2261 lands. omp has no
+    single-blob JSON mode: `--mode json` emits a JSONL event stream (same
+    consume-the-final-event contract as Codex `--json`). Audit artifact:
+    `thoughts/research/omp-headless-flags.md`.
 
 [^tok]: OpenCode and Codex CLI do not expose per-invocation token usage in their streaming output. The `on_usage_detailed` callback in `subprocess_utils.run_claude_command()` therefore fires only for `claude`-backed runs. Adapter work to surface usage from OpenCode/Codex is tracked by **FEAT-2123**. Loops run under those hosts will produce no `usage.jsonl` file and no per-state cost table in `ll-loop run` output.
 
@@ -166,22 +179,23 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 The orchestration tools (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`,
 FSM evaluators, FSM handoff) route every host CLI invocation through
 `scripts/little_loops/host_runner.py`. The `HostRunner` Protocol is
-satisfied by four concrete runners — `ClaudeCodeRunner` (production),
+satisfied by six concrete runners — `ClaudeCodeRunner` (production),
 `CodexRunner` (wired, auto-detects when `codex` is on PATH),
-`OpenCodeRunner` (stub), and `PiRunner` (stub) — so adding a new host is
-a matter of fleshing out the corresponding runner rather than touching
-call sites.
+`GeminiRunner` (wired, ENH-2185), `OmpRunner` (wired, FEAT-1850),
+`OpenCodeRunner` (stub), and `PiRunner` (frozen stub) — so adding a new
+host is a matter of fleshing out the corresponding runner rather than
+touching call sites.
 
-| Tool                          | Claude Code | OpenCode      | Codex CLI    | Pi           | Gemini CLI   |
+| Tool                          | Claude Code | OpenCode      | Codex CLI    | Gemini CLI   | omp          |
 | ----------------------------- | ----------- | ------------- | ------------ | ------------ | ------------ |
-| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| `ll-action`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
-| Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | stub[^orch]  | stub[^orch]  |
+| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| `ll-action`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
 
 [^conf]: Generic host-parametrized conformance harness (FEAT-2259). Run with
     `pytest -m conformance scripts/tests/` or per-host with
@@ -190,7 +204,8 @@ call sites.
 
 [^orch]: All seven call sites now route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
-    `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`).
+    `ClaudeCodeRunner` + `CodexRunner` + `GeminiRunner` + `OmpRunner` +
+    `OpenCodeRunner` + `PiRunner`).
     Wiring a non-Claude host means registering a new `HostRunner`
     implementation; the orchestration layer no longer hard-codes the
     `claude` binary or its argv. **stub** = runner is registered so
@@ -198,10 +213,11 @@ call sites.
     `HostNotConfigured` until the host-specific argv is implemented
     (OpenCode: FEAT-1472 Option B). **Vanilla Pi (pi-mono) host support is
     CANCELLED** (2026-06-24, ARCHITECTURE-050) — the `PiRunner` stub is frozen
-    and superseded by oh-my-pi (`omp`), tracked under EPIC-2258. The Pi column
-    is retained only because the stub is still registered in code; it will be
-    replaced by an `omp` column once `OmpRunner` lands (FEAT-1850). Do not
-    invest in the Pi column.
+    and superseded by oh-my-pi (`omp`), tracked under EPIC-2258. The former Pi
+    column was replaced by the `omp` column when `OmpRunner` landed
+    (FEAT-1850); the frozen `PiRunner` stub remains registered in code
+    (`LL_HOST_CLI=pi` resolves, every `build_*` raises) but is no longer
+    tracked in this matrix.
 
 ## Config probe path
 
@@ -214,12 +230,13 @@ Resolved by `resolve_config_path()` in
 | Claude Code | `.ll/ll-config.json` → root-level `ll-config.json`                                       |
 | OpenCode    | `.ll/ll-config.json` → root-level `ll-config.json` (same as default)                     |
 | Codex CLI   | `.codex/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json`             |
-| Gemini CLI  | `.gemini/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (deferred)[^gemini] |
+| Gemini CLI  | `.gemini/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (ENH-2187) |
+| omp         | `.omp/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (FEAT-2262)   |
 
-The Codex order is triggered by either `LL_HOOK_HOST=codex` or
-`LL_STATE_DIR=.codex` in the environment. The Codex adapter sets the
-former; users can set the latter manually to force Codex probe order
-without invoking the adapter.
+The host-specific order is triggered by either `LL_HOOK_HOST=<host>` or
+the matching `LL_STATE_DIR` value (`.codex`, `.gemini`, `.omp`) in the
+environment. Each adapter sets the former; users can set the latter
+manually to force the host probe order without invoking the adapter.
 
 ## State directory
 
@@ -251,7 +268,7 @@ without invoking the adapter.
 
 | Env var          | Description |
 | ---------------- | ----------- |
-| `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`). Takes precedence over binary probe and `orchestration.host_cli` config. |
+| `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`). Takes precedence over binary probe and `orchestration.host_cli` config. |
 | `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`). Set by each adapter before invoking the Python hook layer. |
 | `LL_STATE_DIR`        | Scope config probe to a host-specific directory (e.g. `.codex`). Affects config resolution only — other state paths are unaffected (see [^state]). |
 | `LL_HISTORY_DB`       | Override the default `.ll/history.db` session-store path (e.g. for test isolation). |
@@ -300,8 +317,11 @@ This matrix is the authoritative parity reference; the Codex docs above are the 
 - **FEAT-1487** — Update parity matrix and footnote for Codex slash-command gap.
 - **FEAT-992** — Original Pi (pi-mono) coding-agent compatibility epic.
   **Vanilla Pi support cancelled** 2026-06-24 (ARCHITECTURE-050); superseded by
-  oh-my-pi (`omp`) under **EPIC-2258**. An `omp` column replaces the Pi column
-  once `OmpRunner` lands (FEAT-1850).
+  oh-my-pi (`omp`) under **EPIC-2258**. The `omp` column replaced the Pi column
+  when `OmpRunner` landed (FEAT-1850).
+- **EPIC-2258** — oh-my-pi (`omp`) host adapter tracking (this matrix's omp
+  column). Runner core (FEAT-1850) and config probe (FEAT-2262) landed; hook
+  adapter (FEAT-2261) and hook-event parity (FEAT-2263) pending.
 - **FEAT-1488** — Research spike: sidecar/IPC for hot-path intents on
   non-Claude-Code hosts (completed — decision: opt-in-only + fire-and-forget
   `post_tool_use`; sidecar deferred until benchmark; see

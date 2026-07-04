@@ -122,6 +122,7 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 | `on_max_iterations` | unset | Names a state to run exactly once when the full-pass cap fires before terminating. |
 | `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_steps` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |
 | `circuit.repeated_failure` | unset | A single state failing the same way every iteration. See the stall detector below. |
+| `host_guard` | enabled | Host memory exhaustion from sequential LLM subprocess spawns (macOS jetsam kills). See the host guard below. |
 
 ### Stall Detector (circuit-repeated-failure)
 
@@ -144,6 +145,51 @@ circuit:
     progress_paths:
       - "${env.PWD}/.loops/tmp/plan.md"
 ```
+
+### Host Guard (host_guard)
+
+A loop that runs many sequential prompt states (e.g. `brainstorm` with 13 LLM
+subprocess spawns) can exhaust host memory and get a sibling interactive
+session killed by macOS jetsam — even when `--delay` is set conservatively.
+The `host_guard:` block (ENH-2452) samples host memory (`vm_stat` on macOS,
+`/proc/meminfo` on Linux — no psutil) **before each prompt-mode state** and
+reacts adaptively. It is enabled by default with conservative thresholds;
+disable per-run with `--no-host-guard`.
+
+```yaml
+host_guard:
+  enabled: true                    # default true
+  cooldown_ms: 500                 # extra sleep added to the --delay floor at warn_pct
+  warn_pct: 75                     # used-memory % that triggers the extra cooldown
+  critical_pct: 85                 # used-memory % that triggers on_pressure
+  on_pressure: route               # cool_down (default) | route | abort
+  pressure_state: paused           # required when on_pressure=route
+  on_abort_route: failed           # optional final state when on_pressure=abort
+  # Cumulative subprocess RSS budget (ENH-2453); 0 = disabled
+  max_cumulative_subproc_mb: 4096  # cap on summed peak subprocess RSS across the run
+  on_budget_exceeded: route        # route | abort
+  budget_state: out_of_resources   # required when routing with an enabled budget
+```
+
+Behavior ladder:
+
+- **used < warn_pct** — nothing extra; the base `--delay` / `backoff:` sleep is
+  the floor and is never shortened by the guard.
+- **warn_pct ≤ used < critical_pct** — emits `host_cooldown` and sleeps an
+  extra `cooldown_ms` before the action runs.
+- **used ≥ critical_pct** — emits `host_pressure`, then per `on_pressure`:
+  `cool_down` sleeps extra, `route` goes to `pressure_state`, `abort`
+  terminates with `terminated_by="host_pressure_abort"` (emitting
+  `host_pressure_abort`). When pressure later drops back below `warn_pct`,
+  `host_pressure_relieved` is emitted.
+
+When `max_cumulative_subproc_mb > 0`, each spawned subprocess's peak RSS is
+sampled while it runs (`/proc/<pid>/status` `VmHWM` on Linux, `ps -o rss=` on
+macOS) and emitted as `host_subproc_rss`. When the running sum crosses the
+budget, `host_budget_exceeded` fires and the loop routes to `budget_state` or
+terminates with `terminated_by="host_budget_exceeded"`. Override the budget
+per-run with `--host-guard-budget-mb N`. Probe failures degrade to a no-op —
+the guard never blocks a loop on an unreadable host.
 
 ## Common Loop Patterns
 
@@ -436,7 +482,7 @@ Optional fields on any state:
 
 | Field | Description |
 |-------|-------------|
-| `backoff:` | Seconds to wait before executing this state's action. Overridden at runtime by `--delay`. |
+| `backoff:` | Seconds to wait before executing this state's action. Overridden at runtime by `--delay`. Also useful to space out subprocess spawns in long-running loops and relieve host memory pressure (the adaptive complement is the [host guard](#host-guard-host_guard)). |
 | `max_retries:` | Times the engine re-enters this state before routing to `on_retry_exhausted`. |
 | `on_retry_exhausted:` | Target state when retries run out. Common in harnesses: `on_retry_exhausted: advance` to skip a stuck item. |
 | `retryable_exit_codes:` | Restrict retry to these exit codes; other non-zero exits route directly to `on_error`. |

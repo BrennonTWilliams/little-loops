@@ -164,6 +164,13 @@ Analyze git history for release preparation.
    - chore:/ci:/build: → Maintenance
    - BREAKING CHANGE or !: → Breaking Changes (major bump)
 
+   Exclusions (ENH-2467): skip commits whose subject starts with `chore(issues):`
+   — these are `.issues/`-only housekeeping commits (issue status flips,
+   session-log appends) deliberately demoted by /ll:manage-issue. They must not
+   appear in ANY changelog section, including Maintenance. As defense-in-depth,
+   also skip any commit whose changed files are entirely under `.issues/`
+   (check with: git diff-tree --no-commit-id --name-only -r <sha>).
+
 5. Suggest next version based on commit types:
    - If any BREAKING CHANGE → major
    - If any feat: → minor

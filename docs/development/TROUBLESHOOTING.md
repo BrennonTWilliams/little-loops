@@ -332,6 +332,25 @@ git worktree prune
 
 See [HOST_COMPATIBILITY.md — Orchestration CLI](../reference/HOST_COMPATIBILITY.md#orchestration-cli) for the per-host matrix.
 
+### Jetsam-killed session during ll-loop (macOS memory pressure)
+
+**Symptom**: While a long `ll-loop run` is executing (many sequential prompt states, each spawning a `claude` subprocess), a sibling interactive Claude session is killed by macOS jetsam. `log show --predicate 'eventMessage CONTAINS "Jetsam"'` confirms the kill.
+
+**Cause**: Sequential LLM subprocesses each hold hundreds of MB peak RSS; the cumulative footprint across a 10+-state loop exceeds the host's memory headroom. See ENH-2452 / ENH-2453.
+
+**Solution**:
+1. The FSM host guard (`host_guard:` block) is enabled by default: it samples host memory before each prompt-mode state and sleeps an extra `cooldown_ms` above `warn_pct` (default 75%). Tune `warn_pct` / `critical_pct` down or set `on_pressure: route`/`abort` for heavy loops — see [LOOPS_GUIDE.md — Host Guard](../guides/LOOPS_GUIDE.md#host-guard-host_guard).
+2. Set a cumulative subprocess RSS budget for heavy loops (e.g. ~half of system memory):
+   ```yaml
+   host_guard:
+     max_cumulative_subproc_mb: 4096
+     on_budget_exceeded: route
+     budget_state: out_of_resources
+   ```
+   or per-run: `ll-loop run brainstorm --host-guard-budget-mb 4096`.
+3. As a quick interim mitigation, space out subprocess spawns with `--delay 1` (the guard's cooldown is added on top of this floor; the guard never sleeps less than `--delay`).
+4. Verify with `ll-loop history <loop>` — look for `host_cooldown` / `host_pressure` events showing the guard reacting.
+
 ---
 
 ## State Management
@@ -832,6 +851,20 @@ If `ll-loop stop` still reports "not running" (e.g. lock file is missing but sco
 2. Look for closure notes in the file
 3. Review git log for any commits
 4. Run with verbose output to see reasoning
+
+### Commit missing from release changelog
+
+**Symptom**: A `/ll:manage-issue` commit exists in `git log` but does not appear
+in the changelog produced by `/ll:manage-release`
+
+**Cause**: Intentional (ENH-2467). Commits whose changed files are entirely
+under `.issues/` (status flips, session-log appends) are demoted to a
+`chore(issues):` subject by manage-issue, and the changelog generator excludes
+them — release notes should only reflect user-visible changes.
+
+**Solution**: Nothing to fix — inspect `git log` directly for issue-tracker
+housekeeping history. Only commits touching source/docs/tests/config surface
+in release notes.
 
 ---
 

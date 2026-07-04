@@ -33,7 +33,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.context_window` | Model→context-window size mapping (`context_window_for()`) |
 | `little_loops.subprocess_utils` | Subprocess handling |
-| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner` + `OpenCodeRunner` + `PiRunner`) |
+| `little_loops.host_runner` | Host-agnostic CLI invocation layer (`HostRunner` Protocol + `ClaudeCodeRunner` + `CodexRunner` + `GeminiRunner` + `OmpRunner` + `OpenCodeRunner` + `PiRunner`) |
 | `little_loops.adapters` | Host-parameterised emitter layer (`HostEmitter` Protocol + `resolve_emitter` registry factory) — `CodexEmitter` and `GeminiEmitter` fully implemented (FEAT-2391/2392) |
 | `little_loops.state` | State persistence |
 | `little_loops.events` | Structured events and EventBus dispatcher |
@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942), `condensed_nodes_for_issue(issue_id, *, limit, node_char_cap, db)` (ENH-2231) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942), `condensed_nodes_for_issue(issue_id, *, limit, node_char_cap, db)` (ENH-2231), `recent_skill_events()` / `summarize_skills()` (ENH-2460), `recent_commit_events()` (ENH-2458), `recent_test_runs()` (ENH-2459), `find_session_for_issue_transition()` (ENH-2462) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -4355,6 +4355,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.concurrency` | Scope-based lock management for concurrent loops |
 | `little_loops.fsm.rate_limit_circuit` | Shared circuit-breaker state file for cross-worktree 429 coordination |
 | `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
+| `little_loops.fsm.host_guard` | Adaptive host memory-pressure guard: `HostGuardConfig`, `HostGuard`, `RssSampler`, memory probes (ENH-2452/ENH-2453) |
 | `little_loops.fsm.stall_detector` | `StallDetector` and `Stall` dataclass for circuit-breaker stall detection |
 | `little_loops.fsm.fragments` | Fragment composition: `resolve_fragments()`, `resolve_inheritance()`, `resolve_flow()` |
 | `little_loops.fsm.policy_rules` | Shared policy-rule grammar for decision-table routing: `parse_rules()`, `serialize_rules()`, `evaluate_rules()`, `Rule`, `Predicate` dataclasses. Single source of truth used by both `lib/policy-router.yaml` and `edit-routes` compound mode (ENH-2164) |
@@ -5362,6 +5363,69 @@ File-backed circuit-breaker for shared 429 backoff coordination. The `path` argu
 | `get_estimated_recovery()` | `float \| None` | Epoch-seconds timestamp of estimated recovery, or `None` if the entry is stale or the file is absent |
 | `is_stale()` | `bool` | `True` when `last_seen` is older than `STALE_THRESHOLD_SECONDS` (3600s); `False` if the file is absent |
 | `clear()` | `None` | Remove the state file; no-op if already absent |
+
+---
+
+### little_loops.fsm.host_guard
+
+Adaptive host memory-pressure guard (ENH-2452) and cumulative subprocess RSS budget (ENH-2453) for the FSM executor. Probes use `vm_stat` (macOS) and `/proc/meminfo` (Linux) — no psutil dependency.
+
+#### HostGuardConfig
+
+```python
+@dataclass
+class HostGuardConfig:
+    enabled: bool = True                  # master switch (--no-host-guard overrides)
+    cooldown_ms: int = 500                # extra sleep at warn_pct (added to --delay floor)
+    warn_pct: float = 75.0                # used-memory % for extra cooldown
+    critical_pct: float = 85.0            # used-memory % for on_pressure
+    on_pressure: str = "cool_down"        # cool_down | route | abort
+    pressure_state: str | None = None     # required when on_pressure="route"
+    on_abort_route: str | None = None     # optional final state on abort
+    max_cumulative_subproc_mb: int = 0    # RSS budget in MB; 0 = disabled
+    on_budget_exceeded: str = "route"     # route | abort
+    budget_state: str | None = None       # required when routing with an enabled budget
+```
+
+Mirrors the loop YAML `host_guard:` block; exposed as `FSMLoop.host_guard` (always present, default-enabled). Supports `to_dict()` / `from_dict()` with skip-if-default serialization.
+
+#### HostGuard
+
+```python
+class HostGuard:
+    def __init__(self, config: HostGuardConfig,
+                 probe: Callable[[], float | None] = read_memory_pressure) -> None
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `pre_state()` | `GuardDecision` | Sample host memory and decide: `ok`, `cooldown`, `route`, or `abort`. Probe failures yield `ok` with `used_pct=None` |
+| `record_subproc_rss(label, peak_rss_mb)` | `bool` | Accumulate one subprocess's peak RSS; returns `True` exactly once when the sum first crosses `max_cumulative_subproc_mb` |
+| `budget_enabled` (property) | `bool` | `True` when `max_cumulative_subproc_mb > 0` |
+
+#### Probes and sampling
+
+| Function/Class | Description |
+|----------------|-------------|
+| `read_memory_pressure()` | Host used-memory percentage via `vm_stat` (macOS) or `/proc/meminfo` (Linux); `None` on failure |
+| `parse_vm_stat(output)` / `parse_meminfo(text)` | Pure parsers for the probe outputs |
+| `sample_rss_mb(pid)` | Live process RSS in MB (`VmHWM` peak on Linux, `ps -o rss=` elsewhere) |
+| `RssSampler(pid, interval=1.0)` | Background thread tracking a subprocess's peak RSS (`start()` / `stop() -> float \| None`) |
+
+#### Events
+
+Emitted through the executor's event stream:
+
+| Event | When |
+|-------|------|
+| `host_cooldown` | Used memory >= `warn_pct`; payload includes `used_pct`, `cooldown_seconds` |
+| `host_pressure` | Used memory >= `critical_pct`; payload `action` is `route:<state>` or `abort` |
+| `host_pressure_relieved` | Pressure dropped back below `warn_pct` after a critical crossing |
+| `host_pressure_abort` | `on_pressure="abort"` fired; run finishes with `terminated_by="host_pressure_abort"` |
+| `host_subproc_rss` | Per sampled subprocess; payload includes `peak_rss_mb`, `cumulative_mb`, `budget_mb` |
+| `host_budget_exceeded` | Cumulative RSS sum first crossed the budget; run routes to `budget_state` or finishes with `terminated_by="host_budget_exceeded"` |
 
 ---
 
@@ -6407,6 +6471,11 @@ from little_loops.history_reader import (
     sessions_for_issue,
     lookup_session_metadata,
     conversation_turns,
+    recent_skill_events,     # ENH-2460
+    summarize_skills,        # ENH-2460
+    recent_commit_events,    # ENH-2458
+    recent_test_runs,        # ENH-2459
+    find_session_for_issue_transition,  # ENH-2462
 )
 ```
 
@@ -6554,19 +6623,87 @@ FTS5 full-text search with optional *kind* filter.
 def related_issue_events(
     issue_id: str,
     *,
+    session_id: str | None = None,
     limit: int = 20,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> list[IssueEvent]
 ```
 
-Return issue events for *issue_id*, ordered by most recent first.
+Return issue events for *issue_id*, ordered by most recent first. When `session_id` is given, only events recorded with that exact authoritative session ID are returned (ENH-2462).
 
 **Parameters:**
 - `issue_id` — the issue identifier (e.g., `"ENH-1752"`)
+- `session_id` — optional exact `issue_events.session_id` filter (ENH-2462)
 - `limit` — maximum number of rows to return (default: 20)
 - `db` — path to the SQLite database (default: `.ll/history.db`)
 
-**Returns:** List of `IssueEvent` instances ordered by `ts DESC`. Returns `[]` if the database is unavailable.
+**Returns:** List of `IssueEvent` instances ordered by `ts DESC` (each carries `session_id`, `None` for legacy rows). Returns `[]` if the database is unavailable.
+
+### find_session_for_issue_transition
+
+```python
+def find_session_for_issue_transition(
+    issue_id: str,
+    transition: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> str | None
+```
+
+Return the authoritative `session_id` recorded for an exact issue transition (ENH-2462), or `None` for legacy pre-v16 rows, transitions emitted outside a session-known context, or unknown transitions.
+
+### recent_skill_events
+
+```python
+def recent_skill_events(
+    skill_name: str | None = None,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[SkillEvent]
+```
+
+Return recent `skill_events` rows, newest first, including the v15 completion columns (`exit_code`, `success`, `duration_ms` — `None` for dispatch-only rows) (ENH-2460).
+
+### summarize_skills
+
+```python
+def summarize_skills(
+    since: str | None = None,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-skill rollup powering `ll-session skill-stats` (ENH-2460): returns dicts with `skill_name`, `invocations`, `completions`, `successes`, `success_rate` (over completion-carrying rows only; `None` when no completions), and `avg_duration_ms`, sorted by invocation count descending.
+
+### recent_commit_events
+
+```python
+def recent_commit_events(
+    *,
+    branch: str | None = None,
+    issue_id: str | None = None,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[CommitEvent]
+```
+
+Return recent `commit_events` rows, newest first, optionally filtered by exact `branch` and/or `issue_id` (ENH-2458). `CommitEvent` carries `ts`, `commit_sha`, `parent_sha`, `message`, `author`, `branch`, `issue_id`, and `files_json` (JSON array of touched paths).
+
+### recent_test_runs
+
+```python
+def recent_test_runs(
+    *,
+    branch: str | None = None,
+    head_sha: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[TestRunEvent]
+```
+
+Return recent `test_run_events` rows, newest first, optionally filtered (ENH-2459). `TestRunEvent` exposes a derived `pass_rate` property (`passed / total`, `None` when `total` is 0/unknown).
 
 ### sessions_for_issue
 
@@ -6764,20 +6901,83 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **14**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **18**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 14
+    SCHEMA_VERSION,        # 18
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
     record_correction,     # write a user_corrections row
-    record_skill_event,    # write a skill_events row
+    record_skill_event,    # write a skill_events row (dispatch-time; completion columns NULL)
+    skill_event_context,   # ctx manager: INSERT on enter, UPDATE exit_code/success/duration_ms on exit (ENH-2460)
+    record_commit_event,   # write a commit_events row; issue_id inferred from message/branch (ENH-2458)
+    record_test_run_event, # write a test_run_events row (ENH-2459)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     prune,                 # prune old event rows and VACUUM
 )
 ```
+
+### skill_event_context
+
+```python
+@contextmanager
+def skill_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    session_id: str | None = None,
+    skill_name: str = "",
+    args: str = "",
+    config: dict | None = None,
+) -> Generator[SkillEventCompletion, None, None]
+```
+
+Skill-host analogue of `cli_event_context()` (ENH-2460): inserts a `skill_events` row on enter and updates `exit_code`, `success`, and `duration_ms` on exit. Yields a mutable `SkillEventCompletion` handle — hosts that observe a concrete process exit code (e.g. `ll-action invoke`) set `completion.exit_code` before the block exits; otherwise a clean exit records `exit_code=0, success=1` and a raise records `exit_code=1, success=0`. Best-effort per the EPIC-1707 contract: a missing/locked database never blocks the wrapped skill body.
+
+### record_commit_event
+
+```python
+def record_commit_event(
+    db_path: Path | str,
+    commit_sha: str,
+    message: str,
+    *,
+    author: str | None = None,
+    branch: str | None = None,
+    issue_id: str | None = None,
+    files: Sequence[str] | None = None,
+    parent_sha: str | None = None,
+    ts: str | None = None,
+    config: dict | None = None,
+) -> bool
+```
+
+Write one `commit_events` row and index it in `search_index` with `kind="commit"` (ENH-2458). `issue_id` is inferred from the message (`Closes/Fixes/Resolves/Issue:` references, bare `TYPE-NNN` tokens) and branch naming (`feat/ENH-2458-*`) when not given. Idempotent via `INSERT OR IGNORE` on the `commit_sha` UNIQUE constraint; returns `True` when a new row was inserted. Producers: the `hooks/scripts/record-commit-post-commit` git hook (via `little_loops.hooks.post_commit.record_head_commit()`) and `ll-session backfill`, which walks `git log --all`.
+
+### record_test_run_event
+
+```python
+def record_test_run_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    ended_at: str | None = None,
+    total: int = 0,
+    passed: int = 0,
+    failed: int = 0,
+    errored: int = 0,
+    skipped: int = 0,
+    duration_s: float | None = None,
+    failing_names: Sequence[str] | None = None,
+    env_label: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    command: str | None = None,
+    config: dict | None = None,
+) -> None
+```
+
+Write one `test_run_events` row and index it in `search_index` with `kind="test_run"` (ENH-2459). `failing_names` (pytest node IDs) are stored as a JSON array and fed into FTS so failing-test fragments are searchable. The primary producer is the `little_loops.pytest_history_plugin` pytest11 plugin (auto-registered via entry point; opt out with `PYTEST_DISABLE_PLUGIN_LL_HISTORY=1`); it only activates when the invocation directory contains `.ll/` or `LL_HISTORY_DB` is set, records from the xdist controller only, and swallows all write errors.
 
 ### record_retirement
 
@@ -6934,7 +7134,7 @@ def main_hooks(argv: list[str]) -> int: ...
 
 ## little_loops.host_runner
 
-Host-agnostic CLI invocation layer. Every shell-out to a host CLI (`claude`, `codex`, `opencode`, `pi`) is built through a `HostRunner` implementation, so the orchestration layer (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, FSM handoff) never hard-codes host-specific argv.
+Host-agnostic CLI invocation layer. Every shell-out to a host CLI (`claude`, `codex`, `opencode`, `pi`, `gemini`, `omp`) is built through a `HostRunner` implementation, so the orchestration layer (`ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, FSM handoff) never hard-codes host-specific argv.
 
 ```python
 from little_loops.host_runner import (
@@ -6951,7 +7151,7 @@ from little_loops.host_runner import (
 )
 ```
 
-Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "HookEntry", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
+Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "GeminiRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "HookEntry", "OmpRunner", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
 
 ### HostInvocation
 
@@ -7038,9 +7238,11 @@ class HostRunner(Protocol):
 | Runner | Host | Status | Notes |
 |---|---|---|---|
 | `ClaudeCodeRunner` | `claude` CLI | ✓ production | Argv mirrors `subprocess_utils.run_claude_command`; snapshot test in `tests/test_host_runner.py::test_claude_runner_matches_legacy_args`. |
-| `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi`). For `agent`, `build_streaming` reads `.codex/agents/<name>.toml` and prepends `developer_instructions` as a `[Persona: <name>]` block (ENH-1533); when the TOML is absent, falls back to emitting `CapabilityNotSupported` plus a stderr notice. `tools` always emits `CapabilityNotSupported` and is dropped; use `sandbox_mode=` (ENH-1529) for constrained execution. `describe_capabilities()` reports `agent_select.status == "partial"` and `tool_allowlist.status == "partial"` (via sandbox_mode). |
+| `CodexRunner` | `codex` CLI | ✓ production | Translates the Claude-shaped Protocol surface to Codex `exec` headless mode. Auto-detected when `codex` is on PATH (probe order: `claude → codex → pi → gemini → omp`). For `agent`, `build_streaming` reads `.codex/agents/<name>.toml` and prepends `developer_instructions` as a `[Persona: <name>]` block (ENH-1533); when the TOML is absent, falls back to emitting `CapabilityNotSupported` plus a stderr notice. `tools` always emits `CapabilityNotSupported` and is dropped; use `sandbox_mode=` (ENH-1529) for constrained execution. `describe_capabilities()` reports `agent_select.status == "partial"` and `tool_allowlist.status == "partial"` (via sandbox_mode). |
+| `GeminiRunner` | `gemini` CLI | ✓ production | Gemini CLI (npm `@google/gemini-cli`). Flags are near-identical to Claude Code: `-p <prompt>`, `--output-format stream-json` / `json`, `--approval-mode yolo` for permission skip, `--resume latest` for resume, `--model <id>`. `agent` and `tools` parameters emit `CapabilityNotSupported` and are dropped (no `--agent` flag — skills activate implicitly; tool policy is a TOML-file Policy Engine, not a flag). `json_schema` is silently dropped like `ClaudeCodeRunner`. See `thoughts/research/gemini-cli-surface.md` (ENH-2184/ENH-2185). |
+| `OmpRunner` | `omp` CLI | ✓ production | oh-my-pi (Bun `@oh-my-pi/pi-coding-agent`). `-p <prompt>` print mode; `--mode json` emits a JSONL event stream (no single-blob mode — `build_blocking_json` uses `--mode json --no-session` and callers consume the final event, same contract as Codex). `--continue` for resume, `--model <pattern>`, native `--tools <comma-list>` allowlist. `agent` emits `CapabilityNotSupported` (subagents spawn in-session). Permission skip is implicit — print mode never prompts. See `thoughts/research/omp-headless-flags.md` (FEAT-1850). |
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
-| `PiRunner` | `pi` CLI | stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Pi orchestration is tracked under FEAT-992. |
+| `PiRunner` | `pi` CLI | frozen stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Vanilla Pi support is cancelled (ARCHITECTURE-050); superseded by `OmpRunner` (EPIC-2258). |
 
 ### CapabilityEntry
 
@@ -7137,7 +7339,7 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner: ...
 Detection order (first match wins):
 1. `LL_HOST_CLI` environment variable — explicit override.
 2. `LL_HOOK_HOST` environment variable — falls back to the hooks-layer host identifier so users with an existing hook config don't need a second knob.
-3. Binary probe: `claude` → `codex` → `pi` (see `_PROBE_ORDER`).
+3. Binary probe: `claude` → `codex` → `pi` → `gemini` → `omp` (see `_PROBE_ORDER`).
 4. Raise `HostNotConfigured` with a remediation hint.
 
 ```python

@@ -302,7 +302,7 @@ ll-parallel --prune-merged-branches --dry-run
 ll-parallel --prune-merged-branches
 ```
 
-**What is pruned:** local `feature/*` branches that are fully merged into `parallel.base_branch` (the branch that was checked out when `ll-parallel` last ran, defaulting to `main`). The currently checked-out branch and the base branch are never deleted.
+**What is pruned:** local `feature/*` branches that are fully merged into `parallel.base_branch` (auto-detected when unset: the repository's `origin/HEAD` default branch, else the current branch, else `main`; an explicit `parallel.base_branch` config value overrides detection). The currently checked-out branch and the base branch are never deleted.
 
 **Squash/rebase merges:** `git branch --merged` only detects fast-forward and merge-commit histories. If your repository uses squash or rebase merges, install `gh` and authenticate (`gh auth login`) — `ll-parallel --prune-merged-branches` will cross-check PR state via `gh pr view` and prune those branches too. Without `gh`, squash/rebase-merged branches are left untouched.
 

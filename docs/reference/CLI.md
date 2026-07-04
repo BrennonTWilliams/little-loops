@@ -524,8 +524,10 @@ Run a loop.
 | `input` | | (Optional positional) If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in `context[input_key]` |
 | `--max-steps` | `-n` | Override step cap (individual state transitions) |
 | `--max-iterations` | | Override full-pass cap (complete loop cycles) |
-| `--delay` | | Sleep N seconds between iterations (useful for recording) |
+| `--delay` | | Sleep N seconds between iterations (useful for recording and to relieve host memory pressure between subprocess spawns) |
 | `--no-llm` | | Disable LLM evaluation |
+| `--no-host-guard` | | Disable the adaptive host memory-pressure guard (`host_guard:` block, ENH-2452). By default the guard samples host memory before each prompt-mode state and adds an extra cooldown / routes / aborts per the loop's `host_guard:` config. |
+| `--host-guard-budget-mb N` | | Override `host_guard.max_cumulative_subproc_mb`: cap on summed peak subprocess RSS (MB) across the run (ENH-2453). `0` disables the budget. |
 | `--model` | | Default model for host-CLI action states (`prompt`/`slash_command`). Per-state `model:` key overrides this. |
 | `--llm-model` | | Override model for FSM evaluator/judge states (distinct from `--model`) |
 | `--dry-run` | | Show execution plan without running. Diagram rendering is not suppressed — combine with `--show-diagrams` to preview both the FSM diagram and the execution plan. |
@@ -710,7 +712,8 @@ Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, an
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--show-diagrams[=MODE]` | | Display FSM diagram after each step. `MODE` is a topology (`layered`\|`neighborhood`\|`inline`\|`window`) or preset (`detailed`\|`summary`\|`clean`\|`local`\|`slim`\|`oneline`). Bare flag selects `summary` (layered, main-path scope). Override individual facets with `--diagram-edge-labels=on\|off`, `--diagram-state-detail=title\|full`, `--diagram-scope=main\|full`. **Breaking (ENH-1672):** `main`→`summary`, `full`→`detailed`, `mini`→`clean`; old values error with migration hints. Viewport auto-degrades `layered→window→neighborhood→inline` for preset/default sources (the `window` rung crops the real layered diagram to ±K layers around the active state with `▲ N layers above`/`▼ M layers below` banners — ENH-2410); explicit topology values disable degradation (`window` is also selectable explicitly). |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty). When combined with `--show-diagrams` on a tty, the screen splits into a pinned FSM diagram on top and a scrolling action-output region below; on terminals too short for the full diagram the pinned pane falls back first to a **windowed** view (the real layered diagram cropped to ±K layers around the active state, with `▲ N layers above`/`▼ M layers below` overflow banners — ENH-2410), then to a 1-hop neighborhood view (predecessors → [active] → successors), then to a single-line `fsm: ... → [...] → ...` status. The pane redraws on SIGWINCH (terminal resize). When a parent loop spawns child loops, the pinned pane shows **only the deepest active child loop** rather than all nesting levels simultaneously — keeping the pane readable regardless of loop depth. |
-| `--delay` | | Sleep N seconds between iterations (useful for recording) |
+| `--delay` | | Sleep N seconds between iterations (useful for recording and to relieve host memory pressure between subprocess spawns) |
+| `--no-host-guard` | | Disable the adaptive host memory-pressure guard (`host_guard:` block, ENH-2452) |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 
@@ -2199,6 +2202,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------------|-------------|
 | `search` | FTS5 full-text query with BM25-ranked results |
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
+| `skill-stats` | Per-skill invocation/completion/success-rate rollup from `skill_events` completion columns; `--since DATE` bounds the window (ENH-2460) |
 | `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152); `--max-sessions N` caps how many sessions are compacted in this run (newest first, useful for large DBs) (ENH-2252) |
 | `export` | Dump selected history tables as JSONL to stdout or a file — for visualization, external tooling, or backup (ENH-2252) |
 | `related` | Issue events for a given issue ID |
@@ -2236,7 +2240,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message,skill,cli}` | Filter results by event kind (optional) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` | Filter results by event kind (optional) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -2244,7 +2248,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli}` | Event kind to list (required unless `--issue` is given) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460) |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
@@ -2263,7 +2267,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event` |
+| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event` |
 | `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
 | `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
 | `-o / --output FILE` | Write output to FILE instead of stdout |
@@ -2272,6 +2276,9 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 ```bash
 ll-session search --fts "rate limit"            # Full-text search, BM25-ranked
 ll-session recent --kind loop                   # Recent loop events
+ll-session recent --kind commit                 # Recent git commits (ENH-2458)
+ll-session recent --kind test_run               # Recent pytest runs (ENH-2459)
+ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
 ll-session backfill                             # Seed the database from on-disk sources

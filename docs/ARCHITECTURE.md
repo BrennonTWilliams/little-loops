@@ -255,7 +255,7 @@ little-loops/
         ├── text_utils.py        # Text processing utilities
         ├── pii.py               # PII detection and redaction utilities
         ├── subprocess_utils.py  # Subprocess handling
-        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + OpenCodeRunner + PiRunner)
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + GeminiRunner + OmpRunner + OpenCodeRunner + PiRunner)
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
@@ -340,6 +340,56 @@ little-loops/
                     ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
                     └── post-tool-use.sh  # PostToolUse → post_tool_use (sets LL_HOOK_HOST=codex)
 ```
+
+---
+
+## Orchestration Layers
+
+The three orchestration CLIs (`ll-auto`, `ll-sprint`, `ll-parallel`) are
+organized as a layered architecture (EPIC-1867). The full decomposition
+rationale lives in
+[docs/research/ll-orchestrator-decomposition-plan-v0.2.md](research/ll-orchestrator-decomposition-plan-v0.2.md);
+this section summarizes the layers and their status.
+
+```mermaid
+flowchart TB
+    subgraph L3["Layer 3 — ll-parallel (canonical parallel substrate, kept as Python)"]
+        PAR[ParallelOrchestrator + WorkerPool + MergeCoordinator]
+    end
+
+    subgraph L2["Layer 2 — ll-sprint (wave driver + shim; FSM planned: FEAT-1899)"]
+        SPRINT[DependencyGraph waves + contention refinement]
+    end
+
+    subgraph L1["Layer 1 — ll-auto (FSM + shim; planned: FEAT-2000/2001/2002)"]
+        AUTO[Per-issue lifecycle: ready → manage → verify]
+    end
+
+    subgraph L0["Layer 0 — shared core (library + CLI subcommands; FEAT-1901)"]
+        CORE[issue scan/parse, state, config, host_runner, worktree_utils]
+    end
+
+    SPRINT -- "multi-issue waves" --> PAR
+    AUTO --> CORE
+    SPRINT --> CORE
+    PAR --> CORE
+```
+
+| Layer | Tool | Role | Status |
+|-------|------|------|--------|
+| 0 | (library) | Shared orchestration core exposed as internal library + CLI subcommands | In progress (FEAT-1901) |
+| 1 | `ll-auto` | Per-issue sequential lifecycle; target: FSM loop (`loops/ll-auto.yaml`) + thin CLI shim | Python today; FSM migration planned (FEAT-2000/2001/2002) |
+| 2 | `ll-sprint` | Dependency-aware wave planning + execution; target: FSM wave driver + shim | Python today; FSM wave driver planned (FEAT-1899) |
+| 3 | `ll-parallel` | **Canonical parallel substrate** — worker pool, git worktrees, merge coordination | **Kept as Python permanently — no FSM equivalent** |
+
+**Layer 3 is normative:** `ll-parallel` is the canonical parallel substrate for
+the entire toolkit. The FSM engine has no concurrency primitive, so there is no
+FSM replacement for the worker pool / worktree / `MergeCoordinator` machinery —
+it stays Python. `ll-sprint` multi-issue waves already delegate to
+`ParallelOrchestrator` today, and the planned Layer-2 FSM wave driver will
+continue to shell out to it for multi-issue waves. Anything that needs
+concurrent issue processing builds on `ll-parallel` rather than reimplementing
+parallelism.
 
 ---
 
@@ -573,6 +623,10 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v12 | `summary_nodes.level`, `idx_summary_nodes_cross_dedup` | Adds `level INTEGER DEFAULT 0` column to `summary_nodes` for N-level DAG traversal (0 = leaf/per-session condensed, 1+ = cross-session condensed, max = root) and a cross-session dedup index `idx_summary_nodes_cross_dedup` on `(level, ts_start, ts_end) WHERE kind='condensed' AND session_id IS NULL` (ENH-1953). |
 | v13 | `correction_retirements` | Records addressed correction clusters (topic fingerprint + optional rule ID) so `detect_recurring_feedback()` excludes already-ruled topics from future runs; unique index on `topic_fingerprint` for idempotent inserts (ENH-2046). |
 | v14 | `issue_snapshots` | Stores full issue content (title, priority, body, frontmatter) at key lifecycle transitions (`captured`, `done`, `cancelled`) so completed issue context is queryable from the DB even after the source `.md` file is moved or deleted. FTS via `search_index` with `kind="snapshot"` (ENH-2151). |
+| v15 | `skill_events.exit_code/success/duration_ms` | Completion-side columns on `skill_events`, written by `skill_event_context()` (the skill-host analogue of `cli_event_context()`); dispatch-only rows keep `NULL`. Enables `ll-session skill-stats` per-skill success-rate rollups (ENH-2460). |
+| v16 | `issue_events.session_id`, `idx_issue_events_session_id`, rebuilt `issue_sessions` VIEW | Authoritative session linkage captured at transition time by `SQLiteTransport` from the `issue.*` event payload; the timestamp-overlap heuristic is preserved as the deprecated `legacy_issue_sessions_ts_overlap` VIEW and the `issue_sessions` VIEW now prefers exact `session_id` joins, falling back to the legacy inference only for issues with no authoritative rows (ENH-2462). |
+| v17 | `commit_events` | Ground-truth record of what shipped: `(ts, commit_sha UNIQUE, parent_sha, message, author, branch, issue_id, files_json)`. Written live by `record_commit_event()` (post-commit hook `hooks/scripts/record-commit-post-commit` → `little_loops.hooks.post_commit`) and retroactively by `ll-session backfill` walking `git log --all`; `issue_id` inferred from `Closes/Fixes/Issue:` references and branch naming. Enables `ll-session recent --kind commit` and FTS with `kind="commit"` (ENH-2458). |
+| v18 | `test_run_events` | Persisted pytest run results (pass/fail/error/skip counts, duration, failing node IDs, env label, HEAD sha, branch, command) written best-effort by the `little_loops.pytest_history_plugin` pytest11 plugin via `record_test_run_event()`; opt out with `PYTEST_DISABLE_PLUGIN_LL_HISTORY=1`. Enables `ll-session recent --kind test_run` and FTS with `kind="test_run"` (ENH-2459). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -617,7 +671,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v14)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v18)
     SS-->>DB: backfill_incremental() in background thread
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -642,7 +696,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v14 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v18 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
@@ -688,7 +742,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v14) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v18) and CLI transport-wiring table.
 
 ---
 
@@ -698,7 +752,7 @@ Sitting alongside the hook-intent layer is the `host_runner` abstraction
 (`scripts/little_loops/host_runner.py`). Where hook intents normalize
 *incoming* host events into the `LLHookEvent` envelope, the host runner
 normalizes *outgoing* CLI invocations: every shell-out to a host CLI
-(`claude`, `codex`, `opencode`, `pi`) is built through a `HostRunner`
+(`claude`, `codex`, `opencode`, `pi`, `gemini`, `omp`) is built through a `HostRunner`
 implementation rather than hard-coded argv. This makes the orchestration
 layer host-agnostic and keeps host-specific argv shape out of call sites
 like `ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, and
@@ -711,8 +765,10 @@ FSM handoff.
 | `HostCapabilities` (frozen dataclass) | Capability flags (`streaming`, `permission_skip`, `agent_select`, `tool_allowlist`) describing what a host supports |
 | `ClaudeCodeRunner` | Production runner for the `claude` CLI |
 | `CodexRunner` | Production runner for the `codex` CLI; auto-detected when `codex` is on PATH |
+| `GeminiRunner` | Production runner for the `gemini` CLI (Gemini CLI); auto-detected when `gemini` is on PATH (ENH-2185) |
+| `OmpRunner` | Production runner for the oh-my-pi `omp` CLI; auto-detected when `omp` is on PATH (FEAT-1850) |
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
-| `PiRunner` | Stub for the Raspberry Pi host (FEAT-992 research deferred) |
+| `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |

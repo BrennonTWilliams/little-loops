@@ -357,7 +357,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `use_feature_branches` | `false` | Create a `feature/<id>-<slug>` branch per issue instead of `parallel/<id>-<timestamp>`. When `true`, auto-merge is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows. |
 | `push_feature_branches` | `false` | Push the feature branch to `remote_name` after worker success using `git push --force-with-lease`. Requires `use_feature_branches: true`. |
 | `open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push and record `pr_url:` on the issue. Requires `push_feature_branches: true` and `gh auth status`. |
-| `base_branch` | `"main"` | Base branch targeted by PR creation when `open_pr_for_feature_branches` is `true`. Also used as the rebase target for worktree updates. |
+| `base_branch` | auto-detected | Base branch targeted by PR creation when `open_pr_for_feature_branches` is `true`. Also used as the rebase target for worktree updates. When unset, auto-detected at startup (`origin/HEAD` → current branch → `main`); an explicit value overrides auto-detection. |
 | `remote_name` | `"origin"` | Git remote name for fetch/pull operations. Set if your remote is not named `origin` (e.g., `"upstream"`). |
 
 ### `product`
