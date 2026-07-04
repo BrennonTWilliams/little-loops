@@ -2,7 +2,7 @@
 id: FEAT-1794
 type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
-priority: P2
+priority: P3
 status: blocked
 blocked_by: [FEAT-1930]
 captured_at: '2026-05-29T20:37:23Z'
@@ -314,7 +314,7 @@ accept the default.
 
 ## Status
 
-**Open** | Created: 2026-05-29 | Priority: P2
+**Open** | Created: 2026-05-29 | Priority: P3
 
 ## Verification Notes
 
@@ -327,6 +327,7 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 2026-06-17: Further drift — `_execute_state` :942 (was :838), `_run_action` :1157 (was :1053), `_action_mode` :1541 (was :1421), `_emit` :1762 (was :1642), `_interruptible_sleep` :1886 (was :1766). Use function-name anchors rather than line numbers when implementing.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:24:02 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:44 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`

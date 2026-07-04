@@ -2,7 +2,7 @@
 id: EPIC-1929
 title: Async HITL Communication Adapter Framework
 type: EPIC
-priority: P2
+priority: P3
 captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
@@ -206,4 +206,5 @@ EventBus adapter; read "PushNotification" as "EventBus / Hermes-relay" throughou
 open
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with active children (FEAT-1930/1794/1931): root FEAT-1930 unstarted since early June; downgrade keeps the P2 band meaningful. Re-raise when FEAT-1930 is scheduled. See also ENH-2249 (post-Hermes rescope).
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

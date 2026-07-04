@@ -2,7 +2,7 @@
 id: FEAT-1931
 title: Terminal adapter for async HITL communication
 type: FEAT
-priority: P2
+priority: P3
 captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
@@ -226,6 +226,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-09): The `API/Interface` section above shows `TerminalAdapter.send_alert(prompt, context, timeout)` but the `CommunicationAdapter` protocol in FEAT-1930 defines `send_alert(loop_name, state_name, prompt, captured_context, timeout) -> None`. Align this issue's `send_alert()` signature with FEAT-1930's protocol **before** implementing — add `loop_name: str` and `state_name: str` as the first two parameters to match the base protocol. This allows the terminal adapter to display the state name in the formatted prompt output without requiring the caller to pre-interpolate it.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:12:51 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`

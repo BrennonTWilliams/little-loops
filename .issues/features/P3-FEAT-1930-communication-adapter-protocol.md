@@ -2,7 +2,7 @@
 id: FEAT-1930
 title: Communication adapter protocol for async HITL channels
 type: FEAT
-priority: P2
+priority: P3
 captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
@@ -292,6 +292,7 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 open
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled since early June; epic downgraded rather than left distorting the P2 band).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:24:01 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:14:14 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
