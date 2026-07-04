@@ -104,6 +104,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
+    "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",
     "ruff>=0.1.0",
@@ -148,13 +149,23 @@ python_functions = ["test_*"]
 #   python -m pytest scripts/tests/ --cov=little_loops \
 #       --cov-report=term-missing:skip-covered --cov-report=html
 # (the [tool.coverage.*] config below still applies when --cov is passed.)
-# -n auto runs the suite across all CPU cores via pytest-xdist. Override with
-# -n 0 to force serial (e.g. when debugging a single test with pdb).
+# -n logical runs xdist across logical CPUs (excludes hyperthreads),
+# avoiding the per-hyperthread worker overhead that caused 100% CPU + machine
+# freeze on multi-core hosts. Override with -n 0 to force serial (e.g. when
+# debugging a single test with pdb).
+# --timeout=120 is a per-test safety net: any test that hangs past 120s is
+# killed and reported as a timeout, freeing the xdist worker slot before it
+# can wedge a core indefinitely. Tests with legitimately slow wall-clock
+# can opt out via @pytest.mark.timeout(N) per test.
+# --timeout-method=thread is explicit because signal-based timeouts race
+# with xdist worker process management.
 addopts = [
     "--strict-markers",
     "--strict-config",
+    "--timeout=120",
+    "--timeout-method=thread",
     "-n",
-    "auto",
+    "logical",
 ]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
