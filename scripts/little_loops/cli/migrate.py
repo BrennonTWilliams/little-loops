@@ -6,7 +6,6 @@ import argparse
 import re
 import subprocess
 import sys
-import warnings
 from pathlib import Path
 
 from little_loops.cli_args import add_config_arg, add_dry_run_arg
@@ -120,10 +119,8 @@ Examples:
 
         config = BRConfig(repo_root)
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            completed_dir: Path = config.get_completed_dir()
-            deferred_dir: Path = config.get_deferred_dir()
+        completed_dir: Path = config.project_root / config._issues.base_dir / config._issues.completed_dir
+        deferred_dir: Path = config.project_root / config._issues.base_dir / config._issues.deferred_dir
 
         # Build prefix → category-key mapping (e.g. "BUG" → "bugs")
         prefix_to_key: dict[str, str] = {

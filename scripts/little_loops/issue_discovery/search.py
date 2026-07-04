@@ -43,10 +43,6 @@ def _get_all_issue_files(
     regardless of completion state. ``is_completed`` in the returned tuples
     is ``True`` for done/cancelled/deferred issues (i.e. non-active).
 
-    For backwards compatibility, files in legacy ``completed/`` and
-    ``deferred/`` sibling directories are also surfaced when their
-    respective ``include_*`` flag is set.
-
     Args:
         config: Project configuration
         include_completed: Whether to include completed/cancelled issues
@@ -78,19 +74,6 @@ def _get_all_issue_files(
                     files.append((f, True))
             else:
                 files.append((f, False))
-
-    # Legacy completed/ and deferred/ sibling dirs (pre-ENH-1418)
-    if include_completed:
-        legacy_completed = config.get_completed_dir()
-        if legacy_completed.exists():
-            for f in legacy_completed.glob("*.md"):
-                files.append((f, True))
-
-    if include_deferred:
-        legacy_deferred = config.get_deferred_dir()
-        if legacy_deferred.exists():
-            for f in legacy_deferred.glob("*.md"):
-                files.append((f, True))
 
     return files
 

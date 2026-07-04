@@ -220,28 +220,6 @@ bugs_dir = config.get_issue_dir("bugs")
 # Returns: Path(".issues/bugs")
 ```
 
-##### get_completed_dir
-
-```python
-def get_completed_dir(self) -> Path
-```
-
-> **Deprecated:** Use `IssueInfo.status` instead. This method emits `DeprecationWarning` and will be removed in a future release.
-
-Get the path to the completed issues directory.
-
-##### get_deferred_dir
-
-```python
-def get_deferred_dir(self) -> Path
-```
-
-> **Deprecated:** Use `IssueInfo.status` instead. This method emits `DeprecationWarning` and will be removed in a future release.
-
-Get the path to the deferred issues directory.
-
-**Returns:** `Path` to the deferred issues directory
-
 ##### get_issue_prefix
 
 ```python
@@ -1903,8 +1881,8 @@ class CouplingPair:
 | `CouplingAnalysis` | Container for file coupling analysis results |
 | `RegressionCluster` | A cluster of bugs where fixes caused new bugs |
 | `RegressionAnalysis` | Container for regression clustering results |
-| `TestGap` | A source file with bugs but missing/weak test coverage |
-| `TestGapAnalysis` | Container for test gap analysis results |
+| `Gap` | A source file with bugs but missing/weak test coverage |
+| `GapAnalysis` | Container for test gap analysis results |
 | `RejectionMetrics` | Metrics for rejection and invalid closure tracking |
 | `RejectionAnalysis` | Container for rejection pattern analysis |
 | `ManualPattern` | A recurring manual activity detected across issues |
@@ -4272,7 +4250,6 @@ print(f"Test command: {config.project.test_cmd}")
 
 # Get issue directories
 bugs_dir = config.get_issue_dir("bugs")
-completed_dir = config.get_completed_dir()
 ```
 
 ### Finding and Parsing Issues
@@ -6700,10 +6677,10 @@ def recent_test_runs(
     head_sha: str | None = None,
     limit: int = 50,
     db: Path | str = DEFAULT_DB_PATH,
-) -> list[TestRunEvent]
+) -> list[RunEvent]
 ```
 
-Return recent `test_run_events` rows, newest first, optionally filtered (ENH-2459). `TestRunEvent` exposes a derived `pass_rate` property (`passed / total`, `None` when `total` is 0/unknown).
+Return recent `test_run_events` rows, newest first, optionally filtered (ENH-2459). `RunEvent` exposes a derived `pass_rate` property (`passed / total`, `None` when `total` is 0/unknown).
 
 ### sessions_for_issue
 

@@ -669,32 +669,6 @@ class TestBRConfig:
         unknown_dir = config.get_issue_dir("unknown")
         assert unknown_dir.resolve() == (temp_project_dir / ".issues" / "unknown").resolve()
 
-    def test_get_completed_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
-        """Test get_completed_dir returns correct path and emits DeprecationWarning."""
-        import pytest
-
-        config_path = temp_project_dir / ".ll" / "ll-config.json"
-        config_path.write_text(json.dumps(sample_config))
-
-        config = BRConfig(temp_project_dir)
-
-        with pytest.warns(DeprecationWarning, match="get_completed_dir"):
-            completed = config.get_completed_dir()
-        assert completed.resolve() == (temp_project_dir / ".issues" / "completed").resolve()
-
-    def test_get_deferred_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
-        """Test get_deferred_dir returns correct path and emits DeprecationWarning."""
-        import pytest
-
-        config_path = temp_project_dir / ".ll" / "ll-config.json"
-        config_path.write_text(json.dumps(sample_config))
-
-        config = BRConfig(temp_project_dir)
-
-        with pytest.warns(DeprecationWarning, match="get_deferred_dir"):
-            deferred = config.get_deferred_dir()
-        assert deferred.resolve() == (temp_project_dir / ".issues" / "deferred").resolve()
-
     def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_prefix returns correct prefix."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
