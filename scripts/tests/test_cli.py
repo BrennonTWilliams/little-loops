@@ -2759,6 +2759,7 @@ Completed
             ConfigGapsAnalysis,
             CouplingAnalysis,
             CrossCuttingAnalysis,
+            GapAnalysis,
             HistoryAnalysis,
             HistorySummary,
             HotspotAnalysis,
@@ -2766,7 +2767,6 @@ Completed
             RegressionAnalysis,
             RejectionAnalysis,
             TechnicalDebtMetrics,
-            TestGapAnalysis,
         )
 
         return HistoryAnalysis(
@@ -2790,7 +2790,7 @@ Completed
             hotspot_analysis=HotspotAnalysis(),
             coupling_analysis=CouplingAnalysis(),
             regression_analysis=RegressionAnalysis(),
-            test_gap_analysis=TestGapAnalysis(),
+            test_gap_analysis=GapAnalysis(),
             rejection_analysis=RejectionAnalysis(),
             manual_pattern_analysis=ManualPatternAnalysis(),
             agent_effectiveness_analysis=AgentEffectivenessAnalysis(),

@@ -12,13 +12,13 @@ from little_loops.issue_history.models import (
     CompletedIssue,
     ConfigGap,
     ConfigGapsAnalysis,
+    Gap,
+    GapAnalysis,
     HotspotAnalysis,
     ManualPattern,
     ManualPatternAnalysis,
     RejectionAnalysis,
     RejectionMetrics,
-    TestGap,
-    TestGapAnalysis,
 )
 from little_loops.issue_history.parsing import _find_test_file, _parse_resolution_action
 
@@ -27,7 +27,7 @@ def analyze_test_gaps(
     issues: list[CompletedIssue],
     hotspots: HotspotAnalysis,
     project_root: Path | None = None,
-) -> TestGapAnalysis:
+) -> GapAnalysis:
     """Correlate bug occurrences with test coverage gaps.
 
     Args:
@@ -36,7 +36,7 @@ def analyze_test_gaps(
         project_root: Project root for anchoring test file existence checks. Defaults to CWD.
 
     Returns:
-        TestGapAnalysis with test coverage gap information
+        GapAnalysis with test coverage gap information
     """
     # Build map of source files to bug info from hotspots
     bug_files: dict[str, dict[str, Any]] = {}
@@ -52,10 +52,10 @@ def analyze_test_gaps(
             }
 
     if not bug_files:
-        return TestGapAnalysis()
+        return GapAnalysis()
 
     # Analyze test coverage for each file with bugs
-    gaps: list[TestGap] = []
+    gaps: list[Gap] = []
     files_with_tests: list[int] = []  # bug counts
     files_without_tests: list[int] = []  # bug counts
 
@@ -86,7 +86,7 @@ def analyze_test_gaps(
             priority = "low"
 
         gaps.append(
-            TestGap(
+            Gap(
                 source_file=source_file,
                 bug_count=bug_count,
                 bug_ids=bug_ids,
@@ -116,7 +116,7 @@ def analyze_test_gaps(
     # Priority test targets: untested files sorted by bug count
     priority_targets = [g.source_file for g in gaps if not g.has_test_file]
 
-    return TestGapAnalysis(
+    return GapAnalysis(
         gaps=gaps[:15],  # Top 15
         untested_bug_magnets=untested_magnets,
         files_with_tests_avg_bugs=avg_with_tests,

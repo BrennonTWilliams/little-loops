@@ -257,7 +257,7 @@ class RegressionAnalysis:
 
 
 @dataclass
-class TestGap:
+class Gap:
     """A source file with bugs but missing or weak test coverage."""
 
     source_file: str
@@ -282,10 +282,10 @@ class TestGap:
 
 
 @dataclass
-class TestGapAnalysis:
+class GapAnalysis:
     """Analysis of test coverage gaps correlated with bug occurrences."""
 
-    gaps: list[TestGap] = field(default_factory=list)
+    gaps: list[Gap] = field(default_factory=list)
     untested_bug_magnets: list[str] = field(default_factory=list)
     files_with_tests_avg_bugs: float = 0.0
     files_without_tests_avg_bugs: float = 0.0
@@ -735,7 +735,7 @@ class HistoryAnalysis:
     regression_analysis: RegressionAnalysis | None = None
 
     # Test gap analysis
-    test_gap_analysis: TestGapAnalysis | None = None
+    test_gap_analysis: GapAnalysis | None = None
 
     # Rejection analysis
     rejection_analysis: RejectionAnalysis | None = None

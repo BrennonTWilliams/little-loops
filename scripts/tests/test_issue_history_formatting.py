@@ -24,6 +24,8 @@ from little_loops.issue_history.models import (
     CouplingPair,
     CrossCuttingAnalysis,
     CrossCuttingSmell,
+    Gap,
+    GapAnalysis,
     HistoryAnalysis,
     HistorySummary,
     Hotspot,
@@ -37,8 +39,6 @@ from little_loops.issue_history.models import (
     RejectionMetrics,
     SubsystemHealth,
     TechnicalDebtMetrics,
-    TestGap,
-    TestGapAnalysis,
 )
 
 
@@ -306,15 +306,15 @@ class TestFormatAnalysisTextRegression:
         assert "..." in output  # >3 pairs truncation
 
 
-class TestFormatAnalysisTextTestGaps:
+class TestFormatAnalysisTextGaps:
     """Tests for test gap analysis section in text formatter."""
 
     def test_test_gaps_with_critical_gaps(self) -> None:
         """Test gap section shows critical gaps and targets."""
         analysis = _make_base_analysis(
-            test_gap_analysis=TestGapAnalysis(
+            test_gap_analysis=GapAnalysis(
                 gaps=[
-                    TestGap(
+                    Gap(
                         source_file="src/no_test.py",
                         bug_count=5,
                         bug_ids=["BUG-001", "BUG-002", "BUG-003"],

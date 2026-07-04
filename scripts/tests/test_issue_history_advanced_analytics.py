@@ -19,6 +19,8 @@ from little_loops.issue_history import (
     CouplingPair,
     CrossCuttingAnalysis,
     CrossCuttingSmell,
+    Gap,
+    GapAnalysis,
     Hotspot,
     HotspotAnalysis,
     ManualPattern,
@@ -27,8 +29,6 @@ from little_loops.issue_history import (
     RegressionCluster,
     RejectionAnalysis,
     RejectionMetrics,
-    TestGap,
-    TestGapAnalysis,
     _detect_processing_agent,
     _extract_paths_from_issue,
     _parse_resolution_action,
@@ -956,12 +956,12 @@ class TestAnalyzeRegressionClustering:
         assert "src/fragile2.py" in result.most_fragile_files
 
 
-class TestTestGap:
-    """Tests for TestGap dataclass."""
+class TestGap:
+    """Tests for Gap dataclass."""
 
     def test_to_dict(self) -> None:
         """Test to_dict serialization."""
-        gap = TestGap(
+        gap = Gap(
             source_file="src/core/processor.py",
             bug_count=5,
             bug_ids=["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005"],
@@ -980,7 +980,7 @@ class TestTestGap:
 
     def test_to_dict_with_test_file(self) -> None:
         """Test to_dict with existing test file."""
-        gap = TestGap(
+        gap = Gap(
             source_file="src/utils/helper.py",
             bug_count=2,
             bug_ids=["BUG-010", "BUG-011"],
@@ -996,7 +996,7 @@ class TestTestGap:
 
     def test_to_dict_limits_bug_ids(self) -> None:
         """Test that to_dict limits bug_ids to 10."""
-        gap = TestGap(
+        gap = Gap(
             source_file="src/core.py",
             bug_count=15,
             bug_ids=[f"BUG-{i:03d}" for i in range(15)],
@@ -1006,12 +1006,12 @@ class TestTestGap:
         assert len(result["bug_ids"]) == 10
 
 
-class TestTestGapAnalysis:
-    """Tests for TestGapAnalysis dataclass."""
+class TestGapAnalysis:
+    """Tests for GapAnalysis dataclass."""
 
     def test_to_dict_empty(self) -> None:
         """Test to_dict with empty analysis."""
-        analysis = TestGapAnalysis()
+        analysis = GapAnalysis()
         result = analysis.to_dict()
 
         assert result["gaps"] == []
@@ -1022,7 +1022,7 @@ class TestTestGapAnalysis:
 
     def test_to_dict_with_data(self) -> None:
         """Test to_dict with populated data."""
-        gap = TestGap(
+        gap = Gap(
             source_file="src/core.py",
             bug_count=3,
             bug_ids=["BUG-001"],
@@ -1030,7 +1030,7 @@ class TestTestGapAnalysis:
             gap_score=30.0,
             priority="high",
         )
-        analysis = TestGapAnalysis(
+        analysis = GapAnalysis(
             gaps=[gap],
             untested_bug_magnets=["src/core.py"],
             files_with_tests_avg_bugs=1.5,

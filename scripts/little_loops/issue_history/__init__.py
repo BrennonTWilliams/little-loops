@@ -18,7 +18,7 @@ Public exports:
     Hotspot, HotspotAnalysis: File hotspot detection
     CouplingPair, CouplingAnalysis: File coupling analysis
     RegressionCluster, RegressionAnalysis: Regression clustering
-    TestGap, TestGapAnalysis: Test gap detection
+    Gap, GapAnalysis: Test gap detection
     RejectionMetrics, RejectionAnalysis: Issue rejection analysis
     ManualPattern, ManualPatternAnalysis: Manual pattern detection
     ConfigGap, ConfigGapsAnalysis: Config gap detection
@@ -97,6 +97,8 @@ from little_loops.issue_history.models import (
     CouplingPair,
     CrossCuttingAnalysis,
     CrossCuttingSmell,
+    Gap,
+    GapAnalysis,
     HistoryAnalysis,
     HistorySummary,
     Hotspot,
@@ -114,8 +116,6 @@ from little_loops.issue_history.models import (
     SkillBypassAnalysis,
     SubsystemHealth,
     TechnicalDebtMetrics,
-    TestGap,
-    TestGapAnalysis,
 )
 from little_loops.issue_history.parsing import (
     _detect_processing_agent,
@@ -146,10 +146,10 @@ __all__ = [
     "HotspotAnalysis",
     "CouplingPair",
     "CouplingAnalysis",
+    "Gap",
+    "GapAnalysis",
     "RegressionCluster",
     "RegressionAnalysis",
-    "TestGap",
-    "TestGapAnalysis",
     "RejectionMetrics",
     "RejectionAnalysis",
     "ManualPattern",
