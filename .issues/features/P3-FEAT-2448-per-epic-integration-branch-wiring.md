@@ -18,11 +18,11 @@ parent: EPIC-2451
 relates_to:
 - FEAT-2339
 - EPIC-2451
-- FEAT-2447
-- FEAT-2449
+- EPIC-2447
+- EPIC-2449
 - FEAT-2450
 blocked_by:
-- FEAT-2447
+- EPIC-2447
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 60
@@ -189,3 +189,7 @@ target can disagree with fork point.
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`
+
+## Blocks
+
+- EPIC-2449

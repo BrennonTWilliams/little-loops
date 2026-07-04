@@ -19,7 +19,7 @@ relates_to:
 - FEAT-2339
 - EPIC-2451
 - FEAT-2448
-- FEAT-2449
+- EPIC-2449
 - FEAT-2450
 decision_needed: false
 confidence_score: 95
@@ -458,6 +458,11 @@ def _resolve_branch_targets(self, issue: IssueInfo) -> tuple[str, str]:
   `score_change_surface: 0` per frontmatter (additive only).
 - **Breaking Change**: No — additive config key, additive dataclass
   field with safe defaults, additive private method.
+
+
+## Blocks
+
+- FEAT-2448
 
 ## Status
 

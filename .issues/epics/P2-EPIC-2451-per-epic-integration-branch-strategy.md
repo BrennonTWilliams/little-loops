@@ -17,9 +17,9 @@ labels:
 parent: FEAT-2339
 relates_to:
 - FEAT-2339
-- FEAT-2447
+- EPIC-2447
 - FEAT-2448
-- FEAT-2449
+- EPIC-2449
 - FEAT-2450
 decision_needed: false
 confidence_score: 95

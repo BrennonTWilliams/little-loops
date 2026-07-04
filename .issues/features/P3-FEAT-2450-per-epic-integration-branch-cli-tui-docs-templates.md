@@ -20,11 +20,11 @@ parent: EPIC-2451
 relates_to:
 - FEAT-2339
 - EPIC-2451
-- FEAT-2447
+- EPIC-2447
 - FEAT-2448
-- FEAT-2449
+- EPIC-2449
 blocked_by:
-- FEAT-2449
+- EPIC-2449
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 70
