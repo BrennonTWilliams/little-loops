@@ -1,6 +1,6 @@
-# ENH-1168 Implementation Plan
+# BUG-1168 Implementation Plan
 
-**Issue**: `.issues/enhancements/P3-ENH-1168-fsm-executor-wrap-run-action-in-execute-state-with-on-error-routing.md`
+**Issue**: `.issues/enhancements/P3-BUG-1168-fsm-executor-wrap-run-action-in-execute-state-with-on-error-routing.md`
 **Confidence**: 100/100
 **TDD**: Enabled
 

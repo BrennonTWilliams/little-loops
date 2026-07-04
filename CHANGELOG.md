@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **All 30 `ll-*` Codex bridge skills now carry `disable-model-invocation: true`** —
+  the stubs exist only for Codex Skills API discovery (via `agents/openai.yaml`);
+  Claude Code users invoke the identically-named `/ll:` slash commands. Removes the
+  bridges from the skill listing budget (~54% reduction); `ll-adapt --host codex`
+  generates new bridges with the field included — (ENH-1615)
+
 ### Planned
 
-- Windows compatibility testing
-- Performance benchmarks for large repositories
+- Windows compatibility testing (tracked: ENH-2472)
+- Performance benchmarks for large repositories (tracked: ENH-2473)
 
 ## [1.138.0] - 2026-07-02
 
@@ -97,7 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`manage-issue` backgrounds the final test run** — Headless turns now require a foreground-blocking final test run so the turn doesn't complete before tests finish. (BUG-2408)
 - **`auto-refine-and-implement` closure metric counts the vestigial `.issues/completed/`** — Closure verdict now unions the `completed/` and `status: done` diffs. (BUG-2403)
 - **Unresolvable `loop:` refs demoted work to a silent warning** — Static `loop:` references that resolve to no YAML are promoted from WARNING to ERROR so they block load. (BUG-2400)
-- **FSM `terminated_by` value misaligned with `state.json`** — Runner now emits `terminated_by: "interrupted"` (renamed from `"signal"`) so `events.jsonl` matches `state.json`. (BUG-2397)
+- **FSM `terminated_by` value misaligned with `state.json`** — Runner now emits `terminated_by: "interrupted"` (renamed from `"signal"`) so `events.jsonl` matches `state.json`. (BUG-2474)
 
 ### Changed
 
@@ -163,7 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Evidence-gate contract for LLM evaluator verdicts** — FSM `check_semantic`/`llm_structured` states now require verbatim citation; reduces self-grading optimism. (MR-8, improve(fsm))
 - **PMI/lift scoring in sequence-suggestion ranking** — Analytics now ranks workflow suggestions by pointwise mutual information. (improve(analytics))
 - **Brainstorm `novelty_threshold` lowered to 0.55** — Saturation/early-stop gate now activates in practice. (ENH-2356)
-- **`scope-epic`/`link-epics` stop overloading `relates_to`** — Epic writers now use a dedicated field; post-write validation added. (ENH-2330)
+- **`scope-epic`/`link-epics` stop overloading `relates_to`** — Epic writers now use a dedicated field; post-write validation added. (EPIC-2330)
 - **`ll-init` robustness improvements** — Graceful handling of unknown `--hosts` values, permission sweep, and version comparison. (ENH-2314)
 - **Refine passes in `refine-to-ready-issue` and `autodev` switched to additive mode** — `--auto`/`--gap-analysis` flags passed consistently; no more full rewrites.
 - **Auto-refine loops gain distinct error/skip routing** — Error and skip paths now separated; verdict finalized on loop exit.
@@ -480,7 +488,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`/ll:init` skill deprecated; `ll-init` CLI is now the primary init path** — `/ll:init` now renders a redirect stub; all initialization flows route through the `ll-init` headless CLI. Closes EPIC-1978. (ENH-1982)
 - **7 built-in loops migrated from `.loops/tmp/` to `${context.run_dir}`** — Intermediate artifacts are now isolated per run, preventing cross-run corruption when multiple instances execute concurrently. (ENH-2096)
-- **`recursive-refine` / `implement-issue-chain` contract trio migrated to `${context.run_dir}`** — Shared-tmp references replaced with run-scoped paths for safe concurrent execution. (ENH-2097)
+- **`recursive-refine` / `implement-issue-chain` contract trio migrated to `${context.run_dir}`** — Shared-tmp references replaced with run-scoped paths for safe concurrent execution. (FEAT-2097)
 - **`rn-remediate` `CONVERGED_STALLED` routing** — Routes through a budget-gated retry that reruns `diagnose` with a refreshed strategy rather than terminating silently. (ENH-2107)
 - **`diff_stall` guards added to generator loop refine cycles** — Prevents infinite refinement when successive iterations produce identical output diffs.
 - **`required_inputs` declared for all loops with a custom `input_key`** — Loops that require non-default inputs now declare them explicitly, enabling `ll-loop validate` to surface missing-input bugs before runtime.
@@ -776,7 +784,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **EPIC critical-path awareness in `review-sprint`** — Sprint review now surfaces EPIC-blocking issues and warns when critical-path items are absent from the sprint. (ENH-1859)
+- **EPIC critical-path awareness in `review-sprint`** — Sprint review now surfaces EPIC-blocking issues and warns when critical-path items are absent from the sprint. (EPIC-1859)
 - **Built-in design token profiles in `/ll:configure`** — Configure scaffolds the selected token profile into `.ll/design-tokens.yaml` on first selection.
 
 ## [1.113.0] - 2026-05-31
@@ -862,7 +870,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`run_dir` injection for built-in loops** — Each loop run now gets a dedicated artifact directory under `.loops/runs/<loop>/<run-id>/`; built-in loops migrated to use `run_dir` for all per-run output. (ENH-1726)
 - **`--show-diagrams slim` preset** — New `slim` preset renders FSM diagrams in a compact single-column layout for narrow terminals. (ENH-1702)
 - **Always-on foreground log capture via `_TeeWriter`** — Foreground runs now always tee stdout and stderr (ANSI-stripped) to `.loops/.running/<instance-id>.log`, matching background run behavior. `log_file` in `ll-loop status --json` is now a path for all run modes; `null` only for `--foreground-internal` children or pre-ENH-1703 state files. (ENH-1703)
-- **`ll-issues list --group-by epic`** — Issues can now be grouped by their parent epic in list output. (ENH-1727)
+- **`ll-issues list --group-by epic`** — Issues can now be grouped by their parent epic in list output. (EPIC-1727)
 - **`general-task` execute split into 4 sub-states** — Execution phase decomposed into granular states for better observability and recovery. (ENH-1732)
 - **Deepest active loop shown in pinned pane** — Pinned status pane now shows only the innermost running loop rather than the outermost.
 - **`ll-issues set-status` subcommand** — New CLI subcommand for directly setting an issue's status field.
@@ -1055,8 +1063,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **EPIC Type — Core Registration and Parsing** — Registers EPIC as a first-class issue type with core infrastructure, parsing, and schema support. (FEAT-1405)
-- **EPIC Type — Skills, Commands, and Documentation Updates** — Extends all skills, commands, and documentation surfaces to recognize and handle EPIC type issues. (FEAT-1407)
-- **EPIC Type — CLI Display, Argparse Choices, and Tests** — Adds EPIC to all CLI display paths, argparse choices, and test coverage. (FEAT-1410)
+- **EPIC Type — Skills, Commands, and Documentation Updates** — Extends all skills, commands, and documentation surfaces to recognize and handle EPIC type issues. (EPIC-1407)
+- **EPIC Type — CLI Display, Argparse Choices, and Tests** — Adds EPIC to all CLI display paths, argparse choices, and test coverage. (EPIC-1410)
 - **EPIC Type — Regex-Based Callers, Anchor Sweep, and Tests** — Extends regex-based callers and anchor sweep to include EPIC type patterns. (FEAT-1411)
 - **Startup Reconciliation Sweep for Stale `.running/` Files** — FSM startup now detects and cleans up stale `.running/` state files left from interrupted sessions. (ENH-1399)
 
@@ -1410,7 +1418,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **FSM Executor `on_error` Routing** — FSM executor now wraps `run_action` in `execute_state` with `on_error` routing (ENH-1168)
+- **FSM Executor `on_error` Routing** — FSM executor now wraps `run_action` in `execute_state` with `on_error` routing (BUG-1168)
 - **Agent Model/Tool Tuning and Handoff Threshold** — `.claude/settings.json` agent models, tool allowlists, and context-handoff threshold tuned
 - **Ruff Format and `datetime.UTC` Modernization** — Codebase reformatted and `datetime.utc` usages modernized to `datetime.UTC`
 

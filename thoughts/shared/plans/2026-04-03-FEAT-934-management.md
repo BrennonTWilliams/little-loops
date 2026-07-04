@@ -1,7 +1,7 @@
-# Implementation Plan: FEAT-934 — Add prompt-across-issues Built-in Loop
+# Implementation Plan: BUG-934 — Add prompt-across-issues Built-in Loop
 
 **Date**: 2026-04-03
-**Issue**: P3-FEAT-934-add-prompt-across-issues-built-in-loop.md
+**Issue**: P3-BUG-934-add-prompt-across-issues-built-in-loop.md
 
 ## Summary
 
