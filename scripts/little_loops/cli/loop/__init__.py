@@ -142,9 +142,27 @@ Examples:
             type=float,
             default=None,
             metavar="SECONDS",
-            help="Sleep N seconds between iterations (useful for recording)",
+            help=(
+                "Sleep N seconds between iterations (useful for recording and to relieve "
+                "host memory pressure between subprocess spawns)"
+            ),
         )
         run_parser.add_argument("--no-llm", action="store_true", help="Disable LLM evaluation")
+        run_parser.add_argument(
+            "--no-host-guard",
+            action="store_true",
+            help="Disable the adaptive host memory-pressure guard (fsm.host_guard)",
+        )
+        run_parser.add_argument(
+            "--host-guard-budget-mb",
+            type=int,
+            default=None,
+            metavar="N",
+            help=(
+                "Override host_guard.max_cumulative_subproc_mb: cap on summed peak "
+                "subprocess RSS (MB) across the run (0 disables the budget)"
+            ),
+        )
         run_parser.add_argument(
             "--model",
             type=str,
@@ -433,7 +451,15 @@ Examples:
             type=float,
             default=None,
             metavar="SECONDS",
-            help="Sleep N seconds between iterations (useful for recording)",
+            help=(
+                "Sleep N seconds between iterations (useful for recording and to relieve "
+                "host memory pressure between subprocess spawns)"
+            ),
+        )
+        resume_parser.add_argument(
+            "--no-host-guard",
+            action="store_true",
+            help="Disable the adaptive host memory-pressure guard (fsm.host_guard)",
         )
         add_handoff_threshold_arg(resume_parser)
         add_context_limit_arg(resume_parser)

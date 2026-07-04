@@ -75,6 +75,33 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "cli"
 
+    def test_recent_subcommand_commit_accepted(self) -> None:
+        """ENH-2458: --kind commit must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "commit"]):
+            args = _parse_args()
+        assert args.kind == "commit"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "fix", "--kind", "commit"]):
+            args = _parse_args()
+        assert args.kind == "commit"
+
+    def test_recent_subcommand_test_run_accepted(self) -> None:
+        """ENH-2459: --kind test_run must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "test_run"]):
+            args = _parse_args()
+        assert args.kind == "test_run"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "test_x", "--kind", "test_run"]):
+            args = _parse_args()
+        assert args.kind == "test_run"
+
+    def test_skill_stats_subcommand(self) -> None:
+        """ENH-2460: skill-stats subcommand parses with optional --since."""
+        with patch("sys.argv", ["ll-session", "skill-stats", "--since", "2026-01-01"]):
+            args = _parse_args()
+        assert args.command == "skill-stats"
+        assert args.since == "2026-01-01"
+
 
 class TestMainSession:
     """Integration tests for main_session()."""
@@ -884,3 +911,79 @@ class TestBackfillSnapshotsFlag:
         out = capsys.readouterr().out
         assert "3" in out
         assert "snapshot" in out.lower()
+
+
+class TestSkillStatsAndNewKinds:
+    """ENH-2458/2459/2460: skill-stats subcommand and commit/test_run kinds."""
+
+    def test_skill_stats_outputs_rollup(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "s1", "refine-issue", "ENH-1"):
+            pass
+        with pytest.raises(ValueError):
+            with skill_event_context(db, "s2", "refine-issue", "ENH-2"):
+                raise ValueError("fail")
+        with patch("sys.argv", ["ll-session", "--db", str(db), "skill-stats"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "refine-issue" in out
+        assert "invocations=2" in out
+        assert "success_rate=50%" in out
+
+    def test_skill_stats_json(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(db, "s1", "check-code", ""):
+            pass
+        with patch("sys.argv", ["ll-session", "--db", str(db), "skill-stats", "--json"]):
+            assert main_session() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data[0]["skill_name"] == "check-code"
+        assert data[0]["successes"] == 1
+
+    def test_recent_kind_commit_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "abc123", "fix: repair the flux capacitor (BUG-88)")
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "commit"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "abc123" in out
+        assert "BUG-88" in out
+
+    def test_recent_kind_test_run_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_test_run_event
+
+        db = tmp_path / "history.db"
+        record_test_run_event(
+            db, ts="2026-07-01T12:00:00Z", total=5, passed=5, env_label="local"
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "test_run"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "total=5" in out
+        assert "env_label=local" in out
+
+    def test_search_kind_commit_filters(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "abc999", "feat: add teleporter maintenance")
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "search", "--fts", "teleporter", "--kind", "commit"],
+        ):
+            assert main_session() == 0
+        assert "teleporter" in capsys.readouterr().out

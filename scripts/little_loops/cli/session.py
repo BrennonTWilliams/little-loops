@@ -6,7 +6,9 @@ scattered JSON/markdown sources the analyze-* skills read.
 
 Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
-    recent   most recent rows for an event kind (tool, file, issue, loop, correction, message, skill, cli)
+    recent   most recent rows for an event kind (tool, file, issue, loop, correction,
+             message, skill, cli, commit, test_run)
+    skill-stats per-skill invocation/success-rate rollup (ENH-2460)
     backfill seed the database from existing on-disk sources
     related  issue events for a given issue ID
     path     resolve JSONL file path for a session ID
@@ -87,7 +89,18 @@ Examples:
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
     search_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message", "skill", "cli"],
+        choices=[
+            "tool",
+            "file",
+            "issue",
+            "loop",
+            "correction",
+            "message",
+            "skill",
+            "cli",
+            "commit",
+            "test_run",
+        ],
         default=None,
         help="Filter results by event kind",
     )
@@ -99,7 +112,18 @@ Examples:
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
         "--kind",
-        choices=["tool", "file", "issue", "loop", "correction", "message", "skill", "cli"],
+        choices=[
+            "tool",
+            "file",
+            "issue",
+            "loop",
+            "correction",
+            "message",
+            "skill",
+            "cli",
+            "commit",
+            "test_run",
+        ],
         default=None,
         help="Event kind to list (required unless --issue is given)",
     )
@@ -225,6 +249,18 @@ Examples:
         "node_id", type=int, metavar="NODE_ID", help="Summary node ID to describe"
     )
     add_json_arg(describe_parser)
+
+    skill_stats_parser = subparsers.add_parser(
+        "skill-stats",
+        help="Per-skill invocation/success-rate rollup from skill_events (ENH-2460)",
+    )
+    skill_stats_parser.add_argument(
+        "--since",
+        metavar="DATE",
+        default=None,
+        help="Only count rows at or after this ISO 8601 date/datetime",
+    )
+    add_json_arg(skill_stats_parser)
 
     prune_parser = subparsers.add_parser(
         "prune",
@@ -449,6 +485,7 @@ def main_session() -> int:
                 jsonl_files=full_jsonl_files,
                 config=_config,
                 max_sessions=max_sessions,
+                repo_root=Path.cwd(),
             )
             total = sum(counts.values())
             logger.success(
@@ -456,10 +493,32 @@ def main_session() -> int:
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
                 f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
                 f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
-                f"summaries={counts.get('summaries', 0)}, snapshots={counts.get('snapshots', 0)})"
+                f"summaries={counts.get('summaries', 0)}, snapshots={counts.get('snapshots', 0)}, "
+                f"commits={counts.get('commits', 0)})"
             )
             if getattr(args, "extract_decisions", False):
                 _run_extract_decisions(since=None)
+            return 0
+
+        if args.command == "skill-stats":
+            from little_loops.history_reader import summarize_skills
+
+            stats = summarize_skills(getattr(args, "since", None), db=args.db)
+            if args.json:
+                print_json(stats)
+                return 0
+            if not stats:
+                print("No skill events.")
+                return 0
+            for s in stats:
+                rate = f"{s['success_rate']:.0%}" if s["success_rate"] is not None else "n/a"
+                avg = (
+                    f"{s['avg_duration_ms']:.0f}ms" if s["avg_duration_ms"] is not None else "n/a"
+                )
+                print(
+                    f"{s['skill_name']}: invocations={s['invocations']} "
+                    f"completions={s['completions']} success_rate={rate} avg_duration={avg}"
+                )
             return 0
 
         if args.command == "grep":

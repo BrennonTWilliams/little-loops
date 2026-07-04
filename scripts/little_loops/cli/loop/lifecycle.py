@@ -500,6 +500,9 @@ def cmd_resume(
     if getattr(args, "delay", None) is not None:
         fsm.backoff = args.delay
 
+    if getattr(args, "no_host_guard", False):
+        fsm.host_guard.enabled = False
+
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
     if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):
         os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)

@@ -128,6 +128,10 @@ def cmd_run(
         fsm.backoff = args.delay
     if args.no_llm:
         fsm.llm.enabled = False
+    if getattr(args, "no_host_guard", False):
+        fsm.host_guard.enabled = False
+    if getattr(args, "host_guard_budget_mb", None) is not None:
+        fsm.host_guard.max_cumulative_subproc_mb = args.host_guard_budget_mb
     if args.llm_model:
         fsm.llm.model = args.llm_model
     # Inject positional input arg before --context so --context can override

@@ -1356,6 +1356,11 @@ def run_background(
     delay = getattr(args, "delay", None)
     if delay is not None:
         cmd.extend(["--delay", str(delay)])
+    if getattr(args, "no_host_guard", False):
+        cmd.append("--no-host-guard")
+    host_guard_budget_mb = getattr(args, "host_guard_budget_mb", None)
+    if host_guard_budget_mb is not None:
+        cmd.extend(["--host-guard-budget-mb", str(host_guard_budget_mb)])
     handoff_threshold = getattr(args, "handoff_threshold", None)
     if handoff_threshold is not None:
         cmd.extend(["--handoff-threshold", str(handoff_threshold)])

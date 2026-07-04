@@ -621,6 +621,72 @@ class TestMainLoopRunFlagForwarding:
         mocks["cmd_run"].assert_called_once()
         assert mocks["cmd_run"].call_args[0][1].no_llm is True
 
+    def test_no_host_guard_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--no-host-guard is parsed and forwarded to cmd_run (ENH-2452)."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-host-guard"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_run"].assert_called_once()
+        assert mocks["cmd_run"].call_args[0][1].no_host_guard is True
+
+    def test_no_host_guard_defaults_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without the flag, no_host_guard defaults to False."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]):
+            result = main_loop()
+
+        assert result == 0
+        assert mocks["cmd_run"].call_args[0][1].no_host_guard is False
+        assert mocks["cmd_run"].call_args[0][1].host_guard_budget_mb is None
+
+    def test_host_guard_budget_mb_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--host-guard-budget-mb is parsed and forwarded to cmd_run (ENH-2453)."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        argv = ["ll-loop", "run", "test-loop", "--host-guard-budget-mb", "4096"]
+        with patch.object(sys, "argv", argv):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_run"].assert_called_once()
+        assert mocks["cmd_run"].call_args[0][1].host_guard_budget_mb == 4096
+
+    def test_run_help_mentions_host_pressure_delay_use_case(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2454: `ll-loop run --help` documents the --delay host-pressure use case."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "run", "--help"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_loop()
+
+        assert exc_info.value.code == 0
+        help_text = capsys.readouterr().out
+        assert "relieve" in help_text
+        assert "host memory pressure" in help_text
+        assert "--no-host-guard" in help_text
+        assert "--host-guard-budget-mb" in help_text
+
     def test_background_forwarded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--background/-b is parsed and forwarded to cmd_run."""
         project = _make_loop_project(tmp_path)
