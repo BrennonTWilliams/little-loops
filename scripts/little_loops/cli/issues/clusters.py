@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from collections import deque
+import re
+import sys
+from collections import Counter, deque
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import colorize, print_json
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, warning
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -17,9 +20,17 @@ EDGE_COLOR: dict[str, str] = {
     "blocks": "31",  # red
     "blocked_by": "33",  # yellow
     "parent": "34",  # blue
-    "sibling": "36",  # cyan
     "depends_on": "35",  # magenta
     "relates_to": "37",  # white/dim
+}
+
+# Human-readable meaning per relationship type, shown in the legend
+_EDGE_MEANING: dict[str, str] = {
+    "blocked_by": "source is blocked by target",
+    "blocks": "source blocks target",
+    "parent": "source's parent epic is target",
+    "depends_on": "source soft-depends on target",
+    "relates_to": "source relates to target",
 }
 
 _BOX_HEIGHT = 4  # top border + 2 content lines + bottom border
@@ -43,6 +54,132 @@ _EDGE_PRIORITY: dict[str, int] = {
     "depends_on": 3,
     "relates_to": 4,
 }
+
+# Regexes for shared-palette colorization of rendered text lines
+_PRIORITY_TAG_RE = re.compile(r"\[(P[0-5])\]")
+_ISSUE_ID_RE = re.compile(r"\b(BUG|FEAT|ENH|EPIC)-\d+\b")
+
+
+@dataclass
+class _ClusterRenderData:
+    """Precomputed render inputs for one cluster.
+
+    Attributes:
+        index: 1-based cluster index as printed in the header
+        ids: Issue IDs in the cluster (component order)
+        ordered_ids: Issue IDs in topo-sorted render order
+        edges: Directed edges within the cluster as (from_id, to_id, relationship)
+        has_cycle: True when the cluster's dependency edges contain a cycle
+    """
+
+    index: int
+    ids: list[str]
+    ordered_ids: list[str]
+    edges: list[tuple[str, str, str]]
+    has_cycle: bool
+
+
+def _plural(n: int, word: str) -> str:
+    """Return *word* pluralized with a trailing ``s`` when *n* != 1."""
+    return word if n == 1 else word + "s"
+
+
+def _colorize_ids(line: str) -> str:
+    """Colorize ``[Pn]`` tags and issue IDs in *line* via the shared palettes.
+
+    Uses ``PRIORITY_COLOR`` / ``TYPE_COLOR`` from ``cli/output.py`` so cluster
+    output honours the user's configured theme, ``config.color``, and
+    ``NO_COLOR``. Applied to fully rendered lines only — ANSI escapes are
+    zero-width on screen, so box alignment is unaffected.
+    """
+    line = _PRIORITY_TAG_RE.sub(
+        lambda m: colorize(m.group(0), PRIORITY_COLOR.get(m.group(1), "0")),
+        line,
+    )
+    return _ISSUE_ID_RE.sub(
+        lambda m: colorize(m.group(0), TYPE_COLOR.get(m.group(1), "0")),
+        line,
+    )
+
+
+def _cluster_header(
+    cd: _ClusterRenderData,
+    issues_map: dict[str, IssueInfo],
+    neighbours: dict[str, set[str]],
+) -> str:
+    """Build the enriched per-cluster header line (ENH-2336).
+
+    In addition to the cluster index and issue count, shows the hub issue
+    (max-degree node, multi-issue clusters only), priority spread
+    (e.g. ``P2×1 P3×4``), blocked-status count, edge count, and an inline
+    cycle flag.
+    """
+    sep = "─" * 3
+    n = len(cd.ids)
+    parts = [f"Cluster {cd.index} ({n} {_plural(n, 'issue')})"]
+
+    if n > 1:
+        hub = min(cd.ids, key=lambda id_: (-len(neighbours.get(id_, set())), id_))
+        parts.append(f"hub {hub}")
+
+    counts = Counter(issues_map[id_].priority for id_ in cd.ids)
+    parts.append(" ".join(f"{p}×{counts[p]}" for p in sorted(counts)))
+
+    blocked_n = sum(1 for id_ in cd.ids if issues_map[id_].status == "blocked")
+    if blocked_n:
+        parts.append(f"{blocked_n} blocked")
+
+    parts.append(f"{len(cd.edges)} {_plural(len(cd.edges), 'edge')}")
+    if cd.has_cycle:
+        parts.append("cycle")
+
+    return f"{sep} {' · '.join(parts)} {sep}"
+
+
+def _render_cluster_compact(
+    ordered_ids: list[str],
+    issues_map: dict[str, IssueInfo],
+    edges: list[tuple[str, str, str]],
+) -> list[str]:
+    """Render a cluster as one line per issue with its outgoing edge annotations.
+
+    Format: ``[P3] ENH-2191  depends_on→ ENH-2184, ENH-2185``. Relationship
+    labels carry the same ``EDGE_COLOR`` coloring as the box-diagram notation;
+    orphans (no edges) render as a bare ``[Pn] ID`` line.
+    """
+    out_edges: dict[str, dict[str, list[str]]] = {}
+    for from_id, to_id, rel in edges:
+        out_edges.setdefault(from_id, {}).setdefault(rel, []).append(to_id)
+
+    lines: list[str] = []
+    for iid in ordered_ids:
+        issue = issues_map[iid]
+        line = f"[{issue.priority}] {iid}"
+        rel_map = out_edges.get(iid, {})
+        if rel_map:
+            annotations = " · ".join(
+                colorize(rel, EDGE_COLOR.get(rel, "37")) + "→ " + ", ".join(sorted(targets))
+                for rel, targets in sorted(
+                    rel_map.items(), key=lambda kv: _EDGE_PRIORITY.get(kv[0], 99)
+                )
+            )
+            line += f"  {annotations}"
+        lines.append(_colorize_ids(line))
+    return lines
+
+
+def _print_legend(present_types: set[str]) -> None:
+    """Print a ``Key:`` block for the edge types present in the rendered output.
+
+    Modeled on ``refine_status._print_key``. Only edge types actually rendered
+    are listed; under ``NO_COLOR`` the legend still prints, sans color.
+    """
+    if not present_types:
+        return
+    print("Key:")
+    for rel in sorted(present_types, key=lambda r: _EDGE_PRIORITY.get(r, 99)):
+        label = colorize(f"{rel:<12}", EDGE_COLOR.get(rel, "37"))
+        print(f"  {label} {_EDGE_MEANING.get(rel, '')}")
 
 
 def _resolve_edge_types(edges_arg: str) -> set[str]:
@@ -266,10 +403,12 @@ def _render_cluster_diagram(
             color = EDGE_COLOR.get(rel, "37")
             arrow_labels[gap_row] = colorize(f" {rel}", color)
 
-    # Convert grid to string lines, appending annotations after arrow rows
+    # Convert grid to string lines, appending annotations after arrow rows.
+    # Shared-palette colorization happens on the finished line so ANSI escapes
+    # never enter the character grid (they would corrupt box alignment).
     lines: list[str] = []
     for r, row_chars in enumerate(grid):
-        line = "".join(row_chars).rstrip()
+        line = _colorize_ids("".join(row_chars).rstrip())
         if r in arrow_labels:
             line += arrow_labels[r]
         lines.append(line)
@@ -278,13 +417,15 @@ def _render_cluster_diagram(
         lines.pop()
 
     # Append annotations for skip-level edges (non-consecutive in topo order).
+    # Same visual language as inline edges: plain arrow, colored relationship
+    # label after the edge.
     pos = {id_: i for i, id_ in enumerate(ordered_ids)}
     skip_edges = [(f, t, r) for (f, t), r in sorted(edge_map.items()) if abs(pos[t] - pos[f]) > 1]
     if skip_edges:
         lines.append("")
         for src, dst, rel in skip_edges:
             color = EDGE_COLOR.get(rel, "37")
-            lines.append(f"  {src} {colorize('→', color)} {dst}  ({rel})")
+            lines.append(_colorize_ids(f"  {src} → {dst}") + " " + colorize(rel, color))
 
     return lines
 
@@ -294,7 +435,8 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration (provides issue directories and CLI settings)
-        args: Parsed CLI args (include_orphans, min_connections, json, edges, status)
+        args: Parsed CLI args (include_orphans, min_connections, json, edges,
+            status, cluster, limit, compact)
 
     Returns:
         Exit code (0 = success)
@@ -337,10 +479,37 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
             print("No clusters match the specified filters.")
         return 0
 
+    # Scoping (ENH-2336): --cluster selects the Nth cluster (1-indexed,
+    # matching the printed numbering); --limit caps how many are rendered.
+    # Original indices are preserved so headers and JSON cluster_index values
+    # stay stable under scoping.
+    indexed: list[tuple[int, list[str]]] = list(enumerate(components, 1))
+
+    cluster_n: int | None = getattr(args, "cluster", None)
+    if cluster_n is not None:
+        if cluster_n < 1 or cluster_n > len(indexed):
+            print(
+                f"Error: --cluster {cluster_n} is out of range "
+                f"({len(indexed)} {_plural(len(indexed), 'cluster')} available)",
+                file=sys.stderr,
+            )
+            return 1
+        indexed = [indexed[cluster_n - 1]]
+
+    suppressed = 0
+    limit: int | None = getattr(args, "limit", None)
+    if limit is not None:
+        if limit < 1:
+            print("Error: --limit must be >= 1", file=sys.stderr)
+            return 1
+        if len(indexed) > limit:
+            suppressed = len(indexed) - limit
+            indexed = indexed[:limit]
+
     # JSON mode: emit structured data, no diagram rendering
     if getattr(args, "json", False):
         output = []
-        for idx, comp in enumerate(components, 1):
+        for idx, comp in indexed:
             comp_set = set(comp)
             edges = _cluster_edges(comp_set, issues, edge_types)
             output.append(
@@ -364,33 +533,59 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     # Text rendering
     width = terminal_width()
     box_w = max(20, min(_MAX_BOX_WIDTH, width - _BOX_MARGIN * 2 - 4))
-    total_issues = sum(len(c) for c in components)
+    total_issues = sum(len(comp) for _, comp in indexed)
+    compact: bool = getattr(args, "compact", False)
 
     # Build blocked_by map from IssueInfo for topo sort ordering
     blocked_by_map: dict[str, set[str]] = {
         issue.issue_id: set(issue.blocked_by) for issue in issues
     }
 
-    for idx, comp in enumerate(components, 1):
+    # Precompute per-cluster edges and topo order so the overview header and
+    # legend can report aggregate data before the per-cluster detail dump.
+    clusters_data: list[_ClusterRenderData] = []
+    for idx, comp in indexed:
         comp_set = set(comp)
         edges = _cluster_edges(comp_set, issues, edge_types)
-        edge_map: dict[tuple[str, str], str] = {(f, t): r for f, t, r in edges}
-
         ordered, has_cycle = _topo_sort_cluster(comp, blocked_by_map)
+        clusters_data.append(_ClusterRenderData(idx, comp, ordered, edges, has_cycle))
 
-        sep = "─" * 3
-        n_issues = len(comp)
-        noun = "issue" if n_issues == 1 else "issues"
-        print(f"{sep} Cluster {idx} ({n_issues} {noun}) {sep}")
-        if has_cycle:
-            print("⚠ cycle detected — using fallback layout")
+    total_edges = sum(len(cd.edges) for cd in clusters_data)
+    cycle_count = sum(1 for cd in clusters_data if cd.has_cycle)
+    present_types = {rel for cd in clusters_data for _, _, rel in cd.edges}
 
-        diagram_lines = _render_cluster_diagram(ordered, issues_map, edge_map, box_w)
-        print("\n".join(diagram_lines))
+    n_clusters = len(indexed)
+
+    # Active-filter echo + aggregate overview, printed before the detail dump
+    print(f"edges={edges_arg} · status={status_arg} · min-connections={min_conn}")
+    print(
+        f"{n_clusters} {_plural(n_clusters, 'cluster')} · "
+        f"{total_issues} {_plural(total_issues, 'issue')} · "
+        f"{total_edges} {_plural(total_edges, 'edge')} · "
+        f"{cycle_count} {_plural(cycle_count, 'cycle')}"
+    )
+    print()
+    _print_legend(present_types)
+    print()
+
+    for cd in clusters_data:
+        print(_cluster_header(cd, issues_map, neighbours))
+        if cd.has_cycle:
+            warning("cycle detected — using fallback layout")
+
+        if compact:
+            body_lines = _render_cluster_compact(cd.ordered_ids, issues_map, cd.edges)
+        else:
+            edge_map: dict[tuple[str, str], str] = {(f, t): r for f, t, r in cd.edges}
+            body_lines = _render_cluster_diagram(cd.ordered_ids, issues_map, edge_map, box_w)
+        print("\n".join(body_lines))
         print()
 
-    n_clusters = len(components)
-    cluster_noun = "cluster" if n_clusters == 1 else "clusters"
-    issue_noun = "issue" if total_issues == 1 else "issues"
-    print(f"{n_clusters} {cluster_noun}, {total_issues} {issue_noun} total")
+    footer = (
+        f"{n_clusters} {_plural(n_clusters, 'cluster')}, "
+        f"{total_issues} {_plural(total_issues, 'issue')} total"
+    )
+    if suppressed:
+        footer += f" ({suppressed} {_plural(suppressed, 'cluster')} suppressed by --limit)"
+    print(footer)
     return 0

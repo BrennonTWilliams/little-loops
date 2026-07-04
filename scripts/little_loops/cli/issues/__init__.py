@@ -129,6 +129,8 @@ Examples:
   %(prog)s clusters --json
   %(prog)s clusters --include-orphans
   %(prog)s clusters --min-connections 2
+  %(prog)s clusters --cluster 2
+  %(prog)s clusters --limit 3 --compact
   %(prog)s anchor-sweep --dry-run
   %(prog)s anchor-sweep --issues-dir .issues
   %(prog)s asw --dry-run
@@ -433,6 +435,30 @@ Examples:
             metavar="N",
             dest="min_connections",
             help="Only show clusters where at least one issue has N or more connections",
+        )
+        cl.add_argument(
+            "--cluster",
+            type=int,
+            default=None,
+            metavar="N",
+            dest="cluster",
+            help="Render only the Nth cluster (1-indexed); error if N is out of range",
+        )
+        cl.add_argument(
+            "--limit",
+            type=int,
+            default=None,
+            metavar="N",
+            dest="limit",
+            help="Render at most N clusters; the footer reports how many were suppressed",
+        )
+        cl.add_argument(
+            "--compact",
+            "--summary",
+            action="store_true",
+            default=False,
+            dest="compact",
+            help="One line per issue with edge annotations instead of a 4-line box",
         )
         cl.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
         cl.add_argument(

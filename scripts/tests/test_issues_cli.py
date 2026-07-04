@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -4651,6 +4652,557 @@ def issues_dir_with_soft_edges(temp_project_dir: Path) -> Path:
     )
 
     return issues_base
+
+
+@pytest.fixture
+def issues_dir_with_cycle(temp_project_dir: Path) -> Path:
+    """Issue directory with a two-issue blocked_by cycle for cluster tests."""
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    bugs_dir.mkdir(parents=True)
+    (issues_base / "completed").mkdir(parents=True)
+    (issues_base / "deferred").mkdir(parents=True)
+
+    (bugs_dir / "P1-BUG-101-cycle-a.md").write_text(
+        "# BUG-101: Cycle A\n\n## Summary\nA.\n\n## Blocked By\n- BUG-102\n"
+    )
+    (bugs_dir / "P2-BUG-102-cycle-b.md").write_text(
+        "# BUG-102: Cycle B\n\n## Summary\nB.\n\n## Blocked By\n- BUG-101\n"
+    )
+
+    return issues_base
+
+
+class TestIssuesCLIClustersLegendAndHeader:
+    """Tests for the clusters legend, filter echo, overview, and shared palette (ENH-2335)."""
+
+    def test_legend_lists_only_active_edge_types(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The Key: block lists only edge types present in the rendered output."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Key:" in captured.out
+        # Both directions are declared, so dedup keeps blocked_by (highest priority)
+        assert "blocked_by" in captured.out
+        # These relationship types have no edges in the fixture
+        assert "depends_on" not in captured.out
+        assert "relates_to" not in captured.out
+
+    def test_filter_echo_and_overview_header(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Active filters and aggregate overview print before the detail dump."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = captured.out.splitlines()
+        assert lines[0] == "edges=all · status=active · min-connections=0"
+        assert lines[1] == "2 clusters · 5 issues · 3 edges · 0 cycles"
+        # Header block appears before the first per-cluster section
+        first_cluster = next(i for i, ln in enumerate(lines) if "Cluster 1" in ln)
+        key_line = next(i for i, ln in enumerate(lines) if ln == "Key:")
+        assert key_line < first_cluster
+
+    def test_filter_echo_reflects_flags(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Non-default --edges/--status/--min-connections values are echoed."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "clusters",
+                "--edges",
+                "blocking",
+                "--status",
+                "all",
+                "--min-connections",
+                "1",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "edges=blocking · status=all · min-connections=1" in captured.out
+
+    def test_shared_palette_colorizes_priority_and_id(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """[Pn] tags and issue IDs are colorized via PRIORITY_COLOR / TYPE_COLOR."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        monkeypatch.setenv("FORCE_COLOR", "1")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Priority tag wrapped in an SGR sequence
+        assert re.search(r"\x1b\[[0-9;]+m\[P0\]\x1b\[0m", captured.out), (
+            "[P0] tag must be colorized via PRIORITY_COLOR"
+        )
+        # Issue ID wrapped in an SGR sequence
+        assert re.search(r"\x1b\[[0-9;]+mBUG-001\x1b\[0m", captured.out), (
+            "BUG-001 id must be colorized via TYPE_COLOR"
+        )
+
+    def test_no_color_suppresses_ansi_and_cycle_icon(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_cycle: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """NO_COLOR strips ANSI codes and the cycle warning icon; legend still prints."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.setenv("NO_COLOR", "1")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+        assert "⚠" not in captured.out
+        assert "cycle detected" in captured.out
+        assert "Key:" in captured.out
+
+    def test_overview_counts_cycles(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_cycle: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The overview line reports singular cluster/edge/cycle counts."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "1 cluster · 2 issues · 1 edge · 1 cycle" in captured.out
+
+    def test_skip_edge_notation_unified(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Skip-edge annotations use the inline colored-label notation, not (rel)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.setenv("NO_COLOR", "1")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Old parenthesized notation is gone
+        assert "(blocked_by)" not in captured.out
+        skip_lines = [
+            ln
+            for ln in captured.out.splitlines()
+            if "BUG-020" in ln and "BUG-022" in ln and "→" in ln
+        ]
+        assert skip_lines, "Skip-edge annotation line must be present"
+        assert any(ln.endswith("blocked_by") for ln in skip_lines), (
+            "Skip-edge line must end with the bare relationship label"
+        )
+
+    def test_edge_color_has_no_sibling_entry(self) -> None:
+        """The dead 'sibling' mapping is removed from EDGE_COLOR."""
+        from little_loops.cli.issues.clusters import EDGE_COLOR
+
+        assert "sibling" not in EDGE_COLOR
+
+    def test_json_output_has_no_legend_or_header(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json output is unchanged: no legend, filter echo, or overview lines."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Key:" not in captured.out
+        assert "edges=" not in captured.out
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+
+
+@pytest.fixture
+def issues_dir_with_blocked_status(temp_project_dir: Path) -> Path:
+    """Issue directory with a status: blocked issue for header blocked-count tests."""
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    bugs_dir.mkdir(parents=True)
+    (issues_base / "completed").mkdir(parents=True)
+    (issues_base / "deferred").mkdir(parents=True)
+
+    (bugs_dir / "P1-BUG-201-blocked.md").write_text(
+        "---\nstatus: blocked\nblocked_by:\n  - BUG-202\n---\n\n# BUG-201: Blocked child\n"
+    )
+    (bugs_dir / "P2-BUG-202-blocker.md").write_text(
+        "# BUG-202: Blocker\n\n## Summary\nBlocks BUG-201.\n"
+    )
+
+    return issues_base
+
+
+class TestIssuesCLIClustersScoping:
+    """Tests for --cluster/--limit/--compact and enriched headers (ENH-2336)."""
+
+    def test_cluster_flag_renders_only_nth_cluster(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cluster 2 renders exactly the second cluster with its original index."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--cluster", "2", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cluster 2" in captured.out
+        assert "Cluster 1" not in captured.out
+        assert "FEAT-001" in captured.out
+        assert "BUG-001" not in captured.out
+
+    def test_cluster_flag_out_of_range(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--cluster N beyond the cluster count exits 1 with a clear stderr message."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--cluster", "5", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "out of range" in captured.err
+        assert "2 clusters available" in captured.err
+
+    def test_limit_flag_reports_suppressed_clusters(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--limit 1 renders one cluster and the footer reports the suppressed count."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--limit", "1", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cluster 1" in captured.out
+        assert "Cluster 2" not in captured.out
+        assert "(1 cluster suppressed by --limit)" in captured.out
+
+    def test_compact_renders_one_line_per_issue(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--compact replaces boxes with one line per issue plus edge annotations."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.setenv("NO_COLOR", "1")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--compact", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "┌" not in captured.out
+        assert "[P0] BUG-001" in captured.out
+        assert "[P1] BUG-002  blocked_by→ BUG-001" in captured.out
+        assert "[P2] BUG-003  blocked_by→ BUG-002" in captured.out
+
+    def test_summary_alias_matches_compact(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--summary is an alias for --compact."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.setenv("NO_COLOR", "1")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--summary", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "┌" not in captured.out
+        assert "[P1] BUG-002  blocked_by→ BUG-001" in captured.out
+
+    def test_compact_renders_orphans_as_single_lines(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--compact --include-orphans renders each orphan as one bare line."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        monkeypatch.setenv("NO_COLOR", "1")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "clusters",
+                "--compact",
+                "--include-orphans",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "[P3] BUG-004" in captured.out.splitlines()
+
+    def test_enriched_header_shows_hub_spread_and_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The cluster header carries hub, priority spread, and edge count inline."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Cluster 1 (3 issues) · hub BUG-002 · P0×1 P1×1 P2×1 · 2 edges" in captured.out
+
+    def test_enriched_header_inline_cycle_flag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_cycle: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Clusters with a dependency cycle carry an inline cycle flag in the header."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "· 1 edge · cycle ───" in captured.out
+
+    def test_enriched_header_blocked_count(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_blocked_status: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Issues with status: blocked are counted in the header."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "· 1 blocked ·" in captured.out
+
+    def test_json_respects_cluster_and_limit_scoping(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deps: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json honours --cluster scoping with stable cluster_index values."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "clusters",
+                "--json",
+                "--cluster",
+                "2",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) == 1
+        assert data[0]["cluster_index"] == 2
+        ids = {item["id"] for item in data[0]["issues"]}
+        assert ids == {"FEAT-001", "FEAT-002"}
 
 
 class TestIssuesCLIAnchorSweep:
