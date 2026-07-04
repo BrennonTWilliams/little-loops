@@ -20,6 +20,7 @@ from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.parallel.types import SprintWorkerContext
 from little_loops.sprint import SprintManager, SprintState
+from little_loops.worktree_utils import detect_default_branch
 
 if TYPE_CHECKING:
     import argparse
@@ -574,14 +575,10 @@ def _cmd_sprint_run(
             else:
                 # Multi-issue — use ParallelOrchestrator with worktrees
                 only_ids = set(wave_ids)
-                # Detect current branch for rebase/merge operations (BUG-439)
-                _br = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    capture_output=True,
-                    text=True,
-                    cwd=Path.cwd(),
-                )
-                _base_branch = _br.stdout.strip() if _br.returncode == 0 else "main"
+                # Resolve base branch for rebase/merge operations (BUG-439, BUG-2323).
+                # An explicit `parallel.base_branch` config value wins; otherwise
+                # auto-detect (origin/HEAD -> current branch -> "main").
+                _base_branch = config.parallel.base_branch or detect_default_branch(Path.cwd())
                 # Runtime overlap detection disabled for sprints (ENH-512):
                 # refine_waves_for_contention() already splits overlapping
                 # issues into separate sub-waves before dispatch.

@@ -877,3 +877,128 @@ class TestFeatureBranchInPlaceWarning:
         assert exit_code == 0
         matching = [w for w in warnings if "feature-branch mode does not apply" in w]
         assert len(matching) == 1
+
+
+class TestSprintParallelBaseBranchDetection:
+    """Multi-issue waves resolve base_branch via detect_default_branch (BUG-2323)."""
+
+    def _make_args(self) -> MagicMock:
+        args = MagicMock()
+        args.sprint = "test-sprint"
+        args.quiet = False
+        args.dry_run = False
+        args.resume = False
+        args.skip = None
+        args.only = None
+        args.type = None
+        args.label = None
+        args.skip_analysis = True
+        args.max_workers = 2
+        args.handoff_threshold = None
+        args.context_limit = None
+        args.save = False
+        args.feature_branches = None
+        return args
+
+    def _run_multi_issue_wave(
+        self, configured_base_branch: str | None
+    ) -> tuple[int, MagicMock, MagicMock]:
+        """Drive _cmd_sprint_run through one two-issue wave (the parallel path).
+
+        Returns (exit_code, mock_detect, mock_config) for assertions on how the
+        base branch was resolved.
+        """
+        from little_loops.cli.sprint.run import _cmd_sprint_run
+        from little_loops.issue_parser import IssueInfo
+
+        config = MagicMock()
+        config.parallel.use_feature_branches = False
+        config.parallel.base_branch = configured_base_branch
+        config.sprints.max_issue_wall_clock_time = 60
+        config.issues.base_dir = ".issues"
+        config.project_root = Path(".")
+
+        mock_issues = []
+        for i in range(2):
+            issue = MagicMock(spec=IssueInfo)
+            issue.issue_id = f"ENH-{200 + i}"
+            issue.labels = []
+            mock_issues.append(issue)
+        issue_ids = [iss.issue_id for iss in mock_issues]
+
+        mock_path = MagicMock()
+        mock_path.read_text.return_value = "---\nstatus: open\n---\n"
+
+        mock_sprint = MagicMock()
+        mock_sprint.name = "test-sprint"
+        mock_sprint.issues = issue_ids
+        mock_sprint.options = None
+
+        mock_manager = MagicMock()
+        mock_manager.load_or_resolve.return_value = mock_sprint
+        mock_manager.validate_issues.return_value = dict.fromkeys(issue_ids, mock_path)
+        mock_manager.load_issue_infos.return_value = mock_issues
+
+        waves = [mock_issues]  # single wave of 2 issues -> parallel path
+        contention_notes: list = [None]
+
+        with (
+            patch("little_loops.cli.sprint.run.signal"),
+            patch("little_loops.frontmatter.parse_frontmatter", return_value={"status": "open"}),
+            patch(
+                "little_loops.frontmatter.update_frontmatter",
+                side_effect=lambda c, _: c,
+            ),
+            patch("little_loops.dependency_mapper.gather_all_issue_ids", return_value=set()),
+            patch("little_loops.cli.sprint.run.DependencyGraph") as mock_graph_cls,
+            patch(
+                "little_loops.cli.sprint.run.refine_waves_for_contention",
+                return_value=(waves, contention_notes),
+            ),
+            patch("little_loops.cli.sprint.run._save_sprint_state"),
+            patch("little_loops.cli.sprint.run._cleanup_sprint_state"),
+            patch(
+                "little_loops.cli.sprint.run.detect_default_branch",
+                return_value="develop",
+            ) as mock_detect,
+            patch("little_loops.cli.sprint.run.ParallelOrchestrator") as mock_orch_cls,
+            patch("little_loops.extension.wire_extensions"),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.cli.sprint.run.use_color_enabled", return_value=False),
+            patch("little_loops.cli.sprint.run.Logger") as mock_logger_cls,
+        ):
+            mock_graph = MagicMock()
+            mock_graph.has_cycles.return_value = False
+            mock_graph.get_execution_waves.return_value = waves
+            mock_graph_cls.from_issues.return_value = mock_graph
+
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_orch.execution_duration = 0.2
+            mock_orch.queue.completed_ids = list(issue_ids)
+            mock_orch.queue.failed_ids = []
+            mock_orch_cls.return_value = mock_orch
+
+            mock_logger_cls.return_value = MagicMock()
+
+            exit_code = _cmd_sprint_run(args=self._make_args(), manager=mock_manager, config=config)
+
+        return exit_code, mock_detect, config
+
+    def test_multi_issue_wave_uses_detected_default_branch(self) -> None:
+        """With no configured base_branch, the wave uses detect_default_branch()."""
+        exit_code, mock_detect, config = self._run_multi_issue_wave(configured_base_branch=None)
+        assert exit_code == 0
+        mock_detect.assert_called_once()
+        _, kwargs = config.create_parallel_config.call_args
+        assert kwargs["base_branch"] == "develop"
+
+    def test_multi_issue_wave_prefers_configured_base_branch(self) -> None:
+        """An explicit parallel.base_branch config value wins over auto-detection."""
+        exit_code, mock_detect, config = self._run_multi_issue_wave(
+            configured_base_branch="release"
+        )
+        assert exit_code == 0
+        mock_detect.assert_not_called()
+        _, kwargs = config.create_parallel_config.call_args
+        assert kwargs["base_branch"] == "release"
