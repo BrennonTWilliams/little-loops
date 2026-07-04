@@ -1,6 +1,6 @@
 ---
-id: FEAT-1406
-type: FEAT
+id: EPIC-1406
+type: EPIC
 priority: P2
 status: done
 
@@ -19,7 +19,7 @@ parent: FEAT-1389
 completed_at: 2026-05-10T00:00:00Z
 ---
 
-# FEAT-1406: EPIC Type — CLI Display, Sync, and Tooling Integration
+# EPIC-1406: EPIC Type — CLI Display, Sync, and Tooling Integration
 
 ## Summary
 

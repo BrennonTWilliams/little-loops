@@ -8,7 +8,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_date: "2026-07-02"
 discovered_by: deep-research / manual synthesis
 labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, EPIC-2258, EPIC-2257]
+relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257]
 source_artifacts:
   - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
   - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -144,8 +144,8 @@ Each entry below is a **planned** child issue to be captured next; issue IDs TBD
 
 ### Tier 0 — behavioral quick-wins (ship first)
 
-- **[TBD-1]** Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`).
-- **[TBD-2]** Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test.
+- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2)*
+- **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2)*
 
 ### Tier 1 — measurement foundation
 

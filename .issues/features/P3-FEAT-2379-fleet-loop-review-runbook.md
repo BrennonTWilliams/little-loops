@@ -7,6 +7,7 @@ status: open
 captured_at: '2026-06-28T20:54:00Z'
 discovered_date: 2026-06-28
 discovered_by: user-report
+parent: EPIC-1918
 labels:
 - docs
 - tooling
@@ -110,4 +111,5 @@ path is recorded, not built.
 
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1918 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:audit-issue-conflicts` - 2026-06-29T01:47:32 - `0f8f08b1-212f-4f62-9ad9-264556960322.jsonl`

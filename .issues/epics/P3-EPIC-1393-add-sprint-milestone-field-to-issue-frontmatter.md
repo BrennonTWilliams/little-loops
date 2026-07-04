@@ -1,6 +1,6 @@
 ---
-id: ENH-1393
-type: ENH
+id: EPIC-1393
+type: EPIC
 priority: P3
 status: done
 captured_at: '2026-05-09T20:26:09Z'
@@ -20,7 +20,7 @@ score_ambiguity: 18
 score_change_surface: 18
 ---
 
-# ENH-1393: Add Sprint/Milestone Field to Issue Frontmatter
+# EPIC-1393: Add Sprint/Milestone Field to Issue Frontmatter
 
 ## Summary
 

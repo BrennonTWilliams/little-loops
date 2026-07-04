@@ -8,8 +8,8 @@ captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
-relates_to: [FEAT-1462, FEAT-1623, FEAT-1721]
-depends_on: [FEAT-2122]
+relates_to: [FEAT-1462, FEAT-1623, FEAT-1721, FEAT-2122, EPIC-2456]
+depends_on: [ENH-2461]
 labels: [codex, opencode, host-runner, observability, host-compat]
 ---
 
@@ -150,6 +150,7 @@ evidence that proves it.
 - The `[^tok]` footnote referencing EPIC-1744 is stale; EPIC-1744 is an unrelated completed epic. Verify that `HOST_COMPATIBILITY.md` footnote still links to this ID and update or remove.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Consolidated the token-telemetry workstream: sequenced after ENH-2461 (`depends_on: [ENH-2461]` — the Claude-host persistence path lands first via the existing `on_usage_detailed` callback, then this issue extends the same contract to Codex/OpenCode). Decoupled from FEAT-2122 (P4 spawn-model research) — the usage-parsing research here does not depend on spawn-model behavior; FEAT-2122 moved to `relates_to`. Also linked to EPIC-2456 (F5/F6 cost-telemetry features share this callback surface).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:25:33 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:format-issue` - 2026-06-13T23:48:43 - `b252dabd-1baf-4665-95fb-2099fac23f7c.jsonl`

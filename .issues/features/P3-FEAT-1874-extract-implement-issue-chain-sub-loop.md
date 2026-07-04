@@ -1,7 +1,7 @@
 ---
-id: ENH-1874
+id: FEAT-1874
 title: Extract implement-issue-chain sub-loop
-type: ENH
+type: FEAT
 priority: P3
 parent: ENH-1777
 captured_at: '2026-06-02T00:00:00Z'
@@ -18,7 +18,7 @@ score_change_surface: 25
 status: done
 ---
 
-# ENH-1874: Extract implement-issue-chain sub-loop
+# FEAT-1874: Extract implement-issue-chain sub-loop
 
 ## Summary
 

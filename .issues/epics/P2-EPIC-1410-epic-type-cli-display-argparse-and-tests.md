@@ -1,6 +1,6 @@
 ---
-id: FEAT-1410
-type: FEAT
+id: EPIC-1410
+type: EPIC
 priority: P2
 
 confidence_score: 100
@@ -14,7 +14,7 @@ parent: FEAT-1409
 status: done
 ---
 
-# FEAT-1410: EPIC Type — CLI Display, Argparse Choices, and Tests
+# EPIC-1410: EPIC Type — CLI Display, Argparse Choices, and Tests
 
 ## Summary
 

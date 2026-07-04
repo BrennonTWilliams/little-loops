@@ -6,14 +6,14 @@ priority: P3
 status: open
 discovered_date: 2026-06-26
 discovered_by: capture-issue
+parent: EPIC-2087
 captured_at: '2026-06-26T00:35:41Z'
 relates_to:
 - FEAT-2390
 - ENH-2299
 - ENH-2309
 - FEAT-1023
-blocked_by:
-- FEAT-2390
+blocked_by: []
 confidence_score: 90
 outcome_confidence: 76
 score_complexity: 10
@@ -24,6 +24,20 @@ decision_needed: false
 ---
 
 # FEAT-2301: Visual builder for policy-router and rubric FSM loops (UX shell)
+
+## Re-verification (2026-07-03)
+
+Blocker **FEAT-2390 shipped (1.136)** — `blocked_by` cleared. FEAT-2390's
+`ll-artifact policy-builder` already emits a working visual builder
+(`scripts/little_loops/templates/policy-router-builder.html.tmpl`, 510 lines, stamps
+design tokens + grammar spec + skill catalog). **Do not build a second shell from
+scratch.** Verified against the shipped template: it contains no pinned "Otherwise"
+row, no rule reorder (drag/↑↓), and none of this issue's sentence-list UX — so this
+issue's scope survives, but as a *delta on the shipped template*: bring
+`policy-router-builder.html.tmpl` up to the § The UX model spec below, keeping the
+FEAT-2390 emit/validate core (`policy_builder_core.mjs`, JS conformance suite via
+`test_policy_builder_node_gate.py`) as-is. Re-baseline the acceptance criteria
+against what the template already delivers before implementation.
 
 ## Prototype mockup
 
@@ -241,6 +255,7 @@ rule silently veto the interaction design.
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-2087 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `single-toggle mode control` - 2026-06-28 - Removed the duplicate Step-1 mode-card picker
   from `thoughts/feat-2301-ui-mockup.html` so the header toggle is the sole Decision Table ⇄
   Rubric switch. Two competing mode selectors were cluttering the surface and obscuring which

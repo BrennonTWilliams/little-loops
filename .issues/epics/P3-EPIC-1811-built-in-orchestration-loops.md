@@ -100,6 +100,8 @@ When this epic is done, users can:
 
 ## Children
 
+- **FEAT-2354** — Built-in FSM loop that generates reusable Claude Code workflows (staged compiler-lowering meta-loop) *(parented 2026-07-03 via unparented sweep)*
+
 - ✅ **FEAT-1808** — `loop-composer` — Goal Decomposer Built-in FSM Loop (One Level Above `loop-router`)
 - ✅ **FEAT-1809** — Adaptive `loop-composer` — Re-plan-on-Failure Variant
 - ✅ **FEAT-1810** — `goal-cluster` — Multi-Goal Orchestrator for Sprint- or EPIC-Shaped Input

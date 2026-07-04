@@ -1,6 +1,6 @@
 ---
-id: ENH-1859
-type: ENH
+id: EPIC-1859
+type: EPIC
 priority: P3
 status: done
 captured_at: '2026-06-01T17:35:32Z'
@@ -21,7 +21,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-1859: `/ll:review-sprint` EPIC awareness — flag sprints that bypass EPIC critical path
+# EPIC-1859: `/ll:review-sprint` EPIC awareness — flag sprints that bypass EPIC critical path
 
 ## Summary
 

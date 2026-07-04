@@ -2,7 +2,7 @@
 id: FEAT-1850
 title: Add OmpRunner host runner for oh-my-pi (`omp` CLI)
 type: feat
-status: open
+status: done
 priority: P3
 captured_at: "2026-06-01T15:06:49Z"
 discovered_date: 2026-06-01
@@ -208,6 +208,41 @@ _Added by `/ll:verify-issues` (2026-06-27):_ Implementation Step 6 (create `hook
 
 **Note** (added by `/ll:audit-issue-conflicts` 2026-06-25): Implementation Step 6 (create `hooks/adapters/omp/`) is **fully superseded by FEAT-2261** and must not be implemented as part of this issue. The re-scope note at the top of this issue already states this, but the numbered step remains in the body and will mislead an implementer following steps sequentially. Skip step 6 entirely — it is FEAT-2261's scope, not this issue's.
 
+## Implementation Notes (2026-07-03)
+
+Runner core landed per the re-scoped EPIC-2258 boundaries:
+
+1. **Headless flag audit** — recorded in `thoughts/research/omp-headless-flags.md`
+   (sources: oh-my-pi README, omp.sh/docs/cli, DeepWiki mirrors of
+   `packages/coding-agent/src/cli/args.ts` and `modes/print-mode.ts`).
+   Key findings: `-p`/`--print` one-shot; `--mode json` = JSONL event stream
+   (no single-blob JSON mode — consume the final event, same contract as Codex);
+   `--continue` resume; `--model <pattern>`; **native `--tools <comma-list>`
+   allowlist**; no permission-bypass flag needed (print mode never prompts);
+   no `--agent` flag (subagents spawn in-session); `.omp/` project config dir.
+2. **`OmpRunner`** in `scripts/little_loops/host_runner.py`: all four `build_*`
+   methods wired; `HostCapabilities(streaming=True, permission_skip=True,
+   agent_select=False, tool_allowlist=True)`; registered in
+   `_HOST_RUNNER_REGISTRY` and `_PROBE_ORDER` (after gemini);
+   `_remediation_hint()` updated; `describe_capabilities()` returns a full
+   report so `LL_HOST_CLI=omp ll-doctor` works.
+3. **Tests** — `TestOmpRunner` (16 tests) + `TestDescribeCapabilities` entry in
+   `scripts/tests/test_host_runner.py` (kept alongside the other runner suites
+   rather than a separate `test_omp_runner.py`, matching the established
+   pattern); conformance `_HOST_BINARY` entry (registry parametrization
+   auto-generates the golden-path cases).
+4. **Docs** — `HOST_COMPATIBILITY.md`: omp column in Runner Capabilities +
+   Orchestration CLI (replacing the frozen Pi column per its footnote), config
+   probe row, `[^omp]` footnote; `ARCHITECTURE.md` component table;
+   `API.md` runner table.
+
+Out of scope (per re-scope note): hook adapter → FEAT-2261; config probe →
+FEAT-2262 (landed same batch); hook-event parity → FEAT-2263; conformance and
+skill/command adaptation → generic FEAT-2259 / FEAT-2260 (`--host omp`).
+End-to-end AC items (`ll-auto` completing a task on a live `omp` binary) are
+verifiable only with `omp` on PATH; invocation construction is covered by the
+conformance golden-path tests.
+
 ## Status
 
-**Open** | Created: 2026-06-01 | Priority: P3
+**Done** | Created: 2026-06-01 | Completed: 2026-07-03 | Priority: P3

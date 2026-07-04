@@ -3,7 +3,7 @@ id: FEAT-1719
 title: Wire `PostCompact` intent for Codex adapter
 type: FEAT
 priority: P5
-status: open
+status: cancelled
 captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
@@ -78,6 +78,7 @@ A `PostCompact` entry exists in `scripts/little_loops/hooks/adapters/codex/hooks
 **Open** | Created: 2026-05-26 | Priority: P5
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - EPIC-1463 tail cleanup: status -> cancelled per decision SCOPE-041 in .ll/decisions.yaml (epic 23/30 done; value delivered).
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:13:05 - `dcbaf608-eff5-4e7b-8a64-4d13a266c421.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-06-09T14:41:01 - `f2966d2e-3f0a-473f-b22c-b54b2a15ad9c.jsonl`

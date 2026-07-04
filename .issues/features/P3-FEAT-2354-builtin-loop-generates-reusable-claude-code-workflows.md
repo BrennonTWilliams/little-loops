@@ -7,6 +7,7 @@ status: open
 captured_at: '2026-06-27T22:11:29Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
+parent: EPIC-1811
 labels:
 - loops
 - meta-loop
@@ -381,6 +382,7 @@ FSM/YAML by hand.
 Captured from brainstorm: `.loops/runs/brainstorm-20260627T164631/brainstorm.md`.
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1811 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:wire-issue` - 2026-06-27T22:49:38 - `154c9238-9065-452a-b00a-b2db627068e4.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:37:06 - `567c4d00-9ba7-4b64-8c58-6d0231d254b8.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:37:00 - `6d019a8f-4362-4bbd-9ab1-93c73b60cd68.jsonl`

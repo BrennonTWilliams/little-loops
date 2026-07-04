@@ -281,6 +281,7 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 - Integration Map has an incorrect path: `scripts/little_loops/parallel_orchestrator.py` should be `scripts/little_loops/parallel/orchestrator.py` (flagged in Verification Notes but not yet corrected — fix before implementation).
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Absorbed ENH-1903's residual: when this lands, flip the Layer 2 row in docs/ARCHITECTURE.md § Orchestration Layers status table from planned to shipped. ENH-1903 closed (docs shipped).
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-14T00:14:00 - `7db6ce0f-4d7c-486d-927d-6804d39ee7b7.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`

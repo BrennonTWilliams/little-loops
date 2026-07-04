@@ -1,7 +1,7 @@
 ---
-id: ENH-1853
+id: EPIC-1853
 title: Add parent-epic filter to prompt-across-issues loop
-type: ENH
+type: EPIC
 priority: P3
 captured_at: '2026-06-01T17:06:21Z'
 completed_at: '2026-06-01T18:33:17Z'
@@ -19,7 +19,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-1853: Add parent-epic filter to prompt-across-issues loop
+# EPIC-1853: Add parent-epic filter to prompt-across-issues loop
 
 ## Summary
 

@@ -1,6 +1,6 @@
 ---
-id: FEAT-1407
-type: FEAT
+id: EPIC-1407
+type: EPIC
 priority: P2
 status: done
 testable: false
@@ -18,7 +18,7 @@ score_change_surface: 25
 parent: FEAT-1389
 ---
 
-# FEAT-1407: EPIC Type — Skills, Commands, and Documentation Updates
+# EPIC-1407: EPIC Type — Skills, Commands, and Documentation Updates
 
 ## Summary
 

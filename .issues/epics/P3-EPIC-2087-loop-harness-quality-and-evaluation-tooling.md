@@ -38,6 +38,8 @@ Loops are authored and iterated subjectively — authors assess quality via spot
 
 ## Children
 
+- **FEAT-2301** — Visual builder for policy-router and rubric FSM loops (UX shell; delta on FEAT-2390's shipped template) *(parented 2026-07-03 via unparented sweep)*
+
 - **ENH-2079** — Enforce generator-fix discipline in meta-loop validation (MR-6)
 - **ENH-2080** — Add retry-budget calibration guide tied to evaluator health
 - **ENH-2081** — Generate DSL-native eval tasks from ll's own config formats

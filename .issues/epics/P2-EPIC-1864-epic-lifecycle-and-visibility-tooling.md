@@ -24,6 +24,8 @@ EPICs are first-class containers (FEAT-1389, FEAT-1407) and can be dispatched as
 
 ## Children
 
+- **FEAT-2338** — `/ll:create-epics-from-unparented` skill — cluster orphaned issues into proposed EPICs *(parented 2026-07-03 via unparented sweep)*
+
 - **FEAT-1855** — EPIC progress aggregation (% done / blocked rollup)
 - **FEAT-1856** — `/ll:review-epic` skill — stalled-children and scope-drift audit
 - **FEAT-1857** — `/ll:scope-epic` — theme-to-EPIC decomposition skill

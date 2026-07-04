@@ -1,8 +1,8 @@
 ---
-id: ENH-2097
+id: FEAT-2097
 title: Migrate the recursive-refine / implement-issue-chain shared-tmp contract to
   ${context.run_dir}
-type: ENH
+type: FEAT
 priority: P2
 status: done
 captured_at: '2026-06-12T14:10:00Z'
@@ -20,7 +20,7 @@ score_ambiguity: 23
 score_change_surface: 23
 ---
 
-# ENH-2097: Migrate the recursive-refine contract trio to `${context.run_dir}`
+# FEAT-2097: Migrate the recursive-refine contract trio to `${context.run_dir}`
 
 ## Summary
 

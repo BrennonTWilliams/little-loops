@@ -1,7 +1,7 @@
 ---
-id: FEAT-2447
+id: EPIC-2447
 title: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
-type: FEAT
+type: EPIC
 priority: P3
 status: open
 captured_at: '2026-07-02T22:30:00Z'
@@ -30,7 +30,7 @@ score_ambiguity: 6
 score_change_surface: 0
 ---
 
-# FEAT-2447: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
+# EPIC-2447: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
 
 ## Summary
 

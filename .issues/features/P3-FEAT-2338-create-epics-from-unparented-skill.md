@@ -8,6 +8,7 @@ captured_at: '2026-06-27T01:47:26Z'
 completed_at: '2026-06-27T03:16:37Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
+parent: EPIC-1864
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 84
@@ -275,6 +276,7 @@ interface:
 `skills`, `issue-management`, `epics`, `backlog-organization`
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1864 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:ready-issue` - 2026-06-27T03:09:01 - `18d4480a-0cc2-4e97-a447-2484775196a0.jsonl`
 - `/ll:confidence-check` - 2026-06-27T03:00:00 - `96ae5770-0ec2-48fd-992a-05dd5658edf0.jsonl`
 - `/ll:wire-issue` - 2026-06-27T02:22:59 - `c1277e67-74f1-489b-b65b-3a42430f1289.jsonl`

@@ -39,6 +39,8 @@ from the corpus instead of leaving it as a passive archive.
 
 ## Children
 
+- **FEAT-2379** — Fleet loop-review runbook + `make` target — continuous improvement of built-in loops from cross-project logs *(parented 2026-07-03 via unparented sweep)*
+
 - **ENH-1919** — `ll-logs sequences`: tool-chain n-gram extraction primitive (feeds loop-suggester / FEAT-1309)
 - **FEAT-1920** — `ll-logs eval-export`: turn real sessions into ll-harness / create-eval-from-issues fixtures
 - **ENH-1921** — `ll-logs stats`: skill-frequency / error-rate / correction-rate telemetry dashboard

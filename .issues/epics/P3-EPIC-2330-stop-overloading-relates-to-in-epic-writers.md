@@ -1,7 +1,7 @@
 ---
-id: ENH-2330
+id: EPIC-2330
 title: 'scope-epic/link-epics: stop overloading relates_to + add post-write validation'
-type: ENH
+type: EPIC
 priority: P3
 status: done
 captured_at: '2026-06-26T22:37:02Z'
@@ -28,7 +28,7 @@ score_ambiguity: 23
 score_change_surface: 20
 ---
 
-# ENH-2330: Stop overloading `relates_to` in EPIC writers; validate after wiring
+# EPIC-2330: Stop overloading `relates_to` in EPIC writers; validate after wiring
 
 ## Summary
 

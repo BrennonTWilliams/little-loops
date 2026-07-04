@@ -1,7 +1,7 @@
 ---
-id: ENH-1946
+id: EPIC-1946
 title: Add ENH-1839 to EPIC-1707 children list
-type: ENH
+type: EPIC
 priority: P4
 status: done
 discovered_date: 2026-06-04
@@ -14,7 +14,7 @@ labels:
   - bookkeeping
 ---
 
-# ENH-1946: Add ENH-1839 to EPIC-1707 children list
+# EPIC-1946: Add ENH-1839 to EPIC-1707 children list
 
 ## Summary
 

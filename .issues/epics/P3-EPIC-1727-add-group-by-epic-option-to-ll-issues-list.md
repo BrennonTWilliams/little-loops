@@ -1,6 +1,6 @@
 ---
-id: ENH-1727
-type: ENH
+id: EPIC-1727
+type: EPIC
 priority: P3
 status: done
 captured_at: '2026-05-26T20:32:38Z'
@@ -15,7 +15,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# ENH-1727: Add `--group-by epic` option to `ll-issues list`
+# EPIC-1727: Add `--group-by epic` option to `ll-issues list`
 
 ## Summary
 

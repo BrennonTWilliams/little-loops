@@ -3,7 +3,7 @@ id: FEAT-2000
 title: Author loops/ll-auto.yaml FSM definition and validate
 type: FEAT
 priority: P2
-status: open
+status: blocked
 parent: EPIC-1867
 blocked_by:
 - FEAT-1901
@@ -171,6 +171,7 @@ the Python implementation.
 - Remaining blocker: FEAT-1901 (`ll-issues next`/`verify-work` subcommands still unimplemented).
 
 ## Session Log
+- backlog-grooming - 2026-07-03T00:00:00Z - Status corrected open -> blocked: FEAT-1901 (blocked_by) is unstarted; frontmatter now reflects the true chain state.
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`
 - `/ll:verify-issues` - 2026-06-25T00:51:21 - `3417b033-6605-44ca-9411-53f9fd585b45.jsonl`
 - `/ll:verify-issues` - 2026-06-18T02:52:53 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

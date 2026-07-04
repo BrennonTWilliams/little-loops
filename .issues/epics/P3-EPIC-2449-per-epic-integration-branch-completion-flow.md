@@ -1,7 +1,7 @@
 ---
-id: FEAT-2449
+id: EPIC-2449
 title: per-EPIC integration branch — EPIC-completion merge + orchestrator/sprint awareness
-type: FEAT
+type: EPIC
 priority: P3
 status: open
 captured_at: '2026-07-02T22:30:00Z'
@@ -32,7 +32,7 @@ score_ambiguity: 6
 score_change_surface: 0
 ---
 
-# FEAT-2449: per-EPIC integration branch — EPIC-completion merge + orchestrator/sprint awareness
+# EPIC-2449: per-EPIC integration branch — EPIC-completion merge + orchestrator/sprint awareness
 
 ## Summary
 
