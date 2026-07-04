@@ -51,6 +51,7 @@ class TestRnPlanYaml:
     def test_required_states_exist(self, data: dict) -> None:
         required = {
             "init",
+            "load_planning_prompt",
             "generate_rubric",
             "research_iteration",  # research chain delegated to oracle sub-loop
             "score",
@@ -66,7 +67,7 @@ class TestRnPlanYaml:
         state = data["states"]["init"]
         assert state.get("action_type") == "shell"
         assert state.get("capture") == "run_dir"
-        assert state.get("next") == "generate_rubric"
+        assert state.get("next") == "load_planning_prompt"
 
     def test_init_action_uses_absolute_path(self, data: dict) -> None:
         action = data["states"]["init"].get("action", "")
@@ -137,6 +138,114 @@ class TestRnPlanYaml:
         assert state.get("fragment") == "plan_rubric_score", (
             "score state must use plan_rubric_score fragment (which defines all rubric dimensions)"
         )
+
+
+class TestPlanningPromptWiring:
+    """rn-plan must consume the planning prompt file rn-plan-apo optimizes (BUG-2417).
+
+    Before this wiring existed, rn-plan-apo's apply_gradient overwrote
+    .ll/prompts/rn-plan-planning.md, a file rn-plan never read — a literal
+    no-op optimizer. These tests pin the measure→propose→apply→re-measure
+    spine: rn-plan seeds the file, re-reads it every run, and interpolates
+    its content into the generate_rubric planning prompt.
+    """
+
+    APO_LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-plan-apo.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load(LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def apo_data(self) -> dict:
+        return yaml.safe_load(self.APO_LOOP_FILE.read_text())
+
+    def test_context_has_plan_prompt_file(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert ctx.get("plan_prompt_file") == ".ll/prompts/rn-plan-planning.md"
+
+    def test_plan_prompt_file_default_matches_rn_plan_apo(self, data: dict, apo_data: dict) -> None:
+        """The shared-file contract: both loops must default to the same path.
+
+        This is the drift that made rn-plan-apo a no-op — the optimizer wrote
+        a path the planner had no context entry for at all.
+        """
+        assert data["context"]["plan_prompt_file"] == apo_data["context"]["plan_prompt_file"], (
+            "rn-plan and rn-plan-apo must agree on the default plan_prompt_file, "
+            "otherwise apply_gradient writes a file rn-plan never reads (BUG-2417)"
+        )
+
+    def test_init_seeds_plan_prompt_file(self, data: dict) -> None:
+        """init must create plan_prompt_file with default guidance when missing."""
+        action = data["states"]["init"].get("action", "")
+        assert "${context.plan_prompt_file}" in action, (
+            "init.action must reference ${context.plan_prompt_file} to seed the default"
+        )
+        assert '[ ! -f "$PROMPT_FILE" ]' in action, (
+            "init.action must only seed the prompt file when it does not already "
+            "exist (never clobber an optimized prompt)"
+        )
+
+    def test_load_planning_prompt_state(self, data: dict) -> None:
+        """load_planning_prompt must read plan_prompt_file and capture it."""
+        state = data["states"]["load_planning_prompt"]
+        assert state.get("action_type") == "shell"
+        assert "${context.plan_prompt_file}" in state.get("action", "")
+        assert state.get("capture") == "planning_prompt"
+        assert state.get("next") == "generate_rubric"
+
+    def test_generate_rubric_consumes_planning_prompt(self, data: dict) -> None:
+        """generate_rubric must interpolate the captured prompt-file content.
+
+        This is the assertion that would have caught BUG-2417: without it,
+        an applied gradient has no effect on subsequent planning output.
+        """
+        action = data["states"]["generate_rubric"].get("action", "")
+        assert "${captured.planning_prompt.output}" in action, (
+            "generate_rubric.action must interpolate "
+            "${captured.planning_prompt.output} so the optimized planning prompt "
+            "actually drives the plan outline (BUG-2417)"
+        )
+
+    def test_apo_run_planner_passes_plan_prompt_file(self, apo_data: dict) -> None:
+        """rn-plan-apo must forward its plan_prompt_file to each rn-plan run."""
+        action = apo_data["states"]["run_planner"].get("action", "")
+        assert '--context plan_prompt_file="${context.plan_prompt_file}"' in action, (
+            "run_planner must pass plan_prompt_file to ll-loop run rn-plan so the "
+            "planner reads the exact file apply_gradient overwrites (BUG-2417)"
+        )
+
+    def test_init_action_seeds_file_and_keeps_stdout_clean(self, tmp_path: Path) -> None:
+        """Execute the real init action: prompt file is seeded, stdout is the run dir only."""
+        data = yaml.safe_load(LOOP_FILE.read_text())
+        action = data["states"]["init"]["action"]
+        prompt_file = tmp_path / ".ll" / "prompts" / "rn-plan-planning.md"
+        script = action.replace("${context.run_dir}", ".loops/runs/rn-plan-test").replace(
+            "${context.plan_prompt_file}", str(prompt_file)
+        )
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0, f"init shell failed: {result.stderr}"
+        assert prompt_file.exists(), "init must seed plan_prompt_file when missing"
+        assert "Planning Guidance" in prompt_file.read_text()
+        # capture: run_dir consumes stdout — seeding must not pollute it
+        stdout = result.stdout.strip()
+        assert stdout == str(tmp_path / ".loops/runs/rn-plan-test"), (
+            f"init stdout must be exactly the absolute run dir, got: {stdout!r}"
+        )
+
+    def test_init_action_preserves_existing_prompt_file(self, tmp_path: Path) -> None:
+        """An optimized prompt written by apply_gradient must never be clobbered."""
+        data = yaml.safe_load(LOOP_FILE.read_text())
+        action = data["states"]["init"]["action"]
+        prompt_file = tmp_path / ".ll" / "prompts" / "rn-plan-planning.md"
+        prompt_file.parent.mkdir(parents=True)
+        prompt_file.write_text("OPTIMIZED PROMPT — do not clobber\n")
+        script = action.replace("${context.run_dir}", ".loops/runs/rn-plan-test").replace(
+            "${context.plan_prompt_file}", str(prompt_file)
+        )
+        result = _bash(script, tmp_path)
+        assert result.returncode == 0, f"init shell failed: {result.stderr}"
+        assert prompt_file.read_text() == "OPTIMIZED PROMPT — do not clobber\n"
 
 
 class TestRnPlanShellStates:

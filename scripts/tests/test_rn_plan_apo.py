@@ -122,6 +122,16 @@ class TestRunPlannerState:
         action = raw_data["states"]["run_planner"].get("action", "")
         assert "${context.tasks_file}" in action
 
+    def test_forwards_plan_prompt_file_to_rn_plan(self, raw_data: dict) -> None:
+        """run_planner must pass plan_prompt_file into each rn-plan invocation (BUG-2417).
+
+        Without this, an overridden plan_prompt_file would make apply_gradient
+        write a file that rn-plan (reading its own default) never consumes —
+        the exact no-op this bug fixed.
+        """
+        action = raw_data["states"]["run_planner"].get("action", "")
+        assert '--context plan_prompt_file="${context.plan_prompt_file}"' in action
+
     def test_on_blocked_done(self, raw_data: dict) -> None:
         state = raw_data["states"]["run_planner"]
         assert state.get("on_blocked") == "done"

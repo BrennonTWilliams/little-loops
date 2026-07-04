@@ -16,12 +16,19 @@ import:
 
 context:
   task: ""           # populated from positional CLI arg via input_key: task
+  # Externalized planning prompt — shared contract with rn-plan-apo, whose
+  # apply_gradient state overwrites this file. Default must stay in sync with
+  # rn-plan-apo.yaml's plan_prompt_file context entry (BUG-2417).
+  plan_prompt_file: .ll/prompts/rn-plan-planning.md
 
 states:
 
   init:
     # Setup phase — create per-run plan files in the runner-injected run_dir.
     # Captures the absolute path so all subsequent states can write to it.
+    # Also seeds plan_prompt_file with the default planning guidance on first
+    # run so rn-plan-apo's apply_gradient has a real file to optimize and
+    # subsequent runs consume the optimized text (BUG-2417).
     action_type: shell
     action: |
       DIR="${context.run_dir}"
@@ -29,21 +36,57 @@ states:
       : > "$DIR/plan.md"
       : > "$DIR/plan-rubric.md"
       : > "$DIR/research.md"
+      PROMPT_FILE="${context.plan_prompt_file}"
+      if [ ! -f "$PROMPT_FILE" ]; then
+        mkdir -p "$(dirname "$PROMPT_FILE")"
+        cat > "$PROMPT_FILE" <<'PLANNING_PROMPT_EOF'
+      # rn-plan Planning Guidance
+
+      Follow this guidance when writing the initial plan outline:
+
+      - State the goal and desired outcome explicitly.
+      - Decompose the task into major phases sized to its actual complexity —
+        neither over- nor under-engineered (calibrated depth).
+      - Keep subtasks distinct: never restate the same work under two phases.
+      - Assign every piece of referenced work to a concrete subtask so the
+        plan has no coverage gaps.
+      - List known risks, dependencies, and open questions requiring research.
+      PLANNING_PROMPT_EOF
+      fi
       case "$DIR" in
         /*) echo "$DIR" ;;
         *) echo "$(pwd)/$DIR" ;;
       esac
     capture: run_dir
+    next: load_planning_prompt
+
+  load_planning_prompt:
+    # Reads the current planning prompt so generate_rubric consumes the exact
+    # text rn-plan-apo's apply_gradient writes — closing the optimizer's
+    # measure→propose→apply→re-measure spine (BUG-2417). Re-read on every run,
+    # so an applied gradient takes effect on the next run_planner iteration.
+    action_type: shell
+    action: |
+      cat "${context.plan_prompt_file}"
+    capture: planning_prompt
     next: generate_rubric
 
   generate_rubric:
     # Rubric generation — analyzes the task and writes the 8-dimension evaluation
     # rubric to plan-rubric.md. Also writes an initial outline to plan.md so the
     # score state has a non-empty document to evaluate on the first pass.
+    # The planning guidance below is interpolated from plan_prompt_file (via the
+    # load_planning_prompt capture), so rn-plan-apo's optimized prompt is what
+    # actually drives the outline (BUG-2417).
     action_type: prompt
     action: |
       Your task is to set up the planning workspace for this task:
       "${context.task}"
+
+      Planning guidance (maintained at ${context.plan_prompt_file} and tuned by
+      the rn-plan-apo optimizer — follow it when writing the outline):
+
+      ${captured.planning_prompt.output}
 
       Step 1: Write an initial high-level plan outline to ${captured.run_dir.output}/plan.md.
       The outline should identify:

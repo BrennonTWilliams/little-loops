@@ -30,7 +30,10 @@ states:
 
   run_planner:
     # Executes rn-plan once per task in tasks_file using the current planning
-    # prompt at plan_prompt_file. tasks_file is a JSON array of task strings;
+    # prompt at plan_prompt_file. plan_prompt_file is passed explicitly so
+    # rn-plan's load_planning_prompt state reads the exact file apply_gradient
+    # overwrites, even when the caller overrides the default (BUG-2417).
+    # tasks_file is a JSON array of task strings;
     # plain text (one task per line) also works via the python fallback.
     # Each rn-plan run writes its artifacts to a per-task subdirectory of
     # ${context.run_dir}/plans/ so score_plans can find all plan trees there.
@@ -46,7 +49,7 @@ states:
         COUNT=$((COUNT + 1))
         TASK_DIR="$PARENT_DIR/plans/task-$COUNT"
         mkdir -p "$TASK_DIR"
-        ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" >> "$PARENT_DIR/planner.log" 2>&1 || true
+        ll-loop run rn-plan "$TASK" --context run_dir="$TASK_DIR/" --context plan_prompt_file="${context.plan_prompt_file}" >> "$PARENT_DIR/planner.log" 2>&1 || true
       done < "$PARENT_DIR/tasks.txt"
       case "$PARENT_DIR" in
         /*) echo "$PARENT_DIR" ;;
