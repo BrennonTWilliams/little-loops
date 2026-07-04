@@ -1,6 +1,7 @@
 ---
 name: ll-cleanup-worktrees
 description: Clean orphaned git worktrees from interrupted ll-parallel runs
+disable-model-invocation: true
 metadata:
   short-description: Clean orphaned git worktrees from interrupted ll-parallel runs
 ---

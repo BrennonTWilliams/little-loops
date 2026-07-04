@@ -9,12 +9,55 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from little_loops.logger import Logger
     from little_loops.parallel.git_lock import GitLock
+
+
+def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> str:
+    """Resolve the repository's default/integration branch (BUG-2323).
+
+    Resolution order:
+    1. ``origin/HEAD`` symbolic ref — the remote's real default branch
+       (strips the ``origin/`` prefix).
+    2. The current branch via ``git rev-parse --abbrev-ref HEAD``, only when
+       it is a real branch name (not the literal ``HEAD`` from a detached HEAD).
+    3. ``"main"`` as a last resort.
+
+    Args:
+        repo_path: Path to the repository to inspect.
+        git_lock: Optional thread-safe git lock. Pass the orchestrator's lock
+            when calling mid-run (serializes with concurrent checkout/pull);
+            leave as None at CLI startup, before the orchestrator exists.
+
+    Returns:
+        The detected branch name. Never returns the literal ``"HEAD"``.
+    """
+
+    def _git(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if git_lock is not None:
+            return git_lock.run(args, cwd=repo_path, timeout=10)
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+        )
+
+    result = _git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip().removeprefix("origin/")
+
+    result = _git(["rev-parse", "--abbrev-ref", "HEAD"])
+    current = result.stdout.strip() if result.returncode == 0 else ""
+    if current and current != "HEAD":
+        return current
+
+    return "main"
 
 
 def setup_worktree(

@@ -378,7 +378,11 @@ class ParallelConfig:
     serialize_overlapping: bool = True  # If True, defer overlapping issues; if False, just warn
     # Learning test gate (ENH-2219)
     skip_learning_gate: bool = False  # Bypass per-worktree proof-first-task gate
-    # Base branch for rebase/merge operations (auto-detected at startup)
+    # Base branch for rebase/merge operations. The literal "main" default is a
+    # last-resort backstop only: the CLI entry points are expected to override
+    # it at construction time with worktree_utils.detect_default_branch()
+    # (origin/HEAD -> current branch -> "main") or an explicit
+    # `parallel.base_branch` config value (BUG-2323).
     base_branch: str = "main"
     # Git remote name for fetch/pull operations
     remote_name: str = "origin"

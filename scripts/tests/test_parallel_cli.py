@@ -228,3 +228,62 @@ class TestParallelNormalRun:
         assert result == 0
         # Verify base_branch="main" was passed to create_parallel_config (indirectly via call)
         mock_cls.assert_called_once()
+
+    def test_detected_default_branch_reaches_parallel_config(self, temp_project: Path) -> None:
+        """The detect_default_branch() result flows into parallel_config.base_branch (BUG-2323)."""
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_cls.return_value = mock_orch
+            with patch(
+                "little_loops.cli.parallel.detect_default_branch",
+                return_value="develop",
+            ) as mock_detect:
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-parallel", "--config", str(temp_project)],
+                ):
+                    from little_loops.cli import main_parallel
+
+                    result = main_parallel()
+
+        assert result == 0
+        mock_detect.assert_called_once()
+        parallel_config = mock_cls.call_args.kwargs["parallel_config"]
+        assert parallel_config.base_branch == "develop"
+
+    def test_configured_base_branch_overrides_detection(self, make_project: Any) -> None:
+        """An explicit parallel.base_branch config value wins over auto-detection."""
+        project, _ = make_project(
+            config={
+                "project": {"name": "test"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                    "priorities": ["P0", "P1", "P2"],
+                },
+                "parallel": {"max_workers": 2, "base_branch": "release"},
+            }
+        )
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_cls.return_value = mock_orch
+            with patch(
+                "little_loops.cli.parallel.detect_default_branch",
+                return_value="develop",
+            ) as mock_detect:
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-parallel", "--config", str(project)],
+                ):
+                    from little_loops.cli import main_parallel
+
+                    result = main_parallel()
+
+        assert result == 0
+        mock_detect.assert_not_called()
+        parallel_config = mock_cls.call_args.kwargs["parallel_config"]
+        assert parallel_config.base_branch == "release"

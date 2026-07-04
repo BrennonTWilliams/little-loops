@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,6 +30,7 @@ from little_loops.cli_args import (
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.worktree_utils import detect_default_branch
 
 
 def main_parallel() -> int:
@@ -235,14 +235,10 @@ Examples:
         type_prefixes = parse_issue_types(args.type)
         label_filter = parse_labels(args.label)
 
-        # Detect current branch for rebase/merge operations (BUG-439)
-        _branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=project_root,
-        )
-        _base_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else "main"
+        # Resolve base branch for rebase/merge operations (BUG-439, BUG-2323).
+        # An explicit `parallel.base_branch` config value wins; otherwise
+        # auto-detect (origin/HEAD -> current branch -> "main").
+        _base_branch = config.parallel.base_branch or detect_default_branch(project_root)
 
         # Create parallel config with CLI overrides
         parallel_config = config.create_parallel_config(
