@@ -8,7 +8,7 @@ captured_at: "2026-07-04T20:05:34Z"
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [ENH-2475, ENH-2461, FEAT-2123]
+relates_to: [ENH-2475, ENH-2477, FEAT-2478, ENH-2461, FEAT-2123]
 labels:
   - token-cost
   - budget
@@ -44,9 +44,10 @@ notices. EPIC-2456 Goal #1 makes the `--max-cost` ceiling first-class.
 Compounding across `ll-auto` / `ll-sprint` / `ll-parallel` and ad-hoc
 `ll-loop` invocations, the spend surface is large; the optimization
 surface for *capping* spend has no existing primitive. The
-`cost_limits.max_cost_per_run` config key already exists in
-`.ll/ll-config.json` (per `commands/ll-init` defaults) but no code reads
-it; this child closes the loop.
+`cost_limits.max_cost_per_run` config key does **not** yet exist in
+`.ll/ll-config.json` or `config-schema.json` (verified by refine-pass
+research — an earlier capture claimed otherwise); this child introduces
+the key and the code that reads it.
 
 ## Current Behavior
 
@@ -106,8 +107,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    and `cost_warn_at` keys to the loop YAML schema (interacts with F6
    child — coordinate on JSON output shape).
 
-5. **Config plumbing**: `.ll/ll-config.json` already documents
-   `cost_limits.*` keys; just read them in `fsm/budget.py`.
+5. **Config plumbing**: add `cost_limits.*` keys to `config-schema.json`
+   and `.ll/ll-config.json` (they do not exist yet — see Codebase
+   Research Findings below), then read them in `fsm/budget.py`.
 
 ### Codebase Research Findings
 

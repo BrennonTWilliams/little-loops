@@ -1,0 +1,43 @@
+=== openinference SpanAttributes: token-count related ===
+LLM_TOKEN_COUNT_COMPLETION = 'llm.token_count.completion'
+LLM_TOKEN_COUNT_COMPLETION_DETAILS_AUDIO = 'llm.token_count.completion_details.audio'
+LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING = 'llm.token_count.completion_details.reasoning'
+LLM_TOKEN_COUNT_PROMPT = 'llm.token_count.prompt'
+LLM_TOKEN_COUNT_PROMPT_DETAILS = 'llm.token_count.prompt_details'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_AUDIO = 'llm.token_count.prompt_details.audio'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_INPUT = 'llm.token_count.prompt_details.cache_input'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ = 'llm.token_count.prompt_details.cache_read'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_WRITE = 'llm.token_count.prompt_details.cache_write'
+LLM_TOKEN_COUNT_TOTAL = 'llm.token_count.total'
+
+=== Claim 2: canonical prompt/completion/total constants ===
+LLM_TOKEN_COUNT_PROMPT = 'llm.token_count.prompt'
+LLM_TOKEN_COUNT_COMPLETION = 'llm.token_count.completion'
+LLM_TOKEN_COUNT_TOTAL = 'llm.token_count.total'
+
+=== Claim 3: cache-read style attribute anywhere in the schema ===
+LLM_COST_PROMPT_DETAILS_CACHE_INPUT = 'llm.cost.prompt_details.cache_input'
+LLM_COST_PROMPT_DETAILS_CACHE_READ = 'llm.cost.prompt_details.cache_read'
+LLM_COST_PROMPT_DETAILS_CACHE_WRITE = 'llm.cost.prompt_details.cache_write'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_INPUT = 'llm.token_count.prompt_details.cache_input'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ = 'llm.token_count.prompt_details.cache_read'
+LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_WRITE = 'llm.token_count.prompt_details.cache_write'
+
+=== Claim 1: is there ANY gen_ai.* attribute in openinference? ===
+gen_ai.* attributes found: []
+arize-phoenix
+phoenix
+phoenix CLI present
+
+=== phoenix --help (first lines) ===
+usage: phoenix
+=== phoenix serve --help (subcommand exists?) ===
+usage: phoenix serve [-h] [--with-trace-fixtures WITH_TRACE_FIXTURES]
+                     [--with-projects WITH_PROJECTS]
+                     [--force-fixture-ingestion] [--scaffold-datasets]
+
+options:
+  -h, --help            show this help message and exit
+  --with-trace-fixtures WITH_TRACE_FIXTURES
+                        Comma separated list of tracing fixture names (spaces
+phoenix serve exit: 0

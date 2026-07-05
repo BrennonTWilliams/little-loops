@@ -8,7 +8,7 @@ captured_at: "2026-07-03T00:00:00Z"
 discovered_date: 2026-07-03
 discovered_by: scope-epic
 parent: EPIC-2456
-relates_to: [FEAT-2470]
+relates_to: [FEAT-2470, ENH-2479]
 decision_needed: false
 labels:
   - token-cost

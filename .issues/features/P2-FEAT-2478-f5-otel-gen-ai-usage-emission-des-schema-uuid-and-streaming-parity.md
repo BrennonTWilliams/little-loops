@@ -8,7 +8,8 @@ captured_at: "2026-07-04T20:05:34Z"
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [ENH-2475, ENH-2477, FEAT-2476, ENH-2461]
+relates_to: [ENH-2475, ENH-2477, FEAT-2476, ENH-2479, ENH-2461]
+depends_on: [ENH-2475]
 labels:
   - token-cost
   - observability
@@ -122,11 +123,74 @@ rollups match raw `result`-event `usage` totals row-for-row.
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/ctx_stats.py` — surfaces
-  `cost_attribution()` rows
+  `cost_attribution()` rows. NOTE: this CLI's cache-hit-rate calc
+  (lines ~184-240, 296-300, 378) is an **independent** code path that
+  parses raw Claude Code session JSONL directly and sums
+  `cache_read_input_tokens`/`cache_creation_input_tokens`/
+  `input_tokens` — it is not wired through `subprocess_utils`/
+  `history_reader` at all, so F5 won't break it, but the field-name
+  overlap with the raw Anthropic API names is a naming-consistency
+  point worth resolving alongside the `gen_ai.*` vocabulary.
 - `ENH-2461` persistence layer — `input_tokens` etc. must come from
   this layer, not a parallel source — coordinate carefully
 - `FEAT-2123` (Codex/OpenCode parity) — `gen_ai.provider.vendor`
   values expand to non-Claude hosts
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/persistence.py` (~line 637-650) — writes
+  `usage.jsonl` per state by copying flat keys off the
+  `action_complete` event dict (`input_tokens`, `output_tokens`,
+  `cache_read_tokens`, `cache_creation_tokens`), gated on
+  `"input_tokens" in event`. **Second, independent consumer of the
+  action_complete payload shape** — if `gen_ai.*`-namespaced keys are
+  added to (or replace) the flat keys, this block must be updated or
+  the new attributes never reach `usage.jsonl`.
+- `scripts/little_loops/cli/loop/_helpers.py` — `_print_usage_summary()`
+  (~line 1653-1710) reads `usage.jsonl` via the same flat keys to build
+  the per-state token/cost table printed after `ll-loop run`. Third
+  consumer chained off `persistence.py`'s output; breaks silently
+  (defaults to 0) if the flat keys are renamed without updating this.
+- `scripts/little_loops/cli/action.py` (~line 84-114, `ll-action`
+  stream-json mode) — emits its own `action_complete` event with only
+  `exit_code`/`duration_ms`; does **not** call `run_claude_command`
+  with `on_usage_detailed`, so it never carries token/usage data
+  today. If `gen_ai.*` emission is meant to be universal across every
+  `action_complete` emitter (not just the FSM executor path), this is
+  a second emission site needing wiring — if F5 is scoped to FSM loops
+  only, note this as an intentional gap, not silent drift.
+- `scripts/little_loops/config/core.py` (`LLConfig`) — `_parse_config()`
+  (~line 227) only does `self._events =
+  EventsConfig.from_dict(self._raw_config.get("events", {}))`; there is
+  currently **no `observability` key parsed anywhere**. The `events`
+  property (~310-313) and `to_dict()` serializer (~645-660, the
+  `"otel": {...}` block) only round-trip the two existing
+  `OTelEventsConfig` fields. Whatever holds
+  `observability.otel_attributes.enabled` /
+  `observability.streaming_parity.check` needs a matching
+  `_parse_config()` line, property accessor, and `to_dict()` entry
+  here, or the settings won't persist/round-trip through `ll init`/
+  `ll configure`.
+- `config-schema.json` — the `events.otel` object (lines 1365-1381) has
+  `"additionalProperties": false` and only declares
+  `endpoint`/`service_name`. If the new toggles live under
+  `events.otel`, this schema needs new property declarations (schema
+  validation will otherwise reject them); if a new top-level
+  `observability` key is chosen instead, it needs a brand-new schema
+  block (no existing `"observability"` key anywhere in this file).
+  **`scripts/tests/test_config_schema.py`** (lines 469-480) asserts
+  the exact property set of the `events.otel` block and actively
+  blocks adding new keys there until updated.
+- `scripts/little_loops/fsm/types.py` — `StateResult.usage_events:
+  list[TokenUsage]` carries the `TokenUsage` shape through to
+  `fsm/executor.py`'s aggregation (~1382-1387), which only reads the
+  four existing numeric attributes + `model` — new `TokenUsage`
+  attributes won't auto-aggregate there unless that block is extended.
+- `scripts/little_loops/fsm/runners.py` — imports `TokenUsage`,
+  `UsageCallback`, `DetailedUsageCallback`, `run_claude_command` from
+  `subprocess_utils`.
+- `scripts/little_loops/cli/loop/run.py` (~line 496) — calls
+  `wire_transports()`; relevant if `OTelTransport`'s constructor
+  signature gains new params.
 
 ### Similar Patterns
 
@@ -143,6 +207,50 @@ rollups match raw `result`-event `usage` totals row-for-row.
 - `scripts/tests/test_streaming_cache_parity.py` (new) — gates the
   0.1% parity threshold on the 3-trace set (ENH-2479)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_history_reader.py` (`TestNewEventReaders` class)
+  — new `cost_attribution()` test; mirror
+  `test_summarize_skills_success_rate` (lines 1398-1419) exactly: fresh
+  `tmp_path / "history.db"`, seed via a `session_store` writer helper,
+  call the reader with `db=db`, assert on returned `list[dict]` shape.
+- `scripts/tests/test_config.py` (`TestOTelEventsConfig`,
+  `TestEventsConfig`, lines ~1740-1848) — needs new cases for whichever
+  new config fields land on `OTelEventsConfig`/`EventsConfig`; existing
+  cases won't break (additive dataclass fields with defaults) but are
+  incomplete without new assertions.
+- `scripts/tests/test_config_schema.py` (lines 469-480) — **will
+  actively block** new `events.otel` keys until updated (asserts exact
+  property set + `additionalProperties: false`).
+- `scripts/tests/test_usage_journal.py` (lines 80, 154-155, 192) —
+  constructs `TokenUsage` **positionally**
+  (`TokenUsage(100, 20, 0, 0, "claude-sonnet-4-6")`). Any new field
+  added to the `TokenUsage` dataclass must have a default and be
+  appended **after** existing fields, or these positional constructions
+  break.
+- `scripts/tests/test_subprocess_mocks.py` (lines 219-220) — mocks the
+  raw Claude CLI `stream-json` `"result"` event's `usage` dict; a
+  "provider addendum" (multi-provider usage-dict shapes) needs
+  additional mock fixtures here for non-Anthropic raw key names.
+- `scripts/tests/test_usage_reporter.py` — constructs `usage.jsonl`
+  fixture rows with the flat key names to test
+  `_print_usage_summary`'s output; test-side counterpart of the
+  `persistence.py` → `_helpers.py` chain above — must stay in sync
+  with whatever `persistence.py` actually writes.
+- `scripts/tests/test_transport.py::test_wire_transports_otel`
+  (~line 821) — asserts `MockOTel.assert_called_once_with(...)` with
+  exact kwargs; **will break** if `OTelTransport(...)`'s call signature
+  gains new params for `gen_ai.*` wiring.
+- No existing UUID-uniqueness test pattern exists anywhere in
+  `scripts/tests/` (checked case-insensitively) — nearest structural
+  analog is the trace/span-id distinctness assertion in
+  `test_transport.py::test_loop_resume_opens_new_trace` (line 774);
+  `test_otel_attributes.py`'s UUID test will be new, no prior
+  convention to mirror.
+- `TestOTelTransport` in `test_transport.py` (lines 670-838) has no
+  existing `span.attributes[...]` assertions to reuse — asserting
+  `gen_ai.usage.*` span attributes in `test_otel_attributes.py`
+  introduces a new assertion style, not an extension of an existing one.
+
 ### Documentation
 
 - `docs/reference/API.md` — `observability/tracing.py` module
@@ -150,11 +258,37 @@ rollups match raw `result`-event `usage` totals row-for-row.
 - `docs/observability/otel-mapping.md` — internal-name ↔ OTel-canonical
   attribute map
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md` (`### action_complete`,
+  lines ~200-242) — documents the flat field names with literal JSON
+  examples; needs updating/extending to show the new `gen_ai.*`
+  attributes and their relationship to the existing flat fields.
+- `docs/reference/CLI.md` (~lines 122, 567-589) — `ll-loop run`
+  per-state token/cost table docs explicitly name `cache_read_tokens`
+  as the `cache` column source; update if field semantics/namespacing
+  change.
+- `docs/reference/CONFIGURATION.md` (`### events.otel`,
+  lines 1241-1258) — documents `events.otel.endpoint`/`service_name`;
+  needs a new subsection for whichever config keys land, consistent
+  with wherever the config actually lives in `core.py`/
+  `config-schema.json`.
+
 ### Configuration
 
 - `.ll/ll-config.json` — `observability.otel_attributes.enabled`
   default `true`; `observability.streaming_parity.check` default
   `true`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json` — the `events.otel` object (lines 1365-1381)
+  is `additionalProperties: false` with only `endpoint`/`service_name`
+  declared; needs new property declarations under `events.otel` (or a
+  brand-new `observability` schema block if that's the chosen home) —
+  see `test_config_schema.py` blocker noted under Tests.
+- `scripts/little_loops/config/core.py` (`LLConfig._parse_config()`,
+  `events` property, `to_dict()`) — no `observability` key is parsed
+  today; must be wired for the new settings to round-trip through
+  `ll init`/`ll configure`.
 
 ### Codebase Research Findings
 
@@ -277,6 +411,35 @@ captured values, but the analyzer verified the actual sites:_
   OTelTransport sink, and locked schema golden respectively. Full
   gate is `python -m pytest scripts/tests/` for step 9.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be
+included in the implementation:_
+
+10. Decide config home for `observability.otel_attributes.enabled` /
+    `observability.streaming_parity.check` (new top-level
+    `observability` block vs. extending `events.otel`), then wire
+    `scripts/little_loops/config/core.py` (`LLConfig._parse_config()`,
+    `events` property, `to_dict()`) and `config-schema.json` (update
+    `test_config_schema.py` in lockstep — it blocks new `events.otel`
+    keys today).
+11. Extend `scripts/little_loops/fsm/persistence.py`'s `usage.jsonl`
+    writer (~line 637-650) to carry the new `gen_ai.*` keys, and
+    `scripts/little_loops/cli/loop/_helpers.py::_print_usage_summary()`
+    (~1653-1710) to read them — both are independent consumers of the
+    flat `action_complete` keys and silently default to 0 if missed.
+12. Decide whether `scripts/little_loops/cli/action.py` (`ll-action`
+    stream-json mode) is in scope — it emits `action_complete` without
+    ever calling `run_claude_command(..., on_usage_detailed=...)`, so
+    it has no usage data to stamp today. Document as an explicit
+    out-of-scope gap if not addressed.
+13. Add default value to any new `TokenUsage` dataclass field and
+    append it after existing fields — `test_usage_journal.py`
+    constructs `TokenUsage` positionally and will break otherwise.
+14. Update `docs/reference/EVENT-SCHEMA.md`, `docs/reference/CLI.md`,
+    and `docs/reference/CONFIGURATION.md` alongside the three docs
+    already listed in Integration Map § Documentation.
+
 ## Acceptance Criteria
 
 - `usage_event` rows contain all `gen_ai.usage.*` keys plus
@@ -289,6 +452,38 @@ captured values, but the analyzer verified the actual sites:_
 - Phoenix fixture parse test passes (Phoenix optional; test is
   skipped when absent — gates only where Phoenix is installed)
 - `python -m pytest scripts/tests/` exits 0
+
+## Premise Risk — Phoenix uses OpenInference, not OTel GenAI
+
+_Surfaced by `/ll:explore-api phoenix` (2026-07-05; learning-test record
+`.ll/learning-tests/phoenix.md`, status `proven`)._
+
+Arize Phoenix's **native span schema is OpenInference (`llm.token_count.*`),
+not the OTel GenAI convention (`gen_ai.usage.*`) this issue emits.** The two
+namespaces are disjoint — the OpenInference schema (`openinference.semconv`
+0.1.30) contains **zero** `gen_ai.*` attributes. So emitting canonical
+`gen_ai.usage.*` names does **not**, on its own, make `phoenix serve` parse the
+rows on Phoenix's native path. Required attribute mapping:
+
+| This issue emits (`gen_ai.usage.*`) | Phoenix expects (`llm.token_count.*`) |
+|---|---|
+| `gen_ai.usage.input_tokens` | `llm.token_count.prompt` |
+| `gen_ai.usage.output_tokens` | `llm.token_count.completion` |
+| `gen_ai.usage.cache_read_input_tokens` | `llm.token_count.prompt_details.cache_read` |
+| `gen_ai.usage.cache_creation_input_tokens` | `llm.token_count.prompt_details.cache_write` |
+
+Grafana/Langfuse motivation is unaffected — only the **Phoenix-specific AC**
+("`phoenix serve` parser accepts emitted rows" / the optional `_HAS_PHOENIX`
+fixture) is at risk. Resolve before locking the fixture by one of:
+
+1. **Verify** whether current Phoenix ingests raw OTel-GenAI spans via a
+   translation layer (still `untested` in the learning-test record) — if so,
+   the AC stands as written.
+2. **Add the OpenInference mapping** to the fixture (emit `llm.token_count.*`
+   alongside `gen_ai.usage.*`) — widens scope by a small mapping table.
+3. **Narrow the AC** to drop the Phoenix-native parse claim, keeping Phoenix as
+   a "reads from `history.db`" consumer only (consistent with Scope Boundaries
+   § Out, which already says consumers read from `history.db`, not the wire).
 
 ## Scope Boundaries
 
@@ -323,6 +518,8 @@ captured values, but the analyzer verified the actual sites:_
 **Open** | Created: 2026-07-04 | Priority: P2
 
 ## Session Log
+- `/ll:explore-api phoenix` - 2026-07-05 - added Premise Risk (Phoenix native schema is OpenInference `llm.token_count.*`, not `gen_ai.usage.*`); record `.ll/learning-tests/phoenix.md`
+- `/ll:wire-issue` - 2026-07-05T21:51:50 - `f7bc5213-6675-4897-a8b4-82cd276c9c72.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:49:47 - `f22b122e-50d0-4242-97ef-9097cef10d32.jsonl`
 
 - `/ll:capture-issue` - 2026-07-04T20:05:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a4ee548-94b7-4694-b8c1-49e3f31cc127.jsonl`

@@ -3948,3 +3948,19 @@
     SessionStart or another event instead.
   enforcement: advisory
   issue: BUG-2483
+- id: ARCHITECTURE-103
+  type: decision
+  timestamp: '2026-07-05T20:58:58Z'
+  category: architecture
+  labels: []
+  rationale: exit_code=0 feedback never reaches the model, defeating the nudge's purpose;
+    exit_code=2 is the established codebase pattern for non-blocking context-injected
+    nudges. The Codex-exclusion in this issue's Scope applies only to the P2 haiku
+    pin (model-routing risk); the nudge has no such risk and Codex should get the
+    same token savings.
+  rule: Edit-batch nudge uses exit_code=2 (context-injected); Codex mirrors the Edit|Write|MultiEdit
+    matcher
+  scope: issue
+  alternatives_rejected: exit_code=0 (stderr-only, silent); Claude-only edit-batch
+    nudge (unjustified host restriction)
+  issue: FEAT-2470

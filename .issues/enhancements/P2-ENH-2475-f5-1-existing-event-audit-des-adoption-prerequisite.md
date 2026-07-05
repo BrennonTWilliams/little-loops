@@ -8,7 +8,8 @@ captured_at: "2026-07-04T20:05:34Z"
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [FEAT-2470]
+relates_to: [FEAT-2470, FEAT-2476, FEAT-2478]
+blocks: [FEAT-2478]
 decision_needed: false
 labels:
   - token-cost

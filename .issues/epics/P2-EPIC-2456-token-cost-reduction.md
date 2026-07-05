@@ -8,7 +8,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_date: "2026-07-02"
 discovered_by: deep-research / manual synthesis
 labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479]
+relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479]
 source_artifacts:
   - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
   - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -138,27 +138,24 @@ Children must extend the in-flight partials rather than duplicate them:
 - **F6 partial**: same `cli/loop/_helpers.py:1665–1690` prints a cost table by state. **Missing**: a stable JSON schema for downstream consumers and per-state budget warnings (`cost_ceiling_per_state`).
 - **F7-lite prerequisite**: `list_models()` on the `HostRunner` protocol must land before F7-lite body work — every adapter (`ClaudeRunner`, `CodexRunner`, `OpenCodeRunner`, `PiRunner`, future `GeminiRunner`) needs the method for the cascade to have a model inventory to dispatch over.
 
+> **Anchor-drift note (audit, 2026-07-05):** the `fsm/executor.py:1295–1305` anchor cited above (and in early child captures) has drifted — that range is now the `_resolve_next_state()` interceptor hook. The actual per-action token/cache aggregation lives at `fsm/executor.py:1382–1393` inside `FSMExecutor._run_action()`, and `_helpers.py:1676` sits inside `_print_usage_summary()` (`_helpers.py:1652–1714`). Child issues ENH-2475 / FEAT-2476 / ENH-2477 / FEAT-2478 / ENH-2479 have each verified and recorded the corrected anchors in their research findings; trust those, not the ranges above. Also verified by child research: the data source today is run-local `<run_dir>/usage.jsonl`, not a `history.db` `usage_event` table (that table is proposed by ENH-2461, not yet implemented), and `cost_limits.*` keys do not yet exist in `.ll/ll-config.json` / `config-schema.json` (FEAT-2476 introduces them).
+
 ## Children
 
 Each entry below is a **planned** child issue to be captured next; issue IDs TBD.
 
 ### Tier 0 — behavioral quick-wins (ship first)
 
-- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2)*
-- **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2)*
-- **ENH-2475** — F5.1 existing-event audit (DES adoption prerequisite): classify every currently-emitted `history.db` event into a DES variant; port non-conforming shapes. *(filed 2026-07-04, P2)*
-- **FEAT-2476** — F2 `--max-cost` accumulator + 80%/100% guard + ELIS one-line forecast: extends `fsm/executor.py:1295`, new `fsm/budget.py`, `--max-cost` flag on `ll-loop run`. *(filed 2026-07-04, P2)*
-- **ENH-2477** — F6 per-state cost attribution (finishes): stable JSON output with `cache_read`/`cache_creation` broken out, `cost_ceiling_per_state` / `cost_warn_at` loop-YAML schema, new `fsm/cost_graph.py`. *(filed 2026-07-04, P2)*
-- **FEAT-2478** — F5 OTel `gen_ai.usage.*` emission: new `observability/tracing.py`, `gen_ai.invocation.id` UUID stamping, `gen_ai.provider.vendor` addendum, streaming-vs-blocking parity check. Depends on ENH-2475 (DES audit). *(filed 2026-07-04, P2)*
-- **ENH-2479** — F5 streaming-vs-blocking cache-accounting parity trace set: 3 locked fixtures (static-prefix-stable turn 2+, cache-write-then-read across tool result, tool-result-only cache hit); gates 0.1% parity threshold in `test_streaming_cache_parity.py`. *(filed 2026-07-04, P2)*
+- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2; was [TBD-1])*
+- **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2; was [TBD-2])*
 
 ### Tier 1 — measurement foundation
 
-- **[TBD-3]** F5.1 — Existing-event audit (DES adoption prerequisite): enumerate every event currently written to `history.db`; classify each into a DES variant; port non-conforming events into new variants.
-- **[TBD-4]** F2 — `--max-cost` accumulator + 80% soft / 100% hard guard + ELIS one-line regression forecast (extend `fsm/executor.py:1295`, new `fsm/budget.py`, add `--max-cost` flag to `ll-loop run`).
-- **[TBD-5]** F6 (finishes) — Per-state cost attribution: stable JSON table, `cost_ceiling_per_state` / `cost_warn_at` in loop YAML schema, wire into executor post-state (extend `_helpers.py:1676`, new `fsm/cost_graph.py`).
-- **[TBD-6]** F5 — OTel `gen_ai.usage.*` emission (DES canonical schema) + streaming cache-accounting parity + `gen_ai.invocation.id` UUID + `gen_ai.provider.vendor` addendum for non-OTel-enum backends (new `observability/tracing.py`, extend `subprocess_utils.py:462`).
-- **[TBD-7]** F5 — Streaming-vs-blocking cache-accounting parity trace set (locked 3 traces: static-prefix-stable turn 2+, cache-write-then-read across tool result, tool-result-only cache hit). Gates the 0.1% parity threshold in `test_streaming_cache_parity.py`.
+- **ENH-2475** — F5.1 existing-event audit (DES adoption prerequisite): classify every currently-emitted `history.db` event into a DES variant; port non-conforming shapes. *(filed 2026-07-04, P2; was [TBD-3])*
+- **FEAT-2476** — F2 `--max-cost` accumulator + 80%/100% guard + ELIS one-line forecast: extends the executor's per-action usage aggregation (see Boundary note on anchors), new `fsm/budget.py`, `--max-cost` flag on `ll-loop run`. *(filed 2026-07-04, P2; was [TBD-4])*
+- **ENH-2477** — F6 per-state cost attribution (finishes): stable JSON output with `cache_read`/`cache_creation` broken out, `cost_ceiling_per_state` / `cost_warn_at` loop-YAML schema, new `fsm/cost_graph.py`. *(filed 2026-07-04, P2; was [TBD-5])*
+- **FEAT-2478** — F5 OTel `gen_ai.usage.*` emission: new `observability/tracing.py`, `gen_ai.invocation.id` UUID stamping, `gen_ai.provider.vendor` addendum, streaming-vs-blocking parity check. Depends on ENH-2475 (DES audit). *(filed 2026-07-04, P2; was [TBD-6])*
+- **ENH-2479** — F5 streaming-vs-blocking cache-accounting parity trace set: 3 locked fixtures (static-prefix-stable turn 2+, cache-write-then-read across tool result, tool-result-only cache hit); gates 0.1% parity threshold in `test_streaming_cache_parity.py`. *(filed 2026-07-04, P2; was [TBD-7])*
 
 ### Tier 2 — caching (needs Tier 1 to verify hit rates)
 
@@ -303,4 +300,5 @@ Tracking the questions raised in the plan files that need resolution before fili
 
 ## Session Log
 
+- epic-audit - 2026-07-05 - Children section restructured: filed Tier 1 children (ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479) moved from the Tier 0 list into the Tier 1 section, replacing the duplicate [TBD-3]–[TBD-7] placeholders. Added FEAT-2470/ENH-2471 to `relates_to` for consistency. Added anchor-drift note (executor.py 1295→1382–1393; usage.jsonl vs usage_event table; cost_limits.* keys not yet present).
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - initial EPIC capture from `thoughts/plans/2026-07-02-token-cost-reduction-architecture.md` + `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md` (prioritization layer). Filing resolves Open Question #6 in both plan files. Captured ID `EPIC-2456` (next unique). Aggregate footprint ~1,550 LOC, 1 pip dep (`anthropic`), 0 sidecars.
