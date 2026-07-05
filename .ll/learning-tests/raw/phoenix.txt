@@ -41,3 +41,15 @@ options:
   --with-trace-fixtures WITH_TRACE_FIXTURES
                         Comma separated list of tracing fixture names (spaces
 phoenix serve exit: 0
+
+=== Claim 5 (live): does phoenix serve normalize raw gen_ai.usage.* ? ===
+phoenix version: 17.18.0 (arize-phoenix)
+Sent 2 LLM spans via OTLP HTTP -> http://localhost:6006/v1/traces
+TREATMENT span emitted ONLY: gen_ai.usage.input_tokens=111, gen_ai.usage.output_tokens=222, gen_ai.system=anthropic
+Phoenix stored, for the treatment span:
+  attributes.llm.token_count.prompt     = 111   (<- from gen_ai.usage.input_tokens)
+  attributes.llm.token_count.completion = 222   (<- from gen_ai.usage.output_tokens)
+  attributes.llm.token_count.total      = 333   (derived)
+CONTROL (OpenInference llm.token_count.prompt=333) stored identically.
+VERDICT: CLAIM5 = PASS on Phoenix 17.18.0 — built-in OTel-GenAI normalization,
+no OpenInference shim required. (Version-sensitive: older Phoenix may lack this.)

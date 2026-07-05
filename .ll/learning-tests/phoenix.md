@@ -17,7 +17,10 @@ assertions:
     serve'
   result: pass
 - claim: Phoenix can also ingest raw OTel gen_ai.* GenAI-convention spans directly
-    without an OpenInference shim
-  result: untested
+    without an OpenInference shim — 'phoenix serve' (arize-phoenix 17.18.0) normalizes
+    gen_ai.usage.input_tokens -> llm.token_count.prompt and gen_ai.usage.output_tokens
+    -> llm.token_count.completion on ingest (live OTLP test). Version-sensitive; older
+    Phoenix may lack this translation layer
+  result: pass
 raw_output_path: .ll/learning-tests/raw/phoenix.txt
 ---

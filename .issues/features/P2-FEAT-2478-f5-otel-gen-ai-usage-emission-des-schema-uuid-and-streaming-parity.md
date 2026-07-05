@@ -453,37 +453,42 @@ included in the implementation:_
   skipped when absent — gates only where Phoenix is installed)
 - `python -m pytest scripts/tests/` exits 0
 
-## Premise Risk — Phoenix uses OpenInference, not OTel GenAI
+## Premise Note — Phoenix ↔ OTel GenAI schema (RESOLVED for current Phoenix)
 
-_Surfaced by `/ll:explore-api phoenix` (2026-07-05; learning-test record
-`.ll/learning-tests/phoenix.md`, status `proven`)._
+_Surfaced and then settled by `/ll:explore-api phoenix` (2026-07-05;
+learning-test record `.ll/learning-tests/phoenix.md`, status `proven`, all 5
+claims pass)._
 
-Arize Phoenix's **native span schema is OpenInference (`llm.token_count.*`),
-not the OTel GenAI convention (`gen_ai.usage.*`) this issue emits.** The two
-namespaces are disjoint — the OpenInference schema (`openinference.semconv`
-0.1.30) contains **zero** `gen_ai.*` attributes. So emitting canonical
-`gen_ai.usage.*` names does **not**, on its own, make `phoenix serve` parse the
-rows on Phoenix's native path. Required attribute mapping:
+**The AC as written stands.** Two facts, from live testing against
+`arize-phoenix 17.18.0`:
 
-| This issue emits (`gen_ai.usage.*`) | Phoenix expects (`llm.token_count.*`) |
-|---|---|
-| `gen_ai.usage.input_tokens` | `llm.token_count.prompt` |
-| `gen_ai.usage.output_tokens` | `llm.token_count.completion` |
-| `gen_ai.usage.cache_read_input_tokens` | `llm.token_count.prompt_details.cache_read` |
-| `gen_ai.usage.cache_creation_input_tokens` | `llm.token_count.prompt_details.cache_write` |
+1. Phoenix's *native* span schema is **OpenInference** (`llm.token_count.*`);
+   the OpenInference schema (`openinference.semconv` 0.1.30) contains **zero**
+   `gen_ai.*` attributes — the two namespaces are disjoint on paper.
+2. **But current `phoenix serve` normalizes raw OTel `gen_ai.usage.*` spans on
+   ingest** — no OpenInference shim required. Verified live via OTLP HTTP: a
+   span carrying *only* `gen_ai.usage.input_tokens=111` /
+   `gen_ai.usage.output_tokens=222` was stored by Phoenix as
+   `llm.token_count.prompt=111`, `llm.token_count.completion=222`,
+   `llm.token_count.total=333` — identical to an OpenInference control span.
 
-Grafana/Langfuse motivation is unaffected — only the **Phoenix-specific AC**
-("`phoenix serve` parser accepts emitted rows" / the optional `_HAS_PHOENIX`
-fixture) is at risk. Resolve before locking the fixture by one of:
+Effective mapping Phoenix applies (confirmed for prompt/completion; the cache
+rows are inferred from the OpenInference schema, not yet live-verified):
 
-1. **Verify** whether current Phoenix ingests raw OTel-GenAI spans via a
-   translation layer (still `untested` in the learning-test record) — if so,
-   the AC stands as written.
-2. **Add the OpenInference mapping** to the fixture (emit `llm.token_count.*`
-   alongside `gen_ai.usage.*`) — widens scope by a small mapping table.
-3. **Narrow the AC** to drop the Phoenix-native parse claim, keeping Phoenix as
-   a "reads from `history.db`" consumer only (consistent with Scope Boundaries
-   § Out, which already says consumers read from `history.db`, not the wire).
+| This issue emits (`gen_ai.usage.*`) | Phoenix stores (`llm.token_count.*`) | Verified |
+|---|---|---|
+| `gen_ai.usage.input_tokens` | `llm.token_count.prompt` | ✅ live |
+| `gen_ai.usage.output_tokens` | `llm.token_count.completion` | ✅ live |
+| `gen_ai.usage.cache_read_input_tokens` | `llm.token_count.prompt_details.cache_read` | ⚠️ inferred |
+| `gen_ai.usage.cache_creation_input_tokens` | `llm.token_count.prompt_details.cache_write` | ⚠️ inferred |
+
+**Residual risk is version-sensitivity, not schema mismatch.** The
+normalization is a Phoenix 17.x feature; older Phoenix may lack it. Since the
+AC already gates the fixture on Phoenix being installed (`_HAS_PHOENIX`
+skipif), pin a **minimum Phoenix version** in that skip guard (e.g. skip if
+`arize-phoenix < 17`) so the fixture only asserts where the translation layer
+exists. Optionally extend the live fixture to also assert the two cache rows
+(currently only inferred) before relying on cache-token dashboards.
 
 ## Scope Boundaries
 
@@ -518,7 +523,7 @@ fixture) is at risk. Resolve before locking the fixture by one of:
 **Open** | Created: 2026-07-04 | Priority: P2
 
 ## Session Log
-- `/ll:explore-api phoenix` - 2026-07-05 - added Premise Risk (Phoenix native schema is OpenInference `llm.token_count.*`, not `gen_ai.usage.*`); record `.ll/learning-tests/phoenix.md`
+- `/ll:explore-api phoenix` - 2026-07-05 - live-tested claim 5: `phoenix serve` (arize-phoenix 17.18.0) normalizes raw `gen_ai.usage.*` -> `llm.token_count.*` on ingest, so the AC stands; residual risk is Phoenix version (pin min ver in `_HAS_PHOENIX` guard). Record `.ll/learning-tests/phoenix.md` (all 5 claims pass)
 - `/ll:wire-issue` - 2026-07-05T21:51:50 - `f7bc5213-6675-4897-a8b4-82cd276c9c72.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:49:47 - `f22b122e-50d0-4242-97ef-9097cef10d32.jsonl`
 
