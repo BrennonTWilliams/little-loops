@@ -156,10 +156,11 @@ python_functions = ["test_*"]
 # -n logical runs xdist across logical CPUs. The raw logical count would spawn
 # one worker per core (e.g. 14/14 on Apple Silicon, where logical == physical
 # since there is no SMT), saturating every core and starving the OS compositor
-# -> 100% CPU + machine freeze (macOS "beachball"). tests/conftest.py implements
-# pytest_xdist_auto_num_workers to cap the count below the core total, reserving
-# OS headroom; set PYTEST_XDIST_AUTO_NUM_WORKERS to override, or -n 0 to force
-# serial (e.g. when debugging a single test with pdb).
+# -> 100% CPU + machine freeze (macOS "beachball"). tests/conftest.py defends on
+# two axes: pytest_xdist_auto_num_workers caps workers to ~half the cores, and
+# pytest_configure renices the pytest processes (os.nice) so the OS always
+# preempts them for the UI. Overrides: PYTEST_XDIST_AUTO_NUM_WORKERS for worker
+# count, LL_TEST_NO_NICE=1 to skip the renice, -n 0 to force serial (pdb).
 # --timeout=120 is a per-test safety net: any test that hangs past 120s is
 # killed and reported as a timeout, freeing the xdist worker slot before it
 # can wedge a core indefinitely. Tests with legitimately slow wall-clock

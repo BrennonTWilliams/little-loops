@@ -12,17 +12,27 @@ from typing import Any
 import pytest
 
 # =============================================================================
-# xdist Worker Count Cap (macOS beachball defense)
+# macOS "beachball" defense: worker cap + lowered scheduling priority
 # =============================================================================
+#
+# The suite is ~13.7k CPU-bound tests. Two things make a full run freeze the UI:
+#   1. xdist runs one worker PER logical core (14/14 on this M4), so every core
+#      pins at 100%.
+#   2. Even below full core count, the run stays CPU-bound *at normal scheduling
+#      priority*, so the macOS compositor (WindowServer) never gets scheduled ->
+#      the "beachball of death".
+# We defend on both axes: cap the worker count for headroom, AND renice the
+# pytest processes so the OS always preempts them for the UI. `nice` costs almost
+# no wall-clock when cores are free (it only yields under contention), so the
+# suite stays fast while the machine stays responsive.
 
 
 def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     """Cap xdist workers below the core count so the OS keeps CPU headroom.
 
     `-n logical` (see pyproject.toml addopts) otherwise resolves to one worker
-    per logical core (14/14 on Apple Silicon, where logical == physical). That
-    saturates every core and starves the macOS compositor (WindowServer),
-    producing the 100% CPU + "beachball of death" freeze during a full run.
+    per logical core (14/14 on Apple Silicon, where logical == physical),
+    saturating every core.
 
     This conftest hook wins over xdist's default implementation, so it applies
     whenever `-n auto` / `-n logical` is used. An explicit `-n <N>` or `-n 0`
@@ -36,8 +46,32 @@ def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
         except ValueError:
             pass
     cpus = os.cpu_count() or 4
-    # Reserve ~30% of cores for the OS: 14 -> 10, 8 -> 6, 4 -> 3 (floor of 2).
-    return max(2, round(cpus * 0.7))
+    # Reserve ~half the cores for the OS/other apps. Individual tests also spawn
+    # their own threads/subprocesses (ThreadPoolExecutors, unix sockets, git),
+    # so effective load per worker is > 1 core; half keeps real headroom.
+    # 14 -> 7, 8 -> 4, 4 -> 2 (floor of 2).
+    return max(2, cpus // 2)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Lower the priority of pytest processes so macOS stays responsive.
+
+    Runs once on the controller and once inside every xdist worker (each worker
+    is its own process that re-runs pytest_configure), so the whole run drops to
+    a lower scheduling priority. This is the actual fix for the UI freeze: a
+    fully CPU-bound run at normal priority starves WindowServer; niced, the OS
+    preempts the tests for the UI. Opt out with ``LL_TEST_NO_NICE=1``.
+    """
+    if os.environ.get("LL_TEST_NO_NICE"):
+        return
+    if not hasattr(os, "nice"):  # non-POSIX (e.g. Windows)
+        return
+    try:
+        # Increment niceness by 10 (lower priority). Requires no privileges.
+        # Idempotent enough: each process calls this exactly once.
+        os.nice(10)
+    except OSError:
+        pass
 
 
 # =============================================================================
