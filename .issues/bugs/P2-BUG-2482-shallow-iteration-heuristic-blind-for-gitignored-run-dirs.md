@@ -130,6 +130,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    description in `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
 5. Add a regression test case covering a run rooted under `.loops/runs/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation:_
+
+6. Update `skills/audit-loop-run/SKILL.md:294` (`### Step 6b: Verdict Table`)
+   — extend the `` `<warning | corroborated | clear>` `` enum to admit
+   `unknown`, matching Implementation Step 3's new outcome.
+7. Update `skills/audit-loop-run/SKILL.md:403` (`## Final Report`) — same enum
+   extension in the final-report template, kept in sync with Step 6b.
+8. Add a test to `scripts/tests/test_audit_loop_run_skill.py` asserting both
+   templates document `unknown` as a valid result (no existing test covers
+   this enum's exhaustiveness).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -149,8 +163,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Files to Modify
 - `skills/audit-loop-run/SKILL.md` — Step 5.5 auxiliary-mutation detection (lines 201-235)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/audit-loop-run/SKILL.md:294` — `### Step 6b: Verdict Table` hardcodes
+  the Shallow-iteration check result as `` `<warning | corroborated | clear>` ``;
+  must admit the new `unknown` outcome introduced by Implementation Step 3
+  [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md:403` — `## Final Report` template duplicates
+  the same `` `<warning | corroborated | clear>` `` enum and auxiliary-mutation
+  count placeholder; needs the same `unknown` update [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - N/A — `audit-loop-run` is a user-facing skill, not imported by automation code
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed via caller-trace: 0 direct Python importers of this skill file;
+  `git_operations.py`'s `_is_already_ignored()`, `fsm/persistence.py`'s
+  `context.run_dir` handling, and other `.loops/runs`/`context.run_dir`
+  test-file hits are unrelated keyword coincidences, not real coupling to
+  Step 5.5's prose logic — no additional callers to wire [Agent 1 finding]
 
 ### Similar Patterns
 - Step 4's existing `git log` / `git diff HEAD` artifact-mutation check
@@ -175,6 +205,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `content.index("## Step 5.5:")` / `content.index("## Step 5.6:")` and
   asserts on the step's text, rather than trying to execute the shell blocks
   [from pattern-finder]
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_audit_loop_run_skill.py` — no existing test pins
+  `AUX_MUTATION_COUNT` to `git diff HEAD` or asserts the `<warning |
+  corroborated | clear>` enum is exhaustive, so none will break; add a new
+  case asserting `### Step 6b: Verdict Table` (line 294) and `## Final
+  Report` (line 403) both document `unknown` as a valid Shallow-iteration
+  check result, alongside the Step 5.5 gitignore-fallback case [Agent 2 +
+  pattern-finder finding]
+- `scripts/tests/fixtures/fsm/assess-subloop-laundering-mitigated.yaml` — same
+  `assess-<pattern>-<variant>` naming/structure precedent as the proposed
+  `assess-shallow-iteration-gitignored.yaml`, and already demonstrates using
+  `context.run_dir` in a shell action — model the new fixture's `context.run_dir`
+  usage on this file [pattern-finder finding]
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — note the gitignored-path
@@ -201,6 +245,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-05T17:05:00 - `7b7e7ece-95fa-4269-a0f1-eb2209e6586a.jsonl`
+- `/ll:wire-issue` - 2026-07-05T16:40:06 - `b9b7d4ce-a68c-4359-b3ee-bab4e80e6241.jsonl`
 - `/ll:confidence-check` - 2026-07-05T16:30:45 - `ed0af048-0f6a-4637-a24d-a7563d4c8d1a.jsonl`
 - `/ll:refine-issue` - 2026-07-05T16:21:53 - `8188c82e-404b-4ab6-90de-2e164948c69c.jsonl`
 - `/ll:capture-issue` - 2026-07-05T16:11:47Z - `348bbd4d-a0ab-456a-97ff-446449a234a2.jsonl`
