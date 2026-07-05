@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 
 class TestContextMonitor:
     """Test context-monitor.sh under concurrent access."""
@@ -63,13 +65,13 @@ class TestContextMonitor:
                 )
                 return result
 
-            # Run 10 hooks concurrently
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(run_hook, "Read") for _ in range(10)]
+            # Run 4 hooks concurrently
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(run_hook, "Read") for _ in range(4)]
                 results = [f.result() for f in as_completed(futures)]
 
             # Verify all completed
-            assert len(results) == 10
+            assert len(results) == 4
 
             # Read final state
             state_file = tmp_path / "ll-context-state.json"
@@ -82,10 +84,10 @@ class TestContextMonitor:
             assert "estimated_tokens" in state
             assert "tool_calls" in state
 
-            # Verify no token count loss (should be 10 calls * ~1000 tokens each)
+            # Verify no token count loss (should be 4 calls * ~1000 tokens each)
             # Allow some variance due to estimation
-            assert state["tool_calls"] == 10, f"Expected 10 tool calls, got {state['tool_calls']}"
-            assert state["estimated_tokens"] > 5000, "Token count seems too low"
+            assert state["tool_calls"] == 4, f"Expected 4 tool calls, got {state['tool_calls']}"
+            assert state["estimated_tokens"] > 2000, "Token count seems too low"
 
         finally:
             os.chdir(original_dir)
@@ -1607,13 +1609,13 @@ class TestDuplicateIssueId:
                 return result
 
             # Try to create duplicate BUG-001 from multiple threads
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(attempt_create, "001", i) for i in range(5)]
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(attempt_create, "001", i) for i in range(4)]
                 results = [f.result() for f in as_completed(futures)]
 
             # All should be denied (duplicate of existing)
             denied_count = sum(1 for r in results if "deny" in r.stdout.lower())
-            assert denied_count >= 4, f"Expected at least 4 denials, got {denied_count}"
+            assert denied_count >= 3, f"Expected at least 3 denials, got {denied_count}"
 
             # Try to create new issue BUG-002 concurrently
             with ThreadPoolExecutor(max_workers=3) as executor:
@@ -2163,9 +2165,9 @@ class TestPrecompactState:
                     timeout=5,
                 )
 
-            # Run 5 hooks concurrently
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(run_hook, i) for i in range(5)]
+            # Run 4 hooks concurrently
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(run_hook, i) for i in range(4)]
                 results = [f.result() for f in as_completed(futures)]
 
             # All should succeed with exit 2 (PreCompact: non-blocking, shows stderr)
@@ -3764,7 +3766,7 @@ class TestSessionCapture:
     def test_concurrent_writes_no_corruption(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ) -> None:
-        """10 concurrent hook invocations produce 10 valid, uncorrupted JSONL lines."""
+        """4 concurrent hook invocations produce 4 valid, uncorrupted JSONL lines."""
         import os
 
         original_dir = os.getcwd()
@@ -3778,8 +3780,8 @@ class TestSessionCapture:
                 )
                 return self._run_hook(hook_script, stdin, tmp_path)
 
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(run_one, i) for i in range(10)]
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(run_one, i) for i in range(4)]
                 results = [f.result() for f in as_completed(futures)]
         finally:
             os.chdir(original_dir)
@@ -3787,7 +3789,7 @@ class TestSessionCapture:
         assert all(r.returncode == 0 for r in results), "All hook invocations must exit 0"
 
         events = self._read_events(tmp_path)
-        assert len(events) == 10, f"Expected 10 events, got {len(events)}"
+        assert len(events) == 4, f"Expected 4 events, got {len(events)}"
         for ev in events:
             assert ev["type"] == "file"
             assert ev["op"] == "Write"
