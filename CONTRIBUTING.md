@@ -100,6 +100,38 @@ mypy scripts/little_loops/
 ruff format scripts/
 ```
 
+### Secret Scanning (gitleaks)
+
+This repo scans staged changes for secrets before every commit, using
+[gitleaks](https://github.com/gitleaks/gitleaks) via the
+[pre-commit](https://pre-commit.com/) framework. This is repo-maintenance
+tooling for contributors — it is not a little-loops product feature.
+
+1. Install gitleaks (macOS via Homebrew; see the
+   [gitleaks install docs](https://github.com/gitleaks/gitleaks#installing)
+   for other platforms):
+
+```bash
+brew install gitleaks
+```
+
+2. `pip install -e "./scripts[dev]"` (see Installation above) already
+   installs the `pre-commit` package via the `dev` extra.
+
+3. One-time activation, from the repo root:
+
+```bash
+pre-commit install
+```
+
+This symlinks the hook into `.git/hooks/pre-commit`. From then on, every
+`git commit` scans staged changes and blocks the commit if a likely secret
+is detected. Run it manually against the whole repo with:
+
+```bash
+pre-commit run gitleaks --all-files
+```
+
 ## Project Structure
 
 ```

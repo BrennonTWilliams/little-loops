@@ -115,6 +115,9 @@ docs/research/
 *.gif
 thoughts/
 
+# Pre-commit / secret-scan local artifacts
+.secrets.baseline
+
 # Archive folders (any depth)
 Archive/
 _Archive/
