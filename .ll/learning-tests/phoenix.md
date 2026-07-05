@@ -22,5 +22,17 @@ assertions:
     -> llm.token_count.completion on ingest (live OTLP test). Version-sensitive; older
     Phoenix may lack this translation layer
   result: pass
+- claim: 'CAVEAT (live, 17.18.0): Phoenix extracts cache tokens ONLY from the DOTTED
+    OTel semconv names gen_ai.usage.cache_read.input_tokens / gen_ai.usage.cache_creation.input_tokens
+    (the values of GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS etc). The UNDERSCORE spelling
+    gen_ai.usage.cache_read_input_tokens (Anthropic API field name, as specified in
+    FEAT-2478) is silently dropped. input/output token names happen to match; cache
+    names do not.'
+  result: pass
+- claim: 'The gen_ai->OpenInference normalization module (phoenix/trace/gen_ai/conversion.py)
+    first shipped in arize-phoenix 15.10.0 (absent in 15.9.0), by dep-independent file-presence
+    bisect. Functional normalization confirmed live on 17.18.0. Safe _HAS_PHOENIX guard
+    floor: arize-phoenix >= 15.10.0.'
+  result: pass
 raw_output_path: .ll/learning-tests/raw/phoenix.txt
 ---

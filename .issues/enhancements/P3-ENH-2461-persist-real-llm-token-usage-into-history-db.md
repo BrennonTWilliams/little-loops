@@ -127,6 +127,32 @@ Option B is cleaner for queries ("what did this session cost?") and avoids popul
 - `scripts/little_loops/subprocess_utils.py:run_claude_command()` — `on_usage_detailed` callback (~line 289)
 - `scripts/little_loops/cli/ctx_stats.py` — current consumer; re-parses JSONL
 
+## Cross-issue coordination — name mapping with FEAT-2478 (OTel emission)
+
+_Added 2026-07-05 from `/ll:explore-api phoenix` findings._
+
+FEAT-2478 (F5) emits OTel `gen_ai.usage.*` attributes **derived from** the
+columns this issue persists. Keep the two name spaces distinct and lock the
+mapping at the boundary:
+
+| ENH-2461 internal column (this issue) | FEAT-2478 OTel attribute it maps to |
+|---|---|
+| `input_tokens` | `gen_ai.usage.input_tokens` |
+| `output_tokens` | `gen_ai.usage.output_tokens` |
+| `cache_read_input_tokens` | `gen_ai.usage.cache_read.input_tokens` *(dotted)* |
+| `cache_creation_input_tokens` | `gen_ai.usage.cache_creation.input_tokens` *(dotted)* |
+
+The **internal columns stay underscore** (they mirror the Anthropic API usage
+fields — do not rename them). The subtlety is only on the *OTel* side: the two
+cache attributes use **dotted** OTel sub-namespaces
+(`gen_ai.usage.cache_read.input_tokens`), **not** a naive
+`gen_ai.usage.` + `<column_name>` concatenation, which would wrongly produce
+`gen_ai.usage.cache_read_input_tokens` and is **silently dropped** by
+OTel-semconv consumers (verified live against Arize Phoenix 17.18.0; see
+FEAT-2478 § Premise Note and `.ll/learning-tests/phoenix.md`). If FEAT-2478
+generates OTel names programmatically from column names, it needs an explicit
+per-field mapping for the cache columns, not string prefixing.
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -135,11 +161,13 @@ Option B is cleaner for queries ("what did this session cost?") and avoids popul
 | `docs/reference/CONFIGURATION.md` | `analytics.enabled` gating the writer |
 | `docs/reference/API.md` | `session_store` module reference |
 | FEAT-2123 (open) | Codex/OpenCode usage source research; sibling effort |
+| FEAT-2478 (open) | F5 OTel emission consumes these columns; cache-name mapping locked above |
 
 ## Status
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:explore-api phoenix` - 2026-07-05 - Added Cross-issue coordination note: internal token columns stay underscore, but FEAT-2478's OTel mapping for the two cache columns must use DOTTED names (`gen_ai.usage.cache_read.input_tokens`) — string-prefixing the column name silently breaks OTel-semconv consumers (Phoenix verified). Locked the column→attribute mapping table.
 - backlog-grooming - 2026-07-03T00:00:00Z - Consolidated token-telemetry workstream: this issue is sequenced first (Claude host; `on_usage_detailed` already exists), it `blocks` FEAT-2123 (Codex/OpenCode extension of the same callback contract), and it `relates_to` EPIC-2456 whose F5 (OTel `gen_ai.usage.*` emission) and F6 (per-state cost attribution) consume the persisted usage rows.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

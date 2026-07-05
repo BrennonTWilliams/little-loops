@@ -53,3 +53,33 @@ Phoenix stored, for the treatment span:
 CONTROL (OpenInference llm.token_count.prompt=333) stored identically.
 VERDICT: CLAIM5 = PASS on Phoenix 17.18.0 — built-in OTel-GenAI normalization,
 no OpenInference shim required. (Version-sensitive: older Phoenix may lack this.)
+
+================================================================
+=== FOLLOW-UP (2026-07-05): cache-row naming + version bisect ===
+================================================================
+
+--- Cache-row naming (LIVE, phoenix serve 17.18.0) ---
+Sent two spans; observed Phoenix-extracted OI token counts:
+  span 'feat2478_underscore'  gen_ai.usage.cache_read_input_tokens=55  -> cache_read=None  (NOT extracted)
+                              gen_ai.usage.cache_creation_input_tokens=77 -> cache_write=None (NOT extracted)
+  span 'otel_dotted'          gen_ai.usage.cache_read.input_tokens=55   -> cache_read=55.0 (extracted)
+                              gen_ai.usage.cache_creation.input_tokens=77 -> cache_write=77.0 (extracted)
+  (both spans: prompt=111, completion=222 extracted fine)
+
+ROOT CAUSE: OTel semconv constant values (opentelemetry-semantic-conventions):
+  GEN_AI_USAGE_INPUT_TOKENS                = gen_ai.usage.input_tokens          (matches issue)
+  GEN_AI_USAGE_OUTPUT_TOKENS               = gen_ai.usage.output_tokens         (matches issue)
+  GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS     = gen_ai.usage.cache_read.input_tokens      (DOT, not underscore)
+  GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = gen_ai.usage.cache_creation.input_tokens  (DOT, not underscore)
+FEAT-2478 specifies underscore names (Anthropic API field spelling); Phoenix's
+get_openinference_usage_attributes() looks up the DOTTED OTel constants -> cache miss.
+
+--- Version bisect: when did phoenix add gen_ai->OpenInference normalization? ---
+phoenix/trace/gen_ai/conversion.py file presence (dep-independent, pip --no-deps swap):
+  15.9.0  : MISSING
+  15.10.0 : EXISTS   <-- module first shipped here
+  16.0.0, 17.18.0 : EXISTS
+Functional normalization (pure fn + live OTLP server) CONFIRMED on 17.18.0.
+Floor 15.10.0 not functionally re-runnable today: old arize-phoenix has an unpinned
+pydantic-ai transitive dep that resolves to an incompatible version (upstream packaging
+issue, unrelated to the normalization logic). Safe guard floor: arize-phoenix >= 15.10.0.

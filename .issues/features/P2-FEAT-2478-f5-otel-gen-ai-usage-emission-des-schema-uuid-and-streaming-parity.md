@@ -67,8 +67,10 @@ rollups match raw `result`-event `usage` totals row-for-row.
   the existing fields:
   - `gen_ai.usage.input_tokens` (= `input_tokens`)
   - `gen_ai.usage.output_tokens` (= `output_tokens`)
-  - `gen_ai.usage.cache_read_input_tokens` (= `cache_read_tokens`)
-  - `gen_ai.usage.cache_creation_input_tokens` (= `cache_creation_tokens`)
+  - `gen_ai.usage.cache_read.input_tokens` (= `cache_read_tokens`)
+    — ⚠️ **dotted**, not `cache_read_input_tokens`; see Premise Note
+  - `gen_ai.usage.cache_creation.input_tokens` (= `cache_creation_tokens`)
+    — ⚠️ **dotted**, not `cache_creation_input_tokens`; see Premise Note
   - `gen_ai.invocation.id` — UUID4 stamped per CLI invocation
   - `gen_ai.provider.vendor` — `anthropic` / `openai` / `gemini` /
     `mistral` / `<other>` (non-OTel-enum value carried as a
@@ -453,7 +455,7 @@ included in the implementation:_
   skipped when absent — gates only where Phoenix is installed)
 - `python -m pytest scripts/tests/` exits 0
 
-## Premise Note — Phoenix ↔ OTel GenAI schema (RESOLVED for current Phoenix)
+## Premise Note — Phoenix ↔ OTel GenAI schema (ingest works; cache-name fix required)
 
 _Surfaced and then settled by `/ll:explore-api phoenix` (2026-07-05;
 learning-test record `.ll/learning-tests/phoenix.md`, status `proven`, all 5
@@ -472,23 +474,43 @@ claims pass)._
    `llm.token_count.prompt=111`, `llm.token_count.completion=222`,
    `llm.token_count.total=333` — identical to an OpenInference control span.
 
-Effective mapping Phoenix applies (confirmed for prompt/completion; the cache
-rows are inferred from the OpenInference schema, not yet live-verified):
+Effective mapping Phoenix applies — **all four rows now live-verified** against
+`arize-phoenix 17.18.0` via OTLP ingest:
 
-| This issue emits (`gen_ai.usage.*`) | Phoenix stores (`llm.token_count.*`) | Verified |
+| This issue must emit | Phoenix stores (`llm.token_count.*`) | Verified |
 |---|---|---|
 | `gen_ai.usage.input_tokens` | `llm.token_count.prompt` | ✅ live |
 | `gen_ai.usage.output_tokens` | `llm.token_count.completion` | ✅ live |
-| `gen_ai.usage.cache_read_input_tokens` | `llm.token_count.prompt_details.cache_read` | ⚠️ inferred |
-| `gen_ai.usage.cache_creation_input_tokens` | `llm.token_count.prompt_details.cache_write` | ⚠️ inferred |
+| `gen_ai.usage.cache_read.input_tokens` | `llm.token_count.prompt_details.cache_read` | ✅ live |
+| `gen_ai.usage.cache_creation.input_tokens` | `llm.token_count.prompt_details.cache_write` | ✅ live |
 
-**Residual risk is version-sensitivity, not schema mismatch.** The
-normalization is a Phoenix 17.x feature; older Phoenix may lack it. Since the
-AC already gates the fixture on Phoenix being installed (`_HAS_PHOENIX`
-skipif), pin a **minimum Phoenix version** in that skip guard (e.g. skip if
-`arize-phoenix < 17`) so the fixture only asserts where the translation layer
-exists. Optionally extend the live fixture to also assert the two cache rows
-(currently only inferred) before relying on cache-token dashboards.
+### ⚠️ Cache-token attribute names — SPEC CORRECTION REQUIRED
+
+The originally-specified cache names used **underscores**
+(`gen_ai.usage.cache_read_input_tokens`) — the **Anthropic API** field
+spelling, prefixed with `gen_ai.usage.`. But the **OTel semantic-convention**
+constant values are **dotted sub-namespaces**:
+
+- `GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS` = `gen_ai.usage.cache_read.input_tokens`
+- `GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS` = `gen_ai.usage.cache_creation.input_tokens`
+
+Phoenix's `get_openinference_usage_attributes()` looks up the **dotted** OTel
+constants. **Live proof:** a span emitting the underscore names had its cache
+tokens **silently dropped** (`cache_read=None`, `cache_write=None`), while a
+sibling span with the dotted names surfaced `cache_read=55` / `cache_write=77`.
+The `input_tokens`/`output_tokens` names happen to be identical in both
+conventions, so only the two cache rows are affected. **Emit the dotted names**
+(Expected Behavior list above updated accordingly). This is not Phoenix-specific
+— any OTel-semconv consumer expects the dotted form.
+
+**Version floor for the `_HAS_PHOENIX` guard.** The gen_ai→OpenInference
+normalization module (`phoenix/trace/gen_ai/conversion.py`) **first shipped in
+`arize-phoenix 15.10.0`** (absent in 15.9.0; dep-independent file-presence
+bisect). Functional normalization confirmed live on 17.18.0. Gate the fixture
+with **skip if `arize-phoenix < 15.10.0`**. (Note: versions well below current
+17.x may not `pip install` cleanly today due to an unpinned upstream
+`pydantic-ai` transitive dep — a packaging issue in old Phoenix, unrelated to
+the normalization logic; in practice teams run recent 17.x.)
 
 ## Scope Boundaries
 
@@ -523,7 +545,8 @@ exists. Optionally extend the live fixture to also assert the two cache rows
 **Open** | Created: 2026-07-04 | Priority: P2
 
 ## Session Log
-- `/ll:explore-api phoenix` - 2026-07-05 - live-tested claim 5: `phoenix serve` (arize-phoenix 17.18.0) normalizes raw `gen_ai.usage.*` -> `llm.token_count.*` on ingest, so the AC stands; residual risk is Phoenix version (pin min ver in `_HAS_PHOENIX` guard). Record `.ll/learning-tests/phoenix.md` (all 5 claims pass)
+- `/ll:explore-api phoenix` - 2026-07-05 - live cache-name + version bisect: cache tokens require DOTTED OTel names (`gen_ai.usage.cache_read.input_tokens`), NOT the issue's underscore spelling (silently dropped) — SPEC CORRECTED in Expected Behavior; normalization module first shipped in arize-phoenix 15.10.0 (guard floor). Record `.ll/learning-tests/phoenix.md` (7 claims pass)
+- `/ll:explore-api phoenix` - 2026-07-05 - live-tested claim 5: `phoenix serve` (arize-phoenix 17.18.0) normalizes raw `gen_ai.usage.*` -> `llm.token_count.*` on ingest, so the AC stands; residual risk is Phoenix version (pin min ver in `_HAS_PHOENIX` guard). Record `.ll/learning-tests/phoenix.md`
 - `/ll:wire-issue` - 2026-07-05T21:51:50 - `f7bc5213-6675-4897-a8b4-82cd276c9c72.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:49:47 - `f22b122e-50d0-4242-97ef-9097cef10d32.jsonl`
 
