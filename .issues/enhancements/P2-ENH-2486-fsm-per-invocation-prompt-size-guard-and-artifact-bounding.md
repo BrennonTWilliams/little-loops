@@ -1,10 +1,11 @@
 ---
 id: ENH-2486
-title: "FSM engine — per-invocation prompt-size guard + bound re-embedded growing artifacts"
+title: "FSM engine \u2014 per-invocation prompt-size guard + bound re-embedded growing\
+  \ artifacts"
 type: ENH
 priority: P2
 status: open
-captured_at: "2026-07-05T22:27:50Z"
+captured_at: '2026-07-05T22:27:50Z'
 discovered_date: 2026-07-05
 discovered_by: capture-issue
 labels:
@@ -16,6 +17,13 @@ labels:
 relates_to:
 - EPIC-2456
 - ENH-2293
+confidence_score: 100
+outcome_confidence: 72
+score_complexity: 15
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 15
+decision_needed: false
 ---
 
 # ENH-2486: FSM engine — per-invocation prompt-size guard + bound re-embedded growing artifacts
@@ -316,8 +324,15 @@ wired end-to-end:_
 
 - Threshold unit: raw chars (cheap, portable) vs. a token estimate (more accurate,
   needs a tokenizer). Lean chars for the guard, token estimate only if already
-  available from usage callbacks.
-- Should Part A's optional hard-cap ship now or as a separate ENH? (Default: separate.)
+  available from usage callbacks. ✅ **RESOLVED** (2026-07-05 by `/ll:decide-issue`) —
+  **chars** (or `len//4` via `_estimate_tokens`). Research found no tokenizer anywhere
+  in the codebase; `len(text) // 4` is the established convention
+  (`session_store.py:1915-1917`, `doc_counts.py:324`). No new dependency. See Codebase
+  Research Findings below.
+- Should Part A's optional hard-cap ship now or as a separate ENH? ✅ **RESOLVED**
+  (2026-07-05 by `/ll:decide-issue`) — **separate ENH.** Part A ships the WARN-only
+  guard; the hard-cap that routes to `on_error`/diagnose is a follow-on and must not
+  block Part A.
 
 ### Codebase Research Findings
 
@@ -343,7 +358,29 @@ _Added by `/ll:refine-issue` — resolves the threshold-unit question:_
   `do_work`; this adds *preventive detection* generalized to all loops + artifact
   bounding.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-05_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~20+ touched files (executor, schema, two JSON schemas,
+  exports, validation, CLI flags in two blocks, worker re-serialization, generated
+  schemas, five docs files, seven+ test files) — wide breadth even though each
+  individual site follows an established, verified pattern.
+- `test_general_task_loop.py` carries 143 exact-substring assertions on
+  `check_done`/`continue_work` text that WILL break under any Part-B artifact-bounding
+  edit; reconciling them in lockstep is real, non-optional work, not incidental cleanup.
+- Open decision: whether `PromptSizeGuardConfig`/`PROMPT_SIZE_WARN_EVENT` follow
+  `ThrottleConfig`'s re-export convention or `HostGuardConfig`'s direct-import
+  convention in `fsm/__init__.py` — resolve before implementing the export/`__all__`
+  changes so the parity touchpoints in Integration Map don't diverge mid-implementation.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-07-05T22:55:36 - `976b8aed-cb56-4d7d-82b3-5b22833d5918.jsonl`
+- `/ll:confidence-check` - 2026-07-05T23:00:00 - `39618ae6-5700-4f66-8f16-0412c1c26178.jsonl`
 - `/ll:wire-issue` - 2026-07-05T22:45:51 - `efa03064-1a5b-4099-8035-a96c38ff99fc.jsonl`
 - `/ll:refine-issue` - 2026-07-05T22:34:17 - `42209f54-f54c-4f75-95c3-22dd47940c1c.jsonl`
 - `/ll:capture-issue` - 2026-07-05T22:27:50Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3ff7c133-226a-436a-ba23-7e5882937d67.jsonl`
