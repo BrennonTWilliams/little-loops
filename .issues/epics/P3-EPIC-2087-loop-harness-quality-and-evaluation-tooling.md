@@ -14,6 +14,7 @@ relates_to:
 - ENH-2082
 - ENH-2084
 - ENH-2086
+- BUG-2482
 ---
 
 # EPIC-2087: Loop Harness Quality & Evaluation Tooling
@@ -46,6 +47,8 @@ Loops are authored and iterated subjectively — authors assess quality via spot
 - **ENH-2082** — Add shallow-iteration failure mode detector to loop audit
 - **ENH-2084** — Add Wilson CI reporting to ll-loop run --baseline
 - **ENH-2086** — Add cross-host validation option to ll-loop run --baseline
+
+- **BUG-2482** — Shallow-iteration heuristic blind for gitignored run dirs *(parented 2026-07-05 as a defect in ENH-2082's shipped detector)*
 
 ## Implementation Notes
 
