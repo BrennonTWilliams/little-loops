@@ -104,6 +104,9 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
+    # psutil backs xdist's `-n logical` core detection; declare it explicitly so
+    # a fresh install doesn't silently fall back to a different worker count.
+    "psutil>=5.9",
     "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",
@@ -150,10 +153,13 @@ python_functions = ["test_*"]
 #   python -m pytest scripts/tests/ --cov=little_loops \
 #       --cov-report=term-missing:skip-covered --cov-report=html
 # (the [tool.coverage.*] config below still applies when --cov is passed.)
-# -n logical runs xdist across logical CPUs (excludes hyperthreads),
-# avoiding the per-hyperthread worker overhead that caused 100% CPU + machine
-# freeze on multi-core hosts. Override with -n 0 to force serial (e.g. when
-# debugging a single test with pdb).
+# -n logical runs xdist across logical CPUs. The raw logical count would spawn
+# one worker per core (e.g. 14/14 on Apple Silicon, where logical == physical
+# since there is no SMT), saturating every core and starving the OS compositor
+# -> 100% CPU + machine freeze (macOS "beachball"). tests/conftest.py implements
+# pytest_xdist_auto_num_workers to cap the count below the core total, reserving
+# OS headroom; set PYTEST_XDIST_AUTO_NUM_WORKERS to override, or -n 0 to force
+# serial (e.g. when debugging a single test with pdb).
 # --timeout=120 is a per-test safety net: any test that hangs past 120s is
 # killed and reported as a timeout, freeing the xdist worker slot before it
 # can wedge a core indefinitely. Tests with legitimately slow wall-clock

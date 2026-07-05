@@ -12,6 +12,35 @@ from typing import Any
 import pytest
 
 # =============================================================================
+# xdist Worker Count Cap (macOS beachball defense)
+# =============================================================================
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """Cap xdist workers below the core count so the OS keeps CPU headroom.
+
+    `-n logical` (see pyproject.toml addopts) otherwise resolves to one worker
+    per logical core (14/14 on Apple Silicon, where logical == physical). That
+    saturates every core and starves the macOS compositor (WindowServer),
+    producing the 100% CPU + "beachball of death" freeze during a full run.
+
+    This conftest hook wins over xdist's default implementation, so it applies
+    whenever `-n auto` / `-n logical` is used. An explicit `-n <N>` or `-n 0`
+    (serial) bypasses it. ``PYTEST_XDIST_AUTO_NUM_WORKERS`` is honored as a
+    manual override.
+    """
+    env = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS")
+    if env:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    cpus = os.cpu_count() or 4
+    # Reserve ~30% of cores for the OS: 14 -> 10, 8 -> 6, 4 -> 3 (floor of 2).
+    return max(2, round(cpus * 0.7))
+
+
+# =============================================================================
 # Snapshot Testing Helpers
 # =============================================================================
 
