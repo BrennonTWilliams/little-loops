@@ -180,11 +180,17 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 current = _parent_map.get(current)
             return None
 
+        # Children membership for an EPIC heading MUST agree between the
+        # (N/total done) counter and the children list below it (BUG-2480).
+        # A nested EPIC (one whose own ancestor is another EPIC) is bucketed
+        # as a child so it renders as a Sub-EPICs row; a root EPIC (no EPIC
+        # ancestor) is not a child of anything and keeps only its own
+        # heading, so it is not also listed under Unparented.
         parent_buckets: dict[str | None, list] = {}
         for issue, stat in issues_with_status:
-            if issue.issue_id.split("-", 1)[0] == "EPIC":
-                continue
             key = _find_epic_ancestor(issue.issue_id)
+            if key is None and issue.issue_id.split("-", 1)[0] == "EPIC":
+                continue
             if key not in parent_buckets:
                 parent_buckets[key] = []
             parent_buckets[key].append((issue, stat))
@@ -192,17 +198,34 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
         named_keys = sorted(k for k in parent_buckets if k is not None)
         ordered_keys = named_keys + ([None] if None in parent_buckets else [])
 
-        # Pre-compute progress badges for named EPIC buckets
+        # Pre-compute progress badges for named EPIC buckets and for any
+        # nested sub-EPIC rows, each getting its own (j/m done) rollup.
+        sub_epic_ids = {
+            issue.issue_id
+            for group in parent_buckets.values()
+            for issue, _ in group
+            if issue.issue_id.split("-", 1)[0] == "EPIC"
+        }
         epic_progress_cache: dict[str, tuple[int, int, int]] = {}
-        if named_keys:
+        progress_keys = set(named_keys) | sub_epic_ids
+        if progress_keys:
             from little_loops.issue_progress import compute_epic_progress
 
-            for epic_key in named_keys:
+            for epic_key in progress_keys:
                 prog = compute_epic_progress(epic_key, _all_issues)
                 if prog is not None:
                     done = prog.by_status.get("done", 0) + prog.by_status.get("cancelled", 0)
                     blocked = prog.by_status.get("blocked", 0)
                     epic_progress_cache[epic_key] = (done, len(prog.children), blocked)
+
+        def _progress_badge(epic_key: str) -> str:
+            if epic_key not in epic_progress_cache:
+                return ""
+            done, total, blocked = epic_progress_cache[epic_key]
+            badge = f" ({done}/{total} done"
+            if blocked > 0:
+                badge += f" · {blocked} blocked"
+            return badge + ")"
 
         lines: list[str] = []
         for key in ordered_keys:
@@ -211,19 +234,14 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                 header = colorize(f"Unparented ({len(group)})", "1")
             else:
                 title = parent_titles.get(key, "")
-                badge = ""
-                if key in epic_progress_cache:
-                    done, total, blocked = epic_progress_cache[key]
-                    badge = f" ({done}/{total} done"
-                    if blocked > 0:
-                        badge += f" · {blocked} blocked"
-                    badge += ")"
                 base_label = f"{key}: {title}" if title else key
-                label = f"{base_label} ({len(group)}){badge}"
+                label = f"{base_label} ({len(group)}){_progress_badge(key)}"
                 parent_prefix = key.split("-", 1)[0]
                 header = colorize(label, f"{TYPE_COLOR.get(parent_prefix, '0')};1")
             lines.append(header)
-            for issue, stat in group:
+            leaves = [(i, s) for i, s in group if i.issue_id.split("-", 1)[0] != "EPIC"]
+            sub_epics = [(i, s) for i, s in group if i.issue_id.split("-", 1)[0] == "EPIC"]
+            for issue, stat in leaves:
                 issue_type = issue.issue_id.split("-", 1)[0]
                 colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
                 colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
@@ -235,9 +253,29 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     issue.title if no_truncate else _truncate_title(issue.title, tw - prefix_width)
                 )
                 lines.append(f"  {colored_priority}  {colored_id}  {title}{status_tag}")
+            if sub_epics:
+                lines.append(colorize(f"  Sub-EPICs ({len(sub_epics)})", "0;2"))
+                for issue, stat in sub_epics:
+                    colored_id = colorize(issue.issue_id, TYPE_COLOR.get("EPIC", "0"))
+                    colored_priority = colorize(
+                        issue.priority, PRIORITY_COLOR.get(issue.priority, "0")
+                    )
+                    status_tag = f" [{stat}]" if stat not in ("open", "in_progress") else ""
+                    sub_badge = _progress_badge(issue.issue_id)
+                    prefix_width = (
+                        4 + len(issue.priority) + 2 + len(issue.issue_id) + 2 + len(status_tag)
+                    )
+                    title = (
+                        issue.title
+                        if no_truncate
+                        else _truncate_title(issue.title, tw - prefix_width - len(sub_badge))
+                    )
+                    lines.append(
+                        f"    {colored_priority}  {colored_id}  {title}{sub_badge}{status_tag}"
+                    )
             lines.append("")
         displayed = sum(len(g) for g in parent_buckets.values())
-        lines.append(f"Total: {displayed} active issues (excluding EPICs)")
+        lines.append(f"Total: {displayed} active issues (including nested EPICs)")
         print("\n".join(lines))
         return 0
 

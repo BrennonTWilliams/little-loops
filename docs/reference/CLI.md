@@ -1023,7 +1023,7 @@ List issues with optional filters.
 | `--priority` | Filter by priority: `P0`–`P5`, or comma-separated e.g. `P1,P2` |
 | `--label` | Filter by label from `labels:` frontmatter; repeatable for OR match |
 | `--milestone` | Filter by milestone name from `milestone:` frontmatter (exact match) |
-| `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field; each EPIC bucket header includes a `(N/M done · K blocked)` progress badge) |
+| `--group-by` | Group output by `type` (default, existing four-bucket view) or `epic` (group child issues under their parent ID, with an "Unparented" bucket for issues without a `parent:` field; each EPIC bucket header includes a `(N/M done · K blocked)` progress badge). The `(N/M done)` denominator is the EPIC's full transitive descendant set, including nested EPICs — a nested EPIC child is rendered as its own row in a `Sub-EPICs (k)` sub-section beneath the parent heading, each carrying its own `(j/m done)` rollup, so the badge and the visible list always agree (BUG-2480). |
 | `--status` | Filter by status: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`, `all`. Note: synonyms in on-disk frontmatter are normalized on read, but `--status` arguments must use canonical values (argparse validates choices before normalization runs). |
 | `--parent EPIC-NNN` | Filter to issues whose `parent:` frontmatter matches the given EPIC or issue ID (e.g. `--parent EPIC-101`). Accepts short form (`101`), type-prefixed (`EPIC-101`), or full prefix (`P2-EPIC-101`). |
 | `--flat` | Output flat list for scripting |
@@ -1536,6 +1536,8 @@ The "resolved" count on the Progress line is `done + cancelled` (terminal states
 <!-- TODO: update-docs stub — BUG-2441 — drafted 2026-07-02 -->
 
 > **Rollup semantics** (BUG-2441): The child set is collected by walking the `parent:` chain transitively, so grandchildren (and any deeper descendants) of the EPIC roll up into the Progress and Status counts — not just direct children. This matches the bucketing behavior of `ll-issues list --bucket epic`. Note: `ll-sprint`'s EPIC resolution still counts direct children only; for a sprint-aware breakdown use `ll-sprint show`.
+>
+> **Nested EPIC visibility** (BUG-2480): a nested EPIC (a `type: EPIC` child of another EPIC) counts toward its parent's `(N/M done)` denominator and is rendered as its own row in a `Sub-EPICs (k)` sub-section under `ll-issues list --group-by epic`, carrying its own `(j/m done)` rollup from a separate `compute_epic_progress` call. The nested EPIC's own descendants (grandchildren of the outer EPIC) are bucketed under the nested EPIC, not the outer one — so they appear once, either under the outer EPIC's leaf rows or under the nested EPIC's own heading, never duplicated.
 
 <!-- END TODO stub -->
 

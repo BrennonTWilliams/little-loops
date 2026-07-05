@@ -2,10 +2,11 @@
 id: BUG-2480
 title: '`ll-issues list --group-by epic` renderer filters out nested `type: EPIC`
   children, leaving the visible list inconsistent with the `(N/total done)` counter'
-status: open
+status: done
 priority: P2
 type: BUG
 captured_at: '2026-07-04T20:52:25Z'
+completed_at: '2026-07-05T16:16:47Z'
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 decision_needed: false
@@ -228,8 +229,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - Decision recorded (policy (a) selected) - 2026-07-04 - flagged `decision_needed: false`; rationale captured in `## Decision` section above.
 
+- `/ll:manage-issue` - 2026-07-05T16:16:47Z - `e235f9e8-00b4-4cc3-8140-9c3d933bb246.jsonl`
+
+## Resolution
+
+Fixed in `scripts/little_loops/cli/issues/list_cmd.py` (`cmd_list`, `group_by == "epic"` branch), following the selected policy (a) with one refinement discovered during implementation:
+
+- Removed the unconditional `if issue.issue_id.split("-", 1)[0] == "EPIC": continue` filter. The bucket-build loop now computes `key = _find_epic_ancestor(issue.issue_id)` for every issue first, and only skips an issue when `key is None` **and** it is itself EPIC-typed — i.e. a root EPIC with no EPIC ancestor. This avoids a regression the literal "remove the filter unconditionally" instruction would have introduced: a root EPIC (e.g. `EPIC-001` with no `parent:`) would otherwise land in the `Unparented` bucket as a spurious duplicate row, since it already owns its own heading elsewhere in the output. Nested EPICs (an EPIC whose `_find_epic_ancestor` resolves to another EPIC) are unaffected by this guard and now enter their ancestor's bucket as intended.
+- Each EPIC bucket's members are split into `leaves` (non-EPIC) and `sub_epics` (EPIC-typed) at render time. Leaves render as before; if `sub_epics` is non-empty, a `Sub-EPICs (k)` sub-section follows, with each row carrying its own `(j/m done)` rollup computed via a per-key `compute_epic_progress` call (cache extended to cover every EPIC ID appearing as a bucket member, not just named headings).
+- The header `(len(group))` count and the footer `displayed` sum are unchanged in shape — both now naturally include nested EPICs since they're real bucket members — but the footer text changed from `"(excluding EPICs)"` to `"(including nested EPICs)"` since it's no longer literally true that EPICs are excluded.
+- Added `issues_dir_with_nested_epic` fixture and two tests (`test_list_group_by_epic_with_nested_epic_children`, `test_list_group_by_epic_nested_badge_consistency`) to `scripts/tests/test_issues_cli.py`, following TDD: both failed with plain assertion errors against the pre-fix code, then passed after the fix. Full suite: 13721 passed, 27 skipped.
+- Updated `docs/reference/CLI.md` (`--group-by` flag row + the BUG-2441 rollup-semantics callout) and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` (`--group-by epic` section) to describe the Sub-EPICs rendering. Skipped `docs/reference/API.md` — it's an auto-generated per-module reference with no existing `issue_progress`/`list_cmd` section to anchor a prose policy note; the CLI docs already cover the user-facing contract. Skipped a `CHANGELOG.md [Unreleased]` entry per this project's policy of not adding per-issue changelog entries there (promoted at release-prep time instead).
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-07-04 | Priority: P2
+**Done** | Created: 2026-07-04 | Priority: P2

@@ -485,7 +485,7 @@ Or use `/ll:commit` to have the skill draft the commit message from the diff and
 ll-issues list --group-by epic
 ```
 
-Output shows each open EPIC as a header, with its child issues (those with a matching `parent:` frontmatter field) nested beneath it. Issues without a `parent:` appear in an `Unparented` bucket at the end. The flag works alongside all standard filters (`--type`, `--priority`, `--status`):
+Output shows each open EPIC as a header, with its child issues (those with a matching `parent:` frontmatter field) nested beneath it. Issues without a `parent:` appear in an `Unparented` bucket at the end. A child that is itself a `type: EPIC` (a nested EPIC) is listed in its own `Sub-EPICs (k)` sub-section beneath the parent heading, each with its own `(j/m done)` rollup — it is never silently dropped from the visible list even though it also counts toward the parent's `(N/M done)` badge (BUG-2480). The flag works alongside all standard filters (`--type`, `--priority`, `--status`):
 
 ```bash
 ll-issues list --group-by epic --status open --priority P0,P1

@@ -202,6 +202,37 @@ def issues_dir_with_completed_intermediate(issues_dir_with_epic: Path) -> Path:
     return issues_dir_with_epic
 
 
+@pytest.fixture
+def issues_dir_with_nested_epic(issues_dir_with_epic: Path) -> Path:
+    """BUG-2480: EPIC-001 with two nested EPIC children plus one leaf FEAT child.
+
+    EPIC-002 additionally has its own done+open children so its `(j/m done)`
+    rollup is non-trivial when rendered as a Sub-EPICs row.
+    """
+    epics_dir = issues_dir_with_epic / "epics"
+    epics_dir.mkdir(parents=True, exist_ok=True)
+    (epics_dir / "P3-EPIC-002-nested-a.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\n---\n# EPIC-002: Nested epic A\n\n## Summary\nNested under EPIC-001."
+    )
+    (epics_dir / "P3-EPIC-003-nested-b.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\n---\n# EPIC-003: Nested epic B\n\n## Summary\nAlso nested under EPIC-001."
+    )
+    features_dir = issues_dir_with_epic / "features"
+    features_dir.mkdir(parents=True, exist_ok=True)
+    (features_dir / "P3-FEAT-020-leaf-child.md").write_text(
+        "---\nstatus: open\nparent: EPIC-001\n---\n# FEAT-020: Leaf child of EPIC-001\n\n## Summary\nDirect leaf child."
+    )
+    bugs_dir = issues_dir_with_epic / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    (bugs_dir / "P2-BUG-021-nested-a-child-done.md").write_text(
+        "---\nstatus: done\nparent: EPIC-002\n---\n# BUG-021: Done child of EPIC-002\n"
+    )
+    (bugs_dir / "P2-BUG-022-nested-a-child-open.md").write_text(
+        "---\nstatus: open\nparent: EPIC-002\n---\n# BUG-022: Open child of EPIC-002\n"
+    )
+    return issues_dir_with_epic
+
+
 class TestIssuesCLIList:
     """Tests for ll-issues list sub-command."""
 
@@ -992,6 +1023,80 @@ class TestIssuesCLIList:
         bug300_idx = captured.out.find("BUG-300")
         # Either there is no Unparented section, or BUG-300 comes before it
         assert unparented_idx == -1 or bug300_idx < unparented_idx
+
+    def test_list_group_by_epic_with_nested_epic_children(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_nested_epic: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-2480: nested EPIC children (EPIC-002, EPIC-003) are rendered as
+        Sub-EPICs beneath their parent EPIC-001 heading, not silently dropped."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        epic_001_idx = captured.out.find("EPIC-001")
+        assert epic_001_idx != -1
+        # Both nested EPIC children must appear, and the leaf FEAT child too.
+        assert "EPIC-002" in captured.out
+        assert "EPIC-003" in captured.out
+        assert "FEAT-020" in captured.out
+        # They render under a Sub-EPICs sub-section beneath the EPIC-001 heading.
+        sub_epics_idx = captured.out.find("Sub-EPICs")
+        assert sub_epics_idx != -1
+        assert sub_epics_idx > epic_001_idx
+        assert captured.out.find("EPIC-002") > sub_epics_idx
+        assert captured.out.find("EPIC-003") > sub_epics_idx
+        # A root EPIC (no EPIC ancestor of its own) must not spuriously
+        # duplicate as a row under Unparented — it already owns a heading.
+        unparented_section = captured.out[captured.out.find("Unparented") :]
+        assert "EPIC-001:" not in unparented_section.splitlines()[0]
+
+    def test_list_group_by_epic_nested_badge_consistency(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_nested_epic: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-2480: the EPIC-001 heading count must equal leaf rows + Sub-EPIC rows
+        actually rendered beneath it (counter and rendered list must agree)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--group-by", "epic", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        header_line = next(
+            line for line in captured.out.splitlines() if line.startswith("EPIC-001:")
+        )
+        # Header count reflects the EPIC-001 bucket: FEAT-020 (leaf) + EPIC-002 +
+        # EPIC-003 (sub-EPICs) = 3.
+        assert "(3)" in header_line
+        # EPIC-002's own rollup (BUG-021 done, BUG-022 open) must be shown inline
+        # in its Sub-EPICs row: "(1/2 done)".
+        epic_002_line = next(line for line in captured.out.splitlines() if "EPIC-002" in line)
+        assert "1/2 done" in epic_002_line
 
     def test_list_group_by_type_default(
         self,
