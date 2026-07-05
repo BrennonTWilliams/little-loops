@@ -199,6 +199,15 @@ class TestConfigSchema:
         assert lt_props["enabled"]["type"] == "boolean"
         assert lt_props["enabled"].get("default") is False
 
+        # ENH-2487: auto_prove gate for config-driven rn-implement auto-prove
+        assert "auto_prove" in lt_props, (
+            "learning_tests.auto_prove is missing from config-schema.json; "
+            "ENH-2487 requires it so config setting it is not schema-rejected by "
+            "additionalProperties: false"
+        )
+        assert lt_props["auto_prove"]["type"] == "boolean"
+        assert lt_props["auto_prove"].get("default") is True
+
         # FEAT-1743: discoverability sub-object
         assert "discoverability" in lt_props, (
             "learning_tests.discoverability is missing from config-schema.json; "

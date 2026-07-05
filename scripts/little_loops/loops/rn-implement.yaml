@@ -517,7 +517,27 @@ states:
 
       issue_id = "${captured.input.output}"
       run_dir = "${captured.run_dir.output}"
-      auto_prove = "${context.auto_prove_learning_gate}"
+
+      # ENH-2487: 3-tier auto-prove resolution. Explicit per-run override wins
+      # (${context.auto_prove_learning_gate} non-empty, unless it is an explicit
+      # off token). Otherwise config-drive it: learning_tests.enabled AND
+      # learning_tests.auto_prove (auto_prove defaults true) from .ll/ll-config.json.
+      # Falls back to off if config is absent/unreadable. This flips ENH-2431's
+      # default-off flag into a config-gated default-on when the LT feature is enabled.
+      _auto_prove_ctx = "${context.auto_prove_learning_gate}"
+      if _auto_prove_ctx != "":
+          auto_prove = _auto_prove_ctx.strip().lower() not in ("0", "false", "no", "off")
+      else:
+          auto_prove = False
+          try:
+              import json as _json
+              _cfg_p = Path(".ll/ll-config.json")
+              if _cfg_p.exists():
+                  _lt = _json.loads(_cfg_p.read_text()).get("learning_tests", {})
+                  if _lt.get("enabled", False):
+                      auto_prove = _lt.get("auto_prove", True)
+          except Exception:
+              auto_prove = False
 
       # Resolve the issue file across active category dirs (mirrors check_blocked_by)
       issue_path = None
@@ -902,13 +922,144 @@ states:
     # it into a genuine implementation failure — the issue is actionable once its
     # deps are proven via /ll:explore-api, not broken. on_no falls through to the
     # generic failure bucket.
+    #
+    # ENH-2487: on_yes now routes through prove_rem_learning_gate (gate site 2's
+    # config-gated auto-prove) rather than straight to record_learning_gate_blocked,
+    # so a target surfaced deep in the remediation path gets the same one-attempt
+    # prove that the pre-dequeue check_learning_ready gate does.
     evaluate:
       type: output_contains
       source: "${captured.rem_outcome.output}"
       pattern: "LEARNING_GATE_BLOCKED"
-    on_yes: record_learning_gate_blocked
+    on_yes: prove_rem_learning_gate
     on_no: record_failure   # genuine IMPLEMENT_FAILED → recorded failure
     on_error: record_failure
+
+  prove_rem_learning_gate:
+    # ENH-2487: remediation-path (gate site 2) auto-prove — the deeper sibling of
+    # check_learning_ready's pre-dequeue prove branch. rn-remediate's inner
+    # `ll-auto --only` emitted LEARNING_GATE_BLOCKED (ENH-2319 JIT gate) on an
+    # unproven external-API dep. When config-gated auto-prove is on, make one
+    # `ll-learning-tests prove` attempt per unproven target before recording the
+    # block, so targets that only surface after remediation runs (and in decomposed
+    # children that reach remediation) are proven, not dead-ended.
+    #
+    # Routing (shell exit-code, no evaluate): exit 0 → next: dequeue_next (all
+    # targets proven now, block cleared for future runs); non-zero exit → on_error:
+    # record_learning_gate_blocked (still unproven, auto-prove disabled, or the
+    # issue/targets could not be resolved). Confirmed against executor.py: a shell
+    # state with next+on_error routes non-zero exits to on_error with no retry.
+    #
+    # Resolution mirrors check_learning_ready exactly: explicit
+    # ${context.auto_prove_learning_gate} override wins, else config
+    # learning_tests.enabled && learning_tests.auto_prove (default true). Reuses the
+    # same timeout=1800 prove budget ENH-2431 established. Unlike the pre-dequeue
+    # gate this path fails CLOSED: the issue is already known-blocked by ll-auto, so
+    # a `check` subprocess error attempts prove rather than passing.
+    action_type: shell
+    action: |
+      python3 << 'PYEOF'
+      import json, re, subprocess, sys
+      from pathlib import Path
+      try:
+          import yaml as _yaml
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      issue_id = "${captured.input.output}"
+
+      # ENH-2487: 3-tier auto-prove resolution (identical to check_learning_ready).
+      _auto_prove_ctx = "${context.auto_prove_learning_gate}"
+      if _auto_prove_ctx != "":
+          auto_prove = _auto_prove_ctx.strip().lower() not in ("0", "false", "no", "off")
+      else:
+          auto_prove = False
+          try:
+              _cfg_p = Path(".ll/ll-config.json")
+              if _cfg_p.exists():
+                  _lt = json.loads(_cfg_p.read_text()).get("learning_tests", {})
+                  if _lt.get("enabled", False):
+                      auto_prove = _lt.get("auto_prove", True)
+          except Exception:
+              auto_prove = False
+
+      if not auto_prove:
+          sys.exit(1)  # auto-prove off -> record the block unchanged
+
+      # Resolve the issue file across active category dirs (mirrors check_learning_ready).
+      issue_path = None
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m and m.group(1) == issue_id:
+                  issue_path = p
+                  break
+          if issue_path:
+              break
+
+      if not issue_path:
+          sys.exit(1)  # can't resolve targets -> record the block
+
+      try:
+          content = issue_path.read_text()
+          m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+          fm = _parse_yaml(m.group(1)) if m else {}
+      except Exception:
+          sys.exit(1)
+
+      val = fm.get("learning_tests_required") or []
+      if isinstance(val, str):
+          targets = [v.strip() for v in val.split(",") if v.strip()]
+      else:
+          targets = [str(v).strip() for v in (val if isinstance(val, list) else []) if v]
+
+      if not targets:
+          sys.exit(0)  # nothing declared to prove -> treat as cleared
+
+      still_unproven = []
+      for t in targets:
+          proven = False  # fail-closed: this path is already known-blocked
+          try:
+              r = subprocess.run(
+                  ["ll-learning-tests", "check", t, "--stale-aware"],
+                  capture_output=True, text=True, timeout=30,
+              )
+              proven = r.returncode == 0
+          except Exception:
+              proven = False
+          if not proven:
+              # One prove attempt with its own larger timeout (an LLM proving loop),
+              # not the cheap check call's timeout=30.
+              try:
+                  r2 = subprocess.run(
+                      ["ll-learning-tests", "prove", t],
+                      capture_output=True, text=True, timeout=1800,
+                  )
+                  proven = r2.returncode == 0
+              except Exception:
+                  proven = False
+          if not proven:
+              still_unproven.append(t)
+
+      if still_unproven:
+          print("[REM_LEARNING_STILL_UNPROVEN] " + " ".join(still_unproven))
+          sys.exit(1)
+      print("[REM_LEARNING_PROVEN] " + " ".join(targets))
+      sys.exit(0)
+      PYEOF
+    next: dequeue_next
+    on_error: record_learning_gate_blocked
 
   abort_env_not_ready:
     # ENH-2353: terminal abort for auth misconfiguration. Routes to failed so the

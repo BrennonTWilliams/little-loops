@@ -2403,6 +2403,16 @@ class TestLearningTestsConfig:
         config = LearningTestsConfig.from_dict({"enabled": True})
         assert config.enabled is True
 
+    def test_auto_prove_defaults_to_true(self) -> None:
+        """auto_prove defaults to True when absent (ENH-2487)."""
+        config = LearningTestsConfig.from_dict({})
+        assert config.auto_prove is True
+
+    def test_auto_prove_from_dict(self) -> None:
+        """auto_prove is read from config dict (ENH-2487)."""
+        config = LearningTestsConfig.from_dict({"auto_prove": False})
+        assert config.auto_prove is False
+
     def test_discoverability_defaults(self) -> None:
         """discoverability sub-config defaults when absent (FEAT-1743)."""
         config = LearningTestsConfig.from_dict({})
@@ -2472,6 +2482,7 @@ class TestBRConfigLearningTestsIntegration:
         assert "learning_tests" in d
         lt = d["learning_tests"]
         assert lt["enabled"] is False
+        assert lt["auto_prove"] is True  # ENH-2487
         assert lt["stale_after_days"] == 30
         assert "discoverability" in lt
         assert lt["discoverability"]["mode"] == "warn"

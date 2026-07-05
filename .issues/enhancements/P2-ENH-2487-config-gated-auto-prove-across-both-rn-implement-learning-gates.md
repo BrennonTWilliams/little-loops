@@ -4,8 +4,9 @@ title: Config-gate rn-implement auto-prove on learning_tests.enabled and apply i
   at both gate sites (all depths)
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-05T23:10:00Z'
+completed_at: '2026-07-05T23:40:56Z'
 discovered_date: '2026-07-05'
 discovered_by: audit-loop-run
 depends_on:
@@ -341,21 +342,29 @@ implementation beyond the four primary files:_
 
 ## Acceptance Criteria
 
-- [ ] `config-schema.json` `learning_tests` gains `auto_prove` (boolean, default
+- [x] `config-schema.json` `learning_tests` gains `auto_prove` (boolean, default
       `true`) with a description; defaults source from the schema (not hardcoded).
-- [ ] `scripts/little_loops/config/features.py` `LearningTestsConfig` gains a
+- [x] `scripts/little_loops/config/features.py` `LearningTestsConfig` gains a
       matching `auto_prove: bool = True` field + `from_dict` line (keep the
       dataclass in sync with the schema so Python consumers can read the key).
-- [ ] `rn-implement` `init` reads `learning_tests.enabled` + `learning_tests.auto_prove`
-      from config and seeds the context default; the standalone
-      `auto_prove_learning_gate` CLI override still works (explicit override wins).
-- [ ] Auto-prove fires at `check_learning_ready` **and** `route_rem_learning_gate`
-      (or an equivalent pre-block prove step on the remediation path).
-- [ ] A run against an issue with an unproven target and default config attempts
-      proving instead of parking pre-dequeue (regression test over the
-      FEAT-2478-style path).
-- [ ] `python -m pytest scripts/tests/` passes (extend `test_builtin_loops.py`
-      learning-gate coverage).
+- [x] `check_learning_ready` reads `learning_tests.enabled` +
+      `learning_tests.auto_prove` from config (three-tier inline read) and gates the
+      prove branch on it; the standalone `auto_prove_learning_gate` CLI override
+      still works (explicit override wins). _(Resolution note: implemented as an
+      inline three-tier read at each gate site rather than an `init`-seeded context
+      default — matches the FSM config-read precedent in `general-task.yaml`/
+      `recursive-refine.yaml` cited in the Integration Map, and keeps the
+      `auto_prove_learning_gate: ""` sentinel as the explicit-override tier.)_
+- [x] Auto-prove fires at `check_learning_ready` **and** the new
+      `prove_rem_learning_gate` step on the remediation path (inserted on
+      `route_rem_learning_gate`'s `on_yes` edge before `record_learning_gate_blocked`).
+- [x] A run against an issue with an unproven target and default config attempts
+      proving instead of parking pre-dequeue (end-to-end config-read regression test
+      `TestCheckLearningReadyConfigReadShell`, which executes the extracted shell
+      action against a stubbed `ll-learning-tests`).
+- [x] `python -m pytest scripts/tests/` passes (13748 passed, 27 skipped). Coverage
+      extended in `test_rn_implement.py` (per the AC-#5 correction) and the breaking
+      assertions in `test_builtin_loops.py` `TestLearningGateConsistency` updated.
 
 ## Impact
 
@@ -387,7 +396,23 @@ open — captured 2026-07-05 from an `/ll:audit-loop-run` of the FEAT-2478 run.
   per-run override layered over the config default.
 
 
+## Resolution
+
+Implemented 2026-07-05. Config-schema gained `learning_tests.auto_prove` (bool,
+default `true`); `LearningTestsConfig` + `BRConfig.to_dict()` kept in sync.
+`rn-implement.yaml` `check_learning_ready` now resolves auto-prove in three tiers
+(explicit `${context.auto_prove_learning_gate}` override — non-empty unless an off
+token — > config `learning_tests.enabled && learning_tests.auto_prove` > off). A new
+single state `prove_rem_learning_gate` (state count 44→45) runs the same
+config-gated one-attempt prove on the remediation path, inserted on
+`route_rem_learning_gate.on_yes` before `record_learning_gate_blocked` (exit 0 →
+`dequeue_next`, still-unproven/off → `record_learning_gate_blocked`; verified against
+`executor.py` next/on_error exit-code routing). Docs updated in
+RECURSIVE_LOOPS_GUIDE, LOOPS_REFERENCE, LEARNING_TESTS_GUIDE, and CONFIGURATION. Full
+suite: 13748 passed, 27 skipped.
+
 ## Session Log
+- `/ll:manage-issue enh implement` - 2026-07-05T23:40:56 - `6b27fe05-3797-415c-84da-adca0ebea01e.jsonl`
 - `/ll:ready-issue` - 2026-07-05T23:19:25 - `37a9e5ec-7b3e-4004-a94c-1d2c9cb685f7.jsonl`
 - `/ll:wire-issue` - 2026-07-05T23:15:48 - `6850b2ad-a17a-4380-bac8-d0ef1fe87910.jsonl`
 - `/ll:wire-issue` - 2026-07-05T23:12:21 - `f5176fc6-8690-4c8b-9e76-b6dcec5c900a.jsonl`

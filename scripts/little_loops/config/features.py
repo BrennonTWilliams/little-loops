@@ -482,6 +482,7 @@ class LearningTestsConfig:
     """Learning test registry configuration."""
 
     enabled: bool = False
+    auto_prove: bool = True
     stale_after_days: int = 30
     discoverability: DiscoverabilityConfig = field(default_factory=DiscoverabilityConfig)
     release_gate: str = "warn"
@@ -492,6 +493,7 @@ class LearningTestsConfig:
         """Create LearningTestsConfig from dictionary."""
         return cls(
             enabled=data.get("enabled", False),
+            auto_prove=data.get("auto_prove", True),
             stale_after_days=data.get("stale_after_days", 30),
             discoverability=DiscoverabilityConfig.from_dict(data.get("discoverability", {})),
             release_gate=data.get("release_gate", "warn"),

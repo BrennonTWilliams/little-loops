@@ -241,16 +241,29 @@ place as defense-in-depth — it still fires for callers that bypass
 pre-dequeue check and the inner `ll-auto --only` call.
 
 ENH-2431 gave the pre-dequeue gate a way to resolve the block itself instead of
-always dead-ending: with the opt-in `auto_prove_learning_gate` context flag set
-(default off), `check_learning_ready` attempts `ll-learning-tests prove <target>`
-for each unproven target before routing to `mark_learning_blocked` — if proving
-succeeds, the issue proceeds to `check_depth` in the same run. A target that
-still fails proving (or the flag being unset) falls through to
-`mark_learning_blocked` as before, which now tags the failure
-`LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED` (an additive-suffix superset of
-`LEARNING_GATE_BLOCKED_PRE_DEQUEUE`) when a prove attempt was actually made, so
-`failures.txt` distinguishes "tried and still stuck" from "never attempted"
-without changing `report`'s existing tally arithmetic.
+always dead-ending: `check_learning_ready` attempts `ll-learning-tests prove
+<target>` for each unproven target before routing to `mark_learning_blocked` — if
+proving succeeds, the issue proceeds to `check_depth` in the same run. A target
+that still fails proving falls through to `mark_learning_blocked` as before, which
+tags the failure `LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED` (an additive-suffix
+superset of `LEARNING_GATE_BLOCKED_PRE_DEQUEUE`) when a prove attempt was actually
+made, so `failures.txt` distinguishes "tried and still stuck" from "never
+attempted" without changing `report`'s existing tally arithmetic.
+
+**Auto-prove is config-gated (ENH-2487).** Whether the prove attempt fires is
+resolved in three tiers: an explicit per-run `auto_prove_learning_gate` context
+flag wins (any non-empty value except an off token — `0`/`false`/`no`/`off`); with
+no flag it is config-driven — on when `learning_tests.enabled &&
+learning_tests.auto_prove` (`auto_prove` defaults `true`), so a project with the
+Learning Test feature enabled gets self-healing auto-prove by default and can opt
+out per-project with `learning_tests.auto_prove: false`; otherwise off. ENH-2487
+also added the **remediation-path** prove step `prove_rem_learning_gate`: when
+`rn-remediate`'s inner `ll-auto --only` emits `LEARNING_GATE_BLOCKED` (the ENH-2319
+JIT gate) on a target that only surfaced after remediation, that deeper gate makes
+the same config-gated one-attempt prove before `record_learning_gate_blocked`,
+rather than dead-ending. Both gate sites share the identical three-tier resolution
+and `timeout=1800` prove budget, so decomposed children re-entering the pipeline
+get the same behavior at every recursion depth.
 
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring

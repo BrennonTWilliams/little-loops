@@ -955,6 +955,11 @@
           "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via ll-init or /ll:configure.",
           "default": false
         },
+        "auto_prove": {
+          "type": "boolean",
+          "description": "When learning_tests.enabled is true, rn-implement's learning gates (pre-dequeue check_learning_ready and the remediation-path prove_rem_learning_gate) make one `ll-learning-tests prove <target>` attempt before parking an issue on an unproven external-API target. Default true (self-healing); set false to keep the gates check-only for budget-conscious runs. Overridable per-run via the auto_prove_learning_gate context flag (ENH-2487).",
+          "default": true
+        },
         "stale_after_days": {
           "type": "integer",
           "description": "Number of days after which a learning test record is considered stale",

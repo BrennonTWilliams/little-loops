@@ -604,10 +604,15 @@ class TestValidation:
         ENH-2443 added route_rem_manual_review_recommended + mark_blocked_options_missing
         (+2), raising it to 44 — distinguishes "decide had nothing to score even after
         one deposit_options retry" from a genuine human-required decision.
+        ENH-2487 added prove_rem_learning_gate (+1), raising it to 45 — the
+        remediation-path (gate site 2) config-gated auto-prove step, inserted on
+        route_rem_learning_gate's on_yes edge before record_learning_gate_blocked so a
+        target surfaced deep in the pipeline gets the same one-attempt prove that the
+        pre-dequeue check_learning_ready gate does.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 44, f"Expected ≤44 states in orchestrator, got {state_count}"
+        assert state_count <= 45, f"Expected ≤45 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -1020,6 +1025,141 @@ class TestLearningReadyGate:
         assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE_ATTEMPTED" in action
         # Still contains the base tag as a plain (non-attempted) fallback
         assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in action
+
+    # --- ENH-2487: config-gated auto-prove resolution ------------------------
+
+    def test_check_learning_ready_resolves_auto_prove_from_config(self) -> None:
+        """check_learning_ready's prove branch is config-driven: explicit context
+        override wins, else learning_tests.enabled && learning_tests.auto_prove."""
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        # Explicit per-run override token is preserved as the top tier.
+        assert "${context.auto_prove_learning_gate}" in action
+        # Config tier reads the two learning_tests keys from .ll/ll-config.json.
+        assert ".ll/ll-config.json" in action
+        assert '"learning_tests"' in action or "learning_tests" in action
+        assert "auto_prove" in action
+
+
+class TestProveRemLearningGate:
+    """ENH-2487: remediation-path (gate site 2) config-gated auto-prove state."""
+
+    def test_state_exists_and_routes(self) -> None:
+        """prove_rem_learning_gate exists; exit 0 → dequeue_next, non-zero →
+        record_learning_gate_blocked."""
+        data = _load_loop()
+        assert "prove_rem_learning_gate" in data["states"]
+        state = data["states"]["prove_rem_learning_gate"]
+        assert state["action_type"] == "shell"
+        assert state["next"] == "dequeue_next"
+        assert state["on_error"] == "record_learning_gate_blocked"
+
+    def test_route_rem_learning_gate_points_at_prove_state(self) -> None:
+        """route_rem_learning_gate.on_yes goes through the prove step, not straight
+        to record_learning_gate_blocked; on_no is unchanged."""
+        data = _load_loop()
+        router = data["states"]["route_rem_learning_gate"]
+        assert router["on_yes"] == "prove_rem_learning_gate"
+        assert router["on_no"] == "record_failure"
+
+    def test_prove_state_gates_and_proves(self) -> None:
+        """The state resolves auto-prove the same 3-tier way and makes a prove call
+        with its own timeout, mirroring check_learning_ready."""
+        action = _load_loop()["states"]["prove_rem_learning_gate"]["action"]
+        assert "${context.auto_prove_learning_gate}" in action
+        assert ".ll/ll-config.json" in action
+        assert "auto_prove" in action
+        assert '"ll-learning-tests", "prove"' in action
+        assert '"check", t, "--stale-aware"' in action
+        assert "timeout=30" in action
+        assert "timeout=1800" in action
+
+
+class TestCheckLearningReadyConfigReadShell:
+    """ENH-2487 end-to-end: exercise check_learning_ready's config-file-read tier
+    against a stubbed ll-learning-tests (mirrors
+    test_general_task_loop.py::test_falls_back_to_config_test_cmd)."""
+
+    def _run(
+        self, tmp_path: Path, *, config: dict, auto_prove_ctx: str = ""
+    ) -> tuple[int, str, bool]:
+        import json
+        import os
+        import subprocess
+
+        # Issue with an unproven required target.
+        issue_dir = tmp_path / ".issues" / "enhancements"
+        issue_dir.mkdir(parents=True)
+        (issue_dir / "P2-TEST-999-x.md").write_text(
+            "---\nid: TEST-999\nlearning_tests_required: fakepkg\n---\n# TEST-999\n"
+        )
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(config))
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        # Stub ll-learning-tests: check → unproven (exit 1); prove → touch marker + exit 0.
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        stub = bindir / "ll-learning-tests"
+        marker = tmp_path / "prove_called.marker"
+        stub.write_text(
+            "#!/bin/sh\n"
+            f'if [ "$1" = "prove" ]; then touch "{marker}"; exit 0; fi\n'
+            'if [ "$1" = "check" ]; then exit 1; fi\n'
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+
+        action = _load_loop()["states"]["check_learning_ready"]["action"]
+        action = (
+            action.replace("${context.skip_learning_gate}", "")
+            .replace("${context.auto_prove_learning_gate}", auto_prove_ctx)
+            .replace("${captured.input.output}", "TEST-999")
+            .replace("${captured.run_dir.output}", str(run_dir))
+            .replace("$$", "$")  # unescape FSM shell-brace guards
+        )
+
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", action],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+        return result.returncode, result.stdout, marker.exists()
+
+    def test_config_enabled_auto_prove_fires_prove(self, tmp_path: Path) -> None:
+        """learning_tests.enabled + auto_prove true (default) with an empty context
+        flag → the prove branch fires from config alone."""
+        rc, out, prove_called = self._run(
+            tmp_path,
+            config={"learning_tests": {"enabled": True, "auto_prove": True}},
+        )
+        assert rc == 0, out
+        assert prove_called, "prove branch should fire when config gates it on"
+
+    def test_config_auto_prove_false_does_not_prove(self, tmp_path: Path) -> None:
+        """enabled but auto_prove explicitly false → no prove attempt; the gate stays
+        check-only and reports UNPROVEN."""
+        rc, out, prove_called = self._run(
+            tmp_path,
+            config={"learning_tests": {"enabled": True, "auto_prove": False}},
+        )
+        assert not prove_called, "prove must not fire when auto_prove is false"
+        assert "UNPROVEN" in out
+
+    def test_context_override_beats_config(self, tmp_path: Path) -> None:
+        """An explicit off token in the context flag wins over config enabled=true."""
+        rc, out, prove_called = self._run(
+            tmp_path,
+            config={"learning_tests": {"enabled": True, "auto_prove": True}},
+            auto_prove_ctx="0",
+        )
+        assert not prove_called, "explicit off context override must win over config"
 
 
 # ============================================================================

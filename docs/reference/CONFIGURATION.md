@@ -800,6 +800,7 @@ Master switch for the learning test registry feature. When enabled, skills and l
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the learning test registry and `ll-learning-tests` CLI. When disabled, `ll-learning-tests` exits with a message and skills skip proof checks. |
+| `auto_prove` | `bool` | `true` | When `enabled`, `rn-implement`'s learning gates (pre-dequeue `check_learning_ready` **and** the remediation-path `prove_rem_learning_gate`) make one `ll-learning-tests prove <target>` attempt before parking an issue on an unproven external-API target. Set `false` to keep the gates check-only for budget-conscious runs. Overridable per-run via the `auto_prove_learning_gate` context flag (ENH-2487). |
 | `stale_after_days` | `int` | `30` | Days after which a record is considered stale and should be re-validated. |
 | `discoverability.mode` | `str` | `"warn"` | How learning-test gaps are surfaced: `"off"` — silent; `"warn"` — emits a one-line hint and allows the tool call; `"block"` — injects feedback into model context and blocks the `Write`/`Edit`. **Hook behavior**: the `PreToolUse` gate (active for Claude Code; opt-in for Codex/OpenCode) fires on every `Write` or `Edit` call, detects unknown external imports, and consults the registry. |
 | `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Packages whose imports are never flagged by the `PreToolUse` gate. Add internal packages or well-known stdlib re-exports here to suppress false positives. |
@@ -810,6 +811,7 @@ Master switch for the learning test registry feature. When enabled, skills and l
 {
   "learning_tests": {
     "enabled": false,
+    "auto_prove": true,
     "stale_after_days": 30,
     "discoverability": {
       "mode": "warn",

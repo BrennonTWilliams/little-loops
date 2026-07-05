@@ -8992,14 +8992,18 @@ class TestLearningGateConsistency:
 
     def test_rn_implement_routes_learning_gate_before_failure(self, rn_implement: dict) -> None:
         """The env-not-ready router hands off to route_rem_learning_gate, which
-        records the block distinctly and only then falls through to record_failure."""
+        routes a LEARNING_GATE_BLOCKED outcome through prove_rem_learning_gate
+        (ENH-2487 gate-site-2 auto-prove) before recording the block, and only a
+        non-learning outcome falls through to record_failure."""
         assert (
             rn_implement["states"]["route_rem_env_not_ready"]["on_no"] == "route_rem_learning_gate"
         )
         router = rn_implement["states"]["route_rem_learning_gate"]
         assert router["evaluate"]["pattern"] == "LEARNING_GATE_BLOCKED"
         assert "${captured.rem_outcome.output}" in router["evaluate"]["source"]
-        assert router["on_yes"] == "record_learning_gate_blocked"
+        # ENH-2487: on_yes now goes through the config-gated prove step, not straight
+        # to record_learning_gate_blocked.
+        assert router["on_yes"] == "prove_rem_learning_gate"
         assert router["on_no"] == "record_failure"
 
     def test_rn_implement_record_state_tags_and_advances(self, rn_implement: dict) -> None:

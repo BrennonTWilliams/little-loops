@@ -611,6 +611,7 @@ class BRConfig:
             },
             "learning_tests": {
                 "enabled": self._learning_tests.enabled,
+                "auto_prove": self._learning_tests.auto_prove,
                 "stale_after_days": self._learning_tests.stale_after_days,
                 "discoverability": self._learning_tests.discoverability.to_dict(),
             },
