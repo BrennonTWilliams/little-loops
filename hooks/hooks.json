@@ -12,6 +12,17 @@
             "statusMessage": "Loading ll config..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh",
+            "timeout": 15,
+            "statusMessage": "Sweeping stale cross-issue status references..."
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -171,16 +182,6 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh",
             "timeout": 5,
             "statusMessage": "Cleaning up scratch pad..."
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh",
-            "timeout": 15,
-            "statusMessage": "Sweeping stale cross-issue status references..."
           }
         ]
       }

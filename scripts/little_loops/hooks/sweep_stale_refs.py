@@ -1,13 +1,24 @@
-"""SessionEnd hook handler: sweep stale cross-issue status references — FEAT-1680.
+"""``session_end`` hook handler: sweep stale cross-issue status references — FEAT-1680.
 
-Fires at the end of every Claude Code session. Collects all issue IDs with
+Fires once at the start of every Claude Code session (dispatched from the
+``SessionStart`` event — see the note below). Collects all issue IDs with
 ``status: done``, then scans open issue files for prose that still asserts
 those IDs are ``open``, ``in_progress``, or active blockers.  Findings are
 reported via ``LLHookResult.feedback`` (stderr).  When ``hooks.stale_ref_fix``
 is ``"auto"`` in ``ll-config.json``, stale phrases are rewritten in-place.
 
-The handler exits 0 in all cases — it is advisory only and must never block
-session end.
+Originally bound to Claude Code's ``SessionEnd`` event (matching the intent
+name and adapter filename, ``session-end.sh``). Re-homed to ``SessionStart``
+because Claude Code enforces a hard ~1.5s ceiling on ``SessionEnd`` hooks
+before killing them on any exit path (Ctrl+C, Ctrl+D, ``/exit``), regardless
+of the configured ``timeout`` — an unfixed upstream bug
+(anthropics/claude-code#32712, #41577). This handler's full-tree issue scan
+exceeds that ceiling on repos with a few thousand issue files, so it was being
+killed on nearly every exit. The intent name and adapter filename stay
+``session_end``/``session-end.sh`` — only the ``hooks.json`` event binding
+changed.
+
+The handler exits 0 in all cases — it is advisory only and must never block.
 """
 
 from __future__ import annotations

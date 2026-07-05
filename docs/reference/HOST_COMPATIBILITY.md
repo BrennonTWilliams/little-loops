@@ -27,7 +27,7 @@ into `LLHookEvent` payloads.
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` |
 | `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` |
-| `session_end`        | ✓ (`SessionEnd` event → `session_end`) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
+| `session_end`        | ✓ (`SessionStart` event → `session_end`)[^ssend] | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only |
 
@@ -54,6 +54,18 @@ into `LLHookEvent` payloads.
       and `pre_compact`, well below the 200ms target. The
       `UnixSocketTransport` sidecar (viable if p95 ≥ 400ms) is not
       required and remains deferred.
+
+[^ssend]: The `session_end` intent (stale cross-issue-ref sweep, FEAT-1680) is
+    dispatched from Claude Code's `SessionStart` event, not `SessionEnd`. Claude
+    Code enforces a hard ~1.5s ceiling on `SessionEnd` hooks before killing them
+    on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured
+    `timeout` — an unfixed upstream bug (anthropics/claude-code#32712, #41577).
+    The sweep's full-tree issue scan exceeds that ceiling on repos with a few
+    thousand issue files, so it was being killed on nearly every exit. It now
+    runs once at the start of the *next* session instead, with the same
+    detection value and no exit-teardown race. The adapter file and dispatch
+    intent name are unchanged (`session-end.sh` → `session_end`) — only the
+    `hooks.json` event binding moved.
 
 [^postcompact]: Codex's `PostCompact` event has the same payload shape as
     `PreCompact`, but ll's existing `pre_compact` handler performs all

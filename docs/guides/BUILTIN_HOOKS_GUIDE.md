@@ -51,6 +51,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | Event | Hook | What it does | Can block? | Default |
 |-------|------|--------------|:---------:|:-------:|
 | **SessionStart** | session-start | Loads config + local overrides, injects a 7-day project digest, starts history backfill | — | on |
+| **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
@@ -64,7 +65,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
-| **SessionEnd** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
+| **SessionEnd** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 
@@ -77,6 +78,7 @@ Here's what fires during a typical session:
 ```
 You start a session
   → SessionStart: loads config + local overrides, injects project digest
+  → SessionStart (stale refs): reports any open-issue references pointing at issues the previous session marked done
 
 You submit a prompt
   → UserPromptSubmit: optimizes vague prompts; records skill calls and corrections
@@ -99,7 +101,7 @@ Context window fills up (Claude Code fires PreCompact before compacting)
 
 Session ends
   → Stop (cleanup): removes locks, temp files, orphaned worktrees
-  → SessionEnd (stale refs): reports any open-issue references pointing at done issues
+  → SessionEnd (scratch cleanup): prunes dead-PID scratch files
 ```
 
 ---
@@ -138,6 +140,19 @@ Fires once when a Claude Code session begins. It:
 **Gated by:** always loads config; the digest is gated by `history.session_digest.enabled` (default **true**), tunable via `history.session_digest.days` and `history.session_digest.char_cap`.
 
 **You see:** the injected config/digest context, plus a `[little-loops] Config loaded: <path>` line on stderr. Never blocks.
+
+### Sweep stale cross-issue references
+
+**Hook:** `session-end.sh` → `little_loops.hooks.sweep_stale_refs.handle`
+
+Collects every `status: done` issue, then scans open issues for prose that still calls those IDs "open", "in_progress", "active", or "blocked by". Behavior is controlled by `hooks.stale_ref_fix`:
+
+- `report` (default) — lists findings on stderr, edits nothing
+- `auto` — rewrites the stale phrasing in place (e.g. "is open" → "is done")
+
+Runs once, at the start of each session — catching drift left over from the *previous* session's edits. Originally bound to `SessionEnd`, but Claude Code enforces a hard ~1.5s ceiling on `SessionEnd` hooks before killing them on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` — an unfixed upstream bug (anthropics/claude-code#32712, #41577). The sweep's full-tree issue scan exceeds that ceiling on repos with a few thousand issue files, so it was being silently killed (printing `Hook cancelled`) on nearly every exit. Re-homed to `SessionStart`, where there's no forced-kill deadline, with the same detection value.
+
+The dispatch intent stays `session_end` (host-agnostic) and the adapter file is still named `session-end.sh` — only the Claude Code `hooks.json` event binding changed. On Codex, which has no separate `SessionEnd` event, `session_end` is mapped onto its `Stop` event instead (ENH-2105).
 
 ---
 
@@ -300,16 +315,13 @@ Removes this session's lock and context-state files, clears `.loops/tmp/scratch`
 
 Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) — not per turn. Advisory; must never fail.
 
-### Sweep stale cross-issue references
+### Scratch-pad cleanup
 
-**Hook:** `session-end.sh` → `little_loops.hooks.sweep_stale_refs.handle`
+**Hook:** `scratch-cleanup.sh` (pure bash)
 
-Collects every `status: done` issue, then scans open issues for prose that still calls those IDs "open", "in_progress", "active", or "blocked by". Behavior is controlled by `hooks.stale_ref_fix`:
+Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. Always on.
 
-- `report` (default) — lists findings on stderr, edits nothing
-- `auto` — rewrites the stale phrasing in place (e.g. "is open" → "is done")
-
-Always runs; defaults to the non-destructive `report` mode. The dispatch intent stays `session_end` (host-agnostic); on Codex, which has no separate `SessionEnd` event, `session_end` is mapped onto its `Stop` event instead (ENH-2105).
+> Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
 
 ---
 
@@ -393,7 +405,7 @@ A few quick controls:
 | `issues.auto_commit` | PostToolUse | `false` | Auto-commit issue files |
 | `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
-| `hooks.stale_ref_fix` | SessionEnd | `report` | `report` or `auto` |
+| `hooks.stale_ref_fix` | SessionStart | `report` | `report` or `auto` |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).

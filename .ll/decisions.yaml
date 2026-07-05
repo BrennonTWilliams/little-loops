@@ -3931,3 +3931,20 @@
     to forward the flag
   scope: issue
   issue: ENH-2481
+- id: ARCH-174
+  type: rule
+  timestamp: '2026-07-05T16:27:55Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Claude Code enforces an undocumented ~1.5s kill ceiling on SessionEnd
+    hooks regardless of the hook''s configured `timeout` value (confirmed unresolved
+    upstream bug, anthropics/claude-code#32712 and #41577). Any handler whose runtime
+    can approach or exceed that ceiling will be silently killed on exit, producing
+    both a noisy ''Hook cancelled'' error and unreliable completion of the hook''s
+    actual work.'
+  rule: Never bind expensive or data-scaling work to the SessionEnd hook event; use
+    SessionStart or another event instead.
+  enforcement: advisory
+  issue: BUG-2483

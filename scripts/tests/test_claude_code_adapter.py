@@ -89,15 +89,36 @@ class TestClaudeCodeAdapterIntegration:
             f"expected precompact-handoff.sh in a PreCompact command; got {all_commands!r}"
         )
 
-    def test_hooks_json_registers_sweep_under_session_end(self) -> None:
-        """The stale-ref sweep (session-end.sh) must be registered under SessionEnd (BUG-2422).
+    def test_hooks_json_registers_sweep_under_session_start(self) -> None:
+        """The stale-ref sweep (session-end.sh) must be registered under SessionStart.
 
-        FEAT-1680's sweep was originally bound to the ``Stop`` event, which fires
-        at the end of every assistant turn. It should fire once at session
-        termination via the real ``SessionEnd`` event. Modeled on the
-        ``test_hooks_json_has_precompact_handoff`` "second entry in an event
-        array" precedent — the ``SessionEnd`` array also carries BUG-2420's
-        scratch-cleanup handler, so the sweep is appended as a second group.
+        Claude Code enforces a hard ~1.5s ceiling on SessionEnd hooks before
+        killing them on any exit path (Ctrl+C, Ctrl+D, /exit), regardless of the
+        configured ``timeout`` — a confirmed, unfixed upstream bug
+        (anthropics/claude-code#32712, #41577). The sweep's full-tree issue scan
+        exceeds that ceiling on repos with a few thousand issue files, so it was
+        being killed (and printing "Hook cancelled") on nearly every exit. Re-homed
+        to SessionStart — it now runs once at the start of the *next* session
+        instead of racing session teardown, with the same detection value.
+        """
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "SessionStart" in data["hooks"], "hooks.json is missing SessionStart key"
+        ss_cmds = [
+            h["command"]
+            for group in data["hooks"]["SessionStart"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("session-end.sh" in cmd for cmd in ss_cmds), (
+            f"expected session-end.sh in a SessionStart command; got {ss_cmds!r}"
+        )
+
+    def test_hooks_json_session_end_no_longer_references_sweep(self) -> None:
+        """The SessionEnd array must no longer reference session-end.sh (regression).
+
+        After re-homing to SessionStart, the sweep must not race session
+        teardown. The other SessionEnd handler (scratch-cleanup.sh) remains
+        untouched.
         """
         data = json.loads(HOOKS_JSON.read_text())
         assert "SessionEnd" in data["hooks"], "hooks.json is missing SessionEnd key"
@@ -107,27 +128,8 @@ class TestClaudeCodeAdapterIntegration:
             for h in group.get("hooks", [])
             if h.get("type") == "command"
         ]
-        assert any("session-end.sh" in cmd for cmd in se_cmds), (
-            f"expected session-end.sh in a SessionEnd command; got {se_cmds!r}"
-        )
-
-    def test_hooks_json_stop_no_longer_references_sweep(self) -> None:
-        """The Stop array must no longer reference session-end.sh (BUG-2422 regression).
-
-        After re-homing to SessionEnd, the sweep must not fire per-turn via Stop.
-        The other Stop handlers (context-handoff-sentinel.sh, session-cleanup.sh)
-        remain untouched.
-        """
-        data = json.loads(HOOKS_JSON.read_text())
-        assert "Stop" in data["hooks"], "hooks.json is missing Stop key"
-        stop_cmds = [
-            h["command"]
-            for group in data["hooks"]["Stop"]
-            for h in group.get("hooks", [])
-            if h.get("type") == "command"
-        ]
-        assert not any("session-end.sh" in cmd for cmd in stop_cmds), (
-            f"session-end.sh must be removed from the Stop array; got {stop_cmds!r}"
+        assert not any("session-end.sh" in cmd for cmd in se_cmds), (
+            f"session-end.sh must be removed from the SessionEnd array; got {se_cmds!r}"
         )
 
     def test_post_tool_use_default_host_claude_code(self, tmp_path: Path) -> None:
