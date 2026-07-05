@@ -47,6 +47,28 @@ RESUMABLE_STATUSES: frozenset[str] = frozenset({"running", "awaiting_continuatio
 
 logger = logging.getLogger(__name__)
 
+
+def _json_safe_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Return the JSON-serializable subset of *context* (BUG-2485).
+
+    Persisting ``fsm.context`` for resume must never raise inside
+    ``StatePersistence.save_state()`` (which calls a plain ``json.dumps`` with no
+    ``default=``). Any value that cannot round-trip through JSON is dropped and
+    debug-logged, so a stray non-serializable context value degrades gracefully
+    (that key simply isn't restored on resume) instead of crashing the save.
+    """
+    safe: dict[str, Any] = {}
+    for key, value in context.items():
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError):
+            logger.debug(
+                "Dropping non-JSON-serializable context key %r from persisted loop state", key
+            )
+            continue
+        safe[key] = value
+    return safe
+
 _RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
 _INSTANCE_SUFFIX = re.compile(r"-\d{8}T\d{6}$")
 
@@ -216,9 +238,22 @@ class LoopState:
     pid: int | None = None  # OS PID of the process that started this run (for reconciliation sweep)
     reconciled_at: str | None = None  # ISO timestamp when orphaned-running state was auto-flipped
     messages: list[str] = field(default_factory=list)
+    # BUG-2485: full FSM context (positional input, program.md fields, --context
+    # values) so resumed action templates that reference ${context.*} render
+    # correctly. Kept internal to the on-disk state (emitted only when
+    # include_context=True, i.e. the persistence path) so the CLI status/list JSON
+    # contract is unchanged.
+    context: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+    def to_dict(self, include_context: bool = False) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Args:
+            include_context: When True (the on-disk persistence path), emit the
+                JSON-safe ``context`` dict. Defaults to False so CLI-facing
+                serializers (``ll-loop status/list --json``, transport events)
+                keep ``context`` out of their public contract (BUG-2485).
+        """
         result = {
             "loop_name": self.loop_name,
             "current_state": self.current_state,
@@ -251,6 +286,10 @@ class LoopState:
             result["reconciled_at"] = self.reconciled_at
         if self.messages:
             result["messages"] = self.messages
+        if include_context and self.context:
+            safe_context = _json_safe_context(self.context)
+            if safe_context:
+                result["context"] = safe_context
         return result
 
     @classmethod
@@ -301,6 +340,7 @@ class LoopState:
             pid=data.get("pid"),
             reconciled_at=data.get("reconciled_at"),
             messages=data.get("messages", []),
+            context=data.get("context", {}),
         )
 
 
@@ -347,7 +387,9 @@ class StatePersistence:
             state: LoopState to save
         """
         state.updated_at = _iso_now()
-        data = json.dumps(state.to_dict(), indent=2)
+        # include_context=True: this is the on-disk persistence path, which must
+        # carry fsm.context so resume can restore ${context.*} keys (BUG-2485).
+        data = json.dumps(state.to_dict(include_context=True), indent=2)
         tmp_fd, tmp_path = tempfile.mkstemp(dir=self.state_file.parent, suffix=".tmp")
         try:
             with os.fdopen(tmp_fd, "w") as f:
@@ -762,6 +804,7 @@ class PersistentExecutor:
             iteration_count=self._executor._iteration_count,
             pid=self._run_pid,
             messages=list(self._executor.messages),
+            context=dict(self.fsm.context),
         )
         self.persistence.save_state(state)
 
@@ -802,6 +845,7 @@ class PersistentExecutor:
             status=final_status,
             continuation_prompt=self._continuation_prompt,
             accumulated_ms=result.duration_ms,
+            context=dict(self.fsm.context),
         )
         self.persistence.save_state(final_state)
         run_dir_str = self.fsm.context.get("run_dir", "")
@@ -841,6 +885,15 @@ class PersistentExecutor:
         self._executor._edge_revisit_counts = dict(state.edge_revisit_counts)
         self._executor._iteration_count = state.iteration_count
         self._executor.messages = list(state.messages)
+
+        # BUG-2485: restore the persisted FSM context (positional input, program.md
+        # fields, prior --context values) so resumed action templates referencing
+        # ${context.*} render instead of raising "Path 'input' not found in context".
+        # setdefault: anything already on fsm.context (resume-time --context
+        # overrides and re-derived run_dir/input_hash applied by cmd_resume before
+        # this runs) wins over the persisted base.
+        for key, value in state.context.items():
+            self.fsm.context.setdefault(key, value)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.

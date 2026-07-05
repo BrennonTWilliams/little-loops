@@ -3,9 +3,10 @@ id: BUG-2485
 title: '`ll-loop resume` drops `fsm.context` (including `input`), so resumed states
   fail immediately with "Path ''input'' not found in context"'
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-05T21:49:56Z'
+completed_at: '2026-07-05T22:38:16Z'
 discovered_date: '2026-07-05'
 discovered_by: capture-issue
 labels:
@@ -310,25 +311,69 @@ references above were independently verified accurate against current code):_
 
 ## Acceptance Criteria
 
-- [ ] `LoopState` serializes and deserializes `fsm.context` (JSON-safe filtered),
+- [x] `LoopState` serializes and deserializes `fsm.context` (JSON-safe filtered),
       with a `{}` default so pre-existing state files load unchanged.
-- [ ] After `ll-loop stop` + `ll-loop resume`, a state whose action references
+- [x] After `ll-loop stop` + `ll-loop resume`, a state whose action references
       `${context.input}` renders the original input string and does **not** raise
       `Path 'input' not found in context`.
-- [ ] Non-`input` context keys (a `program.md` field and a programmatic
+- [x] Non-`input` context keys (a `program.md` field and a programmatic
       `--context KEY=VALUE`) also survive the stop/resume round-trip.
-- [ ] `--context KEY=VALUE` supplied on the `resume` invocation overrides the
+- [x] `--context KEY=VALUE` supplied on the `resume` invocation overrides the
       restored value for that key.
-- [ ] `run_dir` and `input_hash` remain correct on resume (input_hash now derives
+- [x] `run_dir` and `input_hash` remain correct on resume (input_hash now derives
       from the restored `input`).
-- [ ] A new regression test in `test_fsm_persistence.py` covers the stop →
+- [x] A new regression test in `test_fsm_persistence.py` covers the stop →
       resume → render path and fails against the current code.
+
+## Resolution
+
+**Fixed** — 2026-07-05. `fsm.context` is now persisted and restored as
+first-class runner state.
+
+**JSON-output contract decision:** chose **option 2 (keep it internal)**.
+`LoopState.to_dict()` gained an `include_context: bool = False` parameter; only
+the on-disk persistence path (`StatePersistence.save_state()`) passes
+`include_context=True`, so `ll-loop status`/`list --json` and transport events are
+unchanged. This keeps the fix scoped to persistence/resume with no public
+JSON-contract change (the issue's recommended option).
+
+**Changes:**
+- `scripts/little_loops/fsm/persistence.py`
+  - New module-level `_json_safe_context()` helper — drops (and debug-logs)
+    non-JSON-serializable values so `save_state()`'s plain `json.dumps` never
+    raises. (No pre-existing filter helper existed; wrote one per the refine-issue
+    finding, preferring key-drop over `default=str` so keys round-trip to original
+    types.)
+  - `LoopState` gained `context: dict[str, Any] = field(default_factory=dict)`.
+  - `to_dict(include_context=False)` emits filtered `context` only when requested
+    and non-empty; `from_dict()` reads `data.get("context", {})`.
+  - `save_state()` calls `to_dict(include_context=True)`; `_save_state()` and the
+    `run()` final-state builder pass `context=dict(self.fsm.context)`.
+  - `resume()` restores `self.fsm.context` via `setdefault` (keys already set —
+    resume-time `--context` overrides, re-derived `run_dir`/`input_hash` — win).
+- `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_resume()` seeds
+  `fsm.context` from `state_for_display.context` after `load_loop()` and **before**
+  the `--context` loop and the `run_dir`/`input_hash` re-derivations, so precedence
+  is restored-base → CLI `--context` wins → re-derivations fill/no-op. With `input`
+  restored here, the `input_hash` derivation now works on resume.
+- Tests: new `TestContextPersistence` (8 tests) in `test_fsm_persistence.py`
+  (roundtrip, omitted-when-empty, omitted-by-default, defaults-when-missing,
+  non-serializable-drop, save_state-includes-context, resume-render-regression,
+  precedence) + `test_context_absent_from_status_json` in
+  `test_json_output_contracts.py`.
+- Docs: `docs/reference/API.md` `LoopState` block, `docs/reference/json-output-contracts.md`
+  (BUG-2485 note), `CHANGELOG.md` (`[1.138.1]`).
+
+**Verification:** full suite green — `13739 passed, 27 skipped`; ruff + mypy clean
+on changed source files.
 
 ## Status
 
-**Open** | Created: 2026-07-05 | Priority: P2
+**Done** | Created: 2026-07-05 | Completed: 2026-07-05 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-05T22:38:16Z - `42209f54-f54c-4f75-95c3-22dd47940c1c.jsonl`
+- `/ll:ready-issue` - 2026-07-05T22:25:03 - `b9bcc181-770f-4916-8ef0-3108921d7b89.jsonl`
 - `/ll:confidence-check` - 2026-07-05T22:20:00 - `d9cd216c-efbf-4bc3-b5e8-d7d5ff0e7e50.jsonl`
 - `/ll:wire-issue` - 2026-07-05T22:10:44 - `7dfa9bdf-2d34-4c08-bb7e-aa21b321b95e.jsonl`
 - `/ll:refine-issue` - 2026-07-05T21:57:41 - `3cc1b314-11de-43da-962b-eb4a83fb4e4c.jsonl`

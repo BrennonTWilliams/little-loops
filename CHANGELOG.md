@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing (tracked: ENH-2472)
 - Performance benchmarks for large repositories (tracked: ENH-2473)
 
+## [1.138.1] - 2026-07-05
+
+### Fixed
+
+- **`ll-loop resume` drops `fsm.context` (including `input`), so resumed states
+  fail immediately with "Path 'input' not found in context"** — `LoopState` now
+  persists and restores the full FSM context (positional `input`, `program.md`
+  fields, `--context` values) across stop/resume. Context is kept internal to the
+  on-disk `.state.json` (emitted only via `to_dict(include_context=True)`), so the
+  `ll-loop status`/`list --json` contract is unchanged. `--context` overrides
+  supplied at resume time still win over restored values — (BUG-2485)
+
 ## [1.138.0] - 2026-07-02
 
 ### Added

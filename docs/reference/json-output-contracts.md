@@ -97,6 +97,12 @@ Each state object corresponds to one active or interrupted loop instance.
 | `retry_counts` | object | no | Per-state retry counts (omitted when all zero) |
 | `pid` | integer | no | OS PID of the running process (omitted when not available) |
 
+> **Note (BUG-2485):** the loop's full `fsm.context` (positional `input`,
+> `program.md` fields, `--context` values) is persisted to the on-disk
+> `.state.json` for resume, but is **intentionally omitted from this CLI JSON
+> contract**. `LoopState.to_dict()` emits it only on the persistence path
+> (`include_context=True`), never in `ll-loop status`/`list --json`.
+
 ---
 
 ## `ll-issues list --json`

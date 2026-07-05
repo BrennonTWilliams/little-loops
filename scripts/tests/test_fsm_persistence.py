@@ -2485,6 +2485,188 @@ class TestRateLimitRetriesPersistence:
         assert restored_storm[0] == 2
 
 
+class TestContextPersistence:
+    """BUG-2485: fsm.context (input, program.md fields, --context) survives stop/resume."""
+
+    def test_loop_state_context_roundtrip(self) -> None:
+        """context dict round-trips through to_dict(include_context=True)/from_dict."""
+        state = LoopState(
+            loop_name="ctx-loop",
+            current_state="do_work",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+            context={"input": "Do the distinctive task XYZ", "region": "us"},
+        )
+        restored = LoopState.from_dict(state.to_dict(include_context=True))
+        assert restored.context == {"input": "Do the distinctive task XYZ", "region": "us"}
+
+    def test_loop_state_context_omitted_when_empty(self) -> None:
+        """Empty context is omitted from to_dict even with include_context=True."""
+        state = LoopState(
+            loop_name="ctx-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        assert "context" not in state.to_dict(include_context=True)
+
+    def test_loop_state_context_omitted_by_default(self) -> None:
+        """context is kept internal: default to_dict() (CLI/status path) never emits it."""
+        state = LoopState(
+            loop_name="ctx-loop",
+            current_state="do_work",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+            context={"input": "secret task"},
+        )
+        assert "context" not in state.to_dict()
+
+    def test_loop_state_from_dict_missing_context_defaults_to_empty(self) -> None:
+        """from_dict with no context key (old state file) defaults to {}."""
+        data = {
+            "loop_name": "ctx-loop",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-07-05T10:30:00Z",
+            "updated_at": "",
+            "status": "running",
+        }
+        assert LoopState.from_dict(data).context == {}
+
+    def test_to_dict_drops_non_json_serializable_context_values(self) -> None:
+        """Non-serializable context values are dropped (not raised) so save_state never crashes."""
+        state = LoopState(
+            loop_name="ctx-loop",
+            current_state="do_work",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+            context={"input": "keep me", "bad": object()},
+        )
+        emitted = state.to_dict(include_context=True)["context"]
+        assert emitted == {"input": "keep me"}
+
+    def test_save_state_includes_context(self, tmp_path: Path) -> None:
+        """PersistentExecutor._save_state() persists fsm.context to the state file."""
+        fsm = FSMLoop(
+            name="ctx-persist",
+            initial="do_work",
+            states={
+                "do_work": StateConfig(action="work.sh", on_yes="done", on_no="do_work"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        fsm.context["input"] = "Do the distinctive task XYZ"
+        fsm.context["region"] = "us"
+
+        persistence = StatePersistence("ctx-persist", tmp_path)
+        persistence.initialize()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=MockActionRunner())
+        executor._save_state()
+
+        loaded = persistence.load_state()
+        assert loaded is not None
+        assert loaded.context == {"input": "Do the distinctive task XYZ", "region": "us"}
+
+    def test_resume_restores_context_for_interpolation(self, tmp_path: Path) -> None:
+        """BUG-2485 regression: a resumed state referencing ${context.input} renders the
+        original input rather than raising 'Path 'input' not found in context'."""
+        fsm = FSMLoop(
+            name="ctx-render",
+            initial="do_work",
+            states={
+                "do_work": StateConfig(action='echo "${context.input}"', next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        persistence = StatePersistence("ctx-render", tmp_path)
+        persistence.initialize()
+
+        saved = LoopState(
+            loop_name="ctx-render",
+            current_state="do_work",
+            iteration=2,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-07-05T10:30:00Z",
+            updated_at="",
+            status="running",
+            context={"input": "Do the distinctive task XYZ"},
+        )
+        persistence.save_state(saved)
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
+        result = executor.resume()
+
+        assert result is not None
+        assert len(mock_runner.calls) == 1
+        assert 'echo "Do the distinctive task XYZ"' in mock_runner.calls[0]
+
+    def test_resume_does_not_clobber_preexisting_context(self, tmp_path: Path) -> None:
+        """Keys already present on fsm.context (e.g. resume-time --context overrides,
+        re-derived run_dir) win over the persisted base."""
+        fsm = FSMLoop(
+            name="ctx-precedence",
+            initial="do_work",
+            states={
+                "do_work": StateConfig(action='echo "${context.input}"', next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        # Simulate cmd_resume having applied a --context override before executor.resume().
+        fsm.context["input"] = "OVERRIDE wins"
+
+        persistence = StatePersistence("ctx-precedence", tmp_path)
+        persistence.initialize()
+        persistence.save_state(
+            LoopState(
+                loop_name="ctx-precedence",
+                current_state="do_work",
+                iteration=2,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-07-05T10:30:00Z",
+                updated_at="",
+                status="running",
+                context={"input": "persisted base", "region": "us"},
+            )
+        )
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
+        executor.resume()
+
+        # Override survives; the non-overridden persisted key is still restored.
+        assert 'echo "OVERRIDE wins"' in mock_runner.calls[0]
+        assert fsm.context["region"] == "us"
+
+
 class TestReconcileStaleRuns:
     """Tests for _reconcile_stale_runs() startup sweep (ENH-1399)."""
 

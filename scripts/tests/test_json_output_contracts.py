@@ -220,6 +220,18 @@ class TestLoopStatusJsonContract:
         state = self._make_loop_state()
         assert isinstance(state.to_dict()["accumulated_ms"], int)
 
+    def test_context_absent_from_status_json(self) -> None:
+        """BUG-2485: persisted fsm.context stays internal — the default (CLI-facing)
+        to_dict() must NOT leak 'context' into the ll-loop status/list --json contract,
+        even when the LoopState carries one."""
+        state = self._make_loop_state(context={"input": "distinctive task", "region": "us"})
+        assert "context" not in state.to_dict()
+        # It IS emitted on the on-disk persistence path (include_context=True).
+        assert state.to_dict(include_context=True)["context"] == {
+            "input": "distinctive task",
+            "region": "us",
+        }
+
     def test_continuation_prompt_present_when_awaiting(self) -> None:
         """'continuation_prompt' key is present in to_dict() when status is awaiting_continuation."""
         state = self._make_loop_state(

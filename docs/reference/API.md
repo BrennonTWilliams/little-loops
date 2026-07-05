@@ -5129,6 +5129,14 @@ class LoopState:
     started_at: str                       # ISO timestamp
     updated_at: str                       # Last update timestamp
     status: str                           # running, completed, failed, interrupted
+    continuation_prompt: str | None       # Handoff context (awaiting_continuation)
+    accumulated_ms: int                   # Total elapsed ms across segments (resume offset)
+    retry_counts: dict[str, int]          # Per-state retry tracking
+    messages: list[str]                   # Emitted loop messages
+    context: dict[str, Any]               # Full FSM context (input, program.md, --context);
+                                          # persisted for resume (BUG-2485). Kept out of the
+                                          # CLI status/list --json contract: to_dict() emits it
+                                          # only when include_context=True (the on-disk path).
 ```
 
 #### StatePersistence

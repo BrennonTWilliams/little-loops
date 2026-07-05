@@ -482,6 +482,16 @@ def cmd_resume(
     except FileNotFoundError:
         loop_path = None
 
+    # BUG-2485: restore the persisted FSM context as the base so resumed states
+    # that reference ${context.input} (or any program.md / prior --context key)
+    # render correctly. Seeded before the --context loop and the run_dir/input_hash
+    # re-derivations below, giving precedence: --context CLI overrides win, then
+    # re-derivations fill/no-op, over this restored base. With input restored here,
+    # the input_hash derivation at the bottom of this block now works on resume.
+    if state_for_display is not None and state_for_display.context:
+        for key, value in state_for_display.context.items():
+            fsm.context[key] = value
+
     for kv in getattr(args, "context", None) or []:
         if "=" not in kv:
             raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
