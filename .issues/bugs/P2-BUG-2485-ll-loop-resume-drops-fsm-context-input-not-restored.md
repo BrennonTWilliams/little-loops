@@ -13,6 +13,12 @@ labels:
 - loop-runner
 - persistence
 - resume
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-2485: `ll-loop resume` drops `fsm.context` (including `input`), so resumed states fail immediately
@@ -157,6 +163,41 @@ one-off `input` patch:
 - `scripts/little_loops/fsm/schema.py` — `FSMLoop.input_key` (default `"input"`);
   the persisted context key is `fsm.input_key`, not hardcoded `"input"`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/info.py` — **serializes `LoopState.to_dict()`
+  directly** into `ll-loop status --json` / `ll-loop list --json`
+  (`print_json([s.to_dict() for s in states])`). Because the fix emits `context`
+  from `to_dict()` (truthiness-gated), the restored context dict will now **leak
+  into CLI JSON output**. This is a design decision the issue does not yet
+  resolve — see "JSON-output contract decision" below. [Agent 1/2 finding]
+- `scripts/little_loops/session_store.py` — `_backfill_loops()` `json.loads()`s
+  every `.state.json` but reads only `loop_name`/`current_state`/`updated_at` via
+  `.get()`; the new `context` key is silently ignored — **no change needed, FYI
+  only**. [Agent 2 finding]
+- `scripts/little_loops/fsm/__init__.py` — exports `LoopState` /
+  `PersistentExecutor` / `StatePersistence`; no new symbol is added, so **no
+  change needed**. [Agent 1 finding]
+
+### JSON-output contract decision (added by `/ll:wire-issue`)
+
+The Proposed Solution emits `context` from `LoopState.to_dict()` whenever
+non-empty. `cli/loop/info.py` feeds `to_dict()` straight into the documented
+`ll-loop status --json` / `ll-loop list --json` contract, so restored context
+(including the full `input` string and any `--context` values) becomes
+**user-visible CLI JSON**. Implementer must choose one:
+
+1. **Document it** — add a `context` row to the field table in
+   `docs/reference/json-output-contracts.md` and accept it in the public
+   contract. (Simplest; exposes possibly-large/verbose context in status output.)
+2. **Keep it internal** — persist `context` in the `.state.json` on-disk state
+   but strip it from the CLI-facing dict path (e.g. an `info.py`-side filter or a
+   `to_dict(include_context=False)` param), so resume works without changing the
+   status JSON contract.
+
+Recommendation: option 2 keeps the fix scoped to persistence/resume and avoids a
+public JSON-contract change, but either is acceptable — the choice must be made
+explicitly, not by accident.
+
 ### Tests
 
 - `scripts/tests/test_fsm_persistence.py` — add a regression test: start a loop
@@ -166,6 +207,52 @@ one-off `input` patch:
   `Path 'input' not found in context`.
 - Follow the existing `test_signal_interrupted_loop_can_be_resumed` fixture
   pattern in the same file for the stop/resume harness.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_loop_lifecycle.py` — **coverage gap to close.**
+  `test_input_hash_injected_via_cmd_resume` (`:843-871`) fully **mocks
+  `PersistentExecutor`** and manually sets `mock_fsm.context = {"input": ...}`
+  before calling `cmd_resume` — so it assumes `input` is already present and
+  **structurally cannot catch BUG-2485**. Every `TestCmdResume*` class here mocks
+  the executor, so none exercises a real `.state.json` → `resume()` round-trip.
+  The new regression test therefore belongs in `test_fsm_persistence.py` (real,
+  non-mocked executor), not here. Optionally add a `cmd_resume`-level test that
+  does NOT mock the restore path. [Agent 3 finding]
+- `scripts/tests/test_json_output_contracts.py` — `TestLoopStatusJsonContract` /
+  `_make_loop_state()` / `REQUIRED_FIELDS` consume `LoopState(**defaults)` and
+  `to_dict()`. Safe against the new field (default `dict`; `REQUIRED_FIELDS` uses
+  subset containment, not strict key-set match — verified no `to_dict() == {...}`
+  full-dict assertion exists anywhere). If option 1 of the JSON-contract decision
+  is chosen, add a `context` assertion here; if option 2, assert `context` is
+  **absent** from the status-JSON dict. [Agent 2/3 finding]
+- `scripts/tests/test_ll_loop_commands.py` — constructs `LoopState(...)` directly
+  at 4 sites; won't break (new field defaults) but never sets/asserts `context`.
+  No change required. [Agent 2 finding]
+- **New-field test trio (confirmed pattern):** model on the `rate_limit_retries`
+  dict-field tests — roundtrip (`test_fsm_persistence.py:2276`), omitted-when-empty
+  (`:2358`), defaults-when-missing (`:2374`) — plus the save+resume pair
+  `test_save_state_includes_rate_limit_retries` (`:2391`) /
+  `test_resume_restores_rate_limit_retries` (`:2425`), which exercise the real
+  `_save_state()` write path that currently omits `context`. The render-path
+  regression should mirror `test_resume_preserves_captured_for_interpolation`
+  (`:1626-1683`) with `action='echo "${context.input}"'`. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `#### LoopState` field-list code block; add a
+  `context` row (block is already stale — also missing `accumulated_ms`,
+  `retry_counts`, `continuation_prompt`). [Agent 2 finding]
+- `docs/reference/json-output-contracts.md` — `## ll-loop status --json` example
+  + field-reference table; update per the JSON-output contract decision above
+  (add `context` row, or note it is intentionally omitted). [Agent 2 finding]
+- `docs/generalized-fsm-loop.md` — `### State Persistence` illustrative
+  `.state.json` example; optional — could show `input`/`context` restoration
+  (currently shows none). [Agent 2 finding]
+- `skills/debug-loop-run/SKILL.md` — Step 1 enumerates `LoopState` JSON fields for
+  agent consumption; partial/curated subset, optional update. [Agent 2 finding]
+- `CHANGELOG.md` — add an entry under a concrete `## [X.Y.Z] - DATE` section (not
+  `[Unreleased]`, per project convention). [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -242,5 +329,7 @@ references above were independently verified accurate against current code):_
 **Open** | Created: 2026-07-05 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-05T22:20:00 - `d9cd216c-efbf-4bc3-b5e8-d7d5ff0e7e50.jsonl`
+- `/ll:wire-issue` - 2026-07-05T22:10:44 - `7dfa9bdf-2d34-4c08-bb7e-aa21b321b95e.jsonl`
 - `/ll:refine-issue` - 2026-07-05T21:57:41 - `3cc1b314-11de-43da-962b-eb4a83fb4e4c.jsonl`
 - `/ll:capture-issue` - 2026-07-05T21:49:56Z - `17c6e3c5-bec4-4376-b614-0e3210a85cab.jsonl`
