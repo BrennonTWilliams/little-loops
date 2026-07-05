@@ -3875,37 +3875,59 @@
   type: decision
   timestamp: '2026-07-03T12:00:00Z'
   category: scope
-  labels: [codex, host-compat, epic-1463-tail]
-  rationale: 'EPIC-1463 is 23/30 done; its value is delivered. ENH-2105 was filed
-    as a track-or-close placeholder for a deferred stop/session_end intent on the
-    Codex adapter. No user demand materialized in the month it sat at P5 and no
-    other issue depends on it. Closing rather than carrying dead placeholder weight
-    in the backlog.'
-  rule: 'Close ENH-2105 (cancelled): Codex stop/session_end deferred intent stays unwired unless demand appears'
+  labels:
+  - codex
+  - host-compat
+  - epic-1463-tail
+  rationale: EPIC-1463 is 23/30 done; its value is delivered. ENH-2105 was filed as
+    a track-or-close placeholder for a deferred stop/session_end intent on the Codex
+    adapter. No user demand materialized in the month it sat at P5 and no other issue
+    depends on it. Closing rather than carrying dead placeholder weight in the backlog.
+  rule: 'Close ENH-2105 (cancelled): Codex stop/session_end deferred intent stays
+    unwired unless demand appears'
   scope: issue
   issue: ENH-2105
 - id: SCOPE-041
   type: decision
   timestamp: '2026-07-03T12:00:00Z'
   category: scope
-  labels: [codex, host-compat, epic-1463-tail]
+  labels:
+  - codex
+  - host-compat
+  - epic-1463-tail
   rationale: 'Same EPIC-1463 tail cleanup: FEAT-1719 (wire PostCompact intent for
-    Codex) is a P5 parity nicety with no dependents and no demand since capture.
-    If Codex parity work resumes it will be re-scoped from current adapter state
-    anyway.'
-  rule: 'Close FEAT-1719 (cancelled): Codex PostCompact intent not worth carrying as backlog'
+    Codex) is a P5 parity nicety with no dependents and no demand since capture. If
+    Codex parity work resumes it will be re-scoped from current adapter state anyway.'
+  rule: 'Close FEAT-1719 (cancelled): Codex PostCompact intent not worth carrying
+    as backlog'
   scope: issue
   issue: FEAT-1719
 - id: SCOPE-042
   type: decision
   timestamp: '2026-07-03T12:00:00Z'
   category: scope
-  labels: [codex, host-compat, epic-1463-tail]
+  labels:
+  - codex
+  - host-compat
+  - epic-1463-tail
   rationale: 'ENH-2124 is research into Codex permission-skip / tool-allowlist gaps.
     Unlike the two cancelled tail items it retains option value: the research feeds
-    any future Codex-hosted automation hardening (and neighbors FEAT-2123, which
-    stays open). Deferred rather than cancelled; revisit if/when Codex host work
-    is scheduled.'
+    any future Codex-hosted automation hardening (and neighbors FEAT-2123, which stays
+    open). Deferred rather than cancelled; revisit if/when Codex host work is scheduled.'
   rule: 'Defer ENH-2124: revisit when Codex host-parity work is next scheduled'
   scope: issue
   issue: ENH-2124
+- id: ARCHITECTURE-102
+  type: decision
+  timestamp: '2026-07-04T21:23:13Z'
+  category: architecture
+  labels: []
+  rationale: compute_epic_progress already returns the full transitive descendant
+    set; existing direct-only i.get('parent')/issue.parent == filter silently skips
+    grandchildren through done intermediates. Investigation confirmed no caller relies
+    on direct-only semantics (goal-cluster, rn-build want transitive; EPIC-1853 was
+    the original scoped). Reuse compute_epic_progress; do NOT write a new chain walker.
+  rule: Make ll-issues list --parent transitive globally; rewire prompt-across-issues
+    to forward the flag
+  scope: issue
+  issue: ENH-2481
