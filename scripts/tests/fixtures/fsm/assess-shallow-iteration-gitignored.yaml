@@ -1,0 +1,19 @@
+name: assess-shallow-iteration-gitignored
+description: "Iteratively build run artifacts under a gitignored run directory until quality threshold is met"
+initial: process
+context:
+  run_dir: ".loops/runs/${run_id}"
+  quality_threshold: 80
+max_iterations: 50
+states:
+  process:
+    action_type: prompt
+    action: "Process the data under ${context.run_dir} and improve quality."
+    evaluate:
+      type: diff_stall
+      command: "diff ${context.run_dir}/prev.json ${context.run_dir}/current.json"
+    on_yes: done
+    on_no: process
+    on_error: process
+  done:
+    terminal: true

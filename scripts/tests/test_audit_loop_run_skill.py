@@ -523,6 +523,114 @@ class TestAssessLoopSkill:
         # → both patterns co-located for discoverability
 
     # ------------------------------------------------------------------
+    # BUG-2482: gitignored run-dir fallback for shallow-iteration heuristic
+    # ------------------------------------------------------------------
+
+    def test_shallow_iteration_gitignored_fixture_validates(self) -> None:
+        fsm, _ = load_and_validate(FIXTURES_DIR / "assess-shallow-iteration-gitignored.yaml")
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, f"FSM errors: {[str(e) for e in error_list]}"
+
+    def test_shallow_iteration_gitignored_fixture_uses_run_dir(self) -> None:
+        """Primary artifact path is context.run_dir — the gitignored-path case."""
+        spec = self._load_fixture("assess-shallow-iteration-gitignored.yaml")
+        context = spec.get("context", {})
+        assert "run_dir" in context
+        assert ".loops/runs" in context["run_dir"]
+        # → mirrors the default gitignored run-directory root (.gitignore:80)
+
+    def test_shallow_iteration_skill_step4_lists_run_dir_context_key(self) -> None:
+        """Step 4's path-like context key scan list includes context.run_dir."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step4_start = content.index("## Step 4:")
+        step5_start = content.index("## Step 5:")
+        step4_section = content[step4_start:step5_start]
+        assert "context.run_dir" in step4_section, (
+            "Step 4 must list context.run_dir as a candidate path-like context key"
+        )
+
+    def test_shallow_iteration_skill_step55_checks_gitignore(self) -> None:
+        """Step 5.5 must check git check-ignore before trusting a git-diff-derived AUX_MUTATION_COUNT of 0."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step55_start = content.index("## Step 5.5:")
+        step56_start = content.index("## Step 5.6:")
+        step55_section = content[step55_start:step56_start]
+        assert "git check-ignore" in step55_section, (
+            "Step 5.5 must check git check-ignore against the primary artifact path"
+        )
+
+    def test_shallow_iteration_skill_step55_has_filesystem_fallback(self) -> None:
+        """Step 5.5 must fall back to a filesystem mutation scan when the primary path is gitignored."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step55_start = content.index("## Step 5.5:")
+        step56_start = content.index("## Step 5.6:")
+        step55_section = content[step55_start:step56_start]
+        assert "find" in step55_section and "-newermt" in step55_section, (
+            "Step 5.5 must use 'find ... -newermt' as the GNU filesystem fallback"
+        )
+        assert "-newer" in step55_section and "touch -d" in step55_section, (
+            "Step 5.5 must document a BSD find fallback (touch -d marker + find -newer)"
+        )
+
+    def test_shallow_iteration_skill_step55_documents_unknown_outcome(self) -> None:
+        """Step 5.5 must report 'unknown' (not a false 0) when neither git nor filesystem evidence exists."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step55_start = content.index("## Step 5.5:")
+        step56_start = content.index("## Step 5.6:")
+        step55_section = content[step55_start:step56_start]
+        assert "unknown" in step55_section.lower(), (
+            "Step 5.5 must document the 'unknown' outcome when no mutation evidence is available"
+        )
+
+    def test_shallow_iteration_verdict_table_admits_unknown(self) -> None:
+        """Step 6b Verdict Table's Shallow-iteration check field must admit 'unknown'."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        idx = step6_section.index("Shallow-iteration check")
+        line = step6_section[idx : idx + 200]
+        assert "unknown" in line, (
+            "Step 6b's Shallow-iteration check field must admit 'unknown' alongside "
+            "warning | corroborated | clear"
+        )
+
+    def test_shallow_iteration_final_report_admits_unknown(self) -> None:
+        """Final Report's Shallow-iteration check line must admit 'unknown'."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        final_report_start = content.index("## Final Report")
+        final_report_section = content[final_report_start:]
+        idx = final_report_section.index("Shallow-iteration check")
+        line = final_report_section[idx : idx + 200]
+        assert "unknown" in line, (
+            "Final Report's Shallow-iteration check line must admit 'unknown' alongside "
+            "warning | corroborated | clear"
+        )
+
+    def test_shallow_iteration_guide_documents_gitignore_fallback(self) -> None:
+        """HARNESS_OPTIMIZATION_GUIDE.md shallow-iteration row must note the gitignored-path fallback."""
+        guide_path = (
+            Path(__file__).parent.parent.parent
+            / "docs"
+            / "guides"
+            / "HARNESS_OPTIMIZATION_GUIDE.md"
+        )
+        content = guide_path.read_text()
+        shallow_pos = content.lower().find("shallow-iteration")
+        assert shallow_pos != -1
+        row_section = content[shallow_pos : shallow_pos + 2000]
+        assert "git check-ignore" in row_section or "gitignore" in row_section.lower(), (
+            "shallow-iteration guide row must mention the gitignore-aware fallback (BUG-2482)"
+        )
+
+    # ------------------------------------------------------------------
     # ENH-2290: auto-scale --tail to run size
     # ------------------------------------------------------------------
 

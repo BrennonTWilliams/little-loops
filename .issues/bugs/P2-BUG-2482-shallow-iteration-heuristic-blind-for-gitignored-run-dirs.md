@@ -3,8 +3,9 @@ id: BUG-2482
 title: Shallow-iteration heuristic blind for gitignored run dirs
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-05T16:11:47Z'
+completed_at: '2026-07-05T17:06:55Z'
 discovered_date: '2026-07-05'
 discovered_by: capture-issue
 parent: EPIC-2087
@@ -51,6 +52,24 @@ run's working directory — instead of relying on `git diff HEAD`, which is
 structurally blind to that path. The heuristic should only report
 `AUX_MUTATION_COUNT == 0` when there is actually no auxiliary file activity,
 not merely when git can't see it.
+
+## Steps to Reproduce
+
+1. Run a loop whose primary artifact/working directory lives under a
+   gitignored path (e.g. `.loops/runs/<run_id>/...`, the default run-directory
+   root per `.gitignore:80`) and that performs more than 30
+   `action_complete` events while writing real auxiliary files under that
+   directory (e.g. a multi-round divergence loop with several states per
+   round).
+2. Run `/ll:audit-loop-run` against that loop's run.
+3. In Step 5.5 ("Shallow-Iteration Check"), observe that `AUX_MUTATION_COUNT`
+   is computed solely from `git diff HEAD` (`skills/audit-loop-run/SKILL.md`
+   lines 201-235), which never sees files under the gitignored path.
+4. Observe: `AUX_MUTATION_COUNT` is reported as `0` and, combined with
+   `TOOL_CALL_COUNT > 30`, the loop is flagged `warning`/`corroborated`
+   shallow-iteration even though it built substantial auxiliary structure —
+   the check cannot distinguish "wrote nothing" from "git can't see what was
+   written."
 
 ## Motivation
 
@@ -239,12 +258,34 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Added a `git check-ignore <primary_path>` check to `skills/audit-loop-run/SKILL.md`
+Step 5.5 before trusting `git diff HEAD` for `AUX_MUTATION_COUNT`. When the
+primary artifact path is gitignored, the heuristic now falls back to a
+filesystem mutation scan (`find <run_dir> -newermt "<run_start_ts>"` on GNU
+find, with a `touch -d` marker + `find -newer` fallback for BSD find/macOS),
+anchored on the run's start timestamp. When neither git nor filesystem
+evidence is available, `AUX_MUTATION_COUNT` is reported as `unknown` and the
+heuristic result routes to `unknown` (skipped) rather than a false `warning`.
+
+Also: added `context.run_dir` to Step 4's path-like context-key scan list;
+extended the `<warning | corroborated | clear>` enum to `<warning |
+corroborated | clear | unknown>` in both Step 6b's Verdict Table and the
+Final Report template; documented the fallback in
+`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s shallow-iteration row; added a
+regression fixture (`assess-shallow-iteration-gitignored.yaml`) and 9 new
+tests in `test_audit_loop_run_skill.py` covering the fallback prose, the
+`unknown` enum extension, and the guide update.
+
 ## Status
 
-**Open** | Created: 2026-07-05 | Priority: P2
+**Done** | Created: 2026-07-05 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-05T17:06:55Z - `367d18b6-8a2a-4468-95cf-eb32b980c7cf.jsonl`
+- `/ll:ready-issue` - 2026-07-05T16:54:00 - `1128bb92-952c-43d3-b070-85db523edd34.jsonl`
 - `/ll:confidence-check` - 2026-07-05T17:05:00 - `7b7e7ece-95fa-4269-a0f1-eb2209e6586a.jsonl`
 - `/ll:wire-issue` - 2026-07-05T16:40:06 - `b9b7d4ce-a68c-4359-b3ee-bab4e80e6241.jsonl`
 - `/ll:confidence-check` - 2026-07-05T16:30:45 - `ed0af048-0f6a-4637-a24d-a7563d4c8d1a.jsonl`

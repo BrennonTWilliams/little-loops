@@ -157,7 +157,7 @@ If no contract entries are found, note: "No threshold contract detected — loop
 
 Identify artifact paths the loop touches. Look in:
 
-1. `context.prompt_file`, `context.system_file`, `context.output_file` and similar path-like context keys
+1. `context.prompt_file`, `context.system_file`, `context.output_file`, `context.run_dir` and similar path-like context keys
 2. State `action` text for file path patterns (`prompts/`, `data/`, `.issues/`, `image.svg`, `manifest.json`, `examples.json`)
 
 For each identified artifact path, check mutation evidence:
@@ -204,14 +204,34 @@ Using the history loaded in Step 2 and the artifact evidence from Step 4, run th
 
 **1. Count tool calls**: Count the number of `action_complete` events in the loaded history. Call this `TOOL_CALL_COUNT`.
 
-**2. Identify auxiliary mutations**: From the `git diff HEAD` evidence collected in Step 4, list all files that were created or modified and are **not** in the primary artifact path set (the paths identified in Step 4: `context.prompt_file`, `context.output_file`, and similar path-like context keys). Call this count `AUX_MUTATION_COUNT`.
+**2. Identify auxiliary mutations**: Before trusting `git diff HEAD`, check whether the primary artifact path (or the run's working directory, e.g. `context.run_dir`) is gitignored:
+
+```bash
+git check-ignore <primary_path>
+```
+
+- **Not ignored** (exit code 1, or no primary path is under version control at all): use the `git diff HEAD` evidence collected in Step 4 as before — list all files that were created or modified and are **not** in the primary artifact path set (the paths identified in Step 4: `context.prompt_file`, `context.output_file`, `context.run_dir`, and similar path-like context keys). Call this count `AUX_MUTATION_COUNT`.
+- **Ignored** (exit code 0): `git diff HEAD` is structurally blind to this path, so a `git`-derived `AUX_MUTATION_COUNT` of `0` cannot be trusted. Fall back to a filesystem mutation scan scoped to the run's working directory, anchored on the run-start timestamp (`events[0].ts` from the history loaded in Step 2):
+
+  ```bash
+  # GNU find (Linux) — accepts an ISO timestamp string directly
+  find <run_dir> -type f -newermt "<run_start_ts>"
+
+  # BSD find (macOS default) — -newermt is unsupported; use a touched marker file instead
+  touch -d "<run_start_ts>" /tmp/run_start_marker && find <run_dir> -type f -newer /tmp/run_start_marker
+  ```
+
+  Count the resulting file list as `AUX_MUTATION_COUNT`.
+- **Neither signal available** (e.g. the run directory has already been cleaned up): do not default to `0`. Report `AUX_MUTATION_COUNT` as `unknown` and route the heuristic result to `unknown` in step 4 below (skip the warning rather than asserting a false positive).
 
 **3. Check for diff_stall corroboration**: Scan `evaluate` events in the history. For each, check whether the resolved FSM (loaded in Step 2) has `evaluate.type == "diff_stall"` for that state and the recorded `verdict` is `"stall"` or `"no"`. Call this `DIFF_STALL_PRESENT` (true/false).
 
 **4. Apply threshold** (default threshold: 30):
 
 ```
-IF TOOL_CALL_COUNT > 30 AND AUX_MUTATION_COUNT == 0:
+IF AUX_MUTATION_COUNT == "unknown":
+  result = "unknown"          # no git or filesystem evidence available — skip, don't guess
+ELIF TOOL_CALL_COUNT > 30 AND AUX_MUTATION_COUNT == 0:
   IF DIFF_STALL_PRESENT:
     result = "corroborated"   # both heuristic and diff_stall agree
   ELSE:
@@ -291,7 +311,7 @@ Output the structured scorecard block:
 **Contract**: <threshold keys and values, or "none detected">
 **Artifacts checked**: <list of paths and mutation status>
 **Phase 1 signals**: <fault signal count from Step 5, or "none">
-**Shallow-iteration check**: `<warning | corroborated | clear>` (<TOOL_CALL_COUNT> tool calls, <AUX_MUTATION_COUNT> auxiliary mutations)
+**Shallow-iteration check**: `<warning | corroborated | clear | unknown>` (<TOOL_CALL_COUNT> tool calls, <AUX_MUTATION_COUNT> auxiliary mutations)
 **Verdict**: `<met | phantom | honest-failure | partial | degraded>`
 
 **Rationale**: <one paragraph explaining the verdict>
@@ -400,7 +420,7 @@ Assessment complete for loop: <loop_name>
 Verdict: `<met | phantom | honest-failure | partial | degraded>`
 Rubric audit: <N evaluators checked, M flagged — or "skipped (--no-rubric-audit)">
 Laundering check: <N sub-loop states checked, M flagged — or "no sub-loop states">
-Shallow-iteration check: `<warning | corroborated | clear>` (<N> tool calls, <M> auxiliary mutations — or "below threshold")
+Shallow-iteration check: `<warning | corroborated | clear | unknown>` (<N> tool calls, <M> auxiliary mutations — or "below threshold")
 Issues created: <N>
 ```
 
