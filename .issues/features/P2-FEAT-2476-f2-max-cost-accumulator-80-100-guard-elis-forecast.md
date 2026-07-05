@@ -137,6 +137,20 @@ The dominant precedent is **A1** — `host_guard.py` is the structural twin and 
 
 The codebase has **zero** existing ELIS / OLS / WLS implementations; this is greenfield. B1 is dominant.
 
+#### Codebase Research Findings (refine pass 2026-07-05)
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Better B1 template found**: `scripts/little_loops/issue_history/summary.py:171-196`
+  `_calculate_trend(values: list[float]) -> str` already performs a one-line
+  linear regression via stdlib **`statistics.linear_regression(range(n),
+  values).slope`** (Python 3.11+, no scipy/numpy) — normalizes slope by
+  average value, buckets into increasing/decreasing/stable. This is a closer
+  precedent for `ELISForecast.fit()/.predict()` than `stats.py:wilson_ci()`
+  (which is Wilson-interval math, not regression); use `_calculate_trend`'s
+  `statistics.linear_regression` call as the primary template and
+  `wilson_ci` only for the dataclass/guard-clause shape.
+
 #### Decision C — Config schema placement (per-state overhead keys)
 
 - The issue's step 4 lists `cost_ceiling_per_state` / `cost_warn_at` on the loop YAML schema. **Sibling ENH-2477 owns these schema keys** (per `ENH-2477` § Current Behavior line 24-30; insertion target `schema.py:457`). FEAT-2476's `_validate_cost_limits` should validate the per-state overrides only if ENH-2477 lands first; otherwise, defer. Recommended: place the F2 fields only on `FSMLoop` top-level (`budget_accumulator: BudgetAccumulatorConfig` at `schema.py:1018-1020`, mirroring `host_guard`).
@@ -486,6 +500,32 @@ pinning an implementer needs to act without grepping. Replace the implicit
     config table), `docs/reference/API.md:62` (`fsm.budget` module entry),
     `docs/ARCHITECTURE.md` ("Token cost layer" subsection).
 
+#### Codebase Research Findings (refine pass 2026-07-05) — anchor corrections
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 6 anchor is wrong-file, not just drifted**: the resume-subparser
+  registration for `--max-cost` (mirroring `add_handoff_threshold_arg` /
+  `add_context_limit_arg`) lives in **`scripts/little_loops/cli/loop/__init__.py:280,
+  464`**, not `scripts/little_loops/cli/loop/lifecycle.py`. `lifecycle.py`
+  only contains `cmd_resume`'s *runtime* handoff-threshold env logic
+  (lines 507-513) — no subparser/argparse registration. This same wrong-file
+  reference also appears in this issue's Acceptance Criteria ("Resume
+  parity") and Related Key Documentation table rows — all three should read
+  `cli/loop/__init__.py`, not `lifecycle.py`, for the registration anchor.
+  `lifecycle.py:503-504` (the `no_host_guard` override mirror) remains a
+  correct anchor for the *runtime* `max_cost` override alongside resume.
+- **Step 9 anchor drifted**: `validate_fsm()` itself starts at **line 980**
+  in `scripts/little_loops/fsm/validation.py`, not 1038. Lines 1038-1060 is
+  inside the per-state validation loop body, not the function signature —
+  find the dispatcher's existing `_validate_host_guard(...)` call site
+  (search within the function body, not at the literal 1038-1060 offset)
+  and append `_validate_cost_limits(...)` alongside it.
+- **Minor drift, no action needed**: `KNOWN_TOP_LEVEL_KEYS` frozenset closes
+  at line ~218-219, not 200 (opening line 174 is still correct); the
+  `run_foreground()` completion-print block is lines 1601-1618, not
+  1605-1616. Both still land in the same functions/blocks described.
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by the wiring research and must be
@@ -580,10 +620,12 @@ discovered during research:
   followed by `ll-loop resume` preserves the ceiling; absence is silently dropped
   if `_helpers.py:1313-1379` isn't updated.
 - **Resume parity**: `ll-loop resume --max-cost=...` accepts the same flag
-  (registration at `cli/loop/lifecycle.py:280, 464-465`).
+  (registration at `cli/loop/__init__.py:280, 464` — corrected from
+  `lifecycle.py`, which has no subparser registration; runtime override
+  application is at `cli/loop/lifecycle.py:503-504`).
 - **JSON schema round-trip**: loop YAMLs declaring `budget_accumulator:` pass
-  `ll-loop validate`; `validate_fsm()` warns when `max_cost_usd < 0` or
-  `warn_at ∉ [0, 1]` (`fsm/validation.py:1038-1060`).
+  `ll-loop validate`; `validate_fsm()` (defined at `fsm/validation.py:980`)
+  warns when `max_cost_usd < 0` or `warn_at ∉ [0, 1]`.
 - **OTel attribute**: on completion, `OTelTransport` surfaces
   `total_cost_usd` (rounded to 4 dp) as a span attribute when present
   (`transport.py:462-477`).
@@ -641,8 +683,9 @@ needs. Add these rows (corrected and additional):
 | `scripts/little_loops/cli/loop/run.py:122-164` | CLI override application — add `max_cost` mirror at `:133-134` |
 | `scripts/little_loops/cli/loop/_helpers.py:30-38` | `EXIT_CODES` — add `"cost_budget_exceeded": 1` |
 | `scripts/little_loops/cli/loop/_helpers.py:1313-1379` | `run_background` re-exec — forward `--max-cost` (mirror `max_iter:1319`) |
-| `scripts/little_loops/cli/loop/_helpers.py:1605-1616` | `run_foreground` completion — print ELIS forecast line |
-| `scripts/little_loops/cli/loop/lifecycle.py:280, 464-465` | Resume subparser — register `--max-cost` |
+| `scripts/little_loops/cli/loop/_helpers.py:1601-1618` | `run_foreground` completion — print ELIS forecast line (corrected from 1605-1616) |
+| `scripts/little_loops/cli/loop/__init__.py:280, 464` | Resume subparser — register `--max-cost` (corrected: not `lifecycle.py`, which has no subparser registration) |
+| `scripts/little_loops/cli/loop/lifecycle.py:503-504` | Resume path — apply `max_cost` runtime override alongside `no_host_guard` mirror |
 | `scripts/little_loops/cli/loop/_helpers.py:1652-1714` | `_print_usage_summary` — read-only consumer (no changes) |
 | `scripts/little_loops/transport.py:462-477` | `_handle_loop_complete` — surface `total_cost_usd` OTel attribute |
 | `scripts/little_loops/fsm/types.py:24-27` | `ExecutionResult.terminated_by` — extend docstring with `"cost_budget_exceeded"` |
@@ -674,6 +717,7 @@ needs. Add these rows (corrected and additional):
 **Open** | Created: 2026-07-04 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-05T05:28:38 - `0dd2f4a0-5634-48f9-b6d1-6c46f2d01c58.jsonl`
 - `/ll:decide-issue` - 2026-07-05T05:19:14 - `24fd5b80-284c-4979-a68e-8175dca88a5f.jsonl`
 - `/ll:wire-issue` - 2026-07-05T05:03:44 - `e2c32cf7-41b3-4238-8159-397c566f5606.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:53:57 - `8c12fca6-38f6-4c73-9351-ad9e1a4928e3.jsonl`

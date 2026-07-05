@@ -16,6 +16,10 @@ labels:
   - streaming
   - fsm
   - tier-1
+decision_needed: false
+learning_tests_required:
+  - anthropic
+  - phoenix
 ---
 
 # FEAT-2478: F5 — OTel `gen_ai.usage.*` emission
@@ -152,6 +156,89 @@ rollups match raw `result`-event `usage` totals row-for-row.
   default `true`; `observability.streaming_parity.check` default
   `true`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (locator +
+analyzer + pattern-finder):_
+
+- **Line-correction (Current Behavior refs)**: The captured line refs
+  are off by ~80 lines — verified by `codebase-analyzer`:
+  - `scripts/little_loops/fsm/executor.py` cache-token aggregation
+    lives at **1382–1392** inside `FSMExecutor._run_action()` (not
+    1295–1305; that range is the `_route_with_interceptors`
+    before/after-route plumbing, not token aggregation).
+  - `scripts/little_loops/subprocess_utils.py` UsageEvent capture is
+    at **449–470** inside the `result` branch of the selector loop
+    (not 462–465 only); the `TokenUsage` dataclass is at **44–52**.
+- **`scripts/little_loops/observability/` does not exist yet** — both
+  `tracing.py` and a sibling `__init__.py` must be created in the
+  same PR. The `__init__.py` should expose `OTelAttributes`,
+  `StampUsageEvent`, `StreamingParityChecker`.
+- **`correlation_id` does not exist** in `fsm/executor.py` — the only
+  `uuid4()` precedent in the codebase is
+  `scripts/little_loops/cli/loop/run.py:332` (`entry_id =
+  str(uuid.uuid4())` for queue-entry filenames). `gen_ai.invocation.id`
+  should mirror this exact pattern: `str(uuid.uuid4())`, declared
+  once at process entry, threaded through.
+- **`usage_event` table does not exist in `history.db`** —
+  `scripts/little_loops/session_store.py` is at `SCHEMA_VERSION = 18`;
+  no `usage_events` migration yet (that's the
+  **ENH-2461** work item). F5's "emit shaped rows into `history.db`"
+  wording depends on ENH-2461 landing first or in the same release —
+  this is currently a soft prerequisite, not a hard one in the
+  Acceptance Criteria.
+- **No `host.vendor()` accessor exists** — `HostRunner.name`
+  (`scripts/little_loops/host_runner.py:154, 215`) yields
+  `"claude-code"`/`"codex"`/`"opencode"`/`"pi"`/`"gemini"`/`"omp"`,
+  but no runner→vendor mapping (`anthropic`/`openai`/`google`/etc.)
+  exists. F5 needs a small `_VENDOR_BY_RUNNER: dict[str, str]` table
+  (or a `vendor` property on the `HostRunner` Protocol) to populate
+  `gen_ai.provider.vendor`.
+- **Streaming-vs-blocking test cannot run in production** — the
+  `anthropic` SDK is **not** imported anywhere in `scripts/little_loops/`
+  today; F1 (FEAT-2476) brings it in. The parity test must be a
+  test-only harness gated on `importlib.util.find_spec("anthropic")`,
+  wrapped per the `_HAS_OTEL_SDK` skipif pattern at
+  `scripts/tests/test_transport.py:1`.
+- **`OTelTransport` already runs but does not currently emit
+  `gen_ai.*`** — `scripts/little_loops/transport.py:338`
+  (`OTelTransport` class) handles `action_complete` only as a
+  span-end signal (`_handle_action_complete` at line 457-460);
+  `_add_span_event` (line 479-484) is the natural hook. F5 can layer
+  the `gen_ai.*` attrs onto the action span by extending
+  `_handle_action_complete` (or by adding `action_complete` to
+  `_OTEL_EVENT_TYPES` and letting `_add_span_event` carry the attrs).
+- **`action_complete` JSON Schema** locks the four-token + model
+  shape (`scripts/little_loops/generate_schemas.py:129-150`); the
+  locked golden is `docs/reference/schemas/action_complete.json`
+  (guarded by `scripts/tests/test_generate_schemas.py:151-154`).
+  Adding `gen_ai.usage.*` / `gen_ai.invocation.id` /
+  `gen_ai.provider.vendor` to the payload requires running
+  `ll-generate-schemas` and updating the golden + the
+  `test_action_complete_schema` test.
+- **GROUP BY precedent for `cost_attribution()`** —
+  `history_reader.summarize_skills` (`scripts/little_loops/history_reader.py:472`)
+  is the closest analog: read-only `sqlite3.connect(... mode=ro,
+  uri=True)`, mandatory `try / except sqlite3.Error / finally
+  conn.close()` block returning `list[dict]`, `conn.row_factory =
+  sqlite3.Row` access. Mirror that shape for `cost_attribution()`.
+- **`OTelEventsConfig` config dataclass pattern** —
+  `scripts/little_loops/config/features.py:727` (`OTelEventsConfig`,
+  embedded in `EventsConfig` at line 776) shows the `from_dict`
+  factory + simple `@dataclass` + `data.get(key, default)` defaults
+  convention; the new `ObservabilityConfig` (with
+  `otel_attributes.enabled` + `streaming_parity.check`) should
+  parallel it. Add to `scripts/little_loops/__init__.py` exports
+  (line 47-54, `__all__` at line 95) and
+  `scripts/little_loops/config/__init__.py` exports (line 60, 104).
+- **Top-level exports**: extend `scripts/little_loops/__init__.py`
+  (and `__all__`) with the new helpers; placement alphabetically next
+  to `OTelTransport`.
+- **Phoenix test gating precedent**: `_HAS_OTEL_SDK` + `_HAS_HTTPX`
+  skipif guards at `scripts/tests/test_transport.py:1`. The Phoenix
+  fixture should be guarded by a sibling `_HAS_PHOENIX` skipif rather
+  than `pytest.importorskip` per-call (consistent style).
+
 ## Implementation Steps
 
 1. Land **ENH-2475** (DES audit) first — required prerequisite
@@ -165,6 +252,30 @@ rollups match raw `result`-event `usage` totals row-for-row.
 8. Coordinate lock: attribute name mappings to **ENH-2461**
    persistence layer
 9. `python -m pytest scripts/tests/` exits 0
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — line refs in steps 2-5 above reflect the
+captured values, but the analyzer verified the actual sites:_
+
+- **Step 2** (stamping): call the new `StampUsageEvent.usage_event()`
+  inside `subprocess_utils.run_claude_command()` at the
+  `on_usage_detailed(TokenUsage(...))` site — lines **458–470** of the
+  `result` event branch (not 462–465 only).
+- **Step 3** (CLI UUID): `uuid4()` decl should sit at the very top of
+  `cli_event_context()` in `scripts/little_loops/cli/loop/__init__.py`
+  (around line 24), then be passed into `cmd_run(...)` explicitly —
+  `cli_event_context()` yields nothing, so the wrapped block has no
+  other access to the ID. Alternative: store the minted UUID on
+  `cli_events` (extend the v8 migration DDL) and look it up via the
+  connection inside the wrapped block.
+- **Step 5** (`cost_attribution()`): mirror
+  `history_reader.summarize_skills` (`scripts/little_loops/history_reader.py:472-519`)
+  for read-only sqlite connection + `try/except/finally` shape; also
+  add a `_row_to_dataclass` mapping for the typed variant.
+- **Test verification**: run `python -m pytest scripts/tests/test_subprocess_utils.py scripts/tests/test_transport.py scripts/tests/test_generate_schemas.py -v` — these three cover stamp site,
+  OTelTransport sink, and locked schema golden respectively. Full
+  gate is `python -m pytest scripts/tests/` for step 9.
 
 ## Acceptance Criteria
 
@@ -212,5 +323,6 @@ rollups match raw `result`-event `usage` totals row-for-row.
 **Open** | Created: 2026-07-04 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-05T01:49:47 - `f22b122e-50d0-4242-97ef-9097cef10d32.jsonl`
 
 - `/ll:capture-issue` - 2026-07-04T20:05:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a4ee548-94b7-4694-b8c1-49e3f31cc127.jsonl`
