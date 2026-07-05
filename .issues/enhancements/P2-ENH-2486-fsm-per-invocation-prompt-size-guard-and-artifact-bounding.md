@@ -184,10 +184,26 @@ or propagate:_
 
 ### Part B — general-task artifact bounding
 
-- `scripts/little_loops/loops/general-task.yaml` — `check_done` (`:286-336`,
+- `scripts/little_loops/loops/general-task.yaml` — `check_done` (`:285-336`,
   embeds `${captured.work_result.output}` + `${captured.selected_step.output}`,
   reads `dod.md`/`plan.md`) and `continue_work` (`:535+`, appends remediation).
   Bound *what is re-embedded per iteration*; keep the file-based state mechanism.
+
+_Added by `/ll:refine-issue` — prior-art the implementer should reuse, not rediscover:_
+
+- **The Sample Verification accumulation problem is already acknowledged in-YAML.**
+  The `shell` gate at `general-task.yaml:401-408` carries an explicit comment:
+  "Sample Verification sections accumulate across iterations and are free-form LLM
+  prose that re-emits historical FAILEDs, which permanently poisons the count." Its
+  mitigation is *counting-side only* — it drops `FAILED_SAMPLES` from the pass/fail
+  gate (`:397-400`, `TOTAL` excludes it) because `HARD/SOFT_UNCHECKED_DOD` +
+  `final_verify` already gate authoritatively. **It does NOT bound the prose itself**,
+  so `check_done`'s prompt still re-embeds the monotonically growing DoD file each
+  iteration. Part B's remaining work is exactly the *prompt-embedding* side this gate
+  left untouched: cap/summarize the accumulated `## Sample Verification` prose (and/or
+  the full `${captured.*.output}`) before re-embedding. The existing comment is the
+  design rationale to cite; the `awk '/^## Sample Verification/ {...}'` extractor at
+  `:384-388` is the reusable section-scoping idiom for a bounding pass.
 
 ### Documentation
 
@@ -379,6 +395,7 @@ _Added by `/ll:confidence-check` on 2026-07-05_
   changes so the parity touchpoints in Integration Map don't diverge mid-implementation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-05T23:19:26 - `16932d7f-537c-4651-bb66-9b343a2b22f2.jsonl`
 - `/ll:decide-issue` - 2026-07-05T22:55:36 - `976b8aed-cb56-4d7d-82b3-5b22833d5918.jsonl`
 - `/ll:confidence-check` - 2026-07-05T23:00:00 - `39618ae6-5700-4f66-8f16-0412c1c26178.jsonl`
 - `/ll:wire-issue` - 2026-07-05T22:45:51 - `efa03064-1a5b-4099-8035-a96c38ff99fc.jsonl`
