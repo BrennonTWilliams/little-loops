@@ -3,16 +3,16 @@ id: ENH-2473
 title: Performance benchmarks for large repositories
 type: ENH
 priority: P4
-status: open
-captured_at: "2026-07-03T00:00:00Z"
+status: deferred
+captured_at: '2026-07-03T00:00:00Z'
 discovered_date: 2026-07-03
 discovered_by: capture-issue
 parent: EPIC-1812
 relates_to: []
 labels:
-  - performance
-  - benchmarks
-  - captured
+- performance
+- benchmarks
+- captured
 ---
 
 # ENH-2473: Performance benchmarks for large repositories

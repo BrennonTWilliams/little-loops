@@ -3,17 +3,17 @@ id: ENH-2472
 title: Windows compatibility testing
 type: ENH
 priority: P4
-status: open
-captured_at: "2026-07-03T00:00:00Z"
+status: deferred
+captured_at: '2026-07-03T00:00:00Z'
 discovered_date: 2026-07-03
 discovered_by: capture-issue
 parent: EPIC-1967
 relates_to: []
 labels:
-  - testing
-  - windows
-  - portability
-  - captured
+- testing
+- windows
+- portability
+- captured
 ---
 
 # ENH-2472: Windows compatibility testing
