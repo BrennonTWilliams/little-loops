@@ -48,6 +48,17 @@
             "statusMessage": "Recording tool use..."
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/edit-batch-nudge.sh",
+            "timeout": 5,
+            "statusMessage": "Nudging edit batching..."
+          }
+        ]
       }
     ]
   }

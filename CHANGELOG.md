@@ -20,6 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing (tracked: ENH-2472)
 - Performance benchmarks for large repositories (tracked: ENH-2473)
 
+## [1.139.0] - 2026-07-05
+
+### Added
+
+- **Tier 0 token-cost behavioral quick-wins** — four infrastructure-free
+  techniques from EPIC-2456 that cut avoidable token cost on every loop run — (FEAT-2470):
+  - **Verbatim-output rule** appended to the six audit skills (`audit-loop-run`,
+    `audit-claude-config`, `audit-docs`, `audit-issue-conflicts`, `review-epic`,
+    `review-loop`) so findings quote evidence verbatim instead of re-summarizing.
+    `audit-issue-conflicts`'s rule lives in a `verbatim-output.md` companion (500-line cap).
+  - **Edit-batch nudge** — a `PostToolUse` hook (`edit_batch_nudge`, matcher
+    `Edit|Write|MultiEdit`) that injects a batch-your-edits reminder into the
+    model's context (exit 2), cutting edit round-trips. On by default; mirrored to Codex.
+  - **`little_loops.output.parse`** — stop-sequence / prefill JSON output helpers
+    (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost.
+  - **`little_loops.output_cleaner`** — anti-event + duplicate-window pre-filter
+    (`filter_output`) that trims progress-bar/spinner/duplicate noise from tool/log output.
+
 ## [1.138.1] - 2026-07-05
 
 ### Fixed

@@ -295,6 +295,10 @@ little-loops/
         ├── extension.py             # Extension protocol, loader, and reference implementation
         ├── testing.py               # Offline LLTestBus test harness for extension development
         ├── output_parsing.py        # Shared output parsing (ll-auto, ll-parallel)
+        ├── output_cleaner.py        # Anti-event + duplicate-window tool/log pre-filter (FEAT-2470)
+        ├── output/                  # Stop-sequence / prefill JSON output helpers (FEAT-2470)
+        │   ├── __init__.py
+        │   └── parse.py             # extract_between_tags, parse_prefilled_json
         ├── parallel/
         │   ├── __init__.py
         │   ├── orchestrator.py

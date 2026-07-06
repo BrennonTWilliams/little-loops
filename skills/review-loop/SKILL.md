@@ -442,3 +442,18 @@ Works well with:
 - `ll-loop validate <name>` — Quick schema validation without quality checks
 - `ll-loop show <name>` — Inspect states and transitions visually
 - `ll-loop simulate <name>` — Trace execution without running actions
+
+---
+
+## Output Evidence Contract (verbatim-output rule)
+
+When this skill emits an audit finding, verdict, or scorecard, cite evidence
+verbatim rather than re-summarizing — quoting is cheaper than paraphrasing and
+keeps the audit auditable:
+
+IMPORTANT: For each condition you evaluate:
+1. State your verdict: Yes / No / Partial
+2. Provide a VERBATIM quote from the output that supports your verdict (exact text, in quotes)
+3. If you cannot quote specific text, your verdict is automatically No (or Partial if context suggests partial progress)
+
+Do not assert a verdict without evidence. "The task appears complete" is not evidence.

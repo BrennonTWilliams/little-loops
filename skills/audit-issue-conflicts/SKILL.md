@@ -490,3 +490,7 @@ All changes staged in {{config.issues.base_dir}}/
 - `/ll:align-issues` — Validates issues against project goals
 - `/ll:map-dependencies` — Traces blocked_by relationships
 - `/ll:refine-issue` — Fills knowledge gaps in a single issue
+
+## Output Evidence Contract
+
+See [verbatim-output.md](verbatim-output.md) — cite conflict evidence with exact quotes, not paraphrase.

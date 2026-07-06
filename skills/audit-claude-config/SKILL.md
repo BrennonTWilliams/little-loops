@@ -468,3 +468,18 @@ When generating the final audit report, read the template format from [report-te
 
 - [wave1-prompts.md](wave1-prompts.md) - Verbatim Wave-1 sub-agent prompt bodies (Tasks 1-3) and the recognized-settings-key reference table.
 - [report-template.md](report-template.md) - Final audit report template populated in Phase 7.
+
+---
+
+## Output Evidence Contract (verbatim-output rule)
+
+When this skill emits an audit finding, verdict, or scorecard, cite evidence
+verbatim rather than re-summarizing — quoting is cheaper than paraphrasing and
+keeps the audit auditable:
+
+IMPORTANT: For each condition you evaluate:
+1. State your verdict: Yes / No / Partial
+2. Provide a VERBATIM quote from the output that supports your verdict (exact text, in quotes)
+3. If you cannot quote specific text, your verdict is automatically No (or Partial if context suggests partial progress)
+
+Do not assert a verdict without evidence. "The task appears complete" is not evidence.

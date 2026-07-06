@@ -377,6 +377,37 @@ class TestHooksMainModule:
         assert result.stdout == ""
         assert result.stderr == ""
 
+    def test_dispatch_edit_batch_nudge_happy_path(self, tmp_path) -> None:
+        """``edit_batch_nudge`` intent exits 2 with a batching reminder on an Edit call (FEAT-2470).
+
+        The handler returns ``exit_code=2`` for Edit/Write/MultiEdit so the
+        nudge is injected into the model's context; the CLI dispatcher writes
+        the feedback to stderr and propagates the exit code.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
+            input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "/tmp/x"}}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 2, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert "batch" in result.stderr.lower()
+
+    def test_dispatch_edit_batch_nudge_passthrough(self, tmp_path) -> None:
+        """``edit_batch_nudge`` exits 0 with no feedback for a non-edit tool (FEAT-2470)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
+            input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert result.stderr == ""
+
     def test_dispatch_session_end_happy_path(self, tmp_path) -> None:
         """``session_end`` intent runs the handler and exits 0 (no config in tmp dir).
 

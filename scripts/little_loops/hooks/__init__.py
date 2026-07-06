@@ -24,6 +24,8 @@ exits with the handler's exit code. Today it routes:
 
 - ``pre_tool_use`` → :mod:`little_loops.hooks.pre_tool_use` (active for Claude Code via hooks.json Write|Edit matcher; opt-in for Codex/OpenCode)
 
+- ``edit_batch_nudge`` → :mod:`little_loops.hooks.edit_batch_nudge` (PostToolUse Edit|Write|MultiEdit matcher; injects an edit-batching reminder)
+
 - ``session_end`` -> :mod:`little_loops.hooks.sweep_stale_refs`
 
 Future intent handlers will be wired by adding entries to the dispatch table
@@ -50,7 +52,7 @@ __all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
 _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
     "Available intents: pre_compact, pre_compact_handoff, session_start, user_prompt_submit,"
-    " post_tool_use, pre_tool_use, session_end"
+    " post_tool_use, pre_tool_use, edit_batch_nudge, session_end"
 )
 
 _HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
@@ -73,6 +75,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
     # Imported lazily to avoid a top-level circular import surface and keep
     # the module import cost minimal for callers that only need the types.
     from little_loops.hooks import (
+        edit_batch_nudge,
         post_tool_use,
         pre_compact,
         pre_compact_handoff,
@@ -90,6 +93,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         "user_prompt_submit": user_prompt_submit.handle,
         "post_tool_use": post_tool_use.handle,
         "pre_tool_use": pre_tool_use.handle,
+        "edit_batch_nudge": edit_batch_nudge.handle,
     }
     # Built-ins shadow extension-provided intents on collision.
     return {**_HOOK_INTENT_REGISTRY, **built_ins}

@@ -1,11 +1,12 @@
 ---
 id: FEAT-2470
-title: Tier 0 token-cost behavioral quick-wins (P6 verbatim-output, edit-batch
-  hook, LogCleaner filter, JSON output helpers)
+title: Tier 0 token-cost behavioral quick-wins (P6 verbatim-output, edit-batch hook,
+  LogCleaner filter, JSON output helpers)
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-03T00:00:00Z'
+completed_at: 2026-07-06 03:46:47+00:00
 discovered_date: 2026-07-03
 discovered_by: scope-epic
 parent: EPIC-2456
@@ -322,11 +323,50 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 - ~~Open decision on edit-batch nudge severity~~ — resolved by `/ll:decide-issue` on 2026-07-05: `exit_code=2`. See Decision Rationale below.
 - ~~Open decision on Codex mirror~~ — resolved by `/ll:decide-issue` on 2026-07-05: mirror the matcher to Codex. See Decision Rationale below.
 
+## Resolution
+
+_Implemented 2026-07-06 via `/ll:manage-issue`._
+
+All four Tier 0 techniques shipped and covered by tests:
+
+- **P1 edit-batch nudge** — `scripts/little_loops/hooks/edit_batch_nudge.py`
+  (`handle` returns `LLHookResult(exit_code=2, feedback=…)` for Edit/Write/MultiEdit).
+  Registered in `hooks/__init__.py` `_dispatch_table`/`_USAGE`/docstring; adapter
+  `hooks/adapters/claude-code/edit-batch-nudge.sh` + `hooks.json` PostToolUse entry
+  (matcher `Edit|Write|MultiEdit`); mirrored to Codex
+  (`scripts/little_loops/hooks/adapters/codex/{hooks.json,edit-batch-nudge.sh}`).
+  Tests: `test_edit_batch_hook.py` (direct handler) + `test_dispatch_edit_batch_nudge_*`
+  in `test_hook_intents.py` (subprocess CLI parity).
+- **JSON output helpers** — new `scripts/little_loops/output/` package
+  (`__init__.py` + `parse.py`) with `extract_between_tags()` (stop-sequence recipe)
+  and `parse_prefilled_json()` (prefill + `rfind('{')` recipe), `(value, error)`
+  tuple convention. Tests: `test_json_output_parse.py`.
+- **LogCleaner filter** — `scripts/little_loops/output_cleaner.py` (`filter_output()`:
+  anti-event regex drop + duplicate-window collapse + blank-run collapse).
+  Tests: `test_output_cleaner.py`.
+- **P6 verbatim-output rule** — appended to 5 audit skills inline
+  (`audit-loop-run`, `audit-claude-config`, `audit-docs`, `review-epic`,
+  `review-loop`); extracted to companion `skills/audit-issue-conflicts/verbatim-output.md`
+  for the 500-line-capped `audit-issue-conflicts` (registered in
+  `test_enh494_skill_companions.py::EXPECTED_COMPANIONS`).
+- **Docs** — `BUILTIN_HOOKS_GUIDE.md` (count 6→7 + table row + subsection),
+  `API.md` (module index + `output.parse`/`output_cleaner` sections),
+  `ARCHITECTURE.md` (package tree), `CHANGELOG.md` (`## [1.139.0] - 2026-07-06`).
+
+**Verification**: `python -m pytest scripts/tests/` — 13814 passed, 27 skipped;
+the only 4 failures (`test_ll_logs.py::TestEvalExport`) are pre-existing and
+environmental (session-folder layout), reproduced identically on clean HEAD with
+these changes stashed. `ruff check` + `mypy` clean on all new/modified modules.
+`ll-verify-skills` passes (all SKILL.md ≤ 500 lines). ENH-2490 (haiku pin) remains
+deferred as scoped.
+
 ## Status
 
-**Open** | Created: 2026-07-03 | Priority: P2
+**Done** | Created: 2026-07-03 | Completed: 2026-07-06 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-06T03:46:47Z - `9c935e94-18e7-467b-bda1-264dfaf3e567.jsonl`
+- `/ll:ready-issue` - 2026-07-06T03:22:32 - `69e9a7ec-4858-4dfe-81bd-6a46ec87f45e.jsonl`
 - `/ll:wire-issue` - 2026-07-06T02:41:20 - `62c0c907-3593-4d1b-87a9-f657ad8778bf.jsonl`
 - `/ll:confidence-check` - 2026-07-05T00:00:00Z - `17c6e3c5-bec4-4376-b614-0e3210a85cab.jsonl`
 - `/ll:refine-issue` - 2026-07-05T21:47:34 - `f7bc5213-6675-4897-a8b4-82cd276c9c72.jsonl`

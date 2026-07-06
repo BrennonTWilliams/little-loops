@@ -22,6 +22,7 @@ SKILL_LINE_LIMIT = 500
 
 # Companion files extracted (or already present) for the skills trimmed by ENH-494.
 EXPECTED_COMPANIONS = [
+    SKILLS_DIR / "audit-issue-conflicts" / "verbatim-output.md",
     SKILLS_DIR / "audit-claude-config" / "wave1-prompts.md",
     SKILLS_DIR / "confidence-check" / "rubric.md",
     SKILLS_DIR / "debug-loop-run" / "reference.md",

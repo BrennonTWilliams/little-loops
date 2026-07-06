@@ -62,6 +62,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
 | **PostToolUse** | check-duplicate-issue-id-post | Deletes a just-written duplicate issue file (TOCTOU guard) | exit 2 | on |
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
+| **PostToolUse** | edit-batch-nudge | Nudges batching independent edits after an Edit/Write/MultiEdit | exit 2 | on |
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
@@ -239,7 +240,7 @@ Never blocks (always advisory, exit 0). Gated by `learning_tests.enabled` (defau
 
 ## PostToolUse
 
-Six hooks run after each tool call.
+Seven hooks run after each tool call.
 
 ### Tool & file analytics
 
@@ -290,6 +291,18 @@ If enabled, stages and commits issue-file changes (matching `P[0-5]-(BUG|FEAT|EN
 - `issues.auto_commit_prefix` (default `chore(issues)`)
 
 Never blocks.
+
+### Edit-batch nudge
+
+**Hook:** `edit-batch-nudge.sh` → `little_loops.hooks.edit_batch_nudge.handle`
+
+After an `Edit`, `Write`, or `MultiEdit` call, injects a short reminder to batch
+independent edits into a single turn (parallel `Edit`/`Write` calls, or
+`MultiEdit` for one file) rather than one edit per turn — fewer round-trips means
+less avoidable token cost re-reading the conversation prefix. Returns exit 2 so
+the reminder reaches the model's context (a Tier 0 token-cost quick-win from
+EPIC-2456). Fires for the three edit tools only; all other tools pass through. On
+by default; the matcher is host-agnostic and mirrored to Codex.
 
 ---
 

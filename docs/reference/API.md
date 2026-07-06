@@ -65,6 +65,8 @@ pip install -e "./scripts[dev]"
 | `little_loops.sprint` | Sprint planning and execution |
 | `little_loops.issue_template` | Issue template assembly for sync pull (v2.0-compliant markdown from per-type section files) |
 | `little_loops.output_parsing` | Claude CLI output parsing utilities used by `issue_manager` and `parallel` |
+| `little_loops.output.parse` | Stop-sequence / prefill JSON output helpers (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost |
+| `little_loops.output_cleaner` | Anti-event + duplicate-window pre-filter (`filter_output`) that trims tool/log noise before it enters context |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 
 ---
@@ -3025,6 +3027,68 @@ Both `ll-auto` and `ll-parallel` use `parse_ready_issue_output()` but handle res
 | **UNKNOWN verdict** | Logs and proceeds | Returns error with output snippet for debugging |
 | **CLOSE handling** | Validates "invalid_ref" reason, checks file path | Generic handling via WorkerResult flags |
 | **File validation** | Validates path with fallback retry | None (relies on worktree isolation) |
+
+### JSON Output Helpers
+
+Stop-sequence / prefill recipes for bounding the *output* tokens an LLM spends
+emitting structured data (FEAT-2470, EPIC-2456 Tier 0). Located at
+`little_loops.output.parse`. Both return a `(value, error)` tuple — the same
+convention as `output_parsing.extract_tagged_json` (BUG-2383); neither swallows,
+so callers must surface `error` when `value is None`.
+
+#### extract_between_tags
+
+```python
+def extract_between_tags(start_tag: str, end_tag: str, raw: str) -> tuple[str | None, str | None]
+```
+
+Extract the text between `start_tag` and `end_tag`. Pairs with the **stop-sequence**
+recipe: set `end_tag` as the model's stop sequence so generation halts the instant
+the payload is complete. Tolerates a missing `end_tag` (returns the remainder after
+`start_tag`). Returns `(None, error)` only when `start_tag` is absent.
+
+#### parse_prefilled_json
+
+```python
+def parse_prefilled_json(raw: str) -> tuple[Any | None, str | None]
+```
+
+Parse a JSON object from prefilled output. Pairs with the **prefill** recipe
+(seed the assistant turn with `{`). Tries a verbatim parse first, then falls back
+to the `rfind('{')` recipe — scanning from the last `{` to its matching `}` via a
+string-aware bracket-depth walk — so leading fragments or trailing prose don't
+break it.
+
+```python
+from little_loops.output.parse import extract_between_tags, parse_prefilled_json
+
+payload, err = extract_between_tags("<json>", "</json>", raw_output)
+verdict, err = parse_prefilled_json(raw_output)  # raw begins with "{"
+```
+
+### Output Cleaner
+
+Anti-event + duplicate-window pre-filter (FEAT-2470, EPIC-2456 technique [25])
+that trims avoidable token cost from tool/log output before it enters the model's
+context. Located at `little_loops.output_cleaner`.
+
+#### filter_output
+
+```python
+def filter_output(raw: str, *, dup_threshold: int = 1) -> str
+```
+
+Strips ANSI, drops **anti-event** lines (tqdm/ascii progress bars, spinner frames,
+pytest-xdist worker chatter), and collapses **duplicate windows** — runs of
+consecutive identical lines become a single line plus a `… (repeated N×)` marker
+once the run exceeds `dup_threshold`. Consecutive blank lines collapse to one.
+Trailing-newline presence is preserved.
+
+```python
+from little_loops.output_cleaner import filter_output
+
+trimmed = filter_output(noisy_pytest_stdout)
+```
 
 ### MergeCoordinator
 
