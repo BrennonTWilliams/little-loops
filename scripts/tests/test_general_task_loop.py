@@ -261,10 +261,25 @@ class TestChange5DoWorkCapture:
 class TestChange6CheckDoneDeltaAware:
     """Change 6 (ENH-1671): check_done.action scopes verification to the most recent step."""
 
-    def test_check_done_references_captured_work_result(self, raw_data: dict) -> None:
+    def test_check_done_reads_bounded_marker_files_not_full_captures(self, raw_data: dict) -> None:
+        # ENH-2486: check_done must recover LAST_STEP / LAST_FILES from the small
+        # bounded marker files (current-step.txt, last-files.txt) rather than
+        # re-embedding the full select_step / do_work captured stdout, which grows
+        # with each implementation turn and balloons the prompt over a long run.
         action = raw_data["states"]["check_done"]["action"]
-        assert "captured.work_result.output" in action, (
-            "check_done.action must reference captured.work_result.output for LAST_FILES delta context"
+        assert "current-step.txt" in action, (
+            "check_done.action must read LAST_STEP from the bounded current-step.txt marker file"
+        )
+        assert "last-files.txt" in action, (
+            "check_done.action must read LAST_FILES from the bounded last-files.txt marker file"
+        )
+        assert "captured.work_result.output" not in action, (
+            "check_done.action must NOT re-embed the full captured.work_result.output "
+            "(ENH-2486: bound the re-embedded artifact via the marker file instead)"
+        )
+        assert "captured.selected_step.output" not in action, (
+            "check_done.action must NOT re-embed the full captured.selected_step.output "
+            "(ENH-2486: bound the re-embedded artifact via the marker file instead)"
         )
 
     def test_check_done_references_last_step(self, raw_data: dict) -> None:

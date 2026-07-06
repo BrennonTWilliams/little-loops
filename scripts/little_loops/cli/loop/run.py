@@ -132,6 +132,10 @@ def cmd_run(
         fsm.host_guard.enabled = False
     if getattr(args, "host_guard_budget_mb", None) is not None:
         fsm.host_guard.max_cumulative_subproc_mb = args.host_guard_budget_mb
+    if getattr(args, "no_prompt_size_guard", False):
+        fsm.prompt_size_guard.enabled = False
+    if getattr(args, "prompt_size_warn_chars", None) is not None:
+        fsm.prompt_size_guard.warn_chars = args.prompt_size_warn_chars
     if args.llm_model:
         fsm.llm.model = args.llm_model
     # Inject positional input arg before --context so --context can override

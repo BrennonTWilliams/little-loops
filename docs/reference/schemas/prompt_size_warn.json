@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-prompt_size_warn.json",
+  "title": "Prompt Size Warn",
+  "description": "ENH-2486: emitted when a fully-interpolated action's char size reaches the per-loop prompt_size_guard.warn_chars threshold. WARN-only (does not route); surfaces loops that silently re-embed monotonically growing artifacts.",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "loop",
+    "state",
+    "size",
+    "threshold"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "loop": {
+      "type": "string",
+      "description": "Loop name whose interpolated action exceeded the threshold"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name where the oversized action was assembled"
+    },
+    "size": {
+      "type": "integer",
+      "description": "Fully-interpolated action size in characters"
+    },
+    "threshold": {
+      "type": "integer",
+      "description": "Configured prompt_size_guard.warn_chars threshold"
+    },
+    "est_tokens": {
+      "type": "integer",
+      "description": "Estimated tokens (size // 4, the repo's 4-chars/token convention)"
+    }
+  },
+  "additionalProperties": true
+}

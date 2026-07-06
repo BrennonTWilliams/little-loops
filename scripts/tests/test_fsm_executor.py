@@ -106,6 +106,72 @@ class MockActionRunner:
         self.default_result = kwargs
 
 
+class TestPromptSizeGuardWarn:
+    """ENH-2486: per-invocation prompt-size guard WARN emission."""
+
+    def _guard_fsm(self, action: str, guard: Any) -> FSMLoop:
+        from little_loops.fsm.schema import PromptSizeGuardConfig  # noqa: F401
+
+        return FSMLoop(
+            name="psg-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(action=action, next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            prompt_size_guard=guard,
+        )
+
+    def test_warn_emitted_above_threshold(self) -> None:
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        action = "x" * 200
+        fsm = self._guard_fsm(action, PromptSizeGuardConfig(warn_chars=100))
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner(), event_callback=events.append)
+        executor.run()
+
+        warns = [e for e in events if e.get("event") == "prompt_size_warn"]
+        assert len(warns) == 1
+        assert warns[0]["loop"] == "psg-test"
+        assert warns[0]["state"] == "execute"
+        assert warns[0]["size"] == 200
+        assert warns[0]["threshold"] == 100
+        assert warns[0]["est_tokens"] == 50
+
+    def test_silent_below_threshold(self) -> None:
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        fsm = self._guard_fsm("short action", PromptSizeGuardConfig(warn_chars=100_000))
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner(), event_callback=events.append)
+        executor.run()
+
+        assert not [e for e in events if e.get("event") == "prompt_size_warn"]
+
+    def test_silent_when_disabled(self) -> None:
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        action = "x" * 500
+        fsm = self._guard_fsm(action, PromptSizeGuardConfig(enabled=False, warn_chars=10))
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner(), event_callback=events.append)
+        executor.run()
+
+        assert not [e for e in events if e.get("event") == "prompt_size_warn"]
+
+    def test_silent_when_warn_chars_zero(self) -> None:
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        action = "x" * 500
+        fsm = self._guard_fsm(action, PromptSizeGuardConfig(warn_chars=0))
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=MockActionRunner(), event_callback=events.append)
+        executor.run()
+
+        assert not [e for e in events if e.get("event") == "prompt_size_warn"]
+
+
 class TestFSMExecutorBasic:
     """Basic executor tests."""
 

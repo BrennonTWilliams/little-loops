@@ -4,8 +4,9 @@ title: "FSM engine \u2014 per-invocation prompt-size guard + bound re-embedded g
   \ artifacts"
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-05T22:27:50Z'
+completed_at: '2026-07-06T00:35:59Z'
 discovered_date: 2026-07-05
 discovered_by: capture-issue
 labels:
@@ -326,14 +327,14 @@ wired end-to-end:_
 
 ## Acceptance Criteria
 
-- [ ] An interpolated action whose size exceeds the configured threshold emits a WARN
+- [x] An interpolated action whose size exceeds the configured threshold emits a WARN
       identifying the loop + state; below threshold emits nothing [hard]
-- [ ] The guard is config-gated with a default and can be disabled [hard]
-- [ ] A pytest exercises both above- and below-threshold cases [hard]
-- [ ] `general-task` long-run re-embedded artifacts are bounded (Sample Verification
+- [x] The guard is config-gated with a default and can be disabled [hard]
+- [x] A pytest exercises both above- and below-threshold cases [hard]
+- [x] `general-task` long-run re-embedded artifacts are bounded (Sample Verification
       prose / captured outputs do not grow monotonically into the prompt) [hard]
-- [ ] `python -m pytest scripts/tests/` exits 0 [hard]
-- [ ] No new host `--continue`/`--resume` behavior introduced (fresh-session-per-state
+- [x] `python -m pytest scripts/tests/` exits 0 [hard]
+- [x] No new host `--continue`/`--resume` behavior introduced (fresh-session-per-state
       invariant preserved)
 
 ## Open Questions
@@ -394,7 +395,60 @@ _Added by `/ll:confidence-check` on 2026-07-05_
   convention in `fsm/__init__.py` — resolve before implementing the export/`__all__`
   changes so the parity touchpoints in Integration Map don't diverge mid-implementation.
 
+## Resolution
+
+_Implemented via `/ll:manage-issue` on 2026-07-06._
+
+**Part A — engine prompt-size guard.** Added `PromptSizeGuardConfig` (per-loop,
+`enabled: bool = True`, `warn_chars: int = 50000`; `0` disables) as an `FSMLoop`
+field mirroring `HostGuardConfig`'s skip-if-default serialization
+(`fsm/schema.py`). The guard measures `len(action)` at the single interpolation
+choke point in `FSMExecutor._run_action` (right after `action = interpolate(...)`,
+covering every action mode) and emits the new `PROMPT_SIZE_WARN_EVENT`
+(`fsm/executor.py`) with `{loop, state, size, threshold, est_tokens}` — WARN-only,
+auto-persisted to `<run>.events.jsonl` via the existing persistence path. Chars
+were chosen over tokens per the resolved Open Question (no tokenizer in the repo);
+`est_tokens = size // 4` is reported for readability.
+
+Full parity wiring, each mirroring `host_guard`/`throttle`:
+- Export of `PromptSizeGuardConfig` + `PROMPT_SIZE_WARN_EVENT` from `fsm/__init__.py`
+  (followed `ThrottleConfig`'s re-export convention — the resolved export decision,
+  since the WARN event lives in `executor.py` exactly like `THROTTLE_WARN_EVENT`).
+- `_validate_prompt_size_guard()` wired into the `validate_fsm` dispatch
+  (`fsm/validation.py`): rejects negative `warn_chars`.
+- JSON schema block (`fsm-loop-schema.json`) + generated event schema
+  (`generate_schemas.py` → `docs/reference/schemas/prompt_size_warn.json`).
+- CLI flags `--no-prompt-size-guard` (run + resume parsers) and
+  `--prompt-size-warn-chars N` (run), with post-load mutation in `cli/loop/run.py`
+  and `cli/loop/lifecycle.py`.
+
+**Part B — general-task artifact bounding.** `check_done` no longer re-embeds the
+full `${captured.work_result.output}` / `${captured.selected_step.output}` (which
+grow with each do_work turn); it now reads the already-persisted bounded marker
+files `current-step.txt` / `last-files.txt` for LAST_STEP / LAST_FILES delta
+context (`loops/general-task.yaml`). This implements the prior-art recommendation
+("stop re-embedding full `${captured.*.output}` when a file reference suffices")
+and keeps the check_done prompt from ballooning over a long run.
+
+**Scope decisions.** The optional project-level `config-schema.json` mirror was
+deliberately skipped — the per-loop `prompt_size_guard:` block + `--no-prompt-size-guard`
+already satisfy "config-gated with a default and can be disabled" without threading
+a project default into loop-load. The optional hard-cap (route oversized prompts to
+`on_error`/diagnose) remains a follow-on ENH per the resolved Open Question.
+
+**Docs.** Added parallel entries to `API.md`, `EVENT-SCHEMA.md` (prose + schema
+file-tree + registry row), `CONFIGURATION.md`, and `LOOPS_GUIDE.md`.
+
+**Tests.** `TestPromptSizeGuardConfig` (`test_fsm_schema.py`),
+`TestPromptSizeGuardWarn` above/below/disabled/zero (`test_fsm_executor.py`),
+`TestPromptSizeGuardValidation` (`test_fsm_validation.py`),
+`TestPromptSizeGuardConfigFuzz` (`test_fsm_schema_fuzz.py`), updated
+`check_done` assertion (`test_general_task_loop.py`), and updated event-count
+assertions 38→39 (`test_generate_schemas.py`). Full suite: **13766 passed, 27
+skipped, exit 0**; mypy + ruff clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-06T00:35:59 - `c1fb466f-66fd-4252-b524-9fd145e5d8de.jsonl`
 - `/ll:refine-issue` - 2026-07-05T23:19:26 - `16932d7f-537c-4651-bb66-9b343a2b22f2.jsonl`
 - `/ll:decide-issue` - 2026-07-05T22:55:36 - `976b8aed-cb56-4d7d-82b3-5b22833d5918.jsonl`
 - `/ll:confidence-check` - 2026-07-05T23:00:00 - `39618ae6-5700-4f66-8f16-0412c1c26178.jsonl`
@@ -406,4 +460,4 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 
 ## Status
 
-**Current Status**: open
+**Current Status**: done

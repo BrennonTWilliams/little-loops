@@ -468,6 +468,25 @@ Emitted when a state's tool-call count exceeds `hard_max` with no `on_throttle_h
 
 ---
 
+### `prompt_size_warn`
+
+Emitted when a fully-interpolated action's character size reaches the per-loop `prompt_size_guard.warn_chars` threshold (ENH-2486). WARN-only — it does **not** route; it surfaces loops that silently re-embed monotonically growing captured outputs/artifacts so the ballooning is observable in `<run>.events.jsonl`. Disable per-run with `--no-prompt-size-guard`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `loop` | `str` | Loop name whose interpolated action exceeded the threshold |
+| `state` | `str` | State name where the oversized action was assembled |
+| `size` | `int` | Fully-interpolated action size in characters |
+| `threshold` | `int` | Configured `prompt_size_guard.warn_chars` threshold |
+| `est_tokens` | `int` | Estimated tokens (`size // 4`, the repo's 4-chars/token convention) |
+
+**Example:**
+```json
+{"event": "prompt_size_warn", "ts": "...", "loop": "general-task", "state": "check_done", "size": 62000, "threshold": 50000, "est_tokens": 15500}
+```
+
+---
+
 ### `learning_target_proven`
 
 Emitted when a target's learning-tests registry record is found with `status='proven'`. The state continues to the next target (or to `on_yes` when all targets are proven).
@@ -957,6 +976,7 @@ docs/reference/schemas/
 ├── max_steps_summary.json
 ├── parallel_worker_completed.json
 ├── rate_limit_exhausted.json
+├── prompt_size_warn.json
 ├── rate_limit_storm.json
 ├── rate_limit_waiting.json
 ├── retry_exhausted.json
@@ -1060,6 +1080,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `throttle_warn` | FSM | `fsm/executor.py` |
 | `throttle_hard` | FSM | `fsm/executor.py` |
 | `throttle_stop` | FSM | `fsm/executor.py` |
+| `prompt_size_warn` | FSM | `fsm/executor.py` |
 | `learning_target_proven` | FSM | `fsm/executor.py` |
 | `learning_target_stale` | FSM | `fsm/executor.py` |
 | `learning_explore_invoked` | FSM | `fsm/executor.py` |

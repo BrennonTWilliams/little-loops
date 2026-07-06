@@ -95,6 +95,7 @@ from little_loops.fsm.evaluators import (
     evaluate_output_numeric,
 )
 from little_loops.fsm.executor import (
+    PROMPT_SIZE_WARN_EVENT,
     RATE_LIMIT_EXHAUSTED_EVENT,
     RATE_LIMIT_STORM_EVENT,
     RATE_LIMIT_WAITING_EVENT,
@@ -139,6 +140,7 @@ from little_loops.fsm.schema import (
     LearningConfig,
     LLMConfig,
     ParameterSpec,
+    PromptSizeGuardConfig,
     RepeatedFailureConfig,
     RouteConfig,
     StateConfig,
@@ -169,6 +171,7 @@ __all__ = [
     "ActionRunner",
     "CircuitConfig",
     "CommandEntry",
+    "PROMPT_SIZE_WARN_EVENT",
     "RATE_LIMIT_EXHAUSTED_EVENT",
     "RATE_LIMIT_STORM_EVENT",
     "RATE_LIMIT_WAITING_EVENT",
@@ -195,6 +198,7 @@ __all__ = [
     "LLMConfig",
     "LockManager",
     "ParameterSpec",
+    "PromptSizeGuardConfig",
     "resolve_scope",
     "LoopState",
     "PersistentExecutor",

@@ -23,6 +23,7 @@ from little_loops.fsm.schema import (
     LLMConfig,
     LoopConfigOverrides,
     ParameterSpec,
+    PromptSizeGuardConfig,
     RepeatedFailureConfig,
     RouteConfig,
     StateConfig,
@@ -2689,6 +2690,68 @@ class TestStateConfigWith:
         assert restored.loop == "analyze-pr-review"
         assert restored.with_["pr_number"] == "${context.target_pr}"
         assert restored.with_["branch"] == "main"
+
+
+class TestPromptSizeGuardConfig:
+    """Tests for PromptSizeGuardConfig dataclass (ENH-2486)."""
+
+    def test_defaults(self) -> None:
+        cfg = PromptSizeGuardConfig()
+        assert cfg.enabled is True
+        assert cfg.warn_chars == 50_000
+
+    def test_from_dict_all_fields(self) -> None:
+        cfg = PromptSizeGuardConfig.from_dict({"enabled": False, "warn_chars": 1234})
+        assert cfg.enabled is False
+        assert cfg.warn_chars == 1234
+
+    def test_from_dict_partial_fields(self) -> None:
+        cfg = PromptSizeGuardConfig.from_dict({"warn_chars": 999})
+        assert cfg.enabled is True
+        assert cfg.warn_chars == 999
+
+    def test_from_dict_empty(self) -> None:
+        cfg = PromptSizeGuardConfig.from_dict({})
+        assert cfg.enabled is True
+        assert cfg.warn_chars == 50_000
+
+    def test_from_dict_coerces_warn_chars_to_int(self) -> None:
+        cfg = PromptSizeGuardConfig.from_dict({"warn_chars": "2048"})
+        assert cfg.warn_chars == 2048
+
+    def test_to_dict_omits_defaults(self) -> None:
+        assert PromptSizeGuardConfig().to_dict() == {}
+
+    def test_to_dict_includes_non_defaults(self) -> None:
+        d = PromptSizeGuardConfig(enabled=False, warn_chars=100).to_dict()
+        assert d == {"enabled": False, "warn_chars": 100}
+
+    def test_round_trip(self) -> None:
+        original = PromptSizeGuardConfig(enabled=False, warn_chars=7777)
+        restored = PromptSizeGuardConfig.from_dict(original.to_dict())
+        assert restored.enabled is False
+        assert restored.warn_chars == 7777
+
+    def test_fsmloop_default_omits_key(self) -> None:
+        loop = FSMLoop(
+            name="t",
+            initial="s",
+            states={"s": StateConfig(action="echo hi", terminal=True)},
+        )
+        assert "prompt_size_guard" not in loop.to_dict()
+
+    def test_fsmloop_scoped_round_trip(self) -> None:
+        loop = FSMLoop(
+            name="t",
+            initial="s",
+            states={"s": StateConfig(action="echo hi", terminal=True)},
+            prompt_size_guard=PromptSizeGuardConfig(warn_chars=321),
+        )
+        data = loop.to_dict()
+        assert data["prompt_size_guard"] == {"warn_chars": 321}
+        restored = FSMLoop.from_dict(data)
+        assert restored.prompt_size_guard.warn_chars == 321
+        assert restored.prompt_size_guard.enabled is True
 
 
 class TestThrottleConfig:

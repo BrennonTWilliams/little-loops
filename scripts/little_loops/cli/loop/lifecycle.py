@@ -513,6 +513,9 @@ def cmd_resume(
     if getattr(args, "no_host_guard", False):
         fsm.host_guard.enabled = False
 
+    if getattr(args, "no_prompt_size_guard", False):
+        fsm.prompt_size_guard.enabled = False
+
     # Apply YAML loop config env-var overrides (CLI flags below overwrite these)
     if fsm.config is not None and isinstance(fsm.config.handoff_threshold, int):
         os.environ["LL_HANDOFF_THRESHOLD"] = str(fsm.config.handoff_threshold)

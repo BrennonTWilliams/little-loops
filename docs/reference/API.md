@@ -4566,6 +4566,25 @@ class ThrottleConfig:
 | `THROTTLE_HARD_EVENT` | `"throttle_hard"` | Emitted when tool-call count reaches `hard_max` |
 | `THROTTLE_STOP_EVENT` | `"throttle_stop"` | Emitted when count exceeds `hard_max` with no `on_throttle_hard` (hard stop) |
 
+#### PromptSizeGuardConfig
+
+`from little_loops.fsm.schema import PromptSizeGuardConfig`
+
+ENH-2486: per-loop guard that WARNs when a fully-interpolated action grows large. The executor measures `len(action)` (chars) at the single interpolation choke point in `FSMExecutor._run_action` and emits `prompt_size_warn` when it reaches `warn_chars`. WARN-only (it does not route) — it turns a silently ballooning prompt (e.g. a state that re-embeds a monotonically growing captured output each iteration) into an observable signal in `<run>.events.jsonl`. Disable per-run with `--no-prompt-size-guard`; the size unit is chars because the codebase has no tokenizer (the event also reports `est_tokens = size // 4`).
+
+```python
+@dataclass
+class PromptSizeGuardConfig:
+    enabled: bool = True       # Master switch (disable with --no-prompt-size-guard)
+    warn_chars: int = 50_000   # Chars at/above which prompt_size_warn fires; 0 disables
+```
+
+**Prompt-size event constant** (emitted to the EventBus):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `PROMPT_SIZE_WARN_EVENT` | `"prompt_size_warn"` | Emitted when an interpolated action's size reaches `warn_chars` |
+
 #### LearningConfig
 
 `from little_loops.fsm.schema import LearningConfig`

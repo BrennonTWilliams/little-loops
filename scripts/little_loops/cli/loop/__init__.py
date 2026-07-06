@@ -164,6 +164,21 @@ Examples:
             ),
         )
         run_parser.add_argument(
+            "--no-prompt-size-guard",
+            action="store_true",
+            help="Disable the per-invocation prompt-size guard (fsm.prompt_size_guard)",
+        )
+        run_parser.add_argument(
+            "--prompt-size-warn-chars",
+            type=int,
+            default=None,
+            metavar="N",
+            help=(
+                "Override prompt_size_guard.warn_chars: interpolated-action char size "
+                "at/above which a prompt_size_warn is emitted (0 disables the guard)"
+            ),
+        )
+        run_parser.add_argument(
             "--model",
             type=str,
             dest="run_model",
@@ -460,6 +475,11 @@ Examples:
             "--no-host-guard",
             action="store_true",
             help="Disable the adaptive host memory-pressure guard (fsm.host_guard)",
+        )
+        resume_parser.add_argument(
+            "--no-prompt-size-guard",
+            action="store_true",
+            help="Disable the per-invocation prompt-size guard (fsm.prompt_size_guard)",
         )
         add_handoff_threshold_arg(resume_parser)
         add_context_limit_arg(resume_parser)

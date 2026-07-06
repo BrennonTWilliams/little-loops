@@ -16,6 +16,7 @@ from little_loops.fsm.schema import (
     FSMLoop,
     LearningConfig,
     ParameterSpec,
+    PromptSizeGuardConfig,
     RepeatedFailureConfig,
     StateConfig,
     TargetFileSpec,
@@ -669,6 +670,36 @@ class TestThrottleValidation:
         errors = validate_fsm(fsm)
         throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
         assert throttle_errors == []
+
+
+class TestPromptSizeGuardValidation:
+    """Tests for prompt_size_guard validation (ENH-2486)."""
+
+    def _make_fsm(self, guard: PromptSizeGuardConfig) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(action="run.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            prompt_size_guard=guard,
+        )
+
+    def test_default_guard_no_errors(self) -> None:
+        errors = validate_fsm(self._make_fsm(PromptSizeGuardConfig()))
+        assert [e for e in errors if "prompt_size_guard" in e.path] == []
+
+    def test_zero_warn_chars_valid(self) -> None:
+        """warn_chars=0 disables the guard and is valid."""
+        errors = validate_fsm(self._make_fsm(PromptSizeGuardConfig(warn_chars=0)))
+        assert [e for e in errors if "prompt_size_guard" in e.path] == []
+
+    def test_negative_warn_chars_rejected(self) -> None:
+        errors = validate_fsm(self._make_fsm(PromptSizeGuardConfig(warn_chars=-1)))
+        assert any(
+            "prompt_size_guard.warn_chars" in e.path and ">= 0" in e.message for e in errors
+        )
 
 
 class TestTargetsValidation:

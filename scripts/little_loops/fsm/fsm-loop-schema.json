@@ -332,6 +332,24 @@
         }
       },
       "additionalProperties": false
+    },
+    "prompt_size_guard": {
+      "type": "object",
+      "description": "ENH-2486: per-invocation interpolated-prompt size guard. WARNs (does not route) when a fully-interpolated action reaches warn_chars, surfacing loops that silently re-embed monotonically growing captured outputs/artifacts. Emits the prompt_size_warn event. Disable per-run with --no-prompt-size-guard.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for the prompt-size guard. Disable per-run with --no-prompt-size-guard."
+        },
+        "warn_chars": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 50000,
+          "description": "Interpolated-action size (chars) at/above which prompt_size_warn fires. 0 disables the guard even when enabled=true. ~12.5K tokens at the 4-chars/token convention."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

@@ -21,6 +21,7 @@ from hypothesis import strategies as st
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
+    PromptSizeGuardConfig,
     RouteConfig,
     StateConfig,
 )
@@ -322,6 +323,39 @@ class TestEvaluateConfigFuzz:
             # These are acceptable for truly malformed input
             pass
         except Exception as e:
+            pytest.fail(f"Unexpected exception: {type(e).__name__}: {e}")
+
+
+class TestPromptSizeGuardConfigFuzz:
+    """Fuzz tests for PromptSizeGuardConfig deserialization (ENH-2486)."""
+
+    @pytest.mark.slow
+    @given(
+        config=st.fixed_dictionaries(
+            {},
+            optional={
+                "enabled": st.one_of(st.booleans(), st.integers(), st.text(), st.none()),
+                "warn_chars": st.one_of(
+                    st.integers(), st.text(), st.floats(), st.none(), st.booleans()
+                ),
+            },
+        )
+    )
+    @settings(max_examples=300, deadline=None)
+    def test_from_dict_handles_malformed(self, config: dict) -> None:
+        """from_dict should not raise unexpected exceptions on malformed input."""
+        try:
+            result = PromptSizeGuardConfig.from_dict(config)
+            assert isinstance(result, PromptSizeGuardConfig)
+            # warn_chars is int()-coerced; the result must be an int.
+            assert isinstance(result.warn_chars, int)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            # Acceptable for pathological warn_chars: non-numeric text (int("abc")
+            # → ValueError) or a non-finite float from YAML (.inf/.nan → int()
+            # raises OverflowError/ValueError). Such malformed loop config fails
+            # loudly at load rather than silently mis-guarding.
+            pass
+        except Exception as e:  # pragma: no cover - defensive
             pytest.fail(f"Unexpected exception: {type(e).__name__}: {e}")
 
 

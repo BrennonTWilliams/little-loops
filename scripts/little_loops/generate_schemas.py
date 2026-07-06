@@ -284,6 +284,21 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         },
         ["state", "count", "hard_max"],
     ),
+    "prompt_size_warn": _schema(
+        "prompt_size_warn",
+        "Prompt Size Warn",
+        "ENH-2486: emitted when a fully-interpolated action's char size reaches the "
+        "per-loop prompt_size_guard.warn_chars threshold. WARN-only (does not route); "
+        "surfaces loops that silently re-embed monotonically growing artifacts.",
+        {
+            "loop": _str("Loop name whose interpolated action exceeded the threshold"),
+            "state": _str("State name where the oversized action was assembled"),
+            "size": _int("Fully-interpolated action size in characters"),
+            "threshold": _int("Configured prompt_size_guard.warn_chars threshold"),
+            "est_tokens": _int("Estimated tokens (size // 4, the repo's 4-chars/token convention)"),
+        },
+        ["loop", "state", "size", "threshold"],
+    ),
     # FEAT-1283: type=learning state dispatch events
     "learning_target_proven": _schema(
         "learning_target_proven",

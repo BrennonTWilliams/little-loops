@@ -1156,6 +1156,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_host_guard(fsm, defined_states))
 
+    errors.extend(_validate_prompt_size_guard(fsm))
+
     errors.extend(_validate_progress_paths_isolation(fsm))
 
     errors.extend(_validate_capture_reachability(fsm))
@@ -2170,6 +2172,26 @@ def _validate_host_guard(fsm: FSMLoop, defined_states: set[str]) -> list[Validat
                     path="host_guard.budget_state",
                 )
             )
+
+    return errors
+
+
+def _validate_prompt_size_guard(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate the top-level ``prompt_size_guard:`` block (ENH-2486).
+
+    Checks:
+    - ``warn_chars`` is a non-negative integer (0 disables the guard).
+    """
+    errors: list[ValidationError] = []
+    psg = fsm.prompt_size_guard
+
+    if psg.warn_chars < 0:
+        errors.append(
+            ValidationError(
+                message=f"prompt_size_guard.warn_chars must be >= 0, got {psg.warn_chars}",
+                path="prompt_size_guard.warn_chars",
+            )
+        )
 
     return errors
 

@@ -123,6 +123,7 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 | `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_steps` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |
 | `circuit.repeated_failure` | unset | A single state failing the same way every iteration. See the stall detector below. |
 | `host_guard` | enabled | Host memory exhaustion from sequential LLM subprocess spawns (macOS jetsam kills). See the host guard below. |
+| `prompt_size_guard` | enabled | A silently ballooning per-invocation prompt (a state re-embedding a monotonically growing captured output/artifact). WARNs when an interpolated action reaches `warn_chars`. See the prompt-size guard below. |
 
 ### Stall Detector (circuit-repeated-failure)
 
@@ -190,6 +191,32 @@ budget, `host_budget_exceeded` fires and the loop routes to `budget_state` or
 terminates with `terminated_by="host_budget_exceeded"`. Override the budget
 per-run with `--host-guard-budget-mb N`. Probe failures degrade to a no-op —
 the guard never blocks a loop on an unreadable host.
+
+### Prompt-Size Guard (prompt_size_guard)
+
+A long-running state that re-embeds a monotonically growing captured output or
+artifact each iteration (e.g. a `check` state that interpolates
+`${captured.work_result.output}` where that output keeps growing) balloons its
+per-invocation prompt silently — nothing surfaces it until recurring cost or an
+OOM does. The `prompt_size_guard:` block (ENH-2486) measures the fully-interpolated
+action size at the single interpolation choke point (covering **every** action
+mode) and emits a `prompt_size_warn` event when it reaches `warn_chars`. It is
+**WARN-only** — it does not route or block — so it is safe to leave enabled on
+every loop. Disable per-run with `--no-prompt-size-guard` or retune the threshold
+with `--prompt-size-warn-chars N`.
+
+```yaml
+prompt_size_guard:
+  enabled: true        # default true
+  warn_chars: 50000    # chars at/above which prompt_size_warn fires; 0 disables
+```
+
+The event payload carries `{loop, state, size, threshold, est_tokens}` (where
+`est_tokens = size // 4`, the repo's char-based estimate — there is no
+tokenizer dependency) and auto-persists to `<run>.events.jsonl`, so
+`ll-loop`/diagnostics can flag ballooning states after the fact. The optional
+hard-cap (route an oversized prompt to `on_error`/diagnose instead of
+dispatching it) is intentionally a follow-on, not part of this WARN-only guard.
 
 ## Common Loop Patterns
 

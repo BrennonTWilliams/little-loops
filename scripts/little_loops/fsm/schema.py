@@ -322,6 +322,51 @@ class ThrottleConfig:
 
 
 @dataclass
+class PromptSizeGuardConfig:
+    """Per-loop guard that WARNs when a fully-interpolated action grows large (ENH-2486).
+
+    Long-running loops can silently accumulate cost when a single interpolated
+    ``prompt``/``slash_command`` action balloons — e.g. a state that re-embeds a
+    monotonically growing captured output or artifact each iteration. This guard
+    measures ``len(action)`` (chars) at the single interpolation choke point in
+    ``FSMExecutor._run_action`` and emits a structured ``prompt_size_warn`` event
+    when it meets or exceeds ``warn_chars``, turning an invisible balloon into an
+    observable signal in ``<run>.events.jsonl``.
+
+    Chars are used rather than a real token count because the codebase has no
+    tokenizer; the ``len(text) // 4`` heuristic is the established convention
+    (``session_store._estimate_tokens``), surfaced as ``est_tokens`` in the event.
+
+    Attributes:
+        enabled: Master switch (default True; disable per-run with
+            ``--no-prompt-size-guard``).
+        warn_chars: Interpolated-action size (chars) at/above which the WARN
+            fires. ``0`` (or any value <= 0) disables the guard even when
+            ``enabled`` is True. Default 50000 (~12.5K tokens).
+    """
+
+    enabled: bool = True
+    warn_chars: int = 50_000
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-default)."""
+        result: dict[str, Any] = {}
+        if not self.enabled:
+            result["enabled"] = self.enabled
+        if self.warn_chars != 50_000:
+            result["warn_chars"] = self.warn_chars
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PromptSizeGuardConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            enabled=data.get("enabled", True),
+            warn_chars=int(data.get("warn_chars", 50_000)),
+        )
+
+
+@dataclass
 class LearningConfig:
     """Per-state configuration for FEAT-1283 `type: learning` dispatch.
 
@@ -1018,6 +1063,9 @@ class FSMLoop:
     # Adaptive host memory-pressure guard (ENH-2452) + cumulative subprocess
     # RSS budget (ENH-2453). Default-enabled with conservative thresholds.
     host_guard: HostGuardConfig = field(default_factory=HostGuardConfig)
+    # Per-invocation interpolated-prompt size guard (ENH-2486). Default-enabled;
+    # WARNs (does not route) when an interpolated action reaches warn_chars.
+    prompt_size_guard: PromptSizeGuardConfig = field(default_factory=PromptSizeGuardConfig)
     meta_self_eval_ok: bool = False
     shared_state_ok: bool = False
     partial_route_ok: bool = False
@@ -1102,6 +1150,10 @@ class FSMLoop:
         if host_guard_dict:
             result["host_guard"] = host_guard_dict
 
+        prompt_size_guard_dict = self.prompt_size_guard.to_dict()
+        if prompt_size_guard_dict:
+            result["prompt_size_guard"] = prompt_size_guard_dict
+
         if self.meta_self_eval_ok:
             result["meta_self_eval_ok"] = self.meta_self_eval_ok
         if self.shared_state_ok:
@@ -1151,6 +1203,10 @@ class FSMLoop:
         if "host_guard" in data and data["host_guard"] is not None:
             host_guard = HostGuardConfig.from_dict(data["host_guard"])
 
+        prompt_size_guard = PromptSizeGuardConfig()
+        if "prompt_size_guard" in data and data["prompt_size_guard"] is not None:
+            prompt_size_guard = PromptSizeGuardConfig.from_dict(data["prompt_size_guard"])
+
         parameters = {
             name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
         }
@@ -1198,6 +1254,7 @@ class FSMLoop:
             targets=[TargetFileSpec.from_dict(t) for t in (data.get("targets") or [])],
             circuit=circuit,
             host_guard=host_guard,
+            prompt_size_guard=prompt_size_guard,
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
             shared_state_ok=data.get("shared_state_ok", False),
             partial_route_ok=data.get("partial_route_ok", False),

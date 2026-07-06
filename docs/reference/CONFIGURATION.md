@@ -853,6 +853,17 @@ Controls the `ThrottleConfig` applied to a state to prevent runaway tool-call lo
 
 Use `on_throttle_hard: <state>` on the same state to route gracefully instead of stopping. See [EVENT-SCHEMA.md](EVENT-SCHEMA.md) for the `throttle_warn`, `throttle_hard`, and `throttle_stop` events.
 
+#### `prompt_size_guard` (per-loop interpolated-prompt size guard)
+
+ENH-2486: a top-level loop block that WARNs (does not route) when a fully-interpolated action reaches `warn_chars` characters. It surfaces loops that silently re-embed monotonically growing captured outputs/artifacts so the ballooning is observable in `<run>.events.jsonl` rather than only showing up as recurring cost or an OOM. Default-enabled; disable per-run with `--no-prompt-size-guard` or override the threshold with `--prompt-size-warn-chars N`.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `true` | Master switch for the guard. |
+| `warn_chars` | `50000` | Interpolated-action char size at/above which a `prompt_size_warn` event is emitted. `0` disables the guard even when `enabled` is `true`. ~12.5K tokens at the 4-chars/token convention. |
+
+The size is measured in characters because the codebase has no tokenizer; the emitted event also reports `est_tokens = size // 4`. See [EVENT-SCHEMA.md](EVENT-SCHEMA.md) for the `prompt_size_warn` event.
+
 Override individual glyphs to customize how FSM box diagrams render state type badges:
 
 ```json

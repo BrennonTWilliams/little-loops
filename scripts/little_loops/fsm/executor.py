@@ -97,6 +97,12 @@ _DEFAULT_THROTTLE_HARD_MAX: int = 12
 THROTTLE_WARN_EVENT: str = "throttle_warn"
 THROTTLE_HARD_EVENT: str = "throttle_hard"
 THROTTLE_STOP_EVENT: str = "throttle_stop"
+# Event emitted when a fully-interpolated action's size exceeds the per-loop
+# prompt-size guard threshold (ENH-2486). WARN-only: it does not route.
+PROMPT_SIZE_WARN_EVENT: str = "prompt_size_warn"
+# Fallback WARN threshold (chars) when a loop enables the guard without setting
+# warn_chars. ~12.5K tokens at the 4-chars/token convention.
+_DEFAULT_PROMPT_SIZE_WARN_CHARS: int = 50_000
 # Action types that consume LLM quota and are gated by the shared circuit breaker.
 # `_action_mode()` collapses both to "prompt"; the frozenset documents intent.
 LLM_ACTION_TYPES: frozenset[str] = frozenset({"slash_command", "prompt"})
@@ -1325,6 +1331,30 @@ class FSMExecutor:
         """
         action = interpolate(action_template, ctx)
         action_mode = self._action_mode(state)
+
+        # ENH-2486: per-invocation prompt-size guard. Measure the fully-interpolated
+        # action at this single choke point (covers every action mode) and WARN when
+        # it balloons past the configured threshold — an observable signal for loops
+        # that silently re-embed monotonically growing captured outputs/artifacts.
+        guard = self.fsm.prompt_size_guard
+        if guard.enabled:
+            threshold = (
+                guard.warn_chars
+                if guard.warn_chars is not None
+                else (_DEFAULT_PROMPT_SIZE_WARN_CHARS)
+            )
+            size = len(action)
+            if threshold > 0 and size >= threshold:
+                self._emit(
+                    PROMPT_SIZE_WARN_EVENT,
+                    {
+                        "loop": self.fsm.name,
+                        "state": self.current_state,
+                        "size": size,
+                        "threshold": threshold,
+                        "est_tokens": size // 4,
+                    },
+                )
 
         self._emit("action_start", {"action": action, "is_prompt": action_mode == "prompt"})
 

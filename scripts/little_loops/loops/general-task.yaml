@@ -286,17 +286,19 @@ states:
     action: |
       The previous step just completed. Use the following to scope delta verification.
 
-      Step that was selected (extract LAST_STEP from the SELECTED_STEP line):
-      ---BEGIN STEP SELECTION---
-      ${captured.selected_step.output:default=not-reached}
-      ---END STEP SELECTION---
+      ENH-2486: the LAST_STEP and LAST_FILES markers are read from small bounded
+      files rather than re-embedding the full captured select_step / do_work stdout,
+      which grows with the size of each implementation turn. This keeps this prompt
+      from ballooning over a long run — the markers below are all check_done needs.
 
-      Files created or modified (extract LAST_FILES from the LAST_FILES line):
-      ---BEGIN WORK RESULT---
-      ${captured.work_result.output:default=not-reached}
-      ---END WORK RESULT---
+      Read these two bounded marker files to recover the delta context:
+      - ${context.run_dir}/current-step.txt — the step that was selected (LAST_STEP:
+        the single "- [ ] Step N: ..." line select_step wrote before do_work ran).
+      - ${context.run_dir}/last-files.txt — the LAST_FILES line do_work wrote,
+        listing the files created or modified by the step (may be absent/empty if
+        the step produced no files).
 
-      Read both files:
+      Read both task artifacts:
       - ${context.run_dir}/dod.md — Definition of Done (criteria)
       - ${context.run_dir}/plan.md — Task Plan (steps)
 
