@@ -1,20 +1,30 @@
 ---
 id: ENH-2471
-title: "Tier 0 verification trace set (locked 3–5 traces) + P1 edit-batch hook regression test"
+title: "Tier 0 verification trace set (locked 3\u20135 traces) + P1 edit-batch hook\
+  \ regression test"
 type: ENH
 priority: P2
 status: open
-captured_at: "2026-07-03T00:00:00Z"
+captured_at: '2026-07-03T00:00:00Z'
 discovered_date: 2026-07-03
 discovered_by: scope-epic
 parent: EPIC-2456
-relates_to: [FEAT-2470, ENH-2479]
-decision_needed: false
+relates_to:
+- FEAT-2470
+- ENH-2479
+decision_needed: true
+missing_artifacts: true
 labels:
-  - token-cost
-  - testing
-  - measurement
-  - tier-0
+- token-cost
+- testing
+- measurement
+- tier-0
+confidence_score: 85
+outcome_confidence: 37
+score_complexity: 9
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # ENH-2471: Tier 0 verification trace set + P1 hook regression test
@@ -214,6 +224,39 @@ These cross-cutting concerns don't fit any single existing subsection; they MUST
 **Sibling-decision alignment:**
 - The new `edit_batch_nudge` feedback message MUST respect **SECU-028** (Edit via `allowed-tools` glob, `.ll/decisions.yaml:844-873`) and **ARCH-029** (pair tool-level path restrictions with scope-boundary instructions) when naming the config flag the user has set to scope Edit [Agent 2 finding]
 
+### Second wiring pass (2026-07-05) — new touchpoints not covered by the first pass
+
+_Wiring pass added by `/ll:wire-issue` (second pass; only NEW gaps the 2026-07-04 pass missed):_
+
+**Adapter shell scripts (host dispatch — the real gap):**
+- `hooks/adapters/claude-code/edit-batch-nudge.sh` (**new**) — `post-tool-use.sh` is **hardcoded to the literal intent `post_tool_use`** (`echo "$INPUT" | python -m little_loops.hooks post_tool_use`), so `edit_batch_nudge` **cannot reuse it**. Either add a dedicated adapter script following the same one-line pattern, or forward the intent name as a CLI arg. The first pass listed `hooks/hooks.json` and `opencode/index.ts` but missed that a new Claude-Code adapter script is required. [Agent 2 finding]
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` + `scripts/little_loops/hooks/adapters/codex/post-tool-use.sh` — Codex parity needs a new `PostToolUse` entry + adapter script (template uses `{{LL_PLUGIN_ROOT}}` / `{{LL_GEN_VERSION}}` placeholders). First pass only cited `codex/README.md`, not these functional files. [Agent 2 finding]
+
+**`ll-init` config generation (schema key alone is inert):**
+- `scripts/little_loops/init/core.py` — adding `edit_batch_nudge.enabled` to `config-schema.json` does **NOT** auto-populate generated `.ll/ll-config.json`. `schema_default(dotted_path)` is only invoked from explicit call sites (e.g. `schema_default("learning_tests.enabled")` at ~line 125). Add a parallel `schema_default("edit_batch_nudge.enabled")` call (plus its `choices` key) alongside that block. [Agent 2 finding]
+- `scripts/little_loops/init/cli.py:377` — re-init preservation reads `existing_config.get("learning_tests", {}).get(...)`. Add an analogous read for `edit_batch_nudge` if the flag should survive re-init. [Agent 2 finding]
+- **Negative finding**: `scripts/little_loops/init/tui.py` does **not** reference `learning_tests_enabled` at all — do NOT assume a matching interactive TUI question is needed for `edit_batch_nudge`. [Agent 2 finding]
+
+**`BRConfig` aggregator surface (distinct from the config-loader line):**
+- `scripts/little_loops/config/core.py` — beyond the `.from_dict(...)` loader call already listed, `EditBatchNudgeConfig` must be added to the **alphabetical `from little_loops.config.features import (...)` block** AND get a corresponding `BRConfig` property (mirroring every sibling dataclass). Follow the lenient `from_dict(cls, data)` contract (`.get()` reads, never raises on unknown keys) from `LearningTestsConfig`. [Agent 2 finding]
+
+**Skill config-surface enumerations (new config block ⇒ new rows):**
+- `skills/configure/SKILL.md` — the `## 2. Area Mapping` table (e.g. `| learning-tests | learning_tests | ... |`) needs a new `edit_batch_nudge` row so `/ll:configure edit-batch-nudge` resolves; the `--list` sample output block also enumerates sections by name. [Agent 2 finding]
+- `skills/configure/areas.md` — `## Area: hooks` has an illustrative `PostToolUse` matcher/script table; add the new adapter script row (advisory — read live from `hooks/hooks.json`, won't break). [Agent 2 finding]
+
+**New tests the first pass didn't name:**
+- `scripts/tests/test_config_schema.py` — add a `test_edit_batch_nudge_in_schema` method (hand-asserts `edit_batch_nudge.enabled` is `type: boolean`). No generic schema↔dataclass completeness test exists; the convention is one method per block (e.g. `test_issues_auto_commit_in_schema`, `test_hooks_pre_compact_rubric_in_schema`). [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_config.py` — add an `EditBatchNudgeConfig` load/round-trip test (parallel to existing `LearningTestsConfig` coverage). [Agent 1 finding]
+- `scripts/tests/test_hooks_integration.py` — add a `test_hooks_json_registers_edit_batch_nudge` method (pattern: `TestScratchCleanupSessionEnd.test_hooks_json_registers_session_end_scratch_cleanup:2923-2934`). **No existing test covers the `hooks.json` `PostToolUse` array contents at all** — this is a real coverage gap. [Agent 3 finding]
+- `scripts/tests/test_hook_intents.py:509-539` (`TestHooksMainModule.test_dispatch_table_merges_hook_intent_registry`) — presence-only intent enumeration; add `assert "edit_batch_nudge" in table` here if dispatch coverage beyond the dedicated `test_edit_batch_hook.py` is wanted. [Agent 3 finding]
+- `scripts/tests/test_claude_code_adapter.py` — natural home for a new-matcher-group assertion once `edit-batch-nudge.sh` is wired (existing assertions use `len(groups) >= 1`, so adding a group won't break them, but there's no positive coverage of the new entry). [Agent 2 finding]
+- **Exact-string note**: the `_USAGE` banner in `hooks/__init__.py` is asserted **verbatim** in tests — update the literal string, not just the `_dispatch_table` dict. [Agent 2 finding]
+
+**Negative findings (scope corrections):**
+- There is **no `ll-loop run --skip-*` flag family**. The `--skip-learning-gate` precedent lives on `ll-auto`/`ll-parallel` (`cli_args.py`), not `ll-loop run`. If a `--skip-edit-batch-nudge` flag is added, it belongs on `ll-auto`/`ll-parallel` — correct the `docs/reference/CLI.md` doc note (Step 13) accordingly. [Agent 2 finding]
+- `config-schema.json` has **no** runtime jsonschema validator; `scripts/little_loops/init/core.py` (`_load_schema`/`schema_default`) is its only programmatic consumer. `additionalProperties: false` is enforced only by hand-written pytest assertions, so the new schema block needs its own test method (above). [Agent 2 finding]
+- `agents/plugin-config-auditor.md`'s "17 recognized hook event types" list does **not** need updating — `edit_batch_nudge` is a new *intent* within the existing `PostToolUse` event type, not a new event type. [Agent 2 finding]
+
 ## Implementation Steps
 
 _Added by `/ll:refine-issue` — concrete file references from research:_
@@ -328,6 +371,33 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 16. **Sibling-decision alignment** — the new `edit_batch_nudge` feedback message MUST respect **SECU-028** (`allowed-tools` glob, `.ll/decisions.yaml:844-873`) and **ARCH-029** (pair tool-level path restrictions with scope-boundary instructions) when naming the config flag the user has set to scope Edit.
 
+### Wiring Phase — second pass (added by `/ll:wire-issue` — 2026-07-05)
+
+_New steps from the second wiring pass; numbered to follow the 1–16 sequence above:_
+
+17. **Author the Claude-Code adapter script** — `hooks/adapters/claude-code/edit-batch-nudge.sh` (new). `post-tool-use.sh` is hardcoded to intent `post_tool_use`, so `edit_batch_nudge` needs its own script (`INPUT=$(cat); echo "$INPUT" | python -m little_loops.hooks edit_batch_nudge; exit $?`). Wire it from the new `PostToolUse` matcher-group entry in `hooks/hooks.json` (Step 15).
+
+18. **Codex adapter parity** — add a `PostToolUse` entry to `scripts/little_loops/hooks/adapters/codex/hooks.json` and a `scripts/little_loops/hooks/adapters/codex/post-tool-use.sh`-parallel script (or generalize via `ll-adapt --host codex --apply`).
+
+19. **Wire `edit_batch_nudge.enabled` into `ll-init`** — the schema key alone is inert:
+    - `scripts/little_loops/init/core.py` — add `schema_default("edit_batch_nudge.enabled")` call + `choices` key alongside the `learning_tests.enabled` block (~line 125)
+    - `scripts/little_loops/init/cli.py:377` — add re-init preservation read for `edit_batch_nudge` (parallel to `learning_tests`)
+    - Do NOT add a TUI question — `init/tui.py` has no `learning_tests_enabled` precedent
+
+20. **Complete the `BRConfig` aggregator surface** (beyond the `.from_dict` loader line in Step 10) — add `EditBatchNudgeConfig` to the alphabetical `from little_loops.config.features import (...)` block in `config/core.py` AND add a corresponding `BRConfig` property mirroring `learning_tests`.
+
+21. **Update skill config-surface enumerations** — add an `edit_batch_nudge` row to `skills/configure/SKILL.md` § Area Mapping (and its `--list` sample block); optionally add the adapter-script row to `skills/configure/areas.md` § Area: hooks.
+
+22. **Second-pass test additions** (fold into Step 7 verification):
+    - `scripts/tests/test_config_schema.py` — new `test_edit_batch_nudge_in_schema` method (`type: boolean` assertion; no generic completeness test exists)
+    - `scripts/tests/test_config.py` — `EditBatchNudgeConfig` load/round-trip test
+    - `scripts/tests/test_hooks_integration.py` — `test_hooks_json_registers_edit_batch_nudge` (no test currently covers the `PostToolUse` array — real gap)
+    - `scripts/tests/test_hook_intents.py:509-539` — add `assert "edit_batch_nudge" in table`
+    - `scripts/tests/test_claude_code_adapter.py` — assert the new matcher group exists once wired
+    - Update the `_USAGE` banner literal verbatim (asserted exact-string in tests)
+
+23. **Scope correction to Step 13** — a `--skip-edit-batch-nudge` flag (if added) belongs on `ll-auto`/`ll-parallel` (`cli_args.py`), NOT `ll-loop run` — there is no `ll-loop run --skip-*` family. Fix the `docs/reference/CLI.md` doc note accordingly.
+
 ## Impact
 
 - **Priority**: P2 — gates the credibility of every Tier 0 "win"; owns the epic's Tier 0 trace set (Open Question #6)
@@ -335,11 +405,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low — test/measurement only
 - **Breaking Change**: No
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-05_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 37/100 → VERY LOW
+
+### Concerns
+- The "3–5 locked traces" acceptance criterion has only 2 confirmed-stable candidate traces in `.loops/runs/` — the issue itself flags this as an open decision point requiring implementer/user confirmation before the manifest is locked (either accept 2 and lower the count assertion, or wait/source a third).
+- The P1 hook regression test's primary target, `scripts/little_loops/hooks/edit_batch_nudge.py`, does not exist yet — FEAT-2470 (its owning issue) is still `open`. The issue documents a stub-handler workaround, but this is a real precondition gap, not a resolved dependency.
+- The Integration Map has grown far beyond "Effort: Small" (23 implementation steps spanning config schema, dataclasses, dispatch table, three host adapters, `ll-init`, `BRConfig`, skill docs, and 7+ doc files) — the effort estimate in ## Impact looks stale relative to the actual wiring scope captured by the two `/ll:wire-issue` passes.
+
+### Outcome Risk Factors
+- Broad enumeration across 20+ sites (config schema, dataclass, dispatch table, 3 host adapters, `ll-init`, `BRConfig`, skill docs, 7+ doc files) — this is a wide, heterogeneous blast radius, not a single mechanical substitution, so Pattern B verifiability doesn't apply cleanly.
+- Unresolved decision point: whether to lock 2 traces (with a lowered count assertion) or hold for a 3rd — resolve before locking `manifest.json`, since the acceptance criteria wording depends on the answer.
+- The edit-batch-nudge handler does not exist yet (FEAT-2470 still open) — the primary regression test target is absent; mitigate via the documented stub-handler approach if landing concurrently, but confirm sequencing with FEAT-2470 first.
+
 ## Status
 
 **Open** | Created: 2026-07-03 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-05T00:00:00-07:00 - `6569d1c1-3096-44a0-8cd8-af9267063742.jsonl`
+- `/ll:wire-issue` - 2026-07-06T02:39:17 - `4cdd90c9-b0a9-45e0-85cc-a76dfd6fe916.jsonl`
 - `/ll:wire-issue` - 2026-07-05T04:20:53 - `a1f1af17-5b49-4369-a64a-0b4d12f597a0.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:09:21 - `d881e8f0-16f1-4e98-869b-bd6e7a95fbc5.jsonl`
 - `/ll:refine-issue` - 2026-07-04T20:24:50 - `c598e9f8-80b2-4ec0-9e0f-bc292080ce64.jsonl`

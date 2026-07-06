@@ -10,6 +10,12 @@ status: open
 relates_to:
 - EPIC-1853
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 91
+score_complexity: 23
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2481: Scope prompt-across-issues to full EPIC subtree (transitive children)
@@ -210,6 +216,7 @@ The function is invoked from 3 places:
 No other call sites — adding transitive filtering does not regress any other consumer.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-05T00:00:00Z - `484259f2-5221-4ca0-85ec-6687b9946b78.jsonl`
 - `/ll:wire-issue` - 2026-07-05T15:48:19 - `92635b63-1dd3-4d74-884a-fdcece6c774c.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:02:22 - `b75573d6-6f9f-475d-ab44-123e72f36c81.jsonl`
 
