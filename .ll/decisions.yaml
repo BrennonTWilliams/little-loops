@@ -3964,3 +3964,18 @@
   alternatives_rejected: exit_code=0 (stderr-only, silent); Claude-only edit-batch
     nudge (unjustified host restriction)
   issue: FEAT-2470
+- id: ARCHITECTURE-104
+  type: decision
+  timestamp: '2026-07-06T00:11:44Z'
+  category: architecture
+  labels: []
+  rationale: Only option that fixes the verified production TOCTOU (session_log.py:79-83)
+    while matching the BUG-1995 _isolate_history_db*/_guard_real_history_db choke-point
+    convention; scored 10/12 vs A=9, B=8.
+  rule: Option C — harden get_current_session_jsonl + suite-wide session-log isolation
+    fixture
+  scope: issue
+  alternatives_rejected: Option A (test isolation only — leaves production race live);
+    Option B (production hardening only — suite still reads real ~/.claude/projects
+    with no guard)
+  issue: BUG-2489
