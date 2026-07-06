@@ -84,7 +84,7 @@ Two features are non-replicable:
 | Source | Technique | Surface |
 |---|---|---|
 | wozcode P6 | Verbatim-output rule in audit skill bodies | ~6 `skills/*/SKILL.md` bodies |
-| wozcode P2 | Haiku pin + dense-list template + 3–5-call budget on read-only audit agents | ~4 `agents/*.md` frontmatter |
+| wozcode P2 | Haiku pin + dense-list template + 3–5-call budget on read-only audit agents | ~4 `agents/*.md` frontmatter — **extracted to ENH-2490 (deferred)**; not in the strictly-dominant tranche |
 | wozcode P1 | Edit-batching nudge (`PostToolUse` on Edit/Write/MultiEdit) | `hooks/hooks.json` + hook module + test |
 | LogCleaner [25] | Anti-event regex + duplicate-window pre-filter on tool/log output | new filter module |
 | pass-2 #7 | Stop-sequence + prefill JSON output helpers (`extract_between_tags()`, `parse_prefilled_json()`, `rfind('{')` recipe) | new `scripts/little_loops/output/parse.py` |
@@ -146,7 +146,8 @@ Each entry below is a **planned** child issue to be captured next; issue IDs TBD
 
 ### Tier 0 — behavioral quick-wins (ship first)
 
-- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), haiku pin + dense-list template (P2), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2; was [TBD-1])*
+- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2; was [TBD-1])*
+- **ENH-2490** — P2 haiku pin + dense-list template + call budget on read-only audit agents — **extracted from FEAT-2470 and deferred** (2026-07-05): no quality gate + fragile cross-host safety story make it unfit for the strictly-dominant Tier 0 tranche. *(deferred, P3)*
 - **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2; was [TBD-2])*
 
 ### Tier 1 — measurement foundation

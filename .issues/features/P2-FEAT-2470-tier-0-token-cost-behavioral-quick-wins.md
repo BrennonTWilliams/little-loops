@@ -1,6 +1,6 @@
 ---
 id: FEAT-2470
-title: Tier 0 token-cost behavioral quick-wins (P6 verbatim-output, haiku pin, edit-batch
+title: Tier 0 token-cost behavioral quick-wins (P6 verbatim-output, edit-batch
   hook, LogCleaner filter, JSON output helpers)
 type: FEAT
 priority: P2
@@ -12,6 +12,7 @@ parent: EPIC-2456
 relates_to:
 - ENH-2471
 - ENH-2475
+- ENH-2490
 labels:
 - token-cost
 - hooks
@@ -31,16 +32,21 @@ score_change_surface: 25
 
 ## Summary
 
-Ship EPIC-2456's Tier 0 layer (~180 LOC): five behavioral techniques that need no
+Ship EPIC-2456's Tier 0 layer (~150 LOC): four behavioral techniques that need no
 measurement infrastructure and deliver immediate token savings. Per the epic's
 prioritization plan (`thoughts/plans/2026-07-02-token-cost-optimal-techniques.md`),
 Tier 0 is strictly dominant — it ships before any F-feature.
+
+> **Note**: The fifth Tier 0 technique — wozcode **P2** (haiku pin on read-only audit
+> agents) — was extracted to **ENH-2490** and deferred. Unlike the other four, it trades
+> answer quality for token cost with no quality gate and has a fragile cross-host safety
+> story. See ENH-2490 for the full P2 scope.
 
 ## Use Case
 
 **Who**: Anyone running `ll-loop` / `ll-auto` / `ll-sprint` on this repo
 
-**Context**: Every loop run pays avoidable token cost from verbose audit output, flagship-model subagents, unbatched edits, noisy tool logs, and unconstrained JSON output
+**Context**: Every loop run pays avoidable token cost from verbose audit output, unbatched edits, noisy tool logs, and unconstrained JSON output
 
 **Goal**: Capture the immediate, infrastructure-free savings tier before any measurement/caching features land
 
@@ -51,27 +57,25 @@ Tier 0 is strictly dominant — it ships before any F-feature.
 | Source | Technique | Surface |
 |---|---|---|
 | wozcode P6 | Verbatim-output rule in audit skill bodies | ~6 `skills/*/SKILL.md` bodies |
-| wozcode P2 | Haiku pin + dense-list template + 3–5-call budget on read-only audit agents | ~4 `agents/*.md` frontmatter |
 | wozcode P1 | Edit-batching nudge (`PostToolUse` on Edit/Write/MultiEdit) | `hooks/hooks.json` + new hook module |
 | LogCleaner [25] | Anti-event regex + duplicate-window pre-filter on tool/log output | new filter module (~60 LOC) |
 | pass-2 #7 | Stop-sequence + prefill JSON output helpers (`extract_between_tags()`, `parse_prefilled_json()`, `rfind('{')` recipe) | new `scripts/little_loops/output/parse.py` (~30 LOC) |
 
-**P2 haiku pin is Claude-adapter-only for now** — do not duplicate the pin
-speculatively for Codex/OpenCode/omp/Gemini; a wrong `model:` field could
-silently route a subagent to a flagship model (see epic's cross-host table).
+> **Extracted**: wozcode **P2** (haiku pin + dense-list template + 3–5-call budget on
+> read-only audit agents) was moved to **ENH-2490** and deferred — no quality gate + a
+> fragile cross-host safety story make it unfit for the strictly-dominant Tier 0 tranche.
 
 ## Current Behavior
 
-Audit skills re-summarize instead of quoting verbatim; read-only audit agents run on default (flagship) models with no call budget; edits land one-at-a-time with no batching nudge; tool/log output carries anti-event noise and duplicated windows into context; FSM verdict JSON is emitted unconstrained (no stop-sequence/prefill helpers).
+Audit skills re-summarize instead of quoting verbatim; edits land one-at-a-time with no batching nudge; tool/log output carries anti-event noise and duplicated windows into context; FSM verdict JSON is emitted unconstrained (no stop-sequence/prefill helpers).
 
 ## Expected Behavior
 
-All five Tier 0 techniques active by default: audit skills carry the verbatim-output rule, audit agents pin haiku with a 3–5-call budget, a `PostToolUse` hook nudges edit batching, the anti-event filter trims tool/log output, and `output/parse.py` helpers constrain JSON output.
+All four Tier 0 techniques active by default: audit skills carry the verbatim-output rule, a `PostToolUse` hook nudges edit batching, the anti-event filter trims tool/log output, and `output/parse.py` helpers constrain JSON output.
 
 ## Acceptance Criteria
 
 - Verbatim-output rule present in the ~6 audit skill bodies identified during implementation.
-- Read-only audit agents pin haiku, use the dense-list template, and declare a 3–5-call budget in frontmatter.
 - `PostToolUse` edit-batch hook registered in `hooks/hooks.json`; handler lives under `scripts/little_loops/hooks/` and is covered by `scripts/tests/test_edit_batch_hook.py`.
 - LogCleaner-style anti-event/duplicate-window filter module exists with unit tests.
 - `scripts/little_loops/output/parse.py` ships `extract_between_tags()` and `parse_prefilled_json()` with `scripts/tests/test_json_output_parse.py`.
@@ -105,13 +109,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis (locator + pattern-f
 - `skills/review-epic/SKILL.md` — append verbatim-output rule
 - `skills/review-loop/SKILL.md` — append verbatim-output rule
 
-**P2 (haiku pin + dense-list template + 3–5-call budget, ~4 read-only audit agents; Claude-adapter-only):**
-- `agents/codebase-locator.md` — already `model: haiku` at line 32; add dense-list template + 3–5-call budget
-- `agents/codebase-analyzer.md` — change `model: sonnet` (line 31) → `model: haiku` + add dense-list template + 3–5-call budget (read-only)
-- `agents/codebase-pattern-finder.md` — same pattern at line 32 (`model: sonnet` → `haiku`)
-- `agents/plugin-config-auditor.md` — same pattern at line 30
-
-> ⚠ Haiku pin is per-adapter; do not duplicate the pin for Codex/OpenCode/omp/Gemini (per EPIC-2456 § cross-host table). A wrong `model:` field on a non-Claude host could silently route a subagent to a flagship.
+**P2 (haiku pin) — EXTRACTED to ENH-2490 (deferred).** The read-only audit-agent
+frontmatter changes (`codebase-locator`, `codebase-analyzer`, `codebase-pattern-finder`,
+`plugin-config-auditor`), the Claude-adapter-only constraint, and the associated
+`docs/reference/API.md` agent-table flips now live in ENH-2490. Not part of this issue.
 
 **P1 (edit-batch nudge hook):**
 - `hooks/hooks.json` — append a `PostToolUse` entry with matcher `Edit|Write|MultiEdit` (lines 65–143 hold the existing PostToolUse array; new entry goes after line 131)
@@ -130,7 +131,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis (locator + pattern-f
 
 ### Dependent Files (Callers / Importers)
 
-- `scripts/little_loops/host_runner.py:244, 298` — `ClaudeCodeRunner.build_streaming` / `build_blocking_json` accept the `model:` parameter; haiku pin from agent frontmatter propagates through these factory methods (no change required)
 - `scripts/little_loops/hooks/post_tool_use.py:158–199` — adjacent handler that the new edit-batch nudge composes with (analytics + auto-commit + learning gate)
 - `scripts/little_loops/fsm/evaluators.py:64–71` — `CHECK_SEMANTIC_EVIDENCE_CONTRACT` is the canonical verbatim-output rule wording (use this exact copy); enforced by `_EVIDENCE_CONTRACT_KEYWORDS = frozenset({"verbatim", "quote", "evidence"})` at `scripts/little_loops/fsm/validation.py:1825` (MR-8 lint)
 - `scripts/little_loops/output_parsing.py:27` — sibling module `extract_tagged_json` already implements similar logic; the new `output/parse.py` should be import-compatible (same `(data, error)` tuple convention established by BUG-2383)
@@ -175,29 +175,25 @@ _Wiring-pass audit by `/ll:wire-issue` (2026-07-04) — items below were identif
 
 **Registration / manifest files (NEW):**
 - `scripts/little_loops/hooks/__init__.py:50–54` — `_USAGE` static string listing available intents for the `python -m little_loops.hooks` banner. **Must be updated** to include `edit_batch_nudge` so the new intent is discoverable. Not test-enforced, but consumers see it via the `Unknown intent` error message at line 113–117 and the `python -m little_loops.hooks` help output.
-- `scripts/little_loops/hooks/adapters/codex/hooks.json` — Codex mirror of `hooks/hooks.json` PostToolUse array. The "Claude-adapter-only" warning applies to the **P2 haiku pin** (NOT the edit-batch nudge). The `Edit|Write|MultiEdit` matcher is host-agnostic — **decided**: mirror the entry to Codex (see Decision Rationale).
-- `.claude-plugin/plugin.json:22–27` — agent manifest entries for `codebase-analyzer`, `codebase-locator`, `codebase-pattern-finder`, `plugin-config-auditor`. Per Refinement Pass 2 the agents' `.md` frontmatter is the source of truth for `model:`; verify the manifest doesn't carry stale model hints after the P2 pin (read-only check, do NOT modify unless manifest diverges).
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` — Codex mirror of `hooks/hooks.json` PostToolUse array. The `Edit|Write|MultiEdit` matcher is host-agnostic — **decided**: mirror the entry to Codex (see Decision Rationale). (The P2 haiku-pin "Claude-adapter-only" concern moved to ENH-2490.)
 
 **Tests (NEW gaps identified):**
 - `scripts/tests/test_audit_claude_config.py` — **does not exist**. P6 verbatim-output rule on `skills/audit-claude-config/SKILL.md` has no body-lint coverage today. Same gap for `scripts/tests/test_audit_docs.py` (does not exist; P6 rule on `skills/audit-docs/SKILL.md` is uncovered). The 4 other audit skills have at least one structural test. If lint coverage is desired, create minimal body tests asserting the verbatim-output rule is present (out-of-scope per Refinement Pass 2, flagged for follow-on in Step 11).
 - `scripts/tests/test_enh494_skill_companions.py:71–81` (`test_all_skills_within_limit`) — **CRITICAL 500-line `SKILL.md` cap**. `SKILL_LINE_LIMIT = 500` and the test iterates every `skills/*/SKILL.md`. The P6 verbatim-output append (~10 lines of `CHECK_SEMANTIC_EVIDENCE_CONTRACT` content) must fit within each skill's remaining line budget, OR the overflow must be extracted to a companion file following the `reference.md` / `wave1-prompts.md` precedent (ENH-494). Pre-check each of the 6 skills' current line count before appending; if any would exceed 500, extract the verbatim-output block to a companion file. `scripts/little_loops/cli/docs.py:240,250,254,267,269` (`ll-verify-skills`) enforces the same 500-line cap.
 
 **Documentation (NEW coupling surfaced by the side-effect agent):**
-- `docs/reference/API.md:8075–8083` — agent table lists `codebase-analyzer` (sonnet), `codebase-locator` (haiku), `codebase-pattern-finder` (sonnet), `plugin-config-auditor` (sonnet). **Three rows must flip to `haiku`** after the P2 pin lands (`codebase-locator` is already `haiku`). `scripts/tests/test_wiring_reference_docs.py` already asserts `### /ll:review-epic` and `| review-epic` strings at lines 158–159 — keep those substrings present when editing.
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md:55–64, 227, 382–394` — line 227 says "Six hooks run after each tool call" (PostToolUse); the table at lines 55–64 lists 6 entries; the config-keys table at lines 382–394 lists PostToolUse-related config keys. Adding the 7th PostToolUse entry (`edit_batch_nudge`) makes the count and the tables stale. **Update the count and both tables** in Implementation Step 10.
+- _(The `docs/reference/API.md:8075–8083` agent-table `sonnet`→`haiku` flips moved to ENH-2490 with the P2 pin.)_
 
 **Cross-skill references (NEW — verify still load after the body edits; append-only change is safe but worth a CI sanity check):**
-- `skills/create-loop/SKILL.md`, `skills/scope-epic/SKILL.md`, `skills/configure/areas.md`, `skills/configure/show-output.md`, `skills/simplify-loop/SKILL.md`, `skills/simplify-loop/reference.md`, `skills/improve-claude-md/algorithm.md`, `skills/update-docs/SKILL.md`, `skills/review-loop/reference.md`, `skills/audit-docs/templates.md`, `skills/audit-claude-config/wave1-prompts.md`, `agents/consistency-checker.md`, `agents/prompt-optimizer.md` — reference one or more of the 6 audit skills or 4 audit agents. The append-only P6 change preserves all anchors.
-
-**Adapter callers (do NOT modify these, included for context):**
-- `.codex/agents/codebase-analyzer.toml`, `.codex/agents/codebase-pattern-finder.toml`, `.codex/agents/plugin-config-auditor.toml` — currently `model = "sonnet"`. Per the "Claude-adapter-only" warning they MUST remain `sonnet`. Don't regenerate via `ll-adapt --host codex --apply` for these three agents until Codex-side model support lands. `.codex/agents/codebase-locator.toml` is already `model = "haiku"` (parallel to the agent's `model: haiku`).
+- `skills/create-loop/SKILL.md`, `skills/scope-epic/SKILL.md`, `skills/configure/areas.md`, `skills/configure/show-output.md`, `skills/simplify-loop/SKILL.md`, `skills/simplify-loop/reference.md`, `skills/improve-claude-md/algorithm.md`, `skills/update-docs/SKILL.md`, `skills/review-loop/reference.md`, `skills/audit-docs/templates.md`, `skills/audit-claude-config/wave1-prompts.md`, `agents/consistency-checker.md`, `agents/prompt-optimizer.md` — reference one or more of the 6 audit skills. The append-only P6 change preserves all anchors.
 
 ### Wiring Pass Additions (second `/ll:wire-issue` pass, 2026-07-05)
 
 _Wiring-pass audit by `/ll:wire-issue` (2026-07-05, `--auto`) — caller-tracer / side-effect-surface / test-gap agents. The caller-tracer's broad transitive-importer list (files importing the whole `hooks`/`fsm`/`output_parsing` modules) was filtered out as noise: the three new modules have no existing importers, the `model:` pin touches only frontmatter, and the `.codex/*.toml` + `hooks/adapters/claude-code/*.sh` files are already correctly scoped above. Items below are the genuinely-new gaps not covered by the prior two wire passes / three refine passes:_
 
 **Documentation (NEW):**
-- `CHANGELOG.md` — **no entry is planned for FEAT-2470**. Every recent shipped release carries a dated `## [X.Y.Z] - DATE` section with `### Added`/`### Changed`/`### Fixed` bullets tagged by issue ID (e.g. `— (BUG-2485)`). Add a concise entry at ship time covering all five Tier 0 techniques (P6 verbatim rule, P2 haiku pin, P1 edit-batch hook, LogCleaner filter, JSON output helpers). Per project convention, promote to a concrete version section at release prep — do NOT file under `[Unreleased]`.
+- `CHANGELOG.md` — **no entry is planned for FEAT-2470**. Every recent shipped release carries a dated `## [X.Y.Z] - DATE` section with `### Added`/`### Changed`/`### Fixed` bullets tagged by issue ID (e.g. `— (BUG-2485)`). Add a concise entry at ship time covering the four Tier 0 techniques (P6 verbatim rule, P1 edit-batch hook, LogCleaner filter, JSON output helpers; the P2 haiku pin ships separately via ENH-2490). Per project convention, promote to a concrete version section at release prep — do NOT file under `[Unreleased]`.
 
 **Tests (NEW — parity gap + concrete regression surfaces):**
 - `scripts/tests/test_hook_intents.py` (`TestHooksMainModule`) — implements a one-test-per-built-in-intent **subprocess-CLI smoke pattern** (`test_dispatch_post_tool_use_happy_path`, `test_dispatch_pre_tool_use_happy_path`, `test_dispatch_session_end_happy_path`, …) that exercises `python -m little_loops.hooks <intent>` end-to-end (stdin JSON → stdout/stderr/exit-code). This is a **different surface** than the planned `test_edit_batch_hook.py` (direct handler-function call, `TestPostToolUseBaseline` shape). When `edit_batch_nudge` is added to `built_ins`, add a matching `test_dispatch_edit_batch_nudge_happy_path` here for structural parity. Non-breaking: `test_dispatch_unknown_intent` / `test_module_dispatch_exit_zero` use substring assertions, not an exhaustive intent-list match.
@@ -215,8 +211,8 @@ _Added by `/ll:refine-issue` (third pass, 2026-07-05) — gap-check confirming p
 - **`hooks.json` field shape (confirms Pass 1)**: `PostToolUse` array entries are `{"matcher": "<regex>", "hooks": [{"type": "command", "command": "...", "timeout": N, "statusMessage": "..."}]}`. `"Edit|Write|MultiEdit"`-style regex matchers already precedent at `hooks.json:43` (`PreToolUse`, `"Write|Edit"`). Multiple entries with the same matcher are allowed (lines 100, 121) — no conflict with existing entries.
 - **`audit-issue-conflicts/SKILL.md` line budget — CRITICAL, sharper than Pass 2**: currently 492/500 lines — only 8 lines of headroom. The `CHECK_SEMANTIC_EVIDENCE_CONTRACT` block is ~8-10 lines, so this file will almost certainly exceed the cap on inline append (not merely "if any would exceed" per Step 8's original conditional wording — this one specifically will). Plan directly for companion-file extraction (`skills/audit-issue-conflicts/verbatim-output.md`) rather than a pre-check-then-decide step. Other five skills have enough headroom (audit-loop-run 57, audit-claude-config 30 ⚠ tight, audit-docs 131, review-epic 195, review-loop 56).
 - **`scripts/little_loops/output/` package confirmed absent**: no `output/` directory exists yet under `scripts/little_loops/`; creating `output/parse.py` requires also creating `scripts/little_loops/output/__init__.py`. No naming collision with existing `output_parsing.py` (different namespace: `little_loops.output.parse` vs `little_loops.output_parsing`).
-- **`dense_list_template` frontmatter — confirmed novel**: grep across `agents/*.md` and `skills/*/SKILL.md` for "dense list", "dense-list", "bullet-only", "terse" found no existing shared convention — FEAT-2470 introduces this frontmatter key for the first time, not adopting an established one (consistent with Pass 2's "inert today" finding).
-- **Haiku-pin agent scope re-verified**: the 4-agent list (codebase-locator already haiku, codebase-analyzer/codebase-pattern-finder/plugin-config-auditor → haiku) is complete against all 9 agents in `agents/*.md`; other agents (`consistency-checker`, `loop-specialist`, `workflow-pattern-analyzer`, `web-search-researcher`, `prompt-optimizer`) are correctly excluded (not read-only-audit-style, or already handled elsewhere).
+
+_(The P2 findings on `dense_list_template` novelty and haiku-pin agent scope moved to ENH-2490.)_
 
 ### Codebase Research Findings (Refinement Pass 2)
 
@@ -230,13 +226,7 @@ _Added by `/ll:refine-issue` (second pass, 2026-07-04) — based on analyzer + p
 - `scripts/little_loops/hooks/types.py:84–116` — `LLHookResult(exit_code=0, feedback=...)` writes feedback to stderr only; `LLHookResult(exit_code=2, feedback=...)` blocks + injects feedback into Claude's context. Decided: `exit_code=2`, since the whole point of the nudge (per this issue's Scope/Use Case) is to change Claude's editing behavior, and `exit_code=0` feedback never reaches the model.
 - `scripts/little_loops/hooks/user_prompt_submit.py:61–80` — existing `LLHookResult(exit_code=0, feedback="…")` precedent for status-line nudges; `pre_tool_use.py:23–30` is the smallest handler template (~7 lines, branch on tool_name, return result) — cleaner template than `post_tool_use.py:handle` for a single-purpose nudge.
 
-**`dense_list_template` / `max_calls` frontmatter are inert today (P2):**
-- `scripts/little_loops/frontmatter.py:30` — flat YAML parser; reads `model:` and any other top-level key as a dict value.
-- Verified by Grep: `dense_list_template` / `max_calls:` have no consumer outside the issue file. Tier 0 adds the frontmatter fields; honoring them is downstream work (loop YAML / agent dispatcher). Document this as forward-looking; ship Tier 0 anyway so the fields land before consumers.
-
-**Cross-host model field plumbing:**
-- `scripts/little_loops/adapters/codex.py:349–374` — `CodexAdapter.emit_agent` reads `fm.get("model")` and would dispatch the same field to Codex's model resolver. This validates the "Claude-only" warning in Issue § Scope: a `model: haiku` on a Codex agent would route to whichever model Codex interprets that string as (likely the flagship). Do not mirror the pin to Codex/OpenCode/omp/Gemini agent markdowns.
-- `scripts/little_loops/host_runner.py:236–282` + `scripts/little_loops/subprocess_utils.py:329–336` — `model:` from agent frontmatter does NOT auto-flow into `build_streaming`. Orchestration layer must pass `model=` explicitly. Tier 0 only changes frontmatter; the dispatch wiring is downstream.
+_(The P2 findings — `dense_list_template` / `max_calls` inert-today and the cross-host `model:` plumbing / Codex mis-routing risk — moved to ENH-2490.)_
 
 **Test pattern references (more precise):**
 - `scripts/tests/test_hook_post_tool_use.py:27–33` — `_event(payload, *, cwd)` test factory; new `test_edit_batch_hook.py` follows this exact shape (synthetic `LLHookEvent`, `monkeypatch.chdir(tmp_path)`, assert `result.exit_code` + `result.feedback`).
@@ -252,7 +242,7 @@ _Added by `/ll:refine-issue` — concrete file references from research:_
 2. **JSON output helpers** — author `scripts/little_loops/output/parse.py` with `extract_between_tags(start_tag, end_tag, raw)` and `parse_prefilled_json(raw)` (model after `output_parsing.py:extract_tagged_json` with the same `(data, error)` tuple convention; reuse `rfind('{')` recipe from `session_log.py:138`). Test at `scripts/tests/test_json_output_parse.py` with `TestExtractBetweenTags` and `TestParsePrefilledJson` classes.
 3. **LogCleaner filter** — author `scripts/little_loops/output_cleaner.py` with module-level `_ANTI_EVENT_RE = re.compile(...)` constants and a single `def filter(raw: str) -> str:` entry point. Test at `scripts/tests/test_output_cleaner.py`.
 4. **P6 verbatim-output rule** — for each of the 6 audit skills, append the `CHECK_SEMANTIC_EVIDENCE_CONTRACT` block (verbatim copy from `fsm/evaluators.py:64–71`) near the top of the body. Verify with `python -m pytest scripts/tests/test_fsm_validation.py` that MR-8 keyword lint passes for any loop-YAML referencing these skills.
-5. **P2 haiku pin** — change `model: sonnet` → `model: haiku` on the 3 candidates (`codebase-analyzer`, `codebase-pattern-finder`, `plugin-config-auditor`); add `dense_list_template: <text>` and `max_calls: 5` frontmatter fields per the project's existing frontmatter style. Confirm Claude-only (don't propagate to Codex/OpenCode/omp/Gemini agents).
+5. **~~P2 haiku pin~~ — EXTRACTED to ENH-2490 (deferred).** No longer part of this issue.
 6. **Verify**: `python -m pytest scripts/tests/` exits 0; before/after cost delta measured on ENH-2471's locked trace set.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -261,8 +251,8 @@ _These touchpoints were identified by `/ll:wire-issue` wiring analysis (caller-t
 
 7. **`_USAGE` banner update** — add `edit_batch_nudge` to the static intent list in `scripts/little_loops/hooks/__init__.py:50–54`. Not test-enforced but `python -m little_loops.hooks` help output and the `Unknown intent` error branch both surface the list.
 8. **500-line `SKILL.md` cap pre-check (CRITICAL for P6)** — before appending the verbatim-output block to any of the 6 audit skills, run `wc -l skills/<skill>/SKILL.md` and verify the post-append count stays ≤500. Current line counts (Refinement Pass 3): `audit-loop-run` 443 (57 headroom), `audit-claude-config` 470 (30 headroom, tight), `audit-docs` 369 (131 headroom), **`audit-issue-conflicts` 492 (only 8 headroom — will almost certainly exceed the cap, plan directly for companion-file extraction rather than a conditional check)**, `review-epic` 305 (195 headroom), `review-loop` 444 (56 headroom). For any that exceed, extract the verbatim-output block to a companion file (`skills/<skill>/verbatim-output.md`) following the ENH-494 `reference.md` / `wave1-prompts.md` pattern. Verify: `python -m pytest scripts/tests/test_enh494_skill_companions.py -v`. The `ll-verify-skills` CLI at `scripts/little_loops/cli/docs.py:240,250,254,267,269` enforces the same cap and must exit 0.
-9. **Codex mirror (decided)** — mirror the `Edit|Write|MultiEdit` PostToolUse matcher entry to `scripts/little_loops/hooks/adapters/codex/hooks.json`; the edit-batch nudge is host-agnostic (unlike the P2 haiku pin) so the same token-savings rationale applies on Codex (do NOT regenerate the three `.codex/agents/*.toml` files for the pinned agents — those must remain `sonnet`).
-10. **Docs update** — flip 3 rows in `docs/reference/API.md:8075–8083` agent table from `model: sonnet` to `model: haiku`; update the PostToolUse count ("Six hooks…" at line 227) and both tables (lines 55–64, 382–394) in `docs/guides/BUILTIN_HOOKS_GUIDE.md`. Keep `### /ll:review-epic` and `| review-epic` substrings present in `docs/reference/COMMANDS.md` (asserted by `scripts/tests/test_wiring_reference_docs.py:158–159`).
+9. **Codex mirror (decided)** — mirror the `Edit|Write|MultiEdit` PostToolUse matcher entry to `scripts/little_loops/hooks/adapters/codex/hooks.json`; the edit-batch nudge is host-agnostic so the same token-savings rationale applies on Codex. (The P2 haiku-pin `.codex/agents/*.toml` concern moved to ENH-2490.)
+10. **Docs update** — update the PostToolUse count ("Six hooks…" at line 227) and both tables (lines 55–64, 382–394) in `docs/guides/BUILTIN_HOOKS_GUIDE.md`. Keep `### /ll:review-epic` and `| review-epic` substrings present in `docs/reference/COMMANDS.md` (asserted by `scripts/tests/test_wiring_reference_docs.py:158–159`). (The `docs/reference/API.md` agent-table `sonnet`→`haiku` flips moved to ENH-2490.)
 11. **Body-lint coverage gap (optional follow-on)** — `scripts/tests/test_audit_claude_config.py`, `scripts/tests/test_audit_docs.py`, and `review-loop`'s SKILL.md body have no test coverage of the P6 rule today (the other 3 audit skills have at least one structural test; `review-loop`'s `test_review_loop.py` tests `reference.md` logic via fixtures but never reads the SKILL.md body). If coverage is desired, create minimal body tests asserting `verbatim` / `quote` / `evidence` keywords are present — modeled on `test_audit_loop_run_skill.py:test_pid_corruption_skill_step4_has_verbatim_quote_contract` (lines 617–631). Flagged as a follow-on issue, not blocking FEAT-2470 ship.
 
 ### Wiring Phase — second pass (added by `/ll:wire-issue` 2026-07-05)
@@ -270,7 +260,7 @@ _These touchpoints were identified by `/ll:wire-issue` wiring analysis (caller-t
 _Additional touchpoints from the second wiring pass; fold into the implementation:_
 
 12. **`test_hook_intents.py` parity** — after adding `edit_batch_nudge` to `_dispatch_table` `built_ins`, add a `test_dispatch_edit_batch_nudge_happy_path` to `scripts/tests/test_hook_intents.py` (`TestHooksMainModule`) exercising the `python -m little_loops.hooks edit_batch_nudge` subprocess-CLI contract (stdin JSON → exit-code/stderr), matching the sibling `test_dispatch_post_tool_use_happy_path`. This is a distinct surface from Step 1's direct-handler `test_edit_batch_hook.py`. Verify: `python -m pytest scripts/tests/test_hook_intents.py -v`.
-13. **CHANGELOG entry** — add a `CHANGELOG.md` entry at ship time covering the five Tier 0 techniques, tagged `— (FEAT-2470)`, following the repo's dated `## [X.Y.Z] - DATE` + `### Added`/`### Changed` convention. Promote to a concrete version section during release prep — do not file under `[Unreleased]`.
+13. **CHANGELOG entry** — add a `CHANGELOG.md` entry at ship time covering the four Tier 0 techniques (P6 verbatim rule, P1 edit-batch hook, LogCleaner filter, JSON output helpers), tagged `— (FEAT-2470)`, following the repo's dated `## [X.Y.Z] - DATE` + `### Added`/`### Changed` convention. Promote to a concrete version section during release prep — do not file under `[Unreleased]`.
 14. **Skill-body regression run** — after the P6 append/extraction, run the two full-body structural tests that execute against modified skills: `python -m pytest scripts/tests/test_review_epic_skill.py scripts/tests/test_audit_issue_conflicts_skill.py -v` (the latter is the concrete surface for the CRITICAL 492-line `audit-issue-conflicts` file — confirms the phase-slice indices survive companion-file extraction).
 
 ### Implementation Notes (Refinement Pass 2)
@@ -279,7 +269,7 @@ _Added by `/ll:refine-issue` (second pass, 2026-07-04) — clarifications from a
 
 - **Step 1 (edit-batch nudge handler) — DECIDED**: `exit_code=2` (feedback flows into model context), not `exit_code=0` (stderr-only). Per `types.py:97-99`, `exit_code=2` is "block and inject feedback into the model's context" — semantically not blocking when there's no permission gate, just nudging Claude. Precedent: `pre_compact_handoff.py:241` and `pre_compact.py:169` both use `exit_code=2` for non-blocking, context-injected nudges.
 - **Step 4 (P6 verbatim-output rule)** — the MR-8 lint at `validation.py:1828–1867` operates only on FSM state prompts. The skill-body change is behavioral; no lint validates it. The "verify with `test_fsm_validation.py`" line in Step 4 only applies if any loop-YAML state references these skills in `evaluate.prompt` fields.
-- **Step 5 (haiku pin)** — note that `dense_list_template` and `max_calls` frontmatter fields are inert today (no consumer); Tier 0 ships the fields forward-looking, consumers land in later tiers. Verify the parser at `frontmatter.py:30` doesn't reject the new keys (it accepts any top-level YAML).
+- **~~Step 5 (haiku pin)~~** — extracted to ENH-2490; the inert-frontmatter note travels with it.
 - **Bash wrapper alternative** — if a bash wrapper is preferred over a Python handler for the edit-batch nudge, `hooks/scripts/issue-auto-commit.sh:1–81` is the canonical pattern: `set -euo pipefail` + `source lib/common.sh` + `ll_resolve_config` + `ll_feature_enabled "key.path"` + `jq -r '.tool_name // ""'`. The Python handler is preferred for consistency with `post_tool_use.handle` and the canonical pattern at `pre_tool_use.py:23-30`.
 
 ### Decision Rationale

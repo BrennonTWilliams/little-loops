@@ -12,7 +12,7 @@ parent: EPIC-2456
 relates_to:
 - FEAT-2470
 - ENH-2479
-decision_needed: true
+decision_needed: false
 missing_artifacts: true
 labels:
 - token-cost
@@ -49,6 +49,57 @@ No locked trace set exists for Tier 0; any before/after claim is measured agains
 ## Expected Behavior
 
 A locked 3–5 trace set with recorded baseline cost figures; FEAT-2470's delta is reported against it; the hook regression test runs in the standard suite.
+
+## Proposed Solution
+
+_Added by `/ll:refine-issue` — synthesized from the second-pass research (2026-07-05) already
+captured in this issue's "Second-pass implementation notes" (line ~312) and Confidence Check
+Notes; that research flagged an unresolved trace-count decision that blocks `/ll:decide-issue`._
+
+### Option A: Lock the 2 confirmed-stable traces now, lower the count assertion to `>= 2`
+
+> **Selected:** Option A — both `usage.jsonl` traces are verified on disk (56/93 rows, single-model `claude-sonnet-4-6`) and the `>= 2` relaxation reuses the `test_policy_builder_corpus.py` minimum-count precedent, unblocking FEAT-2470 with no external dependency.
+
+Lock `.loops/runs/general-task-20260608T194041/` (56 rows) and
+`.loops/runs/general-task-20260619T225602/` (93 rows) as the Tier 0 set. Both are verified
+single-model (`claude-sonnet-4-6`, no `unknown`-model rows) with full state coverage
+(`define_done`, `plan`, `do_work`, `check_done`, `continue_work`, `final_verify`). Update
+`scripts/tests/test_tier0_traces.py`'s manifest-size assertion from "3–5" to `>= 2` and record
+the deviation with justification inside the manifest's `_meta` envelope. Unblocks FEAT-2470's
+before/after measurement immediately, with no dependency on external timing.
+
+### Option B: Wait for a 3rd trace before locking the manifest
+
+Either wait for `.loops/.running/general-task-20260530T143631` to complete and promote it, or
+source a 3rd trace from a sibling loop, to satisfy the acceptance criterion's literal "3–5"
+wording. Defers the Tier 0 measurement gate with no controlled timeline — this issue does not
+own the running trace's completion.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-05.
+
+**Selected**: Option A — Lock the 2 confirmed-stable traces now, lower the count assertion to `>= 2`.
+
+**Reasoning**: Codebase evidence confirms both candidate `usage.jsonl` traces exist on disk today
+(`general-task-20260608T194041` 56 rows, `general-task-20260619T225602` 93 rows, all
+`claude-sonnet-4-6`, no `unknown`-model rows), and the `>= 2` minimum-count relaxation has a direct
+reusable precedent in `scripts/tests/test_policy_builder_corpus.py:46-58` (`>= 12`/`>= 6`). Option B's
+proposed 3rd trace (`.loops/.running/general-task-20260530T143631`) already ran to completion but left
+**no** `.loops/runs/` artifact to promote (and its topic was an unrelated SaaS-naming brainstorm), no
+other `general-task-*` run directory exists, and the repo has zero precedent for gating a fixture-lock
+on an external process — making it a dangling dependency this issue does not own.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 3/3 | 3/3 | 3/3 | 11/12 |
+| Option B | 0/3 | 1/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- Option A: `>=`-threshold precedent at `test_policy_builder_corpus.py:46-58`; both traces verified on disk with exact claimed row counts; `_meta` deviation-note shape reusable from `templates/*-sections.json` (`_meta.changelog` / `deprecation_reason`). Reuse score 2.
+- Option B: the named 3rd trace produced no promotable artifact (`.loops/runs/general-task-20260530T143631/` does not exist); no other candidate run dir; no repo convention for waiting on an external process before locking a fixture. Reuse score 0.
 
 ## Acceptance Criteria
 
@@ -427,6 +478,8 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 **Open** | Created: 2026-07-03 | Priority: P2
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-06T02:49:39 - `ac6b8a93-299d-4e0a-8b17-eeddf1f743fa.jsonl`
+- `/ll:refine-issue` - 2026-07-06T02:46:27 - `7151a6fa-8ed4-4bde-b715-7adbbf0f873f.jsonl`
 - `/ll:confidence-check` - 2026-07-05T00:00:00-07:00 - `6569d1c1-3096-44a0-8cd8-af9267063742.jsonl`
 - `/ll:wire-issue` - 2026-07-06T02:39:17 - `4cdd90c9-b0a9-45e0-85cc-a76dfd6fe916.jsonl`
 - `/ll:wire-issue` - 2026-07-05T04:20:53 - `a1f1af17-5b49-4369-a64a-0b4d12f597a0.jsonl`

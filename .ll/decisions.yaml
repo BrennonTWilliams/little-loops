@@ -3979,3 +3979,31 @@
     Option B (production hardening only — suite still reads real ~/.claude/projects
     with no guard)
   issue: BUG-2489
+- id: ARCHITECTURE-105
+  type: decision
+  timestamp: '2026-07-06T02:49:39Z'
+  category: architecture
+  labels: []
+  rationale: Both usage.jsonl traces verified on disk (56/93 rows, single-model claude-sonnet-4-6);
+    >= relaxation reuses test_policy_builder_corpus.py precedent; unblocks FEAT-2470
+    with no external dependency.
+  rule: Lock the 2 confirmed-stable general-task traces now; lower the manifest-size
+    assertion to >= 2
+  scope: issue
+  alternatives_rejected: Wait for a 3rd trace — the named run left no promotable artifact
+    and no other general-task candidate exists
+  issue: ENH-2471
+- id: OTHE-175
+  type: rule
+  timestamp: '2026-07-06T03:19:32Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: scratch-pad-redirect.sh rewrote commands as `(CMD) > file 2>&1; tail
+    file`, so the shell reported tail's exit status (~always 0) instead of CMD's,
+    silently masking failing test/lint runs as passing.
+  rule: Never end a shell pipeline with a status-swallowing command (e.g. `tail`)
+    after the command whose exit code matters; cap
+  enforcement: advisory
+  issue: BUG-2491
