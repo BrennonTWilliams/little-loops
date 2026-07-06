@@ -29,6 +29,18 @@ captured uniformly and "when did type-checking start failing, and on which
 files?" becomes a query. The write-point is the `/ll:check-code` skill's command
 runs (there is no `ll-check-code` binary today — it is skill-driven).
 
+**Scope covers the full gate family, not just the four core gates.** The same
+`check_events` shape is the home for every other pass/fail CI gate the project
+wraps under `python -m pytest` per the Testing & CI Policy — `ll-verify-docs`,
+`ll-verify-skills`, `ll-verify-triggers`, `ll-verify-package-data`,
+`ll-verify-design-tokens`, `ll-verify-skill-budget`, `ll-check-links`, and
+`ll-deps validate`. They are all "did this gate stay green at this commit?"
+signals that today vanish into CLI text. Because the `tool` column is free-form
+TEXT, these need no new table — only additional producer call-sites and a wider
+`tool` value domain. Ship the four core gates first, but design the table,
+`recent_check_events()` filter, and `_VALID_KINDS` so the verify-*/check-links
+family drops in without a second migration.
+
 ## Motivation
 
 - **Three of four CI gates are unobservable.** Only pytest is captured; ruff and
@@ -69,7 +81,7 @@ pytest semantics — `passed`/`skipped` counts — clean):
 CREATE TABLE IF NOT EXISTS check_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
-    tool TEXT NOT NULL,          -- "ruff" | "mypy" | "ruff-format"
+    tool TEXT NOT NULL,          -- "ruff" | "mypy" | "ruff-format" | "verify-docs" | "verify-skills" | "check-links" | "deps-validate" | ...
     passed INTEGER,              -- 0/1 overall
     error_count INTEGER,
     offenders TEXT,              -- JSON array of "path:rule" strings
@@ -117,6 +129,8 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 - `ll-session recent --kind check_run` returns rows; FTS matches an offender path.
 - Tests cover: clean run (all pass), ruff failure with offenders, mypy failure,
   format-check failure, graceful degradation.
+- `tool` accepts a verify-*/check-links value (e.g. `verify-docs`) and the read
+  API filters on it — proving the family generalizes with no second migration.
 
 ## Implementation Steps
 
@@ -125,7 +139,8 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 3. Implement `record_check_event()` in `session_store.py` (mirror
    `record_test_run_event`); export.
 4. Add a Python write-point the `/ll:check-code` skill invokes per tool
-   (parse ruff/mypy JSON output → `error_count` + `offenders`).
+   (parse ruff/mypy JSON output → `error_count` + `offenders`). Keep the
+   parse/record shim tool-agnostic so verify-*/check-links call-sites reuse it.
 5. `history_reader.recent_check_events()` + `check_pass_rate()`.
 6. CLI: `ll-session recent --kind check_run`.
 7. Tests: `TestRecordCheckEvent`, `TestCheckSchema`, per-tool parse tests,

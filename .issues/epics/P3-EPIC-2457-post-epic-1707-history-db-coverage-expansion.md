@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497]
+relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498]
 labels:
   - epic
   - history-db
@@ -102,6 +102,22 @@ graceful-degradation contract:
 Item #5 from the review (PR / release / GitHub-sync events) was considered and
 **not** captured under this EPIC — it overlaps the "real-time sync to external
 systems" out-of-scope line and is better tracked separately if pursued.
+
+### Second-pass expansion (added 2026-07-05)
+
+A follow-up producer-surface sweep on 2026-07-05 (after the first six siblings
+landed as issues) checked every hook and CLI that emits a signal against the
+15 existing children. All confirmed §2 gaps and the six expansion items were
+already covered; one genuinely-uncaptured producer remained, added here. A
+second finding — the `ll-verify-*` / `ll-check-links` / `ll-deps validate` gate
+family — was folded into **ENH-2494** as a scope widening (same `check_events`
+table, no new child) rather than a new sibling.
+
+- **ENH-2498** — Capture prompt-optimization outcomes (offer mode, bypass
+  reason, raw/optimized length, accepted heuristic) from the `UserPromptSubmit`
+  optimize hook into a `prompt_opt_events` table; live offer-row + JSONL
+  backfill for the outcome. Today the one hook that mutates user intent leaves
+  no trace, so the feature is unmeasured. *(P3)*
 
 ## Children (filled post-write by `/ll:capture-issue`)
 
