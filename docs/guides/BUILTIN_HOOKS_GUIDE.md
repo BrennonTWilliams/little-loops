@@ -62,7 +62,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
 | **PostToolUse** | check-duplicate-issue-id-post | Deletes a just-written duplicate issue file (TOCTOU guard) | exit 2 | on |
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
-| **PostToolUse** | edit-batch-nudge | Nudges batching independent edits after an Edit/Write/MultiEdit | exit 2 | on |
+| **PostToolUse** | edit-batch-nudge | Nudges batching only after a run of consecutive unbatched single edits | exit 2 | on |
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
@@ -301,8 +301,19 @@ independent edits into a single turn (parallel `Edit`/`Write` calls, or
 `MultiEdit` for one file) rather than one edit per turn — fewer round-trips means
 less avoidable token cost re-reading the conversation prefix. Returns exit 2 so
 the reminder reaches the model's context (a Tier 0 token-cost quick-win from
-EPIC-2456). Fires for the three edit tools only; all other tools pass through. On
-by default; the matcher is host-agnostic and mirrored to Codex.
+EPIC-2456).
+
+The nudge is **stateful**, not per-edit: it fires only once a run of consecutive
+*unbatched* single edits reaches the threshold (default 3), then resets — so it
+stays silent during batched work and during unavoidable sequential dependent
+edits. Because `PostToolUse` carries no turn id, "unbatched" is inferred from the
+wall-clock gap between hook fires: edits closer than `_BATCH_WINDOW_SECONDS`
+(default 3s) are treated as one batched turn and reset the run, while `MultiEdit`
+always resets it. A tiny per-session counter lives in
+`.ll/ll-edit-batch-state.json`; all state I/O is best-effort and degrades to a
+silent pass-through on failure. Fires for the three edit tools only; all other
+tools pass through. On by default; the matcher is host-agnostic and mirrored to
+Codex.
 
 ---
 

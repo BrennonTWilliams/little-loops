@@ -378,15 +378,26 @@ class TestHooksMainModule:
         assert result.stderr == ""
 
     def test_dispatch_edit_batch_nudge_happy_path(self, tmp_path) -> None:
-        """``edit_batch_nudge`` intent exits 2 with a batching reminder on an Edit call (FEAT-2470).
+        """``edit_batch_nudge`` exits 2 with a batching reminder once the unbatched run trips (FEAT-2470).
 
-        The handler returns ``exit_code=2`` for Edit/Write/MultiEdit so the
-        nudge is injected into the model's context; the CLI dispatcher writes
-        the feedback to stderr and propagates the exit code.
+        The handler is stateful: a single Edit no longer nudges. Seed the
+        per-session counter one below the threshold with a stale ``last_ts`` so
+        this Edit reads as unbatched and reaches ``_NUDGE_THRESHOLD``; the CLI
+        dispatcher then writes the feedback to stderr and propagates exit 2.
         """
+        from little_loops.hooks.edit_batch_nudge import _NUDGE_THRESHOLD
+
+        state_file = tmp_path / ".ll" / "ll-edit-batch-state.json"
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        # run just below threshold, last_ts=0 → large gap → counts as unbatched.
+        state_file.write_text(
+            json.dumps({"session_id": "s1", "run": _NUDGE_THRESHOLD - 1, "last_ts": 0.0})
+        )
         result = subprocess.run(
             [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
-            input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "/tmp/x"}}),
+            input=json.dumps(
+                {"tool_name": "Edit", "session_id": "s1", "tool_input": {"file_path": "/tmp/x"}}
+            ),
             capture_output=True,
             text=True,
             timeout=10,
@@ -394,6 +405,19 @@ class TestHooksMainModule:
         )
         assert result.returncode == 2, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert "batch" in result.stderr.lower()
+
+    def test_dispatch_edit_batch_nudge_single_edit_silent(self, tmp_path) -> None:
+        """A lone Edit no longer nudges — the stateful run starts at 1 (FEAT-2470)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
+            input=json.dumps({"tool_name": "Edit", "session_id": "s1"}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert result.stderr == ""
 
     def test_dispatch_edit_batch_nudge_passthrough(self, tmp_path) -> None:
         """``edit_batch_nudge`` exits 0 with no feedback for a non-edit tool (FEAT-2470)."""
