@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466]
+relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497]
 labels:
   - epic
   - history-db
@@ -69,9 +69,44 @@ The findings report (see `## Sources`) inventories what history.db captures toda
 - **ENH-2465** — Periodic epic-progress snapshots into `.ll/history.db` so EPIC velocity is reconstructable historically instead of being a fresh point-in-time computation. *(P3 — doc ranked #8)*
 - **ENH-2466** — Mirror Learning Test Registry records into `.ll/history.db` (or at least index them into `search_index`) so `ll-session search` discovers them alongside everything else. *(P3 — doc ranked #9)*
 
+### Post-closure-review expansion (added 2026-07-05)
+
+A review of history.db coverage on 2026-07-05 (after ENH-2458/2459/2460/2462
+landed) surfaced six additional uncaptured signal classes. Per this EPIC's own
+"may gain additional siblings over time" clause, they are added as children
+rather than a new EPIC. Each is independently scoped and follows the same
+graceful-degradation contract:
+
+- **ENH-2492** — Capture per-issue orchestration run outcomes (`ll-auto` /
+  `ll-parallel` / `ll-sprint`) into an `orchestration_runs` table; today each
+  batch lands as one coarse `cli_event`. *(P2 — highest-value new sibling;
+  Python-orchestration analog of ENH-2458/2459, distinct from ENH-2463's FSM
+  `loop_runs`.)*
+- **ENH-2493** — Persist `ll-harness` / DSL-eval structured outcomes (runner,
+  target, semantic verdict, pass/fail, timeout) into a `harness_events` table;
+  today only the exit code survives. *(P3)*
+- **ENH-2494** — Capture the non-pytest CI gates (`ruff`, `mypy`,
+  `ruff format --check`) into a `check_events` table, generalizing ENH-2459's
+  pytest-only `test_run_events`. *(P3)*
+- **ENH-2495** — Record session-lifecycle / handoff events (`handoff_needed`,
+  `compaction`, `stale_ref_sweep`, `session_end`) into a
+  `session_lifecycle_events` table; today only `post-tool-use` writes to the DB
+  and these hooks emit sentinel/advisory only. *(P3)*
+- **ENH-2496** — Config-change audit trail: hash-gated `config_snapshots` of the
+  merged `.ll/ll-config.json` at `session_start` so runs are attributable to a
+  known configuration. *(P3)*
+- **ENH-2497** — Discriminate sub-agent / `Task` spawns via an `agent_type`
+  column on `tool_events` so subagent usage is queryable (agent analog of
+  ENH-2460's skill success signal). *(P3)*
+
+Item #5 from the review (PR / release / GitHub-sync events) was considered and
+**not** captured under this EPIC — it overlaps the "real-time sync to external
+systems" out-of-scope line and is better tracked separately if pursued.
+
 ## Children (filled post-write by `/ll:capture-issue`)
 
-_See `## Children` section above. File system source: this EPIC and 9 child ENH files, all written in this capture batch._
+_See `## Children` section above. File system source: this EPIC and 15 child ENH
+files (9 original + 6 from the 2026-07-05 expansion)._
 
 ## Integration Map
 
