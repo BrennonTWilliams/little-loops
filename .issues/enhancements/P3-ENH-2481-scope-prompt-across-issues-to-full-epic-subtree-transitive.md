@@ -4,9 +4,10 @@ title: Scope prompt-across-issues to full EPIC subtree (transitive children)
 type: ENH
 priority: P3
 captured_at: '2026-07-04T00:00:00Z'
+completed_at: 2026-07-06 02:58:17+00:00
 discovered_date: 2026-07-04
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - EPIC-1853
 decision_needed: false
@@ -215,7 +216,30 @@ The function is invoked from 3 places:
 
 No other call sites — adding transitive filtering does not regress any other consumer.
 
+## Resolution
+
+Implemented as scoped. `ll-issues list --parent` now resolves the full transitive
+descendant set via `compute_epic_progress` (loading `_ALL_STATUSES` so `done`
+intermediates don't sever the chain), replacing the direct-only
+`issue.parent == parent_filter` predicate in `list_cmd.py`. The
+`prompt-across-issues` loop's `init` action was rewired to forward a `--parent`
+`PARENT_ARG` shim (mirroring `TYPE_ARG`) instead of inline
+`i.get('parent') == parent` post-filtering, so it inherits the transitive
+behavior — as do `goal-cluster` and `rn-build` which shell out to the same flag.
+Help text (`__init__.py`), `docs/reference/CLI.md` (dropped the inaccurate
+"short form (`101`)" claim), the loop `description:`/schema comment, and the
+`LOOPS_REFERENCE.md` catalog row were updated to note transitive scope.
+
+**Tests**: `test_list_parent_includes_transitive_grandchild` /
+`test_list_parent_excludes_unrelated` (test_issues_cli.py, reusing the BUG-2382
+`issues_dir_with_completed_intermediate` fixture) and an extended
+`test_init_supports_parent_filter` (test_builtin_loops.py) asserting `--parent`
+forwarding. Full suite green (pre-existing unrelated failures in
+`test_ll_logs.py::TestEvalExport` and a `test_hooks_integration` ordering flake
+confirmed present without this change). mypy + ruff clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-06T02:58:17Z - `ac6b8a93-299d-4e0a-8b17-eeddf1f743fa.jsonl`
 - `/ll:confidence-check` - 2026-07-05T00:00:00Z - `484259f2-5221-4ca0-85ec-6687b9946b78.jsonl`
 - `/ll:wire-issue` - 2026-07-05T15:48:19 - `92635b63-1dd3-4d74-884a-fdcece6c774c.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:02:22 - `b75573d6-6f9f-475d-ab44-123e72f36c81.jsonl`

@@ -52,6 +52,28 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     milestone_filter: str | None = getattr(args, "milestone", None) or None
     parent_filter: str | None = getattr(args, "parent", None) or None
 
+    # Resolve the full transitive descendant set for --parent (ENH-2481).
+    # A direct `issue.parent == parent_filter` equality misses grandchildren
+    # nested under an intermediate (often done) FEAT/ENH. Reuse the cycle-safe
+    # transitive resolver `compute_epic_progress`, loading all statuses so the
+    # chain is not severed at completed/deferred intermediate nodes.
+    descendant_ids: set[str] | None = None
+    if parent_filter:
+        from little_loops.issue_parser import find_issues as _find_issues_all
+        from little_loops.issue_progress import compute_epic_progress
+
+        _parent_all_statuses: set[str] = {
+            "open",
+            "in_progress",
+            "blocked",
+            "done",
+            "cancelled",
+            "deferred",
+        }
+        _parent_all_issues = _find_issues_all(config, status_filter=_parent_all_statuses)
+        prog = compute_epic_progress(parent_filter, _parent_all_issues)
+        descendant_ids = {c.issue_id for c in prog.children} if prog else set()
+
     filtered = [
         (issue, stat)
         for issue, stat in raw
@@ -62,7 +84,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             or any(lf.lower() in [lb.lower() for lb in issue.labels] for lf in label_filters)
         )
         and (not milestone_filter or issue.milestone == milestone_filter)
-        and (not parent_filter or issue.parent == parent_filter)
+        and (descendant_ids is None or issue.issue_id in descendant_ids)
     ]
 
     # Sort

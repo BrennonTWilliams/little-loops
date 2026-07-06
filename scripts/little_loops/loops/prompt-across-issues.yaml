@@ -8,7 +8,8 @@ description: |
   harness-multi-item if you need evaluation phases.
   Optionally constrain the sweep to a single issue type with --context type=<TYPE>
   (one of BUG, FEAT, ENH, EPIC). When omitted, all open issues are processed.
-  Optionally scope the sweep to children of an epic with --context parent=EPIC-NNN.
+  Optionally scope the sweep to an epic's full subtree with --context parent=EPIC-NNN
+  (transitive: grandchildren nested under an intermediate FEAT/ENH are included).
   Both filters may be combined: --context type=ENH --context parent=EPIC-1773.
 
   Usage:
@@ -30,7 +31,8 @@ import:
 context:
   type: ""  # Optional: BUG, FEAT, ENH, or EPIC. When set, restricts the sweep
             # to open issues of that type. Empty (default) = all open issues.
-  parent: ""  # Optional: EPIC-NNN. When set, restricts sweep to issues with matching parent: field.
+  parent: ""  # Optional: EPIC-NNN. When set, restricts sweep to the parent's full
+              # transitive subtree (grandchildren via done intermediates included).
 shared_state_ok: true  # pending-list file intentionally uses a fixed path; not designed for concurrent runs
 
 states:
@@ -50,12 +52,13 @@ states:
       if [ -n "${context.type}" ]; then
         TYPE_ARG="--type ${context.type}"
       fi
-      ll-issues list $TYPE_ARG --json | python3 -c "
+      PARENT_ARG=""
+      if [ -n "${context.parent}" ]; then
+        PARENT_ARG="--parent ${context.parent}"
+      fi
+      ll-issues list $TYPE_ARG $PARENT_ARG --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
-      parent = '${context.parent}'
-      if parent:
-          issues = [i for i in issues if i.get('parent') == parent]
       for i in issues:
           print(i['id'])
       " > .loops/tmp/prompt-across-issues-pending.txt

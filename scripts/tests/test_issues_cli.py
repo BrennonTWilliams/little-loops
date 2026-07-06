@@ -1024,6 +1024,82 @@ class TestIssuesCLIList:
         # Either there is no Unparented section, or BUG-300 comes before it
         assert unparented_idx == -1 or bug300_idx < unparented_idx
 
+    def test_list_parent_includes_transitive_grandchild(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_completed_intermediate: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2481: --parent resolves the full transitive descendant set.
+
+        Chain: BUG-300 (open) → FEAT-200 (done) → EPIC-001. Passing
+        ``--parent EPIC-001`` must surface the grandchild BUG-300 even though
+        its immediate parent (FEAT-200) is not the filter target.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "list",
+                "--parent",
+                "EPIC-001",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        ids = {item["id"] for item in json.loads(captured.out)}
+        # Grandchild through a done intermediate must be included.
+        assert "BUG-300" in ids
+        # The done intermediate itself is excluded under default --status open.
+        assert "FEAT-200" not in ids
+
+    def test_list_parent_excludes_unrelated(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_completed_intermediate: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2481: --parent excludes issues that do not descend from the target."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "list",
+                "--parent",
+                "EPIC-001",
+                "--json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        ids = {item["id"] for item in json.loads(captured.out)}
+        # Base issues (no parent) must not leak into the parent-scoped set.
+        assert "BUG-001" not in ids
+        assert "FEAT-001" not in ids
+
     def test_list_group_by_epic_with_nested_epic_children(
         self,
         temp_project_dir: Path,

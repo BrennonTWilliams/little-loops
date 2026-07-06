@@ -1674,10 +1674,19 @@ class TestPromptAcrossIssuesLoop:
         assert "${context.type}" in init_action or "TYPE_ARG" in init_action
 
     def test_init_supports_parent_filter(self, data: dict) -> None:
-        """context.parent must default to '' and init action must reference it."""
+        """context.parent must default to '' and init action must forward --parent.
+
+        ENH-2481: the init action now forwards ``--parent`` to ``ll-issues list``
+        (inheriting transitive descendant resolution) instead of post-filtering
+        the JSON with an inline ``i.get('parent') == parent`` equality check.
+        """
         assert data.get("context", {}).get("parent") == ""
         init_action = data["states"].get("init", {}).get("action", "")
         assert "${context.parent}" in init_action or "context.parent" in init_action
+        # Must forward the CLI flag (transitive) rather than inline direct-only equality.
+        assert "PARENT_ARG" in init_action
+        assert "--parent" in init_action
+        assert "i.get('parent') == parent" not in init_action
 
 
 class TestAutoRefineAndImplementLoop:
