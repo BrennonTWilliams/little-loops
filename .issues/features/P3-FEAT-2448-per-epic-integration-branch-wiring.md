@@ -18,11 +18,11 @@ parent: EPIC-2451
 relates_to:
 - FEAT-2339
 - EPIC-2451
-- EPIC-2447
-- EPIC-2449
+- FEAT-2447
+- FEAT-2449
 - FEAT-2450
 blocked_by:
-- EPIC-2447
+- FEAT-2447
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 60
@@ -192,4 +192,4 @@ target can disagree with fork point.
 
 ## Blocks
 
-- EPIC-2449
+- FEAT-2449
