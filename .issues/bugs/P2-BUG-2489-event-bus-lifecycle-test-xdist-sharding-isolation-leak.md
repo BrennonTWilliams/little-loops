@@ -13,6 +13,12 @@ labels:
 - flaky
 - test-isolation
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 20
 ---
 
 # BUG-2489: Event-bus lifecycle test fails under some xdist shardings (test-isolation leak)
@@ -406,6 +412,7 @@ larger surface of C buys both a real bug fix and a regression guard.
 - Related test-isolation work: BUG-1995 (pytest opened the real history DB).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-06T02:30:07 - `b5480c51-410f-42f8-982c-72e64a202d8f.jsonl`
 - `/ll:wire-issue` - 2026-07-06T00:21:22 - `598c77c5-730f-4dd7-b84a-7f8aa9f712de.jsonl`
 - `/ll:decide-issue` - 2026-07-06T00:11:45 - `b4be5a1b-62e5-48f9-aaf8-49197ad39072.jsonl`
 - `/ll:refine-issue` - 2026-07-05T23:24:57 - `6b27fe05-3797-415c-84da-adca0ebea01e.jsonl`
