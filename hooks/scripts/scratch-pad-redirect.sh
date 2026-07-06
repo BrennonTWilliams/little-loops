@@ -110,7 +110,13 @@ case "$TOOL_NAME" in
         # dir inside the rewritten command so it exists at execution time even when
         # an auto-backgrounded command outlives the turn and the dir was swept — a
         # subshell is robust to `${CMD}` shapes that would break `{ …; }` grouping.
-        NEW_CMD="mkdir -p .loops/tmp/scratch; ( ${CMD} ) > ${SCRATCH_PATH} 2>&1; tail -${TAIL_LINES} ${SCRATCH_PATH}"
+        #
+        # Preserve the wrapped command's exit status: a bare `( ${CMD} ) > …; tail …`
+        # returns `tail`'s status (≈always 0), masking a failing `pytest`/`mypy`
+        # ("Exit code 0 but 5 failures reported"). Capture `$?` and re-raise it via
+        # an OUTER subshell so the `exit` scopes to that subshell (never the
+        # harness's persistent shell) while `tail` still prints the inline summary.
+        NEW_CMD="mkdir -p .loops/tmp/scratch; ( ( ${CMD} ) > ${SCRATCH_PATH} 2>&1; rc=\$?; tail -${TAIL_LINES} ${SCRATCH_PATH}; exit \$rc )"
         CTX="Output redirected to ${SCRATCH_PATH} (last ${TAIL_LINES} lines shown inline)."
 
         jq -nc --arg new "$NEW_CMD" --arg ctx "$CTX" \

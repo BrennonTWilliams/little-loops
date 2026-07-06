@@ -2800,6 +2800,57 @@ class TestScratchPadRedirectBug2420:
         finally:
             os.chdir(original_dir)
 
+    def test_rewrite_preserves_nonzero_exit_code(self, hook_script: Path, tmp_path: Path):
+        """Execution-level: the wrapped command's FAILING exit status must survive.
+
+        A bare `( CMD ) > file 2>&1; tail file` returns `tail`'s status (≈0),
+        masking a failing pytest/mypy ("Exit code 0 but 5 failures reported").
+        The rewrite must re-raise the real status while still tailing the summary.
+        """
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            # `grep` (allowlisted) with no match exits 1 but still writes nothing
+            # to stdout; a preceding `ls` of a missing path guarantees non-zero.
+            result = self._run(hook_script, "ls /definitely-nonexistent-path-xyz")
+            new_cmd = json.loads(result.stdout)["hookSpecificOutput"]["updatedInput"]["command"]
+            proc = subprocess.run(
+                ["bash", "-c", new_cmd], cwd=tmp_path, capture_output=True, text=True, timeout=10
+            )
+            # The failing command's non-zero status must propagate, not `tail`'s 0.
+            assert proc.returncode != 0, (
+                f"non-zero exit of the wrapped command must be preserved; got {proc.returncode}"
+            )
+            # ...and the tail summary must still have been captured to scratch.
+            scratch_files = list((tmp_path / ".loops/tmp/scratch").glob("*.txt"))
+            assert scratch_files, "scratch file was not created"
+            assert scratch_files[0].read_text().strip(), "tail summary must still be captured"
+        finally:
+            os.chdir(original_dir)
+
+    def test_rewrite_preserves_zero_exit_code(self, hook_script: Path, tmp_path: Path):
+        """A succeeding wrapped command must still report exit 0 (no false failure)."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            self._write_config(tmp_path)
+            (tmp_path / "present.txt").write_text("x")
+            result = self._run(hook_script, "ls present.txt")
+            new_cmd = json.loads(result.stdout)["hookSpecificOutput"]["updatedInput"]["command"]
+            proc = subprocess.run(
+                ["bash", "-c", new_cmd], cwd=tmp_path, capture_output=True, text=True, timeout=10
+            )
+            assert proc.returncode == 0, (
+                f"a succeeding command must report exit 0; got {proc.returncode}"
+            )
+        finally:
+            os.chdir(original_dir)
+
 
 class TestScratchCleanupSessionEnd:
     """BUG-2420: scratch cleanup moved off the racing `Stop` hook onto a
