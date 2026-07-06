@@ -8,7 +8,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_date: "2026-07-02"
 discovered_by: deep-research / manual synthesis
 labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479]
+relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479, ENH-2486, ENH-2490, ENH-2499]
 source_artifacts:
   - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
   - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -142,13 +142,14 @@ Children must extend the in-flight partials rather than duplicate them:
 
 ## Children
 
-Each entry below is a **planned** child issue to be captured next; issue IDs TBD.
+Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **planned** placeholders (`[TBD-n]`) to be captured next.
 
 ### Tier 0 — behavioral quick-wins (ship first)
 
-- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2; was [TBD-1])*
+- **FEAT-2470** — Tier 0 roll-up — verbatim-output rule (P6), edit-batch hook (P1), LogCleaner anti-event filter, stop-sequence/prefill JSON output helpers (`output/parse.py`). *(filed 2026-07-03, P2; was [TBD-1])* — **done 2026-07-06**: all four techniques shipped with tests (`edit_batch_nudge` hook + Codex mirror, `output/parse.py`, `output_cleaner.py`, verbatim rule on 6 audit skills).
+- **ENH-2499** — Stateful edit-batch nudge — follow-on to FEAT-2470's P1 hook: fires only after a run of ≥3 consecutive unbatched single edits instead of on every edit. *(filed 2026-07-05, P3; **done 2026-07-06**)*
 - **ENH-2490** — P2 haiku pin + dense-list template + call budget on read-only audit agents — **extracted from FEAT-2470 and deferred** (2026-07-05): no quality gate + fragile cross-host safety story make it unfit for the strictly-dominant Tier 0 tranche. *(deferred, P3)*
-- **ENH-2471** — Tier 0 verification trace set (locked 3–5 traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2; was [TBD-2])*
+- **ENH-2471** — Tier 0 verification trace set (locked traces for before/after measurement) + P1 hook regression test. *(filed 2026-07-03, P2; was [TBD-2])* — trace count relaxed from 3–5 to ≥2 confirmed-stable traces per `/ll:decide-issue` 2026-07-05 (Option A); the hook-regression-test half landed with FEAT-2470/ENH-2499 (`test_edit_batch_hook.py`), leaving trace-set lock + baseline capture as remaining scope.
 
 ### Tier 1 — measurement foundation
 
@@ -181,6 +182,10 @@ Each entry below is a **planned** child issue to be captured next; issue IDs TBD
 ### Cross-tier verification
 
 - **[TBD-19]** Joint cache × router 2×2 ablation matrix (`scripts/little_loops/dev/measure_cache_routing_interaction.py`) — greenfield research output; verify on representative `ll-loop` traces.
+
+### Related non-child work
+
+- **ENH-2486** — FSM per-invocation prompt-size guard + bounding of re-embedded growing artifacts *(done 2026-07-06; `relates_to` this epic, parented elsewhere)* — occupies the same `fsm/runners` prompt-assembly leverage point F4-gated targets. The F4-gated child should build on its guard/threshold surface, not duplicate it (see ENH-2486 § cross-check against `history.compaction` budget).
 
 ## Integration Map
 
@@ -301,5 +306,6 @@ Tracking the questions raised in the plan files that need resolution before fili
 
 ## Session Log
 
+- epic-audit - 2026-07-06 - Audit pass: added ENH-2486/ENH-2490/ENH-2499 to `relates_to`; recorded FEAT-2470 + ENH-2499 as done in Children; added ENH-2499 entry (stateful edit-batch nudge follow-on) and "Related non-child work" note for ENH-2486; noted ENH-2471 trace-count relaxation (3–5 → ≥2, decided 2026-07-05) and that its hook-regression-test half shipped with FEAT-2470; updated Children intro (Tier 0–1 filed, Tier 2–4 TBD).
 - epic-audit - 2026-07-05 - Children section restructured: filed Tier 1 children (ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479) moved from the Tier 0 list into the Tier 1 section, replacing the duplicate [TBD-3]–[TBD-7] placeholders. Added FEAT-2470/ENH-2471 to `relates_to` for consistency. Added anchor-drift note (executor.py 1295→1382–1393; usage.jsonl vs usage_event table; cost_limits.* keys not yet present).
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - initial EPIC capture from `thoughts/plans/2026-07-02-token-cost-reduction-architecture.md` + `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md` (prioritization layer). Filing resolves Open Question #6 in both plan files. Captured ID `EPIC-2456` (next unique). Aggregate footprint ~1,550 LOC, 1 pip dep (`anthropic`), 0 sidecars.

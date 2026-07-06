@@ -1,7 +1,7 @@
 ---
 id: ENH-2471
-title: "Tier 0 verification trace set (locked 3\u20135 traces) + P1 edit-batch hook\
-  \ regression test"
+title: "Tier 0 verification trace set (locked \u22652 traces; was 3\u20135, relaxed\
+  \ 2026-07-05) + P1 edit-batch hook regression test"
 type: ENH
 priority: P2
 status: open
@@ -12,6 +12,8 @@ parent: EPIC-2456
 relates_to:
 - FEAT-2470
 - ENH-2479
+- ENH-2490
+- ENH-2499
 decision_needed: false
 missing_artifacts: true
 labels:
@@ -44,7 +46,9 @@ trace sets need owners and members — this issue owns the Tier 0 set).
 
 ## Current Behavior
 
-No locked trace set exists for Tier 0; any before/after claim is measured against a moving target. The P1 edit-batch hook (FEAT-2470) has no regression test.
+No locked trace set exists for Tier 0; any before/after claim is measured against a moving target.
+
+> **Audit update (2026-07-06):** the P1 hook-regression-test half of this issue is already done — `scripts/tests/test_edit_batch_hook.py` landed with FEAT-2470 (done 2026-07-06) and was extended to 11 tests by ENH-2499's stateful rewrite; dispatch-parity tests live in `test_hook_intents.py`. Remaining scope is the trace-set half only: lock the ≥2 traces per the 2026-07-05 decision (Option A), capture baselines, and report FEAT-2470's before/after delta. Note the Integration Map below predates FEAT-2470 landing — its "edit_batch_nudge.py does not exist yet" and `EditBatchNudgeConfig` wiring notes are stale (the hook shipped with no new config keys, per ENH-2499 § Scope Boundaries).
 
 ## Expected Behavior
 
@@ -478,6 +482,7 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 **Open** | Created: 2026-07-03 | Priority: P2
 
 ## Session Log
+- epic-audit - 2026-07-06 - Marked the hook-regression-test half done (landed via FEAT-2470 + ENH-2499; `test_edit_batch_hook.py`, 11 tests); flagged stale Integration Map wiring notes; added ENH-2490/ENH-2499 to `relates_to`. Remaining scope: trace-set lock (≥2) + baseline capture + before/after delta.
 - `/ll:decide-issue` - 2026-07-06T02:49:39 - `ac6b8a93-299d-4e0a-8b17-eeddf1f743fa.jsonl`
 - `/ll:refine-issue` - 2026-07-06T02:46:27 - `7151a6fa-8ed4-4bde-b715-7adbbf0f873f.jsonl`
 - `/ll:confidence-check` - 2026-07-05T00:00:00-07:00 - `6569d1c1-3096-44a0-8cd8-af9267063742.jsonl`

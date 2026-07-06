@@ -41,7 +41,7 @@ The `issue_events` schema (ENH-1686) gives raw transition events; a rollup table
 
 ## Expected Behavior
 
-- `epic_progress_snapshots` table exists in schema v15+ with columns: `id`, `ts`, `epic_id`, `total_children`, `open_count`, `in_progress_count`, `done_count`, `deferred_count`, `blocked_count`, `cancelled_count`, `completion_fraction REAL`.
+- `epic_progress_snapshots` table exists in the next schema version (v19+ as of 2026-07-06; the issue predates v15–v18 landing) with columns: `id`, `ts`, `epic_id`, `total_children`, `open_count`, `in_progress_count`, `done_count`, `deferred_count`, `blocked_count`, `cancelled_count`, `completion_fraction REAL`.
 - A snapshot is written on each child issue transition (via the `issue.*` live-write path) keyed by parent epic; idempotent on `(epic_id, ts)` for within-second transitions.
 - A snapshot is written on every `ll-issues epic-progress <EPIC>` invocation, regardless of outcome.
 - `history_reader.epic_progress_history(epic_id, since=None)` returns a time-series of snapshots for an EPIC.
@@ -138,4 +138,5 @@ Add to `history_reader.py`:
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Updated stale schema-version reference ("v15+" → v19+; v15–v18 were consumed by ENH-2460/2462/2458/2459). Verified `issue_progress.py` and `cli/issues/epic_progress.py` exist.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

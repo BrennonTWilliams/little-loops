@@ -156,7 +156,7 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 - ENH-2459 / `record_test_run_event()` (`session_store.py:1171`) — the shape to
   generalize
 - `.claude/CLAUDE.md` § Testing & CI Policy — the four-gate definition
-- `skills/check-code/` (`/ll:check-code`) — gate invocation site
+- `skills/ll-check-code/` (`/ll:check-code`) — gate invocation site
 
 ## Related Key Documentation
 
@@ -171,4 +171,5 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Corrected skill path in Sources: the skill directory is `skills/ll-check-code/`, not `skills/check-code/`. Confirmed no `ll-check-code` console script exists in `scripts/pyproject.toml` (the "skill-driven, no binary" premise holds).
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

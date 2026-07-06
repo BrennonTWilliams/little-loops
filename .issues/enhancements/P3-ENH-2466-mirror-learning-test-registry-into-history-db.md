@@ -130,11 +130,12 @@ Add to `history_reader.py`:
 | `docs/ARCHITECTURE.md` | Schema versions table |
 | `docs/reference/API.md` | `session_store`, `history_reader` module references |
 | `docs/reference/CLI.md` | `ll-session --kind learning_test`, `ll-learning-tests` flags |
-| `docs/guides/LEARNING_TESTS_GUIDE.md` (if exists) | Registry semantics |
+| `docs/guides/LEARNING_TESTS_GUIDE.md` | Registry semantics |
 
 ## Status
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Confirmed `docs/guides/LEARNING_TESTS_GUIDE.md` exists (removed "(if exists)" hedge) and `.ll/learning-tests/*.md` registry files are present.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

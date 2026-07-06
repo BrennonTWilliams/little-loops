@@ -32,7 +32,7 @@ The findings report (see `## Sources`) inventories what history.db captures toda
 
 - **Provenance**: All nine items were identified as residual gaps immediately after the EPIC-1707 closure review. Capturing them now preserves the lineage from "what 1707 covered" to "what still needed covering."
 - **Discoverability**: A future contributor looking at history.db coverage will land on this EPIC via `relates_to:` and read the children's scope in one place.
-- **Acceptance of partial scope creep**: Children may complete in any order, may be cancelled without blocking the others, and may gain additional siblings over time. The epic's closure criterion is "all 9 children done OR explicitly deferred" rather than a coordinated release.
+- **Acceptance of partial scope creep**: Children may complete in any order, may be cancelled without blocking the others, and may gain additional siblings over time. The epic's closure criterion is "all children done OR explicitly deferred" rather than a coordinated release (originally 9 children; 16 as of the 2026-07-05 expansions).
 
 ### Out-of-scope (will not be added under this EPIC)
 
@@ -121,8 +121,9 @@ table, no new child) rather than a new sibling.
 
 ## Children (filled post-write by `/ll:capture-issue`)
 
-_See `## Children` section above. File system source: this EPIC and 15 child ENH
-files (9 original + 6 from the 2026-07-05 expansion)._
+_See `## Children` section above. File system source: this EPIC and 16 child ENH
+files (9 original + 6 from the 2026-07-05 expansion + ENH-2498 from the
+second-pass expansion)._
 
 ## Integration Map
 
@@ -134,28 +135,28 @@ This EPIC owns no shared infrastructure. Each child issue is a self-contained en
 
 There are **no hard dependencies** between children. Recommended implementation order, mirroring the doc's rank ordering (highest-value first):
 
-1. ENH-2458 (commit linkage) — P2, biggest blind spot
-2. ENH-2459 (test results) — P2, only CI gate without history
-3. ENH-2460 (skill success signal) — P3, cheap
+1. ENH-2458 (commit linkage) — P2, biggest blind spot — **done 2026-07-03 (schema v17)**
+2. ENH-2459 (test results) — P2, only CI gate without history — **done 2026-07-03 (schema v18)**
+3. ENH-2460 (skill success signal) — P3, cheap — **done 2026-07-03 (schema v15)**
 4. ENH-2461 (real token counts) — P3
-5. ENH-2462 (session_id on issue_events) — P3
+5. ENH-2462 (session_id on issue_events) — P3 — **done 2026-07-03 (schema v16)**
 6. ENH-2463 (per-loop-run summary) — P3
 7. ENH-2464 (decisions backlinks) — P3
 8. ENH-2465 (epic progress snapshots) — P3
 9. ENH-2466 (learning test rows) — P3
 
-Children may be implemented in any order; the recommendation is to land the P2 pair first.
+Children may be implemented in any order; the P2 pair landed first as recommended. Among the 2026-07-05 siblings (ENH-2492…2498), land ENH-2492 (P2, orchestration run outcomes) before the P3s.
 
 ## Impact
 
-- **Priority**: P3 — Rollup epic for nine independent enhancements; no coordinated release pressure.
+- **Priority**: P3 — Rollup epic for sixteen independent enhancements (9 original + 7 added 2026-07-05); no coordinated release pressure.
 - **Effort**: Variable, per child. Sum across children: estimated Medium-Large (six small per-child slices + three medium ones based on doc's own complexity signal).
 - **Risk**: Low per child; cumulative risk is "schema sprawl" if children land uncoordinated — mitigated by each child adding at most one migration per the EPIC-1707 graceful-degradation contract.
 - **Breaking Change**: No — every child is additive; no existing tables modified beyond optional additive columns and indexes.
 
 ## Success Metrics
 
-- All 9 children reach `status: done` (or are explicitly cancelled/deferred with rationale).
+- All 16 children reach `status: done` (or are explicitly cancelled/deferred with rationale). _Progress as of 2026-07-06: 4 done (ENH-2458, ENH-2459, ENH-2460, ENH-2462), 12 open._
 - `ll-session search --fts` returns results across the new kinds (`commit`, `test_run`, `loop_run`, `learning_test`).
 - A new contributor can ask `ll-session recent --kind commit` and see a real row, proving schema migration landed.
 - The findings report's "Source" section becomes a historical record of *what was missing* — re-running the report's inventory should show zero items in §2.
@@ -171,10 +172,12 @@ Children may be implemented in any order; the recommendation is to land the P2 p
 
 _Added 2026-07-02 at capture time:_ EPIC is open with all 9 children listed in `## Children` and `relates_to` frontmatter. No verification pass has been run yet; verification will land alongside each child's implementation.
 
+_Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk (all carry `parent: EPIC-2457`). 4 done / 12 open. Done children verified against code: `commit_events` (v17), `test_run_events` (v18), `skill_events` completion columns (v15), `issue_events.session_id` (v16) all present in `session_store.py`; `SCHEMA_VERSION` is 18 and `_VALID_KINDS` includes `commit` and `test_run`. Success-metric kinds `loop_run` and `learning_test` remain pending (ENH-2463, ENH-2466).
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
-- `scripts/little_loops/session_store.py` — schema v14, write paths, FTS5 index
+- `scripts/little_loops/session_store.py` — schema v14 at capture time (v18 as of 2026-07-06), write paths, FTS5 index
 - `scripts/little_loops/history_reader.py` — read API from ENH-1752
 - EPIC-1707 — closed parent epic; 34 children all done; this epic captures the post-closure gaps
 
@@ -183,4 +186,5 @@ _Added 2026-07-02 at capture time:_ EPIC is open with all 9 children listed in `
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Reconciled child counts (9 → 16) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 12 open, schema v18 verified in code).
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -14,6 +14,7 @@ relates_to:
 - ENH-2471
 - ENH-2475
 - ENH-2490
+- ENH-2499
 labels:
 - token-cost
 - hooks

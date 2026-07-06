@@ -1,5 +1,6 @@
 ---
 id: ENH-2499
+title: Make the edit-batching nudge stateful (fire only after a run of unbatched single edits)
 priority: P3
 type: ENH
 status: done
@@ -9,7 +10,8 @@ confidence_score: 95
 outcome_confidence: 90
 completed_at: 2026-07-06T04:22:16Z
 parent: EPIC-2456
-relates_to: [FEAT-2470]
+relates_to: [FEAT-2470, ENH-2471]
+labels: [token-cost, hooks, tier-0]
 ---
 
 # ENH-2499: Make the edit-batching nudge stateful (fire only after a run of unbatched single edits)

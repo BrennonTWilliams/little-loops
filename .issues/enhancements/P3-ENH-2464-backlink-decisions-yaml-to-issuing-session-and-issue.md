@@ -144,7 +144,7 @@ Add to `history_reader.py`:
 - `.issues/features/P3-FEAT-948-rules-and-decisions-log-for-issue-compliance.md` — decision entry schema
 - `.issues/enhancements/P3-ENH-2152-extract-decisions-and-rules-from-completed-issues.md` — extraction pipeline that depends on these fields existing
 - `scripts/little_loops/decisions.py` — core schema (single source of truth)
-- `scripts/little_loops/correction_retirements` — existing one-way linkage precedent
+- `scripts/little_loops/session_store.py` — `correction_retirements` table (v13, ENH-2046); existing one-way linkage precedent
 
 ## Related Key Documentation
 
@@ -159,4 +159,5 @@ Add to `history_reader.py`:
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Fixed Sources ref: `correction_retirements` is a table in `session_store.py` (v13, ENH-2046), not a module. Verified the three capture-bridge skills (`decide-issue`, `tradeoff-review-issues`, `go-no-go`) and `scripts/little_loops/decisions.py` exist.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

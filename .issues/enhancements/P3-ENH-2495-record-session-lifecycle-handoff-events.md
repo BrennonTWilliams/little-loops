@@ -19,13 +19,15 @@ labels:
 
 ## Summary
 
-Of all registered hooks, **only `post-tool-use.sh` writes to history.db**
-(skill/tool events). The session-lifecycle hooks — `context-monitor.sh`
+Of all registered hooks, **only the `post-tool-use.sh` and `user-prompt-check.sh`
+paths write to history.db** (tool/skill events, and corrections + `/ll:` skill
+dispatches via `user_prompt_submit.py`). The session-lifecycle hooks — `context-monitor.sh`
 (threshold tracking, `context_monitor.auto_handoff_threshold: 50`),
 `context-handoff-sentinel.sh` (Stop hook, writes the
 `.ll/ll-context-handoff-needed` sentinel), the stale-ref sweep
-(`hooks/sweep_stale_refs.py`), and PreCompact handoff — produce **sentinel/state
-files and advisory feedback only; nothing is persisted as an event.** So the DB
+(`scripts/little_loops/hooks/sweep_stale_refs.py`), and PreCompact handoff —
+produce **sentinel/state files and advisory feedback only; nothing is persisted
+as an event.** So the DB
 can't answer "how often does this project hit the context-handoff threshold?" or
 "how many stale cross-issue refs get swept per session?" Add a
 `session_lifecycle_events` table capturing these transitions
@@ -147,7 +149,7 @@ Bump `SCHEMA_VERSION`. Add `"session_lifecycle"` to `_VALID_KINDS` and
 
 - `thoughts/history-db-expand-wiring.md` — §2 (issue↔session linkage / lifecycle)
 - EPIC-2457 review (2026-07-05) — item #4
-- `hooks/hooks.json` — hook registrations (only `post-tool-use` writes to DB)
+- `hooks/hooks.json` — hook registrations (only `post-tool-use` and `user-prompt-check` write to DB; no lifecycle hook does)
 - `hooks/scripts/context-handoff-sentinel.sh`, `hooks/scripts/context-monitor.sh`
 - `scripts/little_loops/hooks/sweep_stale_refs.py` — sweep findings count
 - `reference_loop_handoff_mechanics` (memory) — CONTEXT_HANDOFF marker semantics
@@ -166,4 +168,5 @@ Bump `SCHEMA_VERSION`. Add `"session_lifecycle"` to `_VALID_KINDS` and
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Corrected "only post-tool-use writes to history.db": the `user-prompt-check.sh` → `user_prompt_submit.py` path also writes (corrections + skill events). Core claim stands — no session-*lifecycle* hook writes to the DB. Fixed sweep_stale_refs path.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

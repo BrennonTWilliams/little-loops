@@ -20,8 +20,8 @@ labels:
 ## Summary
 
 `ll-harness` computes a real `PASS`/`FAIL` plus a semantic `verdict` per run
-(`cli/harness.py:main_harness()` at `:452`; pass/fail logic at `:197–252`,
-`eval_result.verdict`), but only the process **exit code** is persisted — via the
+(`cli/harness.py:main_harness()` at `:450`; pass/fail logic in
+`_evaluate_and_report()` at `:192`, `eval_result.verdict`), but only the process **exit code** is persisted — via the
 generic `cli_event_context` wrap. The runner type (skill/cmd/mcp/prompt/dsl), the
 target, whether the semantic criterion passed, and whether it timed out are all
 discarded. So the DB can't answer "has this eval flapped between PASS and FAIL
@@ -48,8 +48,8 @@ signal.
 - `main_harness()` wraps the run in `cli_event_context(DEFAULT_DB_PATH,
   "ll-harness", sys.argv[1:])` (`harness.py:452`); the `cli_events` row carries
   only `(binary, args, exit_code, duration_ms)`.
-- `_evaluate()` (`harness.py:197`) computes `passed`, prints `PASS`/`FAIL`, and
-  returns an exit code; `eval_result.verdict` is not persisted.
+- `_evaluate_and_report()` (`harness.py:192`) computes `passed`, prints
+  `PASS`/`FAIL`, and returns an exit code; `eval_result.verdict` is not persisted.
 - No `--kind harness` in `ll-session`.
 
 ## Expected Behavior
@@ -94,7 +94,7 @@ Bump `SCHEMA_VERSION`. Add `"harness"` to `_VALID_KINDS` and
   semantic_verdict=None, semantic_passed=None, timed_out=None,
   duration_ms=None, head_sha=None, branch=None)` to `session_store.py`,
   best-effort guarded, indexing `target` into `search_index` (`kind="harness"`).
-- Call it from `main_harness()` after `_evaluate()` returns, reading `runner`
+- Call it from `main_harness()` after `_evaluate_and_report()` returns, reading `runner`
   from the parsed args, `semantic_passed`/`semantic_verdict` from `eval_result`,
   and `timed_out` from `RunnerResult`.
 - For `--dsl` batch runs, emit one row per `DslTask`.
@@ -126,7 +126,7 @@ Bump `SCHEMA_VERSION`. Add `"harness"` to `_VALID_KINDS` and
 1. Schema migration for `harness_events`; bump `SCHEMA_VERSION`.
 2. Add `"harness"` to `_VALID_KINDS` and `_KIND_TABLE`.
 3. Implement `record_harness_event()` in `session_store.py`; export.
-4. Wire `main_harness()` (post-`_evaluate`) + the `--dsl` per-task path.
+4. Wire `main_harness()` (post-`_evaluate_and_report`) + the `--dsl` per-task path.
 5. `history_reader.recent_harness_events()` + `harness_pass_rate()`.
 6. CLI: `ll-session recent --kind harness`.
 7. Tests: `TestRecordHarnessEvent`, `TestHarnessSchema`,
@@ -138,8 +138,8 @@ Bump `SCHEMA_VERSION`. Add `"harness"` to `_VALID_KINDS` and
 
 - `thoughts/history-db-expand-wiring.md` — §2 (loop/eval outcomes gap)
 - EPIC-2457 review (2026-07-05) — item #2
-- `scripts/little_loops/cli/harness.py:197-252` (`_evaluate`), `:452`
-  (`main_harness` cli_event_context wrap)
+- `scripts/little_loops/cli/harness.py:192` (`_evaluate_and_report`), `:450`
+  (`main_harness`; `cli_event_context` wrap at `:452`)
 - ENH-2459 — sibling structured-result table (`test_run_events`)
 
 ## Related Key Documentation
@@ -155,4 +155,5 @@ Bump `SCHEMA_VERSION`. Add `"harness"` to `_VALID_KINDS` and
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Corrected function reference: pass/fail logic lives in `_evaluate_and_report()` at `harness.py:192` (there is no `_evaluate()` at `:197`); `main_harness` is at `:450` with the `cli_event_context` wrap at `:452`.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

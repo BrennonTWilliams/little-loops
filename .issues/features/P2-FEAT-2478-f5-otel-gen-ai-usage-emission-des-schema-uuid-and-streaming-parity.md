@@ -9,7 +9,7 @@ discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
 relates_to: [ENH-2475, ENH-2477, FEAT-2476, ENH-2479, ENH-2461]
-depends_on: [ENH-2475]
+depends_on: [ENH-2475, ENH-2479]
 labels:
   - token-cost
   - observability

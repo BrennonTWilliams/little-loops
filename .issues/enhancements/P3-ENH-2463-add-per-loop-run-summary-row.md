@@ -129,7 +129,7 @@ Add to `history_reader.py`:
 - `.issues/bugs/P2-BUG-2304-loop-complete-event-omits-error-field.md` — `loop_complete` `error` field reference
 - `.issues/enhancements/P3-ENH-2428-score-plateau-early-stop-for-generator-evaluator.md` — sibling evaluator work
 - `scripts/little_loops/fsm/executor.py::_finish()` — emit site for `loop_complete`
-- `scripts/little_loops/agents/loop-specialist.md` — diagnostic artifact writer
+- `agents/loop-specialist.md` — diagnostic artifact writer
 
 ## Related Key Documentation
 
@@ -145,4 +145,5 @@ Add to `history_reader.py`:
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Fixed loop-specialist agent path in Sources (`agents/loop-specialist.md`, not `scripts/little_loops/agents/`). Note for implementer: schema is at v18 as of 2026-07-06, so the new migration lands as v19+; `_finish()` is at `fsm/executor.py:2269`.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

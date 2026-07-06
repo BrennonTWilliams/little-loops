@@ -31,7 +31,7 @@ first-class and joinable.
 
 ## Motivation
 
-- **Subagent usage is invisible.** The plugin ships ~15 agents
+- **Subagent usage is invisible.** The plugin ships 9 agents
   (`agents/*.md`); nothing tells you which are dead weight vs. load-bearing.
 - **Symmetry with the skill-health tooling.** ENH-2460 gave skills exit_code /
   duration; `dead-skills` / `ctx-stats` surface skill usage. Agents deserve the
@@ -146,4 +146,5 @@ For (A): bump `SCHEMA_VERSION` for the additive column (existing rows get
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- audit - 2026-07-06 - Corrected agent count: `agents/*.md` contains 9 agent definitions, not ~15.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

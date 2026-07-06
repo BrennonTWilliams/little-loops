@@ -1,6 +1,6 @@
 ---
 id: BUG-1461
-title: `continuation.auto_detect_on_session_start` flag is documented but not read by any code
+title: "`continuation.auto_detect_on_session_start` flag is documented but not read by any code"
 type: BUG
 priority: P3
 status: done

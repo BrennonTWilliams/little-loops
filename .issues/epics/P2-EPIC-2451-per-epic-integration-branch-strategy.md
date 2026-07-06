@@ -17,9 +17,9 @@ labels:
 parent: FEAT-2339
 relates_to:
 - FEAT-2339
-- EPIC-2447
+- FEAT-2447
 - FEAT-2448
-- EPIC-2449
+- FEAT-2449
 - FEAT-2450
 decision_needed: false
 confidence_score: 95
@@ -136,4 +136,5 @@ implementation risk.
   issues independent of this EPIC.
 
 ## Session Log
+- Audit - 2026-07-06 - Corrected mistyped children: EPIC-2447/EPIC-2449 retyped to FEAT-2447/FEAT-2449 (id, type, filename moved to `features/`), cross-references updated across all five issues. Body text had referenced them as FEAT throughout since decomposition.
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`

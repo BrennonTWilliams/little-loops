@@ -17,7 +17,12 @@ labels:
 parent: EPIC-1929
 relates_to: [FEAT-1545, FEAT-1613, FEAT-1930, FEAT-1931, FEAT-1932]
 decision_needed: false
-decision: Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file executor change, follows existing conventions. Extension-based path (Option B) deferred as future refactor. Note: transport is now delegated to the CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert() / adapter.await_response() rather than hardcoding terminal I/O.
+decision: >-
+  Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file
+  executor change, follows existing conventions. Extension-based path (Option B)
+  deferred as future refactor. Note: transport is now delegated to the
+  CommunicationAdapter protocol (FEAT-1930); the executor calls adapter.send_alert()
+  / adapter.await_response() rather than hardcoding terminal I/O.
 ---
 
 # FEAT-1794: HITL interrupt FSM state type (`action_type: human_approval`)
