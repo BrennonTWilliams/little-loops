@@ -55,6 +55,42 @@ class TestGetCurrentSessionJsonl:
         with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
             assert get_current_session_jsonl() is None
 
+    def test_skips_file_that_vanishes_before_stat(self, tmp_path: Path) -> None:
+        """BUG-2489: a .jsonl deleted between glob() and stat() is skipped, not raised.
+
+        The live host process can rotate/delete a session JSONL between the glob
+        listing and the mtime stat. The scan must skip the vanished file and return
+        the surviving most-recent one rather than propagating FileNotFoundError.
+        """
+        survivor = tmp_path / "survivor.jsonl"
+        survivor.write_text("{}")
+        ghost = tmp_path / "ghost.jsonl"
+        ghost.write_text("{}")
+
+        real_stat = Path.stat
+
+        def flaky_stat(self: Path, *args: object, **kwargs: object) -> os.stat_result:
+            if self.name == "ghost.jsonl":
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+            return real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+            with patch.object(Path, "stat", flaky_stat):
+                result = get_current_session_jsonl()
+        assert result == survivor
+
+    def test_returns_none_when_all_files_vanish(self, tmp_path: Path) -> None:
+        """BUG-2489: if every listed .jsonl vanishes before stat, return None."""
+        (tmp_path / "a.jsonl").write_text("{}")
+        (tmp_path / "b.jsonl").write_text("{}")
+
+        def all_gone(self: Path, *args: object, **kwargs: object) -> os.stat_result:
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+
+        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+            with patch.object(Path, "stat", all_gone):
+                assert get_current_session_jsonl() is None
+
 
 class TestAppendSessionLogEntry:
     """Tests for append_session_log_entry."""

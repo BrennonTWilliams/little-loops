@@ -578,6 +578,40 @@ def _guard_real_history_db() -> Generator[None, None, None]:
 
 
 # =============================================================================
+# Session-log directory isolation (BUG-2489)
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _isolate_session_log_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
+    """Redirect host session-log resolution away from the real ~/.claude/projects dir.
+
+    BUG-2489: ``get_current_session_jsonl`` → ``get_project_folder`` resolves the
+    live host's session directory under ``Path.home()``. Tests that exercise
+    lifecycle emitters (e.g. ``complete_issue_lifecycle`` →
+    ``append_session_log_entry``) would otherwise glob/stat the *real* JSONL files
+    the live Claude Code process is actively writing, producing a TOCTOU flake that
+    only surfaces under some xdist shardings.
+
+    ``get_project_folder`` is imported *by reference* into six modules, so the single
+    true choke point they all share is ``pathlib.Path.home`` (via
+    ``_get_claude_project_folder`` / ``_get_codex_project_folder``). Pointing it at an
+    empty per-test temp home makes resolution return ``None`` instead of racing the
+    host. This mirrors the BUG-1995 ``_isolate_history_db`` convention.
+
+    Function-scoped and monkeypatch-based so per-test ``Path.home`` overrides
+    (e.g. ``TestSessionLogHostAware`` and the ``test_ll_logs.py`` host-aware tests)
+    run *after* this fixture and win — composition, not conflict.
+    """
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir(exist_ok=True)
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    yield
+
+
+# =============================================================================
 # cmd_run env-var isolation (BUG-2011 follow-up)
 # =============================================================================
 

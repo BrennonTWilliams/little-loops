@@ -80,7 +80,20 @@ def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
     if not jsonl_files:
         return None
 
-    return max(jsonl_files, key=lambda f: f.stat().st_mtime)
+    # Guard the stat() against a TOCTOU race (BUG-2489): the live host process can
+    # rotate or delete a .jsonl between the glob() above and the stat() below. Skip
+    # files that vanish rather than propagating FileNotFoundError, which would poison
+    # callers such as complete_issue_lifecycle, get_current_session_id, and the FSM
+    # prompt-mode payload builder.
+    dated: list[tuple[float, Path]] = []
+    for f in jsonl_files:
+        try:
+            dated.append((f.stat().st_mtime, f))
+        except OSError:
+            continue
+    if not dated:
+        return None
+    return max(dated, key=lambda pair: pair[0])[1]
 
 
 def get_current_session_id(cwd: Path | None = None) -> str | None:

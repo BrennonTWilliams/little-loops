@@ -196,7 +196,18 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
     if not jsonl_files:
         return None
 
-    latest = max(jsonl_files, key=lambda f: f.stat().st_mtime)
+    # Guard the stat() against a TOCTOU race (BUG-2489): the live host process can
+    # rotate or delete a .jsonl between the glob() above and the stat() below. This
+    # inlines get_current_session_jsonl's idiom, so the fix there does not cover it.
+    dated: list[tuple[float, Path]] = []
+    for f in jsonl_files:
+        try:
+            dated.append((f.stat().st_mtime, f))
+        except OSError:
+            continue
+    if not dated:
+        return None
+    latest = max(dated, key=lambda pair: pair[0])[1]
 
     cache_read = 0
     cache_write = 0

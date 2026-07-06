@@ -385,6 +385,60 @@ class TestComputeCacheRateFromJsonl:
         with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
             assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
+    def test_skips_file_that_vanishes_before_stat(self, tmp_path: Path) -> None:
+        """BUG-2489: a .jsonl deleted between glob() and stat() is skipped, not raised.
+
+        Mirrors the TOCTOU guard in session_log.get_current_session_jsonl — this is a
+        byte-for-byte duplicate of the unguarded idiom that ll-ctx-stats hits against
+        the live host session dir.
+        """
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        self._write_jsonl(
+            project_folder / "survivor.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 100,
+                            "cache_creation_input_tokens": 10,
+                            "input_tokens": 1,
+                        }
+                    },
+                }
+            ],
+        )
+        (project_folder / "ghost.jsonl").write_text("{}")
+
+        real_stat = Path.stat
+
+        def flaky_stat(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self.name == "ghost.jsonl":
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+            return real_stat(self, *args, **kwargs)
+
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            with patch.object(Path, "stat", flaky_stat):
+                result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 100
+
+    def test_returns_none_when_all_files_vanish(self, tmp_path: Path) -> None:
+        """BUG-2489: if every listed .jsonl vanishes before stat, return None."""
+        project_folder = tmp_path / "projects"
+        project_folder.mkdir()
+        (project_folder / "a.jsonl").write_text("{}")
+        (project_folder / "b.jsonl").write_text("{}")
+
+        def all_gone(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+
+        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+            with patch.object(Path, "stat", all_gone):
+                assert _compute_cache_rate_from_jsonl(tmp_path) is None
+
     def test_computes_hit_rate(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
