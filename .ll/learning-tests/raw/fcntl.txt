@@ -1,0 +1,7 @@
+# tmpdir=/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/fcntl_proof_il2ripbm
+CLAIM 1: PASS: LOCK_EX on fresh fd returned without exception
+CLAIM 2: PASS: second LOCK_EX on same fd returned silently
+CLAIM 3: PASS: BlockingIOError raised with errno=35 (EAGAIN)
+CLAIM 4: PASS: after proc_a released, fresh acquire returned rc=0
+CLAIM 5: FAIL: same-process two-opens: fd_y NB-raised BlockingIOError errno=35 — would imply per-inode semantics for the same process
+# summary: PASS=4 FAIL=1 of 5 exercised

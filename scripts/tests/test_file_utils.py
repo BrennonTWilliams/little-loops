@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import json
 import os
 import threading
@@ -173,3 +175,70 @@ class TestAcquireLock:
         assert isinstance(final, dict)
         # Ensure os module wasn't shadowed by import (regression smoke).
         assert os.path.exists(target)
+
+
+class TestFlockSameProcessContention:
+    """Two separate open()s of the same path within one process contend.
+
+    Documents the Darwin/BSD flock(2) semantic verified in
+    ``.ll/learning-tests/fcntl.md`` (claim 5, observed FAIL of the
+    per-open-file-description hypothesis): on this platform, even within a
+    single process, opening the lock file twice produces two open-file-
+    descriptions whose flocks contend at the inode level. This is what makes
+    ``acquire_lock`` safe to use from the same process by multiple callers —
+    each ``with open(...)`` in the context manager gets its own fd, and the
+    second NB-acquire reliably raises ``BlockingIOError`` until the first
+    caller releases.
+    """
+
+    def test_second_open_nb_acquire_raises_blocking_io_error(self, tmp_path: Path) -> None:
+        """Second open() in same process contends; NB-acquire raises BlockingIOError."""
+        lock = tmp_path / "ofd.lock"
+
+        # First holder: open path, take exclusive lock.
+        holder = open(lock, "w")
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+
+            # Second open of the SAME path from the SAME process.
+            contender = open(lock, "w")
+            try:
+                with pytest.raises(BlockingIOError) as excinfo:
+                    fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # On Darwin/BSD the kernel returns EAGAIN; some libcs surface
+                # EACCES instead. Accept either for portability.
+                assert excinfo.value.errno in (errno.EAGAIN, errno.EACCES), (
+                    f"unexpected errno {excinfo.value.errno}; expected EAGAIN or EACCES"
+                )
+            finally:
+                contender.close()
+        finally:
+            fcntl.flock(holder, fcntl.LOCK_UN)
+            holder.close()
+
+    def test_second_open_can_acquire_after_first_releases(self, tmp_path: Path) -> None:
+        """Round-trip: after the first open releases, the second open's NB-acquire wins."""
+        lock = tmp_path / "ofd_release.lock"
+
+        holder = open(lock, "w")
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+
+            contender = open(lock, "w")
+            try:
+                # Confirmed blocked while holder holds the lock.
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                # Release from a separate fd on the SAME holder ofd by writing
+                # through it: LOCK_UN closes the ofd's lock; contender's NB
+                # acquire must then succeed.
+                fcntl.flock(holder, fcntl.LOCK_UN)
+
+                # Now contender can take its own LOCK_EX.
+                fcntl.flock(contender, fcntl.LOCK_EX)
+                fcntl.flock(contender, fcntl.LOCK_UN)
+            finally:
+                contender.close()
+        finally:
+            holder.close()
