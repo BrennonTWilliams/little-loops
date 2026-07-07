@@ -20,6 +20,8 @@ score_test_coverage: 22
 score_ambiguity: 23
 score_change_surface: 20
 completed_at: '2026-07-06T02:43:05Z'
+relates_to:
+- BUG-2530
 ---
 
 # BUG-2489: Event-bus lifecycle test fails under some xdist shardings (test-isolation leak)

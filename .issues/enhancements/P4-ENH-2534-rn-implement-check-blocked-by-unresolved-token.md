@@ -10,6 +10,12 @@ decision_needed: false
 labels:
 - loops
 - hardening
+confidence_score: 97
+outcome_confidence: 91
+score_complexity: 24
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2534: rn-implement — check_blocked_by should emit UNRESOLVED/PARSE_ERROR tokens
@@ -61,8 +67,169 @@ run_dir sidecar (e.g. `blocked_by_gate_skips.txt`) so audits can distinguish
 - If routing on the token is desired later, add an `output_contains` route to
   a distinct diagnostic emit; not required for this issue — observability only.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **⚠ Do NOT mirror the recheck's `print()` verbatim to stdout.** The two states
+  have opposite stdout data-flow, so a literal copy would flip fail-open →
+  fail-closed. In the upfront gate (`check_blocked_by`, `rn-implement.yaml:360`),
+  the inner `python3` heredoc's **stdout** is captured by command substitution
+  into `$UNMET` (`UNMET=$(python3 << 'PYEOF' ... )`, lines 379/446–447). The bash
+  wrapper then treats **non-empty `$UNMET` as BLOCKED** — it writes
+  `blocked_by_unmet_<ID>.txt` and echoes `BLOCKED`
+  (`if [ -n "$UNMET" ]`, lines 448–451) → `route_blocked_by` matches `BLOCKED`
+  → `mark_deferred`. So `print("UNRESOLVED")` to **stdout** would defer the
+  issue instead of passing it through. By contrast, the recheck's wrapper
+  (line 838) uses `if [ -z "$UNMET" ]` (non-empty = *don't* re-enqueue), so its
+  stdout tokens are harmless there.
+- **Fix: emit the tokens to stderr**, e.g. `print("UNRESOLVED", file=sys.stderr)`
+  and `print("PARSE_ERROR", file=sys.stderr)`. This keeps `$UNMET` empty (→ READY
+  → fail-open preserved) while still surfacing the skip. The FSM captures shell
+  stderr separately (`fsm/executor.py:1547–1615`) and exposes it to operators via
+  `stderr_preview` (`fsm/executor.py:1453–1460`, ENH-2469) — exactly the
+  observability the issue asks for, without a routing change.
+- **There are four silent fail-open points, not two.** Beyond unresolved
+  (`rn-implement.yaml:412`) and parse-error (line 419), the done-set failure has
+  two exits (lines 439 and 441) that the recheck labels `DONE_SET_ERROR`
+  (lines 827/830). Line 428 is the *normal* no-deps ready path (recheck:
+  `NO_BLOCKED_BY`, line 815) — not an error. Emit `DONE_SET_ERROR` too (also to
+  stderr) for full parity if scope allows; the issue title only mandates
+  `UNRESOLVED`/`PARSE_ERROR`.
+- **Optional sidecar** (`blocked_by_gate_skips.txt`): if added, write it under
+  `$RUN_DIR` — mirror the existing per-run path `blocked_by_unmet_<ID>.txt`
+  (line 449). A bare `.loops/tmp/` path would trip MR-3 (per-run artifact
+  isolation) in `ll-loop validate`.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/rn-implement.yaml` — `check_blocked_by` state
+  (line 360). Replace the bare `sys.exit(0)` at the unresolved (line 412) and
+  parse-error (line 419) fail-open points with a preceding
+  `print("<TOKEN>", file=sys.stderr)`; optionally the two done-set exits
+  (lines 439, 441) with `DONE_SET_ERROR`. Fail-open (`sys.exit(0)`,
+  `on_error: check_depth` at line 457) must be preserved unchanged.
+
+### Reference Pattern (mirror, adjusting stream)
+- `scripts/little_loops/loops/rn-implement.yaml:796–831` — the post-remediation
+  recheck already prints `UNRESOLVED` (797) / `PARSE_ERROR` (805) /
+  `NO_BLOCKED_BY` (815) / `DONE_SET_ERROR` (827,830). Copy the token *strings*,
+  but route them to `stderr` per the finding above.
+
+### Dependent / Downstream (unchanged, verify no regression)
+- `route_blocked_by` (`rn-implement.yaml:459`) evaluates
+  `output_contains` on `${captured.blocked_by_status.output}` (the **bash
+  wrapper's** stdout: `READY`/`BLOCKED`) — unaffected as long as tokens go to
+  stderr and `$UNMET` stays empty on the fail-open paths.
+- `mark_deferred` (`rn-implement.yaml:1250`) consumes
+  `blocked_by_unmet_<ID>.txt`; must not be written on an unresolved/parse-error
+  skip.
+
+### Tests
+- `scripts/tests/test_rn_implement.py` — existing gate tests introspect the
+  static YAML via `_load_loop()` (e.g.
+  `test_check_blocked_by_parses_frontmatter_not_show_json`, line 863, asserts on
+  `action` string contents; `test_check_blocked_by_fails_open_on_error`, line
+  857). Add a sibling test asserting the `check_blocked_by` `action` contains
+  `"UNRESOLVED"`, `"PARSE_ERROR"`, and `sys.stderr` (or `>&2`), and that the
+  `on_error`/`sys.exit(0)` fail-open shape is retained.
+- `scripts/tests/test_fsm_executor.py` — already covers `stderr_preview`
+  surfacing (ENH-2469); no change needed, but confirms the stderr route is
+  operator-visible.
+
+#### Tests — additional anchors (wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Sibling static pattern**: `scripts/tests/test_rn_implement.py:1224`
+  `test_re_enqueue_logs_re_enqueue_marker` is the closest in-file precedent for
+  a static stderr-marker assertion (`assert "[RE_ENQUEUE]" in action`); mirror
+  this pattern for the new `TestBlockedByGate` sibling test.
+- **Runtime stderr pattern**: `scripts/tests/test_loops_recursive_refine.py:480, 517, 531, 547, 563, 578`
+  — `TestVisitedSetFilter._bash(...)` + `result.stderr` checks model a runtime
+  stderr-emission test (alternative to static-only introspection; pick one,
+  not both, for the new sibling test to keep the change scoped).
+- **Generic stderr surface** (already covered, no edit): `scripts/tests/test_fsm_executor.py:8668-8716`
+  `TestStderrPreview` covers `stderr_preview` (ENH-2469) the new tokens ride on.
+- **Adjacent test classes** (do-not-regress, no edits):
+  - `scripts/tests/test_builtin_loops.py:8230` `TestRnImplementDiagnosticOutcomes`
+  - `scripts/tests/test_builtin_loops.py:9098` `TestRnImplementAuthFastFail`
+  - `scripts/tests/test_fsm_validation.py:3028` `test_alternative_capture_branches_no_warning`
+    (models the `fifo_pop` + `select_next` dual-`input`-capture shape
+    `check_blocked_by` depends on).
+- **Hardening guard**: `scripts/tests/test_rn_implement.py:857`
+  `test_check_blocked_by_fails_open_on_error` asserts `on_error == "check_depth"`.
+  The planned change must preserve this route exactly — the new stderr tokens
+  are observability-only.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/guides/LOOPS_REFERENCE.md:399-435` — describes
+  `check_blocked_by` → `route_blocked_by` → `mark_deferred` in the gate
+  overview (line 401-402), the fail-open prose (line 404, "if `ll-issues show`
+  cannot parse the frontmatter the gate passes"), and the FSM flow diagram
+  (line 434). The existing prose remains accurate (fail-open semantics
+  preserved); a soft enhancement could note that the gate now emits `UNRESOLVED`
+  / `PARSE_ERROR` to stderr (visible via `stderr_preview`, ENH-2469). Strict
+  optional — defer to docs-pass if scope allows.
+
+## Implementation Steps
+
+1. In `scripts/little_loops/loops/rn-implement.yaml` `check_blocked_by`
+   (line 360), add `print("UNRESOLVED", file=sys.stderr)` before the
+   `sys.exit(0)` at line 412 and `print("PARSE_ERROR", file=sys.stderr)` before
+   line 419. Optionally add `print("DONE_SET_ERROR", file=sys.stderr)` before
+   lines 439 and 441 for full recheck parity.
+2. Leave the bash wrapper, `capture: blocked_by_status`, `next: route_blocked_by`,
+   and `on_error: check_depth` untouched — fail-open must not change.
+3. Add a test in `scripts/tests/test_rn_implement.py` mirroring
+   `test_check_blocked_by_parses_frontmatter_not_show_json` that asserts the
+   diagnostic tokens and the `sys.stderr` stream appear in the state `action`.
+4. Run `python -m pytest scripts/tests/test_rn_implement.py -v` and
+   `ll-loop validate scripts/little_loops/loops/rn-implement.yaml` (guards MR-3
+   if a sidecar is added).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be verified
+during implementation:_
+
+5. **Hardening guard**: Preserve
+   `scripts/tests/test_rn_implement.py:857` `test_check_blocked_by_fails_open_on_error`'s
+   assertion (`on_error == "check_depth"`). The new stderr tokens do not
+   alter the route — the existing test must continue to pass.
+6. **Sibling-pattern anchor** (Step 3 reinforcement): The new sibling test in
+   `TestBlockedByGate` should follow the closest in-file precedent at
+   `scripts/tests/test_rn_implement.py:1224` `test_re_enqueue_logs_re_enqueue_marker`
+   for static substring assertion of the new tokens in `check_blocked_by.action`.
+   For a stronger runtime test (verifies tokens actually reach stderr at
+   runtime, not just appear in the action string), mirror the `_bash(...)` +
+   `result.stderr` pattern from
+   `scripts/tests/test_loops_recursive_refine.py:517-547` instead. Pick one,
+   not both, to keep the change scoped.
+7. **Cross-class do-not-regress**: Run
+   `python -m pytest scripts/tests/test_rn_implement.py scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_validation.py`
+   — adjacent test classes `TestRnImplementDiagnosticOutcomes`,
+   `TestRnImplementAuthFastFail`,
+   `test_alternative_capture_branches_no_warning` must not regress.
+8. **Operator-visible surface** (already in place, no edit): `stderr_preview`
+   surfaces the new tokens via `scripts/little_loops/fsm/executor.py:1453-1460`
+   (`stderr_preview` derivation), and the stderr pipe path that keeps tokens
+   out of `$UNMET` lives at `scripts/little_loops/fsm/executor.py:1547-1615`.
+9. **Optional docs touch-up**: `docs/guides/LOOPS_REFERENCE.md:399-435` could
+   note that `check_blocked_by` emits stderr tokens visible via `stderr_preview`.
+   Strictly optional — existing fail-open prose remains accurate.
+
 ## Impact
 
 - **Severity**: Low (latent observability gap, no known defect)
 - **Effort**: Trivial
 - **Risk**: Low
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-07-07T23:00:50 - `a2a457a7-62c3-4f9f-8e72-74ba6766d974.jsonl`
+- `/ll:refine-issue` - 2026-07-07T22:47:38 - `05eb9217-1e29-4cc7-adf9-f517827261fd.jsonl`

@@ -4318,6 +4318,60 @@
     target viewport dimensions, even when an upstr
   enforcement: advisory
   issue: BUG-2527
+- id: ARCHITECTURE-115
+  type: decision
+  timestamp: '2026-07-07T22:46:56Z'
+  category: architecture
+  labels: []
+  rationale: BUG-2489 structural fix (_isolate_session_log_dir at scripts/tests/conftest.py:612-638
+    and TOCTOU guard at scripts/little_loops/session_log.py:88-93) is intact post-ENH-2529;
+    the hypothesised LLTestBus.global_subscribers symbol does not exist anywhere in
+    scripts/ (zero grep hits); BUG-2489 regressions at test_session_log.py:58,82 still
+    pass per ENH-2529 AC1 (14173 passed, 35 skipped, exit 0); audit itself could not
+    reproduce the flake.
+  rule: Close as duplicate of BUG-2489 (no code change)
+  scope: issue
+  alternatives_rejected: 'Option B: re-open BUG-2489 as regression — no evidence of
+    regression in ENH-2529/ENH-2531/ENH-2532 commits since 2026-07-06 closure; conftest.py
+    and session_log.py untouched; no new bypass paths added.'
+  issue: BUG-2530
+- id: ARCHITECTURE-116
+  type: decision
+  timestamp: '2026-07-07T22:53:09Z'
+  category: architecture
+  labels: []
+  rationale: Direct /ll:capture-issue invocation following gap analysis of _parse_card_fields
+    vs. frontmatter inventory. Three missing conditional blocks (closure, relationships,
+    discovery) plus decision-coupling rendering fix for the existing decision_needed/learning_tests_required/missing_artifacts
+    trio. Single-file surface change to scripts/little_loops/cli/issues/show.py with
+    tests in scripts/tests/test_show.py. Filed as P2 ENH (developer-ergonomics, broad
+    reach, modest surface).
+  rule: 'Captured: ll-issues show: surface closure context, relationships, discovery,
+    and decision coupling'
+  scope: issue
+  issue: ENH-2535
+- id: ARCHITECTURE-117
+  type: decision
+  timestamp: '2026-07-07T22:58:49Z'
+  category: architecture
+  labels: []
+  rationale: 'Directly mirrors the closest codebase precedent for multi-source JSON
+    aggregation (loop-composer-adaptive.yaml:read_completed_summaries, lines 458-487)
+    and the array-of-records shape (goal-cluster.yaml:present_result, lines 687-738).
+    One Python block keeps json.dumps responsible for well-formed output for embedded
+    sidecar bodies and the new arrays; eliminates shell-escape risks of the hybrid
+    (Option B) and pure-shell (Option C) variants. MR-10 escape (on_error: failed)
+    is the documented mitigation already exemplified by read_completed_summaries:458.'
+  rule: 'Option A: Single python3 << ''PYEOF'' heredoc that builds the entire summary
+    dict (with on_error: failed to satisfy MR-10)'
+  scope: issue
+  alternatives_rejected: Option B (hybrid shell printf + python3 -c step) — matches
+    the hybrid SHAPE precedent at auto-refine-and-implement.yaml:finalize:238-285
+    but the precedent emits a DICT from one file, not two arrays from many sidecars.
+    Option C (pure shell JSON building) — zero existing array-of-records JSON writers
+    in pure shell across loops/; lib/common.yaml exposes no JSON-construction helper;
+    failures.txt sidecar contents are not shell-safe.
+  issue: ENH-2533
 - id: ARCH-187
   type: rule
   timestamp: '2026-07-07T23:30:03Z'
