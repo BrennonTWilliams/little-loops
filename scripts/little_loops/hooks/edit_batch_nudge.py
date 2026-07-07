@@ -10,7 +10,11 @@ Unlike the original stateless version (which nagged on *every* edit — spending
 tokens on a token-cost hook and firing even during unavoidable sequential
 dependent edits), this handler tracks consecutive *unbatched* single edits in a
 per-session state file and only nudges once a run reaches
-``_NUDGE_THRESHOLD`` (default 3).
+``_NUDGE_THRESHOLD`` (default 3) — and then **at most once per session**. After
+the first nudge fires, a sticky ``nudged`` latch suppresses every subsequent
+nudge for the lifetime of the ``session_id``; a new session re-arms the hook.
+Re-firing in the same session adds tokens without changing behavior: a reminder
+the model already ignored once is unlikely to land on a 2nd or 3rd repetition.
 
 **Why a time-gap heuristic.** PostToolUse fires once per tool call with no turn
 id, so two edits batched in one assistant turn are indistinguishable from two
@@ -24,9 +28,10 @@ always resets the run.
 
 State lives in ``.ll/ll-edit-batch-state.json`` (resolved against the process
 cwd, matching the other hooks) as a single record
-``{"session_id", "run", "last_ts"}``; a changed ``session_id`` resets the run.
-All state I/O is best-effort — any failure degrades to a silent pass-through
-(``exit_code=0``) so the hook never raises and never spams.
+``{"session_id", "run", "last_ts", "nudged"}``; a changed ``session_id`` resets
+the run *and* clears ``nudged``. All state I/O is best-effort — any failure
+degrades to a silent pass-through (``exit_code=0``) so the hook never raises
+and never spams.
 
 Returns ``LLHookResult(exit_code=2, feedback=…)`` only when the nudge fires, so
 the reminder reaches the model's context (``exit_code=0`` feedback is
@@ -101,7 +106,7 @@ def _persist_state(state: dict[str, Any]) -> None:
 
 
 def handle(event: LLHookEvent) -> LLHookResult:
-    """Nudge edit batching only after a run of unbatched single edits."""
+    """Nudge edit batching at most once per session, only after a run of unbatched single edits."""
     tool_name = event.payload.get("tool_name", "")
     if tool_name not in _EDIT_TOOLS:
         return LLHookResult(exit_code=0)
@@ -112,8 +117,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
         now = _now()
         session = event.payload.get("session_id") or ""
         state = _load_state()
-        run = int(state.get("run", 0)) if state.get("session_id") == session else 0
-        last_ts = state.get("last_ts") if state.get("session_id") == session else None
+        same_session = state.get("session_id") == session
+        run = int(state.get("run", 0)) if same_session else 0
+        last_ts = state.get("last_ts") if same_session else None
+        # Once we've nudged in this session, never nudge again — the reminder
+        # has already had its chance to land, and re-injecting it just adds
+        # tokens without changing behavior.
+        if same_session and state.get("nudged"):
+            return LLHookResult(exit_code=0)
 
         nudge = False
         if tool_name == "MultiEdit":
@@ -126,9 +137,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
             run += 1
             if run >= _NUDGE_THRESHOLD:
                 nudge = True
-                run = 0  # fire every Nth unbatched edit, not continuously
+                run = 0
 
-        _persist_state({"session_id": session, "run": run, "last_ts": now})
+        _persist_state({
+            "session_id": session,
+            "run": run,
+            "last_ts": now,
+            "nudged": nudge or (same_session and bool(state.get("nudged"))),
+        })
         return LLHookResult(exit_code=2, feedback=_NUDGE) if nudge else LLHookResult(exit_code=0)
     except Exception:  # pragma: no cover — defense in depth; never raise from a hook
         return LLHookResult(exit_code=0)

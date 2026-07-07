@@ -2,10 +2,12 @@
 
 The handler is stateful: it tracks consecutive *unbatched* single edits in
 ``.ll/ll-edit-batch-state.json`` and only nudges (``exit_code=2``) once a run
-reaches ``_NUDGE_THRESHOLD``. Batched edits (fires within
-``_BATCH_WINDOW_SECONDS``) and ``MultiEdit`` reset the run; every non-edit tool
-passes through with exit 0 and no feedback. Tests isolate state via
-``monkeypatch.chdir(tmp_path)`` and drive the clock via ``_now``.
+reaches ``_NUDGE_THRESHOLD`` — and at most **once per session**. A sticky
+``nudged`` latch in the state file suppresses all subsequent nudges until
+``session_id`` changes. Batched edits (fires within
+``_BATCH_WINDOW_SECONDS``) and ``MultiEdit`` reset the run counter; every
+non-edit tool passes through with exit 0 and no feedback. Tests isolate state
+via ``monkeypatch.chdir(tmp_path)`` and drive the clock via ``_now``.
 """
 
 from __future__ import annotations
@@ -100,7 +102,9 @@ class TestStatefulNudge:
             last = self._edit()
             clock.advance(gap)
         assert last.exit_code == 2
-        # The very next unbatched edit starts a fresh run and does not re-nudge.
+        # The very next unbatched edit does not re-nudge — the once-per-session
+        # ``nudged`` latch is now set, so every subsequent edit in this session
+        # passes through silently regardless of how the run counter evolves.
         assert self._edit().exit_code == 0
 
     def test_batched_edits_never_nudge(self, clock: _Clock) -> None:
@@ -132,6 +136,86 @@ class TestStatefulNudge:
         # though the raw count would otherwise reach the threshold.
         result = self._edit(session="s2")
         assert result.exit_code == 0
+
+    def test_nudge_only_fires_once_per_session(self, clock: _Clock) -> None:
+        """Once the nudge fires in a session, every subsequent unbatched edit passes through silently."""
+        gap = _BATCH_WINDOW_SECONDS + 1.0
+        # Reach the threshold once.
+        results = []
+        for _ in range(_NUDGE_THRESHOLD):
+            results.append(self._edit())
+            clock.advance(gap)
+        assert results[-1].exit_code == 2
+        # Now drive many more unbatched edits through — none should re-nudge.
+        post_fire = []
+        for _ in range(_NUDGE_THRESHOLD * 4):
+            post_fire.append(self._edit())
+            clock.advance(gap)
+        assert all(r.exit_code == 0 for r in post_fire), (
+            "once-per-session latch leaked: a later unbatched edit re-nudged"
+        )
+
+    def test_nudge_only_fires_once_even_across_batched_resets(self, clock: _Clock) -> None:
+        """Batched edits / MultiEdit after the first nudge do not re-arm the hook."""
+        gap = _BATCH_WINDOW_SECONDS + 1.0
+        # Fire the nudge once.
+        for _ in range(_NUDGE_THRESHOLD):
+            self._edit()
+            clock.advance(gap)
+        # Now do a MultiEdit (which would normally reset the run counter)...
+        me = handle(_event({"tool_name": "MultiEdit", "session_id": "s1"}))
+        clock.advance(gap)
+        assert me.exit_code == 0
+        # ...then a fast pair of batched edits (within the batch window)...
+        for _ in range(2):
+            self._edit()
+            clock.advance(_BATCH_WINDOW_SECONDS / 4)
+        # ...then a long unbatched stretch. None of these should re-nudge:
+        # the latch is sticky for the lifetime of the session_id.
+        for _ in range(_NUDGE_THRESHOLD + 2):
+            result = self._edit()
+            clock.advance(gap)
+            assert result.exit_code == 0, "latch cleared by a later tool call"
+
+    def test_session_change_rearms_nudge(self, clock: _Clock) -> None:
+        """Switching session_id clears the nudged latch and re-arms the hook for the new session."""
+        gap = _BATCH_WINDOW_SECONDS + 1.0
+        # Fire the nudge once in session s1.
+        for _ in range(_NUDGE_THRESHOLD):
+            self._edit(session="s1")
+            clock.advance(gap)
+        # New session — should be able to nudge again.
+        results = []
+        for _ in range(_NUDGE_THRESHOLD):
+            results.append(self._edit(session="s2"))
+            clock.advance(gap)
+        assert all(r.exit_code == 0 for r in results[:-1])
+        assert results[-1].exit_code == 2
+
+    def test_state_records_nudged_flag(self, clock: _Clock) -> None:
+        """Persisted state includes ``nudged`` so a process restart inherits the latch."""
+        from little_loops.hooks.edit_batch_nudge import _load_state
+
+        gap = _BATCH_WINDOW_SECONDS + 1.0
+        for _ in range(_NUDGE_THRESHOLD):
+            self._edit()
+            clock.advance(gap)
+        state = _load_state()
+        assert state.get("session_id") == "s1"
+        assert state.get("nudged") is True
+        assert state.get("run") == 0
+
+    def test_state_omits_nudged_until_first_fire(self, clock: _Clock) -> None:
+        """Pre-fire state records ``nudged: False`` so the latch is explicit, not implicit."""
+        from little_loops.hooks.edit_batch_nudge import _load_state
+
+        gap = _BATCH_WINDOW_SECONDS + 1.0
+        # One unbatched edit — well below threshold.
+        self._edit()
+        clock.advance(gap)
+        state = _load_state()
+        assert state.get("nudged") is False
+        assert state.get("run") == 1
 
 
 class TestRobustness:
