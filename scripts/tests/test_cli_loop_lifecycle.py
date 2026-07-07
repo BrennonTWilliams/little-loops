@@ -132,7 +132,7 @@ class TestCmdStop:
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         mock_persistence.save_state.assert_called_once_with(mock_state)
 
     def test_stop_with_pid_sends_sigterm_and_waits(self, tmp_path: Path) -> None:
@@ -163,7 +163,7 @@ class TestCmdStop:
 
         assert result == 0
         mock_killpg.assert_any_call(99, signal.SIGTERM)
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         mock_cls.return_value.save_state.assert_called_once_with(mock_state)
         assert not pid_file.exists(), "PID file should be removed after SIGTERM stop"
 
@@ -197,7 +197,7 @@ class TestCmdStop:
         mock_killpg.assert_any_call(99, signal.SIGTERM)
         mock_killpg.assert_any_call(99, signal.SIGKILL)
         logger.warning.assert_called_once()
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         assert not pid_file.exists(), "PID file should be removed after SIGKILL stop"
 
     def test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill(
@@ -232,7 +232,7 @@ class TestCmdStop:
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0  # No exception propagated
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         assert not pid_file.exists(), (
             "PID file should be removed even when SIGKILL raises ProcessLookupError"
         )
@@ -398,7 +398,7 @@ class TestCmdStop:
 
         assert result == 0
         mock_killpg.assert_not_called()
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         mock_cls.return_value.save_state.assert_called_once_with(mock_state)
 
     def test_attribute_error_on_killpg_falls_back_to_os_kill(self, tmp_path: Path) -> None:
@@ -469,7 +469,7 @@ class TestCmdStop:
         sigkill_calls = [c for c in mock_killpg.call_args_list if c[0][1] == signal.SIGKILL]
         assert len(sigterm_calls) >= 1
         assert len(sigkill_calls) == 0
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
 
     def test_permission_error_on_killpg_falls_through_to_wait(self, tmp_path: Path) -> None:
         """PermissionError on killpg is caught, and the function proceeds to the wait loop."""
@@ -504,7 +504,102 @@ class TestCmdStop:
 
         assert result == 0
         # SIGTERM was attempted (and PermissionError caught)
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
+
+    def test_stop_writes_user_stop_marker_before_sigterm(self, tmp_path: Path) -> None:
+        """cmd_stop writes user-stop.marker in the running dir before sending signals (ENH-2522).
+
+        The marker must be present on disk before SIGTERM so a racing SIGKILL
+        cannot leave the audit trail ambiguous between user-stop and kernel signal.
+        """
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+        alive_seq = [True, False]
+
+        marker_path = running_dir / "user-stop.marker"
+        marker_write_times: list[float] = []
+        killpg_call_times: list[float] = []
+
+        from unittest.mock import MagicMock as _MM
+
+        real_write_text = Path.write_text
+
+        def tracking_write(self: Path, *args: object, **kwargs: object) -> int:
+            if self == marker_path:
+                import time as _t
+
+                marker_write_times.append(_t.time())
+            return real_write_text(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        mock_killpg = _MM()
+        mock_killpg.side_effect = lambda *a, **kw: killpg_call_times.append(__import__("time").time())
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=42),
+            patch("little_loops.cli.loop.lifecycle.os.killpg", mock_killpg),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+            patch.object(Path, "write_text", tracking_write),
+        ):
+            cmd_stop("test-loop", tmp_path, logger)
+
+        assert marker_path.exists(), "user-stop.marker must be written before SIGTERM"
+        body = marker_path.read_text()
+        assert "requested_by=" in body, "marker must record requested_by"
+        assert "requested_at=" in body, "marker must record requested_at"
+
+    def test_stop_no_pid_file_flips_to_user_stopped(self, tmp_path: Path) -> None:
+        """cmd_stop flips state.status to user_stopped (not interrupted) when no PID file exists (ENH-2522)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        # No PID file - just state update path
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+        ):
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert mock_state.status == "user_stopped"
+        mock_cls.return_value.save_state.assert_called_once_with(mock_state)
+        # Log message uses the new status label (not "as interrupted")
+        success_calls = [str(c) for c in logger.success.call_args_list]
+        assert any("user_stopped" in c for c in success_calls), (
+            f"logger.success should mention 'user_stopped', got: {success_calls}"
+        )
+
+
+class TestResumableStatuses:
+    """Tests for RESUMABLE_STATUSES taxonomy (ENH-2522)."""
+
+    def test_user_stopped_is_resumable(self) -> None:
+        """user_stopped must be in RESUMABLE_STATUSES so cmd_resume can pick it up."""
+        from little_loops.fsm.persistence import RESUMABLE_STATUSES
+
+        assert "user_stopped" in RESUMABLE_STATUSES
+
+    def test_system_signal_is_not_resumable(self) -> None:
+        """system_signal must NOT be in RESUMABLE_STATUSES (runner died mid-state)."""
+        from little_loops.fsm.persistence import RESUMABLE_STATUSES
+
+        assert "system_signal" not in RESUMABLE_STATUSES
 
 
 class TestCmdResume:
@@ -1153,9 +1248,9 @@ class TestCmdResumeExitCodes:
         """terminal, interrupted, and handoff all return exit code 0."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])
+    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"])
     def test_nonzero_exit_for_limit_termination(self, tmp_path: Path, terminated_by: str) -> None:
-        """max_steps and timeout return exit code 1."""
+        """max_steps, timeout, user_stopped, and system_signal return exit code 1 (ENH-2522)."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 1
 
     def test_unknown_terminated_by_returns_1(self, tmp_path: Path) -> None:
@@ -2206,8 +2301,8 @@ class TestCmdStopMultiInstance:
             result = cmd_stop("autodev", tmp_path, logger)
 
         assert result == 0
-        assert state1.status == "interrupted"
-        assert state2.status == "interrupted"
+        assert state1.status == "user_stopped"
+        assert state2.status == "user_stopped"
 
     def test_stop_skips_non_running_instances(self, tmp_path) -> None:
         """cmd_stop only processes instances with status 'running'."""
@@ -2229,7 +2324,7 @@ class TestCmdStopMultiInstance:
             result = cmd_stop("autodev", tmp_path, logger)
 
         assert result == 0
-        assert state_running.status == "interrupted"
+        assert state_running.status == "user_stopped"
         assert state_done.status == "completed"
 
 
@@ -2539,6 +2634,8 @@ class TestReconcileStaleRunning:
             result = cmd_status("test-loop", tmp_path, logger)
 
         assert result == 0
+        # No user-stop.marker was written in this test, so reconcile flips
+        # the dead-PID running entries to "interrupted" (back-compat).
         assert state1.status == "interrupted"
         assert state2.status == "interrupted"
         assert state1.reconciled_at is not None

@@ -54,7 +54,7 @@ class TestCmdStop:
         assert result == 0
         # Verify status was updated
         updated_state = json.loads(state_file.read_text())
-        assert updated_state["status"] == "interrupted"
+        assert updated_state["status"] == "user_stopped"
 
     def test_stop_nonexistent_loop_returns_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -9,6 +9,7 @@ import json
 import os
 import signal
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -368,10 +369,29 @@ def cmd_stop(
         pid_file = running_dir / f"{stem}.pid"
         pid = _read_pid_file(pid_file)
 
+        # ENH-2522: write user-stop.marker *before* signalling so the runner can
+        # distinguish user-initiated stop from kernel/OOM kill even if SIGKILL races.
+        marker_path = running_dir / "user-stop.marker"
+        try:
+            requested_by = (
+                os.getlogin()
+                if hasattr(os, "getlogin") and os.getlogin() is not None
+                else "unknown"
+            )
+        except OSError:
+            requested_by = "unknown"
+        try:
+            marker_path.write_text(
+                f"requested_by={requested_by}\n"
+                f"requested_at={datetime.now(UTC).isoformat()}\n"
+            )
+        except OSError as marker_err:
+            logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")
+
         if pid is not None:
             if _process_alive(pid):
                 _kill_with_timeout(pid, stem, logger)
-                state.status = "interrupted"
+                state.status = "user_stopped"
                 persistence.save_state(state)
                 pid_file.unlink(missing_ok=True)
                 logger.success(f"Stopped {stem} (PID: {pid})")
@@ -381,9 +401,9 @@ def cmd_stop(
                 pid_file.unlink(missing_ok=True)
         else:
             # No PID file: no background process tracked, update state only
-            state.status = "interrupted"
+            state.status = "user_stopped"
             persistence.save_state(state)
-            logger.success(f"Marked {stem} as interrupted")
+            logger.success(f"Marked {stem} as user_stopped")
 
     return 0
 

@@ -1757,8 +1757,13 @@ def _derive_loop_outcome(event: dict) -> str:
         return "max-steps"
     if terminated_by == "cycle_detected":
         return "stalled"
-    if terminated_by in ("interrupted", "handoff", "timeout"):
+    if terminated_by in ("interrupted", "handoff", "timeout", "user_stopped"):
+        # ENH-2522: user_stopped is a clean interrupt (cleaner than interrupted;
+        # bucket with the other "non-failure" interruption causes).
         return "interrupted"
+    if terminated_by == "system_signal":
+        # ENH-2522: kernel/SIGKILL/OOM is its own signal bucket.
+        return "signal"
     final_state = event.get("final_state", "")
     if any(kw in final_state for kw in ("fail", "error", "abort")):
         return "failed"

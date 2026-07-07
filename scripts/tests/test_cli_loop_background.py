@@ -1100,7 +1100,7 @@ class TestCmdStopWithPid:
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         mock_kill.assert_called_once_with(12345, signal.SIGTERM)
 
     def test_stop_cleans_stale_pid(self, tmp_path: Path) -> None:
@@ -1144,7 +1144,7 @@ class TestCmdStopWithPid:
             result = cmd_stop("test-loop", tmp_path, logger)
 
         assert result == 0
-        assert mock_state.status == "interrupted"
+        assert mock_state.status == "user_stopped"
         logger.success.assert_called_once()
 
     def test_stop_dead_process_preserves_state(self, tmp_path: Path) -> None:

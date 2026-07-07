@@ -916,6 +916,10 @@ class TestPersistentExecutor:
             ("max_iterations_reached", "interrupted"),
             ("interrupted", "interrupted"),
             ("interrupted_force", "interrupted"),
+            # ENH-2522: user_stopped and system_signal are distinct from
+            # "interrupted" but share the failed terminal bucket.
+            ("user_stopped", "failed"),
+            ("system_signal", "failed"),
         ]
         for terminated_by, expected_status in cases:
             executor.archive_run_only(terminated_by=terminated_by)

@@ -85,7 +85,14 @@ def cmd_list(
             print_json([s.to_dict() for s in states])
             return 0
         print(colorize("Running loops:", "1"))
-        _STATUS_COLORS = {"running": "32", "interrupted": "33", "stopped": "2", "starting": "33"}
+        _STATUS_COLORS = {
+            "running": "32",
+            "interrupted": "33",
+            "user_stopped": "33",  # ENH-2522: same color as interrupted (clean pause)
+            "system_signal": "31",  # ENH-2522: red — kernel/OOM kill
+            "stopped": "2",
+            "starting": "33",
+        }
 
         # Group by loop_name to avoid duplicate rows for multi-instance loops
         from collections import defaultdict
@@ -104,7 +111,11 @@ def cmd_list(
                 name_str = colorize(state.loop_name, "1")
                 state_str = colorize(state.current_state, "34")
                 status_color = _STATUS_COLORS.get(state.status, "2")
-                display_status = "paused" if state.status == "interrupted" else state.status
+                display_status = (
+                    "paused"
+                    if state.status in ("interrupted", "user_stopped")  # ENH-2522
+                    else state.status
+                )
                 status_str = colorize(f"[{display_status}]", status_color)
                 elapsed_colored = colorize(elapsed_str, "2")
                 print(
@@ -116,7 +127,7 @@ def cmd_list(
                 name_str = colorize(loop_name_key, "1")
                 statuses = ", ".join(
                     colorize(
-                        f"[{'paused' if s.status == 'interrupted' else s.status}]",
+                        f"[{'paused' if s.status in ('interrupted', 'user_stopped') else s.status}]",
                         _STATUS_COLORS.get(s.status, "2"),
                     )
                     for s in group_states

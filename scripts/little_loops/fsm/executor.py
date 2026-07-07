@@ -203,6 +203,20 @@ class FSMExecutor:
 
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False
+        # ENH-2522: optional path to a user-stop.marker sentinel. When the shutdown
+        # is requested (via signal or otherwise), the run finishes with
+        # terminated_by='user_stopped' if the marker exists at finish time,
+        # 'system_signal' if the last action exit_code <= -1 (POSIX signal N) AND
+        # we did not kill the subprocess from our own signal handler,
+        # else 'interrupted' (back-compat).
+        self._user_stop_marker_path: Path | None = None
+        # ENH-2522: tracks the last action's exit_code so the finish helper can
+        # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C (exit_code=0).
+        self._last_action_exit_code: int | None = None
+        # ENH-2522: set by the signal handler when it kills the child subprocess.
+        # When True at finish time, an exit_code=-9 is attributed to the user
+        # signal (interrupted), not to a kernel/OOM kill (system_signal).
+        self._signal_handler_killed_subproc: bool = False
 
         # Currently running MCP subprocess (set by _run_subprocess, cleared in finally).
         # Enables external shutdown code to kill the process on SIGTERM.
@@ -322,13 +336,47 @@ class FSMExecutor:
         self._contributed_evaluators: dict[str, Evaluator] = {}
         self._interceptors: list[Any] = []
 
-    def request_shutdown(self) -> None:
+    def request_shutdown(
+        self,
+        marker_path: Path | None = None,
+    ) -> None:
         """Request graceful shutdown of the executor.
 
         Sets a flag that will be checked at the start of each iteration,
         allowing the loop to exit cleanly after the current state completes.
+
+        Args:
+            marker_path: Optional path to a user-stop.marker sentinel. When set,
+                the finish helper reads it on shutdown and tags the run as
+                ``user_stopped`` instead of ``interrupted`` (ENH-2522).
         """
         self._shutdown_requested = True
+        if marker_path is not None:
+            self._user_stop_marker_path = marker_path
+
+    def _finish_for_shutdown(self, error: str | None = None) -> ExecutionResult:
+        """Finish the run with a cause-aware terminated_by (ENH-2522).
+
+        Routing:
+        - marker exists at finish time  → "user_stopped"
+        - last action exit_code <= -1 AND our signal handler didn't kill it
+                                      → "system_signal" (kernel/OOM kill)
+        - otherwise                     → "interrupted" (back-compat Ctrl-C path,
+                                            which also kills the subprocess via
+                                            proc.kill() — we attribute that to
+                                            the user, not to system_signal).
+        """
+        marker = self._user_stop_marker_path
+        if marker is not None and marker.exists():
+            return self._finish("user_stopped", error=error)
+        last_exit = self._last_action_exit_code
+        if (
+            last_exit is not None
+            and last_exit <= -1
+            and not self._signal_handler_killed_subproc
+        ):
+            return self._finish("system_signal", error=error)
+        return self._finish("interrupted", error=error)
 
     def run(self) -> ExecutionResult:
         """Execute the FSM until terminal state or limits reached.
@@ -345,7 +393,7 @@ class FSMExecutor:
             while True:
                 # Check shutdown request (signal handling)
                 if self._shutdown_requested:
-                    return self._finish("interrupted")
+                    return self._finish_for_shutdown()
 
                 # Check step limit (max_steps): caps individual state executions.
                 if self.iteration >= self.fsm.max_steps:
@@ -620,7 +668,7 @@ class FSMExecutor:
 
                 # SIGKILL in _execute_state sets shutdown flag and returns None
                 if next_state is None and self._shutdown_requested:
-                    return self._finish("interrupted")
+                    return self._finish_for_shutdown()
 
                 if next_state is None:
                     # BUG-158 / BUG-2204: if a cap summary handler executed and
@@ -1100,6 +1148,9 @@ class FSMExecutor:
                 if throttle_next is not None:
                     return throttle_next
                 assert result is not None
+                # ENH-2522: track last action exit_code so the shutdown helper can
+                # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C.
+                self._last_action_exit_code = result.exit_code
                 self.prev_result = {
                     "output": result.output,
                     "exit_code": result.exit_code,
@@ -1149,6 +1200,10 @@ class FSMExecutor:
 
         # Evaluate
         eval_result = self._evaluate(state, action_result, ctx)
+        # ENH-2522: track last action exit_code so the shutdown helper can
+        # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C.
+        if action_result is not None:
+            self._last_action_exit_code = action_result.exit_code
         self.prev_result = {
             "output": action_result.output if action_result else "",
             "exit_code": action_result.exit_code if action_result else 0,

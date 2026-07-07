@@ -404,7 +404,13 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             ),
             "iterations": _int("Total number of iterations executed"),
             "terminated_by": _str(
-                "What caused loop termination (e.g. terminal_state, max_iterations)"
+                "What caused loop termination. One of: 'terminal', 'max_steps', "
+                "'max_iterations_reached', 'timeout', 'interrupted', 'user_stopped' "
+                "(ENH-2522: ll-loop stop wrote user-stop.marker before signalling), "
+                "'system_signal' (ENH-2522: POSIX process killed by signal N, no user "
+                "marker — e.g. kernel OOM/SIGKILL), 'error', 'handoff', "
+                "'cycle_detected', 'stall_detected', 'host_pressure_abort' "
+                "(ENH-2452), 'host_budget_exceeded' (ENH-2453)."
             ),
             "error": _str(
                 "Error message explaining why the loop crashed. "

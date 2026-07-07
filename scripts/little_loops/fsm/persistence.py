@@ -43,7 +43,12 @@ from little_loops.fsm.validation import _is_meta_loop
 RUNNING_DIR = ".running"
 HISTORY_DIR = ".history"
 
-RESUMABLE_STATUSES: frozenset[str] = frozenset({"running", "awaiting_continuation", "interrupted"})
+RESUMABLE_STATUSES: frozenset[str] = frozenset(
+    {"running", "awaiting_continuation", "interrupted", "user_stopped"}
+)
+# ENH-2522: "system_signal" is intentionally NOT in RESUMABLE_STATUSES — the runner
+# died mid-state, so resume is unsafe. "user_stopped" IS in the set because the user
+# ran `ll-loop stop` and the state on disk reflects a clean user-initiated pause.
 
 logger = logging.getLogger(__name__)
 
@@ -675,14 +680,21 @@ class PersistentExecutor:
         """Close all transports registered on the underlying EventBus."""
         self.event_bus.close_transports()
 
-    def request_shutdown(self) -> None:
+    def request_shutdown(self, marker_path: Path | None = None) -> None:
         """Request graceful shutdown of the executor.
 
         Delegates to the underlying FSMExecutor's request_shutdown method.
         The loop will exit cleanly after the current state completes,
         saving state as "interrupted" so it can be resumed later.
+
+        Args:
+            marker_path: Optional path to a user-stop.marker sentinel that
+                tells the runner this shutdown came from ``ll-loop stop``
+                rather than Ctrl-C (ENH-2522). When present at finish time,
+                the executor tags the run as ``user_stopped`` instead of
+                ``interrupted``.
         """
-        self._executor.request_shutdown()
+        self._executor.request_shutdown(marker_path=marker_path)
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         """Handle event: persist to file and save state.
@@ -858,6 +870,8 @@ class PersistentExecutor:
             final_status = "timed_out"
         if terminated_by == "cycle_detected":
             final_status = "failed"
+        # ENH-2522: user_stopped and system_signal share the "failed" terminal bucket
+        # but remain distinct enum values so audit tooling can read the cause.
 
         final_state = LoopState(
             loop_name=self.fsm.name,
@@ -903,6 +917,8 @@ class PersistentExecutor:
             final_status = "timed_out"
         if result.terminated_by == "cycle_detected":
             final_status = "failed"
+        # ENH-2522: user_stopped and system_signal share the "failed" terminal bucket
+        # but remain distinct enum values so audit tooling can read the cause.
 
         final_state = LoopState(
             loop_name=self.fsm.name,

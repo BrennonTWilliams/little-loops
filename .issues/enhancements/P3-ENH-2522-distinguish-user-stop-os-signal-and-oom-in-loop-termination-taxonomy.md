@@ -3,16 +3,23 @@ id: ENH-2522
 title: Distinguish user-stop, OS-signal, and OOM in loop termination taxonomy
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-07
-captured_at: "2026-07-07T16:45:00Z"
+captured_at: '2026-07-07T16:45:00Z'
+completed_at: 2026-07-07T17:51:43Z
 discovered_by: capture-issue
 labels:
-  - enhancement
-  - audit
-  - diagnostic
-  - loop-taxonomy
-  - captured
+- enhancement
+- audit
+- diagnostic
+- loop-taxonomy
+- captured
+confidence_score: 97
+outcome_confidence: 76
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 21
+score_change_surface: 16
 ---
 
 # ENH-2522: Distinguish user-stop, OS-signal, and OOM in loop termination taxonomy
@@ -36,13 +43,14 @@ correctly out of the box.
 
 ## Motivation
 
-- **The current contract is a heap.** `fsm/types.py:37` lists eight
+- **The current contract is a heap.** `fsm/types.py:37` lists eleven
   `terminated_by` values (`terminal`, `max_steps`, `max_iterations_reached`,
-  `timeout`, `interrupted`, `error`, `handoff`, `cycle_detected`) and every
-  non-terminal, non-budget-exhaustion, non-handler path collapses onto
-  `interrupted`. Three structurally different causes (clean user stop, host
-  signal, OS kill) share one label and one logging path — the audit can't
-  separate them.
+  `timeout`, `interrupted`, `error`, `handoff`, `cycle_detected`,
+  `stall_detected`, `host_pressure_abort` (ENH-2452), `host_budget_exceeded`
+  (ENH-2453)) and every clean user-stop / kernel-signal / OS-kill path
+  still collapses onto `interrupted`. Three structurally different causes
+  (clean user stop, host signal, OS kill) share one label and one logging
+  path — the audit can't separate them.
 - **The diagnostic that bit us had no way to be right.** `cmd_stop` writes
   `state.status = "interrupted"` directly to disk (lifecycle.py:374, 384)
   *before* sending SIGTERM, with no record of the cause. The runner's
@@ -67,11 +75,11 @@ correctly out of the box.
 
 - `ExecutionResult.terminated_by` (`fsm/types.py:37`) accepts only
   `terminal | max_steps | max_iterations_reached | timeout | interrupted |
-   error | handoff | cycle_detected`. `cmd_stop` SIGTERMs the process group,
-  waits 10 s, escalates to SIGKILL (lifecycle.py:104, 112); the runner's
-  signal handler (`cli/loop/_helpers.py:156-172`) calls
-  `executor.request_shutdown()`, which the run loop honors via
-  `_finish("interrupted")` (executor.py:347-348).
+   error | handoff | cycle_detected | stall_detected | host_pressure_abort |
+   host_budget_exceeded`. `cmd_stop` SIGTERMs the process group, waits 10 s,
+  escalates to SIGKILL (lifecycle.py:104, 112); the runner's signal handler
+  (`cli/loop/_helpers.py:156-172`) calls `executor.request_shutdown()`,
+  which the run loop honors via `_finish("interrupted")` (executor.py:347-348).
 - `cmd_stop` writes `state.status = "interrupted"` directly on disk
   (`cli/loop/lifecycle.py:374, 384`) without emitting a `loop_complete`
   event tagged with the cause. If SIGKILL arrives before the runner's
@@ -134,7 +142,9 @@ Add to `ExecutionResult.terminated_by` (`fsm/types.py:37`):
 ```python
 terminated_by: str  # "terminal", "max_steps", "max_iterations_reached",
                     # "timeout", "interrupted", "user_stopped",
-                    # "system_signal", "error", "handoff", "cycle_detected"
+                    # "system_signal", "error", "handoff", "cycle_detected",
+                    # "stall_detected", "host_pressure_abort",
+                    # "host_budget_exceeded"
 ```
 
 Update `fsm/persistence.py:843-905` (`archive_run_only` and the post-block
@@ -438,6 +448,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-07-07 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-07T17:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44595ebe-b58a-4ce5-b41b-f97ef564b6ef.jsonl`
 - `/ll:wire-issue` - 2026-07-07T17:12:17 - `ffe21b52-2e1e-4691-95aa-75f05b4442b5.jsonl`
 - `/ll:capture-issue` - 2026-07-07T16:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:wire-issue` - 2026-07-07T17:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:ready-issue` - 2026-07-07T17:55:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-07-07T17:51:43Z - `cdecb919-ccd0-43b4-a67d-058057e7ef42.jsonl`
+
+## Resolution
+
+Implemented and verified. The `terminated_by` enum now distinguishes `user_stopped` (clean `ll-loop stop`) from `system_signal` (kernel/OOM kill, exit_code <= -1 with no marker). `cmd_stop` writes `.loops/runs/<run>/user-stop.marker` before SIGTERM so the runner can attribute the cause correctly even when SIGKILL races past `_finish()`. The loop-specialist agent's taxonomy gains `kernel-signal` and `user-stopped` rows with a pre-attribution checklist rule.
+
+Implementation surface:
+- `fsm/types.py`: docstring + comment extension on `ExecutionResult.terminated_by`
+- `fsm/executor.py`: new `_user_stop_marker_path`, `_signal_handler_killed_subproc`, `_last_action_exit_code` fields; extended `request_shutdown(marker_path=...)`; new `_finish_for_shutdown` helper routes to user_stopped / system_signal / interrupted based on marker presence and signal attribution; replaced two `_finish("interrupted")` call sites
+- `fsm/persistence.py`: `user_stopped` added to `RESUMABLE_STATUSES`; `user_stopped` and `system_signal` map to `status="failed"` in both `archive_run_only()` and `run()`'s post-block; `PersistentExecutor.request_shutdown` accepts and forwards `marker_path`
+- `cli/loop/lifecycle.py`: `cmd_stop` writes the marker before signalling, flips `state.status` to `"user_stopped"`, updates log message
+- `cli/loop/_helpers.py`: `EXIT_CODES["user_stopped"] = EXIT_CODES["system_signal"] = 1`; `register_loop_signal_handlers` accepts `marker_path`; signal handler sets `_signal_handler_killed_subproc = True` so SIGINT-induced SIGKILL is attributed to the user signal (interrupted) rather than the kernel (system_signal)
+- `cli/loop/info.py`: `_STATUS_COLORS` extended; `display_status` branches treat `user_stopped` like `interrupted` (paused) with a distinct color
+- `cli/logs.py`: `_derive_loop_outcome` recognizes new buckets
+- `generate_schemas.py`: `loop_complete.terminated_by` description string enumerates the new values
+- `agents/loop-specialist.md`: taxonomy rows for `kernel-signal` and `user-stopped`; pre-attribution checklist rule
+
+Verification: `python -m pytest scripts/tests/` — 14,149 passed, 27 skipped. Mypy clean on all changed files.

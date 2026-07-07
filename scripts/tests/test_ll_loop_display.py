@@ -2817,9 +2817,9 @@ class TestRunForegroundExitCodes:
         """terminal, interrupted, and handoff all return exit code 0."""
         assert self._run_with_terminated_by(terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout"])
+    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"])
     def test_nonzero_exit_code_for_limit_termination(self, terminated_by: str) -> None:
-        """max_steps and timeout return exit code 1."""
+        """max_steps, timeout, user_stopped, and system_signal return exit code 1."""
         assert self._run_with_terminated_by(terminated_by) == 1
 
     def test_unknown_terminated_by_returns_1(self) -> None:
@@ -2833,6 +2833,10 @@ class TestRunForegroundExitCodes:
         assert EXIT_CODES["handoff"] == 0
         assert EXIT_CODES["max_steps"] == 1
         assert EXIT_CODES["timeout"] == 1
+        # ENH-2522: new termination causes yield non-zero exit codes so callers
+        # can distinguish them from graceful terminal/interrupted/handoff paths.
+        assert EXIT_CODES["user_stopped"] == 1
+        assert EXIT_CODES["system_signal"] == 1
 
 
 class TestRunForegroundResumeMode:

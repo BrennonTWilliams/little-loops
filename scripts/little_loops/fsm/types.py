@@ -23,8 +23,11 @@ class ExecutionResult:
         iterations: Total step executions (state enters)
         terminated_by: Reason for termination. Values: "terminal", "max_steps" (step cap reached;
             legacy "max_iterations" renamed), "max_iterations_reached" (full-pass cap reached),
-            "timeout", "interrupted" (SIGTERM/session kill), "error", "handoff", "cycle_detected",
-            "stall_detected", "host_pressure_abort" (ENH-2452), "host_budget_exceeded" (ENH-2453).
+            "timeout", "interrupted" (SIGTERM/session kill), "user_stopped" (ll-loop stop wrote
+            user-stop.marker before signalling, ENH-2522), "system_signal" (POSIX process killed
+            by signal N with no user-stop marker — e.g. kernel OOM/SIGKILL, ENH-2522),
+            "error", "handoff", "cycle_detected", "stall_detected", "host_pressure_abort"
+            (ENH-2452), "host_budget_exceeded" (ENH-2453).
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         error: Error message if terminated_by is "error"
@@ -34,7 +37,7 @@ class ExecutionResult:
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "error", "handoff", "cycle_detected"
+    terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "user_stopped", "system_signal", "error", "handoff", "cycle_detected"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     error: str | None = None

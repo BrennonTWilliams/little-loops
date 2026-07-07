@@ -3096,8 +3096,11 @@ class TestSignalHandling:
         # Signal takes precedence over timeout
         assert result.terminated_by == "interrupted"
 
-    def test_sigkill_on_next_state_triggers_shutdown(self) -> None:
-        """SIGKILL (exit_code=-9) on a prompt action with state.next triggers shutdown, not next routing."""
+    def test_sigkill_on_next_state_triggers_system_signal(self) -> None:
+        """SIGKILL (exit_code=-9) on a prompt action with state.next triggers system_signal termination (ENH-2522).
+
+        Distinct from user_stopped: no user-stop.marker sentinel was written.
+        """
         fsm = FSMLoop(
             name="test",
             initial="score_issues",
@@ -3112,8 +3115,8 @@ class TestSignalHandling:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
 
-        # Should terminate via signal, not route to refine_issues
-        assert result.terminated_by == "interrupted"
+        # Should terminate via system_signal (not route to refine_issues)
+        assert result.terminated_by == "system_signal"
         assert result.final_state == "score_issues"
         # refine_issues must never have been entered
         assert all("/refine" not in call for call in mock_runner.calls)
@@ -3161,6 +3164,51 @@ class TestSignalHandling:
 
         assert result.final_state == "handle_error"
         assert all("/refine" not in call for call in mock_runner.calls)
+
+    def test_request_shutdown_with_marker_writes_user_stopped(self, tmp_path: Path) -> None:
+        """ENH-2522: request_shutdown() called when user-stop.marker exists → terminated_by='user_stopped'."""
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={"check": StateConfig(terminal=True)},
+        )
+
+        # Pre-create run_dir with a user-stop.marker sentinel present
+        executor = PersistentExecutor(fsm, loops_dir=tmp_path)
+        run_dir = tmp_path / ".running"
+        run_dir.mkdir(exist_ok=True)
+        marker = run_dir / "user-stop.marker"
+        marker.write_text("requested_by=test_user\nrequested_at=2026-07-07T16:00:00Z\n")
+
+        # Point the executor's inner marker path at our marker
+        executor._executor._user_stop_marker_path = marker
+
+        # Trigger shutdown
+        executor.request_shutdown()
+        result = executor.run()
+
+        assert result.terminated_by == "user_stopped"
+
+    def test_request_shutdown_without_marker_normal_exit_code_uses_interrupted(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2522: no marker, exit_code=0 → terminated_by stays 'interrupted' (back-compat)."""
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={"check": StateConfig(terminal=True)},
+        )
+
+        executor = PersistentExecutor(fsm, loops_dir=tmp_path)
+        executor.request_shutdown()
+        result = executor.run()
+
+        # No marker, last exit code not <= -1 → fall through to "interrupted"
+        assert result.terminated_by == "interrupted"
 
     def test_normal_exit_on_next_state_still_routes_normally(self) -> None:
         """Non-negative exit codes on a state.next action still route to next normally."""

@@ -34,6 +34,10 @@ EXIT_CODES: dict[str, int] = {
     "timeout": 1,
     "cycle_detected": 1,
     "stall_detected": 1,
+    # ENH-2522: user_stopped (clean ll-loop stop) and system_signal (kernel/SIGKILL)
+    # are non-zero so callers can distinguish them from graceful paths.
+    "user_stopped": 1,
+    "system_signal": 1,
 }
 
 # Minimum number of action-output rows reserved beneath the pinned pane in
@@ -45,6 +49,7 @@ MIN_ACTION_ROWS = 6
 _loop_shutdown_requested: bool = False
 _loop_executor: Any = None
 _loop_pid_file: Path | None = None
+_loop_marker_path: Path | None = None  # ENH-2522: user-stop.marker sentinel location
 _using_alt_screen: bool = False
 # Set by SIGWINCH handler when the terminal is resized; consumed by the
 # display_progress callback to trigger a pinned-pane redraw on the next event.
@@ -108,9 +113,14 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
     _loop_shutdown_requested = True
     print(colorize("\nShutdown requested, will exit after current state...", "33"), file=sys.stderr)
     if _loop_executor is not None:
-        _loop_executor.request_shutdown()
-        # Kill any child subprocess currently blocking in the action runner
+        # ENH-2522: mark on the executor that our own signal handler killed the
+        # subprocess, so the finish helper can attribute exit_code=-9 to the
+        # user signal (interrupted) rather than a kernel/OOM kill (system_signal).
         inner = getattr(_loop_executor, "_executor", None)
+        if inner is not None:
+            inner._signal_handler_killed_subproc = True
+        _loop_executor.request_shutdown(marker_path=_loop_marker_path)
+        # Kill any child subprocess currently blocking in the action runner
         if inner is not None:
             runner = getattr(inner, "action_runner", None)
             if runner is not None:
@@ -153,7 +163,11 @@ def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
     return entries[0].get("id") == entry_id
 
 
-def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -> None:
+def register_loop_signal_handlers(
+    executor: Any,
+    pid_file: Path | None = None,
+    marker_path: Path | None = None,
+) -> None:
     """Register SIGINT/SIGTERM handlers for graceful loop shutdown.
 
     Sets up signal handling so that Ctrl-C triggers a graceful shutdown
@@ -163,11 +177,15 @@ def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -
     Args:
         executor: The PersistentExecutor instance to request shutdown on.
         pid_file: Optional path to PID file to clean up on forced exit.
+        marker_path: Optional path to a user-stop.marker sentinel; if present
+            when shutdown is requested, the executor will tag the run as
+            ``user_stopped`` instead of ``interrupted`` (ENH-2522).
     """
-    global _loop_shutdown_requested, _loop_executor, _loop_pid_file
+    global _loop_shutdown_requested, _loop_executor, _loop_pid_file, _loop_marker_path
     _loop_shutdown_requested = False
     _loop_executor = executor
     _loop_pid_file = pid_file
+    _loop_marker_path = marker_path
     signal.signal(signal.SIGINT, _loop_signal_handler)
     signal.signal(signal.SIGTERM, _loop_signal_handler)
 
