@@ -232,7 +232,9 @@ class TestSprintPlanningWorkflow(E2ETestFixture):
 class TestSequentialExecutionWorkflow(E2ETestFixture):
     """E2E tests for sequential execution (ll-auto) workflow."""
 
-    def test_ll_auto_dry_run(self, e2e_project_dir: Path) -> None:
+    def test_ll_auto_dry_run(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """ll-auto --dry-run should list issues without processing."""
         import sys
         from io import StringIO
@@ -241,40 +243,31 @@ class TestSequentialExecutionWorkflow(E2ETestFixture):
         from little_loops.cli import main_auto
 
         # Change to project directory
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-auto", "--dry-run", "--max-issues", "1"])
 
-        try:
-            import os
+        # Mock subprocess to prevent actual Claude execution
+        with patch("subprocess.Popen") as mock_popen:
+            with patch("subprocess.run"):
+                # Capture stdout
+                old_stdout = sys.stdout
+                sys.stdout = StringIO()
 
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-auto", "--dry-run", "--max-issues", "1"]
+                try:
+                    exit_code = main_auto()
+                    _output = sys.stdout.getvalue()
+                finally:
+                    sys.stdout = old_stdout
 
-            # Mock subprocess to prevent actual Claude execution
-            with patch("subprocess.Popen") as mock_popen:
-                with patch("subprocess.run"):
-                    # Capture stdout
-                    old_stdout = sys.stdout
-                    sys.stdout = StringIO()
+        # Verify command succeeded
+        assert exit_code == 0
 
-                    try:
-                        exit_code = main_auto()
-                        _output = sys.stdout.getvalue()
-                    finally:
-                        sys.stdout = old_stdout
+        # Verify no actual subprocess calls for Claude
+        # (Note: some subprocess calls may happen for git operations)
+        assert mock_popen.call_count == 0 or "claude" not in str(mock_popen.call_args)
 
-            # Verify command succeeded
-            assert exit_code == 0
-
-            # Verify no actual subprocess calls for Claude
-            # (Note: some subprocess calls may happen for git operations)
-            assert mock_popen.call_count == 0 or "claude" not in str(mock_popen.call_args)
-
-            # Verify issues still exist (not moved to completed)
-            assert (e2e_project_dir / ".issues" / "bugs" / "P1-BUG-001-test-bug.md").exists()
-        finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
+        # Verify issues still exist (not moved to completed)
+        assert (e2e_project_dir / ".issues" / "bugs" / "P1-BUG-001-test-bug.md").exists()
 
     def test_ll_auto_max_issues_limit(self, e2e_project_dir: Path) -> None:
         """ll-auto --max-issues should limit processing."""
@@ -312,7 +305,9 @@ class TestSequentialExecutionWorkflow(E2ETestFixture):
 class TestParallelExecutionWorkflow(E2ETestFixture):
     """E2E tests for parallel execution (ll-parallel) workflow."""
 
-    def test_ll_parallel_dry_run(self, e2e_project_dir: Path) -> None:
+    def test_ll_parallel_dry_run(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """ll-parallel --dry-run should list issues without processing."""
         import sys
         from io import StringIO
@@ -321,103 +316,81 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
         from little_loops.cli import main_parallel
 
         # Change to project directory
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-parallel", "--dry-run", "--workers", "2"])
 
-        try:
-            import os
+        # Mock subprocess to prevent actual Claude execution
+        with patch("subprocess.Popen"):
+            with patch("subprocess.run") as mock_run:
+                # Capture stdout
+                old_stdout = sys.stdout
+                sys.stdout = StringIO()
 
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-parallel", "--dry-run", "--workers", "2"]
+                try:
+                    exit_code = main_parallel()
+                    _output = sys.stdout.getvalue()
+                finally:
+                    sys.stdout = old_stdout
 
-            # Mock subprocess to prevent actual Claude execution
-            with patch("subprocess.Popen"):
-                with patch("subprocess.run") as mock_run:
-                    # Capture stdout
-                    old_stdout = sys.stdout
-                    sys.stdout = StringIO()
+        # Verify command succeeded
+        assert exit_code == 0
 
-                    try:
-                        exit_code = main_parallel()
-                        _output = sys.stdout.getvalue()
-                    finally:
-                        sys.stdout = old_stdout
+        # Verify Claude CLI was not invoked (git ops are expected; check the
+        # command list rather than the full string repr which may include
+        # "claude" in a cwd path such as /tmp/claude-501/...)
+        for call in mock_run.call_args_list:
+            cmd = call.args[0] if call.args else call.kwargs.get("args", [])
+            if isinstance(cmd, list) and cmd:
+                assert not str(cmd[0]).endswith("claude"), (
+                    f"Unexpected Claude CLI invocation: {cmd}"
+                )
 
-            # Verify command succeeded
-            assert exit_code == 0
-
-            # Verify Claude CLI was not invoked (git ops are expected; check the
-            # command list rather than the full string repr which may include
-            # "claude" in a cwd path such as /tmp/claude-501/...)
-            for call in mock_run.call_args_list:
-                cmd = call.args[0] if call.args else call.kwargs.get("args", [])
-                if isinstance(cmd, list) and cmd:
-                    assert not str(cmd[0]).endswith("claude"), (
-                        f"Unexpected Claude CLI invocation: {cmd}"
-                    )
-
-        finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
-
-    def test_ll_parallel_wires_transports(self, e2e_project_dir: Path) -> None:
+    def test_ll_parallel_wires_transports(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_parallel calls wire_transports(event_bus, config.events) before orchestrator runs (FEAT-1323)."""
-        import os
         import sys
         from unittest.mock import MagicMock, patch
 
         from little_loops.cli import main_parallel
 
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-parallel", "--dry-run", "--workers", "2"])
 
-        try:
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-parallel", "--dry-run", "--workers", "2"]
+        mock_orch = MagicMock()
+        mock_orch.run.return_value = 0
 
-            mock_orch = MagicMock()
-            mock_orch.run.return_value = 0
+        with (
+            patch(
+                "little_loops.parallel.ParallelOrchestrator",
+                return_value=mock_orch,
+            ),
+            patch("little_loops.transport.wire_transports") as mock_wire,
+            patch("subprocess.Popen"),
+            patch("subprocess.run"),
+        ):
+            exit_code = main_parallel()
 
-            with (
-                patch(
-                    "little_loops.parallel.ParallelOrchestrator",
-                    return_value=mock_orch,
-                ),
-                patch("little_loops.transport.wire_transports") as mock_wire,
-                patch("subprocess.Popen"),
-                patch("subprocess.run"),
-            ):
-                exit_code = main_parallel()
+        assert exit_code == 0
+        mock_wire.assert_called_once()
 
-            assert exit_code == 0
-            mock_wire.assert_called_once()
-        finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
-
-    def test_ll_auto_wires_sqlite(self, e2e_project_dir: Path) -> None:
+    def test_ll_auto_wires_sqlite(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_auto() constructs AutoManager with SQLiteTransport (ENH-1733)."""
-        import os
         import sys
         from unittest.mock import MagicMock, patch
 
         from little_loops.cli import main_auto
 
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-auto", "--dry-run"])
 
-        try:
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-auto", "--dry-run"]
+        with patch("little_loops.issue_manager.SQLiteTransport") as mock_transport:
+            mock_transport.return_value = MagicMock()
+            main_auto()
 
-            with patch("little_loops.issue_manager.SQLiteTransport") as mock_transport:
-                mock_transport.return_value = MagicMock()
-                main_auto()
-
-            assert mock_transport.call_count == 1
-        finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
+        assert mock_transport.call_count == 1
 
     def test_ll_parallel_worktree_creation(self, e2e_project_dir: Path) -> None:
         """ll-parallel should create worktrees for parallel processing."""
@@ -445,7 +418,9 @@ class TestParallelExecutionWorkflow(E2ETestFixture):
 class TestLoopExecutionWorkflow(E2ETestFixture):
     """E2E tests for loop execution (ll-loop) workflow."""
 
-    def test_ll_loop_list_configs(self, e2e_project_dir: Path) -> None:
+    def test_ll_loop_list_configs(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """ll-loop list should show available configurations."""
         import sys
         from io import StringIO
@@ -453,33 +428,25 @@ class TestLoopExecutionWorkflow(E2ETestFixture):
         from little_loops.cli import main_loop
 
         # Change to project directory
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-loop", "list"])
+
+        # Capture stdout
+        old_stdout = sys.stdout
+        sys.stdout = StringIO()
 
         try:
-            import os
-
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-loop", "list"]
-
-            # Capture stdout
-            old_stdout = sys.stdout
-            sys.stdout = StringIO()
-
-            try:
-                exit_code = main_loop()
-                _output = sys.stdout.getvalue()
-            finally:
-                sys.stdout = old_stdout
-
-            # Should complete successfully (no loops is fine)
-            assert exit_code == 0
-
+            exit_code = main_loop()
+            _output = sys.stdout.getvalue()
         finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
+            sys.stdout = old_stdout
 
-    def test_ll_loop_list_running(self, e2e_project_dir: Path) -> None:
+        # Should complete successfully (no loops is fine)
+        assert exit_code == 0
+
+    def test_ll_loop_list_running(
+        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """ll-loop list --running should show running loops."""
         import sys
         from io import StringIO
@@ -487,31 +454,21 @@ class TestLoopExecutionWorkflow(E2ETestFixture):
         from little_loops.cli import main_loop
 
         # Change to project directory
-        original_cwd = Path.cwd()
-        original_argv = sys.argv.copy()
+        monkeypatch.chdir(e2e_project_dir)
+        monkeypatch.setattr(sys, "argv", ["ll-loop", "list", "--running"])
+
+        # Capture stdout
+        old_stdout = sys.stdout
+        sys.stdout = StringIO()
 
         try:
-            import os
-
-            os.chdir(e2e_project_dir)
-            sys.argv = ["ll-loop", "list", "--running"]
-
-            # Capture stdout
-            old_stdout = sys.stdout
-            sys.stdout = StringIO()
-
-            try:
-                exit_code = main_loop()
-                _output = sys.stdout.getvalue()
-            finally:
-                sys.stdout = old_stdout
-
-            # Should complete successfully (no running loops is fine)
-            assert exit_code == 0
-
+            exit_code = main_loop()
+            _output = sys.stdout.getvalue()
         finally:
-            os.chdir(original_cwd)
-            sys.argv = original_argv
+            sys.stdout = old_stdout
+
+        # Should complete successfully (no running loops is fine)
+        assert exit_code == 0
 
 
 class TestLlHarnessE2E(E2ETestFixture):

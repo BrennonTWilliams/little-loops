@@ -3383,7 +3383,9 @@ class TestIssueManagerConcurrency:
 class TestDetectPlanCreation:
     """Tests for detect_plan_creation function."""
 
-    def test_no_plan_returns_none(self, temp_project_dir: Path) -> None:
+    def test_no_plan_returns_none(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns None when no plan file exists."""
         from little_loops.issue_manager import detect_plan_creation
 
@@ -3392,21 +3394,17 @@ class TestDetectPlanCreation:
         plans_dir.mkdir(parents=True)
 
         # Change to temp directory
-        import os
+        monkeypatch.chdir(temp_project_dir)
 
-        original_dir = os.getcwd()
-        try:
-            os.chdir(temp_project_dir)
+        # Test
+        result = detect_plan_creation("", "BUG-999")
 
-            # Test
-            result = detect_plan_creation("", "BUG-999")
+        # Verify
+        assert result is None
 
-            # Verify
-            assert result is None
-        finally:
-            os.chdir(original_dir)
-
-    def test_matching_plan_returns_path(self, temp_project_dir: Path) -> None:
+    def test_matching_plan_returns_path(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns Path when matching plan file exists."""
         from little_loops.issue_manager import detect_plan_creation
 
@@ -3417,22 +3415,18 @@ class TestDetectPlanCreation:
         plan_file.write_text("# Plan content")
 
         # Change to temp directory
-        import os
+        monkeypatch.chdir(temp_project_dir)
 
-        original_dir = os.getcwd()
-        try:
-            os.chdir(temp_project_dir)
+        # Test
+        result = detect_plan_creation("", "BUG-280")
 
-            # Test
-            result = detect_plan_creation("", "BUG-280")
+        # Verify
+        assert result is not None
+        assert result.name == "2026-02-08-BUG-280-management.md"
 
-            # Verify
-            assert result is not None
-            assert result.name == "2026-02-08-BUG-280-management.md"
-        finally:
-            os.chdir(original_dir)
-
-    def test_multiple_plans_returns_latest(self, temp_project_dir: Path) -> None:
+    def test_multiple_plans_returns_latest(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns most recently modified plan when multiple exist."""
         from little_loops.issue_manager import detect_plan_creation
 
@@ -3448,39 +3442,29 @@ class TestDetectPlanCreation:
         new_plan.write_text("# New plan")
 
         # Change to temp directory
-        import os
+        monkeypatch.chdir(temp_project_dir)
 
-        original_dir = os.getcwd()
-        try:
-            os.chdir(temp_project_dir)
+        # Test
+        result = detect_plan_creation("", "BUG-280")
 
-            # Test
-            result = detect_plan_creation("", "BUG-280")
+        # Verify
+        assert result is not None
+        assert result.name == "2026-02-08-BUG-280-management.md"
 
-            # Verify
-            assert result is not None
-            assert result.name == "2026-02-08-BUG-280-management.md"
-        finally:
-            os.chdir(original_dir)
-
-    def test_no_plans_dir_returns_none(self, temp_project_dir: Path) -> None:
+    def test_no_plans_dir_returns_none(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Returns None when plans directory doesn't exist."""
-        # Change to temp directory (without creating plans dir)
-        import os
-
         from little_loops.issue_manager import detect_plan_creation
 
-        original_dir = os.getcwd()
-        try:
-            os.chdir(temp_project_dir)
+        # Change to temp directory (without creating plans dir)
+        monkeypatch.chdir(temp_project_dir)
 
-            # Test
-            result = detect_plan_creation("", "BUG-999")
+        # Test
+        result = detect_plan_creation("", "BUG-999")
 
-            # Verify
-            assert result is None
-        finally:
-            os.chdir(original_dir)
+        # Verify
+        assert result is None
 
 
 class TestAutoManagerModelDetection:

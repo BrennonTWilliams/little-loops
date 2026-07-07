@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from little_loops.cli.messages import _save_combined
 
 
@@ -39,19 +41,15 @@ class TestSaveCombined:
         assert result_path == output_file
         assert output_file.exists()
 
-    def test_generates_default_path(self, tmp_path: Path) -> None:
+    def test_generates_default_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Generates timestamped default path when no path given."""
         items = [MagicMock(to_dict=lambda: {"msg": "test"})]
 
         # Use tmp_path as working directory
-        import os
-
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_path)
-            result_path = _save_combined(items)
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        result_path = _save_combined(items)
 
         assert result_path.exists()
         assert "user-messages-" in result_path.name

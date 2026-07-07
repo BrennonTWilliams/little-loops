@@ -460,7 +460,9 @@ class TestSaveMessages:
                 content = f.read()
                 assert "Test message" in content
 
-    def test_creates_default_path_in_claude_dir(self) -> None:
+    def test_creates_default_path_in_claude_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Creates default path in .claude directory when no path specified."""
         messages = [
             UserMessage(
@@ -471,20 +473,13 @@ class TestSaveMessages:
             ),
         ]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            import os
+        monkeypatch.chdir(tmp_path)
+        result_path = save_messages(messages)
 
-            original_cwd = os.getcwd()
-            try:
-                os.chdir(tmpdir)
-                result_path = save_messages(messages)
-
-                assert result_path.parent.name == ".ll"
-                assert result_path.name.startswith("user-messages-")
-                assert result_path.suffix == ".jsonl"
-                assert result_path.exists()
-            finally:
-                os.chdir(original_cwd)
+        assert result_path.parent.name == ".ll"
+        assert result_path.name.startswith("user-messages-")
+        assert result_path.suffix == ".jsonl"
+        assert result_path.exists()
 
 
 class TestPrintMessagesToStdout:

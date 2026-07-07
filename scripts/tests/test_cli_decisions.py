@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import UTC
 from pathlib import Path
@@ -1017,19 +1016,16 @@ class TestDecisionsCLINoSubcommand:
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """ll-issues decisions with no sub-sub-command returns 1."""
         # --config is not registered on the decisions parser itself (only on sub-sub-commands),
         # so we change directory to temp_project_dir and omit --config.
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(temp_project_dir)
-            with patch.object(sys, "argv", ["ll-issues", "decisions"]):
-                from little_loops.cli import main_issues
+        monkeypatch.chdir(temp_project_dir)
+        with patch.object(sys, "argv", ["ll-issues", "decisions"]):
+            from little_loops.cli import main_issues
 
-                result = main_issues()
-        finally:
-            os.chdir(original_cwd)
+            result = main_issues()
 
         assert result == 1
 

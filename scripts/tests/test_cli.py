@@ -1580,7 +1580,9 @@ class TestMainAutoAdditionalCoverage:
             assert call_kwargs["only_ids"] == ["BUG-001", "BUG-002"]
             assert call_kwargs["skip_ids"] == {"BUG-003"}
 
-    def test_project_root_fallback_to_cwd(self, temp_project: Path) -> None:
+    def test_project_root_fallback_to_cwd(
+        self, temp_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_auto uses Path.cwd() when no --config provided."""
         with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
@@ -1588,17 +1590,11 @@ class TestMainAutoAdditionalCoverage:
             mock_manager_cls.return_value = mock_manager
 
             # Change to temp directory for test
-            import os
+            monkeypatch.chdir(temp_project)
+            with patch.object(sys, "argv", ["ll-auto"]):
+                from little_loops.cli import main_auto
 
-            original_cwd = os.getcwd()
-            try:
-                os.chdir(temp_project)
-                with patch.object(sys, "argv", ["ll-auto"]):
-                    from little_loops.cli import main_auto
-
-                    result = main_auto()
-            finally:
-                os.chdir(original_cwd)
+                result = main_auto()
 
             assert result == 0
             # Verify BRConfig was created with cwd path
@@ -2056,7 +2052,9 @@ class TestMainMessagesAdditionalCoverage:
 class TestMainLoopAdditionalCoverage:
     """Additional coverage tests for main_loop entry point."""
 
-    def test_argv_preprocessing_inserts_run(self) -> None:
+    def test_argv_preprocessing_inserts_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_loop inserts 'run' when first arg is not a subcommand."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2093,20 +2091,16 @@ class TestMainLoopAdditionalCoverage:
                     # Call with loop name directly (no "run" subcommand)
                     with patch.object(sys, "argv", ["ll-loop", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 
-    def test_loop_path_resolution_prefers_fsm_yaml(self) -> None:
+    def test_loop_path_resolution_prefers_fsm_yaml(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """resolve_loop_path prefers .fsm.yaml over .yaml."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2144,20 +2138,16 @@ class TestMainLoopAdditionalCoverage:
 
                     with patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 
-    def test_dry_run_prints_execution_plan(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_dry_run_prints_execution_plan(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_loop --dry-run prints execution plan and exits."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2192,22 +2182,16 @@ states:
             ):
                 with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--dry-run"]):
                     # Change to temp directory so resolve_loop_path works
-                    import os
+                    monkeypatch.chdir(tmpdir)
+                    from little_loops.cli import main_loop
 
-                    original_cwd = os.getcwd()
-                    try:
-                        os.chdir(tmpdir)
-                        from little_loops.cli import main_loop
-
-                        result = main_loop()
-                    finally:
-                        os.chdir(original_cwd)
+                    result = main_loop()
 
             captured = capsys.readouterr()
             assert result == 0
             assert "Execution plan for:" in captured.out
 
-    def test_max_iterations_override(self) -> None:
+    def test_max_iterations_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop passes max_iterations override to executor."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2246,20 +2230,14 @@ states:
                         ["ll-loop", "run", "test-loop", "--max-iterations", "5"],
                     ):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 
-    def test_no_llm_flag(self) -> None:
+    def test_no_llm_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop passes no_llm=True when flag set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2294,20 +2272,14 @@ states:
 
                     with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 
-    def test_stop_command(self) -> None:
+    def test_stop_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop stop command stops running loop."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_state = MagicMock()
@@ -2321,20 +2293,14 @@ states:
                 patch("little_loops.fsm.persistence.StatePersistence"),
                 patch.object(sys, "argv", ["ll-loop", "stop", "test-loop"]),
             ):
-                import os
+                monkeypatch.chdir(tmpdir)
+                from little_loops.cli import main_loop
 
-                original_cwd = os.getcwd()
-                try:
-                    os.chdir(tmpdir)
-                    from little_loops.cli import main_loop
-
-                    result = main_loop()
-                finally:
-                    os.chdir(original_cwd)
+                result = main_loop()
 
             assert result == 0
 
-    def test_resume_command(self) -> None:
+    def test_resume_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop resume command resumes interrupted loop."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2371,20 +2337,14 @@ states:
 
                     with patch.object(sys, "argv", ["ll-loop", "resume", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 
-    def test_history_command_with_tail(self) -> None:
+    def test_history_command_with_tail(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop history command shows execution history."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2400,20 +2360,16 @@ states:
                     ["ll-loop", "history", "test-loop", "--tail", "10"],
                 ):
                     # Change to temp directory so resolve_loop_path works
-                    import os
+                    monkeypatch.chdir(tmpdir)
+                    from little_loops.cli import main_loop
 
-                    original_cwd = os.getcwd()
-                    try:
-                        os.chdir(tmpdir)
-                        from little_loops.cli import main_loop
-
-                        result = main_loop()
-                    finally:
-                        os.chdir(original_cwd)
+                    result = main_loop()
 
             assert result == 0
 
-    def test_test_command_single_iteration(self) -> None:
+    def test_test_command_single_iteration(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """main_loop test command runs single test iteration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2448,16 +2404,10 @@ states:
 
                     with patch.object(sys, "argv", ["ll-loop", "test", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
-                        import os
+                        monkeypatch.chdir(tmpdir)
+                        from little_loops.cli import main_loop
 
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(tmpdir)
-                            from little_loops.cli import main_loop
-
-                            result = main_loop()
-                        finally:
-                            os.chdir(original_cwd)
+                        result = main_loop()
 
             assert result == 0
 

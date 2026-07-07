@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import errno
 import json
-import os
 import threading
 import time
 from pathlib import Path
@@ -96,42 +95,34 @@ class TestLockManager:
         assert manager.acquire("loop1", ["src/"])
         assert not manager.acquire("loop2", ["src/"])
 
-    def test_acquire_conflict_parent_scope(self, manager: LockManager, tmp_loops: Path) -> None:
+    def test_acquire_conflict_parent_scope(
+        self, manager: LockManager, tmp_loops: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Parent scope conflicts with child."""
         # Create src directory for path resolution
         (tmp_loops.parent / "src" / "api").mkdir(parents=True)
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_loops.parent)
-            assert manager.acquire("loop1", ["src/"])
-            assert not manager.acquire("loop2", ["src/api/"])  # Child conflicts
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_loops.parent)
+        assert manager.acquire("loop1", ["src/"])
+        assert not manager.acquire("loop2", ["src/api/"])  # Child conflicts
 
-    def test_acquire_conflict_child_scope(self, manager: LockManager, tmp_loops: Path) -> None:
+    def test_acquire_conflict_child_scope(
+        self, manager: LockManager, tmp_loops: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Child scope conflicts with parent."""
         (tmp_loops.parent / "src" / "api").mkdir(parents=True)
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_loops.parent)
-            assert manager.acquire("loop1", ["src/api/"])
-            assert not manager.acquire("loop2", ["src/"])  # Parent conflicts
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_loops.parent)
+        assert manager.acquire("loop1", ["src/api/"])
+        assert not manager.acquire("loop2", ["src/"])  # Parent conflicts
 
     def test_acquire_no_conflict_sibling_scopes(
-        self, manager: LockManager, tmp_loops: Path
+        self, manager: LockManager, tmp_loops: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Sibling scopes don't conflict."""
         (tmp_loops.parent / "src").mkdir()
         (tmp_loops.parent / "tests").mkdir()
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_loops.parent)
-            assert manager.acquire("loop1", ["src/"])
-            assert manager.acquire("loop2", ["tests/"])  # No overlap
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_loops.parent)
+        assert manager.acquire("loop1", ["src/"])
+        assert manager.acquire("loop2", ["tests/"])  # No overlap
 
     def test_empty_scope_defaults_to_project(self, manager: LockManager) -> None:
         """Empty scope treated as ['.']."""
@@ -209,19 +200,15 @@ class TestLockManager:
         assert conflict.loop_name == "blocker"
 
     def test_find_conflict_none_when_no_conflict(
-        self, manager: LockManager, tmp_loops: Path
+        self, manager: LockManager, tmp_loops: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """find_conflict returns None when no conflict."""
         (tmp_loops.parent / "src").mkdir()
         (tmp_loops.parent / "tests").mkdir()
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_loops.parent)
-            manager.acquire("blocker", ["src/"])
-            conflict = manager.find_conflict(["tests/"])
-            assert conflict is None
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_loops.parent)
+        manager.acquire("blocker", ["src/"])
+        conflict = manager.find_conflict(["tests/"])
+        assert conflict is None
 
     def test_list_locks(self, manager: LockManager) -> None:
         """list_locks returns all active locks."""
@@ -543,7 +530,7 @@ class TestMultiInstanceSameName:
         assert not lock_file2.exists()
 
     def test_concurrent_same_name_non_overlapping_scopes_both_acquire(
-        self, tmp_loops: Path, tmp_path: Path
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Concurrent same-name instances on non-overlapping scopes both succeed (ENH-1354)."""
         src_dir = tmp_path / "src"
@@ -555,32 +542,28 @@ class TestMultiInstanceSameName:
         results: list[bool] = []
         barrier = threading.Barrier(2)
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
+        monkeypatch.chdir(tmp_path)
 
-            def try_acquire(instance_id: str, scope: list[str]) -> None:
-                barrier.wait()
-                result = manager.acquire("autodev", scope, instance_id=instance_id)
-                results.append(result)
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("autodev", scope, instance_id=instance_id)
+            results.append(result)
 
-            id1 = "autodev-20240115T103000"
-            id2 = "autodev-20240115T103001"
-            t1 = threading.Thread(target=try_acquire, args=(id1, ["src/"]))
-            t2 = threading.Thread(target=try_acquire, args=(id2, ["lib/"]))
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-        finally:
-            os.chdir(original_cwd)
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["src/"]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["lib/"]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert results.count(True) == 2, (
             f"Both non-overlapping instances should acquire; got: {results}"
         )
 
     def test_autodev_with_run_dir_scopes_both_acquire_concurrently(
-        self, tmp_loops: Path, tmp_path: Path
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Two autodev instances with different run_dir scopes acquire concurrently (FEAT-1789)."""
         run1 = tmp_path / ".loops" / "runs" / "autodev-20240115T103000"
@@ -592,55 +575,49 @@ class TestMultiInstanceSameName:
         results: list[bool] = []
         barrier = threading.Barrier(2)
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
+        monkeypatch.chdir(tmp_path)
 
-            def try_acquire(instance_id: str, scope: list[str]) -> None:
-                barrier.wait()
-                result = manager.acquire("autodev", scope, instance_id=instance_id)
-                results.append(result)
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("autodev", scope, instance_id=instance_id)
+            results.append(result)
 
-            id1 = "autodev-20240115T103000"
-            id2 = "autodev-20240115T103001"
-            t1 = threading.Thread(target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))]))
-            t2 = threading.Thread(target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))]))
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-        finally:
-            os.chdir(original_cwd)
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert results.count(True) == 2, (
             f"Both instances with different run_dir scopes should acquire; got: {results}"
         )
 
-    def test_autodev_with_dot_scope_still_conflicts(self, tmp_loops: Path, tmp_path: Path) -> None:
+    def test_autodev_with_dot_scope_still_conflicts(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Two autodev instances with ["."] scope still conflict (FEAT-1789 regression guard)."""
         manager = LockManager(tmp_loops)
         results: list[bool] = []
         barrier = threading.Barrier(2)
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
+        monkeypatch.chdir(tmp_path)
 
-            def try_acquire(instance_id: str, scope: list[str]) -> None:
-                barrier.wait()
-                result = manager.acquire("autodev", scope, instance_id=instance_id)
-                results.append(result)
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("autodev", scope, instance_id=instance_id)
+            results.append(result)
 
-            id1 = "autodev-20240115T103000"
-            id2 = "autodev-20240115T103001"
-            t1 = threading.Thread(target=try_acquire, args=(id1, ["."]))
-            t2 = threading.Thread(target=try_acquire, args=(id2, ["."]))
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-        finally:
-            os.chdir(original_cwd)
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["."]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["."]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert results.count(True) == 1, (
             f"Both instances with dot scope should conflict; exactly one should acquire, got: {results}"
@@ -751,7 +728,7 @@ class TestPromptAcrossIssuesScopeIsolation:
         return loops_dir
 
     def test_two_prompt_across_issues_instances_disjoint_run_dirs_both_acquire_concurrently(
-        self, tmp_loops: Path, tmp_path: Path
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Reproduces the 2026-07-06 collision: an EPIC-2457 sweep and an
         EPIC-2451 sweep running concurrently must both acquire (no 'Scope
@@ -766,33 +743,29 @@ class TestPromptAcrossIssuesScopeIsolation:
         results: list[bool] = []
         barrier = threading.Barrier(2)
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
+        monkeypatch.chdir(tmp_path)
 
-            def try_acquire(instance_id: str, scope: list[str]) -> None:
-                barrier.wait()
-                result = manager.acquire(
-                    "prompt-across-issues", scope, instance_id=instance_id
-                )
-                results.append(result)
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire(
+                "prompt-across-issues", scope, instance_id=instance_id
+            )
+            results.append(result)
 
-            id1 = "prompt-across-issues-20260706T140004"
-            id2 = "prompt-across-issues-20260706T140754"
-            t1 = threading.Thread(
-                target=try_acquire,
-                args=(id1, [str(run1.relative_to(tmp_path))]),
-            )
-            t2 = threading.Thread(
-                target=try_acquire,
-                args=(id2, [str(run2.relative_to(tmp_path))]),
-            )
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-        finally:
-            os.chdir(original_cwd)
+        id1 = "prompt-across-issues-20260706T140004"
+        id2 = "prompt-across-issues-20260706T140754"
+        t1 = threading.Thread(
+            target=try_acquire,
+            args=(id1, [str(run1.relative_to(tmp_path))]),
+        )
+        t2 = threading.Thread(
+            target=try_acquire,
+            args=(id2, [str(run2.relative_to(tmp_path))]),
+        )
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert results.count(True) == 2, (
             "Both prompt-across-issues instances with disjoint run_dir scopes "

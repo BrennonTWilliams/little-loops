@@ -7,7 +7,6 @@ this module exercises the pure-function handler under unit conditions.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -17,14 +16,10 @@ from little_loops.hooks.types import LLHookEvent
 
 
 @pytest.fixture
-def in_tmp(tmp_path: Path):
+def in_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """chdir into ``tmp_path`` for the duration of one test, then restore cwd."""
-    original = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        yield tmp_path
-    finally:
-        os.chdir(original)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
 
 
 def _event() -> LLHookEvent:
