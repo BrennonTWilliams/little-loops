@@ -12,6 +12,7 @@ from little_loops.cli.loop._helpers import (
     get_builtin_loops_dir,
     load_loop_with_spec,
     resolve_loop_path,
+    with_diagram_color,
 )
 from little_loops.cli.loop.diagram_modes import resolve_facets
 from little_loops.cli.loop.layout import (  # noqa: F401
@@ -1214,16 +1215,17 @@ def cmd_show(
     facets = resolve_facets(args)
     print()
     print("Diagram:")
-    if facets is None:
-        diagram = _render_fsm_diagram(fsm, verbose=verbose, badges=badges)
-    else:
-        diagram = _render_fsm_diagram(
-            fsm,
-            badges=badges,
-            mode=facets.scope,
-            suppress_labels=not facets.edge_labels,
-            title_only=facets.state_detail == "title",
-        )
+    with with_diagram_color(True):
+        if facets is None:
+            diagram = _render_fsm_diagram(fsm, verbose=verbose, badges=badges)
+        else:
+            diagram = _render_fsm_diagram(
+                fsm,
+                badges=badges,
+                mode=facets.scope,
+                suppress_labels=not facets.edge_labels,
+                title_only=facets.state_detail == "title",
+            )
     if diagram:
         print(diagram)
 

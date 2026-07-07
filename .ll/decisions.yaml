@@ -4318,3 +4318,36 @@
     target viewport dimensions, even when an upstr
   enforcement: advisory
   issue: BUG-2527
+- id: ARCH-187
+  type: rule
+  timestamp: '2026-07-07T23:30:03Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'BUG-2536 had three independent gates that could compose to ''no color'':
+    active-state highlight, edge-label colorization, and _USE_COLOR (TTY). A user
+    explicitly requesting a visual feature via --show-diagrams still got colorless
+    output under script/CI invocation because the TTY gate stripped colors even when
+    the user opted in. User opt-in and environment-detection are semantically different
+    signals — opt-in wins.'
+  rule: Explicit CLI opt-in flags (e.g., --show-diagrams, --color) must override environment-driven
+    suppression gates like TTY d
+  enforcement: advisory
+  issue: BUG-2536
+- id: TEST-188
+  type: rule
+  timestamp: '2026-07-07T23:30:03Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Each individual gate in BUG-2536 was correct in isolation — TTY detection
+    should strip colors, edge-label colorization should be toggleable, highlight should
+    require an active state. But the compound case 'dry-run + clean + non-TTY' produced
+    'no color at all', and no single-gate test caught it. The matrix coverage is what
+    surfaces these silent UX collapses.
+  rule: When a visual feature has N independent gates that can suppress it, write
+    tests for the cartesian product (or at minimum
+  enforcement: advisory
+  issue: BUG-2536

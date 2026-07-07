@@ -85,6 +85,243 @@ class TestColorizeLabel:
 
 
 # ---------------------------------------------------------------------------
+# _box_kind_color
+# ---------------------------------------------------------------------------
+
+
+class TestBoxKindColor:
+    """Direct unit tests for _box_kind_color()."""
+
+    @pytest.fixture(autouse=True)
+    def _force_color(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+
+    @staticmethod
+    def _state(**kwargs):
+        """Build a StateConfig with the given overrides (test helper)."""
+        from little_loops.fsm.schema import StateConfig
+
+        defaults = {
+            "action": None,
+            "action_type": None,
+            "params": {},
+            "evaluate": None,
+            "route": None,
+            "on_yes": None,
+            "on_no": None,
+            "on_error": None,
+            "on_partial": None,
+            "on_blocked": None,
+            "next": None,
+            "terminal": False,
+            "capture": None,
+            "append_to_messages": None,
+            "timeout": None,
+            "on_maintain": None,
+            "max_retries": None,
+            "on_retry_exhausted": None,
+            "retryable_exit_codes": None,
+            "max_rate_limit_retries": None,
+            "on_rate_limit_exhausted": None,
+            "rate_limit_backoff_base_seconds": None,
+            "rate_limit_max_wait_seconds": None,
+            "rate_limit_long_wait_ladder": None,
+            "loop": None,
+            "context_passthrough": False,
+            "with_": {},
+            "fragment_name": None,
+            "fragment_bindings": {},
+            "fragment_parameters": {},
+            "agent": None,
+            "tools": None,
+            "model": None,
+            "extra_routes": {},
+            "type": None,
+            "throttle": None,
+            "on_throttle_hard": None,
+            "learning": None,
+            "cost_ceiling": None,
+        }
+        defaults.update(kwargs)
+        return StateConfig(**defaults)
+
+    def test_none_returns_none(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        assert _box_kind_color(None) is None
+
+    def test_sub_loop_maps_to_magenta(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color, _SUB_LOOP_KIND_COLOR
+
+        st = self._state(loop="inner-fsm", terminal=False)
+        assert _box_kind_color(st) == _SUB_LOOP_KIND_COLOR == "35"
+
+    def test_slash_command_maps_to_blue(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="/x", action_type="slash_command")
+        assert _box_kind_color(st) == "34"
+
+    def test_prompt_maps_to_magenta(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="do x", action_type="prompt")
+        assert _box_kind_color(st) == "35"
+
+    def test_shell_explicit_maps_to_cyan(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="echo hi", action_type="shell")
+        assert _box_kind_color(st) == "36"
+
+    def test_bare_action_defaults_to_shell(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="echo hi", action_type=None)
+        assert _box_kind_color(st) == "36"
+
+    def test_mcp_tool_maps_to_yellow(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="mcp://x", action_type="mcp_tool")
+        assert _box_kind_color(st) == "33"
+
+    def test_unknown_action_type_returns_none(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(action="do x", action_type="weird")
+        assert _box_kind_color(st) is None
+
+    def test_terminal_without_action_returns_dim(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color, _TERMINAL_KIND_COLOR
+
+        st = self._state(terminal=True, action=None, action_type=None)
+        assert _box_kind_color(st) == _TERMINAL_KIND_COLOR == "2"
+
+    def test_loop_wins_over_action_type(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color, _SUB_LOOP_KIND_COLOR
+
+        st = self._state(loop="child", action="/x", action_type="slash_command")
+        assert _box_kind_color(st) == _SUB_LOOP_KIND_COLOR
+
+
+class TestWithDiagramColor:
+    """Verify the context manager temporarily flips ``_USE_COLOR`` for diagram
+    rendering sites (dry-run, info, streaming, pinned)."""
+
+    def test_flips_to_true_when_enabled(self, monkeypatch):
+        from little_loops.cli import output as _output
+        from little_loops.cli.loop._helpers import with_diagram_color
+
+        monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
+        with with_diagram_color(True):
+            assert _output._USE_COLOR is True
+        assert _output._USE_COLOR is False
+
+    def test_no_op_when_disabled(self, monkeypatch):
+        from little_loops.cli import output as _output
+        from little_loops.cli.loop._helpers import with_diagram_color
+
+        monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
+        with with_diagram_color(False):
+            assert _output._USE_COLOR is False
+
+    def test_no_color_env_overrides(self, monkeypatch):
+        from little_loops.cli import output as _output
+        from little_loops.cli.loop._helpers import with_diagram_color
+
+        monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
+        monkeypatch.setenv("NO_COLOR", "1")
+        try:
+            with with_diagram_color(True):
+                assert _output._USE_COLOR is False, "NO_COLOR=1 must be honored"
+        finally:
+            monkeypatch.delenv("NO_COLOR", raising=False)
+
+    def test_restores_previous_value_even_on_exception(self, monkeypatch):
+        from little_loops.cli import output as _output
+        from little_loops.cli.loop._helpers import with_diagram_color
+
+        monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
+        try:
+            with with_diagram_color(True):
+                raise RuntimeError("simulated")
+        except RuntimeError:
+            pass
+        assert _output._USE_COLOR is False
+
+
+# ---------------------------------------------------------------------------
+# End-to-end diagram rendering with kind colors
+# ---------------------------------------------------------------------------
+
+
+class TestDiagramKindColors:
+    """Confirm non-active state boxes get distinguishing colors in the
+    rendered diagram when no highlight is set (dry-run / ``ll-loop info`` /
+    initial render paths that were colorless before this fix)."""
+
+    @pytest.fixture(autouse=True)
+    def _force_color(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.loop.layout._USE_COLOR", True, raising=False)
+
+    def _make_fsm(self):
+        from little_loops.fsm.schema import FSMLoop
+
+        states = {
+            "shell_state": TestBoxKindColor._state(action="echo a", action_type="shell"),
+            "sub_loop_state": TestBoxKindColor._state(loop="inner"),
+            "done": TestBoxKindColor._state(terminal=True),
+        }
+        states["shell_state"].next = "sub_loop_state"
+        states["sub_loop_state"].next = "done"
+        return FSMLoop(
+            name="t",
+            initial="shell_state",
+            states=states,
+            context={},
+            required_inputs=[],
+            max_steps=50,
+        )
+
+    def test_kind_colors_appear_without_highlight(self) -> None:
+        """Each kind's color must appear in the rendered diagram, even
+        though no state is highlighted (the dry-run / info path)."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        diagram = _render_fsm_diagram(
+            self._make_fsm(),
+            highlight_state=None,
+            highlight_color="32",
+            suppress_labels=True,
+            title_only=True,
+        )
+
+        assert "\033[36" in diagram, "shell action_type should color the box cyan"
+        assert "\033[35" in diagram, "sub-loop state should be magenta"
+        assert "\033[2m" in diagram, "terminal state should be dim"
+
+    def test_active_box_still_uses_highlight_color(self) -> None:
+        """Active state uses highlight_color (with bg fill); kind hues
+        apply to *non-active* states only — they shouldn't replace the
+        highlight for the active row."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+
+        diagram = _render_fsm_diagram(
+            self._make_fsm(),
+            highlight_state="sub_loop_state",
+            highlight_color="32",
+            suppress_labels=True,
+            title_only=True,
+        )
+
+        # highlight_color=32 → expect a green fg/bg pair on the active row.
+        assert "\033[32" in diagram or "\033[42" in diagram
+
+
+# ---------------------------------------------------------------------------
 # _badge_display_width
 # ---------------------------------------------------------------------------
 

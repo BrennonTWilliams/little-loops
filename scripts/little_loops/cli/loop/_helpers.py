@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import signal
 import subprocess
 import sys
@@ -13,6 +15,7 @@ from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli import output as _output
 from little_loops.cli.loop.diagram_modes import (
     TOPOLOGY_TO_DETAIL,
     DiagramFacets,
@@ -24,6 +27,38 @@ from little_loops.logger import Logger
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
+
+@contextlib.contextmanager
+def with_diagram_color(enabled: bool):
+    """Temporarily flip ``cli.output._USE_COLOR`` while rendering a diagram.
+
+    The FSM diagram renderer calls :func:`colorize` internally for every
+    border / badge / accent, which is gated by ``_USE_COLOR``. When
+    ``--show-diagrams`` is explicit the user is opting into a structured
+    visualization — colors should be emitted regardless of whether stdout is
+    a TTY (``FORCE_COLOR`` already covers the TTY case). When
+    ``enabled=True`` this context manager forces ``_USE_COLOR=True`` for the
+    render and restores the previous value on exit. ``NO_COLOR=1`` is
+    honored unconditionally — when set we leave ``_USE_COLOR`` alone.
+
+    Use ``with with_diagram_color(show_diagrams): ...`` at the four render
+    sites (dry-run path, ``cmd_show``, ``StateFeedRenderer`` streaming and
+    pinned paths).
+    """
+    if not enabled:
+        yield
+        return
+    if os.environ.get("NO_COLOR", "") != "":
+        yield
+        return
+
+    prev = _output._USE_COLOR
+    _output._USE_COLOR = True
+    try:
+        yield
+    finally:
+        _output._USE_COLOR = prev
+
 
 # Exit code mapping for terminated_by values
 EXIT_CODES: dict[str, int] = {
@@ -895,7 +930,8 @@ class StateFeedRenderer:
                 state0 = self.last_state_at_depth.get(0)
                 if state0 is None:
                     state0 = state
-                self._redraw_pinned(state0)
+                with with_diagram_color(True):
+                    self._redraw_pinned(state0)
             elif self.show_diagrams:
                 from little_loops.cli.loop.layout import (
                     _collect_edges,
@@ -931,16 +967,17 @@ class StateFeedRenderer:
                 # BUG-2425: route through the ENH-2411 width-fallback ladder so a
                 # wide/back-edge-heavy diagram degrades (title-only / neighborhood
                 # / single) instead of overflowing the non-TTY log width.
-                diagram = _render_streaming_diagram(
-                    active_fsm_diag,
-                    active_highlight,
-                    facets=self.facets,
-                    highlight_color=self.highlight_color,
-                    edge_label_colors=self.edge_label_colors,
-                    badges=self.badges,
-                    scope=active_scope,
-                    cols=tw,
-                )
+                with with_diagram_color(True):
+                    diagram = _render_streaming_diagram(
+                        active_fsm_diag,
+                        active_highlight,
+                        facets=self.facets,
+                        highlight_color=self.highlight_color,
+                        edge_label_colors=self.edge_label_colors,
+                        badges=self.badges,
+                        scope=active_scope,
+                        cols=tw,
+                    )
                 # Header: breadcrumb shows immediate parent when inside a sub-loop.
                 if active_depth_diag > 0:
                     imm_parent_name = (

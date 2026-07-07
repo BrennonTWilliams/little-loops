@@ -116,6 +116,48 @@ _SUB_LOOP_BADGE = "\u21b3\u27f3"  # ↳⟳
 _ROUTE_BADGE = "\u2443"  # ⑃
 
 
+# Per-state "kind" foreground color (no background fill — kept light to match the
+# ``clean`` preset aesthetic). Applied to non-active state boxes so the diagram has
+# a color signal even when ``highlight_state`` is ``None`` (dry-run, ``ll-loop info``,
+# initial render before any state executes, or main-scope fallback that hides the
+# active state). Active states continue to use ``highlight_color`` with background
+# fill via ``_draw_box``.
+_ACTION_TYPE_KIND_COLORS: dict[str, str] = {
+    "slash_command": "34",  # blue
+    "prompt": "35",  # magenta
+    "shell": "36",  # cyan
+    "mcp_tool": "33",  # yellow
+}
+
+_SUB_LOOP_KIND_COLOR = "35"  # magenta — distinguishes nested FSMs
+_TERMINAL_KIND_COLOR = "2"  # dim — end states visually recede
+
+
+def _box_kind_color(state: StateConfig | None) -> str | None:
+    """Return the SGR foreground code for a non-active state, or ``None`` for plain.
+
+    Resolution order mirrors :func:`_get_state_badge` so the badge glyph and the
+    border hue correspond 1:1:
+
+    1. ``state.loop`` set → ``_SUB_LOOP_KIND_COLOR`` (magenta).
+    2. ``state.action_type`` in ``_ACTION_TYPE_KIND_COLORS`` → mapped hue.
+    3. bare ``state.action`` (no explicit ``action_type``) → shell hue.
+    4. terminal state without action → ``_TERMINAL_KIND_COLOR`` (dim).
+    5. bare ``route:`` only or empty state → ``None`` (defer to caller).
+    """
+    if state is None:
+        return None
+    if state.loop:
+        return _SUB_LOOP_KIND_COLOR
+    if state.action_type:
+        return _ACTION_TYPE_KIND_COLORS.get(state.action_type)
+    if state.action:
+        return _ACTION_TYPE_KIND_COLORS["shell"]
+    if state.terminal:
+        return _TERMINAL_KIND_COLOR
+    return None
+
+
 def _badge_display_width(badge: str) -> int:
     """Compute terminal display width of a badge string using wcwidth."""
     w = _wcswidth(badge)
@@ -644,12 +686,22 @@ def _draw_box(
     is_highlighted: bool,
     highlight_color: str,
     badge: str = "",
+    kind_color: str | None = None,
 ) -> None:
     """Draw a state box onto a character grid at (row, col).
 
     If *badge* is provided it is placed right-aligned in the top border row with
     one space of padding on each side (``─ badge ┐``), colorized via ``_bc()``.
+
+    If ``kind_color`` is provided and the box is not highlighted, the border,
+    badge, and name-row text are colorized with it (foreground only — no
+    background fill). This gives non-active state boxes a distinguishing hue
+    based on their ``action_type`` / ``loop`` / ``terminal`` kind when no
+    active-state highlight is available (dry-run, ``ll-loop info``), without
+    changing the visual weight of the highlight.
     """
+    # Effective border-color for non-highlighted boxes (foreground only).
+    nc: str | None = kind_color if (not is_highlighted and kind_color) else None
     total_width = len(grid[0]) if grid else 0
     try:
         bg_code: str | None = str(int(highlight_color) + 10)
@@ -665,7 +717,7 @@ def _draw_box(
     def _bc(ch: str) -> str:
         """Colorize a single character for non-batched cell writes (side borders)."""
         if not is_highlighted:
-            return ch
+            return colorize(ch, nc) if nc else ch
         if bg_code:
             return colorize(ch, f"{highlight_color};{bg_code}")
         return colorize(ch, highlight_color)
@@ -689,34 +741,52 @@ def _draw_box(
             if col + j < total_width:
                 grid[row][col + j] = ""
     else:
-        if col < total_width:
-            grid[row][col] = "\u250c"
-        for j in range(1, width - 1):
-            if col + j < total_width:
-                grid[row][col + j] = "\u2500"
-        if col + width - 1 < total_width:
-            grid[row][col + width - 1] = "\u2510"
+        if nc:
+            if not badge:
+                top_str = "\u250c" + "\u2500" * (width - 2) + "\u2510"
+                grid[row][col] = colorize(top_str, nc)
+                for j in range(1, width):
+                    if col + j < total_width:
+                        grid[row][col + j] = ""
+            else:
+                badge_w = _badge_display_width(badge)
+                dash_count = width - badge_w - 4
+                top_str = (
+                    "\u250c" + "\u2500" * dash_count + " " + badge + " " + "\u2510"
+                )
+                grid[row][col] = colorize(top_str, nc)
+                for j in range(1, width):
+                    if col + j < total_width:
+                        grid[row][col + j] = ""
+        else:
+            if col < total_width:
+                grid[row][col] = "\u250c"
+            for j in range(1, width - 1):
+                if col + j < total_width:
+                    grid[row][col + j] = "\u2500"
+            if col + width - 1 < total_width:
+                grid[row][col + width - 1] = "\u2510"
 
-        # Overlay badge in top-right corner (non-highlighted path only;
-        # highlighted path builds the badge into the batched string above).
-        if badge:
-            badge_w = _badge_display_width(badge)
-            trail_pos = col + width - 2
-            if col + 1 <= trail_pos < col + width - 1 and trail_pos < total_width:
-                grid[row][trail_pos] = " "
-            lead_pos = col + width - badge_w - 3
-            if col + 1 <= lead_pos < col + width - 1 and lead_pos < total_width:
-                grid[row][lead_pos] = " "
-            pos = col + width - 1 - badge_w - 1
-            for ch in badge:
-                ch_w = _wcwidth(ch)
-                if ch_w < 1:
-                    ch_w = 1
-                if col + 1 <= pos < col + width - 1 and pos < total_width:
-                    grid[row][pos] = ch
-                    if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
-                        grid[row][pos + 1] = ""
-                pos += ch_w
+            # Overlay badge in top-right corner (non-highlighted path only;
+            # highlighted path builds the badge into the batched string above).
+            if badge:
+                badge_w = _badge_display_width(badge)
+                trail_pos = col + width - 2
+                if col + 1 <= trail_pos < col + width - 1 and trail_pos < total_width:
+                    grid[row][trail_pos] = " "
+                lead_pos = col + width - badge_w - 3
+                if col + 1 <= lead_pos < col + width - 1 and lead_pos < total_width:
+                    grid[row][lead_pos] = " "
+                pos = col + width - 1 - badge_w - 1
+                for ch in badge:
+                    ch_w = _wcwidth(ch)
+                    if ch_w < 1:
+                        ch_w = 1
+                    if col + 1 <= pos < col + width - 1 and pos < total_width:
+                        grid[row][pos] = ch
+                        if ch_w == 2 and pos + 1 < col + width - 1 and pos + 1 < total_width:
+                            grid[row][pos + 1] = ""
+                    pos += ch_w
 
     # ── Interior fill ───────────────────────────────────────────────────
     # Batched per row — a single colorize(" " * N, bg_code) replaces the
@@ -790,9 +860,9 @@ def _draw_box(
                 text_code: str | None = f"97;{bg_code};1" if bg_code else f"{highlight_color};1"
                 fill_code: str | None = bg_code or highlight_color
             else:
-                lead_code = None
-                text_code = "1"
-                fill_code = None
+                lead_code = nc
+                text_code = f"{nc};1" if nc else "1"
+                fill_code = nc
         else:
             # Action body rows.
             if is_highlighted and bg_code:
@@ -824,6 +894,13 @@ def _draw_box(
                 grid[brow][col] = colorize(
                     "\u2514" + "\u2500" * (width - 2) + "\u2518", border_code
                 )
+            for j in range(1, width):
+                if col + j < total_width:
+                    grid[brow][col + j] = ""
+        elif nc:
+            bot_str = "\u2514" + "\u2500" * (width - 2) + "\u2518"
+            if col < total_width:
+                grid[brow][col] = colorize(bot_str, nc)
             for j in range(1, width):
                 if col + j < total_width:
                     grid[brow][col + j] = ""
@@ -1205,6 +1282,11 @@ def _render_layered_diagram(
     # Draw boxes
     for sname in all_states:
         is_highlighted = highlight_state is not None and sname == highlight_state
+        _kind = (
+            _box_kind_color(fsm_states.get(sname))
+            if fsm_states is not None
+            else None
+        )
         _draw_box(
             grid,
             row_start[sname],
@@ -1215,6 +1297,7 @@ def _render_layered_diagram(
             is_highlighted,
             highlight_color,
             badge=box_badge[sname],
+            kind_color=_kind,
         )
 
     # Precompute box-occupied (row, col) pairs so connector lines can avoid overwriting box cells
@@ -2252,11 +2335,26 @@ def _render_neighborhood_diagram(
     pred_color_for: dict[str, str] = {}
     if prev_state is not None and prev_state in preds:
         pred_color_for[_label(prev_state)] = _PREV_STATE_COLOR
+    # Per-state "kind" color for preds so they have distinguishing hues even when
+    # the active state highlight is the only color signal otherwise. Skipped when
+    # a pred already has an explicit border color (e.g. prev_state orange).
+    for p in preds:
+        _kc = _box_kind_color(fsm.states.get(p))
+        if _kc:
+            lbl = _label(p)
+            pred_color_for.setdefault(lbl, _kc)
+    succ_color_for: dict[str, str] = {}
+    for s in succs:
+        _kc = _box_kind_color(fsm.states.get(s))
+        if _kc:
+            succ_color_for[_label(s)] = _kc
 
     pred_col = (
         _build_stack(pred_labels, box_w_pred, color_for=pred_color_for) if pred_labels else None
     )
-    succ_col = _build_stack(succ_labels, box_w_succ) if succ_labels else None
+    succ_col = (
+        _build_stack(succ_labels, box_w_succ, color_for=succ_color_for) if succ_labels else None
+    )
     active_rows: list[str] = []
     for i in range(n_rows):
         if i == center_idx:
@@ -2347,6 +2445,11 @@ def _render_horizontal_simple(
 
     for sname in main_path:
         is_highlighted = highlight_state is not None and sname == highlight_state
+        _kind = (
+            _box_kind_color(fsm_states.get(sname))
+            if fsm_states is not None
+            else None
+        )
         _draw_box(
             rows,
             0,
@@ -2357,6 +2460,7 @@ def _render_horizontal_simple(
             is_highlighted,
             highlight_color,
             badge=box_badge[sname],
+            kind_color=_kind,
         )
 
     # Self-loops

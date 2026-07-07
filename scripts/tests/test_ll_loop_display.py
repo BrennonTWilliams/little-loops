@@ -1326,7 +1326,13 @@ class TestRenderFsmDiagram:
         assert "\033[32myes" not in result
 
     def test_non_highlighted_state_name_bold(self) -> None:
-        """Non-highlighted state names are rendered in bold for visual hierarchy."""
+        """Non-highlighted state names are rendered in bold for visual hierarchy.
+
+        As of the per-state-kind colorization change, non-highlighted boxes
+        may also carry a kind color (e.g. cyan for shell action_type), so the
+        bold SGR may appear as ``\\033[X;1m`` rather than bare ``\\033[1m``.
+        Accept any SGR that ends with ``;1m`` before the name text.
+        """
         import little_loops.cli.output as output_mod
 
         fsm = self._make_fsm(
@@ -1339,8 +1345,10 @@ class TestRenderFsmDiagram:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm)
 
-        # State names should be bold (ANSI SGR 1); no highlight_state set so both boxes are non-highlighted
-        assert "\033[1m" in result, "Non-highlighted state names should use bold (ANSI code 1)"
+        # State names should be bold — accept bare (\\033[1m) or colored (\\033[X;1m).
+        assert (
+            "\033[1m" in result or re.search(r"\033\[\d+;1m", result) is not None
+        ), "Non-highlighted state names should use bold (ANSI code 1, bare or compounded)"
 
     def test_back_edge_labels_no_collision_on_shared_midpoint(self) -> None:
         """Two back-edges with the same midpoint row must land on distinct lines.
