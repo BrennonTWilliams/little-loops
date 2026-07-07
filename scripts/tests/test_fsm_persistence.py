@@ -866,6 +866,92 @@ class TestPersistentExecutor:
         assert state.current_state == result.final_state
         assert state.status == "completed"
 
+    def test_archive_run_only_saves_state_and_archives(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """archive_run_only() persists final state and copies run to .history/.
+
+        Signal-handler-safe path for ENH-2516: invoked by _loop_signal_handler's
+        second-SIGINT force-exit branch so the audit trail is captured before
+        sys.exit(1) instead of bypassing every durability step.
+        """
+        mock_runner = MockActionRunner()
+        instance_id = "test-loop-20240115T103000"
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner, instance_id=instance_id
+        )
+        executor.run()
+        state_file = tmp_loops_dir / ".running" / f"{instance_id}.state.json"
+        events_file = tmp_loops_dir / ".running" / f"{instance_id}.events.jsonl"
+        assert state_file.exists()
+        assert events_file.exists()
+
+        archive_path = executor.archive_run_only(terminated_by="interrupted_force")
+
+        assert archive_path is not None, "archive_run_only must return archive path"
+        assert (archive_path / "state.json").exists()
+        assert (archive_path / "events.jsonl").exists()
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted", (
+            "interrupted_force must map to status=interrupted (matches first-SIGINT path)"
+        )
+
+    def test_archive_run_only_maps_terminated_by_to_status(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """archive_run_only() applies the same terminated_by→status mapping as run()."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+        executor.run()
+
+        cases: list[tuple[str, str]] = [
+            ("terminal", "completed"),
+            ("handoff", "awaiting_continuation"),
+            ("timeout", "timed_out"),
+            ("cycle_detected", "failed"),
+            ("max_steps", "interrupted"),
+            ("max_iterations_reached", "interrupted"),
+            ("interrupted", "interrupted"),
+            ("interrupted_force", "interrupted"),
+        ]
+        for terminated_by, expected_status in cases:
+            executor.archive_run_only(terminated_by=terminated_by)
+            state = executor.persistence.load_state()
+            assert state is not None
+            assert state.status == expected_status, (
+                f"terminated_by={terminated_by!r} should map to status={expected_status!r}, "
+                f"got {state.status!r}"
+            )
+
+    def test_archive_run_only_always_writes_state_and_archives(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """archive_run_only() unconditionally writes a final-state snapshot before archiving.
+
+        Unlike ``StatePersistence.archive_run()`` (which returns ``None`` when no
+        files exist), ``archive_run_only()`` is the signal-handler durability
+        path: it must always record *something* — even on a fresh, never-run
+        executor — so the post-mortem has a state.json to inspect.
+        """
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+        # No prior run — both files missing initially.
+
+        archive_path = executor.archive_run_only(terminated_by="interrupted_force")
+
+        # archive_run_only writes its own state.json, so archive_run always
+        # finds a file and returns a non-None path.
+        assert archive_path is not None
+        assert (archive_path / "state.json").exists()
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
+
     def test_events_are_persisted(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """Events are written to JSONL file during execution."""
         mock_runner = MockActionRunner()

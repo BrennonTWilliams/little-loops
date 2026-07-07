@@ -823,6 +823,62 @@ class PersistentExecutor:
         )
         self.persistence.save_state(state)
 
+    def archive_run_only(self, terminated_by: str) -> Path | None:
+        """Archive the current run without re-entering executor.run().
+
+        Signal-handler-safe: does NOT mutate executor state. Invokes save_state
+        + archive_run. Returns the archive path or None if neither state.json
+        nor events.jsonl exists.
+
+        Mirrors the post-block of ``run()`` so the ``terminated_by`` →
+        ``final_status`` mapping stays consistent. Used by
+        ``_loop_signal_handler``'s second-SIGINT force-exit branch (ENH-2516)
+        to close the audit-trail gap exposed by BUG-2501 / BUG-2513.
+
+        Args:
+            terminated_by: ``ExecutionResult.terminated_by`` value to map to a
+                ``LoopState.status`` field. Use ``"interrupted_force"`` for a
+                signal-driven force-exit (maps to ``status="interrupted"``).
+
+        Returns:
+            Path to the archive directory if files were archived, ``None`` if
+            neither ``state.json`` nor ``events.jsonl`` exists.
+        """
+        final_status = "completed" if terminated_by == "terminal" else "failed"
+        if terminated_by in (
+            "max_steps",
+            "max_iterations_reached",
+            "interrupted",
+            "interrupted_force",
+        ):
+            final_status = "interrupted"
+        if terminated_by == "handoff":
+            final_status = "awaiting_continuation"
+        if terminated_by == "timeout":
+            final_status = "timed_out"
+        if terminated_by == "cycle_detected":
+            final_status = "failed"
+
+        final_state = LoopState(
+            loop_name=self.fsm.name,
+            current_state=self._executor.current_state,
+            iteration=self._executor.iteration,
+            captured=self._executor.captured,
+            prev_result=self._executor.prev_result,
+            last_result=self._last_result,
+            started_at=self._executor.started_at,
+            updated_at="",
+            status=final_status,
+            continuation_prompt=self._continuation_prompt,
+            accumulated_ms=_now_ms()
+            - self._executor.start_time_ms
+            + self._executor.elapsed_offset_ms,
+            context=dict(self.fsm.context),
+        )
+        self.persistence.save_state(final_state)
+        run_dir_str = self.fsm.context.get("run_dir", "")
+        return self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
+
     def run(self, clear_previous: bool = True) -> ExecutionResult:
         """Run the FSM with persistence.
 

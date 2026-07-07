@@ -133,6 +133,60 @@ class TestLoopSignalHandler:
 
         assert "\033[?1049l" in capsys.readouterr().err
 
+    def test_second_signal_archives_before_exit(self) -> None:
+        """Second SIGINT invokes executor.archive_run_only() before sys.exit(1).
+
+        Closes the BUG-2501 / BUG-2513 audit-trail gap (ENH-2516): force-exit
+        must archive the current run, mirroring the first-SIGINT graceful path.
+        """
+        mock_executor = MagicMock()
+        self.helpers._loop_executor = mock_executor
+
+        # First signal sets the shutdown flag.
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+        assert self.helpers._loop_shutdown_requested is True
+
+        # Second signal must call archive_run_only then raise SystemExit(1).
+        with pytest.raises(SystemExit) as exc_info:
+            self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        assert exc_info.value.code == 1
+        mock_executor.archive_run_only.assert_called_once_with(
+            terminated_by="interrupted_force"
+        )
+
+    def test_second_signal_swallows_archive_oserror(self) -> None:
+        """OSError from archive_run_only() is swallowed — handler still exits cleanly.
+
+        Mirrors the defensive coding at lifecycle.py:116 — a failed archive must
+        not prevent sys.exit(1), which is the only way to break out of a stuck run.
+        """
+        mock_executor = MagicMock()
+        mock_executor.archive_run_only.side_effect = OSError("disk full")
+        self.helpers._loop_executor = mock_executor
+
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        assert exc_info.value.code == 1
+        mock_executor.archive_run_only.assert_called_once_with(
+            terminated_by="interrupted_force"
+        )
+
+    def test_second_signal_safe_when_no_executor(self) -> None:
+        """Second SIGINT without a registered executor skips archive but still exits."""
+        # _loop_executor is None (the default) — handler must not crash.
+        self.helpers._loop_executor = None
+
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            self.helpers._loop_signal_handler(signal.SIGINT, None)
+
+        assert exc_info.value.code == 1
+
 
 class TestRunBackground:
     """Tests for run_background() helper."""

@@ -79,7 +79,8 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
     """Handle shutdown signals gracefully for ll-loop.
 
     First signal: Set shutdown flag for graceful exit after current state.
-    Second signal: Force immediate exit.
+    Second signal: Force immediate exit (after archiving the current run,
+    ENH-2516).
     """
     global _loop_shutdown_requested, _using_alt_screen
     if _loop_shutdown_requested:
@@ -94,6 +95,16 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
             print("\033[r", end="", file=sys.stderr, flush=True)
             print("\033[?1049l", end="", file=sys.stderr, flush=True)
         print(colorize("\nForce shutdown requested", "38;5;208"), file=sys.stderr)
+        # ENH-2516: archive the current run before sys.exit so the audit trail
+        # survives a forced exit (mirrors the first-SIGINT graceful path and
+        # cmd_stop's precedent at lifecycle.py:316-375). OSError is swallowed
+        # — a failed archive must not prevent exit, which is the only way to
+        # break out of a stuck run (defensive coding matches lifecycle.py:116).
+        if _loop_executor is not None:
+            try:
+                _loop_executor.archive_run_only(terminated_by="interrupted_force")
+            except OSError:
+                pass
         sys.exit(1)
     _loop_shutdown_requested = True
     print(colorize("\nShutdown requested, will exit after current state...", "33"), file=sys.stderr)
