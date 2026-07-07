@@ -417,5 +417,122 @@ def test_variant_width_counts_display_columns() -> None:
     assert _variant_width("ab\n状態確認") == 8
 
 
+# ---------------------------------------------------------------------------
+# Width-aware pinned-path picker + render-layer clamp
+# ---------------------------------------------------------------------------
+#
+# ``--show-diagrams clean`` on a back-edge-heavy FSM used to render the full
+# layered diagram even when the layout overflowed terminal width, producing
+# connector tails (``───────── ─────┘``) past the visible box edges. Two layers
+# of defense close the gap:
+#
+# 1. ``_choose_pinned_layout`` now filters variants by width before considering
+#    height, so a too-wide rung falls through to a smaller one (window /
+#    neighborhood / single). The streaming path has done this since BUG-2425;
+#    this brings the pinned path in line.
+# 2. ``_render_layered_diagram``'s final assembly hard-clamps every output line
+#    to ``tw`` display columns (with ``…`` marker), so even an upstream layout
+#    miss — forward-skip-layer gutter, post-hoc layer merge, etc. — cannot emit
+#    a line wider than the terminal.
+
+
+def test_pinned_layout_skips_too_wide_variants() -> None:
+    """Fix A (direct): ``_choose_pinned_layout`` skips variants whose widest
+    line exceeds ``cols`` even when their height fits. The picker used to be
+    height-only; the ``clean`` preset's ladder collapses to
+    ``[full, window, neighborhood, single]`` when the FSM is too wide, so
+    without the width filter the broken ``full`` render was always picked."""
+    from little_loops.cli.loop._helpers import _choose_pinned_layout
+
+    too_wide = "X" * 200  # 200-col-wide single-line variant
+    fitting = "Y" * 50  # 50-col-wide single-line variant
+    rows = 100
+
+    # Without cols: legacy height-only behavior — picks the first variant that
+    # fits by height. (Used by the `_variant_width` baseline path.)
+    chosen, _ = _choose_pinned_layout(rows, [too_wide, fitting])
+    assert chosen is too_wide  # backwards-compat default
+
+    # With cols=100: width filter rejects too_wide, falls through to fitting.
+    chosen, _ = _choose_pinned_layout(rows, [too_wide, fitting], cols=100)
+    assert chosen is fitting, f"picker should have skipped 200-col variant; chose {chosen[:30]!r}"
+
+    # If every variant is too wide, the picker returns the last (smallest) one
+    # — degenerate terminals still get *something* pinned.
+    chosen, _ = _choose_pinned_layout(rows, [too_wide, too_wide], cols=80)
+    assert chosen is too_wide
+
+
+def test_pinned_pane_clean_preset_no_overflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fix A + Fix B end-to-end: with ``--show-diagrams clean`` on a
+    back-edge-heavy FSM, the pinned pane fits within terminal width — either
+    by degrading to a smaller rung (width filter) or by hard-clamping output
+    lines (render-layer clamp)."""
+    tw = 100
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+    # Build a real back-edge-heavy FSM — the shape that exposed the original
+    # symptom. 12 states is enough to overflow 100 cols without an aggressive
+    # clamp; the picker must either filter or the renderer must clamp.
+    fsm = _make_back_edge_heavy_fsm(n=12)
+    rendered = _render_fsm_diagram(
+        fsm,
+        highlight_state="s0",
+        title_only=True,
+        suppress_labels=True,
+        mode="main",
+    )
+    # Fix B invariant: every output line fits within tw display columns.
+    assert rendered, "FSM rendered nothing"
+    assert _max_line_display_width(rendered) <= tw, (
+        f"render-layer clamp failed: widest line is "
+        f"{_max_line_display_width(rendered)} cols (> {tw})"
+    )
+    # And the box geometry is still rectangular (clamp didn't mangle borders).
+    _assert_boxes_rectangular(rendered)
+
+
+def test_render_layered_diagram_output_clamped_to_tw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fix B (direct): when the layered layout would produce a grid wider than
+    ``tw``, the final assembly hard-clamps every line to ``tw`` display columns
+    with a trailing ``…`` marker. The clamp uses ``_display_width`` (wcwidth),
+    so double-width glyphs are sized correctly."""
+    tw = 60
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+    # A 12-state back-edge-heavy FSM at tw=60 overflows naturally (gutter +
+    # boxes > 60). The clamp should kick in on at least one line.
+    fsm = _make_back_edge_heavy_fsm(n=12)
+    rendered = _render_fsm_diagram(
+        fsm,
+        highlight_state="s0",
+        title_only=True,
+        suppress_labels=True,
+        mode="full",
+    )
+    assert rendered, "FSM rendered nothing"
+    assert _max_line_display_width(rendered) <= tw, (
+        f"clamp failed: widest line is {_max_line_display_width(rendered)} cols (> {tw})"
+    )
+
+    # The clamp is only supposed to fire when the layout overflows. With a
+    # narrow FSM at a generous tw, no line should be truncated.
+    tw_wide = 200
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw_wide)
+    rendered_wide = _render_fsm_diagram(
+        fsm,
+        highlight_state="s0",
+        title_only=True,
+        suppress_labels=True,
+        mode="full",
+    )
+    assert rendered_wide, "FSM rendered nothing"
+    assert "…" not in rendered_wide, (
+        "clamp fired on a diagram that fit within tw=200 — clamp logic is too eager"
+    )
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

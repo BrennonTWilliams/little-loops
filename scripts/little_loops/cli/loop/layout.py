@@ -1789,6 +1789,20 @@ def _render_layered_diagram(
     while lines and not lines[-1].strip():
         lines.pop()
 
+    # Hard-clamp every output line to tw display columns so an upstream layout
+    # miss (forward-skip-layer gutter, post-hoc layer merge, back-edge pipe) can
+    # never emit lines that overflow the terminal. Defense in depth alongside
+    # the pinned-path width filter in ``_choose_pinned_layout`` — this also
+    # guards the dry-run path (``run.py``) and the streaming path when neither
+    # ladder degrades a too-wide diagram in time.
+    if tw > 1:
+        clamped: list[str] = []
+        for ln in lines:
+            if _display_width(strip_ansi(ln)) > tw:
+                ln = _truncate_to_width(strip_ansi(ln), tw - 1) + "…"
+            clamped.append(ln)
+        lines = clamped
+
     # Center diagram
     max_line_len = max((_display_width(strip_ansi(ln)) for ln in lines), default=0)
     diagram_indent = max(0, (tw - max_line_len) // 2)

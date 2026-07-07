@@ -260,21 +260,33 @@ def _choose_pinned_layout(
     rows: int,
     variants: list[str],
     min_action_rows: int = MIN_ACTION_ROWS,
+    *,
+    cols: int | None = None,
 ) -> tuple[str, int]:
     """Pick the most detailed pinned-pane variant that leaves room for action output.
 
     ``variants`` is an ordered list from most-detailed to least-detailed
     (e.g. ``[full, neighborhood, single_line]``). Returns
     ``(pinned_str, line_count)`` for the first variant whose height plus
-    ``min_action_rows`` fits within ``rows``. If none fit, returns the
-    last (smallest) variant unchanged — a degenerate terminal still gets
-    *something* pinned.
+    ``min_action_rows`` fits within ``rows`` AND, when ``cols`` is provided,
+    whose widest line fits within ``cols`` display columns.
+
+    The width filter was added so the pinned/TTY path degrades wide diagrams
+    the same way the streaming path already does (BUG-2425). Without it, a
+    rung that passes the height check can still be wider than the terminal,
+    producing a broken connector layout (e.g. ``--show-diagrams clean`` on a
+    back-edge-heavy FSM). If ``cols`` is ``None`` the picker falls back to
+    height-only behavior. If no variant fits both filters, returns the last
+    (smallest) variant unchanged — a degenerate terminal still gets *something*
+    pinned.
     """
     last_text = ""
     last_h = 0
     for variant in variants:
         last_text = variant
         last_h = _count_display_lines(variant)
+        if cols is not None and _variant_width(variant) > cols:
+            continue  # too wide; ladder has smaller rungs to try
         if last_h + min_action_rows <= rows:
             return variant, last_h
     return last_text, last_h
@@ -639,6 +651,7 @@ def _render_pinned_pane(
         rows,
         variants,
         min_action_rows=effective_min_action_rows,
+        cols=cols,
     )
     print(pinned, flush=True)
 
