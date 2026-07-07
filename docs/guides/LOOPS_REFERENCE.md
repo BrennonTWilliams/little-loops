@@ -80,7 +80,7 @@ Context knobs:
 | `oracles/verify-confidence-scores` | Oracle sub-loop extracted from `refine-to-ready-issue` — runs `/ll:confidence-check` on an issue, verifies that scores were persisted to frontmatter, and retries once if the first run fails to write scores; invoked via `loop: oracles/verify-confidence-scores` with `with: {issue_id}` context passthrough |
 | `cli-anything-bootstrap` | Meta-loop that bootstraps an agent-native CLI for target software (local path or repo URL), bakes a per-target rubric, caches the result, and emits a project-local task loop to `.loops/generated/` that downstream loops invoke to drive the target toward user goals |
 
-The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete:
+The `general-task` loop requires the `input` context variable — a natural-language description of the task to complete. The `input` value (and every other context variable) is preserved across `ll-loop stop` / `ll-loop resume` (BUG-2485) — see [LOOPS_GUIDE.md § Stop, Resume, and Exit Reasons](../guides/LOOPS_GUIDE.md#stop-resume-and-exit-reasons).
 
 ```bash
 ll-loop run general-task --context input="Refactor the auth module to use dependency injection"

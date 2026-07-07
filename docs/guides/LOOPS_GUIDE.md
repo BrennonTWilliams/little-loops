@@ -649,11 +649,55 @@ ll-loop stop my-scan                 # SIGTERM → graceful; second signal force
 ll-loop resume my-scan --background  # continue a paused loop, detached
 ```
 
+`ll-loop resume` restores the loop to the exact state where it stopped, including the full `fsm.context`: positional `input`, `program.md` fields, and any `--context` overrides supplied at the original start. The on-disk state file is rewritten with `include_context=True` on every state-entry, so what you see in `ll-loop status` (state name + iteration) plus what is persisted (the context) is exactly what `ll-loop resume` puts back together (BUG-2485). Resume-time `--context` overrides win over the restored values — by design, so you can retarget a resumed loop without re-running from scratch. See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) below for the full reference.
+
 ### Notes
 
 - `--background --queue` works, but queue-waiting happens inside the detached child — the parent returns immediately. Check progress with `ll-loop status`.
 - Loops with non-overlapping scopes run concurrently; overlapping scopes conflict (add `--queue` to wait).
 - `maintain: true` (YAML) and `--background` (CLI) are orthogonal: `maintain` makes a loop restart itself after reaching a terminal state; `--background` detaches the process. Combine them for a long-lived self-restarting daemon.
+
+## Stop, Resume, and Exit Reasons
+
+When a loop runs to completion, gets stopped, or hits a safety limit, you need to know what survived and what didn't. This section consolidates the behavior.
+
+### What survives `ll-loop stop` / `ll-loop resume`
+
+`ll-loop resume` restores the loop to the exact state where it stopped, including the full `fsm.context`: positional `input`, `program.md` fields, and any `--context` overrides supplied at the original start. The on-disk state file is rewritten with `include_context=True` on every state-entry, so what you see in `ll-loop status` (state name + iteration) plus what is persisted (the context) is exactly what `ll-loop resume` puts back together (BUG-2485). Resume-time `--context` overrides win over the restored values — by design, so you can retarget a resumed loop without re-running from scratch.
+
+What does **not** survive:
+
+- The in-memory `--background` worker process (you restart a new one).
+- Per-run process state like PIDs and advisory lock owners.
+- Anything explicitly written under `${context.run_dir}/` that was not captured into `LoopState.context`.
+
+### `terminated_by` exit reasons
+
+Every terminating loop sets `terminated_by` to one of these values. Inspect with `ll-loop history <name> --event loop_complete`.
+
+| `terminated_by` | Cause | What to do |
+|-----------------|-------|------------|
+| `max_steps` | Total state budget hit (default 50) | Raise `max_steps`, or add missing `on_error` routes on states that fail |
+| `max_iterations_reached` | Per-loop `max_iterations` budget hit | Raise `max_iterations`, or accept termination as the natural endpoint |
+| `cycle_detected` | `max_edge_revisits` (default 100) tripped — usually a missing `on_no` / `on_partial` route | Add the missing route, or lower `max_edge_revisits` to surface regressions faster |
+| `host_pressure_abort` | `host_guard` aborted an iteration | Cool down host, or relax `host_guard.critical_pct` |
+| `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |
+| `error` | Uncaught exception in action or evaluator | The `loop_complete` event has an `error` field with the crash reason |
+| `user_stopped` | `ll-loop stop` invoked | Resume with `ll-loop resume` |
+
+### Evaluator verdict → recovery mapping
+
+When an action exits non-zero or an evaluator fails, the verdict is `error` and the loop routes via `on_error:` (or `route.error` / `route.default` if the state has a `route:` block). See [Evaluators](#evaluators) above for the full evaluator reference and the verdict table. The single most common cause of "the loop exited immediately" is a state whose `evaluate:` returns `yes` on entry (nothing to do) or `error` with no recovery route — both terminate with `terminated_by="error"` after a single state visit. See [Troubleshooting](#troubleshooting) below for the full diagnostic pattern.
+
+### Diagnostic commands
+
+```bash
+ll-loop status <name>                              # current state, iteration, log path
+ll-loop history <name> --event loop_complete       # terminal reason + error field
+ll-loop history <name> --event route               # where iterations went (route decisions)
+cat "$(ll-loop status <name> --json | jq -r .events_file)" \
+    | jq 'select(.event == "loop_complete")'       # raw loop_complete payload
+```
 
 ## Harness Loops
 
@@ -802,7 +846,7 @@ Each `check-*` state routes on the skill's exit code (0 = clean, 1 = work remain
 ## Tips
 
 - **Start with low `max_steps`** (5-10) while developing a loop. Increase once the logic is proven.
-- **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
+- **State is persisted to disk** after every transition, including `fsm.context`. If a loop is stopped or interrupted, `ll-loop resume` picks up where it left off — positional `input`, `program.md` fields, and `--context` overrides all survive (BUG-2485). See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) below for the full reference.
 - **Bind checkpoints to their task** with `${context.input_hash}` (a 12-char digest of the loop's input, auto-injected by the runner) so stale checkpoint files from an unrelated prior run can't trigger false crash-recovery skips.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Runs are archived automatically** to `.loops/.history/<timestamp>-<loop-name>/` on completion (state, events, and meta-eval telemetry). `ll-loop history <name>` lists archived runs.
