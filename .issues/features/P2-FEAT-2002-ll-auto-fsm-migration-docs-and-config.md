@@ -3,7 +3,7 @@ id: FEAT-2002
 title: Update docs and config for ll-auto FSM migration and AutoManager soft-deprecation
 type: FEAT
 priority: P2
-status: blocked
+status: deferred
 parent: EPIC-1867
 blocked_by:
 - FEAT-2001
@@ -209,6 +209,10 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-13: Wiring-test file references are accurate. Doc file line numbers cannot be pinned until FEAT-2001 merges — verify exact line numbers in ARCHITECTURE.md, API.md, CONFIGURATION.md, CLI.md, E2E_TESTING.md, TESTING.md before finalizing replacement text. Issue correctly blocked on FEAT-2001.
 
 2026-06-18 (NEEDS_UPDATE): FEAT-2001 is still open (blocked on FEAT-2000; `loops/ll-auto.yaml` doesn't exist). This issue remains correctly blocked; replacement text for the docs remains undetermined. No action needed until FEAT-2001 merges. Wiring-test anchor assertions (`test_wiring_guides_and_meta.py:128`, `test_wiring_reference_docs.py`) verified as still correct for current code state.
+
+## Deferral Note
+
+**Deferred** (2026-07-07, backlog grooming) — see EPIC-1867 for the full rationale and re-activation criteria. Summary: 0 of 4 EPIC-1867 layers delivered five weeks after capture; the docs/config migration cannot be finalized while the underlying shim (FEAT-2001) is deferred and the orchestrators are still actively gaining Python behavior (ENH-2182, ENH-2210, `--feature-branches` override). Doc text for "ll-auto is an FSM shim over ll-loop" is undetermined until the orchestrator surface stabilizes.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-27T19:13:20 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`

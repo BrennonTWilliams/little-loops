@@ -3,7 +3,7 @@ id: FEAT-1899
 title: Implement ll-sprint FSM wave driver and shim
 type: FEAT
 priority: P3
-status: blocked
+status: deferred
 captured_at: 2026-06-03 19:12:39+00:00
 discovered_date: 2026-06-03
 discovered_by: scope-epic
@@ -259,7 +259,9 @@ Four test classes following `scripts/tests/test_rn_build.py`: `TestLlSprintFile`
 
 ## Status
 
-**Open** | Created: 2026-06-03 | Priority: P3
+**Deferred** | Created: 2026-06-03 | Priority: P3
+
+**Deferral rationale (2026-07-07, backlog grooming)**: Five weeks after EPIC-1867 capture (2026-06-02), 0 of 4 layers delivered. ENH-2106 (the only real blocker on the critical path) was resolved 2026-06-13, but the four open/blocked children of EPIC-1867 have not been picked up — the team has voted with its time. Meanwhile `ll-auto`/`ll-sprint`/`ll-parallel` are actively *gaining* Python behavior (ENH-2182 feature-branch holding, ENH-2210 batch learning-test gate, `--feature-branches` override, push & PR creation, etc.) — the decomposition premise (orchestrators stable enough to wrap in an FSM) is weakening, not strengthening, and the v0.2 plan from 2026-06-02 is already partly stale. This Layer-2 issue is the *last* in the chain (depends on Layers 0+1 via FEAT-1901/FEAT-2000/FEAT-2001), so its deferral is mechanical once the chain is acknowledged as dormant. **Re-activation criteria** (any one is sufficient): (a) the orchestrator surface has had ≥ 2 consecutive release cycles with bug fixes only, no new features; (b) an FSM-driven loop (`rn-*` family) has run successfully in production for ≥ 10 distinct issues; (c) a user-visible orchestrator failure is reported that the FSM decomposition would have prevented. Tracked at EPIC-1867.
 
 ---
 

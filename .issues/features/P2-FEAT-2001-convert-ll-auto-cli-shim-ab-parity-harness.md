@@ -3,7 +3,7 @@ id: FEAT-2001
 title: Convert ll-auto CLI to thin shim over ll-loop and build A/B parity harness
 type: FEAT
 priority: P2
-status: open
+status: deferred
 parent: EPIC-1867
 blocked_by:
 - FEAT-2000
@@ -350,6 +350,10 @@ _Added by `/ll:confidence-check` on 2026-06-07_
 2026-06-19 (NEEDS_UPDATE): All 6 `manager.run()` test call-sites in `test_issue_manager.py` have drifted ~149 lines since 2026-06-17 (now at L2753/L2787/L2818/L2850/L2883/L2969 vs. body's L2604–L2820). `--context` flag now at L234/L382. `loops/ll-auto.yaml` still absent; remains blocked on FEAT-2000.
 
 - **2026-06-26** (/ll:verify-issues): Updated stale line numbers — `AutoManager.run()` body/Files-to-Touch to `issue_manager.py:1234`; the 6 `manager.run()` call-sites in `test_issue_manager.py` to L2809/L2843/L2874/L2906/L2939/L3025; `--context` flag to `cli/loop/__init__.py:236`. Scope/dependency claims (shim unbuilt, blocked on FEAT-2000) unchanged.
+
+## Deferral Note
+
+**Deferred** (2026-07-07, backlog grooming) — see EPIC-1867 for the full rationale and re-activation criteria. Summary: 0 of 4 EPIC-1867 layers delivered five weeks after capture; the decomposition premise is weakening because `ll-auto`/`ll-sprint`/`ll-parallel` are actively gaining Python behavior (ENH-2182, ENH-2210, `--feature-branches` override, push & PR creation). The shim + A/B parity work depends on a stable target; right now the target is still moving.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-06-27T19:13:21 - `35d33eaf-2aad-4754-8c3e-650bb7940593.jsonl`

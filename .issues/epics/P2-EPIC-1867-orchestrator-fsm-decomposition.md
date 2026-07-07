@@ -176,4 +176,24 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 
 ## Status
 
-open
+open (2026-07-07: children deferred — see "Deferred children" below)
+
+## Deferred children (2026-07-07)
+
+As of 2026-07-07, the four open/blocked children are all `deferred`:
+
+- FEAT-1901 (Layer 0, P2) — `deferred`
+- FEAT-2000 (Layer 1, P2) — `deferred`
+- FEAT-2001 (Layer 1, P2) — `deferred`
+- FEAT-2002 (Layer 1, P2) — `deferred`
+- FEAT-1899 (Layer 2, P3) — `deferred`
+
+Rationale (5-week stalemate check, 2026-07-07): 0 of 4 layers delivered since EPIC capture (2026-06-02). The only real blocker on the critical path (ENH-2106, composition decision) was resolved 2026-06-13 but the four children have not been picked up — the team has voted with its time. Meanwhile `ll-auto`/`ll-sprint`/`ll-parallel` are actively *gaining* Python behavior (ENH-2182 feature-branch holding, ENH-2210 batch learning-test gate, `--feature-branches` override, push & PR creation), so the decomposition premise (orchestrators stable enough to wrap in an FSM) is weakening, not strengthening — the v0.2 plan from 2026-06-02 is already partly stale.
+
+**Re-activation criteria** (any one is sufficient to flip children back to `open`):
+
+1. The orchestrator surface has had ≥ 2 consecutive release cycles with bug fixes only, no new features.
+2. An FSM-driven loop (`rn-*` family) has run successfully in production for ≥ 10 distinct issues.
+3. A user-visible orchestrator failure is reported that the FSM decomposition would have prevented.
+
+The EPIC itself stays `open` as the index of intent; only the children carry the `deferred` status.

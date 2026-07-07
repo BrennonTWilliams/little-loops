@@ -3,7 +3,7 @@ id: FEAT-2000
 title: Author loops/ll-auto.yaml FSM definition and validate
 type: FEAT
 priority: P2
-status: blocked
+status: deferred
 parent: EPIC-1867
 blocked_by:
 - FEAT-1901
@@ -162,7 +162,9 @@ the Python implementation.
 
 ## Status
 
-**Open** | Created: 2026-06-07 | Priority: P2
+**Deferred** | Created: 2026-06-07 | Priority: P2
+
+**Deferral rationale (2026-07-07, backlog grooming)**: Five weeks after EPIC-1867 capture (2026-06-02), 0 of 4 layers delivered. ENH-2106 (the only real blocker on the critical path) was resolved 2026-06-13, but the four open/blocked children of EPIC-1867 have not been picked up — the team has voted with its time. Meanwhile `ll-auto`/`ll-sprint`/`ll-parallel` are actively *gaining* Python behavior (ENH-2182 feature-branch holding, ENH-2210 batch learning-test gate, `--feature-branches` override, push & PR creation, etc.) — the decomposition premise (orchestrators stable enough to wrap in an FSM) is weakening, not strengthening, and the v0.2 plan from 2026-06-02 is already partly stale. This Layer-1 YAML issue would create the concrete `loops/ll-auto.yaml` artifact; deferring it preserves the option to author it later when the orchestrator surface stabilizes. **Re-activation criteria** (any one is sufficient): (a) the orchestrator surface has had ≥ 2 consecutive release cycles with bug fixes only, no new features; (b) an FSM-driven loop (`rn-*` family) has run successfully in production for ≥ 10 distinct issues; (c) a user-visible orchestrator failure is reported that the FSM decomposition would have prevented. Tracked at EPIC-1867.
 
 ## Verification Notes (2026-06-17)
 
