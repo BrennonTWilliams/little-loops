@@ -13,6 +13,7 @@ labels:
   - history-db
   - loops
   - captured
+decision_needed: true
 ---
 
 # ENH-2463: Add per-loop-run summary row to history.db
@@ -41,6 +42,44 @@ Loop health is the project's most heavily-instrumented surface, yet it lacks a r
 - `.loops/diagnostics/<loop>-<ts>.md` exists if `loop-specialist` ran, but isn't DB-linked.
 - `ll-loop history` prints the event stream; `ll-loop promote-baseline` operates on baselines; neither surfaces a per-run summary.
 - `ll-session search --fts "<loop_name>"` returns transition rows, not summary rows.
+
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/session_store.py:208-545` — append v19 entry to `_MIGRATIONS` (the `SCHEMA_VERSION = 18` constant at line 102 is `len(_MIGRATIONS)`-driven, so just appending the migration bumps the schema version; do NOT edit the constant directly)
+- `scripts/little_loops/session_store.py:104-130` — add `"loop_run"` to `_VALID_KINDS` and `"loop_run": "loop_runs"` to `_KIND_TABLE` (paired registry; both must move together)
+- `scripts/little_loops/session_store.py:133-145` — add `"loop_run"` to `_LOOP_EVENT_TYPES` if emitting a new `loop_run_summary` event (not needed if piggy-backing on `loop_complete`)
+- `scripts/little_loops/session_store.py:1341-1376` (`SQLiteTransport.send`) — extend the `loop_complete` branch (or add a new branch) to upsert into `loop_runs` (idempotent via `INSERT OR IGNORE` on the `run_id` UNIQUE constraint, mirroring `record_commit_event` at lines 1041-1091)
+- `scripts/little_loops/session_store.py` (new function `record_loop_run_summary`) — model on `record_commit_event` pattern; INSERT OR IGNORE + conditional `_index()` call only when `cursor.rowcount` is truthy
+- `scripts/little_loops/session_store.py` (new function `update_loop_run_diagnostics`) — single UPDATE by `run_id`, mirrors `skill_events` completion-UPDATE at line 991
+- `scripts/little_loops/fsm/executor.py:2269-2309` (`_finish()`) — after `_emit("loop_complete", payload)` at line 2278, populate `loop_runs` columns from locals (`self.started_at` set at line 339; `self.fsm.context.get("run_dir", "")` for the run-id source)
+- `scripts/little_loops/history_reader.py:472-598` — add `recent_loop_runs()`, `find_loop_run()`, `aggregate_loop_runs()` (model: `recent_commit_events` at line 524, `summarize_skills` at line 472 for the GROUP BY rollup)
+- `scripts/little_loops/cli/session.py:88-141` — add `"loop_run"` to the `choices=[...]` list for both `search_parser.add_argument("--kind", ...)` and `recent_parser.add_argument("--kind", ...)`
+- `agents/loop-specialist.md:73-76` — append instruction to call `update_loop_run_diagnostics(run_id, path)` after writing the diagnostic artifact (matches agent→DB ingestion pattern used by `record_correction`)
+
+### Existing abstractions to reuse
+- `_bootstrap_schema_at(db, N)` — `scripts/tests/test_session_store.py:3075-3095` — shared helper for "old DB upgrades cleanly" migration tests
+- `_index(conn, content, kind, ref, anchor, ts)` — `session_store.py:705-718` — single FTS5 row inserter; call only when the row was actually inserted (avoid double-indexing)
+- `_connect_readonly(db_path)` — `history_reader.py:235-249` — opens `mode=ro` + `PRAGMA query_only = ON`; degrades gracefully to `None` on failure
+- `_row_to_dataclass(row, dataclass)` — `history_reader.py:252+` — map sqlite3.Row → typed dataclass; pair with new `LoopRun` dataclass
+
+### Tests to update / add
+- `scripts/tests/test_session_store.py:49, 1858, 2883` — bump `assert SCHEMA_VERSION == 18` → `== 19` (or change to `== SCHEMA_VERSION` so they don't keep breaking)
+- `scripts/tests/test_session_store.py` — add `TestSchemaV19LoopRuns` class (model: `TestSchemaV15SkillCompletionColumns` at line 3098)
+- `scripts/tests/test_session_store.py` — add `TestRecordLoopRunSummary` (model: `TestRecordCommitEvent`); cover normal completion, error termination, idempotent re-insert via UNIQUE
+- `scripts/tests/test_history_reader.py` — add `TestHistoryLoopRunsRead` for `recent_loop_runs()`, `find_loop_run()`, `aggregate_loop_runs()`
+
+### Documentation
+- `docs/ARCHITECTURE.md` — schema versions table (around line 612) — add v19 row referencing ENH-2463
+- `docs/reference/API.md:6527` (`## little_loops.history_reader`) — document `recent_loop_runs`, `find_loop_run`, `aggregate_loop_runs`
+- `docs/reference/API.md:6970` (`## little_loops.session_store`) — document `record_loop_run_summary`, `update_loop_run_diagnostics`
+- `docs/reference/CLI.md` — new flags (`ll-session recent --kind loop_run`, `ll-loop history --summary`, `ll-loop runs --since`)
+- `docs/reference/schemas/loop_run.json` (new) — regenerate via `ll-generate-schemas` after schema lands
+
+### Configuration
+- `.ll/ll-config.json` — `analytics.capture.loop_runs` flag (defaults to `true` per "permissive default" pattern at `session_store.py:738`); gate the transport-layer write
 
 ## Expected Behavior
 
@@ -100,6 +139,38 @@ Add to `history_reader.py`:
 - `ll-loop history --summary` — render from `loop_runs` instead of events.
 - `ll-loop runs --since YYYY-MM-DD` — new subcommand listing recent runs.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The proposed solution is sound, but the research surfaced three decision points that an implementer should resolve before writing code. Each has multiple viable options:
+
+**Decision A — Producer wiring (one row per run)**
+- **Option A1**: Side-effect of existing `loop_complete` event — modify `SQLiteTransport.send()` at `session_store.py:1353` to also write `loop_runs` when `event_type == "loop_complete"`. Pros: no new event type, no `_LOOP_EVENT_TYPES` change, single ingest path. Cons: conflates per-transition and per-run semantics in one branch.
+- **Option A2**: New `loop_run_summary` event — emit from `fsm/executor.py:_finish()` at line 2278 alongside `loop_complete`; add `"loop_run_summary"` to `_LOOP_EVENT_TYPES` at `session_store.py:133`. Pros: clean separation; can be re-emitted on backfill without side effects. Cons: two emits per run; more code surface.
+- **Recommendation**: Option A1. Matches the existing transport-layer "fan-out" pattern (one event → multiple table writes); the JSONL backfill reader at `_backfill_loops:1586` would automatically populate `loop_runs` from historical `loop_complete` events with no additional backfill code.
+
+**Decision B — `evaluator_score` extraction**
+- **Option B1**: Defer (start with `NULL`) — `loop_runs.evaluator_score` is nullable; document a follow-up issue. Cheapest; matches ENH-2476's nullable-final-score pattern. Cons: no aggregate-score trend until the follow-on lands.
+- **Option B2**: New accumulator — add `self._evaluator_scores: list[float]` to `FSMExecutor.__init__`, updated inside `_evaluate()` when `state.evaluate.type == "output_numeric"` returns a numeric `details["value"]`. Pros: precise. Cons: invasive; one more mutable on the executor; risks drift between accumulator and event-stream-derived scores.
+- **Option B3**: Post-hoc from `summary.json` — `persistence.py:archive_run()` already copies `run_dir/summary.json` to the archive (line 509); `_finish()` can read it before archiving. Pros: reuses an existing artifact; no executor change. Cons: depends on every loop writing `summary.json`, which is not yet universal.
+
+**Decision C — `diagnostics_path` observation**
+- **Option C1**: Best-effort glob at `_finish()` — after `_emit("loop_complete", ...)`, glob `.loops/diagnostics/<loop-name>-*` and record the newest match. Pros: zero new wiring; works retroactively. Cons: racy (agent may still be writing); assumes the agent already finished.
+- **Option C2**: Sub-agent-stop hook — emit a `diagnostic_written` event from a hook watching the `.loops/diagnostics/` directory; route to `loop_runs.diagnostics_path` via `SQLiteTransport`. Pros: clean; mirrors the existing `record_correction` agent→DB ingestion pattern. Cons: requires hook plumbing.
+- **Option C3**: Skip on v1 — make `diagnostics_path` nullable; document a follow-up. Pros: ships the row + read API immediately. Cons: the headline use case ("link the run row to the diagnostic artifact") is incomplete until the hook lands.
+- **Recommendation**: Option A1 + C1 + B1 for the v1 migration (cheapest path; all three fields are nullable so the follow-on work slots in cleanly), with follow-on issues filed for B2/C2 if evaluator-score trend or reliable diagnostic linking are blocking.
+
+**Two parallel `run_id` conventions exist in the codebase — pick the archive one for `loop_runs.run_id`**:
+- **Invocation-time `instance_id`** (e.g. `rn-implement-20260702T101530`) — generated by `_make_instance_id(loop_name)` at `cli/loop/_helpers.py:1239`; flows into `fsm.context["run_dir"]` at `cli/loop/run.py:178`. Available at `_finish()` via `Path(self.fsm.context["run_dir"]).name`.
+- **Archive-time `run_id`** (e.g. `20260702T101530-rn-implement`) — derived at `fsm/persistence.py:494` via `state.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]` then `f"{run_id}-{self.loop_name}"`. This is the value that ends up in `.loops/.history/<run_id>-<loop-name>/` and is queryable indefinitely.
+- **Canonical choice**: Use the archive-time convention so `loop_runs.run_id` JOINs cleanly to on-disk archives. Derive it from `self.started_at` at `_finish()` time using the same string-mangling as `persistence.py:494`.
+
+**Implementation pattern to follow** (close parallel from ENH-2458):
+- Migration v17 (`session_store.py:521-544`) for `test_run_events` is the most-recent additive-table precedent. Same UNIQUE-key idempotency, same `_index()` FTS call, same `recent_*` reader pattern.
+- `record_commit_event` at `session_store.py:1041-1091` is the exact shape for `record_loop_run_summary` (UNIQUE + `INSERT OR IGNORE` + conditional `_index()`).
+- `_bootstrap_schema_at(db, 18)` at `test_session_store.py:3075` plus a `TestSchemaV19LoopRuns` class mirroring `TestSchemaV15SkillCompletionColumns:3098` is the migration-test recipe.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `loop_runs` table exists with `SCHEMA_VERSION` bumped.
@@ -112,16 +183,35 @@ Add to `history_reader.py`:
 
 ## Implementation Steps
 
-1. Schema migration for `loop_runs`; bump `SCHEMA_VERSION`.
-2. Add `"loop_run"` to `_VALID_KINDS` and `_KIND_TABLE`.
-3. Implement `record_loop_run_summary()` in `session_store.py` (idempotent on `run_id`); export.
-4. Wire `_finish()` in `fsm/executor.py` to call `record_loop_run_summary()` after `loop_complete` emit.
-5. Wire `session_store` JSONL event ingest so backfills populate `loop_runs` from historical events.
-6. Update `loop-specialist` agent to call `update_loop_run_diagnostics(run_id, path)` when writing a diagnostic artifact.
-7. Extend `history_reader.recent_loop_runs()` (and `find_loop_run`, `aggregate_loop_runs`).
-8. CLI: `ll-session recent --kind loop_run`; new `ll-loop runs --since ...` subcommand; `ll-loop history --summary` flag.
-9. Tests: `TestRecordLoopRun`, `TestSchemaV15`, `TestLoopSpecialistUpdatesDiagnostics`, `TestHistoryLoopRunsRead`.
-10. Docs: `docs/ARCHITECTURE.md` schema row, `docs/reference/API.md` for new functions, `docs/reference/CLI.md` for new flags.
+1. **Schema migration** — append a v19 SQL block to `_MIGRATIONS` at `scripts/little_loops/session_store.py:208-545` (after the v18 entry at line 544). The `SCHEMA_VERSION` constant at line 102 is `len(_MIGRATIONS)`-driven — appending the block bumps the version automatically; do NOT edit the constant directly. Follow the v17 (`test_run_events`) precedent at lines 521-544 for the SQL shape: `CREATE TABLE` + 3 named indexes (`loop_name`, `terminated_by`, `started_at`).
+2. **Registry updates** — add `"loop_run"` to `_VALID_KINDS` (`session_store.py:104`) and `"loop_run": "loop_runs"` to `_KIND_TABLE` (`session_store.py:119`). Both move together; the validation gate at line 1278 enforces this pairing.
+3. **`record_loop_run_summary()`** — new function in `session_store.py`, modeled on `record_commit_event` at line 1041. Signature: `(db_path, run_id, loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score=None, diagnostics_path=None) -> bool`. Uses `INSERT OR IGNORE` on the `run_id` UNIQUE constraint; calls `_index()` only when `cursor.rowcount` is truthy; exports the function for re-use by `SQLiteTransport`.
+4. **`update_loop_run_diagnostics()`** — new function in `session_store.py`, single `UPDATE loop_runs SET diagnostics_path=? WHERE run_id=?` per the `skill_events` completion-UPDATE pattern at line 991. Simple-by-primary-key (no return value).
+5. **Wire `_finish()`** — at `fsm/executor.py:2278`, immediately after `_emit("loop_complete", payload)`, compute the archive-time `run_id` via `self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17] + "-" + self.fsm.name` (mirrors `fsm/persistence.py:494`); then call `record_loop_run_summary(...)` with the locals. Make the call best-effort (try/except, log warning) — `_finish()` must never fail because the sink is unhappy.
+6. **Wire JSONL ingest** — at `session_store.py:1353` (the `event_type == "loop_complete"` branch in `SQLiteTransport.send`), call `record_loop_run_summary()` with the event-payload fields. This is the backfill path — historical JSONL replays from `.loops/.history/*/events.jsonl` will populate `loop_runs` on next `ll-session backfill`.
+7. **Update `loop-specialist` agent** — at `agents/loop-specialist.md:73-76`, append a bullet after the artifact-write step: "After writing the diagnostic artifact, call `update_loop_run_diagnostics(run_id, "<artifact-path>")` to link the artifact to the run row in `history.db`." Run-id is extracted from the artifact filename.
+8. **Extend `history_reader`** — add three functions to `scripts/little_loops/history_reader.py`, modeled on `recent_commit_events` (line 524) and `summarize_skills` (line 472):
+   - `recent_loop_runs(*, loop_name=None, since=None, limit=50)` → `list[LoopRun]`
+   - `find_loop_run(run_id)` → `LoopRun | None`
+   - `aggregate_loop_runs(group_by: Literal["loop_name","terminated_by"], since=None)` → `list[dict]` (pass-rate + iteration-count rollups)
+   Add `LoopRun` dataclass.
+9. **CLI surface** — three changes:
+   - `scripts/little_loops/cli/session.py:91-130` — add `"loop_run"` to the `choices=[...]` list for both `search_parser.add_argument("--kind", ...)` and `recent_parser.add_argument("--kind", ...)`.
+   - `scripts/little_loops/cli/loop/__init__.py:13` — register a new `runs` subcommand that calls `recent_loop_runs(since=...)` and renders a table.
+   - `scripts/little_loops/cli/loop/info.py` — add `--summary` flag to the `history` subcommand; when set, source rows from `loop_runs` via `recent_loop_runs()` instead of the event stream.
+10. **Tests** — add four test classes:
+    - `TestSchemaV19LoopRuns` in `test_session_store.py` — uses `_bootstrap_schema_at(db, 18)` (helper at line 3075) + `ensure_db()`; asserts v19 columns + indexes exist; verifies pre-v19 rows survive the upgrade with NULL completion columns.
+    - `TestRecordLoopRun` in `test_session_store.py` — covers normal completion, error termination, idempotent re-insert via UNIQUE; mirrors `TestRecordCommitEvent`.
+    - `TestLoopSpecialistUpdatesDiagnostics` in `test_session_store.py` (or new file) — exercises `update_loop_run_diagnostics()`; verifies the row's `diagnostics_path` column updates while other fields remain untouched.
+    - `TestHistoryLoopRunsRead` in `test_history_reader.py` — exercises `recent_loop_runs()`, `find_loop_run()`, `aggregate_loop_runs()`.
+    - Also bump the three `assert SCHEMA_VERSION == 18` assertions at `test_session_store.py:49, 1858, 2883` to `== SCHEMA_VERSION` (or `== 19`) so they survive future migrations.
+11. **Documentation** — four files:
+    - `docs/ARCHITECTURE.md` — schema versions table (around line 612); add v19 row referencing ENH-2463.
+    - `docs/reference/API.md:6527` (`## little_loops.history_reader`) — document `recent_loop_runs`, `find_loop_run`, `aggregate_loop_runs`, `LoopRun`.
+    - `docs/reference/API.md:6970` (`## little_loops.session_store`) — document `record_loop_run_summary`, `update_loop_run_diagnostics`.
+    - `docs/reference/CLI.md` — new flags (`ll-session recent --kind loop_run`, `ll-loop history --summary`, `ll-loop runs --since`).
+    - Run `ll-generate-schemas` to emit `docs/reference/schemas/loop_run.json`.
+12. **Verification** — run `python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py -v`; expect green. Then run a real `ll-loop run oracles/generator-evaluator` end-to-end and confirm the matching `loop_runs` row appears in `ll-session recent --kind loop_run`.
 
 ## Sources
 
@@ -145,5 +235,6 @@ Add to `history_reader.py`:
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T00:06:36 - `6c59385b-d02b-4ef9-8cb4-4a48daafa67d.jsonl`
 - audit - 2026-07-06 - Fixed loop-specialist agent path in Sources (`agents/loop-specialist.md`, not `scripts/little_loops/agents/`). Note for implementer: schema is at v18 as of 2026-07-06, so the new migration lands as v19+; `_finish()` is at `fsm/executor.py:2269`.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

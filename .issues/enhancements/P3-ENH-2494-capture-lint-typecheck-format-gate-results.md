@@ -8,6 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -70,6 +71,50 @@ family drops in without a second migration.
 - `ll-session recent --kind check_run` returns rows;
   `ll-session search --fts "<file_or_rule>" --kind check_run` matches.
 
+## Integration Map
+
+### Files to Modify
+
+- `scripts/little_loops/session_store.py:102` — bump `SCHEMA_VERSION = 18` → `19`.
+- `scripts/little_loops/session_store.py:104-130` — add `"check_run"` to `_VALID_KINDS` and `"check_run": "check_events"` to `_KIND_TABLE` (one line each).
+- `scripts/little_loops/session_store.py` (in `_MIGRATIONS` list at 208-545, following the v18 entry at 521-544) — append v19 migration creating `check_events` + 2 indexes.
+- `scripts/little_loops/session_store.py:1171` (next to `record_test_run_event()`) — add `record_check_event()` keyword-only API mirroring `record_test_run_event()`. Export via `__all__` (line 80).
+- `scripts/little_loops/history_reader.py:138-162` (next to `RunEvent` dataclass) — add `CheckEvent` dataclass with `pass_rate` derived property.
+- `scripts/little_loops/history_reader.py:562-598` (next to `recent_test_runs()`) — add `recent_check_events(tool=None, since=None, limit=50, db=DEFAULT_DB_PATH)`.
+- `scripts/little_loops/history_reader.py:472-521` (alongside `summarize_skills()`) — add `check_pass_rate(tool, since=None)`.
+- `scripts/little_loops/cli/session.py:88-106` — add `"check_run"` to `search --kind` choices list (line 91-103).
+- `scripts/little_loops/cli/session.py:112-129` — add `"check_run"` to `recent --kind` choices list (line 114-129).
+- `commands/check-code.md` (gates at lines 51-69 lint, 75-94 format, 99-117 types, 120-139 build) — replace inline shell with `ll-check-gates <mode>` per gate.
+- `scripts/pyproject.toml` `[project.scripts]` section (around line 63-92) — register new `ll-check-gates` binary alongside the `ll-verify-*` family.
+- `docs/ARCHITECTURE.md:614-633` — append v19 row to schema versions table.
+- `docs/reference/API.md` — add `record_check_event` (around line 7025-7048) and `recent_check_events` (around line 6762-6774) sections.
+- `docs/reference/CLI.md:2191-2299` — add `check_run` to `ll-session` `--kind` choices listing.
+- `.claude/CLAUDE.md` § Testing & CI Policy — note that all four gate results are now recorded.
+
+### Dependent Files (Callers / Importers)
+
+- `scripts/little_loops/pytest_history_plugin.py:118-144` — the `LLHistoryPlugin._record()` model for `contextlib.suppress(Exception)`-wrapped best-effort writes; template for the new gate writer's caller-side guard.
+- `scripts/little_loops/cli/docs.py:23, 119, 245, 321` — `main_verify_docs`, `main_verify_skill_budget`, `main_verify_skills`, `main_check_links` entry points wrapped in `cli_event_context()`. Each is a candidate call-site for adding `record_check_event()` after the result is known.
+- `scripts/little_loops/cli/verify_triggers.py:583` — `main_verify_triggers`.
+- `scripts/little_loops/cli/verify_package_data.py:241` — `main_verify_package_data`.
+- `scripts/little_loops/cli/verify_design_tokens.py:206` — `main_verify_design_tokens`.
+- `scripts/little_loops/cli/deps.py:74` — `main_deps validate` subcommand.
+
+### Similar Patterns (template / pattern-finder findings)
+
+- `scripts/little_loops/session_store.py:1171-1233` (`record_test_run_event()`) — **the EXACT template** to clone for `record_check_event()`. Same kwargs signature, same `_index()` FTS call (`session_store.py:705-718`), same `try/finally conn.close()` lifecycle, same `_index()` summary string.
+- `scripts/little_loops/session_store.py:1041-1091` (`record_commit_event()`) — stricter best-effort pattern catching `sqlite3.Error` inside the function. Alternative template if the new writer needs harder guarantees than the test_run-side caller-only guard.
+- `scripts/little_loops/history_reader.py:562-598` (`recent_test_runs()`) — **the EXACT template** for `recent_check_events()`. Uses `_connect_readonly()` (silent-failure) and `_row_to_dataclass()`; the new reader inherits silent-failure semantics for free.
+- `scripts/little_loops/history_reader.py:472-521` (`summarize_skills()`) — template for `check_pass_rate(tool, since=None)`: GROUP BY aggregation with ISO-8601 lower bound on `ts`.
+
+### Tests (existing model + new sites)
+
+- `scripts/tests/test_session_store.py:3549-3620` (`class TestRecordTestRunEvent`) — **the EXACT class to clone** for `TestRecordCheckEvent` (round-trip + FTS + multi-row + `_bootstrap_schema_at(version)` upgrade assertion at line 3618).
+- `scripts/tests/test_history_reader.py:1442-1522` — template for `recent_check_events` + `check_pass_rate` (lines 1442-1458) and the graceful-degradation test pattern (lines 1513-1522).
+- `scripts/tests/test_ll_session.py:88-96` (`test_recent_subcommand_test_run_accepted`) — template for the `check_run` argparse choices test for both `recent --kind check_run` and `search --kind check_run`.
+- `scripts/tests/test_ll_session.py:916-975` (`class TestSkillStatsAndNewKinds`) — `recent --kind check_run` row-output parity test.
+- `scripts/tests/test_pytest_history_plugin.py:117` (`class TestSessionFinishWritesRow`) — best-effort producer test template; mirror as `test_checkcode_never_raises_on_broken_db` for the new gate writer.
+
 ## Proposed Solution
 
 ### Schema migration
@@ -120,6 +165,22 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 
 - `ll-session recent --kind check_run`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified against codebase patterns._
+
+- **Migration shape** is established at `session_store.py:521-544` (v18 ENH-2459): `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS × 3`, idempotent re-apply, applied inside a `BEGIN IMMEDIATE` transaction in `_apply_migrations()` (`session_store.py:609-645`). Bumping `SCHEMA_VERSION = 18` → `19` (line 102) and appending one string to `_MIGRATIONS` (line 208-545) is the only required step on the schema side.
+- **`_VALID_KINDS` / `_KIND_TABLE` extension** is a one-line-each addition (lines 104-130). Once added, the `recent()` generic dispatcher (`session_store.py:1268-1289`) routes `kind="check_run"` to the new table without code change — `recent(db, kind="check_run")` works out of the box.
+- **`record_check_event()` signature** should mirror `record_test_run_event()` (line 1171-1233) exactly: keyword-only params after `db_path`, single `INSERT INTO ...`, one `_index()` FTS call with concatenated summary string, `commit()` + `close()`. **Best-effort guard lives at the caller** — the same `contextlib.suppress(Exception)` wrapper the pytest plugin uses at `pytest_history_plugin.py:118-120`. Do not wrap the function itself in try/except.
+- **CLI argparse choices** are duplicated in `cli/session.py`: `search --kind` (line 91-103) and `recent --kind` (line 114-129). Both `choices` lists must add `"check_run"` — a single line edit satisfies the read-side contract.
+- **`history_reader.recent_check_events()`** mirrors `recent_test_runs()` (`history_reader.py:562-598`): `_connect_readonly()` (silent-failure) + `ORDER BY ts DESC, id DESC` + `_row_to_dataclass()`. `check_pass_rate(tool, since=None)` parallels `summarize_skills()` (`history_reader.py:472-521`): GROUP BY aggregation with ISO-8601 lower bound on `ts`.
+- **Subprocess + JSON parse tolerance** for `ruff --output-format=json` and `mypy --output=json` has no existing pattern in this repo. The established precedent is `session_store._call_llm_for_summary()` (`session_store.py:1995-2093`): catches every failure mode (timeout, missing binary, non-zero exit, JSON parse error, empty stdout) and returns a sentinel. The new ruff/mypy wrapper should adopt the same envelope-and-best-effort design — fall back to exit-code-only when JSON is unavailable.
+- **Producer architecture decision** (single recommended path, no real alternative):
+  - **Recommended**: replace inline shell in `commands/check-code.md` with `ll-check-gates <mode>` (a new `cli/check_gates.py` analog to `cli/docs.py`). Centralizes parsing, counting, and recording; the issue's Proposed Solution already implies this path ("thin Python wrapper the skill invokes").
+  - **Reject**: inline `python -c "from little_loops.session_store import record_check_event; ..."` after each gate in `commands/check-code.md` — invasive to the prompt body, brittle JSON parsing inside heredocs.
+- **`tool` domain is intentionally free-form** (TEXT column, no enum constraint). The `verify-docs` / `verify-skills` / `verify-skill-budget` / `verify-triggers` / `verify-package-data` / `verify-design-tokens` / `check-links` / `deps-validate` family shares the same column with no schema change — Acceptance Criterion #6 ("tool accepts a verify-*/check-links value … with no second migration") is satisfiable from the existing table design.
+- **Test scaffolding is fully derivable**: `TestRecordTestRunEvent` (`test_session_store.py:3549-3620`) plus `TestReadResultsAndEdges` (`test_history_reader.py:1442-1522`) plus `test_recent_subcommand_test_run_accepted` (`test_ll_session.py:88-96`) cover all three families (writer, reader, CLI) — Implementation Step 7 has complete precedent in-tree.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `check_events` exists; `SCHEMA_VERSION` bumped.
@@ -149,6 +210,19 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
    `docs/reference/CLI.md`; note in `.claude/CLAUDE.md` § Testing & CI Policy that
    gate results are now recorded.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — anchor references verified against `main`:_
+
+- **Step 1** — append SQL string to `_MIGRATIONS` after the v18 entry at `scripts/little_loops/session_store.py:521-544`; bump `SCHEMA_VERSION = 18` → `19` at `session_store.py:102`. The migration block uses `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS` (idempotent on re-apply), per the v18 precedent.
+- **Step 2** — append `"check_run"` to `_VALID_KINDS` (`session_store.py:104-118`) and `"check_run": "check_events"` to `_KIND_TABLE` (`session_store.py:119-130`). No `recent()` change needed at line 1268 — the dispatcher is data-driven from the map.
+- **Step 3** — place `record_check_event()` next to `record_test_run_event()` at `scripts/little_loops/session_store.py:1171`. Mirror the kwargs signature exactly (keyword-only after `db_path`); index a concatenated summary string via `_index()` (`session_store.py:705-718`); idempotent-free append (no `INSERT OR IGNORE`); propagate sqlite errors and rely on the caller's `contextlib.suppress(Exception)` guard. Export via `__all__` (line 80).
+- **Step 4** — add `scripts/little_loops/cli/check_gates.py` (new file, analogous to `cli/docs.py`) exporting `main_check_gates`. Register in `scripts/pyproject.toml` `[project.scripts]` (sibling of `ll-verify-docs` at line 63). Subprocesses each gate with `--output-format=json` (ruff) or `--output=json` (mypy) or exit-code-only (`ruff format --check`), parses into `(tool, passed, error_count, offenders)`, then calls `record_check_event()`. Rewrite the four gate blocks in `commands/check-code.md` (lines 51-69 lint, 75-94 format, 99-117 types, 120-139 build) to invoke `ll-check-gates <mode>` instead of raw shell. Each call is best-effort guarded with the `pytest_history_plugin.py:118-120` `contextlib.suppress(Exception)` pattern.
+- **Step 5** — add `CheckEvent` dataclass next to `RunEvent` (`scripts/little_loops/history_reader.py:138-162`). Add `recent_check_events(tool=None, since=None, limit=50, db=DEFAULT_DB_PATH)` next to `recent_test_runs()` at line 562. Add `check_pass_rate(tool, since=None)` next to `summarize_skills()` at line 472.
+- **Step 6** — add `"check_run"` to BOTH `search --kind` choices (`cli/session.py:91-103`) AND `recent --kind` choices (`cli/session.py:114-129`). The two `choices` lists are duplicated and both must be updated.
+- **Step 7** — clone `TestRecordTestRunEvent` (`scripts/tests/test_session_store.py:3549-3620`) → `TestRecordCheckEvent`; add `TestCheckSchema` covering `_bootstrap_schema_at(18)` followed by `ensure_db()` and asserting `check_events` table exists. Clone `TestReadResultsAndEdges` (`scripts/tests/test_history_reader.py:1442-1522`) → add tests for `recent_check_events` + `check_pass_rate` + missing-DB graceful-degradation. Add `test_check_run_kind_in_argparse` next to `test_recent_subcommand_test_run_accepted` at `scripts/tests/test_ll_session.py:88-96`. Add `test_checkcode_never_raises_on_broken_db` mirroring `class TestSessionFinishWritesRow` at `scripts/tests/test_pytest_history_plugin.py:117`.
+- **Step 8** — append v19 row to schema versions table at `docs/ARCHITECTURE.md:614-633`. Mirror API docs for `record_check_event` (after `record_test_run_event` at `docs/reference/API.md:7025-7048`) and `recent_check_events` (after `recent_test_runs` at `docs/reference/API.md:6762-6774`). Update `docs/reference/CLI.md:2191-2299` `--kind` choices listing. Update `.claude/CLAUDE.md` § Testing & CI Policy to note gate results are now recorded.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (test/gate results gap)
@@ -171,5 +245,6 @@ Bump `SCHEMA_VERSION`. Add `"check_run"` to `_VALID_KINDS` and
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T00:50:28 - `9bf8990b-8daf-440e-9ca6-abe848329070.jsonl`
 - audit - 2026-07-06 - Corrected skill path in Sources: the skill directory is `skills/ll-check-code/`, not `skills/check-code/`. Confirmed no `ll-check-code` console script exists in `scripts/pyproject.toml` (the "skill-driven, no binary" premise holds).
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

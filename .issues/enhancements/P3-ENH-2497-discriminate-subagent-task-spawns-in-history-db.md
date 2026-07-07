@@ -8,6 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+decision_needed: true
 labels:
   - enhancement
   - history-db
@@ -54,6 +55,57 @@ first-class and joinable.
 - `ll-session recent --kind agent_spawn` (or a filter on `tool_events`) returns
   per-agent rows; agent usage is groupable.
 - `ll-ctx-stats` (or a small new surface) can report per-agent invocation counts.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/session_store.py:102` — `SCHEMA_VERSION = 18`; bump to `19` after the additive `ALTER TABLE` lands (precedent: `skill_event_context` ENH-2460 at v15 uses the same `ALTER TABLE … ADD COLUMN` shape).
+- `scripts/little_loops/session_store.py:208` (`_MIGRATIONS` list) — append a new migration entry. Use the v15 ENH-2460 template at `_MIGRATIONS` index 14 (lines 451-459) and the v16 ENH-2462 template at index 15 (line 466-468: `ALTER TABLE … ADD COLUMN` + `CREATE INDEX`) for the column-and-index pair. The agent list is small (≤9 names today), so a single B-tree index on `agent_type` is sufficient.
+- `scripts/little_loops/session_store.py:1620-1664` (`_backfill_tool_events`) — also pull `subagent_type` from `args.get("subagent_type")` when backfilling, so historical JSONL sessions are rebuilt with the discriminator; mirror the existing `INSERT INTO tool_events(...)` shape at lines 1649-1654.
+- `scripts/little_loops/hooks/post_tool_use.py:159-180` — extend the live insert at lines 163-177 to include `agent_type` populated from `tool_input.get("subagent_type")` when `tool_name == "Task"` (else NULL). Wrap the change in the existing `contextlib.suppress(Exception)` at line 158 (EPIC-1707 best-effort contract — see *Codebase Research Findings* below).
+- `scripts/little_loops/hooks/__init__.py:52-55` — the `_USAGE` banner is a static intent list; no edit needed for this issue, but **the reference_dispatch_table_usage_banner memory notes a hook intent list must be updated when adding new intent handlers** (not applicable here since `post_tool_use` already exists).
+- `scripts/little_loops/history_reader.py` — add a typed `agent_usage(since=None, db=...)` query (mimics `recent_skill_events` / `summarize_skills` style) and a `recent_tool_events(agent_type=...)` filter returning rows from the existing `tool_events` table joined on the new column. No `ToolEvent` dataclass exists today; either add one (mirroring `IssueEvent` at lines 96-103) or just return dicts.
+- `scripts/little_loops/cli/ctx_stats.py:118` (`_aggregate_tool_events`) and `:504-525` (JSON/text rendering) — extend with a per-`agent_type` aggregation when `tool_name == "Task"`; the per-tool-name grouping at line 118 is the closest in-tree analogue to follow.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/session_store.py:1268-1289` (`recent(db, *, kind)`) — currently emits `SELECT * FROM tool_events`, so the new column will appear in returned dicts automatically for `kind="tool"`. No code change required, but spec the column in any docs that list the `recent` row shape.
+- `scripts/little_loops/history_reader.py:752-756` (`lookup_session_metadata`'s `tool_count` query) — runs `SELECT COUNT(*) FROM tool_events WHERE session_id = ?`; will continue to work unchanged.
+- `scripts/little_loops/cli/ctx_stats.py:118-130` — currently aggregates `tool_name` for the per-tool summary; would need a sibling query (or UNION) for per-agent summary.
+
+### Similar Patterns
+- `scripts/little_loops/session_store.py:451-459` (v15 ENH-2460) — `ALTER TABLE skill_events ADD COLUMN exit_code INTEGER; ALTER TABLE skill_events ADD COLUMN success INTEGER; ALTER TABLE skill_events ADD COLUMN duration_ms INTEGER;`; the docstring at lines 453-454 explicitly describes the additive-nullable convention: *"Nullable so pre-migration dispatch-only rows remain valid (NULL = 'no completion signal recorded')."* Use the same template here.
+- `scripts/little_loops/session_store.py:466-468` (v16 ENH-2462) — single-column `ADD COLUMN` plus companion `CREATE INDEX`; closest analogue to v19's `agent_type` + index.
+- `scripts/little_loops/history_reader.py:96-121` (`IssueEvent` / `SkillEvent` dataclasses) — declare the new field as `agent_type: str | None = None`; `_row_to_dataclass` at line 252-256 uses `f.name in row.keys()` so an absent DB column yields the dataclass default automatically.
+- `scripts/little_loops/cli/ctx_stats.py:354-377` (`_print_json` / `_render` skill_health block) — exact template for a per-entity-type usage summary line.
+
+### Tests
+- `scripts/tests/test_session_store.py:3095-3148` (`TestSchemaV15SkillCompletionColumns`) — three-test pattern for the migration: `test_*_has_columns` (PRAGMA), `test_v{N-1}_db_upgrades_preserving_*` (bootstrap at N-1, run upgrade, assert column reads back NULL on pre-existing rows), `test_dispatch_only_*_leaves_*_null`. Mirror this for v19.
+- `scripts/tests/test_session_store.py:3075-3094` (`_bootstrap_schema_at` helper) — bootstrap a v18 DB, then `ensure_db()` should bump to v19 with `agent_type` readable and NULL on pre-existing rows.
+- `scripts/tests/test_session_store.py:3151-3193` (`TestSkillEventContext`) — round-trip test for ENH-2460; analogous tests for the per-Task-spawn insert site.
+- New file (suggested): `scripts/tests/test_enh_2497_agent_type.py` — covers `TestTaskSpawnAgentType` (insert Task with `subagent_type="codebase-locator"`, expect row has `agent_type="codebase-locator"`), `TestNonTaskNullAgent` (insert Write/Edit, expect `agent_type=NULL`), `TestAgentUsageAggregation` (multiple Task rows of mixed agents, expect per-agent counts), and a graceful-missing-field test (insert Task with no `subagent_type` → row has `agent_type=NULL`, no exception).
+
+### Documentation
+- `docs/ARCHITECTURE.md` — schema versions table (look for the `_MIGRATIONS`-indexed table; bump `18`→`19` and add a row describing the `tool_events.agent_type` addition).
+- `docs/reference/API.md` — `session_store`, `history_reader`, and `hooks/post_tool_use` entries; mention the new column on `tool_events`, the new `agent_usage()` helper, and the EPIC-1707 best-effort contract that applies to `post_tool_use`.
+- `thoughts/history-db-expand-wiring.md` — §2 (tool-event granularity) — the issue text already cites this; cross-link from the v19 migration comment if §2 is updated.
+
+### Configuration
+- None required. The existing `analytics.enabled` gate at `post_tool_use.py:151` already controls whether the `tool_events` row is written at all; the new column rides the same gate and the same best-effort wrap. No new config key.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on direct reading of `session_store.py`, `post_tool_use.py`, and `history_reader.py`:_
+
+- **`tool_events` DDL**: lives in the v0 bootstrap of `_MIGRATIONS` at `session_store.py:210-220`. Columns are `(id, ts, session_id, tool_name, args_hash, result_size, bytes_in, bytes_out, cache_hit)` — no `NOT NULL` constraints, all nullable, so adding a nullable `agent_type` column will not force any rewrite of existing rows.
+- **`tool_events` indexes today**: zero. There are no `CREATE INDEX` statements on `tool_events` anywhere in `_MIGRATIONS`. A new `idx_tool_events_agent ON tool_events(agent_type)` is needed (and is the only index addition the migration requires).
+- **Live write path inserts 8 columns** (`ts, session_id, tool_name, args_hash, result_size, bytes_in, bytes_out, cache_hit`) at `post_tool_use.py:163-177`. The `tool_input` dict is already on the local scope (line 147), so adding `agent_type = tool_input.get("subagent_type") if tool_name == "Task" else None` is a single-line read followed by a column append.
+- **Backfill path** at `_backfill_tool_events:1620-1664` runs the same INSERT shape; `_index()` is also called there with `kind="tool"` to keep `search_index` in sync. Backfilled rows would currently land without `agent_type` even after v19 lands — the backfill pass should be updated in lockstep to extract `args.get("subagent_type")` from the assistant block and pass it through.
+- **EPIC-1707 best-effort contract** is referenced by three call sites (`session_store.py:937-940` for `skill_event_context`, `post_commit.py:14-16`, `pytest_history_plugin.py:17-19`). For `post_tool_use.py` the contract is implemented as `with contextlib.suppress(Exception):` at line 158 wrapping the entire INSERT block. The new `agent_type` write must remain inside that wrap and remain nullable so a partial / malformed payload still produces a valid row (criterion from issue line 111-112).
+- **FTS coverage gap**: live `handle()` does NOT call `_index()` after the INSERT; only backfill does (`session_store.py:1655`). Issue line 71 (line "FTS-index the agent name") therefore requires either wiring `_index()` after the live insert (matching the backfill call's `content=tool_name, kind="tool"` shape with `agent_type` appended) or accepting that `ll-session search --fts "loop-specialist"` will only surface backfilled rows. The cheapest additive approach: extend `_index()`'s `content` argument to `f"{tool_name} {agent_type or ''}".strip()` once `agent_type` is populated — this makes both backfilled and live rows searchable without any further code changes.
+- **`history_reader` modules covered by `tool_events` today**: only `lookup_session_metadata` (line 752-756) and the generic `recent(kind="tool")` from `session_store.py:1268`. No `recent_tool_events`, no `ToolEvent` dataclass, no `agent_usage`. The new helpers are greenfield; follow `recent_skill_events` / `summarize_skills` structure in `history_reader.py` rather than introducing a typed dataclass.
+- **`_KIND_TABLE["tool"] == "tool_events"`** is already wired (`session_store.py:120`) so the existing `--kind tool` filter continues to work post-migration with the new column returned automatically. No `_VALID_KINDS`/`_KIND_TABLE` change required for option (A).
+- **No `recent_tool_events()` function exists today** — confirmed by reading `history_reader.py:1-1336` in full. The reference at issue line 95 ("Extend `recent_tool_events()` (if present)…") is speculative; the actual greenfield implementation is `recent_tool_events(agent_type=...)` in `history_reader.py`, returning rows from the existing table. Compatible with the generic `recent(kind="tool")` helper.
+- **Live `result_size` quirk**: the column is currently set to `bytes_out` (response size) at `post_tool_use.py:175`. Out of scope for this issue but worth noting if a follow-on fixes the column to actually be the response size — independent change.
 
 ## Proposed Solution
 
@@ -112,18 +164,63 @@ For (A): bump `SCHEMA_VERSION` for the additive column (existing rows get
 - Tests cover: Task spawn populates agent_type, non-Task stays NULL, usage
   aggregation, missing-field graceful handling.
 
+### Codebase Research Findings (Acceptance-Criteria-Specific)
+
+_Added by `/ll:refine-issue` — concrete verification anchors:_
+
+- **Verify migration applied**: `python -c "from pathlib import Path; from little_loops.session_store import connect; conn = connect('.ll/history.db'); print(conn.execute('PRAGMA schema_version').fetchone() if False else conn.execute('SELECT value FROM meta WHERE key=\"schema_version\"').fetchone())"` — expect the new version (19). Or use `pytest scripts/tests/test_session_store.py -k schema` after the migration entry lands.
+- **Verify column exists**: `PRAGMA table_info(tool_events)` must include `agent_type` (column index 9, the highest ordinal position) with `NOT NULL=0`/`dflt_value=NULL`/`type=TEXT`. The migration's `ALTER TABLE` is the only path to that PRAGMA result; backfilled/written rows that pre-date the migration read back as `agent_type=NULL` automatically.
+- **Verify live insert**: a `Task` call from a session with `analytics.enabled=true` writes a row whose `tool_name="Task"` and `agent_type` matches the dispatched `subagent_type`. Test fixture pattern: build an `LLHookEvent` with `payload={"tool_name": "Task", "tool_input": {"subagent_type": "codebase-locator", "prompt": "...", "description": "..."}, "tool_response": {}, "session_id": "synthetic", "cache_hit": 0}`, call `post_tool_use.handle(event)`, query `tool_events` by `session_id="synthetic"`, assert `agent_type == "codebase-locator"`.
+- **Verify best-effort**: `post_tool_use.py:158`'s `with contextlib.suppress(Exception):` block must remain wrapped around the entire INSERT + `_index()` call. If any failure path raises, that violates EPIC-1707 — run with `SQLITE_BUSY` injected (e.g. another conn holding the lock past `busy_timeout`) and assert the `Task` callsite still completes its hook contract (exit 0).
+- **Verify aggregation**: insert N=3 Task rows with `subagent_type="codebase-locator"`, M=2 with `subagent_type="Explore"`, and 1 Write row; call `history_reader.agent_usage()`; assert `[{"agent_type": "codebase-locator", "invocations": 3}, {"agent_type": "Explore", "invocations": 2}]` (order by count desc) and the Write row is excluded by the `tool_name='Task'` predicate.
+- **Verify FTS**: after the `_index()` call lands at `post_tool_use.py:~179`, run `ll-session search --fts "loop-specialist" --kind tool --limit 5` against a fixture DB and assert spawn rows surface.
+- **Verify nullable discipline**: a `Task` call whose `tool_input` is `{}` (no `subagent_type` key) must write `agent_type=NULL`, not raise. This is enforced by `tool_input.get("subagent_type")` returning `None` on absent keys — already idiomatic; no defensive try/except needed.
+- **Verify schema-version-of-meta**: the `meta` row `('schema_version', '19')` must be written as part of the migration by `_apply_migrations()` at `session_store.py:635-639`; the migration's own INSERT/UPDATE pattern means the new column is applied in lockstep with the version bump — partial upgrades are not possible.
+
 ## Implementation Steps
 
-1. Additive migration: `agent_type` column + index on `tool_events`; bump
-   `SCHEMA_VERSION`.
-2. Extract `subagent_type` in the `post_tool_use` handler for `Task` tools and
-   thread it into the `tool_events` insert.
-3. FTS-index the agent name.
-4. `history_reader.agent_usage()` + `recent_tool_events(agent_type=...)` filter.
-5. Optional: `ll-ctx-stats` per-agent usage line.
-6. Tests: `TestTaskSpawnAgentType`, `TestNonTaskNullAgent`,
-   `TestAgentUsageAggregation`, graceful missing-field test.
-7. Docs: `docs/ARCHITECTURE.md` schema note, `docs/reference/API.md`.
+1. **Migration v19.** Append a new entry to `_MIGRATIONS` in `scripts/little_loops/session_store.py` (after the v18 entry at lines 521-543). Use the v16 ENH-2462 template (`ALTER TABLE … ADD COLUMN TEXT; CREATE INDEX …`) — schema is:
+   ```sql
+   ALTER TABLE tool_events ADD COLUMN agent_type TEXT;
+   CREATE INDEX IF NOT EXISTS idx_tool_events_agent ON tool_events(agent_type);
+   ```
+   Bump `SCHEMA_VERSION = 18` → `19` at `session_store.py:102`. Comment block must reference this issue's ID for grep-ability. Pre-migration rows read back with `agent_type=NULL` (no data fix required); `_apply_migrations()` (line 609) handles this automatically.
+
+2. **Live insert site.** In `scripts/little_loops/hooks/post_tool_use.py:handle()` (lines 137-210), inside the existing `with contextlib.suppress(Exception):` block at line 158:
+   - Compute `agent_type = tool_input.get("subagent_type") if tool_name == "Task" else None` (note: key is `subagent_type` in the wire format, column is `agent_type`).
+   - Extend the INSERT at lines 163-167 to 9 columns: add `agent_type` after `tool_name` in the column list and a 9th `?` in `VALUES`. Add the value after `tool_name` in the tuple at lines 168-176.
+   - The `contextlib.suppress(Exception)` at line 158 already covers schema-drift / missing-DB errors per EPIC-1707.
+
+3. **Backfill path.** Update `_backfill_tool_events` at `scripts/little_loops/session_store.py:1620-1664` to also extract `args.get("subagent_type")` (after line 1648 `args = block.get("input", {})`) and pass it as the 9th `?` in the INSERT at lines 1649-1654. Without this, historical JSONL Task spawns will keep `agent_type=NULL` after the backfill runs.
+
+4. **FTS coverage (optional but cheap).** After the live INSERT (line 178), add an `_index()` call mirroring the backfill's at line 1655, with `content=f"{tool_name} {agent_type or ''}".strip()`. This makes `ll-session search --fts "codebase-locator"` return both live and backfilled Task-spawn rows without any further consumer change. The FTS row must only be written when the row is actually inserted — match the `cursor.rowcount`-guarded pattern from `record_commit_event` at `session_store.py:1078-1087`.
+
+5. **Read API.** In `scripts/little_loops/history_reader.py`:
+   - Add `agent_usage(since: datetime | None = None, db: Path | str = DEFAULT_DB_PATH) -> list[dict[str, Any]]` (mirrors `summarize_skills`). SQL: `SELECT agent_type, COUNT(*) AS invocations FROM tool_events WHERE tool_name='Task' AND agent_type IS NOT NULL [AND ts >= ?] GROUP BY agent_type ORDER BY invocations DESC`.
+   - Add `recent_tool_events(agent_type: str | None = None, limit: int = 20, db: Path | str = DEFAULT_DB_PATH) -> list[dict[str, Any]]` — return rows from `tool_events` filtered by `agent_type=` when supplied.
+
+6. **CLI surface (optional follow-on).** In `scripts/little_loops/cli/ctx_stats.py`:
+   - Extend `_aggregate_tool_events` at line 118 with a sibling `_aggregate_agent_spawns(db_path)` that runs the same GROUP BY pattern as `agent_usage` and appends a "Sub-agent usage" rendering block modelled on the existing skill_health rendering at lines 354-377.
+
+7. **Tests.** Add to `scripts/tests/test_session_store.py` (alongside `TestSchemaV15SkillCompletionColumns` at line 3095) or in a new `scripts/tests/test_enh_2497_agent_type.py`:
+   - `TestSchemaV19AgentType` — three tests mirroring `TestSchemaV15SkillCompletionColumns`: `test_tool_events_has_agent_type_column` (PRAGMA `tool_events` includes `agent_type`); `test_v18_db_upgrades_preserving_task_rows` (bootstrap at v18, INSERT a Task row, upgrade, assert `agent_type is NULL` on the pre-existing row); `test_backfill_tool_events_populates_agent_type` (write a JSONL with an assistant block carrying `input.subagent_type`, run backfill, assert `agent_type` is populated).
+   - `TestTaskSpawnAgentType` — call `post_tool_use.handle` with a synthetic `LLHookEvent` whose `payload` includes `tool_name="Task"` and `tool_input={"subagent_type": "codebase-locator", "prompt": "..."}`; assert a row appears in `tool_events` with `agent_type="codebase-locator"`.
+   - `TestNonTaskNullAgent` — same shape but `tool_name="Write"`; assert `agent_type` is NULL.
+   - `TestAgentUsageAggregation` — insert several Task rows with varying `agent_type` (mix of `codebase-locator`, `Explore`, `loop-specialist`) plus one Write row; call `agent_usage()`; assert returned list sums correctly and the Write row is excluded.
+   - `TestGracefulMissingField` — Task call with `tool_input = {}` (no `subagent_type`); assert no exception, row written with `agent_type=NULL`.
+
+8. **Docs.** Update `docs/ARCHITECTURE.md` schema versions table (currently shows v18) to add v19 with a one-line summary of the additive migration. Update `docs/reference/API.md` `session_store`/`history_reader` sections with the new field and helpers.
+
+### Codebase Research Findings (Implementation-Specific)
+
+_Added by `/ll:refine-issue` — concrete references derived from direct source reading:_
+
+- The `LLHookEvent` envelope shape (`scripts/little_loops/hooks/types.py`) carries `payload["tool_input"]` for any PostToolUse event, so accessing `tool_input["subagent_type"]` is zero-cost — no adapter or layer needs to change.
+- `connect()` at `session_store.py:693` calls `ensure_db()` on every open, so the v19 migration auto-applies on first connect after deployment — no separate bootstrap step.
+- `_row_to_dataclass` at `history_reader.py:252-256` uses `f.name in row.keys()` to decide whether to populate a field, so adding a `ToolEvent` dataclass with `agent_type: str | None = None` is forward-compatible with v18 DBs (where the column is absent) AND with v19 DBs (where it may be NULL on older rows).
+- `_split_sql_statements` at `session_store.py:579` splits on `;`; the migration SQL must not contain `;` inside string literals. The proposed `ALTER TABLE`+`CREATE INDEX` pair has no semicolons inside literals and is safe to append verbatim.
+- `result_size` is currently set to `bytes_out` at `post_tool_use.py:175` — **out of scope** for this issue, but if the implementer notices and is tempted to fix it: keep the fix in a separate issue to avoid scope creep.
+- Run the suite: `python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py -v` to verify both the new migration tests and existing tests still pass.
 
 ## Sources
 
@@ -146,5 +243,6 @@ For (A): bump `SCHEMA_VERSION` for the additive column (existing rows get
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T01:16:27 - `84c84b8b-bd4f-4743-8789-7aa8fa03818a.jsonl`
 - audit - 2026-07-06 - Corrected agent count: `agents/*.md` contains 9 agent definitions, not ~15.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -64,6 +64,116 @@ class that would let the feature be evaluated on its own merits.
 - `ll-session recent --kind prompt_opt` returns rows; `ll-session search --fts`
   matches the optimized-prompt text once backfilled.
 
+## Integration Map
+
+_Added by `/ll:refine-issue` — verified against the codebase (line numbers current as of research):_
+
+### Files to Modify
+
+- `scripts/little_loops/session_store.py` — the bulk of the change:
+  - Append a **v19** entry to `_MIGRATIONS` (list at line 208; v18 `test_run_events`
+    block at lines 521–544 is the closest DDL precedent) with the
+    `prompt_opt_events` table + `idx_prompt_opt_events_session` /
+    `idx_prompt_opt_events_mode` indexes. Use `CREATE TABLE/INDEX IF NOT EXISTS`.
+  - Bump the `SCHEMA_VERSION` constant at line 102 (`18 → 19`); it must equal
+    `len(_MIGRATIONS)`, so adding the migration entry and bumping the constant go
+    together. `_apply_migrations()` (line 609, runs under `BEGIN IMMEDIATE`) applies
+    it and stamps `meta(key='schema_version')`.
+  - Add `"prompt_opt"` to `_VALID_KINDS` (frozenset, line 104) and
+    `"prompt_opt": "prompt_opt_events"` to `_KIND_TABLE` (dict, line 119). `recent()`
+    (line 1268) is generic over `_KIND_TABLE`, so no new dispatch branch is needed.
+  - Add `record_prompt_opt_event()` — model on `record_commit_event` (line 1041) /
+    `record_test_run_event` (line 1171): keyword-only args after `db_path`, `connect()`
+    + `_now()` for the `ts` fallback, plain `INSERT`, then `_index(conn, kind="prompt_opt",
+    ref=session_id or "", anchor=mode, content=...[:512], ts=ts)` so FTS matches.
+  - Add `_backfill_prompt_opt(conn, jsonl_files) -> int` — model on `_backfill_skill_events`
+    (line 1800). It **UPDATEs** the live offer row (matched by session_id+ts) with
+    `optimized_len` / `optimized_text` / `accepted`, then `_index(...)` the optimized text.
+  - Register `_backfill_prompt_opt` in **both** `backfill()` (line 2441) and
+    `backfill_incremental()` (line 2497), adding a `"prompt_opt_events"` key to each
+    count dict and a `_PROMPT_OPT_KEY = "last_backfill_ts_prompt_opt_events"` watermark
+    (mirror the `_SKILL_KEY` / assistant-messages watermark self-healing at lines ~2549/2574).
+  - Add `"record_prompt_opt_event"` to `__all__` (line 60) and update the module docstring
+    (lines 1–38) and the `recent()` docstring `Kinds:` line to mention `prompt_opt`.
+  - Optional: add `"prompt_opt_event": ("prompt_opt_events", "ts")` to `_EXPORT_TABLE_MAP`
+    (line 2791) if `ll-session export` should include the table.
+- `scripts/little_loops/hooks/user_prompt_submit.py` — `handle()` (line 61). Add
+  best-effort `record_prompt_opt_event()` calls at each return point, wrapped in the
+  same `with contextlib.suppress(Exception):` pattern and gated by the same
+  `feature_enabled(config, "analytics.enabled")` check that already wraps
+  `record_correction` (line 84) and `record_skill_event` (line 92). **The gate lives
+  at the call site (line 78), not inside the recorder** — matching the two siblings.
+- `scripts/little_loops/history_reader.py` — add a `PromptOptEvent` dataclass near
+  `CommitEvent` (line ~124), `recent_prompt_opt_events(mode=None, since=None, limit=50)`
+  (model on `recent_commit_events`, line 524), and `prompt_opt_offer_rate(since=None)`
+  (model on `summarize_skills`, line 472). Both use `_connect_readonly` (line 235) +
+  `_row_to_dataclass` (line 252) and return `[]` on `sqlite3.Error`.
+- `scripts/little_loops/cli/session.py` — add `"prompt_opt"` to **both** argparse
+  `choices=[...]` lists: `search` parser (lines ~92–103) **and** `recent` parser
+  (lines ~115–126). Omitting either makes argparse reject the kind before the runtime
+  `_VALID_KINDS` check is reached.
+
+### Bypass-reason enum — full branch inventory
+
+The issue's example enum (`prefix | slash | short | disabled`) is a subset. `handle()`
+actually has these return points (line numbers current as of research); the
+`bypass_reason` column should cover all of them:
+
+| Return line | `offered` | `bypass_reason` | Notes |
+|-------------|-----------|-----------------|-------|
+| 73 | — | (none) | Empty prompt (`.strip() == ""`) — returns **before** the analytics-capture block; no row can be written here (nothing to optimize). |
+| 97 | 0 | `no_config` | `config is None` (`_NO_CONFIG_MSG`). Analytics gate not yet evaluated at this point. |
+| 103 | 0 | `disabled` | `prompt_optimization.enabled` is `False`. |
+| 111 | 0 | `prefix` | `bypass_prefix` matched (default `*`). |
+| 113 | 0 | `slash` | `/`-prefixed. |
+| 115 | 0 | `hash` | `#`-prefixed. |
+| 117 | 0 | `question` | `?`-prefixed. |
+| 119 | 0 | `short` | `len < _MIN_PROMPT_LENGTH` (10). |
+| 123 | 0 | `no_template` | Prompt template file missing. |
+| 128 | 0 | `template_error` | `OSError` reading template. |
+| 135 | 1 | `NULL` | Optimization offered (template rendered). Capture `mode`. |
+
+`mode` / `confirm` / `bypass_prefix` are only known from line 105 onward, so the two
+earliest branches (73, 97) have no `mode`. Decide whether to skip the offer row at 73/97
+or write it with `mode=NULL` — document the choice in the AC.
+
+### Similar Patterns
+
+- Live-record + backfill split: **ENH-2495** (session lifecycle) is the direct precedent.
+- Table + producer + kind + reader + CLI: **ENH-2458** (`commit_events`, schema v17) and
+  **ENH-2459** (`test_run_events`, schema v18) are near-identical shapes to copy.
+
+### Tests
+
+- `scripts/tests/test_session_store.py` — `TestRecordPromptOptEvent` (roundtrip +
+  FTS-searchable, model on `TestRecordCommitEvent` at line 3416), `TestPromptOptSchema`
+  (table/index exist + upgrade path, using `_bootstrap_schema_at` at line 3075),
+  bypass-reason matrix, analytics-gating (model on `test_record_correction_gate_disabled`
+  at line 1483), graceful degradation (pass a directory as `db_path` to force
+  `OperationalError`), and `TestBackfillPromptOpt` (JSONL fixture, model on
+  `TestBackfillSkillEvents` at line 1556).
+- `scripts/tests/test_ll_session.py` — `--kind prompt_opt` accepted by **both** `recent`
+  and `search` (model on `test_recent_subcommand_commit_accepted` at line 78).
+- `scripts/tests/test_history_reader.py` — `recent_prompt_opt_events` + `prompt_opt_offer_rate`
+  (model on `test_recent_commit_events_filters` at line 1421; add to the missing-DB
+  graceful-degradation test).
+- `scripts/tests/test_hook_user_prompt_submit.py` — offered/bypass wiring per branch.
+
+### Documentation
+
+- `docs/ARCHITECTURE.md` — schema-versions table needs a v19 `prompt_opt_events` row.
+- `docs/reference/API.md` — `session_store` (`record_prompt_opt_event`, `_backfill_prompt_opt`)
+  and `history_reader` (`recent_prompt_opt_events`, `prompt_opt_offer_rate`) entries.
+- `docs/reference/CLI.md` — `ll-session recent --kind prompt_opt`.
+
+### Configuration
+
+- `config-schema.json` — `prompt_optimization.*` at lines 581–614
+  (`enabled`, `mode`, `confirm`, `bypass_prefix`, `clarity_threshold`); read-only for
+  this issue (behavior unchanged). No schema change unless a per-feature
+  `analytics.capture.prompt_opt` gate is added (out of scope — the top-level
+  `analytics.enabled` gate is the lighter precedent the siblings follow).
+
 ## Proposed Solution
 
 ### Split the capture: offer (live) vs. outcome (backfill)
@@ -198,4 +308,5 @@ stdout/exit on DB failure (graceful-degradation contract per EPIC-2457).
 **Open** | Created: 2026-07-05 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T01:29:53 - `396f134c-5bb3-4cf3-988f-e98b42e96ee1.jsonl`
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

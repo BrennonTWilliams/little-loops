@@ -8,6 +8,9 @@ discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+decision_needed: false
+refined_at: "2026-07-06T00:00:00Z"
+refined_by: refine-issue
 labels:
   - enhancement
   - history-db
@@ -95,6 +98,46 @@ Add to `history_reader.py`:
 - `ll-issues epic-progress --history <EPIC>` — print snapshot time-series.
 - `ll-history epic-velocity --since 30d` — roll-up across all epics.
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/session_store.py` — bump `SCHEMA_VERSION = 18` → `19` (line 102); append `"epic_progress"` to `_VALID_KINDS` (lines 104–118) and `"epic_progress": "epic_progress_snapshots"` to `_KIND_TABLE` (lines 119–130); append v19 migration string (after line 545); add `record_epic_progress_snapshot()`, `_backfill_epic_progress_snapshots()`, and `backfill_epic_progress_snapshots()` helpers mirroring the `record_issue_snapshot` / `_backfill_snapshots` / `backfill_snapshots` triple at lines 816–866, 1538–1583, 2418–2438; wire into `SQLiteTransport.send()` `issue.*` branch (lines 1377–1417) immediately after the `_index(...)` call at line 1408 and before the content-snapshot block at 1409.
+- `scripts/little_loops/history_reader.py` — add `EpicProgressSnapshot` dataclass to the dataclass block (alongside `CommitEvent` at lines 125–137); add `epic_progress_history(epic_id, since=None, *, limit=200, db=DEFAULT_DB_PATH)`, `epic_progress_latest(epic_id, *, db=DEFAULT_DB_PATH)`, and `epic_velocity(epic_id, window_days=14, *, db=DEFAULT_DB_PATH)` reading-side functions following the `related_issue_events` shape at lines 370–404 (id-filterable, since-bounded, limit-bounded, read-only via `_connect_readonly`, graceful degrade to `[]`).
+- `scripts/little_loops/cli/issues/epic_progress.py` — call `record_epic_progress_snapshot(db, prog, ts=...)` at the end of `cmd_epic_progress()` (after line 58) inside a `try/except` so a DB write failure cannot break the CLI; add an `--history` flag to `add_epic_progress_parser()` (lines 16–35) that re-uses the new `epic_progress_history()` reader.
+- `scripts/little_loops/cli/history_context.py` (or `ll_history.py` if a dedicated CLI exists) — add an `epic-velocity` subcommand for `ll-history epic-velocity --since 30d`.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_progress.py` — `compute_epic_progress()` (lines 83–147) and `EpicProgress` (lines 17–48) are the canonical rollup source; the snapshot writer should call `compute_epic_progress()` and shape `EpicProgress.to_dict()` into the snapshot row rather than reimplementing the walk.
+- `scripts/little_loops/issue_lifecycle.py` — six `event_bus.emit(...)` call sites (lines 577, 674, 748, 841, 937, 993) all flow into the `SQLiteTransport.send()` `issue.*` branch; no producer-side change needed (snapshot writes happen in the transport, not at the producer).
+- `scripts/little_loops/cli/issues/list_cmd.py` — imports `compute_epic_progress` (lines 63, 234) and uses it for the `--parent` filter; unchanged by this issue but consumes the same rollup function.
+- `scripts/little_loops/cli/issues/__init__.py` — registers `add_epic_progress_parser` at line 795 and dispatches `cmd_epic_progress` at line 857; needs no edits unless the parser signature grows.
+- `scripts/little_loops/transport.py` — registers the SQLite transport on the EventBus (lines 652–655); unchanged.
+
+### Similar Patterns
+- `scripts/little_loops/session_store.py:record_issue_snapshot()` (lines 816–866) — closest architectural analog: best-effort "compute-then-insert" writer called as a side-effect after the main `issue_events` insert.
+- `scripts/little_loops/session_store.py:record_commit_event()` (lines 1041–1091) — closest analog for the writer signature: `db_path` first, payload fields next, returns `bool` indicating inserted-or-not via `cursor.rowcount`; idempotent via `INSERT OR IGNORE` on the `commit_sha UNIQUE` column.
+- `scripts/little_loops/session_store.py:_MIGRATIONS` v3 (lines 277–282) and v14 (lines 437–450) — pattern for an additive migration that adds a new `CREATE TABLE` plus a `CREATE UNIQUE INDEX` dedup index. The v19 migration should follow this shape: `CREATE TABLE IF NOT EXISTS epic_progress_snapshots (...)` + `CREATE UNIQUE INDEX IF NOT EXISTS idx_epic_snapshots_dedup ON epic_progress_snapshots(epic_id, ts)`.
+- `scripts/little_loops/history_reader.py:related_issue_events()` (lines 370–404) and `recent_commit_events()` (lines 524–559) — read-side shape to clone for `epic_progress_history()`: `db_path` → `_connect_readonly` → build SQL with optional `since` → execute → wrap in `try/except sqlite3.Error → return []`.
+- `scripts/little_loops/text_utils.py:parse_duration()` (lines 173–188) — for the `--since 30d` flag on the new `epic-velocity` subcommand. Pair with the argparse + consumption pattern at `scripts/little_loops/cli/loop/info.py:cmd_history` (lines 648–659).
+- `scripts/little_loops/cli/issues/set_status.py` (lines 81–98) — transitive-cascade walker over `parent:` edges (cycle-guarded with `seen: set`); mirrors the `_issue_descends_to` walker in `issue_progress.py:67–80` and is the right precedent for "transitive parent rollup" semantics.
+
+### Tests
+- `scripts/tests/test_session_store.py:TestRecordIssueSnapshot` (lines 2942–3013) — four-test pattern (round-trip / idempotent / missing-file noop / FTS) to clone as `TestRecordEpicSnapshot`.
+- `scripts/tests/test_session_store.py:TestSchemaV14` (lines 2872–2987) — three-test pattern (schema version, table exists, dedup index exists, plus `_bootstrap_schema_at` upgrade path) to clone as `TestSchemaV19EpicProgressSnapshots`. Use the shared `_bootstrap_schema_at(db, version)` helper at `tests/test_session_store.py:3075–3095` to test v18→v19 upgrade without re-bootstrapping.
+- `scripts/tests/test_session_store.py:TestSchemaV16IssueSessionId.test_transport_writes_session_id_from_payload` (lines 3266–3285) — `SQLiteTransport(db).send({...})` end-to-end test pattern; clone to verify `issue.completed → epic_progress_snapshots` row appears.
+- `scripts/tests/test_history_reader.py` — precedent for read-side tests for new kind readers; mirror `TestCommitEventsBlock` shape with a `TestEpicProgressHistoryRead` class.
+- `scripts/tests/test_set_status_cli.py:TestIssuesCLISetStatus.test_set_status_writes_new_status` (lines 17–50) — for verifying that `ll-issues epic-progress EPIC-X` actually writes a DB row. Use the autouse `_isolate_history_db` fixture (`conftest.py:519–534`) which redirects DB opens to `tmp_path/.ll/history.db`.
+- `scripts/tests/test_issue_progress.py` — already covers transitive chain behavior in `compute_epic_progress` (no changes needed); reuse to seed test fixtures.
+
+### Documentation
+- `docs/ARCHITECTURE.md` — add v19 row to the schema-versions table (lines 612–635).
+- `docs/reference/API.md` — add exports for `record_epic_progress_snapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity`, and `EpicProgressSnapshot`; update `SCHEMA_VERSION` from 18 to 19 (currently at line 6970 for `little_loops.session_store`, line 6527 for `little_loops.history_reader`).
+- `docs/reference/CLI.md` — document `ll-issues epic-progress --history <EPIC>` (line 1515 area) and the new `ll-history epic-velocity [--since DURATION]` subcommand.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — add a section showing how to query epic velocity from `.ll/history.db` end-to-end.
+
+### Configuration
+- `.ll/ll-config.json` — `analytics.capture.*` gates already apply (snapshot writes inherit the existing `analytics.capture.issues` gate; no new config knob needed).
+
 ## Acceptance Criteria
 
 - Schema migration lands; `epic_progress_snapshots` table exists.
@@ -105,18 +148,44 @@ Add to `history_reader.py`:
 - Idempotent on `(epic_id, ts)` for within-second transitions (use `INSERT OR IGNORE` with appropriate uniqueness constraint or de-dupe at write).
 - Tests cover: schema migration, transition-triggered write, explicit-invocation write, read API, idempotency, graceful degradation when files missing.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified against `session_store.py`, `history_reader.py`, `issue_progress.py`, and `cli/issues/epic_progress.py`:_
+
+- The 6 upstream issue producers all flow through `SQLiteTransport.send()` lines 1377–1417 (`issue_lifecycle.py` emits at lines 577, 674, 748, 841, 937, 993). AC#2 is therefore satisfied by a single transport-side write hook — no producer-side edits required.
+- `EpicProgress.to_dict()` at `issue_progress.py:30–48` already carries every column the schema needs (`total = len(prog.children)`, `by_status` JSON, `percent_done` as `completion_fraction / 100`). The snapshot writer can shape `to_dict()` into the row directly without re-walking children.
+- Idempotency mechanism is the v3 `idx_issue_events_dedup` pattern (lines 277–282): `(epic_id, ts)` `CREATE UNIQUE INDEX` + `INSERT OR IGNORE`. Within-second collisions discard naturally and the FTS index only fires when `cursor.rowcount` is truthy.
+- Existing graceful-degradation contract is established by `record_issue_snapshot` (best-effort own-connection insert at lines 816–866) and `record_commit_event` (lines 1041–1091) — both wrap the body in `try/except sqlite3.Error` and log on failure. AC#7 inherits this contract; no new error-handling infrastructure needed.
+- `compute_epic_progress()` already walks the `parent:` chain transitively (`_issue_descends_to` at lines 67–80, cycle-guarded with `seen: set`), so the snapshotter resolves grandparent→EPIC chains without extra plumbing. NOTE: `relates_to:` is intentionally excluded by `_issue_descends_to` — snapshot rollup is hierarchical only, mirroring `set_status.py:81–98` (BUG-2265 lesson).
+
 ## Implementation Steps
 
-1. Schema migration for `epic_progress_snapshots`; bump `SCHEMA_VERSION`.
-2. Add `"epic_progress"` to `_VALID_KINDS` and `_KIND_TABLE`.
-3. Implement `record_epic_progress_snapshot()` and `_backfill_epic_progress_snapshots()` in `session_store.py`.
-4. Wire `SQLiteTransport.send()` `issue.*` branch to call snapshotter after each `issue_events` insert.
-5. Wire `cmd_epic_progress()` to call snapshotter at end of each invocation.
-6. Extend `history_reader.epic_progress_history()` (and `epic_progress_latest`, `epic_velocity`).
-7. CLI: `--history` flag on `epic-progress`; new `ll-history epic-velocity` subcommand.
-8. Update `ll-sprint` to read latest snapshot when computing epic rollups (fallback: existing on-the-fly compute).
-9. Tests: `TestRecordEpicSnapshot`, `TestSchemaV15` (or higher), `TestEpicProgressHistoryRead`, idempotency on rapid transitions.
-10. Docs: `docs/ARCHITECTURE.md` schema row, `docs/reference/API.md` updates, `docs/reference/CLI.md` for `--history` flag.
+1. Schema migration for `epic_progress_snapshots`; bump `SCHEMA_VERSION` from `18` to `19` at `scripts/little_loops/session_store.py:102`. Append the v19 migration string to `_MIGRATIONS` (list at lines 208–545), modeled on v14 (lines 437–450): `CREATE TABLE IF NOT EXISTS epic_progress_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, epic_id TEXT NOT NULL, total_children INTEGER NOT NULL, open_count INTEGER, in_progress_count INTEGER, done_count INTEGER, deferred_count INTEGER, blocked_count INTEGER, cancelled_count INTEGER, completion_fraction REAL)` + `CREATE UNIQUE INDEX IF NOT EXISTS idx_epic_snapshots_dedup ON epic_progress_snapshots(epic_id, ts)` + two read-side indexes (`idx_epic_snapshots_epic_id`, `idx_epic_snapshots_ts`).
+2. Add `"epic_progress"` to `_VALID_KINDS` (line 104) and `"epic_progress": "epic_progress_snapshots"` to `_KIND_TABLE` (line 119). Also add an `"epic_snapshot": ("epic_progress_snapshots", "ts")` entry to `_EXPORT_TABLE_MAP` (lines 2791–2802) and `epic_snapshot` to `_EXPORT_DEFAULT_TABLES` (lines 2804–2814) so `ll-session export` exposes the new table.
+3. Implement `record_epic_progress_snapshot(db_path, prog, ts=None)` and `_backfill_epic_progress_snapshots(conn, issues_dir)` in `session_store.py`, cloning `record_issue_snapshot` (lines 816–866) and `_backfill_snapshots` (lines 1538–1583) verbatim. Wrap the body in `try/except sqlite3.Error → logger.warning(...)` so a DB failure degrades gracefully per the AC#6 graceful-degradation contract. Use `INSERT OR IGNORE` against the `idx_epic_snapshots_dedup` index for idempotency on `(epic_id, ts)`. Optionally FTS-index only when `cursor.rowcount` is truthy (mirroring `record_commit_event` at lines 1078–1087).
+4. Wire `SQLiteTransport.send()` `issue.*` branch (lines 1377–1417) to call the snapshotter after the existing `_index(...)` call at line 1408. Use the existing 6 `event_bus.emit(...)` sites in `issue_lifecycle.py` (lines 577, 674, 748, 841, 937, 993) as the upstream trigger — no producer-side edits needed. Inside the snapshotter, read the `.issues/` issue files, walk the parent chain via `compute_epic_progress(epic_id, all_issues)` at `issue_progress.py:83–147`, and write one row per ancestor EPIC. Wrap the call in `contextlib.suppress(Exception)`.
+5. Wire `cmd_epic_progress()` at `scripts/little_loops/cli/issues/epic_progress.py:38–131` to call `record_epic_progress_snapshot(db, prog, ts=...)` immediately after the existing `compute_epic_progress(epic_id, all_issues)` call at line 54, inside `try/except` so a DB failure cannot break the existing CLI behavior (AC#3: "writes a snapshot row on every invocation, regardless of outcome").
+6. Extend `history_reader.py` (lines 1–42 docstring lists the public API):
+   - Add `EpicProgressSnapshot` dataclass to the dataclass block, fields: `id`, `ts`, `epic_id`, `total_children`, `open_count`, `in_progress_count`, `done_count`, `deferred_count`, `blocked_count`, `cancelled_count`, `completion_fraction`.
+   - `epic_progress_history(epic_id, since=None, *, limit=200, db=DEFAULT_DB_PATH) -> list[EpicProgressSnapshot]` — clone `related_issue_events` at lines 370–404.
+   - `epic_progress_latest(epic_id, *, db=DEFAULT_DB_PATH) -> EpicProgressSnapshot | None` — `ORDER BY id DESC LIMIT 1`.
+   - `epic_velocity(epic_id, *, window_days=14, db=DEFAULT_DB_PATH) -> dict` — derive done-count delta per day over the window.
+7. CLI surface:
+   - `ll-issues epic-progress --history <EPIC>` — add `--history` flag at `add_epic_progress_parser` lines 16–35; on `--history`, call `epic_progress_history()` and print the time-series in `--format {text,json,markdown}`.
+   - `ll-history epic-velocity --since 30d` — new subcommand. Reuse `parse_duration()` at `scripts/little_loops/text_utils.py:173–188`. Argparse registration follows the `--since` precedent at `scripts/little_loops/cli/loop/__init__.py:532–539`; consumption follows `cmd_history` at `scripts/little_loops/cli/loop/info.py:648–659`.
+8. Update `ll-sprint` (when found) to prefer `epic_progress_latest()` over recomputing on every call. Fallback: existing on-the-fly compute via `compute_epic_progress()`.
+9. Tests — mirror existing patterns:
+   - `TestRecordEpicSnapshot` — clone `TestRecordIssueSnapshot` at `tests/test_session_store.py:2942–3013` (round-trip / idempotent / graceful-degrade / FTS).
+   - `TestSchemaV19EpicProgressSnapshots` — clone `TestSchemaV14` at lines 2872–2987. Use `_bootstrap_schema_at(db, 18)` at lines 3075–3095 to test v18→v19 upgrade.
+   - `TestEpicProgressHistoryRead` — clone `TestCommitEventsBlock` at `tests/test_history_reader.py:1379–1504`.
+   - `TestSchemaV16IssueSessionId.test_transport_writes_session_id_from_payload` (lines 3266–3285) is the closest "SQLiteTransport.send() → DB row" integration test pattern.
+   - Use the autouse `_isolate_history_db` fixture (`scripts/tests/conftest.py:519–534`) so test DB writes go to `tmp_path/.ll/history.db` and never the live `.ll/history.db`.
+10. Docs — update:
+    - `docs/ARCHITECTURE.md` schema-versions table (lines 612–635) — add v19 row.
+    - `docs/reference/API.md` — exports for `record_epic_progress_snapshot`, `EpicProgressSnapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity`. Update `SCHEMA_VERSION` reference (line 6970 for `session_store`, line 6527 for `history_reader`).
+    - `docs/reference/CLI.md` — `ll-issues epic-progress --history <EPIC>` flag (around line 1515) and the new `ll-history epic-velocity` subcommand.
+    - `docs/guides/HISTORY_SESSION_GUIDE.md` — section on querying epic velocity from `.ll/history.db`.
+    - `CHANGELOG.md` — note the v19 schema bump (do NOT add to `[Unreleased]` — promote to a concrete `## [X.Y.Z] - DATE` section during release prep, per project feedback rule).
 
 ## Sources
 
@@ -138,5 +207,6 @@ Add to `history_reader.py`:
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T00:25:57 - `b67f0e2c-461a-43e1-8ce2-322030b708c5.jsonl`
 - audit - 2026-07-06 - Updated stale schema-version reference ("v15+" → v19+; v15–v18 were consumed by ENH-2460/2462/2458/2459). Verified `issue_progress.py` and `cli/issues/epic_progress.py` exist.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
