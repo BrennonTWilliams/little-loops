@@ -2,9 +2,10 @@
 id: ENH-2500
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
 captured_at: '2026-07-06T20:21:41Z'
+completed_at: 2026-07-07 02:06:38+00:00
 discovered_by: capture-issue
 relates_to:
 - BUG-1960
@@ -343,10 +344,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Status
 
-**Open** | Created: 2026-07-06 | Priority: P3
+**Done** | Created: 2026-07-06 | Priority: P3 | Completed: 2026-07-07
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-07T02:06:38Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/90ce3ff2-19e7-412c-902b-bf519edc290d.jsonl`
 - `/ll:confidence-check` - 2026-07-06T23:18:36 - `b40dc064-82ba-4007-afc5-5edcd3d6e37f.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:15:27 - `92c11ed2-4ada-4b29-8c65-a2bbfde75f29.jsonl`
 - `/ll:refine-issue` - 2026-07-06T23:05:27 - `7d53ffac-32c7-4513-8b32-280c71dc29a5.jsonl`
 - `/ll:capture-issue` - 2026-07-06T20:21:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53fe5b07-3152-43ab-8a19-a7e0451c11cf.jsonl`
+
+## Resolution
+
+Migrated `prompt-across-issues.yaml`'s pending-list file from `.loops/tmp/prompt-across-issues-pending.txt` to `${context.run_dir}/pending.txt` and declared `scope: ["${context.run_dir}"]` so concurrent LockManager instances on disjoint run_dirs do not collide (the documented EPIC-2457 vs EPIC-2451 sweep collision). Removed `shared_state_ok: true` (now stale). 8 path-occurrence replacements (init read/write, discover read/test, advance read/write/mv, diagnose_error prompt body) plus the redundant `mkdir -p .loops/tmp` on the old init line.
+
+Tests added:
+- `TestPromptAcrossIssuesLoop`: `test_mr3_no_loops_tmp_writes`, `test_diagnose_error_prompt_uses_run_dir`, `test_shared_state_ok_is_false` (accepts absence = schema default), `test_scope_declared`, `test_init_writes_under_run_dir`, `test_advance_writes_under_run_dir` — added to the existing 17-test class at `scripts/tests/test_builtin_loops.py:1576`.
+- `TestResolveScope`: `test_run_dir_template_resolves`, `test_two_distinct_run_dirs_resolve_disjoint` — template-resolution regression net.
+- `TestPromptAcrossIssuesScopeIsolation`: `test_two_prompt_across_issues_instances_disjoint_run_dirs_both_acquire_concurrently` — LockManager-level counterpart that exercises the disjoint-scope concurrency invariant used by the YAML's `scope:` declaration.
+
+Verification: `ll-loop validate prompt-across-issues` clean; `_validate_artifact_isolation` returns 0 MR-3 warnings (was 8+ pre-fix); `ll-loop show prompt-across-issues` surfaces `scope: ${context.run_dir}`; full `python -m pytest scripts/tests/` passes (13,828 passed, 27 skipped; 4 pre-existing `test_ll_logs.py::TestEvalExport` failures are session-folder unrelated to this change, verified by `git stash` reproducing them on baseline).

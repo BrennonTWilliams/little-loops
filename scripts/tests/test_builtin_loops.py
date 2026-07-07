@@ -1688,6 +1688,78 @@ class TestPromptAcrossIssuesLoop:
         assert "--parent" in init_action
         assert "i.get('parent') == parent" not in init_action
 
+    def test_mr3_no_loops_tmp_writes(self, data: dict) -> None:
+        """No state writes to .loops/tmp/ (MR-3: per-instance run_dir isolation,
+        ENH-2500). The pending list lives under ${context.run_dir}/pending.txt,
+        not the shared .loops/tmp/ directory — concurrent instances would
+        otherwise clobber each other's queues.
+        """
+        for name, state in data["states"].items():
+            action = state.get("action", "")
+            if isinstance(action, str):
+                assert ".loops/tmp/" not in action, (
+                    f"State '{name}' writes to .loops/tmp/ — use "
+                    f"${{context.run_dir}}/ instead (ENH-2500)"
+                )
+
+    def test_diagnose_error_prompt_uses_run_dir(self, data: dict) -> None:
+        """The diagnose_error LLM prompt must reference the per-run path,
+        not the old .loops/tmp/prompt-across-issues-pending.txt (ENH-2500).
+        """
+        state = data["states"].get("diagnose_error", {})
+        action = state.get("action", "")
+        assert isinstance(action, str)
+        assert ".loops/tmp/prompt-across-issues-pending.txt" not in action, (
+            "diagnose_error prompt still references the shared pending path "
+            "(ENH-2500). Replace with ${context.run_dir}/pending.txt."
+        )
+        assert "${context.run_dir}/pending.txt" in action, (
+            "diagnose_error prompt must surface the per-run path "
+            "${context.run_dir}/pending.txt (ENH-2500)."
+        )
+
+    def test_shared_state_ok_is_false(self, data: dict) -> None:
+        """shared_state_ok must be false once pending.txt is per-instance
+        (ENH-2500). Absence is treated equivalent to False (schema default).
+        """
+        assert data.get("shared_state_ok", False) is False, (
+            "shared_state_ok must be False now that the pending path is "
+            "per-instance (ENH-2500)."
+        )
+
+    def test_scope_declared(self, data: dict) -> None:
+        """prompt-across-issues must declare scope: [${context.run_dir}] so
+        concurrent LockManager instances on disjoint run_dirs do not conflict
+        (ENH-2500).
+        """
+        scope = data.get("scope")
+        assert scope is not None, (
+            "prompt-across-issues.yaml must declare a 'scope' field for "
+            "per-instance lock isolation (ENH-2500)."
+        )
+        assert isinstance(scope, list), (
+            f"scope must be a list, got {type(scope).__name__}"
+        )
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
+    def test_init_writes_under_run_dir(self, data: dict) -> None:
+        """init state writes pending.txt under ${context.run_dir} (ENH-2500)."""
+        init_action = data["states"].get("init", {}).get("action", "")
+        assert "${context.run_dir}/pending.txt" in init_action, (
+            "init state must write pending.txt under ${context.run_dir} "
+            "(ENH-2500)."
+        )
+
+    def test_advance_writes_under_run_dir(self, data: dict) -> None:
+        """advance state mutates pending.txt under ${context.run_dir} (ENH-2500)."""
+        advance_action = data["states"].get("advance", {}).get("action", "")
+        assert "${context.run_dir}/pending.txt" in advance_action, (
+            "advance state must read/write pending.txt under ${context.run_dir} "
+            "(ENH-2500)."
+        )
+
 
 class TestAutoRefineAndImplementLoop:
     """Structural tests for the auto-refine-and-implement FSM loop.

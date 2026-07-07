@@ -25,6 +25,11 @@ description: |
 initial: init
 max_steps: 500
 timeout: 28800
+# Per-instance lock scope: each run_dir is timestamped, so concurrent
+# prompt-across-issues instances on disjoint run_dirs never conflict at the
+# LockManager layer (ENH-2500).
+scope:
+  - "${context.run_dir}"
 import:
   - lib/common.yaml
 
@@ -33,7 +38,6 @@ context:
             # to open issues of that type. Empty (default) = all open issues.
   parent: ""  # Optional: EPIC-NNN. When set, restricts sweep to the parent's full
               # transitive subtree (grandchildren via done intermediates included).
-shared_state_ok: true  # pending-list file intentionally uses a fixed path; not designed for concurrent runs
 
 states:
 
@@ -47,7 +51,6 @@ states:
         echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
         exit 1
       fi
-      mkdir -p .loops/tmp
       TYPE_ARG=""
       if [ -n "${context.type}" ]; then
         TYPE_ARG="--type ${context.type}"
@@ -61,8 +64,8 @@ states:
       issues = json.load(sys.stdin)
       for i in issues:
           print(i['id'])
-      " > .loops/tmp/prompt-across-issues-pending.txt
-      COUNT=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
+      " > "${context.run_dir}/pending.txt"
+      COUNT=$(wc -l < "${context.run_dir}/pending.txt" | tr -d ' ')
       echo "Found $${COUNT} issues to process"
     fragment: shell_exit
     on_yes: discover
@@ -72,10 +75,10 @@ states:
     # Read the next issue ID from the head of the pending list.
     # Exits 1 (→ done) if the file is empty or missing.
     action: |
-      if [ ! -s .loops/tmp/prompt-across-issues-pending.txt ]; then
+      if [ ! -s "${context.run_dir}/pending.txt" ]; then
         exit 1
       fi
-      head -1 .loops/tmp/prompt-across-issues-pending.txt
+      head -1 "${context.run_dir}/pending.txt"
     fragment: shell_exit
     capture: current_item
     on_yes: prepare_prompt
@@ -114,9 +117,10 @@ states:
     # Using tail -n +2 instead of sed -i '' for cross-platform compatibility
     # (sed -i '' is macOS-only; Linux requires sed -i).
     action: |
-      tail -n +2 .loops/tmp/prompt-across-issues-pending.txt > .loops/tmp/prompt-across-issues-pending.tmp
-      mv .loops/tmp/prompt-across-issues-pending.tmp .loops/tmp/prompt-across-issues-pending.txt
-      REMAINING=$(wc -l < .loops/tmp/prompt-across-issues-pending.txt | tr -d ' ')
+      DIR="$(dirname "${context.run_dir}/pending.txt")"
+      tail -n +2 "${context.run_dir}/pending.txt" > "$DIR/pending.tmp"
+      mv "$DIR/pending.tmp" "${context.run_dir}/pending.txt"
+      REMAINING=$(wc -l < "${context.run_dir}/pending.txt" | tr -d ' ')
       echo "Completed ${captured.current_item.output}"
       echo "Progress: $REMAINING items remaining"
     action_type: shell
@@ -131,7 +135,7 @@ states:
       The prompt-across-issues loop has terminated with an unrecoverable error.
 
       Diagnose what happened:
-      - If ${env.PWD}/.loops/tmp/prompt-across-issues-pending.txt exists, report its contents.
+      - If ${context.run_dir}/pending.txt exists, report its contents.
       - If failure was in the init state, report whether the prompt argument was provided and whether ll-issues list succeeded.
       - Identify the most likely failure cause.
 

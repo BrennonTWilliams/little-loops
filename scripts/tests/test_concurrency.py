@@ -717,3 +717,84 @@ class TestResolveScope:
         scope = ["${context.port}"]
         result = resolve_scope(scope, {"port": 8080})
         assert result == ["8080"]
+
+    def test_run_dir_template_resolves(self) -> None:
+        """[${{context.run_dir}}] resolves to the per-instance path (ENH-2500)."""
+        scope = ["${context.run_dir}"]
+        result = resolve_scope(
+            scope, {"run_dir": ".loops/runs/prompt-across-issues-20260706T140004/"}
+        )
+        assert result == [".loops/runs/prompt-across-issues-20260706T140004/"]
+
+    def test_two_distinct_run_dirs_resolve_disjoint(self) -> None:
+        """Distinct run_dir values resolve to disjoint scope paths (ENH-2500,
+        EPIC-2457 vs EPIC-2451 collision scenario)."""
+        run_a = ".loops/runs/prompt-across-issues-20260706T140004/"
+        run_b = ".loops/runs/prompt-across-issues-20260706T140754/"
+        scope_a = resolve_scope(["${context.run_dir}"], {"run_dir": run_a})
+        scope_b = resolve_scope(["${context.run_dir}"], {"run_dir": run_b})
+        assert scope_a == [run_a]
+        assert scope_b == [run_b]
+        assert scope_a != scope_b
+
+
+class TestPromptAcrossIssuesScopeIsolation:
+    """ENH-2500: prompt-across-issues concurrent instances on disjoint run_dirs
+    must not collide at the LockManager layer.
+    """
+
+    @pytest.fixture
+    def tmp_loops(self, tmp_path: Path) -> Path:
+        """Local fixture so this class can stand alone."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        return loops_dir
+
+    def test_two_prompt_across_issues_instances_disjoint_run_dirs_both_acquire_concurrently(
+        self, tmp_loops: Path, tmp_path: Path
+    ) -> None:
+        """Reproduces the 2026-07-06 collision: an EPIC-2457 sweep and an
+        EPIC-2451 sweep running concurrently must both acquire (no 'Scope
+        conflict' error).
+        """
+        run1 = tmp_path / ".loops" / "runs" / "prompt-across-issues-20260706T140004"
+        run2 = tmp_path / ".loops" / "runs" / "prompt-across-issues-20260706T140754"
+        run1.mkdir(parents=True)
+        run2.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+
+            def try_acquire(instance_id: str, scope: list[str]) -> None:
+                barrier.wait()
+                result = manager.acquire(
+                    "prompt-across-issues", scope, instance_id=instance_id
+                )
+                results.append(result)
+
+            id1 = "prompt-across-issues-20260706T140004"
+            id2 = "prompt-across-issues-20260706T140754"
+            t1 = threading.Thread(
+                target=try_acquire,
+                args=(id1, [str(run1.relative_to(tmp_path))]),
+            )
+            t2 = threading.Thread(
+                target=try_acquire,
+                args=(id2, [str(run2.relative_to(tmp_path))]),
+            )
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+        finally:
+            os.chdir(original_cwd)
+
+        assert results.count(True) == 2, (
+            "Both prompt-across-issues instances with disjoint run_dir scopes "
+            f"should acquire concurrently; got: {results}"
+        )
