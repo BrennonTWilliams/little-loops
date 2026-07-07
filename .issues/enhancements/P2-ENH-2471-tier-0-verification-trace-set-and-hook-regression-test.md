@@ -16,7 +16,7 @@ relates_to:
 - ENH-2479
 - ENH-2490
 - ENH-2499
-- ENH-2502
+- ENH-2518
 decision_needed: false
 missing_artifacts: true
 labels:
@@ -495,7 +495,7 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 
 **Done — split 2026-07-06.** The P1 edit-batch hook regression test half shipped
 under this issue (via FEAT-2470 + ENH-2499, completed 2026-07-06). The trace-set
-half is split out to **ENH-2502** because the implementation scope is small and
+half is split out to **ENH-2518** because the implementation scope is small and
 self-contained, and the 500+ lines of stale Integration Map / Wiring Phase
 content (authored against the since-abandoned `EditBatchNudgeConfig` design)
 should not be inherited by the next implementer. See `## Closure` below for the
@@ -538,7 +538,7 @@ rationale and what's been retired.
   layout in Steps 2 / 22 — superseded by ENH-2499's stateful-rewrite test
   structure (`scripts/tests/test_edit_batch_hook.py` is the canonical home).
 
-**What continues under ENH-2502**:
+**What continues under ENH-2518**:
 
 - Tier 0 trace-set lock: `.loops/runs/general-task-20260608T194041/` (56 rows)
   and `.loops/runs/general-task-20260619T225602/` (93 rows), both verified

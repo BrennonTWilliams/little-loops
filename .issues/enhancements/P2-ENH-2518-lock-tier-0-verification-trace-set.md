@@ -1,5 +1,5 @@
 ---
-id: ENH-2502
+id: ENH-2518
 title: "Lock Tier 0 verification trace set (\u22652 traces) for FEAT-2470 measurement"
 type: ENH
 priority: P2
@@ -28,7 +28,7 @@ score_ambiguity: 23
 score_change_surface: 23
 ---
 
-# ENH-2502: Lock Tier 0 verification trace set (≥2 traces) for FEAT-2470 measurement
+# ENH-2518: Lock Tier 0 verification trace set (≥2 traces) for FEAT-2470 measurement
 
 ## Summary
 
@@ -46,8 +46,9 @@ TBD per the epic's children list).
 EPIC-2456's Tier 0 success metrics require a locked trace set so every "win"
 claim is measured against a stable baseline. Without it, before/after
 comparisons drift with whatever runs happen to be on disk. The
-`scripts/little_loops/cli/loop/_helpers.py:1652-1714` `_print_usage_summary`
-aggregator is the canonical cost-computation consumer; the locked-set baseline
+`scripts/little_loops/fsm/cost_graph.py` `CostReport` aggregator (delegated
+to by `scripts/little_loops/cli/loop/_helpers.py` `_print_usage_summary`)
+is the canonical cost-computation consumer; the locked-set baseline
 must use the same per-state aggregation order so diffs are directly comparable.
 
 ## Predecessor
@@ -120,12 +121,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 Two semantic clarifications surfaced by codebase-analyzer:
 
 - **`has_unknown_model: false` is bucket-poison semantics, not
-  row-poison.** `_print_usage_summary`
-  (`scripts/little_loops/cli/loop/_helpers.py:1696-1700`) calls
+  row-poison.** `CostReport.from_usage_jsonl`
+  (`scripts/little_loops/fsm/cost_graph.py:241-246`) calls
   `estimate_cost_usd(...)` per row; a single `None` return (unknown model
   not in `MODEL_PRICING`) flips the entire bucket's
   `has_unknown_model` to `True` and renders the printed cost as `"n/a"`
-  (line 1710). The fixture-level `has_unknown_model: false` is therefore
+  (`cost_graph.py:97`). The fixture-level `has_unknown_model: false` is therefore
   the AND of all bucket-level flags — adding a third trace that touches
   a non-Claude model must either ensure its `model` resolves in
   `MODEL_PRICING` (e.g. a known codex/opencode/pi model) or relax the
@@ -171,32 +172,36 @@ Two semantic clarifications surfaced by codebase-analyzer:
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-Four behavioral nuances about `_print_usage_summary` that the implementer
+Four behavioral nuances about `CostReport` (the cost-computation consumer
+now anchored in `scripts/little_loops/fsm/cost_graph.py`, with
+`_print_usage_summary` as a thin delegating wrapper) that the implementer
 must respect when writing the baseline computation in step 2 and the test
 in step 4 (these are not "optional polish" — getting them wrong produces
 fixtures that drift from the canonical consumer):
 
 1. **`cache_read` and `cache_creation` stay distinct internally, collapse
-   in the print column.** `_print_usage_summary` accumulates the two
+   in the print column.** `CostReport.from_usage_jsonl` accumulates the two
    channels independently per state
-   (`scripts/little_loops/cli/loop/_helpers.py:1691-1694`), then renders
-   them as a single combined `"cache"` column (line 1709: `cache = b["cache_read"] + b["cache_creation"]`).
+   (`scripts/little_loops/fsm/cost_graph.py:225-243`), then renders
+   them as a single combined `"cache"` column in `PerStateCost.table_row()`
+   (line 96: `cache = self.cache_read_tokens + self.cache_creation_tokens`).
    The per-trace fixture JSON envelope in step 3 MUST keep them separate
    (so F6 `PerStateCost` re-aggregation in ENH-2477 can attribute cost per
    channel); only the print path collapses them.
 
-2. **Per-state `model` is overwritten by the LAST row.** The bucketed
-   `model` field is assigned (not aggregated) on every row
-   (`_helpers.py:1695`); the last row wins. For locked single-model traces
-   (`claude-sonnet-4-6` only) this is a no-op — all rows agree. The
-   `has_unknown_model: false` assertion in the test therefore implicitly
-   guards "every row resolves to a pricing entry," not "every row's model
-   is `claude-sonnet-4-6`."
+2. **`model` is consumed per-row but not stored in the bucket.** The
+   refactored `CostReport.from_usage_jsonl` reads `model` from each row
+   only to feed `estimate_cost_usd(...)` (`cost_graph.py:241`); it is NOT
+   retained on the per-state aggregate. For locked single-model traces
+   (`claude-sonnet-4-6` only) this is a no-op — every row contributes to
+   the same pricing entry. The `has_unknown_model: false` assertion in
+   the test therefore implicitly guards "every row resolves to a pricing
+   entry," not "every row's model is `claude-sonnet-4-6`."
 
 3. **`has_unknown_model` is bucket-poisoned, not row-poisoned.** A single
    `estimate_cost_usd(...)` returning `None` (unknown model) flips the
    entire bucket's `has_unknown_model` to `True` and the printed cost to
-   `"n/a"` (`_helpers.py:1697-1700, 1710`). The fixture-level
+   `"n/a"` (`cost_graph.py:241-246, 97`). The fixture-level
    `has_unknown_model: false` is therefore the AND of all bucket-level
    flags; an implementer adding a third trace that touches a non-Claude
    model must either ensure that trace's `model` resolves in
@@ -235,12 +240,12 @@ fixtures that drift from the canonical consumer):
    {
      "_meta": {
        "schema_version": 1,
-       "owner": "ENH-2502",
+       "owner": "ENH-2518",
        "epic": "EPIC-2456",
        "tier": "tier-0",
        "lock_date": "2026-07-XX",
        "baseline_source": "host_cli_usage_block",
-       "count_relaxation_note": ">=2 (was 3-5); see ENH-2502 § Locked Trace Set"
+       "count_relaxation_note": ">=2 (was 3-5); see ENH-2518 § Locked Trace Set"
      },
      "traces": [
        {"id": "general_task_20260608T194041",
@@ -324,7 +329,7 @@ fixtures that drift from the canonical consumer):
 
 
    def test_manifest_owner() -> None:
-       assert MANIFEST["_meta"]["owner"] == "ENH-2502"
+       assert MANIFEST["_meta"]["owner"] == "ENH-2518"
        assert MANIFEST["_meta"]["tier"] == "tier-0"
 
 
@@ -355,7 +360,7 @@ fixtures that drift from the canonical consumer):
    - Per-trace JSON envelope (`schema`, `rows`, `totals`, `states`,
      `budget_accumulator`)
    - The exact `_print_usage_summary` aggregation order
-     (`scripts/little_loops/cli/loop/_helpers.py:1652-1714`) — required for
+     (``scripts/little_loops/fsm/cost_graph.py` `CostReport.from_usage_jsonl` (`fsm/cost_graph.py:241-246`), delegated to via) — required for
      downstream F6 / OTel consumers
    - Forward-compat notes for `budget_accumulator` (FEAT-2476) and the
      `has_unknown_model` flag (cross-host when non-Claude traces arrive per
@@ -381,7 +386,7 @@ fixtures that drift from the canonical consumer):
 ## Acceptance Criteria
 
 - `scripts/tests/fixtures/tier0_traces/manifest.json` checked in with
-  `_meta.owner == "ENH-2502"`, two members, and `>= 2` count assertion
+  `_meta.owner == "ENH-2518"`, two members, and `>= 2` count assertion
   documented.
 - Both per-trace JSONs checked in with non-zero `baseline_cost_usd` and
   `has_unknown_model: false`.
@@ -408,7 +413,7 @@ fixtures that drift from the canonical consumer):
 - `scripts/little_loops/pricing.py:10-55` — `MODEL_PRICING` constants for
   `claude-sonnet-4-6` (input $3.00/M, output $15.00/M, cache_read $0.30/M,
   cache_creation $3.75/M). Required for baseline computation.
-- `scripts/little_loops/cli/loop/_helpers.py:1652-1714` —
+- ``scripts/little_loops/fsm/cost_graph.py` `CostReport.from_usage_jsonl` (`fsm/cost_graph.py:241-246`), delegated to via —
   `_print_usage_summary` aggregation order. Required for diff parity with
   `scripts/tests/test_usage_reporter.py:18-201`.
 - `scripts/tests/conftest.py:42-189` — `fixtures_dir`, `load_fixture`,
@@ -498,11 +503,11 @@ break the module-level `MANIFEST` constant.
   relaxation decision with `issue: ENH-2471` (the predecessor). This
   citation is **intentional and correct**: `ARCHITECTURE-105` captured the
   decision while ENH-2471 was still open. The new manifest's
-  `_meta.owner: "ENH-2502"` is the per-artifact citation for the
+  `_meta.owner: "ENH-2518"` is the per-artifact citation for the
   fixture itself. Implementer should NOT edit
-  `.ll/decisions.yaml::ARCHITECTURE-105` to point at ENH-2502 — the
+  `.ll/decisions.yaml::ARCHITECTURE-105` to point at ENH-2518 — the
   decision and the artifact have different ownership semantics. If a
-  follow-on decision is needed to record the ENH-2471 → ENH-2502 split,
+  follow-on decision is needed to record the ENH-2471 → ENH-2518 split,
   add a new entry (`ARCHITECTURE-106`-class or similar) rather than
   rewriting the existing one.
 
@@ -535,7 +540,7 @@ break the module-level `MANIFEST` constant.
 | `.loops/runs/general-task-20260608T194041/usage.jsonl` | First locked trace (56 rows) |
 | `.loops/runs/general-task-20260619T225602/usage.jsonl` | Second locked trace (93 rows) |
 | `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md:54` | § Tier 0 success gate spells out the original 3-5 trace set requirement |
-| `scripts/little_loops/cli/loop/_helpers.py:1652-1714` | `_print_usage_summary` aggregation order (canonical consumer) |
+| ``scripts/little_loops/fsm/cost_graph.py` `CostReport.from_usage_jsonl` (`fsm/cost_graph.py:241-246`), delegated to via | `_print_usage_summary` aggregation order (canonical consumer) |
 | `scripts/tests/test_policy_builder_corpus.py:51-52` | `>=`-threshold relaxation precedent |
 | `scripts/tests/test_usage_reporter.py:18-201` | Aggregator parity check |
 
