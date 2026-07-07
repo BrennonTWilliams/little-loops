@@ -215,6 +215,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "from",
         "flow",
         "state_defs",
+        "singleton",
     }
 )
 

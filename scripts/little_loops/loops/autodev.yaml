@@ -20,6 +20,10 @@ timeout: 28800
 on_handoff: spawn
 scope:
   - "${context.run_dir}"
+# BUG-2526: serialize loop-name conflicts at the lock layer so two concurrent
+# `ll-loop run autodev` instances do not both shell out to `ll-auto --only`
+# on the main working tree (corrupts .auto-manage-state.json and git state).
+singleton: true
 context:
   readiness_threshold: 90   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
   outcome_threshold: 75     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json

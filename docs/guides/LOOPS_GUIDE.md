@@ -646,6 +646,25 @@ scope:
 
 If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24 h), and queued loops acquire the lock in arrival order.
 
+### Singleton (one-instance-per-name)
+
+Set `singleton: true` on a loop YAML to force a loop-name conflict regardless of scope overlap:
+
+```yaml
+name: autodev
+singleton: true
+scope:
+  - "${context.run_dir}"
+```
+
+When `singleton: true`, two concurrent instances of the same loop (matched by `loop_name`) always conflict at the lock layer, even when their `scope:` values are disjoint. This closes the autodev implementation-phase race (BUG-2526) where two `ll-loop run autodev` invocations both shell out to `ll-auto --only` on the main working tree despite holding disjoint `${context.run_dir}` scopes.
+
+**Interaction with `--worktree`**: `--worktree` provides whole-loop filesystem isolation, but `singleton: true` serializes at the lock layer first — under normal invocation the second `ll-loop run autodev` waits or errors before any worktree is created. To run truly concurrent refinement you must drop `singleton` (use `singleton: false` or omit it) and pass `--worktree`.
+
+**Nested-loop carve-out**: like the scope-overlap predicate, the singleton predicate skips lock holders whose PID is in the caller's process ancestry. A parent `ll-loop run` that shells to nested `ll-loop run <singleton-loop>` does not self-conflict.
+
+The default is `singleton: false`, which preserves the ENH-1354 / FEAT-1789 behavior of concurrent instances with non-overlapping scopes both acquiring.
+
 ## Background Mode
 
 The `-b` / `--background` flag detaches a loop from the terminal so it runs as an independent daemon. The parent command returns immediately and the loop survives terminal close. Use it for loops that run minutes-to-hours, for running several non-overlapping loops at once, or for unattended execution; stay in the foreground for short loops you want to watch.

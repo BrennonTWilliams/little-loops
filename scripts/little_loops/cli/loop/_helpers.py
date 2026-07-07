@@ -1325,7 +1325,11 @@ def run_background(
         key, _, value = kv.partition("=")
         scope_context[key.strip()] = value.strip()
     scope = resolve_scope(fsm.scope or ["."], scope_context)
-    conflict = lock_manager.find_conflict(scope)
+    conflict = lock_manager.find_conflict(
+        scope,
+        caller_loop_name=fsm.name,
+        caller_singleton=fsm.singleton,
+    )
     if conflict and not getattr(args, "queue", False) and not getattr(args, "no_lock", False):
         print(f"Scope conflict with running loop: {conflict.loop_name}", file=sys.stderr)
         print(f"  Conflicting scope: {conflict.scope}", file=sys.stderr)

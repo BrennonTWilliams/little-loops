@@ -3662,6 +3662,52 @@ class TestBashDefaultOk:
         assert fsm.bash_default_ok is False
 
 
+class TestSingleton:
+    """BUG-2526: FSMLoop.singleton field round-trip serialization.
+
+    Mirrors the `TestBashDefaultOk` (MR-7) and `TestMaintain` patterns: a top-level
+    bool with default False, omitted from to_dict() when False, restored from
+    from_dict() via data.get(). Used by autodev.yaml to declare singleton: true,
+    serializing concurrent autodev runs at the lock layer.
+    """
+
+    def test_singleton_true_round_trips(self) -> None:
+        """singleton=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            singleton=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("singleton") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.singleton is True
+
+    def test_singleton_false_omitted_from_dict(self) -> None:
+        """singleton=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "singleton" not in d, (
+            f"singleton=False must be omitted from to_dict(); got keys: {sorted(d.keys())}"
+        )
+
+    def test_singleton_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without singleton key defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.singleton is False
+
+
 class TestFSMLoopMaxStepsAndIterations:
     """Tests for BUG-2204: max_steps (step cap) and max_iterations (full-pass cap)."""
 

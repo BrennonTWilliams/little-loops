@@ -5445,9 +5445,14 @@ class ScopeLock:
     scope: list[str]    # List of paths this loop operates on
     pid: int            # Process ID of the lock holder
     started_at: str     # ISO timestamp when lock was acquired
+    singleton: bool = False  # BUG-2526: True = block other instances with same loop_name
+                             # regardless of scope overlap. False (default) preserves
+                             # ENH-1354 / FEAT-1789 disjoint-scope concurrency.
 ```
 
 **Methods:** `to_dict()`, `from_dict(data)`
+
+`ScopeLock.from_dict()` reads the `singleton` key with a default of `False` so legacy lock files written before BUG-2526 (no `singleton` key) parse cleanly. New writers emit `singleton: true` only when the field is set.
 
 #### LockManager
 
@@ -5462,11 +5467,11 @@ Manage scope-based locks for concurrent loop execution. Lock files are stored in
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `acquire(loop_name, scope, instance_id=None)` | `bool` | Acquire lock; returns `False` if conflict exists |
+| `acquire(loop_name, scope, instance_id=None, *, singleton=False)` | `bool` | Acquire lock; returns `False` if conflict exists. When `singleton=True`, any other instance with the same `loop_name` is a conflict regardless of scope overlap (BUG-2526). |
 | `release(loop_name, instance_id=None)` | `None` | Release lock for a loop instance |
-| `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks. Returns `None` if the only conflict is an ancestor process of the caller (prevents self-blocking when a parent loop spawns a child that shares the same scope). |
+| `find_conflict(scope, *, caller_loop_name=None, caller_singleton=False)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks. Returns `None` if the only conflict is an ancestor process of the caller (prevents self-blocking when a parent loop spawns a child that shares the same scope). When `caller_singleton=True` and `caller_loop_name` matches a candidate with `singleton=True`, also returns that candidate as a singleton conflict. |
 | `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
-| `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |
+| `wait_for_scope(scope, timeout=300, *, loop_name=None, singleton=False)` | `bool` | Wait until scope is available; `False` on timeout. Pass `loop_name` + `singleton=True` so the singleton predicate fires inside the polling loop. |
 
 #### resolve_scope
 

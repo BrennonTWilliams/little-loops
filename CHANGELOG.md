@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.140.0] - 2026-07-07
+
+### Fixed
+
+- **`ll-auto --only` race in autodev implementation phase** — Two concurrent
+  `ll-loop run autodev` invocations previously reached `implement_current` on
+  disjoint `${context.run_dir}` scopes and both shelled out to `ll-auto --only`
+  on the main working tree, corrupting `.auto-manage-state.json` (double-processed
+  issues, lost `--resume` history) and tangling git history. Added `singleton:
+  bool = False` to `FSMLoop` and `ScopeLock`; `LockManager.find_conflict()` now
+  treats any two locks with the same `loop_name` and `singleton=True` as a
+  conflict regardless of scope, and `autodev.yaml` opts in with `singleton:
+  true`. Users who relied on FEAT-1789's parallel-refinement goal can use
+  `--worktree` (whole-loop filesystem isolation) or fork to a new loop name with
+  `singleton: false`. (BUG-2526)
+
 ## [Unreleased]
 
 ### Changed

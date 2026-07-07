@@ -327,8 +327,10 @@ def cmd_run(
             _queue_entry_file.unlink(missing_ok=True)
 
     if not getattr(args, "no_lock", False):
-        if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
-            conflict = lock_manager.find_conflict(scope)
+        if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id, singleton=fsm.singleton):
+            conflict = lock_manager.find_conflict(
+                scope, caller_loop_name=fsm.name, caller_singleton=fsm.singleton
+            )
             if conflict and getattr(args, "queue", False):
                 # Write queue entry so dashboard shows the waiting loop
                 queue_dir = loops_dir / ".queue"
@@ -356,14 +358,21 @@ def cmd_run(
                 _budget = _config.loops.queue_wait_timeout_seconds
                 while time.time() - _wait_start < _budget:
                     _remaining = _budget - (time.time() - _wait_start)
-                    if not lock_manager.wait_for_scope(scope, timeout=int(_remaining)):
+                    if not lock_manager.wait_for_scope(
+                        scope,
+                        timeout=int(_remaining),
+                        loop_name=fsm.name,
+                        singleton=fsm.singleton,
+                    ):
                         _cleanup_queue_entry()
                         logger.error("Timeout waiting for scope to become available")
                         return 1
                     if not _is_earliest_waiter(entry_id, queue_dir):
                         time.sleep(1)
                         continue
-                    if lock_manager.acquire(fsm.name, scope, instance_id=instance_id):
+                    if lock_manager.acquire(
+                        fsm.name, scope, instance_id=instance_id, singleton=fsm.singleton
+                    ):
                         acquired = True
                         break
                 if not acquired:

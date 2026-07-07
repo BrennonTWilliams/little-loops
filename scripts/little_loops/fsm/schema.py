@@ -1093,6 +1093,7 @@ class FSMLoop:
     timeout: int | None = None
     default_timeout: int | None = None
     maintain: bool = False
+    singleton: bool = False  # BUG-2526: serialize loop-name conflicts regardless of scope
     llm: LLMConfig = field(default_factory=LLMConfig)
     on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
     input_key: str = "input"
@@ -1158,6 +1159,8 @@ class FSMLoop:
             result["default_timeout"] = self.default_timeout
         if self.maintain:
             result["maintain"] = self.maintain
+        if self.singleton:
+            result["singleton"] = self.singleton
         if self.on_handoff != "pause":
             result["on_handoff"] = self.on_handoff
         if self.on_max_steps is not None:
@@ -1290,6 +1293,7 @@ class FSMLoop:
             timeout=data.get("timeout"),
             default_timeout=data.get("default_timeout"),
             maintain=data.get("maintain", False),
+            singleton=data.get("singleton", False),
             llm=llm,
             on_handoff=data.get("on_handoff", "pause"),
             input_key=data.get("input_key", "input"),

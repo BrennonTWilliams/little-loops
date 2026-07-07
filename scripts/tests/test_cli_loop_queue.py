@@ -101,6 +101,16 @@ class TestQueueRetryOnRace:
             assert retry_instance_id == initial_instance_id, (
                 f"Retry acquire must pass instance_id={initial_instance_id!r}, got {retry_instance_id!r}"
             )
+        # BUG-2526: every acquire call must thread the singleton kwarg so the
+        # LockManager singleton predicate can fire on loop_name match. The test
+        # loop fixture is non-singleton by default.
+        for call in mock_lm.acquire.call_args_list:
+            assert "singleton" in call.kwargs, (
+                f"acquire() must thread singleton kwarg (BUG-2526); got kwargs: {call.kwargs}"
+            )
+            assert call.kwargs["singleton"] is False, (
+                f"Non-singleton test loop must pass singleton=False; got: {call.kwargs['singleton']!r}"
+            )
 
     def test_exits_when_scope_never_becomes_available(self, tmp_path: Path) -> None:
         """cmd_run exits with code 1 when wait_for_scope times out."""

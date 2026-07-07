@@ -82,30 +82,42 @@ class ScopeLock:
         scope: List of paths this loop operates on
         pid: Process ID of the lock holder
         started_at: ISO timestamp when lock was acquired
+        singleton: If True, lock blocks any other instance with the same loop_name
+            regardless of scope overlap (BUG-2526). Default False preserves
+            ENH-1354/FEAT-1789 disjoint-scope concurrency.
     """
 
     loop_name: str
     scope: list[str]
     pid: int
     started_at: str
+    singleton: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result: dict[str, Any] = {
             "loop_name": self.loop_name,
             "scope": self.scope,
             "pid": self.pid,
             "started_at": self.started_at,
         }
+        if self.singleton:
+            result["singleton"] = self.singleton
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ScopeLock:
-        """Create from dictionary (JSON deserialization)."""
+        """Create from dictionary (JSON deserialization).
+
+        Uses .get() with default for `singleton` so legacy lock files written
+        before BUG-2526 (no `singleton` key) parse cleanly as singleton=False.
+        """
         return cls(
             loop_name=str(data["loop_name"]),
             scope=list(data["scope"]) if isinstance(data["scope"], list) else [str(data["scope"])],
             pid=int(data["pid"]),
             started_at=str(data["started_at"]),
+            singleton=bool(data.get("singleton", False)),
         )
 
 
@@ -127,13 +139,22 @@ class LockManager:
         self.loops_dir = loops_dir or Path(".loops")
         self.running_dir = self.loops_dir / RUNNING_DIR
 
-    def acquire(self, loop_name: str, scope: list[str], instance_id: str | None = None) -> bool:
+    def acquire(
+        self,
+        loop_name: str,
+        scope: list[str],
+        instance_id: str | None = None,
+        *,
+        singleton: bool = False,
+    ) -> bool:
         """Attempt to acquire lock for the given scope.
 
         Args:
             loop_name: Name of the loop to acquire lock for
             scope: List of paths the loop operates on
             instance_id: Optional unique instance identifier; falls back to loop_name when None
+            singleton: If True, any other instance with the same loop_name is a
+                conflict regardless of scope overlap (BUG-2526). Default False.
 
         Returns:
             True if lock acquired, False if conflict exists
@@ -155,8 +176,11 @@ class LockManager:
         with open(dir_lock_path, "w") as dir_lock:
             fcntl.flock(dir_lock, fcntl.LOCK_EX)
 
-            # Check for conflicts (now atomic with write below)
-            conflict = self.find_conflict(scope)
+            # Check for conflicts (now atomic with write below). Pass caller
+            # singleton + loop_name so the singleton predicate fires (BUG-2526).
+            conflict = self.find_conflict(
+                scope, caller_loop_name=loop_name, caller_singleton=singleton
+            )
             if conflict:
                 return False
 
@@ -168,6 +192,7 @@ class LockManager:
                 scope=scope,
                 pid=os.getpid(),
                 started_at=_iso_now(),
+                singleton=singleton,
             )
             with open(lock_file, "w") as f:
                 json.dump(lock.to_dict(), f)
@@ -184,13 +209,24 @@ class LockManager:
         lock_file = self.running_dir / f"{instance_id or loop_name}.lock"
         lock_file.unlink(missing_ok=True)
 
-    def find_conflict(self, scope: list[str]) -> ScopeLock | None:
+    def find_conflict(
+        self,
+        scope: list[str],
+        *,
+        caller_loop_name: str | None = None,
+        caller_singleton: bool = False,
+    ) -> ScopeLock | None:
         """Find any running loop with overlapping scope.
 
         Also cleans up stale locks from dead processes.
 
         Args:
             scope: Scope to check for conflicts
+            caller_loop_name: Name of the loop requesting the lock. Used by the
+                singleton predicate (BUG-2526) to detect loop-name conflicts.
+            caller_singleton: Whether the caller loop declared singleton=True.
+                When both caller and on-disk candidate are singleton with the
+                same loop_name, this is a conflict regardless of scope.
 
         Returns:
             ScopeLock of conflicting loop, or None if no conflict
@@ -223,6 +259,25 @@ class LockManager:
                     if lock.pid in self._get_ancestry():
                         logger.debug(
                             "Ignoring ancestor lock: pid=%d loop=%s",
+                            lock.pid,
+                            lock.loop_name,
+                        )
+                        continue
+                    return lock
+
+                # BUG-2526: singleton predicate — same loop_name + both
+                # singleton = conflict regardless of scope. Mirror the
+                # _get_ancestry carve-out above so a parent ll-loop spawning
+                # a nested `ll-loop run <singleton-loop>` does not self-conflict.
+                if (
+                    caller_singleton
+                    and lock.singleton
+                    and caller_loop_name is not None
+                    and lock.loop_name == caller_loop_name
+                ):
+                    if lock.pid in self._get_ancestry():
+                        logger.debug(
+                            "Ignoring ancestor singleton lock: pid=%d loop=%s",
                             lock.pid,
                             lock.loop_name,
                         )
@@ -263,19 +318,31 @@ class LockManager:
 
         return locks
 
-    def wait_for_scope(self, scope: list[str], timeout: int = 300) -> bool:
+    def wait_for_scope(
+        self,
+        scope: list[str],
+        timeout: int = 300,
+        *,
+        loop_name: str | None = None,
+        singleton: bool = False,
+    ) -> bool:
         """Wait until scope is available.
 
         Args:
             scope: Scope to wait for
             timeout: Maximum time to wait in seconds
+            loop_name: Name of the loop requesting the lock; required for the
+                singleton predicate (BUG-2526) to fire inside this polling loop.
+            singleton: Whether the caller loop declared singleton=True.
 
         Returns:
             True if scope became available, False if timeout
         """
         start = time.time()
         while time.time() - start < timeout:
-            conflict = self.find_conflict(scope)
+            conflict = self.find_conflict(
+                scope, caller_loop_name=loop_name, caller_singleton=singleton
+            )
             if conflict is None:
                 return True
             time.sleep(1)

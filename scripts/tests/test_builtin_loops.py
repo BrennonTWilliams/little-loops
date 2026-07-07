@@ -3396,6 +3396,20 @@ class TestAutodevLoop:
             f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
         )
 
+    def test_autodev_yaml_declares_singleton_true(self, data: dict) -> None:
+        """autodev must declare singleton: true to serialize the implementation-phase race (BUG-2526).
+
+        Two `ll-loop run autodev` invocations reach implement_current on disjoint
+        `${context.run_dir}` scopes; without singleton: true, LockManager does not
+        serialize them and both shell to `ll-auto --only` on the main working tree.
+        The singleton predicate forces a loop-name conflict regardless of scope.
+        """
+        assert data.get("singleton") is True, (
+            "autodev.yaml must declare singleton: true to serialize the "
+            "implementation-phase race (BUG-2526). Without it, two concurrent "
+            "autodev instances both shell to `ll-auto --only` on the main tree."
+        )
+
 
 class TestRecursiveRefineLoop:
     """Structural tests for the recursive-refine FSM loop."""

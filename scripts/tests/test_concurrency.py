@@ -55,6 +55,46 @@ class TestScopeLock:
         restored = ScopeLock.from_dict(original.to_dict())
         assert restored == original
 
+    def test_singleton_true_round_trips(self) -> None:
+        """singleton=True survives to_dict() -> from_dict() (BUG-2526)."""
+        lock = ScopeLock(
+            loop_name="autodev",
+            scope=[".loops/runs/autodev-x"],
+            pid=12345,
+            started_at="2026-07-07T00:00:00Z",
+            singleton=True,
+        )
+        d = lock.to_dict()
+        assert d.get("singleton") is True
+        restored = ScopeLock.from_dict(d)
+        assert restored.singleton is True
+
+    def test_singleton_false_omitted_from_dict(self) -> None:
+        """singleton=False (default) is omitted from to_dict() (parity with FSMLoop.maintain)."""
+        lock = ScopeLock(
+            loop_name="autodev",
+            scope=[".loops/runs/autodev-x"],
+            pid=12345,
+            started_at="2026-07-07T00:00:00Z",
+        )
+        d = lock.to_dict()
+        assert "singleton" not in d, (
+            f"singleton=False must be omitted from to_dict(); got keys: {sorted(d.keys())}"
+        )
+
+    def test_singleton_defaults_false_for_legacy_lock_files(self) -> None:
+        """from_dict() of a legacy lock file (no singleton key) defaults to False (migration)."""
+        legacy_data = {
+            "loop_name": "autodev",
+            "scope": [".loops/runs/autodev-x"],
+            "pid": 12345,
+            "started_at": "2026-07-07T00:00:00Z",
+        }
+        lock = ScopeLock.from_dict(legacy_data)
+        assert lock.singleton is False, (
+            "Legacy lock files (no singleton key) must parse as singleton=False"
+        )
+
 
 class TestLockManager:
     """Tests for LockManager."""
@@ -625,6 +665,204 @@ class TestMultiInstanceSameName:
         assert results.count(False) == 1, (
             f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
         )
+
+
+class TestSingletonLock:
+    """BUG-2526: singleton field serializes loop-name conflicts regardless of scope.
+
+    When `singleton: true` is set on a loop YAML, two concurrent instances of that
+    loop name must conflict regardless of whether their scopes overlap. This
+    closes the autodev implementation-phase race where two `ll-loop run autodev`
+    invocations pass LockManager (because their `${context.run_dir}` scopes are
+    disjoint siblings) and then both shell to `ll-auto --only` on the main
+    working tree.
+    """
+
+    @pytest.fixture
+    def tmp_loops(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        return loops_dir
+
+    def test_singleton_loop_conflicts_on_name_regardless_of_scope(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two singleton locks with disjoint scopes conflict on loop_name alone.
+
+        Mirrors TestMultiInstanceSameName.test_concurrent_same_name_non_overlapping_scopes_both_acquire
+        but with singleton=True: the second acquire must FAIL even though scopes
+        don't overlap.
+        """
+        run1 = tmp_path / ".loops" / "runs" / "autodev-20240115T103000"
+        run2 = tmp_path / ".loops" / "runs" / "autodev-20240115T103001"
+        run1.mkdir(parents=True)
+        run2.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire(
+                "autodev", scope, instance_id=instance_id, singleton=True
+            )
+            results.append(result)
+
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 1, (
+            f"Singleton predicate: exactly one acquire must succeed regardless of disjoint scopes; "
+            f"got: {results}"
+        )
+        assert results.count(False) == 1, (
+            f"Singleton predicate: the second acquire must fail on loop_name match; "
+            f"got: {results}"
+        )
+
+    def test_non_singleton_same_name_disjoint_scopes_still_both_acquire(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for ENH-1354 / FEAT-1789: non-singleton + disjoint scopes = both acquire.
+
+        This is the same scenario as
+        TestMultiInstanceSameName.test_concurrent_same_name_non_overlapping_scopes_both_acquire
+        but uses the default singleton=False. Locks both must succeed — singleton
+        must NOT be enabled by default.
+        """
+        src_dir = tmp_path / "src"
+        lib_dir = tmp_path / "lib"
+        src_dir.mkdir()
+        lib_dir.mkdir()
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            # Default singleton=False explicitly to assert backward compatibility
+            result = manager.acquire(
+                "autodev", scope, instance_id=instance_id, singleton=False
+            )
+            results.append(result)
+
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["src/"]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["lib/"]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 2, (
+            f"Non-singleton disjoint scopes must both acquire (ENH-1354 regression); "
+            f"got: {results}"
+        )
+
+    def test_singleton_paths_overlap_still_conflicts(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Singleton + overlapping paths must still conflict (parity with non-singleton).
+
+        Two singleton locks with overlapping paths AND same loop_name must
+        produce a conflict (the singleton predicate should never relax the
+        scope-overlap conflict — only add a name-match conflict where one
+        would not otherwise exist).
+        """
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire(
+                "autodev", scope, instance_id=instance_id, singleton=True
+            )
+            results.append(result)
+
+        id1 = "autodev-20240115T103000"
+        id2 = "autodev-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["src/"]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["src/sub/"]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 1, (
+            f"Singleton + overlapping paths must conflict (scope overlap already triggers); "
+            f"got: {results}"
+        )
+
+    def test_singleton_ancestor_does_not_self_conflict(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_get_ancestry carve-out extends to singleton: parent PID forked → child singleton loop must NOT self-conflict.
+
+        A parent `ll-loop run` process that shells to nested `ll-loop run autodev`
+        would otherwise self-conflict on singleton (same loop_name). The carve-out
+        at concurrency.py:223-229 must extend to the new singleton predicate.
+        """
+        manager = LockManager(tmp_loops)
+        run1 = tmp_path / ".loops" / "runs" / "autodev-parent"
+        run1.mkdir(parents=True)
+        monkeypatch.chdir(tmp_path)
+
+        # Hold a singleton lock as the parent
+        assert manager.acquire(
+            "autodev", [str(run1.relative_to(tmp_path))],
+            instance_id="parent", singleton=True,
+        )
+
+        # Patch _get_ancestry to include a sentinel ancestor PID so the
+        # child acquire is recognized as nested in the parent. The parent's
+        # own PID is the current PID, which is NOT in _get_ancestry (the set
+        # walks up from current). We patch to include the current PID
+        # to simulate the parent→child fork relationship.
+        current_pid = 12345
+        with (
+            patch.object(manager, "_get_ancestry", return_value={current_pid}),
+            patch("os.getpid", return_value=current_pid),
+        ):
+            # Recreate ScopeLock holder under fake parent pid
+            lock_file = tmp_loops / ".running" / "parent.lock"
+            data = json.loads(lock_file.read_text())
+            data["pid"] = current_pid
+            lock_file.write_text(json.dumps(data))
+
+            # Now the child tries to acquire singleton autodev with disjoint scope
+            run2 = tmp_path / ".loops" / "runs" / "autodev-child"
+            run2.mkdir(parents=True)
+            result = manager.acquire(
+                "autodev", [str(run2.relative_to(tmp_path))],
+                instance_id="child", singleton=True,
+            )
+
+        assert result is True, (
+            "Singleton ancestor carve-out: child autodev must NOT self-conflict "
+            "on parent's singleton lock when child is an ancestor of self"
+        )
+
+        manager.release("autodev", instance_id="child")
+        manager.release("autodev", instance_id="parent")
 
 
 class TestResolveScope:

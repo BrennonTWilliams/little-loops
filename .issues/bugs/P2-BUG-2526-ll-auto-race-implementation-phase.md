@@ -3,9 +3,10 @@ id: BUG-2526
 title: "`ll-auto --only` race in autodev implementation phase \u2014 concurrent runs\
   \ corrupt `.auto-manage-state.json` and git state"
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-07T18:27:32Z'
+completed_at: 2026-07-07 20:00:22+00:00
 discovered_date: '2026-07-07'
 discovered_by: capture-issue
 labels:
@@ -329,7 +330,35 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-07-07 | Priority: P2
+**Done** | Created: 2026-07-07 | Completed: 2026-07-07 | Priority: P2
+
+## Resolution
+
+Implemented Option A (`singleton: true` on `autodev.yaml`) as decided on 2026-07-07.
+
+**Code changes:**
+- `scripts/little_loops/fsm/concurrency.py` — added `singleton: bool = False` to `ScopeLock` (with `.get()` migration for legacy lock files); extended `LockManager.acquire()` / `find_conflict()` / `wait_for_scope()` signatures to thread the singleton kwarg; new singleton predicate in `find_conflict()` mirrors the existing `_get_ancestry` carve-out.
+- `scripts/little_loops/fsm/schema.py` — added `singleton: bool = False` to `FSMLoop`; `to_dict()` conditionally emits; `from_dict()` reads via `data.get("singleton", False)`.
+- `scripts/little_loops/fsm/validation.py` — added `"singleton"` to `KNOWN_TOP_LEVEL_KEYS` (BLOCKING — required so `load_and_validate()` does not emit "Unknown top-level keys" warning).
+- `scripts/little_loops/cli/loop/run.py` — threaded `fsm.singleton` through both `acquire()` callsites, the `find_conflict()` callsite, and `wait_for_scope()`.
+- `scripts/little_loops/cli/loop/_helpers.py` — pre-flight `find_conflict()` forwards `caller_loop_name` + `caller_singleton`.
+- `scripts/little_loops/loops/autodev.yaml` — set `singleton: true` between `scope:` and `context:`.
+
+**Tests added (12, all RED-then-GREEN via TDD):**
+- `test_concurrency.py::TestScopeLock` — 3 round-trip / migration tests.
+- `test_concurrency.py::TestSingletonLock` — 4 conflict semantics tests (singleton-on-name, non-singleton regression for ENH-1354, paths-overlap-still-conflicts, ancestor carve-out).
+- `test_builtin_loops.py::TestAutodevLoop::test_autodev_yaml_declares_singleton_true` — structural YAML assertion.
+- `test_fsm_schema.py::TestSingleton` — 3 FSMLoop round-trip tests (modeled on `TestBashDefaultOk`).
+- `test_cli_loop_queue.py::test_retries_acquire_after_losing_race` — singleton kwarg threading assertion.
+
+**Verification:** full suite `python -m pytest scripts/tests/` — 14,161 passed, 35 skipped, 0 failures. No new lint or mypy errors introduced (2 pre-existing ruff + 3 pre-existing mypy errors on `main` are unrelated to this issue).
+
+**Documentation:**
+- `docs/guides/LOOPS_GUIDE.md` — added `### Singleton (one-instance-per-name)` subsection after `### Scope-Based Concurrency`, covering `singleton:` semantics, `--worktree` interaction, and nested-loop carve-out.
+- `docs/reference/API.md` — updated `ScopeLock` dataclass to include `singleton: bool = False`; updated `LockManager` method table to document the new kwargs on `acquire` / `find_conflict` / `wait_for_scope`.
+- `CHANGELOG.md` — added entry under `## [1.140.0] - 2026-07-07` (NOT `[Unreleased]` per `feedback_changelog_no_unreleased.md`).
+
+**Breaking change for users relying on FEAT-1789:** users who relied on concurrent autodev refinement can use `--worktree` (whole-loop filesystem isolation) or fork to a new loop name with `singleton: false`. Documented in CHANGELOG.
 
 ## Confidence Check Notes
 
@@ -426,3 +455,4 @@ Concerns above as `_get_ancestry` carve-out extension.)_
 - `/ll:confidence-check` - 2026-07-07T19:45:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/af8238c5-578f-4710-abe9-3af6a759509e.jsonl`
 - `/ll:confidence-check` - 2026-07-07T20:05:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/df07e22c-8871-48e3-b1d7-04bfa2aeef84.jsonl`
 - `/ll:confidence-check` - 2026-07-07T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1919be3-bdc6-4734-85ed-fcb625677d85.jsonl`
+- `/ll:manage-issue` - 2026-07-07T20:00:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1a8a2e8-66f8-4c39-b389-903081f75283.jsonl`
