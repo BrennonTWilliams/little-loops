@@ -12,6 +12,7 @@ labels:
 - edit-batch-nudge
 - regression
 - post-tool-use
+decision_needed: true
 ---
 
 # BUG-2521: edit-batch-nudge hook fires more than once per session despite "at most once" contract
@@ -419,17 +420,34 @@ or session-id churn.
 | Document | Why Relevant |
 |---|---|
 | `scripts/little_loops/hooks/edit_batch_nudge.py:1-48` | Hook docstring explicitly states "at most once per session" contract |
+| `scripts/little_loops/hooks/edit_batch_nudge.py:70` | `_STATE_PATH = Path(".ll/ll-edit-batch-state.json")` — cwd-relative (Candidate 4) |
 | `scripts/little_loops/hooks/edit_batch_nudge.py:95-105` | `_persist_state` — three silent exception handlers |
+| `scripts/little_loops/hooks/edit_batch_nudge.py:118` | `session_id` resolution — diverges from sibling hook convention |
 | `scripts/little_loops/hooks/edit_batch_nudge.py:126-127` | The `nudged` latch check that should suppress |
 | `scripts/tests/test_edit_batch_hook.py:140-156` | Existing once-per-session test (uses monkeypatched clock + isolated cwd) |
-| `scripts/tests/test_hook_intents.py:380-407` | Dispatch test that lacks post-state assertion |
+| `scripts/tests/test_edit_batch_hook.py:195-206` | `test_state_records_nudged_flag` — asserts post-fire `nudged: True` in isolation (Fix 1's in-process template) |
+| `scripts/tests/test_edit_batch_hook.py:221-235` | `test_state_write_failure_passes_through` — verifies silent pass but does NOT assert re-nudge (the actual bug) |
+| `scripts/tests/test_hook_intents.py:273-285` | `test_dispatch_pre_compact_happy_path` — **template to follow for Fix 1** (asserts post-write file content, not just exit code) |
+| `scripts/tests/test_hook_intents.py:380-407` | `test_dispatch_edit_batch_nudge_happy_path` — dispatch test that lacks post-state assertion (the gap Fix 1 fills) |
+| `scripts/little_loops/hooks/__init__.py:132-143` | `main_hooks` dispatcher — constructs `LLHookEvent` without populating top-level `event.session_id` |
+| `scripts/little_loops/hooks/__init__.py:136` | Dispatcher captures `event.cwd = os.getcwd()` — handler ignores it (Candidate 4) |
+| `scripts/little_loops/hooks/learning_tests_gate.py:40-42` | `_SESSION_CACHE: dict[str, bool]` — **Fix 3 template (in-process cache pattern)** |
+| `scripts/little_loops/hooks/install_learning_gate.py:43-46, 112-116` | Same in-process cache pattern, with usage example in `gate()` |
+| `scripts/little_loops/hooks/session_start.py:33-44` | **Only hook currently using `logging.getLogger(__name__)`** — Fix 2 template |
+| `scripts/little_loops/hooks/user_prompt_submit.py:82,90` | Sibling `session_id` resolution with `or event.session_id` fallback (diverges from edit_batch_nudge) |
+| `scripts/little_loops/hooks/types.py:44` | `LLHookEvent.session_id: str \| None` — top-level dataclass field |
+| `scripts/little_loops/hooks/pre_compact.py:160-166` | Sibling state-file write with same `acquire_lock` + `TimeoutError` fallback pattern |
+| `scripts/little_loops/fsm/host_guard.py:344-349, 397-417` | `HostGuard._budget_fired` — instance-level "fire at most once" boolean (Fix 3 alternative shape) |
 | `.ll/ll-edit-batch-state.json` | State file — current observation shows `nudged: false` |
 | `scripts/little_loops/file_utils.py:35-57` | `atomic_write_json` — raises on OSError (caught and swallowed by hook) |
-| `scripts/little_loops/file_utils.py:60-90` | `acquire_lock` — fcntl-based, raises TimeoutError (caught and swallowed by hook) |
+| `scripts/little_loops/file_utils.py:60-90` | `acquire_lock` — fcntl-based, raises `TimeoutError` (builtin, NOT a subclass of OSError since Py 3.3) |
+| `docs/guides/BUILTIN_HOOKS_GUIDE.md:65, 295-319` | PostToolUse summary + full "Edit-batch nudge" subsection (stateful once-per-session behavior, `_BATCH_WINDOW_SECONDS` heuristic) |
+| `.ll/decisions.yaml:4046-4088` | ARCH-176/177/178/179 (ENH-2503) — "corrective hooks fire at most once per session", "hook fire = persistent tax", etc. |
 
 ## Status
 
 **Open** | Created: 2026-07-07 | Priority: P3 | Captured from ENH-2518 review session
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T17:14:03 - `44595ebe-b58a-4ce5-b41b-f97ef564b6ef.jsonl`
 - `/ll:capture-issue` - 2026-07-07T16:44:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d6a4cb1-d0a9-4055-9756-6b047ca62f08.jsonl`
