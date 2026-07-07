@@ -3,7 +3,7 @@ id: FEAT-2315
 title: 'll-logs summary: user-facing per-project work digest for target projects'
 type: FEAT
 priority: P3
-status: open
+status: deferred
 captured_at: '2026-06-26T22:05:51Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue

@@ -3,7 +3,7 @@ id: FEAT-2316
 title: 'll-logs whole-session corpus mode: analyze non-ll tool activity'
 type: FEAT
 priority: P3
-status: open
+status: deferred
 captured_at: '2026-06-26T22:05:51Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue

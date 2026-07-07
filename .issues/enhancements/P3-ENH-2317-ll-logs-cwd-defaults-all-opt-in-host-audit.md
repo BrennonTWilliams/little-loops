@@ -3,7 +3,7 @@ id: ENH-2317
 title: 'll-logs: CWD-default scoping, --all opt-in privacy, finish host-awareness'
 type: ENH
 priority: P3
-status: open
+status: deferred
 captured_at: '2026-06-26T22:05:51Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue

@@ -1,13 +1,17 @@
 ---
 id: EPIC-2369
-title: "ll-logs Target-Project User Mode"
+title: ll-logs Target-Project User Mode
 type: EPIC
 priority: P3
-status: open
-captured_at: "2026-06-28T17:55:50Z"
+status: deferred
+captured_at: '2026-06-28T17:55:50Z'
 discovered_date: 2026-06-28
 discovered_by: create-epics-from-unparented
-relates_to: [FEAT-2315, FEAT-2316, ENH-2317, ENH-2318]
+relates_to:
+- FEAT-2315
+- FEAT-2316
+- ENH-2317
+- ENH-2318
 ---
 
 # EPIC-2369: ll-logs Target-Project User Mode

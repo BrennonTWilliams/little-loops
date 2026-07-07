@@ -1,9 +1,10 @@
 ---
 id: ENH-2318
-title: 'Retarget ll-logs scan-failures at the user''s own failures; keep current behavior behind a flag'
+title: Retarget ll-logs scan-failures at the user's own failures; keep current behavior
+  behind a flag
 type: ENH
 priority: P3
-status: open
+status: deferred
 captured_at: '2026-06-26T22:05:51Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
