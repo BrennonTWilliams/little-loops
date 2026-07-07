@@ -1120,6 +1120,63 @@ two output strings.
 
 ---
 
+## Signal Handling (`ll-loop run`)
+
+When validating or running a harness under `ll-loop run`, know how the
+loop reacts to POSIX signals — the audit trail's durability depends on
+it. The signal handlers live at
+`scripts/little_loops/cli/loop/_helpers.py:78-173` and are registered
+for both `SIGINT` and `SIGTERM`.
+
+### First Ctrl-C (or `SIGTERM`) — graceful shutdown
+
+The handler sets an internal shutdown flag and calls
+`executor.request_shutdown()`. Any child subprocess currently blocking
+in the action runner (e.g. a long-running `sleep`, shell pipeline, or
+MCP call) is killed via `proc.kill()` so the loop does not wait for it
+to finish naturally (BUG-592 / BUG-818). The executor completes its
+current state, then `PersistentExecutor.run`'s post-block calls
+`archive_run()`, copying `state.json` and `events.jsonl` into
+`.loops/.history/<run_id>-<loop_name>/`. Exit code: `0`.
+
+### Second Ctrl-C — force-exit with audit trail
+
+If a second `SIGINT` arrives while the loop is still shutting down, the
+handler takes a force-exit branch (ENH-2516,
+`scripts/little_loops/cli/loop/_helpers.py:103-107`) that calls
+`PersistentExecutor.archive_run_only(terminated_by="interrupted_force")`
+*before* `sys.exit(1)`. The `.history/<run_id>-<loop_name>/` archive
+still lands. Exit code: `1`. This is the user-visible contract that
+`scripts/tests/test_fsm_signal_integration.py::test_second_signal_force_exit_archives`
+locks in CI.
+
+### `SIGKILL` (`kill -9`) — cannot be trapped
+
+POSIX `SIGKILL` cannot be intercepted by a Python signal handler. If a
+supervisor, CI runner, or OOM killer issues `SIGKILL`, the loop dies
+without invoking any handler code. Rows already appended to
+`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:129-145` —
+every append is `flush()` + `os.fsync()`-d before returning), but the
+`.history/<run_id>-<loop_name>/` archive and the final `state.json`
+snapshot may not land.
+
+**Mitigation:** run `ll-loop run` under a layer that sends `SIGTERM`
+on shutdown rather than `SIGKILL`:
+
+| Layer | What to use |
+|-------|-------------|
+| CI runner | Set the job's `killSignal` to `SIGTERM` (not `SIGKILL`); most CI systems default to one or the other |
+| Local terminal | Use `tmux` or `screen` — the multiplexer receives the terminal's `SIGHUP` and forwards `SIGTERM` to its child processes |
+| Detached session | `nohup ll-loop run … &` — survives shell exit; the parent shell's exit sends `SIGHUP` which `nohup` ignores, then the loop continues until the next signal |
+| Long-running service | `systemd` unit with `KillSignal=SIGTERM` (the default), `TimeoutStopSec=30` |
+
+The end-to-end SIGINT contract is verified by
+`scripts/tests/test_fsm_signal_integration.py`. When in doubt, prefer
+to inspect the audit trail (`events.jsonl` and the `.history/...`
+archive) instead of assuming the latest state was captured.
+
+---
+
 ## See Also
 
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — Full FSM loops reference: evaluators, state fields, CLI commands

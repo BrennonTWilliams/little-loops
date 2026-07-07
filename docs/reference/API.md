@@ -3469,6 +3469,21 @@ Entry point for `ll-loop` command. FSM-based automation loop execution.
 
 **Returns:** Exit code
 
+**Signal handling (`ll-loop run`):**
+
+When `ll-loop run` is executing a loop in the foreground, the process
+registers POSIX signal handlers for `SIGINT` (Ctrl-C) and `SIGTERM`
+(`scripts/little_loops/cli/loop/_helpers.py:157-173`). The contract is:
+
+| Signal | Behavior |
+|--------|----------|
+| `SIGINT` (1st) / `SIGTERM` | Graceful shutdown: the executor completes its current state, then `PersistentExecutor.run` calls `archive_run()`. The audit trail (`events.jsonl`, `state.json`, `.history/<run_id>-<loop_name>/` archive) is complete. Exit code: `0`. |
+| `SIGINT` (2nd) | Force-exit: the signal handler calls `archive_run_only(terminated_by="interrupted_force")` *before* `sys.exit(1)` (ENH-2516, `scripts/little_loops/cli/loop/_helpers.py:103-107`). The `.history/<run_id>-<loop_name>/` archive still lands. Exit code: `1`. |
+| `SIGKILL` (`kill -9`) | **Cannot be trapped.** Data already written via `_append_jsonl` (ENH-2515, `scripts/little_loops/fsm/persistence.py:129-145`) is durable, but the `.history/<run_id>-<loop_name>/` archive and the final `state.json` snapshot may not land. To prevent silent data loss, run `ll-loop run` under a supervisor (`systemd`, `supervisord`), a terminal multiplexer (`tmux`, `screen`), or `nohup` so the loop receives `SIGTERM` (which is trap-able) on shutdown rather than `SIGKILL`. |
+
+The end-to-end SIGINT contract is locked by
+`scripts/tests/test_fsm_signal_integration.py`.
+
 ### main_issues
 
 ```python
