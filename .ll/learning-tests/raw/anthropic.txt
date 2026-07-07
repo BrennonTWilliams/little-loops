@@ -1,0 +1,12 @@
+[PASS] claim 1: import anthropic exposes anthropic.Anthropic client class
+        anthropic.Anthropic = <class 'anthropic.Anthropic'>
+[PASS] claim 2: anthropic.Anthropic() instantiable with zero arguments
+        type(client) = Anthropic
+[PASS] claim 3: constructed client exposes .messages and .beta namespaced resources
+        hasattr(.messages)=True, hasattr(.beta)=True
+[PASS] claim 4: anthropic exports APIError + AuthenticationError; AuthenticationError subclasses APIError
+        APIError=<class 'anthropic.APIError'>, AuthenticationError=<class 'anthropic.AuthenticationError'>, issubclass=True
+[PASS] claim 5: anthropic.__version__ is a non-empty string parseable by packaging.version.Version
+        __version__ = '0.104.1'
+
+SUMMARY: 5/5 passed, 0 failed
