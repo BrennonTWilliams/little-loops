@@ -8,7 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: false
+decision_needed: true
 labels:
   - enhancement
   - history-db
@@ -217,6 +217,54 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
   — direct model for `recent_orchestration_runs` SELECT shape.
 - `scripts/tests/test_session_store.py:_bootstrap_schema_at` (line 3075-3095)
   — direct model for the v18→v19 upgrade test.
+
+### Codebase Research Findings (Verification Pass)
+
+_Added by `/ll:refine-issue --auto` (verification pass, 2026-07-07) — anchor
+corrections and additional file inventory:_
+
+- **Stale anchor — `docs/reference/API.md` heading lines**: The prior
+  Implementation Step 10 references `## little_loops.session_store` at line 6970
+  and `## little_loops.history_reader` at line 6527. The current `API.md` has
+  those headings at **line 7023** and **line 6580** respectively. The 6970/6527
+  lines fall inside unrelated sections (a `SectionProvider` dataclass and an
+  `import` statement inside a code example). Correct the Implementation Step 10
+  doc anchors before quoting them in commits.
+- **Stale anchor — `state.py:26`**: `ProcessingState` is at line 25 (off by one);
+  the `:26` reference in the Summary section should be `:25`.
+- **Off-by-one/two — `cli/session.py` `--kind` choices literals**: The `search`
+  `--kind` `choices=[…]` list opens at line **92** (not 90); the `recent`
+  `--kind` `choices=[…]` list opens at line **115** (not 114). The `--kind`
+  keyword itself is at the lines quoted in the issue body, so the discrepancy is
+  literal-vs-keyword, not material.
+- **NEW — `_EXPORT_TABLE_MAP` / `_EXPORT_DEFAULT_TABLES`
+  (`session_store.py:2791-2814`)**: For `ll-session export` parity, add
+  `("orchestration_run", "orchestration_runs", "ended_at")` to the export table
+  map. Without this, `orchestration_runs` rows will be invisible to
+  `ll-session export` and downstream tooling that consumes those exports. This
+  is **not** in the prior Implementation Steps — adding it here.
+- **NEW — `_run_issue_with_wall_clock_timeout` flush site
+  (`cli/sprint/run.py:44-88`)**: This function returns a synthetic
+  `IssueProcessingResult` with `failure_reason="WALL_CLOCK_TIMEOUT"`. It is a
+  third exit path distinct from the wave orchestrator and the sequential-retry
+  loop, and must be flushed to `orchestration_runs` with `status="failed"` and
+  `failure_reason="WALL_CLOCK_TIMEOUT"`. Wire the flush at the call sites (around
+  `run.py:88` and any other caller of `_run_issue_with_wall_clock_timeout`).
+- **NEW — `WorkerResult` shape (`parallel/types.py:74-99`)**: The full
+  per-worker result has `was_corrected`, `corrections`, `should_close`,
+  `interrupted`, `was_blocked` fields that the issue's `IssueProcessingResult`
+  discussion didn't enumerate. The orchestrator's per-worker flush site has
+  access to all of them; pass `status="interrupted"` when
+  `result.interrupted is True` (currently orphaned at
+  `parallel/orchestrator.py:927-931`).
+- **`_VALID_KINDS` has 11 entries, not 12**: The current set is `tool, file,
+  issue, loop, correction, message, skill, cli, snapshot, commit, test_run`.
+  `snapshot` is a "ghost kind" — present in `_VALID_KINDS` (line 114) but **not**
+  in `_KIND_TABLE` (lines 119-130) and **not** in the `cli/session.py --kind`
+  argparse `choices` lists. Adding `orchestration_run` brings the count to 12
+  matching the issue's claim, but for the wrong reason — the implementer must
+  add to **all four** locations in the same commit (`_VALID_KINDS`,
+  `_KIND_TABLE`, and **both** `cli/session.py --kind choices` literals).
 
 ## Proposed Solution
 
@@ -427,6 +475,61 @@ _Added by `/ll:refine-issue --auto` — based on codebase analysis:_
   This is why v18→v19 upgrade tests can rely on
   `_bootstrap_schema_at(db, 18)` + `ensure_db(db)` to land the new table.
 
+### Codebase Research Findings (Proposed Solution — verification pass)
+
+_Added by `/ll:refine-issue --auto` (verification pass, 2026-07-07) — refinements
+to the proposed solution:_
+
+- **`_EXPORT_TABLE_MAP` must include `orchestration_runs`**: For `ll-session
+  export` parity with sibling tables (`commit_events` and `test_run_events`),
+  add `("orchestration_run", "orchestration_runs", "ended_at")` to the export
+  table map at `session_store.py:2791-2814`. Without this entry, `orchestration_runs`
+  rows will be invisible to JSONL/CSV export and to any downstream tooling
+  that consumes those exports (e.g., `ll-history`, `ll-ctx-stats` consumers,
+  analytics dashboards).
+- **Multi-issue wave timing overwrites orchestrator's accurate timing**: The
+  claim that `cli/sprint/run.py:622` writes the wave-averaged duration is
+  correct, but the framing understates the issue — the orchestrator's
+  `_on_worker_complete` already writes the **accurate** `result.duration` into
+  `self.state.timing[result.issue_id]` at `parallel/orchestrator.py:1067-1070`,
+  and **then** the sprint CLI overwrites it at `run.py:621-623` with the
+  wave-average. Both `ParallelOrchestrator.state.timing` and `SprintState.timing`
+  end up holding the wave-averaged value. The flush must come from the
+  orchestrator's `_on_worker_complete` (which sees `result.duration` accurately)
+  rather than post-loop harvest from `SprintState.timing`.
+- **Wall-clock timeout is a separate exit path**: `_run_issue_with_wall_clock_timeout`
+  (`cli/sprint/run.py:44-88`) returns a synthetic `IssueProcessingResult` with
+  `failure_reason="WALL_CLOCK_TIMEOUT"` — a path distinct from the wave
+  orchestrator and the sequential-retry loop. The proposed producer-wiring
+  must cover this path too: at the caller (around `run.py:88`), emit
+  `record_orchestration_run(status="failed", failure_reason="WALL_CLOCK_TIMEOUT")`.
+- **`wave TEXT` vs split columns — recommendation refined**: Three grounds for
+  `wave TEXT` over `wave INTEGER` (or split): (1) `self.wave_label` is already
+  `f"Wave {wave_num}/{total_waves}"` — a string — so persisting verbatim avoids
+  a parse step; (2) the "split into `wave_num INTEGER, total_waves INTEGER`"
+  alternative would enable aggregations like "median issues per wave," but
+  there is no demonstrated query pressure yet — defer to a follow-on if
+  aggregations need it; (3) `_VALID_KINDS` and `_KIND_TABLE` migrations are
+  already complex — `TEXT` is the lowest-risk v1 choice. Note also: only
+  `ll-sprint` populates `wave`; `ll-auto` and `ll-parallel` (when not invoked
+  through sprint) leave it `NULL` — design accordingly.
+- **PR URL on `_open_pr_for_branch` failure paths**: Verified all early-return
+  paths preserve `branch_state["pr_url"] = None`: (a) `gh auth status` fails
+  (`orchestrator.py:1127-1129`); (b) `gh pr create` non-zero exit
+  (`orchestrator.py:1155-1156`); (c) `FileNotFoundError`/`TimeoutExpired`
+  (`orchestrator.py:1157-1160`). The flush must safely handle `pr_url=None`
+  (SQL `TEXT` column accepts NULL; tests should assert no PR row but successful
+  completion row).
+- **`record_*_event` exception model — refined**: Verified that
+  `record_commit_event` and `record_test_run_event` do **not** internally catch
+  exceptions; the `contextlib.suppress(Exception)` envelope sits at the **call
+  site**. The existing `cli_event_context(...)` wrappers at `cli/auto.py:33`,
+  `cli/parallel.py:44`, and `cli/sprint/__init__.py:56` already swallow the
+  surrounding exception, but the new flush must use `contextlib.suppress`
+  at its own call site because (a) `_on_worker_complete` runs inside a worker
+  pool thread, and (b) `_cmd_sprint_run`'s post-wave-loop flush happens in a
+  long-lived loop where each iteration must be independently guarded.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `orchestration_runs` exists; `SCHEMA_VERSION` bumped.
@@ -594,6 +697,164 @@ _Added by `/ll:refine-issue --auto` — based on codebase analysis:_
     (lower-risk, matches existing display format); defer the split to a
     follow-on if aggregations need it.
 
+### Codebase Research Findings (Implementation Steps — verification pass)
+
+_Added by `/ll:refine-issue --auto` (verification pass, 2026-07-07) — concrete
+flush blocks, additional flush sites, and `_EXPORT_TABLE_MAP` wiring:_
+
+14. **`_EXPORT_TABLE_MAP` / `_EXPORT_DEFAULT_TABLES` wiring
+    (`session_store.py:2791-2814`)**: Add `("orchestration_run",
+    "orchestration_runs", "ended_at")` to the export table map. Without this
+    entry, `orchestration_runs` rows are invisible to `ll-session export` and
+    any JSONL/CSV-consuming tooling. Implementation:
+
+    ```python
+    # in _EXPORT_TABLE_MAP (or _EXPORT_DEFAULT_TABLES, depending on schema):
+    ("orchestration_run", "orchestration_runs", "ended_at"),
+    ```
+
+    This single edit unblocks downstream consumers (ll-history, ll-ctx-stats,
+    analytics dashboards) that read export outputs.
+
+15. **Concrete flush block at `parallel/orchestrator.py:_on_worker_complete`**
+    (after the timing write at lines 1066-1070):
+
+    ```python
+    # ENH-2492: flush per-issue outcome into history.db (best-effort).
+    with contextlib.suppress(Exception):
+        from little_loops.session_store import record_orchestration_run
+
+        branch_state = (
+            self._pr_ready_branches.get(result.issue_id, {})
+            if hasattr(self, "_pr_ready_branches") else {}
+        )
+        record_orchestration_run(
+            resolve_history_db(),
+            run_id=f"{self.wave_label or 'wave'}-{result.issue_id}",
+            driver="ll-parallel",
+            issue_id=result.issue_id,
+            status="completed" if result.success else "failed",
+            failure_reason=result.error,
+            duration_s=result.duration,
+            wave=self.wave_label,
+            pr_url=branch_state.get("pr_url"),
+        )
+    ```
+
+    The `hasattr(self, "_pr_ready_branches")` guard handles the case where
+    `_pr_ready_branches` was never populated (no `gh` configured, single-issue
+    flows). `resolve_history_db()` is the canonical helper that honors the
+    `LL_HISTORY_DB` env override.
+
+16. **Concrete flush block at `cli/sprint/run.py:_cmd_sprint_run`**
+    (after `_save_sprint_state(state, logger)` at line 680, before the
+    `if wave_num < total_waves:` block):
+
+    ```python
+    _save_sprint_state(state, logger)
+    # ENH-2492: belt-and-suspenders flush of completed/failed issues.
+    # The orchestrator's _on_worker_complete is the primary write site;
+    # this catches sequential-retry outcomes (cli/sprint/run.py:649) and
+    # wall-clock timeouts (cli/sprint/run.py:44-88).
+    if wave_ids:
+        with contextlib.suppress(Exception):
+            from little_loops.session_store import record_orchestration_run
+
+            wave_label = f"Wave {wave_num}/{total_waves}"
+            for issue_id in wave_ids:
+                status = "completed" if issue_id in actually_completed else "failed"
+                record_orchestration_run(
+                    resolve_history_db(),
+                    run_id=f"{wave_label}-{issue_id}",
+                    driver="ll-sprint",
+                    issue_id=issue_id,
+                    status=status,
+                    failure_reason=state.failed_issues.get(issue_id),
+                    duration_s=state.timing.get(issue_id, {}).get("total"),
+                    wave=wave_label,
+                )
+    if wave_num < total_waves:
+        ...
+    ```
+
+    Note: `state.timing[issue_id]` here may be the wave-averaged duration
+    (`orchestrator.execution_duration / len(wave)`) rather than the per-worker
+    accurate value — the orchestrator's `_on_worker_complete` flush (step 15)
+    is the more accurate path. This post-loop flush is a fallback / safety net
+    for sequential-retry outcomes that don't pass through `_on_worker_complete`.
+
+17. **`_run_issue_with_wall_clock_timeout` flush site
+    (`cli/sprint/run.py:44-88`)**: This function returns a synthetic
+    `IssueProcessingResult` with `failure_reason="WALL_CLOCK_TIMEOUT"`. It is
+    a third exit path distinct from the wave orchestrator and the
+    sequential-retry loop. At the call site (around `run.py:88`), wrap the
+    result handling in:
+
+    ```python
+    result = _run_issue_with_wall_clock_timeout(...)
+    if result.failure_reason == "WALL_CLOCK_TIMEOUT":
+        with contextlib.suppress(Exception):
+            from little_loops.session_store import record_orchestration_run
+
+            record_orchestration_run(
+                resolve_history_db(),
+                run_id=f"wall-clock-{result.issue_id}",
+                driver="ll-sprint",
+                issue_id=result.issue_id,
+                status="failed",
+                failure_reason="WALL_CLOCK_TIMEOUT",
+                duration_s=result.duration,
+                wave=f"Wave {wave_num}/{total_waves}",
+            )
+    ```
+
+18. **Interrupted-run flush at `_on_worker_complete` early-return
+    (`parallel/orchestrator.py:927-931`)**: The early-return for
+    `result.interrupted=True` currently leaves no `orchestration_runs` row.
+    Insert a flush before the `return` so interrupted runs are recorded:
+
+    ```python
+    if result.interrupted:
+        with contextlib.suppress(Exception):
+            from little_loops.session_store import record_orchestration_run
+
+            record_orchestration_run(
+                resolve_history_db(),
+                run_id=f"{self.wave_label or 'wave'}-{result.issue_id}",
+                driver="ll-parallel",
+                issue_id=result.issue_id,
+                status="interrupted",
+                failure_reason="Worker interrupted",
+                duration_s=result.duration,
+                wave=self.wave_label,
+            )
+        self._interrupted_issues.append(result.issue_id)
+        return
+    ```
+
+    Note: the issue's prior text described this as a separate harvest — but
+    `_on_worker_complete` is the only place that sees interrupted
+    `WorkerResult`s before they're aggregated, so the flush MUST live here,
+    not at a wave-final harvest.
+
+19. **Test for `_EXPORT_TABLE_MAP` parity**: Add to `test_ll_session.py`:
+
+    ```python
+    def test_export_includes_orchestration_run_table(self, tmp_path: Path) -> None:
+        """ENH-2492: ll-session export includes orchestration_runs rows."""
+        from little_loops.session_store import record_orchestration_run
+
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db, run_id="r1", driver="ll-auto", issue_id="ENH-2492",
+            status="completed", duration_s=10.0,
+        )
+        # run `ll-session export --tables orchestration_run` and assert row appears
+    ```
+
+    Without this test, the `_EXPORT_TABLE_MAP` edit (step 14) can regress
+    silently.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 gap surface (execution outcomes)
@@ -617,6 +878,7 @@ _Added by `/ll:refine-issue --auto` — based on codebase analysis:_
 **Open** | Created: 2026-07-05 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T06:46:32 - `42c45b6b-5e64-42fb-a77f-fff3dfa85679.jsonl`
 - `/ll:refine-issue` - 2026-07-06T23:47:05 - `8b0fb94d-2a13-40c0-a03a-0886bca177ac.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:14:36 - `29927953-330a-400d-9d73-7c6c5c33aac1.jsonl`
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -1,20 +1,29 @@
 ---
 id: ENH-2477
-title: "F6 (finishes) — Per-state cost attribution: stable JSON + per-state ceilings"
+title: "F6 (finishes) \u2014 Per-state cost attribution: stable JSON + per-state ceilings"
 type: ENH
 priority: P2
 status: open
-captured_at: "2026-07-04T20:05:34Z"
+captured_at: '2026-07-04T20:05:34Z'
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [FEAT-2476, FEAT-2478, ENH-2461]
+relates_to:
+- FEAT-2476
+- FEAT-2478
+- ENH-2461
 labels:
-  - token-cost
-  - cli
-  - json-schema
-  - fsm
-  - tier-1
+- token-cost
+- cli
+- json-schema
+- fsm
+- tier-1
+confidence_score: 85
+outcome_confidence: 81
+score_complexity: 13
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2477: F6 (finishes) — Per-state cost attribution
@@ -409,8 +418,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-07-04 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-07_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 81/100 → HIGH CONFIDENCE
+
+### Concerns
+- **Anchor drift (issue self-disclosed)**: Summary cites `executor.py:1295-1305` for per-action token aggregation, but the actual aggregation lives at `executor.py:1382-1392` in `FSMExecutor._run_action()` (issue's own research findings flag this). Implementation step 4 (wire JSON emission) should target the corrected range.
+- **Anchor drift on `_helpers.py:1665-1690`**: This span is the middle of `_print_usage_summary()`; the full function is `_helpers.py:1663-1726` (caller `run_foreground()` at `:1608-1614`). The refactor must preserve the existing 8-scenario `TestPrintUsageSummary` column layout at `_helpers.py:1717` byte-identical.
+- **`run_background` re-exec silent-drop risk**: The `--cost-output-json` flag must be forwarded through `_helpers.py:1313-1379` mirroring `max_iter` at `:1317-1319`; BUG-1414 precedent shows detached runs silently drop unforwarded flags. The new `test_forwards_cost_output_json` (analog of `test_forwards_baseline_skill`) is the load-bearing test.
+- **ENH-2461 feature-flag fallback**: The `from_history(db_path)` constructor is spec, not current reality — `usage_event` table is gated by sibling ENH-2461 (P3). Issue handles this with `try/except sqlite3.OperationalError`, but the wrapper code path needs an explicit smoke test or the feature flag can silently regress when ENH-2461 merges.
+
 ## Session Log
 - `/ll:wire-issue` - 2026-07-05T04:06:04 - `24e80095-e5ab-460d-a045-d84cf2220c68.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:11:30 - `6412d46f-caf7-49a3-86b3-b6f00ea65f1f.jsonl`
+- `/ll:confidence-check` - 2026-07-07 - `110be12b-df0f-44e6-864d-f358d69fb864.jsonl`
 
 - `/ll:capture-issue` - 2026-07-04T20:05:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a4ee548-94b7-4694-b8c1-49e3f31cc127.jsonl`

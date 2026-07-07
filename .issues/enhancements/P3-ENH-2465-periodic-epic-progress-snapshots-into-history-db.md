@@ -9,7 +9,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
-refined_at: "2026-07-06T00:00:00Z"
+refined_at: "2026-07-07T00:00:00Z"
 refined_by: refine-issue
 labels:
   - enhancement
@@ -104,7 +104,7 @@ Add to `history_reader.py`:
 - `scripts/little_loops/session_store.py` — bump `SCHEMA_VERSION = 18` → `19` (line 102); append `"epic_progress"` to `_VALID_KINDS` (lines 104–118) and `"epic_progress": "epic_progress_snapshots"` to `_KIND_TABLE` (lines 119–130); append v19 migration string (after line 545); add `record_epic_progress_snapshot()`, `_backfill_epic_progress_snapshots()`, and `backfill_epic_progress_snapshots()` helpers mirroring the `record_issue_snapshot` / `_backfill_snapshots` / `backfill_snapshots` triple at lines 816–866, 1538–1583, 2418–2438; wire into `SQLiteTransport.send()` `issue.*` branch (lines 1377–1417) immediately after the `_index(...)` call at line 1408 and before the content-snapshot block at 1409.
 - `scripts/little_loops/history_reader.py` — add `EpicProgressSnapshot` dataclass to the dataclass block (alongside `CommitEvent` at lines 125–137); add `epic_progress_history(epic_id, since=None, *, limit=200, db=DEFAULT_DB_PATH)`, `epic_progress_latest(epic_id, *, db=DEFAULT_DB_PATH)`, and `epic_velocity(epic_id, window_days=14, *, db=DEFAULT_DB_PATH)` reading-side functions following the `related_issue_events` shape at lines 370–404 (id-filterable, since-bounded, limit-bounded, read-only via `_connect_readonly`, graceful degrade to `[]`).
 - `scripts/little_loops/cli/issues/epic_progress.py` — call `record_epic_progress_snapshot(db, prog, ts=...)` at the end of `cmd_epic_progress()` (after line 58) inside a `try/except` so a DB write failure cannot break the CLI; add an `--history` flag to `add_epic_progress_parser()` (lines 16–35) that re-uses the new `epic_progress_history()` reader.
-- `scripts/little_loops/cli/history_context.py` (or `ll_history.py` if a dedicated CLI exists) — add an `epic-velocity` subcommand for `ll-history epic-velocity --since 30d`.
+- `scripts/little_loops/cli/history.py` — add an `epic-velocity` subcommand for `ll-history epic-velocity --since 30d`. (`cli/history_context.py` is the separate `ll-history-context` CLI — not the right home.) Insert the new subparser immediately after the `root_parser` block at lines 205–221 (the most recent subcommand added) and before `add_config_arg(parser)` at line 223; mirror the dispatch-by-`args.command` pattern that already routes `summary`/`analyze`/`export`/`sessions`/`root` later in the function.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_progress.py` — `compute_epic_progress()` (lines 83–147) and `EpicProgress` (lines 17–48) are the canonical rollup source; the snapshot writer should call `compute_epic_progress()` and shape `EpicProgress.to_dict()` into the snapshot row rather than reimplementing the walk.
@@ -157,6 +157,11 @@ _Added by `/ll:refine-issue` — verified against `session_store.py`, `history_r
 - Idempotency mechanism is the v3 `idx_issue_events_dedup` pattern (lines 277–282): `(epic_id, ts)` `CREATE UNIQUE INDEX` + `INSERT OR IGNORE`. Within-second collisions discard naturally and the FTS index only fires when `cursor.rowcount` is truthy.
 - Existing graceful-degradation contract is established by `record_issue_snapshot` (best-effort own-connection insert at lines 816–866) and `record_commit_event` (lines 1041–1091) — both wrap the body in `try/except sqlite3.Error` and log on failure. AC#7 inherits this contract; no new error-handling infrastructure needed.
 - `compute_epic_progress()` already walks the `parent:` chain transitively (`_issue_descends_to` at lines 67–80, cycle-guarded with `seen: set`), so the snapshotter resolves grandparent→EPIC chains without extra plumbing. NOTE: `relates_to:` is intentionally excluded by `_issue_descends_to` — snapshot rollup is hierarchical only, mirroring `set_status.py:81–98` (BUG-2265 lesson).
+- `_backfill_epic_progress_snapshots` is **not a verbatim clone** of `_backfill_snapshots` (`session_store.py:1538–1583`): issue_snapshots stores `body` + `frontmatter` JSON, but `epic_progress_snapshots` stores aggregated `by_status` counts only — no per-child walk inside the writer. Instead, reuse the existing `(conn, issues_dir)` parameter shape but body becomes a single `compute_epic_progress(epic_id, _load_issues(issues_dir))` call per EPIC rather than a per-file read. Backfill is invoked from the existing `ensure_db()` / `backfill_history_db()` chain — locate the precise caller at the v19 implementation site rather than reusing the snapshot backfill signature literally.
+- `TestRecordEpicSnapshot` cannot clone `TestRecordIssueSnapshot` (`scripts/tests/test_session_store.py:2942–3013`) byte-for-byte: the issue_snapshot assertions cover `body` and `frontmatter` columns, but the epic snapshot has neither. Carry forward only the round-trip / idempotent / missing-file-noop assertions; replace the FTS test with an invariant that confirms `kind="epic_progress"` lands in `search_index` when `cursor.rowcount` is truthy (mirroring `record_commit_event` lines 1078–1087's `if inserted: _index(...)` shape).
+- The `--history` flag on `add_epic_progress_parser` (`scripts/little_loops/cli/issues/epic_progress.py:16–35`) is in addition to the existing `--format/-f` flag and `epic_id` positional — argparse handles the mutual exclusion naturally if `--history` short-circuits before the `compute_epic_progress` call. No `--format` change is needed for `--history` output (default `text` rendering works for the time-series table).
+- `scripts/little_loops/observability/schema.py` and `scripts/little_loops/observability/audit.py` consume the event-bus's `_VALID_KINDS` / `_KIND_TABLE` / `SCHEMA_VERSION` directly via the DES (Dynamic Event Schema) layer (FEAT-2274 / ENH-2475). Adding `"epic_progress"` to those constants in `session_store.py` will fail `ll-verify-des-audit` until a corresponding `epic_snapshot` (or `epic_progress`) event-emit variant is registered in `observability/schema.py`. Either (a) register the DES variant up-front (preferred — keeps the kind and the emit site in lockstep), or (b) register a passive variant that documents the kind but defers the emit-site wiring to the loop-half of EPIC-2457 (matches `commit_event`/`test_run_event` precedent).
+- `scripts/little_loops/cli/issues/sequence.py` (`ll-issues sequence`) is a downstream consumer candidate not yet listed under "ll-sprint and ll-history consumers" in the Expected Behavior — it walks cross-issue dependencies and may benefit from a "since last sequence" snapshot diff for trend reporting. Out of scope for ACs but worth a follow-up issue note in the Sources section.
 
 ## Implementation Steps
 
@@ -207,6 +212,7 @@ _Added by `/ll:refine-issue` — verified against `session_store.py`, `history_r
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T07:23:03 - `7ac73f41-a98d-4b31-aab9-5d2f0701c0a0.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:25:57 - `b67f0e2c-461a-43e1-8ce2-322030b708c5.jsonl`
 - audit - 2026-07-06 - Updated stale schema-version reference ("v15+" → v19+; v15–v18 were consumed by ENH-2460/2462/2458/2459). Verified `issue_progress.py` and `cli/issues/epic_progress.py` exist.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

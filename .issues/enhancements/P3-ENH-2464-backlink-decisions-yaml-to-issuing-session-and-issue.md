@@ -274,6 +274,103 @@ _Added by `/ll:refine-issue` — concrete line anchors per step:_
 
 The original issue scope lists only **3** dataclasses (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`). Codebase research indicates a **4th** dataclass — `scripts/little_loops/decisions.py:195-250` `CouplingEntry` — also has `issue: str | None` and follows the same round-trip pattern. Should the new `source_session_id` / `source_issue_id` fields extend to `CouplingEntry` as well? See `decision_needed` flag — this is one of the options the `/ll:decide-issue` step should resolve.
 
+### Codebase Research Findings — Re-verified Anchors (2026-07-07 second pass)
+
+_Added by `/ll:refine-issue` (re-run, gap-analysis mode) — anchor reconciliation against current `main`:_
+
+**Verified anchors (within ≤3-line drift, no action needed):**
+
+| File | Claim | Actual | Status |
+|------|-------|--------|--------|
+| `scripts/little_loops/decisions.py` | `RuleEntry` 50–95 | 50–95 | ✓ exact |
+| `scripts/little_loops/decisions.py` | `DecisionEntry` 98–148 | 98–148 | ✓ exact |
+| `scripts/little_loops/decisions.py` | `ExceptionEntry` 151–192 | 151–192 | ✓ exact |
+| `scripts/little_loops/decisions.py` | `CouplingEntry` 195–250 | 195–250 | ✓ exact |
+| `scripts/little_loops/decisions.py` | `add_entry()` 298–302 | 298–302 | ✓ exact |
+| `scripts/little_loops/session_store.py` | `SCHEMA_VERSION = 18` line 102 | 102 | ✓ exact |
+| `scripts/little_loops/session_store.py` | `_VALID_KINDS` line 104 | 104 | ✓ exact |
+| `scripts/little_loops/session_store.py` | `_KIND_TABLE` line 119 | 119 | ✓ exact |
+| `scripts/little_loops/session_store.py` | v15 (ENH-2460) 451–458 | 451–458 | ✓ exact |
+| `scripts/little_loops/session_store.py` | v16 (ENH-2462) 460 | 460 | ✓ exact |
+| `scripts/little_loops/session_store.py` | v17 (ENH-2458) 501–519 | 501–519 | ✓ exact |
+| `scripts/little_loops/session_store.py` | v18 (ENH-2459) 521–544 | 521–544 | ✓ exact |
+| `scripts/little_loops/session_store.py` | end of `_MIGRATIONS` at 545 | 545 | ✓ exact |
+| `scripts/little_loops/session_store.py` | `record_retirement` 2735–2759 | 2735–2759 | ✓ exact |
+| `scripts/little_loops/session_store.py` | `list_retirements` 2762–2783 | 2762–2783 | ✓ exact |
+| `scripts/little_loops/history_reader.py` | `related_issue_events` 370–404 | 370–404 | ✓ exact |
+| `scripts/little_loops/history_reader.py` | `sessions_for_issue` 601–637 | 601–637 | ✓ exact |
+| `scripts/little_loops/cli/issues/decisions.py` | `--issue` arg at 98 | 98 | ✓ exact |
+| `scripts/little_loops/cli/issues/decisions.py` | `cmd_decisions` dispatch at 265 | 265 | ✓ exact |
+| `scripts/little_loops/cli/session.py` | `--kind` choices 92–106 (search_parser) | 92–105 | ≈ (1-line) |
+| `scripts/little_loops/cli/session.py` | `--kind` choices 115–128 (recent_parser) | 115–128 | ✓ exact |
+| `scripts/tests/test_decisions.py` | `TestLoadDecisions` at 75 | 75 | ✓ exact |
+| `scripts/tests/test_decisions.py` | `TestAddEntry` at 146 | 146 | ✓ exact |
+| `scripts/tests/test_session_store.py` | `TestRecordIssueSnapshot` at 2942 | 2942 | ✓ exact |
+| `scripts/tests/test_session_store.py` | `TestSchemaV15SkillCompletionColumns` at 3098 | 3098 | ✓ exact (see stale anchor note below) |
+| `scripts/tests/test_history_reader.py` | `TestNewEventReaders` at 1378 | 1378 | ✓ exact |
+| `skills/decide-issue/SKILL.md` | decisions add at 415–428 | 419 | ✓ exact |
+| `skills/go-no-go/SKILL.md` | decisions add at 403–416 | 407 | ✓ exact |
+| `skills/capture-issue/SKILL.md` | decisions add at 308–319 | 310 | ✓ exact |
+| `skills/improve-claude-md/SKILL.md` | decisions add at 277–282 | 277 | ✓ exact |
+| `commands/tradeoff-review-issues.md` | decisions add at 294–303 | 297 | ✓ exact |
+| `commands/tradeoff-review-issues.md` | decisions add at 346–355 | 349 | ✓ exact |
+
+**Drift-only anchors (≤8 lines, cosmetic):**
+
+| File | Claim | Actual | Drift |
+|------|-------|--------|-------|
+| `scripts/little_loops/history_reader.py` | `find_session_for_issue_transition` 407–438 | 407–441 | +3 |
+| `scripts/little_loops/history_reader.py` | `_connect_readonly` 235–249 | 235–252 | +3 |
+| `scripts/little_loops/history_reader.py` | `_row_to_dataclass` 252–256 | 252–264 | +8 |
+| `scripts/little_loops/cli/issues/decisions.py` | `add_decisions_parser` 79–164 | 80–164 | +1 |
+| `scripts/little_loops/cli/issues/decisions.py` | `_cmd_add` 408–499 | 408–501 | +2 |
+| `scripts/little_loops/cli/issues/decisions.py` | `_cmd_extract_from_completed` 694–883 | 694+ | line range wide |
+| `scripts/little_loops/cli/issues/decisions.py` | `_cmd_promote` 886–930 | 886+ | line range wide |
+| `scripts/little_loops/session_store.py` | `record_issue_snapshot` 820–866 | 816+ | -4 |
+
+> Implementation note: drift under ~10 lines is acceptable for an anchor sweep; the implementer should use `Read` with `offset`/`limit` to navigate rather than trusting exact ranges.
+
+**Stale anchor note (medium priority — correct before implementing):**
+
+> ⚠ Anchor `scripts/tests/test_session_store.py:3098` no longer resolves to `TestSchemaV18` — line 3098 is currently `TestSchemaV15SkillCompletionColumns` (ENH-2460). The latest dedicated schema-version test is `TestSchemaV16IssueSessionId` at **line 3218** (ENH-2462). Migrations v17 (ENH-2458) and v18 (ENH-2459) do NOT have dedicated `TestSchemaV*` classes — the upgrade path is exercised indirectly via `TestRecordCommitEvent` (line 3416) and `TestRecordTestRunEvent` (line 3549). The new v19 `TestSchemaV19DecisionEvents` class should be appended AFTER `TestSchemaV16IssueSessionId` at line 3218 (or near the end of the file at line 3620+ alongside `TestLoopEventTypes`), not at line 3098.
+
+**Additional `assert SCHEMA_VERSION == 18` sites not listed in Implementation Steps:**
+
+The current Implementation Steps lists four assertion sites (`test_session_store.py:1190`, `:1691`, `:1806`, `:1858`). Re-verification found two MORE sites that must also be updated when bumping to v19:
+
+| File | Line | Snippet |
+|------|------|---------|
+| `scripts/tests/test_session_store.py` | 1954 | `assert SCHEMA_VERSION == 18` (inside `TestSchemaV12` upgrade test) |
+| `scripts/tests/test_session_store.py` | 2842 | `assert SCHEMA_VERSION == 18` (inside `TestSchemaV13` upgrade test) |
+
+Total sites to update: **6**, not 4 (1190, 1691, 1806, 1858, 1954, 2842). Consider using `git grep -n "SCHEMA_VERSION == 18" scripts/tests/test_session_store.py` as the implementer's canonical list — and refactoring to read `SCHEMA_VERSION` symbolically rather than literal `18` to avoid this drift on future bumps (per the v17/v18 commit_events and test_run_events precedent which used symbolic reads).
+
+**Already-existing test infrastructure (reduces scope):**
+
+| Test class | File | Line | Notes |
+|------------|------|------|-------|
+| `TestCaptureIssueDecisionsBridge` | `scripts/tests/test_feat1896_skill_bridges.py` | 168 | Already covers `skills/capture-issue/SKILL.md:308-319` invocation shape — extend, do not create |
+| `TestLoopSuggesterSequencesWiring` | `scripts/tests/test_feat1896_skill_bridges.py` | 214 | Adjacent; not relevant to ENH-2464 |
+
+The implementer should EXTEND `TestCaptureIssueDecisionsBridge` (not create a new test class) to assert the new `--source-session="$SESSION_ID"` flag appears in the `ll-issues decisions add` invocation.
+
+**`ll-session recent --kind decision` validation path:**
+
+For the new `"decision"` kind to surface through `ll-session recent`, the kind must satisfy ALL THREE of:
+1. `scripts/little_loops/session_store.py:_VALID_KINDS` (line 104) — append `"decision"` ✓ (issue correctly identifies)
+2. `scripts/little_loops/session_store.py:_KIND_TABLE` (line 119) — append `"decision": "decision_events"` ✓
+3. `scripts/little_loops/cli/session.py` `choices=[...]` lists at lines 92–106 (search) AND 115–128 (recent) — append `"decision"` ✓
+
+The issue correctly identifies all three locations. Argparse rejects `--kind decision` at the parser layer before the runtime validator runs, so step 3 is mandatory.
+
+**`decision_needed: true` confirmed:**
+
+Frontmatter already carries `decision_needed: true` (line 11). The Proposed Solution section names **two distinct options**:
+- **Option A (3 dataclasses)**: extend `RuleEntry` + `DecisionEntry` + `ExceptionEntry` only (matches original issue scope).
+- **Option B (4 dataclasses)**: also extend `CouplingEntry` at `scripts/little_loops/decisions.py:195-250` because it also has `issue: str | None` and follows the same round-trip pattern.
+
+These are the two paths `/ll:decide-issue` should resolve between. The existing "Open question surfaced by research" subsection at the bottom of the Codebase Research Findings already names this choice explicitly.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — recommendations §2 row 6 ("`decisions.yaml` content — Partial"), §3 ranked recommendation #7
@@ -295,6 +392,7 @@ The original issue scope lists only **3** dataclasses (`RuleEntry`, `DecisionEnt
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T07:13:46 - `545040c5-e94c-459c-892a-62e85637299c.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:14:46 - `a2f712f0-e5cb-481f-b11e-ebec85b401f1.jsonl`
 - audit - 2026-07-06 - Fixed Sources ref: `correction_retirements` is a table in `session_store.py` (v13, ENH-2046), not a module. Verified the three capture-bridge skills (`decide-issue`, `tradeoff-review-issues`, `go-no-go`) and `scripts/little_loops/decisions.py` exist.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

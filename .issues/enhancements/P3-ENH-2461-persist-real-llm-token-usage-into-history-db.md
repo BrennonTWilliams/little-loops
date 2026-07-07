@@ -210,6 +210,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `.ll/ll-config.json` — `analytics.capture.usage_events` (default `true`) gates the per-event write; `analytics.enabled` (default `false`) gates the whole feature. Existing `analytics.capture.{skills,cli_commands,corrections,file_events}` set the precedent.
 
+### Additional findings (2026-07-07 re-research)
+
+_Added by `/ll:refine-issue` — gaps surfaced by re-running codebase research:_
+
+- **`_EXPORT_DEFAULT_TABLES` is a separate registration** — `_EXPORT_TABLE_MAP` is documented at `session_store.py:2791-2814`, but the companion `_EXPORT_DEFAULT_TABLES` list (`:2804-2814`) is the default set `ll-session export` ships when no `--tables` is passed. Both need `"usage_event"` added — only `_EXPORT_TABLE_MAP` was called out in the prior pass. Missing the default-list entry makes `ll-session export` skip `usage_events` until a user passes `--tables usage_event` explicitly.
+- **`observability/schema.py:460` schema docstring** — module docstring lists the per-table schemas; new table needs an entry alongside the existing `skill_events` mention. This is the only docs surface that auto-syncs with the table list (no separate docs page for `usage_events`).
+- **`record_usage_event()` should accept `config: dict | None = None`** — both `record_commit_event` and `record_test_run_event` accept a `config` forward-compat parameter that's currently unused but reserved for future `analytics.capture.commits` / `analytics.capture.test_runs` gating. Mirror the same shape on `record_usage_event()` so the `analytics.capture.usage_events` gate can be activated without a signature change.
+
+## Producer-side test pattern (closer than `--kind commit`)
+
+_Added by `/ll:refine-issue` — re-research surfaced a more direct test template:_
+
+- `scripts/tests/test_subprocess_utils.py:1552-1759` already covers the `on_usage_detailed` callback at the producer site (`test_on_usage_detailed_callback_called_with_result_event`, `test_on_usage_detailed_not_called_when_no_usage`, `TokenUsage.model` init-event fallback). Add `test_on_usage_detailed_writes_usage_event_to_history_db` here — feeds a synthetic `{"type":"result","usage":{...},"model":"claude-sonnet-4-6"}` JSON-line through `run_claude_command()` and asserts the new `usage_events` row was inserted. This locks the producer-side integration closer to the source than the CLI `--kind usage` test in `test_ll_session.py:949-975`, and reuses fixtures already set up for callback behavior tests.
+
 ### Open Questions for Implementer
 
 - **Should `usage_events.tool_event_id` be a foreign-key to `tool_events.id`** (per the issue's Option B schema) so a single tool invocation can be joined back to its byte columns? Or keep the tables independent and join on `(session_id, ts)`? Trade-off: FK preserves a 1:1 mapping but requires `tool_events` to write first; independent keeps writer order free.
@@ -263,6 +277,7 @@ per-field mapping for the cache columns, not string prefixing.
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T06:54:22 - `d46e494f-5673-4564-b202-2b832d02834f.jsonl`
 - `/ll:refine-issue` - 2026-07-06T23:57:55 - `393e0dc2-c1c3-43c5-b47a-60f52a6d21c0.jsonl`
 - `/ll:explore-api phoenix` - 2026-07-05 - Added Cross-issue coordination note: internal token columns stay underscore, but FEAT-2478's OTel mapping for the two cache columns must use DOTTED names (`gen_ai.usage.cache_read.input_tokens`) — string-prefixing the column name silently breaks OTel-semconv consumers (Phoenix verified). Locked the column→attribute mapping table.
 - backlog-grooming - 2026-07-03T00:00:00Z - Consolidated token-telemetry workstream: this issue is sequenced first (Claude host; `on_usage_detailed` already exists), it `blocks` FEAT-2123 (Codex/OpenCode extension of the same callback contract), and it `relates_to` EPIC-2456 whose F5 (OTel `gen_ai.usage.*` emission) and F6 (per-state cost attribution) consume the persisted usage rows.
