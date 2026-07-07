@@ -126,6 +126,25 @@ def _get_diff_stats() -> dict[str, int] | None:
     return None
 
 
+def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
+    """Append one JSONL row and durably sync to disk before returning.
+
+    ``f.flush()`` drains Python's user-space buffer into the kernel; ``os.fsync``
+    then forces the kernel page cache to disk. Pairing both preserves the row
+    across SIGKILL (which Python cannot trap) — closing the audit-trail gap
+    surfaced by BUG-2501, where ``events.jsonl`` ended short of the actual
+    transition count when a loop was hard-killed.
+
+    Performance: per-call ``os.fsync()`` is ~1–10 ms on SSD. Acceptable for
+    FSM run-audit JSONL writers, which append at most once per state
+    transition.
+    """
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
 def _read_pid_file(pid_file: Path) -> int | None:
     """Read and validate a PID file, returning the PID or None."""
     if not pid_file.exists():
@@ -428,8 +447,7 @@ class StatePersistence:
         Args:
             event: Event dictionary to append
         """
-        with open(self.events_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event) + "\n")
+        _append_jsonl(self.events_file, event)
 
     def read_events(self) -> list[dict[str, Any]]:
         """Read all events from file.
@@ -693,8 +711,7 @@ class PersistentExecutor:
                     "model": event.get("model", "unknown"),
                     "timestamp": event.get("ts", ""),
                 }
-                with open(usage_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry) + "\n")
+                _append_jsonl(usage_path, entry)
 
         # Append shared message to messages.jsonl when a state appends to the log.
         if event_type == "messages_append":
@@ -707,8 +724,7 @@ class PersistentExecutor:
                     "message": event.get("message", ""),
                     "timestamp": event.get("ts", ""),
                 }
-                with open(messages_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry) + "\n")
+                _append_jsonl(messages_path, entry)
 
         # Save state after state transitions
         if event_type in ("state_enter", "loop_complete", "baseline_complete"):
@@ -773,8 +789,7 @@ class PersistentExecutor:
             "diff_stats": _get_diff_stats(),
             "agreed": agreed,
         }
-        with open(self.persistence.meta_eval_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        _append_jsonl(self.persistence.meta_eval_file, entry)
 
     def _save_state(self) -> None:
         """Save current executor state to file."""

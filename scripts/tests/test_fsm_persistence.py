@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -326,6 +327,102 @@ class TestStatePersistence:
         persistence = StatePersistence("test-loop", tmp_path / "nonexistent_dir")
         with pytest.raises(FileNotFoundError):
             persistence.append_event({"type": "test"})
+
+    def test_append_event_fsyncs_after_write(
+        self, tmp_loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """append_event calls f.flush() + os.fsync() so SIGKILL preserves the row.
+
+        Closes the audit-trail durability gap surfaced by BUG-2501: without
+        fsync, the kernel page cache can lose the just-written event when
+        the loop is hard-killed before the OS reclaims buffers.
+        """
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        fsync_mock = MagicMock()
+        monkeypatch.setattr(
+            "little_loops.fsm.persistence.os.fsync", fsync_mock
+        )
+
+        persistence.append_event({"event": "loop_start", "ts": "x"})
+
+        assert fsync_mock.call_count == 1
+        # The argument must be the integer fileno of the just-opened file.
+        args, _ = fsync_mock.call_args
+        assert isinstance(args[0], int)
+
+    def test_append_event_calls_flush_then_fsync(
+        self, tmp_loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """append_event issues f.flush() before os.fsync() (correct ordering).
+
+        Order matters: flush drains the Python user-space buffer to the
+        kernel; only then does fsync have anything to flush from the
+        kernel to disk. Reversed calls would silently fsync stale data.
+        """
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        # Track call ordering relative to fsync.
+        order: list[str] = []
+
+        real_open = persistence.open if hasattr(persistence, "open") else open
+
+        class _TrackingFile:
+            def __init__(self, real: Any) -> None:
+                self._real = real
+
+            def __enter__(self) -> _TrackingFile:
+                self._cm = self._real.__enter__()
+                self._inner = self._cm
+                return self
+
+            def __exit__(self, *exc: Any) -> Any:
+                return self._cm.__exit__(*exc)
+
+            def write(self, s: str) -> int:
+                return self._inner.write(s)
+
+            def flush(self) -> None:
+                order.append("flush")
+                return self._inner.flush()
+
+            def fileno(self) -> int:
+                return self._inner.fileno()
+
+        def _patched_open(path: Any, mode: str = "r", *a: Any, **kw: Any) -> _TrackingFile:
+            return _TrackingFile(real_open(path, mode, *a, **kw))
+
+        def _fsync(fd: int) -> None:
+            order.append("fsync")
+
+        monkeypatch.setattr("builtins.open", _patched_open)
+        monkeypatch.setattr("little_loops.fsm.persistence.os.fsync", _fsync)
+
+        persistence.append_event({"event": "loop_start", "ts": "x"})
+
+        assert order == ["flush", "fsync"], f"got {order}"
+
+    def test_append_event_visible_to_separate_fd(self, tmp_loops_dir: Path) -> None:
+        """A separate file descriptor opened after append_event sees the row.
+
+        Closes the kernel-buffer-lag gap: without per-event fsync, an outside
+        reader can see an empty file (or short file) even after append_event
+        returned successfully. Opening from a fresh fd after the helper
+        returns is the user-visible symptom that fsync is needed.
+        """
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        for i in range(3):
+            persistence.append_event({"event": "loop_start", "i": i})
+
+            with open(persistence.events_file, encoding="utf-8") as f:
+                lines = [line for line in f if line.strip()]
+            assert len(lines) == i + 1, (
+                f"after {i + 1} append(s), separate fd saw {len(lines)} lines"
+            )
 
     def test_read_events_returns_empty_if_missing(self, tmp_loops_dir: Path) -> None:
         """read_events() returns empty list if no file exists."""
