@@ -3,9 +3,10 @@ id: BUG-2519
 title: autodev `check_decision_before_size_review` shares BUG-2513's `on_success`-coupled
   decision-gate defect
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-07T14:50:00Z'
+completed_at: 2026-07-07 17:37:31+00:00
 discovered_date: '2026-07-07'
 discovered_by: capture-issue
 relates_to:
@@ -505,6 +506,7 @@ phantom — do not edit the guide as part of this fix.
 **Open** | Created: 2026-07-07 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-07T17:37:31 - `4aed3ac5-0895-49aa-aa34-a8f2edab05fb.jsonl`
 - `/ll:confidence-check` - 2026-07-07T17:00:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
 - `/ll:wire-issue` - 2026-07-07T16:49:54 - `1d8b1b50-b1df-43ef-aca6-e22349113bf5.jsonl`
 - `/ll:decide-issue` - 2026-07-07T16:38:20 - `8c62cce3-d86e-4ab6-b9a3-c43dfd5f7231.jsonl`

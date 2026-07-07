@@ -2842,6 +2842,18 @@ class TestAutodevLoop:
             f"recheck_scores.on_no should be 'check_decision_before_size_review', got {state.get('on_no')!r}"
         )
 
+    def test_recheck_scores_on_error_routes_to_check_decision_before_size_review(
+        self, data: dict
+    ) -> None:
+        """BUG-2519: recheck_scores.on_error (check-readiness failure) must route to
+        check_decision_before_size_review — closes the inbound-edge symmetry gap with
+        the on_no edge covered at line 2836."""
+        state = data["states"].get("recheck_scores", {})
+        assert state.get("on_error") == "check_decision_before_size_review", (
+            f"recheck_scores.on_error should be 'check_decision_before_size_review', "
+            f"got {state.get('on_error')!r}"
+        )
+
     def test_check_decision_before_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
         """check_decision_before_size_review must use shell_exit fragment to route on exit code."""
         state = data["states"].get("check_decision_before_size_review", {})
@@ -2865,6 +2877,18 @@ class TestAutodevLoop:
         state = data["states"].get("check_decision_before_size_review", {})
         assert state.get("on_no") == "run_size_review", (
             f"check_decision_before_size_review.on_no should be 'run_size_review', got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_error_routes_to_run_size_review(
+        self, data: dict
+    ) -> None:
+        """BUG-2519: check_decision_before_size_review must define on_error to close the latent
+        dead-end (shell_exit exit_code 2 returns None from _route). Mirrors
+        check_decision_after_refine.on_error precedent at autodev.yaml:173."""
+        state = data["states"].get("check_decision_before_size_review", {})
+        assert state.get("on_error") == "run_size_review", (
+            f"check_decision_before_size_review.on_error should be 'run_size_review', "
+            f"got {state.get('on_error')!r}"
         )
 
     def test_triage_outcome_failure_uses_shell_exit_fragment(self, data: dict) -> None:

@@ -558,13 +558,18 @@ states:
     on_error: check_decision_before_size_review
 
   check_decision_before_size_review:
-    # Gate before size-review: if decision_needed=true, route to run_decide so
-    # an unresolved design decision is resolved before decomposition is attempted.
-    # Mirrors decide_current logic; on_no falls through to run_size_review.
+    # Defense-in-depth for the pre-size-review path. Reachable only from
+    # recheck_scores.on_no / recheck_scores.on_error (autodev.yaml:557-558)
+    # when decision_needed was added during refine (e.g., a future decide
+    # hook). The upstream check_decision_at_dequeue (BUG-2513) catches
+    # every pre-refine decision_needed:true issue. Mirrors the
+    # check_decision_after_refine defense-in-depth precedent. Originally
+    # added by BUG-1277; on_error closes the latent dead-end BUG-2519.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
     on_yes: run_decide
     on_no: run_size_review
+    on_error: run_size_review
 
   triage_outcome_failure:
     # Diagnose why outcome_confidence failed before routing to size-review.

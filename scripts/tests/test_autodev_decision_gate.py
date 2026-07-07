@@ -299,3 +299,157 @@ class TestAutodevValidatesAfterFix:
         assert "check_decision_at_dequeue" in fsm.states, (
             "check_decision_at_dequeue state not present after load_and_validate"
         )
+
+
+class TestCheckDecisionBeforeSizeReviewStructural:
+    """BUG-2519: structural assertions on the pre-size-review decision gate.
+
+    Mirrors ``TestCheckDecisionAtDequeueStructural`` (lines 101-184) for the
+    sibling gate. Most fields are covered in ``test_builtin_loops.py``; only
+    the new ``on_error`` assertion is unique to this class.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_check_decision_before_size_review_state_exists(
+        self, data: dict[str, Any]
+    ) -> None:
+        """``check_decision_before_size_review`` must exist in autodev.yaml
+        (BUG-1277 origin; BUG-2519 preserves it as defense-in-depth)."""
+        states = data.get("states", {})
+        assert "check_decision_before_size_review" in states, (
+            "check_decision_before_size_review state missing from autodev.yaml — "
+            "BUG-2519: pre-size-review decision gate must remain for flags added "
+            "during refine"
+        )
+
+    def test_check_decision_before_size_review_uses_check_flag_predicate(
+        self, data: dict[str, Any]
+    ) -> None:
+        """The state must call ``ll-issues check-flag <id> decision_needed``."""
+        state = data["states"]["check_decision_before_size_review"]
+        action = state.get("action", "")
+        assert "ll-issues check-flag" in action, (
+            f"check_decision_before_size_review.action must call 'll-issues check-flag', "
+            f"got {action!r}"
+        )
+        assert "decision_needed" in action, (
+            f"check_decision_before_size_review.action must check the decision_needed "
+            f"frontmatter field, got {action!r}"
+        )
+
+    def test_check_decision_before_size_review_uses_shell_exit_fragment(
+        self, data: dict[str, Any]
+    ) -> None:
+        """The state must use ``shell_exit`` fragment to route on exit code."""
+        state = data["states"]["check_decision_before_size_review"]
+        assert state.get("fragment") == "shell_exit", (
+            f"check_decision_before_size_review.fragment should be 'shell_exit', "
+            f"got {state.get('fragment')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_yes_routes_to_run_decide(
+        self, data: dict[str, Any]
+    ) -> None:
+        """decision_needed=true must route to run_decide."""
+        state = data["states"]["check_decision_before_size_review"]
+        assert state.get("on_yes") == "run_decide", (
+            f"check_decision_before_size_review.on_yes should be 'run_decide', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_no_routes_to_run_size_review(
+        self, data: dict[str, Any]
+    ) -> None:
+        """decision_needed=false (or absent) must route to run_size_review."""
+        state = data["states"]["check_decision_before_size_review"]
+        assert state.get("on_no") == "run_size_review", (
+            f"check_decision_before_size_review.on_no should be 'run_size_review', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_before_size_review_on_error_routes_to_run_size_review(
+        self, data: dict[str, Any]
+    ) -> None:
+        """BUG-2519 (Option B fix): ``ll-issues check-flag`` exit_code 2 (e.g. issue
+        missing) must fall through to ``run_size_review`` rather than dead-ending the
+        FSM. Mirrors the sibling ``check_decision_after_refine.on_error: check_passed``
+        precedent at autodev.yaml:173."""
+        state = data["states"]["check_decision_before_size_review"]
+        assert state.get("on_error") == "run_size_review", (
+            f"check_decision_before_size_review.on_error should be 'run_size_review' "
+            f"(BUG-2519: close latent dead-end), got {state.get('on_error')!r}"
+        )
+
+
+class TestCheckDecisionBeforeSizeReviewRouting:
+    """BUG-2519: FSMExecutor-driven assertion on the gate's error-fallthrough.
+
+    Drives ``recheck_scores.on_error → check_decision_before_size_review`` with
+    a check-flag error exit_code, and asserts ``run_size_review`` is reached
+    (not ``run_decide``) — closing the latent dead-end at the FSM-execution
+    layer, not just the YAML-shape layer.
+    """
+
+    @pytest.fixture
+    def size_review_chain_fsm(self) -> Any:
+        """Minimal autodev-shaped FSM: recheck_scores → check_decision_before_size_review
+        → run_decide (on_yes) | run_size_review (on_no / on_error).
+
+        Mirrors the decision_chain_fsm fixture from BUG-2513 but anchored on the
+        pre-size-review path.
+        """
+        return _loop(
+            name="autodev-size-review-decision-gate-mini",
+            initial="recheck_scores",
+            states={
+                "recheck_scores": _state(
+                    action="ll-issues check-readiness BUG-2501 --readiness 85 --outcome 75",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="decide_current",
+                    on_no="check_decision_before_size_review",
+                    on_error="check_decision_before_size_review",
+                ),
+                "check_decision_before_size_review": _state(
+                    action="ll-issues check-flag BUG-2501 decision_needed",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="run_decide",
+                    on_no="run_size_review",
+                    on_error="run_size_review",
+                ),
+                "decide_current": _state(action="true", action_type="shell", next="done"),
+                "run_decide": _state(action="true", action_type="shell", next="done"),
+                "run_size_review": _state(action="true", action_type="shell", next="done"),
+                "done": _state(terminal=True),
+            },
+        )
+
+    def test_check_flag_error_falls_through_to_run_size_review(
+        self, size_review_chain_fsm: Any
+    ) -> None:
+        """BUG-2519: When recheck_scores.on_error routes into
+        check_decision_before_size_review AND check-flag exits with code 2
+        (issue not found), the FSM must reach run_size_review rather than
+        dead-ending — proving the new on_error route closes the silent
+        termination defect at the executor layer."""
+        runner = _StubRunner(
+            results=[
+                ("ll-issues check-readiness", {"exit_code": 2, "stderr": "issue not found"}),
+                ("ll-issues check-flag", {"exit_code": 2, "stderr": "issue not found"}),
+            ]
+        )
+
+        result, visited = _run_decision_chain(size_review_chain_fsm, runner)
+
+        assert "run_size_review" in visited, (
+            f"run_size_review must be reached on check-flag error (BUG-2519: "
+            f"close latent dead-end); visited={visited!r}"
+        )
+        assert "run_decide" not in visited, (
+            f"run_decide must NOT be reached when decision_needed is unknown due "
+            f"to check-flag error; visited={visited!r}"
+        )
