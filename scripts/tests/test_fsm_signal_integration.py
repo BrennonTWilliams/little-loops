@@ -34,7 +34,12 @@ from typing import Any
 
 import pytest
 
-pytestmark = pytest.mark.integration
+# BUG-2523: these tests spawn a real `ll-loop run` subprocess, deliver SIGINT,
+# and wait on a hard `proc.wait(timeout=10.0)`. Under xdist worker contention
+# the subprocess's signal handler can be starved past 10s, surfacing as
+# `subprocess.TimeoutExpired`. `pytest_collection_modifyitems` in
+# `scripts/tests/conftest.py` skips `no_parallel`-marked items on workers.
+pytestmark = [pytest.mark.integration, pytest.mark.no_parallel]
 
 
 # ---------------------------------------------------------------------------

@@ -748,6 +748,26 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 
 ---
 
+## Test Suite Issues
+
+### xdist flake: subprocess signal-handling test times out
+
+**Symptom**: `python -m pytest scripts/tests/ -n logical` (or `-n auto`) reports `subprocess.TimeoutExpired` from `test_fsm_signal_integration.py::TestSubprocessSignalIntegration::test_sigint_archives_audit_trail` (or `test_second_signal_force_exit_archives`). The same test passes in 1.25s when run in isolation.
+
+**Cause**: The test spawns a real `ll-loop run` subprocess, delivers SIGINT, and waits on a hard `proc.wait(timeout=10.0)`. Under xdist worker contention (`scripts/tests/conftest.py::pytest_xdist_auto_num_workers` spawns ~`cpus // 2` workers), 7 workers competing for the same cores can starve the spawned subprocess's SIGINT handler past its 10s wait. Raising the timeout is a band-aid — the structural fix is the `@pytest.mark.no_parallel` marker so the test only runs on the controller or in a serial `-n 0` invocation.
+
+**Solution**: Both `TestSubprocessSignalIntegration` tests are already annotated `@pytest.mark.no_parallel` (BUG-2523). `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips them on xdist workers. The tests still run — they just don't share cores with six other pytest invocations.
+
+When adding **new** subprocess + signal-handling tests:
+
+1. Apply `@pytest.mark.no_parallel` at module scope (`pytestmark = [pytest.mark.integration, pytest.mark.no_parallel]`) or per-test.
+2. Do **not** rely on a longer subprocess timeout — under xdist load the latency scales with worker count, not with a fixed wait budget.
+3. Run the full suite (`python -m pytest scripts/tests/`) to verify the test is skipped cleanly on workers and passes on the controller.
+
+See `.issues/bugs/P2-BUG-2523-sigint-subprocess-test-flakes-under-xdist.md` for the original analysis and the BUG-2524 sibling issue (`TestRateLimitCircuitIntegration` at `scripts/tests/test_fsm_executor.py`).
+
+---
+
 ## Loop Issues
 
 ### Scope conflict blocks `ll-loop run` after an interrupted loop

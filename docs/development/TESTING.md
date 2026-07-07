@@ -1032,6 +1032,7 @@ Verify the line is exactly in `exclude_lines` configuration.
 | `@pytest.mark.integration` | Integration test |
 | `@pytest.mark.slow` | Slow-running test |
 | `@pytest.mark.conformance` | Host conformance test (see `conformance/`) |
+| `@pytest.mark.no_parallel` | Must not run on xdist workers (subprocess signal-handling, timing-sensitive); `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips on workers — runs on the controller or in a serial `-n 0` invocation |
 
 ### Key Fixtures
 

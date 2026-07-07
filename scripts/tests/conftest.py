@@ -74,6 +74,33 @@ def pytest_configure(config: pytest.Config) -> None:
         pass
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip ``no_parallel``-marked tests on xdist workers (BUG-2523).
+
+    Some tests are timing-sensitive (e.g. ``subprocess.Popen`` + ``os.kill(SIGINT)``
+    + hard ``proc.wait(timeout=...)`` in
+    ``scripts/tests/test_fsm_signal_integration.py``) and flake under xdist
+    worker contention: 7 workers competing for the same cores can starve the
+    spawned loop subprocess's SIGINT handler past its 10s wait, surfacing as
+    ``subprocess.TimeoutExpired``. The structural fix is to skip the test on
+    workers so it only runs on the controller (or in a serial ``-n 0`` run);
+    the test still runs — just on a process that doesn't share cores with
+    six other pytest invocations.
+
+    Detection idiom mirrors
+    ``scripts/little_loops/pytest_history_plugin.py:147-150``
+    (``hasattr(config, 'workerinput') and config.workerinput``) — the same
+    pattern proven correct by ``scripts/tests/test_pytest_history_plugin.py:62-71``.
+    """
+    if not (hasattr(config, "workerinput") and config.workerinput):
+        # Controller (or single-process run) — let marked tests run.
+        return
+    skip_marker = pytest.mark.skip(reason="no_parallel: cannot run on xdist workers")
+    for item in items:
+        if "no_parallel" in item.keywords:
+            item.add_marker(skip_marker)
+
+
 # =============================================================================
 # Snapshot Testing Helpers
 # =============================================================================

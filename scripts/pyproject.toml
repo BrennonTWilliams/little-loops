@@ -180,6 +180,7 @@ markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow running (deselect with '-m \"not slow\"')",
     "conformance: marks tests as host conformance tests (deselect with '-m \"not conformance\"')",
+    "no_parallel: marks tests that must not run on xdist workers (subprocess signal-handling, timing-sensitive) — see scripts/tests/conftest.py",
 ]
 
 [tool.coverage.run]

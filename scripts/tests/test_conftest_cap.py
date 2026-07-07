@@ -131,3 +131,81 @@ class TestPytestConfigureNice:
         with patch("os.nice", side_effect=OSError("EPERM")):
             # Must not raise.
             conftest.pytest_configure(MagicMock())
+
+
+class TestNoParallelMarkerRouting:
+    """``pytest_collection_modifyitems`` skips ``no_parallel``-marked tests on
+    xdist workers (BUG-2523).
+
+    Behavior under test (see ``scripts/tests/conftest.py``):
+
+    - Controller (no ``workerinput`` attribute or falsy) → marked tests are
+      collected unchanged, no skip marker is added.
+    - xdist worker (``workerinput={"workerid": "gw0"}``) → each item with the
+      ``no_parallel`` keyword receives a ``pytest.mark.skip`` marker.
+    """
+
+    @staticmethod
+    def _make_item(*, marked: bool) -> MagicMock:
+        item = MagicMock()
+        item.keywords = {"no_parallel"} if marked else set()
+        return item
+
+    def test_xdist_worker_skips_no_parallel_item(self) -> None:
+        """On an xdist worker, a ``no_parallel``-marked item receives a skip marker."""
+        config = MagicMock()
+        config.workerinput = {"workerid": "gw0"}  # xdist-worker signal
+        item = self._make_item(marked=True)
+
+        conftest.pytest_collection_modifyitems(config, [item])
+
+        # At least one add_marker call must be a skip with the no_parallel reason.
+        skip_calls = [
+            call_args
+            for call_args in item.add_marker.call_args_list
+            if call_args.args
+            and isinstance(call_args.args[0], pytest.MarkDecorator)
+            and call_args.args[0].mark.name == "skip"
+            and "no_parallel" in call_args.args[0].mark.kwargs.get("reason", "")
+        ]
+        assert skip_calls, (
+            "expected no_parallel-marked item to receive a skip marker "
+            "on an xdist worker"
+        )
+
+    def test_xdist_worker_does_not_skip_unmarked_item(self) -> None:
+        """On an xdist worker, an unmarked item is left untouched."""
+        config = MagicMock()
+        config.workerinput = {"workerid": "gw0"}
+        item = self._make_item(marked=False)
+
+        conftest.pytest_collection_modifyitems(config, [item])
+
+        item.add_marker.assert_not_called()
+
+    def test_controller_does_not_skip_no_parallel_item(self) -> None:
+        """On the controller (no ``workerinput``), no_parallel tests still run.
+
+        The hook returns early without mutating items; the tests run on the
+        controller process (single-process or ``-n 0``).
+        """
+        # No `workerinput` attribute at all → controller.
+        config = MagicMock(spec=["pluginmanager"])
+        assert not hasattr(config, "workerinput"), (
+            "test setup: controller config must not expose workerinput"
+        )
+        item = self._make_item(marked=True)
+
+        conftest.pytest_collection_modifyitems(config, [item])
+
+        item.add_marker.assert_not_called()
+
+    def test_controller_with_falsy_workerinput_does_not_skip(self) -> None:
+        """A ``workerinput`` attribute set to a falsy value behaves like a controller."""
+        config = MagicMock()
+        config.workerinput = None  # attribute exists but is falsy
+        item = self._make_item(marked=True)
+
+        conftest.pytest_collection_modifyitems(config, [item])
+
+        item.add_marker.assert_not_called()
