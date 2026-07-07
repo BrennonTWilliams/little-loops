@@ -403,6 +403,33 @@
           "type": "string",
           "description": "Git remote name used for fetch/pull operations in parallel runs, and for push when push_feature_branches is true. Use if your remote is not named 'origin'.",
           "default": "origin"
+        },
+        "epic_branches": {
+          "type": "object",
+          "description": "Per-EPIC integration branch configuration for ll-parallel/ll-sprint (FEAT-2447). When enabled, children of a single EPIC coalesce onto a shared epic/<EPIC-ID>-<slug> branch instead of the default per-worker parallel/<id>-<timestamp> branch.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Master switch — when false (default), today's per-worker branch behavior is preserved unchanged.",
+              "default": false
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Branch prefix; the integration branch name composes as '<prefix><EPIC-ID>-<slug>'.",
+              "default": "epic/"
+            },
+            "merge_to_base_on_complete": {
+              "type": "boolean",
+              "description": "When true (default), the EPIC integration branch is itself merged back to base_branch after the EPIC's last child completes.",
+              "default": true
+            },
+            "open_pr": {
+              "type": "boolean",
+              "description": "When true, open a PR for the EPIC branch via the gh CLI on completion. Requires gh to be installed and authenticated.",
+              "default": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

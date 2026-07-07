@@ -37,6 +37,31 @@ class AutomationConfig:
 
 
 @dataclass
+class EpicBranchesConfig:
+    """Per-EPIC integration branch configuration (FEAT-2447).
+
+    Mirrors the structure of ``little_loops.parallel.types.EpicBranchesConfig``
+    for the automation-side dataclass. Keeps automation and runtime configs
+    aligned so config-file users can set ``parallel.epic_branches.*`` once.
+    """
+
+    enabled: bool = False
+    prefix: str = "epic/"
+    merge_to_base_on_complete: bool = True
+    open_pr: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EpicBranchesConfig:
+        """Create EpicBranchesConfig from a dict."""
+        return cls(
+            enabled=data.get("enabled", False),
+            prefix=data.get("prefix", "epic/"),
+            merge_to_base_on_complete=data.get("merge_to_base_on_complete", True),
+            open_pr=data.get("open_pr", False),
+        )
+
+
+@dataclass
 class ParallelAutomationConfig:
     """Parallel automation configuration using composition.
 
@@ -62,6 +87,8 @@ class ParallelAutomationConfig:
     # branch (origin/HEAD -> current branch -> "main") in that case (BUG-2323).
     base_branch: str | None = None
     remote_name: str = "origin"
+    # Per-EPIC integration branch configuration (FEAT-2447)
+    epic_branches: EpicBranchesConfig = field(default_factory=EpicBranchesConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
@@ -97,6 +124,7 @@ class ParallelAutomationConfig:
             open_pr_for_feature_branches=data.get("open_pr_for_feature_branches", False),
             base_branch=data.get("base_branch"),
             remote_name=data.get("remote_name", "origin"),
+            epic_branches=EpicBranchesConfig.from_dict(data.get("epic_branches", {})),
         )
 
 

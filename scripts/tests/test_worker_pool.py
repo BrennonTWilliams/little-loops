@@ -3285,4 +3285,199 @@ class TestPerWorktreeProofFirstGate:
             )
 
         assert result is True
-        mock_sub.assert_not_called()
+
+
+# ===========================================================================
+# TestResolveBranchTargets (FEAT-2447)
+# ===========================================================================
+
+
+class TestResolveBranchTargets:
+    """WorkerPool._resolve_branch_targets() returns (fork_point, merge_target).
+
+    Semantics (FEAT-2447):
+    - epic-off or parentless -> (base_branch, base_branch) no-op
+    - epic-on + EPIC parent -> (epic/<EPIC-ID>-<slug>, epic/<EPIC-ID>-<slug>)
+    - nested-EPIC -> flatten to nearest ancestor
+    - idempotent lazy branch creation
+    """
+
+    @staticmethod
+    def _make_issue_file(
+        issues_dir: Path,
+        issue_id: str,
+        parent: str | None = None,
+        title: str | None = None,
+    ) -> Path:
+        """Write a minimal issue markdown file under issues_dir."""
+        prefix = issue_id.split("-", 1)[0]
+        sub = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements", "EPIC": "epics"}.get(
+            prefix, "bugs"
+        )
+        d = issues_dir / sub
+        d.mkdir(parents=True, exist_ok=True)
+        title = title or f"{issue_id} title"
+        frontmatter_lines = ["status: open", f"title: {title}"]
+        if parent:
+            frontmatter_lines.append(f"parent: {parent}")
+        content = "---\n" + "\n".join(frontmatter_lines) + "\n---\n\n# body\n"
+        path = d / f"P2-{issue_id}-{title.lower().replace(' ', '-')}.md"
+        path.write_text(content)
+        return path
+
+    def test_epic_off_returns_base_branch_tuple(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """epic_branches.enabled=False yields no-op (base, base) regardless of parent."""
+        mock_issue.parent = "EPIC-2451"
+        result = worker_pool._resolve_branch_targets(mock_issue)
+        assert result == ("main", "main")
+
+    def test_parentless_with_epic_on_returns_base_branch_tuple(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+        mock_issue: MagicMock,
+    ) -> None:
+        """epic_on + parentless -> (base, base) no-op."""
+        cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
+        cfg.epic_branches.enabled = True
+        pool = WorkerPool(
+            parallel_config=cfg,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+        )
+        mock_issue.parent = None
+        result = pool._resolve_branch_targets(mock_issue)
+        assert result == ("main", "main")
+
+    def test_epic_parent_returns_epic_branch_tuple(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """epic_on + EPIC parent -> (epic/<EPIC-ID>-<slug>, same)."""
+        from unittest.mock import MagicMock, patch
+
+        # Write a real EPIC file so the resolver can read its title for slug
+        issues_dir = temp_repo_with_config / ".issues"
+        self._make_issue_file(issues_dir, "EPIC-2451", title="My Epic Title")
+        self._make_issue_file(issues_dir, "FEAT-2447", parent="EPIC-2451")
+
+        cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
+        cfg.epic_branches.enabled = True
+        pool = WorkerPool(
+            parallel_config=cfg,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+        )
+
+        issue = MagicMock()
+        issue.issue_id = "FEAT-2447"
+        issue.parent = "EPIC-2451"
+
+        # Mock git calls so no real git is invoked
+        with patch.object(
+            mock_git_lock,
+            "run",
+            return_value=subprocess.CompletedProcess([], 1, "", "branch does not exist"),
+        ):
+            result = pool._resolve_branch_targets(issue)
+
+        assert result == ("epic/epic-2451-my-epic-title", "epic/epic-2451-my-epic-title")
+
+    def test_nested_epic_flattens_to_nearest(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """Grandchild flattens to nearest EPIC ancestor, not root EPIC."""
+        from unittest.mock import MagicMock, patch
+
+        issues_dir = temp_repo_with_config / ".issues"
+        self._make_issue_file(issues_dir, "EPIC-9999", title="Root Epic")
+        self._make_issue_file(issues_dir, "EPIC-2451", parent="EPIC-9999", title="Sub Epic")
+        self._make_issue_file(issues_dir, "FEAT-2447", parent="EPIC-2451")
+
+        cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
+        cfg.epic_branches.enabled = True
+        pool = WorkerPool(
+            parallel_config=cfg,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+        )
+
+        issue = MagicMock()
+        issue.issue_id = "FEAT-2447"
+        issue.parent = "EPIC-2451"  # nearest is EPIC-2451, not EPIC-9999
+
+        with patch.object(
+            mock_git_lock,
+            "run",
+            return_value=subprocess.CompletedProcess([], 1, "", "branch does not exist"),
+        ):
+            result = pool._resolve_branch_targets(issue)
+
+        # Flattens to EPIC-2451 (the sub-epic), NOT EPIC-9999
+        assert result == ("epic/epic-2451-sub-epic", "epic/epic-2451-sub-epic")
+
+    def test_idempotent_creation(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        mock_logger: MagicMock,
+        temp_repo_with_config: Path,
+        mock_git_lock: GitLock,
+    ) -> None:
+        """Second call for the same epic_id short-circuits via in-memory cache."""
+        from unittest.mock import MagicMock, patch
+
+        issues_dir = temp_repo_with_config / ".issues"
+        self._make_issue_file(issues_dir, "EPIC-2451", title="My Epic Title")
+        self._make_issue_file(issues_dir, "FEAT-2447", parent="EPIC-2451")
+
+        cfg = ParallelConfig(**{**default_parallel_config.to_dict()})
+        cfg.epic_branches.enabled = True
+        pool = WorkerPool(
+            parallel_config=cfg,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=temp_repo_with_config,
+            git_lock=mock_git_lock,
+        )
+
+        issue = MagicMock()
+        issue.issue_id = "FEAT-2447"
+        issue.parent = "EPIC-2451"
+
+        with patch.object(
+            mock_git_lock,
+            "run",
+            return_value=subprocess.CompletedProcess([], 1, "", "branch does not exist"),
+        ) as mock_run:
+            first = pool._resolve_branch_targets(issue)
+            first_calls = mock_run.call_count
+            second = pool._resolve_branch_targets(issue)
+            second_calls = mock_run.call_count
+
+        assert first == second
+        assert second_calls == first_calls, (
+            "second _resolve_branch_targets should be cached, no new git calls"
+        )

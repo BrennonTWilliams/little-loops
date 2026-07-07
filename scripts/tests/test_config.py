@@ -31,6 +31,7 @@ from little_loops.config import (
     DependencyMappingConfig,
     DesignTokensConfig,
     DuplicateDetectionConfig,
+    EpicBranchesConfig,
     EventsConfig,
     EvolutionConfig,
     GitHubSyncConfig,
@@ -411,6 +412,41 @@ class TestParallelAutomationConfig:
         config = ParallelAutomationConfig.from_dict({"stream_output": True})
         assert config.base.stream_output is True
 
+    # EpicBranchesConfig integration (FEAT-2447)
+    def test_epic_branches_defaults(self) -> None:
+        """EpicBranchesConfig defaults to all-False / epic/ prefix."""
+        config = ParallelAutomationConfig.from_dict({})
+        assert config.epic_branches.enabled is False
+        assert config.epic_branches.prefix == "epic/"
+        assert config.epic_branches.merge_to_base_on_complete is True
+        assert config.epic_branches.open_pr is False
+
+    def test_epic_branches_from_dict(self) -> None:
+        """EpicBranchesConfig parses all 4 sub-keys from data."""
+        data = {
+            "epic_branches": {
+                "enabled": True,
+                "prefix": "epic-/",
+                "merge_to_base_on_complete": False,
+                "open_pr": True,
+            }
+        }
+        config = ParallelAutomationConfig.from_dict(data)
+        assert config.epic_branches.enabled is True
+        assert config.epic_branches.prefix == "epic-/"
+        assert config.epic_branches.merge_to_base_on_complete is False
+        assert config.epic_branches.open_pr is True
+
+    def test_epic_branches_partial_dict_uses_defaults(self) -> None:
+        """Partial EpicBranchesConfig dict fills missing keys with defaults."""
+        config = ParallelAutomationConfig.from_dict(
+            {"epic_branches": {"enabled": True}}
+        )
+        assert config.epic_branches.enabled is True
+        assert config.epic_branches.prefix == "epic/"
+        assert config.epic_branches.merge_to_base_on_complete is True
+        assert config.epic_branches.open_pr is False
+
 
 class TestConfidenceGateConfig:
     """Tests for ConfidenceGateConfig dataclass."""
@@ -770,6 +806,13 @@ class TestBRConfig:
         assert "use_feature_branches" in parallel
         assert "remote_name" in parallel
 
+        # EpicBranchesConfig sub-block (FEAT-2447)
+        assert "epic_branches" in parallel
+        assert parallel["epic_branches"]["enabled"] is False
+        assert parallel["epic_branches"]["prefix"] == "epic/"
+        assert parallel["epic_branches"]["merge_to_base_on_complete"] is True
+        assert parallel["epic_branches"]["open_pr"] is False
+
     def test_to_dict_confidence_gate_schema_aligned_keys(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
@@ -921,6 +964,62 @@ class TestBRConfig:
         config = BRConfig(temp_project_dir)
         result = config.create_parallel_config()
         assert result.use_feature_branches is False
+
+    # EpicBranchesConfig passthrough (FEAT-2447)
+    def test_create_parallel_config_epic_branches_explicit_true(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Explicit epic_branches kwarg overrides config value."""
+        cfg = dict(sample_config)
+        cfg["parallel"] = dict(
+            sample_config["parallel"],
+            epic_branches={"enabled": False, "prefix": "epic/"},
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config(epic_branches=EpicBranchesConfig(enabled=True))
+        assert result.epic_branches.enabled is True
+
+    def test_create_parallel_config_epic_branches_explicit_false(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Explicit epic_branches=False overrides config's True."""
+        cfg = dict(sample_config)
+        cfg["parallel"] = dict(
+            sample_config["parallel"],
+            epic_branches={"enabled": True, "prefix": "epic/"},
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config(
+            epic_branches=EpicBranchesConfig(enabled=False)
+        )
+        assert result.epic_branches.enabled is False
+
+    def test_create_parallel_config_epic_branches_none_falls_back_to_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Omitting epic_branches kwarg falls back to config value."""
+        cfg = dict(sample_config)
+        cfg["parallel"] = dict(
+            sample_config["parallel"],
+            epic_branches={
+                "enabled": True,
+                "prefix": "fe/",
+                "merge_to_base_on_complete": False,
+                "open_pr": True,
+            },
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config()
+        assert result.epic_branches.enabled is True
+        assert result.epic_branches.prefix == "fe/"
+        assert result.epic_branches.merge_to_base_on_complete is False
+        assert result.epic_branches.open_pr is True
 
     def test_to_dict_excludes_deprecated_dirs(
         self, temp_project_dir: Path, sample_config: dict[str, Any]

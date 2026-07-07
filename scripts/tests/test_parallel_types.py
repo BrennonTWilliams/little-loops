@@ -18,6 +18,7 @@ import pytest
 
 from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.types import (
+    EpicBranchesConfig,
     MergeRequest,
     MergeStatus,
     OrchestratorState,
@@ -753,6 +754,11 @@ class TestParallelConfig:
         assert config.ignore_pending is False
         assert config.remote_name == "origin"
         assert config.use_feature_branches is False
+        # EpicBranchesConfig defaults (FEAT-2447)
+        assert config.epic_branches.enabled is False
+        assert config.epic_branches.prefix == "epic/"
+        assert config.epic_branches.merge_to_base_on_complete is True
+        assert config.epic_branches.open_pr is False
 
     def test_creation_with_custom_values(self) -> None:
         """ParallelConfig can be created with custom values."""
@@ -1025,9 +1031,24 @@ class TestParallelConfig:
             ignore_pending=True,
             base_branch="develop",
             remote_name="upstream",
+            epic_branches=EpicBranchesConfig(
+                enabled=True,
+                prefix="epic-/",
+                merge_to_base_on_complete=False,
+                open_pr=True,
+            ),
         )
 
         restored = ParallelConfig.from_dict(original.to_dict())
+
+        # EpicBranchesConfig round-trip (FEAT-2447)
+        assert restored.epic_branches.enabled == original.epic_branches.enabled
+        assert restored.epic_branches.prefix == original.epic_branches.prefix
+        assert (
+            restored.epic_branches.merge_to_base_on_complete
+            == original.epic_branches.merge_to_base_on_complete
+        )
+        assert restored.epic_branches.open_pr == original.epic_branches.open_pr
 
         assert restored.max_workers == original.max_workers
         assert restored.p0_sequential == original.p0_sequential

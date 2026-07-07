@@ -682,3 +682,31 @@ class TestConfigSchema:
         assert "reducible_signals" in signals_props
         assert "progress_signals" in signals_props
         assert "stuck_signals" in signals_props
+
+    def test_parallel_epic_branches_in_schema(self) -> None:
+        """parallel.epic_branches must be declared as a nested object (FEAT-2447).
+
+        The `parallel` block has additionalProperties: false, so epic_branches
+        must be explicitly declared or any config setting it will be rejected
+        by JSON Schema validation.
+        """
+        data = json.loads(CONFIG_SCHEMA.read_text())
+        parallel = data["properties"]["parallel"]
+        assert parallel.get("additionalProperties") is False, (
+            "parallel block is expected to have additionalProperties: false"
+        )
+        assert "epic_branches" in parallel["properties"], (
+            "parallel.epic_branches is not declared in config-schema.json; configs "
+            "using it will be rejected by additionalProperties: false"
+        )
+        eb = parallel["properties"]["epic_branches"]
+        assert eb["type"] == "object"
+        eb_props = eb["properties"]
+        assert eb_props["enabled"]["type"] == "boolean"
+        assert eb_props["enabled"]["default"] is False
+        assert eb_props["prefix"]["type"] == "string"
+        assert eb_props["prefix"]["default"] == "epic/"
+        assert eb_props["merge_to_base_on_complete"]["type"] == "boolean"
+        assert eb_props["merge_to_base_on_complete"]["default"] is True
+        assert eb_props["open_pr"]["type"] == "boolean"
+        assert eb_props["open_pr"]["default"] is False

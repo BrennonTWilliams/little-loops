@@ -4,8 +4,9 @@ title: "per-EPIC integration branch \u2014 config schema, dataclasses, resolver,
   \ serialization"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-02T22:30:00Z'
+completed_at: 2026-07-07 07:35:36+00:00
 discovered_date: 2026-07-02
 discovered_by: issue-size-review
 labels:
@@ -973,7 +974,55 @@ def _resolve_branch_targets(self, issue: IssueInfo) -> tuple[str, str]:
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P3
+**Done** | Created: 2026-07-02 | Completed: 2026-07-07 | Priority: P3
+
+## Resolution
+
+Implemented the foundation layer for per-EPIC integration branches (FEAT-2447):
+
+- **`EpicBranchesConfig` dataclass** added to `scripts/little_loops/parallel/types.py`
+  with 4 fields (`enabled`, `prefix`, `merge_to_base_on_complete`, `open_pr`) —
+  default OFF, fully backward compatible. Mirrored as
+  `EpicBranchesConfig` in `scripts/little_loops/config/automation.py` for the
+  config-file side. Re-exported from both `parallel/__init__.py` and
+  `config/__init__.py` `__all__`.
+- **`ParallelConfig.epic_branches`** field added with `to_dict`/`from_dict`
+  round-trip preservation and a `__post_init__` validator that converts
+  nested dicts (from kwargs-spread patterns) back to the dataclass.
+- **`BRConfig.create_parallel_config()`** wired with `epic_branches` kwarg
+  passthrough via a private `_build_parallel_epic_branches()` helper that
+  bridges the automation-side and runtime-side dataclasses.
+- **`BRConfig.to_dict()`** serializes `epic_branches` as a nested object
+  inside the `parallel` block (matches `commands.confidence_gate` precedent).
+- **`config-schema.json`** has `parallel.epic_branches` as a nested object
+  with `additionalProperties: false`, 4 sub-properties with defaults.
+- **9 project-type templates** stamped with `parallel.epic_branches: {"enabled": false}`
+  per Decision ARCHITECTURE-096 (Option A selected).
+- **`WorkerPool._resolve_branch_targets(issue)`** private method added with:
+  - no-op `(base, base)` return for epic-off or parentless issues,
+  - `(epic/<EPIC-ID>-<slug>, epic/<EPIC-ID>-<slug>)` for epic-on + EPIC parent,
+  - nearest-EPIC-ancestor flattening (cycle-guarded walk modeled on
+    `_find_epic_ancestor` in `cli/issues/list_cmd.py:195-203`),
+  - idempotent lazy branch creation via local `git rev-parse --verify`,
+    remote `git ls-remote --heads`, and `git branch <name> <base>`, all
+    routed through `self._git_lock.run()` and cached in
+    `self._epic_branches_created: set[str]`.
+- **Tests** added: 5 resolver cases in `TestResolveBranchTargets`, dataclass
+  default + roundtrip cases in `TestParallelConfig`, 3 cases in
+  `TestParallelAutomationConfig`, 3 cases for `BRConfig.create_parallel_config`
+  passthrough, schema presence test, templates stamp test.
+
+**Verification**: 14070 tests pass, 27 skipped; `ruff check` clean (2 pre-existing
+issues); `mypy` clean (3 pre-existing issues in unrelated files); full
+kwargs-spread audit sites (test_worker_pool, test_merge_coordinator,
+test_orchestrator, test_issue_workflow_integration, test_cli_e2e,
+test_cli_loop_worktree, test_subprocess_mocks, test_parallel_cli,
+test_issue_discovery) all pass without fixture edits.
+
+**Out of scope (deferred to FEAT-2448/2449/2450)**: `_setup_worktree()`
+wiring, `merge_coordinator.py` consumption, `WorkerResult.epic_branch` field,
+EPIC-completion merge logic, orchestrator/sprint-runner awareness, CLI flags
+(`--epic-branches`), TUI surface, configure skill updates, doc updates.
 
 ## Confidence Check Notes
 
@@ -989,6 +1038,7 @@ _Added by `/ll:confidence-check` on 2026-07-06_
 - **Verify during implementation: `feature_config = ParallelConfig(**default_parallel_config.to_dict(), "use_feature_branches": True)` at `scripts/tests/test_worker_pool.py:2201`** — once `to_dict()` includes `epic_branches`, the comparison diffs the full nested dict. Both configs use `default_factory` so default values should be equal; confirm with a test run.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-07T07:35:36Z - implementation session
 - `/ll:wire-issue` - 2026-07-07T04:41:11 - `08c3c392-5522-400b-a7aa-43391d6f41ee.jsonl`
 - `/ll:refine-issue` - 2026-07-07T04:36:04 - `95f88292-612e-4892-933e-81358f655580.jsonl`
 - `/ll:decide-issue` - 2026-07-07T04:22:00 - `8f30824a-c88d-4846-8634-8ea4b2ddbbb7.jsonl`

@@ -303,6 +303,32 @@ class PendingWorktreeInfo:
 
 
 @dataclass
+class EpicBranchesConfig:
+    """Per-EPIC integration branch configuration for ll-parallel/ll-sprint (FEAT-2447).
+
+    Children of a single EPIC coalesce their work onto a shared
+    ``epic/<EPIC-ID>-<slug>`` branch instead of the default
+    ``parallel/<id>-<timestamp>`` per-worker branch.
+
+    Attributes:
+        enabled: Master switch — when False (default), today's per-worker
+            branch behavior is preserved unchanged.
+        prefix: Branch prefix (default ``"epic/"``); the integration branch
+            name composes as ``f"{prefix}{epic_id.lower()}-{slug}"``.
+        merge_to_base_on_complete: When True (default), the EPIC integration
+            branch is itself merged back to ``base_branch`` after the EPIC's
+            last child completes.
+        open_pr: When True, open a PR for the EPIC branch via the gh CLI on
+            completion. Requires ``gh`` to be installed and authenticated.
+    """
+
+    enabled: bool = False
+    prefix: str = "epic/"
+    merge_to_base_on_complete: bool = True
+    open_pr: bool = False
+
+
+@dataclass
 class ParallelConfig:
     """Configuration for the parallel issue manager.
 
@@ -386,6 +412,15 @@ class ParallelConfig:
     base_branch: str = "main"
     # Git remote name for fetch/pull operations
     remote_name: str = "origin"
+    # Per-EPIC integration branch configuration (FEAT-2447)
+    epic_branches: EpicBranchesConfig = field(default_factory=EpicBranchesConfig)
+
+    def __post_init__(self) -> None:
+        # Coerce nested dict (from `to_dict()` / kwargs-spread patterns) back
+        # to EpicBranchesConfig so attribute access (`config.epic_branches.enabled`)
+        # works regardless of construction style.
+        if isinstance(self.epic_branches, dict):
+            self.epic_branches = EpicBranchesConfig(**self.epic_branches)
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready-issue command string.
@@ -466,6 +501,12 @@ class ParallelConfig:
             "skip_learning_gate": self.skip_learning_gate,
             "base_branch": self.base_branch,
             "remote_name": self.remote_name,
+            "epic_branches": {
+                "enabled": self.epic_branches.enabled,
+                "prefix": self.epic_branches.prefix,
+                "merge_to_base_on_complete": self.epic_branches.merge_to_base_on_complete,
+                "open_pr": self.epic_branches.open_pr,
+            },
         }
 
     @classmethod
@@ -512,4 +553,5 @@ class ParallelConfig:
             skip_learning_gate=data.get("skip_learning_gate", False),
             base_branch=data.get("base_branch", "main"),
             remote_name=data.get("remote_name", "origin"),
+            epic_branches=EpicBranchesConfig(**data.get("epic_branches", {})),
         )

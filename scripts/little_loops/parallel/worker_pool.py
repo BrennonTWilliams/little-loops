@@ -186,6 +186,8 @@ class WorkerPool:
         self._terminated_during_shutdown: set[str] = set()
         # Track worker processing stages for progress visibility (ENH-262)
         self._worker_stages: dict[str, WorkerStage] = {}
+        # Cache of EPIC integration branches already created/verified (FEAT-2447)
+        self._epic_branches_created: set[str] = set()
 
     def start(self) -> None:
         """Start the worker pool."""
@@ -1558,6 +1560,143 @@ class WorkerPool:
             f"cherry-picked to worktree branch"
         )
         return True
+
+    def _resolve_branch_targets(self, issue: IssueInfo) -> tuple[str, str]:
+        """Return ``(fork_point, merge_target)`` for ``issue`` (FEAT-2447).
+
+        Semantics:
+        - ``epic_branches.enabled is False`` or ``issue.parent is None``:
+          return ``(base_branch, base_branch)`` — no-op, identical to today's
+          behavior so ``merge_coordinator.py`` consumer sites remain unchanged.
+        - ``epic_branches.enabled is True`` and the issue has an EPIC ancestor:
+          return ``(epic/<EPIC-ID>-<slug>, epic/<EPIC-ID>-<slug>)``, flattened
+          to the **nearest** EPIC ancestor (cycle-guarded walk modeled on
+          ``cli/issues/list_cmd.py::_find_epic_ancestor``).
+
+        The branch is created lazily off ``base_branch`` on first call per
+        ``epic_id``; subsequent calls are idempotent via
+        ``self._epic_branches_created``.
+        """
+        base = self.parallel_config.base_branch
+        if not self.parallel_config.epic_branches.enabled:
+            return (base, base)
+        epic_id = self._find_nearest_epic_ancestor(issue)
+        if epic_id is None:
+            return (base, base)
+        slug = self._load_epic_slug(epic_id)
+        prefix = self.parallel_config.epic_branches.prefix
+        branch = f"{prefix}{epic_id.lower()}-{slug}"
+        self._ensure_epic_branch(branch)
+        return (branch, branch)
+
+    def _find_nearest_epic_ancestor(self, issue: IssueInfo) -> str | None:
+        """Walk ``issue.parent`` chain upward; return nearest ``EPIC-*`` ID or None.
+
+        Cycle-guarded via a ``seen`` set (mirrors the shape of
+        ``cli/issues/list_cmd.py::_find_epic_ancestor``). Stops at the first
+        ancestor whose ID starts with the ``EPIC`` prefix.
+        """
+        if not issue.parent:
+            return None
+        parent_map = self._build_parent_map()
+        seen: set[str] = set()
+        current: str | None = issue.parent
+        while current and current not in seen:
+            seen.add(current)
+            if current.split("-", 1)[0] == "EPIC":
+                return current
+            current = parent_map.get(current)
+        return None
+
+    def _build_parent_map(self) -> dict[str, str | None]:
+        """Build ``{issue_id: parent_id}`` by scanning ``.issues/`` markdown files.
+
+        Used by ``_find_nearest_epic_ancestor`` for the multi-hop parent walk.
+        Cached on the instance after first build.
+        """
+        cached = getattr(self, "_parent_map_cache", None)
+        if cached is not None:
+            return cached
+        from little_loops.issue_parser import IssueParser
+
+        parent_map: dict[str, str | None] = {}
+        issues_base = self.repo_path / ".issues"
+        if issues_base.is_dir():
+            parser = IssueParser(self.br_config)
+            for category_dir in issues_base.iterdir():
+                if not category_dir.is_dir():
+                    continue
+                for issue_file in category_dir.glob("*.md"):
+                    try:
+                        info = parser.parse_file(issue_file)
+                    except Exception:  # noqa: BLE001 — skip malformed files
+                        continue
+                    parent_map[info.issue_id] = info.parent
+        self._parent_map_cache = parent_map
+        return parent_map
+
+    def _load_epic_slug(self, epic_id: str) -> str:
+        """Return a slug for the EPIC, derived from its title or fallback to ID.
+
+        Slug source is the EPIC's title (per FEAT-2447 implementation guidance),
+        via the shared ``slugify()`` in ``little_loops.issue_parser``. If the EPIC
+        title cannot be resolved (file missing or malformed), fall back to a
+        slug of the EPIC ID alone (e.g. ``"epic-2451"``).
+        """
+        from little_loops.issue_parser import IssueParser, slugify
+
+        issues_base = self.repo_path / ".issues"
+        if issues_base.is_dir():
+            parser = IssueParser(self.br_config)
+            for category_dir in issues_base.iterdir():
+                if not category_dir.is_dir():
+                    continue
+                for issue_file in category_dir.glob(f"P?-{epic_id}-*.md"):
+                    try:
+                        info = parser.parse_file(issue_file)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if info.title:
+                        return slugify(info.title)
+        return epic_id.lower()
+
+    def _ensure_epic_branch(self, branch: str) -> None:
+        """Lazily create ``branch`` off ``base_branch`` if it does not exist yet.
+
+        Sequence (idempotent via ``self._epic_branches_created``):
+        1. In-memory cache hit -> return.
+        2. Local branch check (``git rev-parse --verify <branch>``) -> exists.
+        3. Remote branch check (``git ls-remote --heads <remote> <branch>``).
+        4. Create (``git branch <branch> <base>``).
+        """
+        if branch in self._epic_branches_created:
+            return
+        # 1. Local check
+        r = self._git_lock.run(
+            ["rev-parse", "--verify", branch],
+            cwd=self.repo_path,
+            timeout=10,
+        )
+        if r.returncode == 0:
+            self._epic_branches_created.add(branch)
+            return
+        # 2. Remote check
+        remote = self.parallel_config.remote_name
+        r = self._git_lock.run(
+            ["ls-remote", "--heads", remote, branch],
+            cwd=self.repo_path,
+            timeout=30,
+        )
+        if r.stdout and r.stdout.strip():
+            self._epic_branches_created.add(branch)
+            return
+        # 3. Create off base_branch
+        self._git_lock.run(
+            ["branch", branch, self.parallel_config.base_branch],
+            cwd=self.repo_path,
+            timeout=30,
+        )
+        self._epic_branches_created.add(branch)
 
     @property
     def active_count(self) -> int:

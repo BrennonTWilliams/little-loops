@@ -2619,3 +2619,42 @@ class TestMergeHelpers:
         (tmp_path / ".ll").mkdir()
         (tmp_path / ".ll" / "ll-config.json").write_text("{ not json")
         assert load_existing_config(tmp_path) == {}
+
+
+# ===========================================================================
+# TestProjectTypeTemplatesEpicBranchesStamp (FEAT-2447)
+# ===========================================================================
+
+
+class TestProjectTypeTemplatesEpicBranchesStamp:
+    """All 9 project-type templates must stamp `parallel.epic_branches: {enabled: false}`.
+
+    Decision ARCHITECTURE-096 mandates the stamp so that init-using projects
+    see the same defaults as config-file users. Mirrors the existing
+    `use_feature_branches: false` precedent.
+    """
+
+    def test_all_project_type_templates_have_epic_branches_stamp(self) -> None:
+        bundled = get_bundled_templates_dir()
+        project_templates = [
+            "typescript.json",
+            "python-generic.json",
+            "javascript.json",
+            "java-maven.json",
+            "java-gradle.json",
+            "rust.json",
+            "go.json",
+            "dotnet.json",
+            "generic.json",
+        ]
+        for name in project_templates:
+            path = bundled / name
+            assert path.exists(), f"Missing template: {path}"
+            data = json.loads(path.read_text())
+            assert "parallel" in data, f"{name}: missing parallel block"
+            assert "epic_branches" in data["parallel"], (
+                f"{name}: missing epic_branches stamp (FEAT-2447 / ARCHITECTURE-096)"
+            )
+            assert data["parallel"]["epic_branches"].get("enabled") is False, (
+                f"{name}: epic_branches.enabled should default to False"
+            )

@@ -16,6 +16,7 @@ from little_loops.config.automation import (
     AutomationConfig,
     CommandsConfig,
     DependencyMappingConfig,
+    EpicBranchesConfig,
     ParallelAutomationConfig,
 )
 from little_loops.config.cli import CliConfig, RefineStatusConfig
@@ -34,6 +35,7 @@ from little_loops.config.features import (
     SyncConfig,
 )
 from little_loops.config.orchestration import OrchestrationConfig
+from little_loops.parallel.types import EpicBranchesConfig as RuntimeEpicBranchesConfig
 from little_loops.parallel.types import ParallelConfig
 
 CONFIG_FILENAME = "ll-config.json"
@@ -434,6 +436,7 @@ class BRConfig:
         remote_name: str | None = None,
         use_feature_branches: bool | None = None,
         skip_learning_gate: bool = False,
+        epic_branches: EpicBranchesConfig | None = None,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -504,6 +507,30 @@ class BRConfig:
                 else (self._parallel.base_branch or "main")
             ),
             remote_name=remote_name if remote_name is not None else self._parallel.remote_name,
+            epic_branches=self._build_parallel_epic_branches(epic_branches),
+        )
+
+    def _build_parallel_epic_branches(
+        self,
+        override: EpicBranchesConfig | None,
+    ) -> RuntimeEpicBranchesConfig:
+        """Construct the runtime ``ParallelConfig``-side ``EpicBranchesConfig``.
+
+        The automation-side ``EpicBranchesConfig`` (``little_loops.config.automation``)
+        and the runtime-side ``EpicBranchesConfig`` (``little_loops.parallel.types``)
+        are independently declared dataclasses with identical fields; they are
+        not the same class, so a same-module ``EpicBranchesConfig`` import cannot
+        satisfy both call sites. This helper builds the runtime one from either
+        an explicit ``override`` or the automation config's stored value.
+
+        Kept as a private method to keep the conversion localized (FEAT-2447).
+        """
+        src = override if override is not None else self._parallel.epic_branches
+        return RuntimeEpicBranchesConfig(
+            enabled=src.enabled,
+            prefix=src.prefix,
+            merge_to_base_on_complete=src.merge_to_base_on_complete,
+            open_pr=src.open_pr,
         )
 
     @property
@@ -573,6 +600,12 @@ class BRConfig:
                 "open_pr_for_feature_branches": self._parallel.open_pr_for_feature_branches,
                 "base_branch": self._parallel.base_branch or "main",
                 "remote_name": self._parallel.remote_name,
+                "epic_branches": {
+                    "enabled": self._parallel.epic_branches.enabled,
+                    "prefix": self._parallel.epic_branches.prefix,
+                    "merge_to_base_on_complete": self._parallel.epic_branches.merge_to_base_on_complete,
+                    "open_pr": self._parallel.epic_branches.open_pr,
+                },
             },
             "commands": {
                 "pre_implement": self._commands.pre_implement,
