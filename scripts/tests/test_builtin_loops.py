@@ -1216,10 +1216,15 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_mark_wire_done_routes_to_confidence_check(self, data: dict) -> None:
-        """mark_wire_done.next must route to confidence_check."""
+        """mark_wire_done.next must route to check_decision_mid_wire (BUG-2528).
+
+        The mid-chain decision gate then routes to confidence_check on no.
+        Mirrors the check_decision_mid_refine rewire at line 1309.
+        """
         state = data["states"].get("mark_wire_done", {})
-        assert state.get("next") == "confidence_check", (
-            f"mark_wire_done.next should be 'confidence_check', got {state.get('next')!r}"
+        assert state.get("next") == "check_decision_mid_wire", (
+            f"mark_wire_done.next should be 'check_decision_mid_wire' (BUG-2528), "
+            f"got {state.get('next')!r}"
         )
 
     def test_wire_done_flag_initialized_in_resolve_issue(self, data: dict) -> None:
@@ -1306,18 +1311,127 @@ class TestRefineToReadyIssueSubLoop:
             "State 'snapshot_issue' should have been removed; iter-N/ snapshotting retired with restore_best"
         )
 
-    def test_refine_issue_next_is_check_wire_done(self, data: dict) -> None:
-        """refine_issue.next must route to check_wire_done (snapshot_issue removed by ENH-2364)."""
+    def test_refine_issue_next_is_check_decision_mid_refine(self, data: dict) -> None:
+        """refine_issue.next must route to check_decision_mid_refine (BUG-2528).
+
+        The mid-chain decision gate then routes to check_wire_done on no.
+        """
         state = data["states"].get("refine_issue", {})
-        assert state.get("next") == "check_wire_done", (
-            f"refine_issue.next should be 'check_wire_done', got {state.get('next')!r}"
+        assert state.get("next") == "check_decision_mid_refine", (
+            f"refine_issue.next should be 'check_decision_mid_refine' (BUG-2528), "
+            f"got {state.get('next')!r}"
         )
 
-    def test_refine_followup_next_is_check_wire_done(self, data: dict) -> None:
-        """refine_followup.next must route to check_wire_done (snapshot_issue removed by ENH-2364)."""
+    def test_refine_followup_next_is_check_decision_mid_refine(self, data: dict) -> None:
+        """refine_followup.next must route to check_decision_mid_refine (BUG-2528).
+
+        The mid-chain decision gate then routes to check_wire_done on no.
+        Identical routing to refine_issue.next — single consult per refine pass.
+        """
         state = data["states"].get("refine_followup", {})
-        assert state.get("next") == "check_wire_done", (
-            f"refine_followup.next should be 'check_wire_done', got {state.get('next')!r}"
+        assert state.get("next") == "check_decision_mid_refine", (
+            f"refine_followup.next should be 'check_decision_mid_refine' (BUG-2528), "
+            f"got {state.get('next')!r}"
+        )
+
+    # --- BUG-2528: mid-chain decision_needed gates ------------------------
+
+    def test_check_decision_mid_refine_state_exists(self, data: dict) -> None:
+        """check_decision_mid_refine state must exist as a mid-chain gate after refine (BUG-2528)."""
+        assert "check_decision_mid_refine" in data["states"], (
+            "State 'check_decision_mid_refine' not found in refine-to-ready-issue.yaml — "
+            "required so a decision_needed flag set by /ll:refine-issue short-circuits "
+            "before the remaining wire + confidence_check invocations (BUG-2528)"
+        )
+
+    def test_check_decision_mid_refine_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_decision_mid_refine must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_decision_mid_refine", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_decision_mid_refine.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_decision_mid_refine_action_consults_decision_needed(self, data: dict) -> None:
+        """check_decision_mid_refine.action must run ll-issues check-flag decision_needed."""
+        state = data["states"].get("check_decision_mid_refine", {})
+        action = state.get("action", "")
+        assert "ll-issues check-flag" in action and "decision_needed" in action, (
+            f"check_decision_mid_refine.action should run 'll-issues check-flag ... decision_needed', "
+            f"got {action!r}"
+        )
+
+    def test_check_decision_mid_refine_on_yes_routes_to_done(self, data: dict) -> None:
+        """check_decision_mid_refine.on_yes (decision_needed=true) must exit via done
+        so the outer autodev loop's check_decision_after_refine routes to run_decide."""
+        state = data["states"].get("check_decision_mid_refine", {})
+        assert state.get("on_yes") == "done", (
+            f"check_decision_mid_refine.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_decision_mid_refine_on_no_routes_to_check_wire_done(self, data: dict) -> None:
+        """check_decision_mid_refine.on_no must route to check_wire_done (no flag → fall through)."""
+        state = data["states"].get("check_decision_mid_refine", {})
+        assert state.get("on_no") == "check_wire_done", (
+            f"check_decision_mid_refine.on_no should be 'check_wire_done', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_mid_refine_on_error_routes_to_check_wire_done(self, data: dict) -> None:
+        """check_decision_mid_refine.on_error must fall through to check_wire_done
+        (a transient check-flag failure should not stall the sub-loop)."""
+        state = data["states"].get("check_decision_mid_refine", {})
+        assert state.get("on_error") == "check_wire_done", (
+            f"check_decision_mid_refine.on_error should be 'check_wire_done', "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_decision_mid_wire_state_exists(self, data: dict) -> None:
+        """check_decision_mid_wire state must exist as a mid-chain gate after wire (BUG-2528)."""
+        assert "check_decision_mid_wire" in data["states"], (
+            "State 'check_decision_mid_wire' not found in refine-to-ready-issue.yaml — "
+            "required so a decision_needed flag set by /ll:wire-issue short-circuits "
+            "before the confidence_check invocation (BUG-2528)"
+        )
+
+    def test_check_decision_mid_wire_uses_shell_exit_fragment(self, data: dict) -> None:
+        """check_decision_mid_wire must use shell_exit fragment to route on exit code."""
+        state = data["states"].get("check_decision_mid_wire", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_decision_mid_wire.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_decision_mid_wire_action_consults_decision_needed(self, data: dict) -> None:
+        """check_decision_mid_wire.action must run ll-issues check-flag decision_needed."""
+        state = data["states"].get("check_decision_mid_wire", {})
+        action = state.get("action", "")
+        assert "ll-issues check-flag" in action and "decision_needed" in action, (
+            f"check_decision_mid_wire.action should run 'll-issues check-flag ... decision_needed', "
+            f"got {action!r}"
+        )
+
+    def test_check_decision_mid_wire_on_yes_routes_to_done(self, data: dict) -> None:
+        """check_decision_mid_wire.on_yes (decision_needed=true) must exit via done
+        so the outer autodev/recursive-refine loop's post-return decision gate handles decide."""
+        state = data["states"].get("check_decision_mid_wire", {})
+        assert state.get("on_yes") == "done", (
+            f"check_decision_mid_wire.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_decision_mid_wire_on_no_routes_to_confidence_check(self, data: dict) -> None:
+        """check_decision_mid_wire.on_no must route to confidence_check (no flag → fall through)."""
+        state = data["states"].get("check_decision_mid_wire", {})
+        assert state.get("on_no") == "confidence_check", (
+            f"check_decision_mid_wire.on_no should be 'confidence_check', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_check_decision_mid_wire_on_error_routes_to_confidence_check(self, data: dict) -> None:
+        """check_decision_mid_wire.on_error must fall through to confidence_check
+        (a transient check-flag failure should not stall the sub-loop)."""
+        state = data["states"].get("check_decision_mid_wire", {})
+        assert state.get("on_error") == "confidence_check", (
+            f"check_decision_mid_wire.on_error should be 'confidence_check', "
+            f"got {state.get('on_error')!r}"
         )
 
 

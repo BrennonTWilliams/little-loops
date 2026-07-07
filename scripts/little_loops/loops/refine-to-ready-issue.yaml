@@ -85,7 +85,7 @@ states:
     # of re-bulldozing the first pass's improvements.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
-    next: check_wire_done
+    next: check_decision_mid_refine
     on_error: diagnose
 
   refine_followup:
@@ -95,8 +95,20 @@ states:
     # additive-only (never removes content) and does not consume max_refine_count.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
-    next: check_wire_done
+    next: check_decision_mid_refine
     on_error: diagnose
+
+  check_decision_mid_refine:
+    # Mid-chain gate after refine: if /ll:refine-issue set decision_needed: true,
+    # skip the remaining wire + confidence_check invocations and exit via done so
+    # the outer autodev loop's check_decision_after_refine (autodev.yaml:165) can
+    # route to run_decide. Mirrors check_decision_needed (line 197) pattern; differs
+    # only in placement (mid-chain, not end-of-chain). BUG-2528.
+    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    fragment: shell_exit
+    on_yes: done
+    on_no: check_wire_done
+    on_error: check_wire_done
 
   check_wire_done:
     action: |
@@ -119,7 +131,19 @@ states:
   mark_wire_done:
     action: printf '1' > ${context.run_dir}/refine-to-ready-wire-done
     action_type: shell
-    next: confidence_check
+    next: check_decision_mid_wire
+    on_error: confidence_check
+
+  check_decision_mid_wire:
+    # Mid-chain gate after wire: if /ll:wire-issue set decision_needed: true, skip
+    # the confidence_check invocation. Same exit-via-done contract as
+    # check_decision_mid_refine; lets the outer autodev/recursive-refine loop's
+    # post-return decision gate route to run_decide without the wasted LLM budget
+    # of a confidence check the flag invalidates. BUG-2528.
+    action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
+    fragment: shell_exit
+    on_yes: done
+    on_no: confidence_check
     on_error: confidence_check
 
   confidence_check:

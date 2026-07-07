@@ -4,7 +4,7 @@ title: 'refine-to-ready-issue does not short-circuit on decision_needed: true se
   by mid-chain skills, wasting LLM budget on wire and confidence-check invocations'
 type: BUG
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-07
 discovered_by: capture-issue
 decision_needed: false
@@ -14,6 +14,7 @@ score_complexity: 22
 score_test_coverage: 23
 score_ambiguity: 24
 score_change_surface: 22
+completed_at: 2026-07-07 20:20:31+00:00
 ---
 
 # BUG-2528: `refine-to-ready-issue` does not short-circuit on `decision_needed: true` set by mid-chain skills
@@ -474,9 +475,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-open
+done
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-07T20:20:31Z - implemented mid-chain check_decision_mid_refine + check_decision_mid_wire gates in refine-to-ready-issue.yaml; updated 3 + added 12 structural tests; full suite green (14173 passed, 35 skipped)
+- `/ll:ready-issue` - 2026-07-07T20:15:23 - `f5cdf9a4-118f-4040-9eb8-a7d6c085081f.jsonl`
 - `/ll:wire-issue` - 2026-07-07T19:56:26 - `b2a3b08a-28fc-4770-8881-32bb3cbe918e.jsonl`
 - `/ll:refine-issue` - 2026-07-07T19:49:17 - `14039683-e0ea-4bd7-a9c4-78de45770ee0.jsonl`
 - `/ll:capture-issue` - 2026-07-07T19:43:26Z - captured from conversation
