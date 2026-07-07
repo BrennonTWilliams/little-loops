@@ -3274,6 +3274,29 @@ class TestDiff:
 class TestEvalExport:
     """Tests for the eval-export subcommand scaffold (FEAT-1970)."""
 
+    @staticmethod
+    def _setup_project_folder() -> tuple[Path, Path]:
+        """Create a fake ~/.claude/projects/<encoded-cwd> pair.
+
+        Mirrors the fixture pattern from ``TestExtract.test_extract_project_creates_output_file``
+        (see scripts/tests/test_ll_logs.py:1483-1514) so that
+        ``get_project_folder`` resolves to a real directory and ``_cmd_eval_export``
+        passes its project-folder check.
+
+        Returns:
+            ``(home, fake_cwd)`` tuple. Both must be patched into the test via
+            ``patch("pathlib.Path.home", return_value=home)`` and
+            ``patch("little_loops.cli.logs.Path.cwd", return_value=fake_cwd)``.
+        """
+        tmpdir = Path(tempfile.mkdtemp())
+        home = tmpdir / "home"
+        fake_cwd = tmpdir / "cwd"
+        fake_cwd.mkdir(parents=True, exist_ok=True)
+        (home / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
+        encoded = str(fake_cwd.resolve()).replace("/", "-")
+        (home / ".claude" / "projects" / encoded).mkdir(parents=True, exist_ok=True)
+        return home, fake_cwd
+
     def test_help_shows_all_flags(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export --help exits with code 0 and lists all five filter flags."""
         with (
@@ -3292,43 +3315,83 @@ class TestEvalExport:
 
     def test_no_flags_returns_0(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export with no flags runs without crashing and returns 0."""
-        with patch("sys.argv", ["ll-logs", "eval-export"]):
-            result = main_logs()
-        assert result == 0
+        home, fake_cwd = self._setup_project_folder()
+        try:
+            with (
+                patch("sys.argv", ["ll-logs", "eval-export"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=fake_cwd),
+            ):
+                result = main_logs()
+            assert result == 0
+        finally:
+            import shutil
+
+            shutil.rmtree(home.parent, ignore_errors=True)
 
     def test_skill_flag_parses(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export --skill foo runs without crashing and returns 0."""
-        with patch("sys.argv", ["ll-logs", "eval-export", "--skill", "foo"]):
-            result = main_logs()
-        assert result == 0
+        home, fake_cwd = self._setup_project_folder()
+        try:
+            with (
+                patch("sys.argv", ["ll-logs", "eval-export", "--skill", "foo"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=fake_cwd),
+            ):
+                result = main_logs()
+            assert result == 0
+        finally:
+            import shutil
 
-    def test_all_flags_parse(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+            shutil.rmtree(home.parent, ignore_errors=True)
+
+    def test_all_flags_parse(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export with all flags parses without error and returns 0."""
-        out_file = tmp_path / "out.yaml"
-        with patch(
-            "sys.argv",
-            [
-                "ll-logs",
-                "eval-export",
-                "--skill",
-                "manage-issue",
-                "--issue",
-                "FEAT-1970",
-                "--limit",
-                "10",
-                "--out",
-                str(out_file),
-                "--json",
-            ],
-        ):
-            result = main_logs()
-        assert result == 0
+        home, fake_cwd = self._setup_project_folder()
+        out_file = fake_cwd / "out.yaml"
+        try:
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "ll-logs",
+                        "eval-export",
+                        "--skill",
+                        "manage-issue",
+                        "--issue",
+                        "FEAT-1970",
+                        "--limit",
+                        "10",
+                        "--out",
+                        str(out_file),
+                        "--json",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=fake_cwd),
+            ):
+                result = main_logs()
+            assert result == 0
+        finally:
+            import shutil
+
+            shutil.rmtree(home.parent, ignore_errors=True)
 
     def test_eval_export_json_short_flag(self, capsys: pytest.CaptureFixture) -> None:
         """-j is accepted by eval-export as a short form for --json."""
-        with patch("sys.argv", ["ll-logs", "eval-export", "-j"]):
-            result = main_logs()
-        assert result == 0
+        home, fake_cwd = self._setup_project_folder()
+        try:
+            with (
+                patch("sys.argv", ["ll-logs", "eval-export", "-j"]),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=fake_cwd),
+            ):
+                result = main_logs()
+            assert result == 0
+        finally:
+            import shutil
+
+            shutil.rmtree(home.parent, ignore_errors=True)
 
     def test_no_regression_extract(self, capsys: pytest.CaptureFixture) -> None:
         """eval-export addition does not break the existing extract subcommand."""
