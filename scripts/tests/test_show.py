@@ -232,6 +232,152 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["status"] == "Completed"
 
+    def test_closure_fields_extracted(self, tmp_path: Path) -> None:
+        """closing_note, closed_by, closed_at are surfaced into fields dict (ENH-2535)."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: done\n"
+                "closing_note: Fixed via X\n"
+                "closed_by: implement\n"
+                "closed_at: '2026-07-01T12:00:00Z'\n"
+                "---\n# ENH-5101: T\n"
+            ),
+            "P3-ENH-5101-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["closing_note"] == "Fixed via X"
+        assert fields["closed_by"] == "implement"
+        assert fields["closed_at"] == "2026-07-01T12:00:00Z"
+
+    def test_relationships_fields_extracted(self, tmp_path: Path) -> None:
+        """parent / relates_to / depends_on / blocked_by / blocks are surfaced."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "parent: EPIC-1234\n"
+                "relates_to:\n- BUG-1\n- BUG-2\n"
+                "depends_on: FEAT-9\n"
+                "blocked_by:\n- BUG-1\n"
+                "blocks: [BUG-3, BUG-4]\n"
+                "---\n# ENH-5102: T\n"
+            ),
+            "P3-ENH-5102-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["parent"] == "EPIC-1234"
+        assert fields["relates_to"] == "BUG-1, BUG-2"
+        assert fields["depends_on"] == "FEAT-9"
+        assert fields["blocked_by"] == "BUG-1"
+        assert fields["blocks"] == "BUG-3, BUG-4"
+
+    def test_discovery_fields_extracted(self, tmp_path: Path) -> None:
+        """discovered_date / discovered_commit / discovered_branch are surfaced."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "discovered_date: '2026-06-30'\n"
+                "discovered_commit: abc1234567890def\n"
+                "discovered_branch: feat/foo\n"
+                "---\n# ENH-5103: T\n"
+            ),
+            "P3-ENH-5103-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["discovered_date"] == "2026-06-30"
+        assert fields["discovered_commit"] == "abc1234567890def"
+        assert fields["discovered_branch"] == "feat/foo"
+
+    def test_decision_ref_extracted(self, tmp_path: Path) -> None:
+        """decision_ref surfaced alongside decision_needed."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "decision_needed: true\n"
+                "decision_ref: ARCHITECTURE-049\n"
+                "---\n# ENH-5104: T\n"
+            ),
+            "P3-ENH-5104-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["decision_needed"] == "true"
+        assert fields["decision_ref"] == "ARCHITECTURE-049"
+
+    def test_learning_tests_required_renders_with_count(self, tmp_path: Path) -> None:
+        """learning_tests_required list renders as '(n targets: a, b, c)'."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "learning_tests_required:\n- pytest\n- hypothesis\n"
+                "---\n# ENH-5105: T\n"
+            ),
+            "P3-ENH-5105-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["learning_tests_required"] == "pytest, hypothesis"
+
+    def test_missing_artifacts_as_list_renders_count(self, tmp_path: Path) -> None:
+        """missing_artifacts list → comma-joined string."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "missing_artifacts:\n- docs/REF.md\n- src/foo.py\n"
+                "---\n# ENH-5106: T\n"
+            ),
+            "P3-ENH-5106-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["missing_artifacts"] == "docs/REF.md, src/foo.py"
+
+    def test_regression_no_new_fields_renders_identically(self, tmp_path: Path) -> None:
+        """Issue with NO new fields extracts identically to pre-change baseline.
+
+        Critical regression guard (ENH-2535 AC #2): issues lacking any of the new
+        fields render exactly as they did before this enhancement.
+        """
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: open\n"
+                "confidence_score: 80\n"
+                "outcome_confidence: 75\n"
+                "labels: [a, b]\n"
+                "---\n# ENH-5107: T\n"
+            ),
+            "P3-ENH-5107-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        # New closure / discovery / relationship / decision_ref keys must be None
+        for k in (
+            "closing_note",
+            "closed_by",
+            "closed_at",
+            "cancelled_reason",
+            "deferred_reason",
+            "deferred_date",
+            "discovered_date",
+            "discovered_commit",
+            "discovered_branch",
+            "discovered_source",
+            "discovered_external_repo",
+            "parent",
+            "relates_to",
+            "depends_on",
+            "blocked_by",
+            "blocks",
+            "supersedes",
+            "decomposed_into",
+            "decision_ref",
+            "affects",
+            "focus_area",
+        ):
+            assert fields.get(k) is None, f"{k} should be None for a baseline issue"
+
 
 # =============================================================================
 # _ljust
@@ -310,3 +456,120 @@ class TestRenderCard:
         card = _render_card(fields)
         # The long word should appear in the card
         assert long_word in card
+
+    # -- ENH-2535 closure block rendering --
+
+    def test_closure_block_present_for_done_status(self, stable_snapshot_env: None) -> None:
+        """Closure block renders when status: done and closing_note is set."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "status": "Completed",
+            "raw_status": "done",
+            "closure_text": "Fixed via X",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Closing note: Fixed via X" in card
+
+    def test_closure_block_absent_for_open_status(self, stable_snapshot_env: None) -> None:
+        """Closure block is NOT rendered when status: Open even if closing_note is set."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "status": "Open",
+            "raw_status": "open",
+            "closure_text": "premature",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Closing note:" not in card
+
+    # -- ENH-2535 relationships block rendering --
+
+    def test_relationships_block_renders_blocked_by(self, stable_snapshot_env: None) -> None:
+        """Relationships block renders blocked_by line when populated."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "blocked_by": "BUG-9",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Blocked by: BUG-9" in card
+
+    def test_blocked_status_includes_blocked_by_name(self, stable_snapshot_env: None) -> None:
+        """Status: Blocked + blocked_by → card names the blocker."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "status": "Blocked",
+            "blocked_by": "BUG-9, BUG-10",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Blocked by: BUG-9, BUG-10" in card
+
+    # -- ENH-2535 discovery block rendering --
+
+    def test_discovery_block_renders_discovered_date(self, stable_snapshot_env: None) -> None:
+        """Discovery block renders discovered_date distinct from captured_at."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "captured_at": "2026-07-01T00:00:00Z",
+            "discovered_date": "2026-06-15",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Discovered: 2026-06-15" in card
+        assert "Captured at: 2026-07-01T00:00:00Z" in card
+
+    def test_discovered_commit_shortened(self, stable_snapshot_env: None) -> None:
+        """Full discovered_commit SHA is shortened to 7 chars in the card."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "discovered_commit": "abc1234567890def",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Discovered commit: abc1234" in card
+        # Full SHA must NOT bleed into the rendered line (only the 7-char prefix)
+        assert "abc1234567890def" not in card
+
+    # -- ENH-2535 decision coupling --
+
+    def test_decision_coupling_with_ref(self, stable_snapshot_env: None) -> None:
+        """decision_needed: true + decision_ref renders 'Decision needed → <ref>'."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "decision_needed": "true",
+            "decision_ref": "ARCHITECTURE-049",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Decision needed → ARCHITECTURE-049" in card
+
+    def test_decision_explicit_no_when_false(self, stable_snapshot_env: None) -> None:
+        """decision_needed: false renders 'Decision needed: no' explicitly."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "decision_needed": "false",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Decision needed: no" in card
+
+    def test_decision_ref_alone_renders_explicit(self, stable_snapshot_env: None) -> None:
+        """decision_ref without decision_needed renders 'Decision ref: <value>'."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "decision_ref": "ARCHITECTURE-049",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Decision ref: ARCHITECTURE-049" in card

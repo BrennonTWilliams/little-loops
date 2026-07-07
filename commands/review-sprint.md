@@ -126,7 +126,7 @@ Analyze the sprint against its goal and the current backlog state:
 
 #### 3f: EPIC Context
 
-For each sprint member, read its frontmatter `parent:` field (via `ll-issues show $ID --json` or direct frontmatter read) and collect IDs matching `EPIC-\d+`. Group sprint members by EPIC. If no EPIC parents are detected, skip this sub-phase silently.
+For each sprint member, read its frontmatter `parent:` field (via `ll-issues show $ID --json` — post-ENH-2535 exposes `parent` directly; direct frontmatter read remains the fallback) and collect IDs matching `EPIC-\d+`. Group sprint members by EPIC. If no EPIC parents are detected, skip this sub-phase silently.
 
 For each touched EPIC:
 1. **Resolve full child set**:

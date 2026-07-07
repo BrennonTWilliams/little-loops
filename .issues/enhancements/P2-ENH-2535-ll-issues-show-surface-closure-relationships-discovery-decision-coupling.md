@@ -4,8 +4,9 @@ title: 'll-issues show: surface closure context, relationships, discovery, and d
   coupling'
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-07T22:52:13Z'
+completed_at: 2026-07-07 23:51:35+00:00
 discovered_date: 2026-07-07
 discovered_by: capture-issue
 labels:
@@ -745,7 +746,12 @@ skills/` confirms.
 - `/ll:wire-issue` - 2026-07-07T23:15:54 - `4e2bb9b6-485a-4f98-b051-74b58e421fd1.jsonl`
 - `/ll:refine-issue` - 2026-07-07T23:05:09 - `1ec6186a-c209-4064-8422-49d25a74f2c5.jsonl`
 - `/ll:capture-issue` - 2026-07-07T22:52:13Z
+- `/ll:manage-issue` - 2026-07-07T23:51:35Z - `033a739f-389d-44e1-8e32-6c4fe90b1aad.jsonl`
+
+## Resolution
+
+Implemented ENH-2535: extended `_parse_card_fields` with 20+ additive fields (closure, discovery, decision, relationships) and added three private helpers (`_render_closure_block`, `_render_discovery_block`, `_render_relationships_block`) plus `_render_decision_line` for the coupled `decision_needed → decision_ref` form. All wiring updates landed (rn-implement.yaml comment refresh, test_rn_implement.py docstring, LOOPS_REFERENCE.md, review-sprint.md, CLI.md, API.md, OUTPUT_STYLING.md, set_scores_cli.py regression guard). Verified end-to-end against live `.issues/` data: closure block on BUG-238 (done), discovery block on BUG-238/2521, relationships block on ENH-206 (`relates_to: FEAT-210`). Full suite: 14,205 passed, 35 skipped, 0 failed. JSON output shape preserved; all new keys additive.
 
 ## Status
 
-**Open** | Created: 2026-07-07 | Priority: P2
+**Done** | Created: 2026-07-07 | Completed: 2026-07-07 | Priority: P2

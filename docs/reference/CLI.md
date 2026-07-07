@@ -1085,6 +1085,13 @@ Show summary card for a single issue. Accepts short form (`518`), type-prefixed 
 
 The card includes: ID, title, priority, status, effort, risk, confidence scores, dimension scores (Cmplx, Tcov, Ambig, Chsrf — when present), source (discovered_by), norm (normalized filename check), fmt (formatted/required sections check), integration file count, labels, `captured_at` / `completed_at` timestamps (when present), session history, and path.
 
+The card also surfaces, when present in frontmatter (ENH-2535):
+
+- **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`).
+- **Relationships** — `parent` (with epic title when resolvable), `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `decomposed_into`, `affects`, `focus_area`.
+- **Discovery** — `discovered_date` (distinct from `captured_at`), `discovered_commit` (short-SHA, first 7 chars), `discovered_branch`, `discovered_source`, `discovered_external_repo`.
+- **Decision coupling** — when `decision_needed: true` is paired with `decision_ref` (e.g., `ARCHITECTURE-049`), the card renders `Decision needed → ARCHITECTURE-049`; explicit `Decision needed: no` for `decision_needed: false`.
+
 | Flag | Description |
 |------|-------------|
 | `--json` / `-j` | Output issue fields as JSON (includes `source`, `norm`, `fmt` keys) |

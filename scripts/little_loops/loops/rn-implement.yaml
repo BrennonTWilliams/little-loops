@@ -365,9 +365,11 @@ states:
     # just queue ordering (which is all select_next does).
     #
     # Note: deliberately parses the issue file's YAML frontmatter directly rather
-    # than `ll-issues show --json` — the JSON projection does NOT expose blocked_by
-    # (returns null). This mirrors select_next's get_frontmatter/get_blocked_by,
-    # handling both list and comma-separated scalar forms.
+    # than `ll-issues show --json` — although ENH-2535 added additive `blocked_by`
+    # to the JSON projection, the gate's direct-parse posture is preserved for
+    # shell-escape safety and consistency with `select_next`'s
+    # get_frontmatter/get_blocked_by (handles both list and comma-separated
+    # scalar forms without round-tripping through JSON).
     #
     # Fail-open: unresolved issue file, parse error, or an inability to compute the
     # done-set all yield no unmet deps -> READY -> check_depth. Processing is never

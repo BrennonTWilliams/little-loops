@@ -249,3 +249,6 @@ class TestIssuesCLISetScores:
         data = json.loads(captured.out)
         assert data["confidence"] == "88"
         assert data["outcome"] == "72"
+        # ENH-2535 regression guard: a synthetic issue with no `decision_ref`
+        # in frontmatter must not be polluted by the new coupling rendering.
+        assert data["decision_ref"] is None

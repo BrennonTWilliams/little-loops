@@ -188,6 +188,39 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
     learning_tests_raw = frontmatter.get("learning_tests_required")
 
+    # Closure context (ENH-2535) — surfaced only when status is terminal-non-open.
+    closing_note = frontmatter.get("closing_note")
+    closed_reason = frontmatter.get("closed_reason")
+    cancelled_reason = frontmatter.get("cancelled_reason")
+    deferred_reason = frontmatter.get("deferred_reason")
+    closed_by = frontmatter.get("closed_by")
+    closed_at = frontmatter.get("closed_at")
+    deferred_date = frontmatter.get("deferred_date")
+
+    # Discovery (ENH-2535) — when / where this issue was first observed.
+    discovered_date = frontmatter.get("discovered_date")
+    discovered_commit = frontmatter.get("discovered_commit")
+    discovered_branch = frontmatter.get("discovered_branch")
+    discovered_source = frontmatter.get("discovered_source")
+    discovered_external_repo = frontmatter.get("discovered_external_repo")
+
+    # Decision coupling (ENH-2535) — actionable pointer when decision_needed: true.
+    decision_ref = frontmatter.get("decision_ref")
+
+    # Relationships (ENH-2535) — edges in the issue graph.
+    parent_raw = frontmatter.get("parent")
+    relates_to_raw = frontmatter.get("relates_to")
+    depends_on_raw = frontmatter.get("depends_on")
+    blocked_by_raw = frontmatter.get("blocked_by")
+    blocks_raw = frontmatter.get("blocks")
+    supersedes_raw = frontmatter.get("supersedes")
+    decomposed_into_raw = frontmatter.get("decomposed_into")
+
+    # Misc frontmatter (ENH-2535) — affects / focus_area surfaced when set.
+    affects_raw = frontmatter.get("affects")
+    focus_area_raw = frontmatter.get("focus_area")
+    testable_raw = frontmatter.get("testable")
+
     # Source / norm / fmt fields
     from little_loops.issue_parser import is_formatted, is_normalized
 
@@ -259,11 +292,49 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     except ValueError:
         rel_path = str(path)
 
+    # List-or-string normalization helper for relationship frontmatter (ENH-2535).
+    # Accepts a YAML list, a quoted comma-string, or a bare scalar; returns a
+    # comma-joined string of the trimmed IDs or None when empty.
+    def _join_ids(raw: object) -> str | None:
+        if not raw:
+            return None
+        if isinstance(raw, list):
+            items = [str(t).strip() for t in raw if str(t).strip()]
+        else:
+            items = [t.strip() for t in str(raw).strip("\"'").split(",") if t.strip()]
+        return ", ".join(items) if items else None
+
+    # Resolve parent title for parent display (ENH-2535).
+    # Reads all issues via the IssueInfo index for cheap title lookup; falls
+    # back to ID-only when the parent EPIC isn't found in the project.
+    parent_str: str | None = None
+    if parent_raw is not None:
+        ps = str(parent_raw).strip()
+        if ps:
+            parent_str = ps
+    parent_display: str | None = None
+    if parent_str:
+        try:
+            from little_loops.issue_parser import find_issues
+
+            _all = find_issues(config)
+            _title = next((i.title for i in _all if i.issue_id == parent_str), None)
+            parent_display = f"{parent_str} ({_title})" if _title else parent_str
+        except Exception:
+            parent_display = parent_str
+
+    # Closure: prefer per-status reason field (closing_note / closed_reason /
+    # cancelled_reason / deferred_reason) and emit the right label.
+    closure_text: str | None = (
+        closing_note or closed_reason or cancelled_reason or deferred_reason
+    )
+
     return {
         "issue_id": issue_id,
         "title": title,
         "priority": priority,
         "status": status,
+        "raw_status": str(raw_status).lower(),
         "effort": str(effort) if effort is not None else None,
         "confidence": str(confidence) if confidence is not None else None,
         "outcome": str(outcome) if outcome is not None else None,
@@ -290,15 +361,51 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "decision_needed": str(decision_needed_raw).lower()
         if decision_needed_raw is not None
         else None,
-        "missing_artifacts": str(missing_artifacts_raw).lower()
-        if missing_artifacts_raw is not None
-        else None,
+        "missing_artifacts": _join_ids(missing_artifacts_raw)
+        if isinstance(missing_artifacts_raw, list)
+        else (
+            str(missing_artifacts_raw).lower()
+            if missing_artifacts_raw is not None
+            else None
+        ),
         "implementation_order_risk": str(implementation_order_risk_raw).lower()
         if implementation_order_risk_raw is not None
         else None,
         "learning_tests_required": ", ".join(str(t) for t in learning_tests_raw)
         if learning_tests_raw
         else None,
+        # ENH-2535: closure context
+        "closing_note": str(closing_note) if closing_note is not None else None,
+        "closed_reason": str(closed_reason) if closed_reason is not None else None,
+        "cancelled_reason": str(cancelled_reason) if cancelled_reason is not None else None,
+        "deferred_reason": str(deferred_reason) if deferred_reason is not None else None,
+        "closed_by": str(closed_by) if closed_by is not None else None,
+        "closed_at": str(closed_at) if closed_at is not None else None,
+        "deferred_date": str(deferred_date) if deferred_date is not None else None,
+        "closure_text": closure_text,
+        # ENH-2535: discovery
+        "discovered_date": str(discovered_date) if discovered_date is not None else None,
+        "discovered_commit": str(discovered_commit) if discovered_commit is not None else None,
+        "discovered_branch": str(discovered_branch) if discovered_branch is not None else None,
+        "discovered_source": str(discovered_source) if discovered_source is not None else None,
+        "discovered_external_repo": (
+            str(discovered_external_repo) if discovered_external_repo is not None else None
+        ),
+        # ENH-2535: decision coupling
+        "decision_ref": str(decision_ref) if decision_ref is not None else None,
+        # ENH-2535: relationships
+        "parent": parent_str,
+        "parent_display": parent_display,
+        "relates_to": _join_ids(relates_to_raw),
+        "depends_on": _join_ids(depends_on_raw),
+        "blocked_by": _join_ids(blocked_by_raw),
+        "blocks": _join_ids(blocks_raw),
+        "supersedes": _join_ids(supersedes_raw),
+        "decomposed_into": _join_ids(decomposed_into_raw),
+        # ENH-2535: misc
+        "affects": _join_ids(affects_raw),
+        "focus_area": str(focus_area_raw) if focus_area_raw is not None else None,
+        "testable": str(testable_raw).lower() if testable_raw is not None else None,
     }
 
 
@@ -306,6 +413,116 @@ def _ljust(text: str, width: int) -> str:
     """Left-justify text accounting for invisible ANSI escape codes."""
     pad = max(0, width - len(strip_ansi(text)))
     return text + " " * pad
+
+
+# Closure context rendering (ENH-2535) — only emits when status is terminal-non-open
+# AND at least one closure field is populated. Returns the rendered "Key: value"
+# lines to append to detail_lines.
+_TERMINAL_STATUSES = {"done", "cancelled", "deferred", "closed"}
+
+
+def _render_closure_block(
+    fields: dict[str, str | None], raw_status: str
+) -> list[str]:
+    """Render closure-context lines for terminal statuses (ENH-2535).
+
+    Args:
+        fields: Card fields dict from `_parse_card_fields`.
+        raw_status: Raw status string from frontmatter (lowercased). When not a
+            canonical raw value, the helper falls back to the display `status`
+            field so callers passing only the display form (e.g., test fixtures
+            that skip extraction) still get closure rendering.
+
+    Returns:
+        List of "Key: value" strings to append, or empty list when status is
+        not terminal or no closure fields are populated.
+    """
+    rs = str(raw_status).lower() if raw_status else ""
+    if rs not in _TERMINAL_STATUSES:
+        # Fallback: derive from display status (Completed / Cancelled / Deferred).
+        ds = (fields.get("status") or "").lower()
+        if ds in ("completed", "cancelled", "deferred"):
+            rs = "done" if ds == "completed" else ds
+        else:
+            return []
+    out: list[str] = []
+    # Order: reason text first, then attribution, then timing.
+    if fields.get("closure_text"):
+        if rs == "cancelled":
+            label = "Cancellation reason"
+        elif rs == "deferred":
+            label = "Deferral reason"
+        else:  # done / closed
+            label = "Closing note"
+        out.append(f"{label}: {fields['closure_text']}")
+    if fields.get("closed_by"):
+        out.append(f"Closed by: {fields['closed_by']}")
+    if fields.get("closed_at"):
+        out.append(f"Closed at: {fields['closed_at']}")
+    if fields.get("deferred_date"):
+        out.append(f"Deferred at: {fields['deferred_date']}")
+    return out
+
+
+# Discovery rendering (ENH-2535) — emits when any discovery field is set.
+def _render_discovery_block(fields: dict[str, str | None]) -> list[str]:
+    """Render discovery-context lines (when / where the issue was first observed)."""
+    out: list[str] = []
+    if fields.get("discovered_date"):
+        out.append(f"Discovered: {fields['discovered_date']}")
+    if fields.get("discovered_commit"):
+        sha = str(fields["discovered_commit"])
+        # Short-SHA rendering: 7 chars max to avoid right-border bleed
+        # (mirrors the long-unbreakable-word guard at show.py:301-313).
+        short_sha = sha[:7] if len(sha) > 7 else sha
+        out.append(f"Discovered commit: {short_sha}")
+    if fields.get("discovered_branch"):
+        out.append(f"Discovered branch: {fields['discovered_branch']}")
+    if fields.get("discovered_source"):
+        out.append(f"Discovered source: {fields['discovered_source']}")
+    if fields.get("discovered_external_repo"):
+        out.append(f"Upstream: {fields['discovered_external_repo']}")
+    return out
+
+
+# Relationships rendering (ENH-2535) — emits when any relationship edge is set.
+_RELATIONSHIP_KEYS: tuple[tuple[str, str], ...] = (
+    ("parent_display", "Parent"),
+    ("blocks", "Blocks"),
+    ("blocked_by", "Blocked by"),
+    ("depends_on", "Depends on"),
+    ("relates_to", "Relates to"),
+    ("supersedes", "Supersedes"),
+    ("decomposed_into", "Decomposed into"),
+    ("affects", "Affects"),
+    ("focus_area", "Focus area"),
+)
+
+
+def _render_relationships_block(fields: dict[str, str | None]) -> list[str]:
+    """Render relationship edges as a list of 'Key: value' lines (ENH-2535)."""
+    out: list[str] = []
+    for key, label in _RELATIONSHIP_KEYS:
+        val = fields.get(key)
+        if val:
+            out.append(f"{label}: {val}")
+    return out
+
+
+# Decision coupling rendering (ENH-2535) — emits a coupled decision line.
+def _render_decision_line(fields: dict[str, str | None]) -> str | None:
+    """Render the decision-needed/decision-ref line in the coupled form."""
+    needed = (fields.get("decision_needed") or "").lower()
+    ref = fields.get("decision_ref")
+    if needed == "true" and ref:
+        return f"Decision needed → {ref}"
+    if needed == "true":
+        return "Decision needed: yes"
+    if needed == "false":
+        return "Decision needed: no"
+    if ref:
+        return f"Decision ref: {ref}"
+    return None
 
 
 def _render_card(fields: dict[str, str | None]) -> str:
@@ -391,12 +608,24 @@ def _render_card(fields: dict[str, str | None]) -> str:
         detail_mid_parts.append(f"Milestone: {fields['milestone']}")
     if detail_mid_parts:
         detail_lines.append("  \u2502  ".join(detail_mid_parts))
+    # ENH-2535: relationships block \u2014 adjacent to labels/milestone so graph
+    # context sits alongside other structural metadata.
+    detail_lines.extend(_render_relationships_block(fields))
     if fields.get("captured_at"):
         detail_lines.append(f"Captured at: {fields['captured_at']}")
+    # ENH-2535: discovery block sits between capture and completion timestamps.
+    detail_lines.extend(_render_discovery_block(fields))
     if fields.get("completed_at"):
         detail_lines.append(f"Completed at: {fields['completed_at']}")
+    # ENH-2535: decision coupling line — emits before history so the user sees
+    # the actionable pointer alongside other metadata, not buried after history.
+    decision_line = _render_decision_line(fields)
+    if decision_line:
+        detail_lines.append(decision_line)
     if fields.get("history"):
         detail_lines.append(f"History: {fields['history']}")
+    # ENH-2535: closure context block — at the tail (terminal statuses only).
+    detail_lines.extend(_render_closure_block(fields, fields.get("raw_status") or ""))
 
     # Build path line
     path_line = f"Path: {fields.get('path', '???')}"

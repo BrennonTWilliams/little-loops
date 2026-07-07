@@ -142,7 +142,15 @@ logo = get_logo()     # returns str | None
 | `Norm` | Filename pattern check | `✓` if matches `P[0-5]-TYPE-NNN-desc.md`, `✗` otherwise |
 | `Fmt` | Required sections check | `✓` if file has all required template sections, `✗` otherwise |
 | `Captured at` | `captured_at` frontmatter | ISO 8601 UTC timestamp of issue capture; omitted if absent |
+| `Discovered` | `discovered_date` frontmatter | YYYY-MM-DD date when the bug/feature was *observed*; distinct from `captured_at` (ENH-2535) |
+| `Discovered commit` | `discovered_commit` frontmatter | First 7 chars of the git SHA (short-form to avoid right-border bleed); omitted if absent (ENH-2535) |
+| `Discovered branch` / `Discovered source` / `Upstream` | `discovered_branch` / `discovered_source` / `discovered_external_repo` frontmatter | BUGs benefit most (gives the git-bisect anchor); omitted if absent (ENH-2535) |
 | `Completed at` | `completed_at` frontmatter | ISO 8601 UTC timestamp of issue completion; omitted if absent |
+| `Decision needed` / `Decision ref` | `decision_needed` + `decision_ref` frontmatter | Coupled form: `Decision needed → <decision_ref>` when both set; explicit `no` when `decision_needed: false`; standalone `Decision ref:` when only `decision_ref` is set (ENH-2535) |
+| `Parent` | `parent` frontmatter | `EPIC-NNN (Title)` when epic is resolvable; ID-only when not (ENH-2535) |
+| `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535) |
+| `History` | `## Session Log` body section | Distinct `/ll:*` commands with occurrence counts; omitted if absent |
+| `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred` (ENH-2535) |
 
 Width is computed dynamically: the maximum of all content line lengths plus 2 padding, with a minimum of 62 characters. The summary section is wrapped with `textwrap.wrap()` to fit the structural width.
 

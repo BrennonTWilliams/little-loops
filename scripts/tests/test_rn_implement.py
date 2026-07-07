@@ -863,9 +863,11 @@ class TestBlockedByGate:
     def test_check_blocked_by_parses_frontmatter_not_show_json(self) -> None:
         """The gate reads blocked_by from the issue file frontmatter.
 
-        `ll-issues show --json` does NOT expose blocked_by (returns null), so the
-        gate parses the file's YAML frontmatter directly and diffs against the
-        done set from `ll-issues list --json --status done`.
+        ENH-2535 added additive `blocked_by` exposure to `ll-issues show --json`,
+        but the gate retains its deliberate direct-parse posture for
+        shell-escape safety (see `rn-implement.yaml:367-370` for the rationale).
+        The gate parses the file's YAML frontmatter directly and diffs against
+        the done set from `ll-issues list --json --status done`.
         """
         action = _load_loop()["states"]["check_blocked_by"]["action"]
         assert "blocked_by" in action

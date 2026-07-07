@@ -3674,7 +3674,7 @@ Searches all type directories regardless of status. Displays a box-drawing chara
 - **Details**: summary text (word-wrapped to fit card width), source (`discovered_by` alias), norm (✓/✗ filename convention check), fmt (✓/✗ required sections check), integration file count, labels, session log history with command counts
 - **Path**: relative path from project root
 
-**`--json` output fields**: `issue_id`, `title`, `priority`, `status`, `effort`, `confidence`, `outcome`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`, `summary`, `integration_files`, `risk`, `labels`, `history`, `path`, `source`, `norm`, `fmt`
+**`--json` output fields**: `issue_id`, `title`, `priority`, `status`, `effort`, `confidence`, `outcome`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`, `summary`, `integration_files`, `risk`, `labels`, `history`, `path`, `source`, `norm`, `fmt`. ENH-2535 added the following additive keys (all `str | None`; absent when the source issue lacks the field): `raw_status`, `decision_ref`, `closing_note`, `closed_reason`, `cancelled_reason`, `deferred_reason`, `closed_by`, `closed_at`, `deferred_date`, `closure_text`, `discovered_date`, `discovered_commit`, `discovered_branch`, `discovered_source`, `discovered_external_repo`, `parent`, `parent_display`, `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `decomposed_into`, `affects`, `focus_area`, `testable`.
 
 ### main_history
 
