@@ -4007,3 +4007,17 @@
     after the command whose exit code matters; cap
   enforcement: advisory
   issue: BUG-2491
+- id: ARCHITECTURE-106
+  type: decision
+  timestamp: '2026-07-06T20:23:05Z'
+  category: architecture
+  labels: []
+  rationale: BUG-1960 (closed 2026-06-05) fixed the identical class for general-task.yaml;
+    prompt-across-issues was explicitly listed as a remaining instance. The 2026-07-06
+    EPIC-2457 vs EPIC-2451 collision is a concrete data-integrity incident of the
+    same root cause.
+  rule: 'Migrate prompt-across-issues pending.txt from fixed .loops/tmp/ to per-run-dir
+    ${context.run_dir}/pending.txt + declare scope: ["${context.run_dir}"] so concurrent
+    instances are isolated by LockManager.'
+  scope: issue
+  issue: ENH-2500
