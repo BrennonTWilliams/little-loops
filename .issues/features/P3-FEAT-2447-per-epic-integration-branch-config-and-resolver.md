@@ -23,12 +23,12 @@ relates_to:
 - FEAT-2449
 - FEAT-2450
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 72
-score_complexity: 18
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 18
+confidence_score: 99
+outcome_confidence: 81
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # FEAT-2447: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
@@ -37,10 +37,12 @@ score_change_surface: 18
 
 First of four sequenced children decomposed from FEAT-2339. This child
 introduces the **config surface** (schema entry, dataclass, automation
-mirror, `BRConfig` passthrough) and the **epic-branch resolver** that
-maps an `IssueInfo` to a `(fork_point, merge_target)` pair. No
-worker_pool, merge_coordinator, orchestrator, CLI, TUI, or template
-changes — those land in FEAT-2448 / FEAT-2449 / FEAT-2450.
+mirror, `BRConfig` passthrough), the **epic-branch resolver** that
+maps an `IssueInfo` to a `(fork_point, merge_target)` pair, and the
+**9-template `epic_branches:{enabled:false}` stamp** mandated by
+Decision ARCHITECTURE-096 (selected via `/ll:decide-issue` Option A
+on 2026-07-07). No worker_pool, merge_coordinator, orchestrator,
+CLI, or TUI changes — those land in FEAT-2448 / FEAT-2449 / FEAT-2450.
 
 Children of one EPIC share a single integration branch
 `epic/<EPIC-ID>-<slug>` (fork point **and** merge target — same string
@@ -90,8 +92,9 @@ When `parallel.epic_branches.enabled=true` and an issue has a parent EPIC:
 
 No public API changes outside the new `EpicBranchesConfig` dataclass and
 the new `WorkerPool._resolve_branch_targets()` private method. No new
-CLI flags, no TUI changes, no template changes (all deferred to
-FEAT-2448/2449/2450).
+CLI flags, no TUI changes (all deferred to FEAT-2450). Templates
+**ARE** part of this child per Option A (Decision ARCHITECTURE-096)
+— see Configuration → Template parity below.
 
 ## Motivation
 
@@ -516,6 +519,65 @@ included in the implementation:_
     it explicitly on both configs in the diff or rely on
     `default_factory` equality.
 
+### Wiring Phase (re-wire added by `/ll:wire-issue`)
+
+_Re-wire after `/ll:decide-issue` selected Option A (land the 9-template
+`epic_branches:{enabled:false}` stamps in this child on 2026-07-07).
+These touchpoints were identified by a second wiring pass that ran
+the 3-agent fan-out against the previously-wired surface._
+
+11. **Add `TestBRConfig.test_create_parallel_config_epic_branches_*`
+    family** (new tests, not in the prior wiring pass) — modeled on
+    `test_create_parallel_config_feature_branches_explicit_true` at
+    `scripts/tests/test_config.py:881`. Cover at minimum:
+    `test_create_parallel_config_epic_branches_explicit_true`,
+    `test_create_parallel_config_epic_branches_explicit_false`,
+    `test_create_parallel_config_epic_branches_none_falls_back_to_config`.
+    These exercise the `BRConfig.create_parallel_config()`
+    `epic_branches=self._parallel.epic_branches` passthrough newly
+    added in step 1.
+
+12. **Extend `TestParallelConfig.test_default_values` at
+    `scripts/tests/test_parallel_types.py:755`** (new assertion site,
+    not in the prior wiring pass) — add
+    `assert config.epic_branches.enabled is False` immediately after
+    the existing `assert config.use_feature_branches is False`
+    precedent at line 755. Adjacent precedent for adding one new
+    dataclass default value to the existing pattern.
+
+13. **Audit `test_build_config_emits_no_null_leaves` at
+    `scripts/tests/test_init_core.py:636–662`** (new audit site,
+    not in the prior wiring pass) — adding `EpicBranchesConfig` with
+    its 4 sub-fields (each has a non-`None` default) must not
+    produce any `None` leaf in the emitted config. The dataclass
+    defaults (`False`, `"epic/"`, `True`, `False`) are all concrete,
+    so this audit should pass without edit; it is a verify-only
+    step, just like step 8.
+
+14. **Verify kwargs-spread robustness across 11+ test sites** (advisory,
+    not edits) — these sites construct
+    `ParallelConfig(**dict_spread, **kwargs)` from `to_dict()` output
+    and will receive the new `epic_branches` kwarg automatically. The
+    `default_factory` produces equal defaults on both sides, so no edit
+    is needed. Verify by running the full test suite after step 1
+    lands. Sites:
+    `scripts/tests/test_worker_pool.py:65, 2200, 3276`;
+    `test_merge_coordinator.py:67`; `test_orchestrator.py:79, 785`;
+    `test_issue_workflow_integration.py:236`; `test_cli_e2e.py:402`;
+    `test_cli_loop_worktree.py:540`; `test_subprocess_mocks.py:593,
+    650, 694, 736, 759, 785, 814, 859`.
+
+15. **Exclude the `config/features.py:593` false-positive** (correction,
+    not an edit) — the prior wiring pass listed this as a
+    parallel-config round-trip concern. Agent 1 verified
+    `scripts/little_loops/config/features.py:593` is
+    `"parallel": self.parallel` on `LoopsGlyphsConfig` (an unrelated
+    glyph badge field), NOT the `BRConfig.parallel` /
+    `ParallelConfig` accessor. Remove from any reviewer checklist; no
+    edit required. The real `BRConfig.parallel` accessor lives at
+    `scripts/little_loops/config/core.py:256` and round-trips
+    `EpicBranchesConfig` via the `from_dict()` patch in step 1.
+
 ## Integration Map
 
 ### Files to Modify
@@ -548,11 +610,56 @@ test). Implementation files: `config-schema.json`,
   `ParallelAutomationConfig` and the new `EpicBranchesConfig` must be
   re-exported alongside it (mirrors the `parallel/__init__.py`
   re-export of `EpicBranchesConfig`).
-- `scripts/little_loops/config/features.py:593` — [Agent 1 finding]
-  reads `self.parallel`; verify it round-trips the nested
-  `epic_branches` sub-dict if this file already exposes a parallel
-  accessor (no direct call-site change likely needed beyond
-  `BRConfig.to_dict()` plumbing).
+
+#### Re-wire additions (added by `/ll:wire-issue` re-wire 2026-07-07)
+
+_Fan-out found these touchpoints after the prior wire-issue + decide-issue
+pass. They are the delta between what was already captured and what 3
+parallel agents surfaced against the current source state._
+
+- `scripts/tests/test_parallel_cli.py:39` — [Agent 1, new] hardcoded
+  `"parallel": {...}` dict in `temp_project` fixture; flagged for the
+  same schema-tolerance audit as the prior 5 fixtures. Per Agent 2's
+  verification, `additionalProperties: false` rejects unexpected
+  keys (not missing keys), so this fixture is schema-tolerant on the
+  absent `epic_branches` and no stamp is required.
+- `scripts/tests/test_issue_discovery.py:65` — [Agent 1, new] hardcoded
+  `"parallel": {...}` block running through ~line 80, includes
+  `command_prefix`/`ready_command`/`manage_command` plus parallel
+  flags; same audit-only treatment as above, no stamp required.
+- `scripts/tests/test_cli_loop_worktree.py:739, 775, 822` — [Agent 1,
+  new] mock-attribute pattern `mock_cfg.return_value.parallel.*` (NOT
+  dict literals); these touch the namespace via `MagicMock` attribute
+  assignment rather than literal dict construction, so they need no
+  change for `epic_branches` to be silently dropped at the
+  `cfg.parallel` lookup. Audit-only — confirm on re-run.
+- `scripts/little_loops/init/tui.py:680–689` — [Agent 1, audit-only]
+  emits `config["parallel"] = parallel_section` on user-save with
+  ONLY the keys the user explicitly changed
+  (`max_workers`/`worktree_copy_files`/`use_feature_branches`); no
+  `epic_branches` write today (default-False is schema-derived, not
+  emitted). Acceptable for foundation; FEAT-2450 adds the TUI round
+  for an `epic_branches` question if it materializes.
+- `scripts/little_loops/cli/sprint/run.py:522, 581`,
+  `scripts/little_loops/cli/parallel.py:241`, and
+  `scripts/little_loops/cli/loop/run.py:395` — [Agent 1, audit-only]
+  these read `config.parallel.use_feature_branches` /
+  `config.parallel.base_branch` / `config.parallel.worktree_copy_files`
+  (the existing accessor); none reads `parallel.epic_branches` today,
+  so no edit is needed in this child. FEAT-2448/2449/2450 may extend
+  these to honor `epic_branches` and will then need updates.
+
+#### False-positive removal
+
+- `scripts/little_loops/config/features.py:593` — REMOVE from
+  dependent-files consideration. Agent 1's second pass verified this
+  line is `"parallel": self.parallel` on `LoopsGlyphsConfig` (an
+  unrelated glyph badge field used for skill/command badge metadata),
+  NOT the `BRConfig.parallel` / `ParallelConfig` accessor. The prior
+  wiring pass surfaced this incorrectly. The actual
+  `BRConfig.parallel` accessor lives at
+  `scripts/little_loops/config/core.py:256` and round-trips
+  `EpicBranchesConfig` via the `from_dict()` patch in step 1.
 
 ### Similar Patterns
 - `ConfidenceGateConfig` in `scripts/little_loops/config/automation.py:103-119`
@@ -610,6 +717,49 @@ false` is strict on missing keys), add `"epic_branches": {"enabled":
 false}` to each. None of these existing fixtures should need the
 nested key for behavior reasons — the addition is purely a
 schema-parity stamp.
+
+##### Re-wire additions (added by `/ll:wire-issue` re-wire 2026-07-07)
+
+_Agent 1's second pass surfaced these additional hardcoded `"parallel"`
+test fixtures the prior wire-issue missed (delta vs. the 5 listed above).
+Per Agent 2's verification:_
+
+- `scripts/tests/test_parallel_cli.py:39` — hardcoded `"parallel":
+  {...}` block in the `temp_project` fixture. Schema-tolerant on
+  absent `epic_branches` (same argument as the 5 listed above); no
+  stamp required.
+- `scripts/tests/test_issue_discovery.py:65` — hardcoded
+  `"parallel": {...}` block running through ~line 80; includes
+  `command_prefix`/`ready_command`/`manage_command` and parallel
+  flags. Same audit treatment.
+- `scripts/tests/test_cli_loop_worktree.py:739, 775, 822` — mock-
+  attribute pattern (`mock_cfg.return_value.parallel.worktree_copy_files
+  = []`), NOT a literal dict. `MagicMock` attribute assignment is
+  unrelated to schema validation; no change needed.
+
+##### Schema-tolerance verification (Agent 2 confirmed)
+
+_Added by `/ll:wire-issue` re-wire 2026-07-07 — Agent 2 verified the
+JSON Schema semantics behind the prior-pass hedging: `additionalProperties:
+false` rejects **unexpected** keys at validation time; it does NOT
+require existing data to enumerate every property. Concretely:_
+_The `parallel` block in `config-schema.json:305-409` has
+`additionalProperties: false` at line 408, but adding a new
+`properties.epic_branches` sub-object with `required: false` /
+`default: false` does NOT cause fixtures that omit `epic_branches`
+to fail validation. Per Agent 2's read, ALL 7 fixtures listed
+across both passes (conftest.py:284; test_cli.py:479, 1638; test_cli_e2e.py:105;
+test_issue_workflow_integration.py:197; test_parallel_cli.py:39;
+test_issue_discovery.py:65) are schema-tolerant on the new key._
+_The implementation step 9 hedging ("add `epic_branches: {"enabled":
+false}` to each if rejected") can be downgraded to a verify-only run:
+`python -m pytest scripts/tests/test_config_schema.py
+scripts/tests/test_config.py scripts/tests/conftest.py
+scripts/tests/test_cli.py scripts/tests/test_cli_e2e.py
+scripts/tests/test_issue_workflow_integration.py
+scripts/tests/test_parallel_cli.py scripts/tests/test_issue_discovery.py`
+should pass without fixture edits. Add stamps only if a fixture
+surfaces a rejection in CI._
 
 #### `feature_config = ParallelConfig(**default_parallel_config.to_dict(), "use_feature_branches": True)` pattern
 
@@ -839,9 +989,11 @@ _Added by `/ll:confidence-check` on 2026-07-06_
 - **Verify during implementation: `feature_config = ParallelConfig(**default_parallel_config.to_dict(), "use_feature_branches": True)` at `scripts/tests/test_worker_pool.py:2201`** — once `to_dict()` includes `epic_branches`, the comparison diffs the full nested dict. Both configs use `default_factory` so default values should be equal; confirm with a test run.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-07T04:41:11 - `08c3c392-5522-400b-a7aa-43391d6f41ee.jsonl`
 - `/ll:refine-issue` - 2026-07-07T04:36:04 - `95f88292-612e-4892-933e-81358f655580.jsonl`
 - `/ll:decide-issue` - 2026-07-07T04:22:00 - `8f30824a-c88d-4846-8634-8ea4b2ddbbb7.jsonl`
 - `/ll:confidence-check` - 2026-07-06 - `b148c016-4bc6-4a95-b7d6-210fceb04d5a.jsonl`
+- `/ll:confidence-check` - 2026-07-06 - `d9ef45e8-703c-4197-81b7-c23a28a9cee7.jsonl`
 - `/ll:verify-issues` - 2026-07-07T04:08:53 - `d7a68ca8-d2b9-42d9-9ec1-b78d0c5c5841.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:09:05 - `21cbc8bc-ce15-4912-bb93-e3574c91e49c.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:14:35 - `a621374e-67ee-4d36-8474-5106e009ded9.jsonl`
