@@ -6475,12 +6475,18 @@ class TestRateLimitHeartbeat:
             assert event["total_waited_seconds"] >= event["elapsed_seconds"]
 
 
+@pytest.mark.no_parallel
 class TestRateLimitCircuitIntegration:
     """Tests for ENH-1137: FSMExecutor integration with shared RateLimitCircuit.
 
     Covers pre-action sleep, stale-circuit bypass, non-LLM action skip, short-tier
     ``record_rate_limit`` propagation, and the null-guard contract for executors
     constructed without a ``circuit=`` kwarg.
+
+    Marked ``no_parallel`` (BUG-2524) — ``test_record_rate_limit_called_on_short_tier``
+    exercises a real wall-clock sleep in the short-tier backoff ladder and crashes
+    xdist workers under contention (worker 'gw<N>' killed mid-test). Routing these
+    to a dedicated worker / controller-only run keeps the timing budget honest.
     """
 
     def _prompt_fsm(self, action: str = "/work") -> FSMLoop:
