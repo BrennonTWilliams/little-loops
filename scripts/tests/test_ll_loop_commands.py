@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,27 @@ import yaml
 
 if TYPE_CHECKING:
     pass
+
+
+# ENH-2529: consolidate per-test temp dirs under one module-scoped parent to cut
+# macOS launchservicesd/mds re-indexing churn during full-suite runs. Each test
+# still gets a fresh, unique directory; only the parent dir consolidates.
+_TMP_COUNTER = itertools.count()
+
+
+@pytest.fixture(scope="module")
+def _module_tmp_parent(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One temp parent per module instead of one top-level dir per test."""
+    return tmp_path_factory.mktemp("ll_loop_commands")
+
+
+@pytest.fixture
+def tmp_path(_module_tmp_parent: Path, request: pytest.FixtureRequest) -> Path:
+    """Override built-in tmp_path: unique fresh subdir of the module parent."""
+    name = re.sub(r"\W", "_", request.node.name)[:30]
+    path = _module_tmp_parent / f"{name}_{next(_TMP_COUNTER)}"
+    path.mkdir()
+    return path
 
 
 _RUNNABLE_FSM_SUFFIX = "initial: start\nstates:\n  start:\n    terminal: true\n"

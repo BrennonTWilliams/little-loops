@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
+import re
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -30,6 +32,26 @@ from little_loops.session_store import (
     search,
 )
 from little_loops.transport import Transport
+
+# ENH-2529: consolidate per-test temp dirs under one module-scoped parent to cut
+# macOS launchservicesd/mds re-indexing churn during full-suite runs. Each test
+# still gets a fresh, unique directory; only the parent dir consolidates.
+_TMP_COUNTER = itertools.count()
+
+
+@pytest.fixture(scope="module")
+def _module_tmp_parent(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One temp parent per module instead of one top-level dir per test."""
+    return tmp_path_factory.mktemp("session_store")
+
+
+@pytest.fixture
+def tmp_path(_module_tmp_parent: Path, request: pytest.FixtureRequest) -> Path:
+    """Override built-in tmp_path: unique fresh subdir of the module parent."""
+    name = re.sub(r"\W", "_", request.node.name)[:30]
+    path = _module_tmp_parent / f"{name}_{next(_TMP_COUNTER)}"
+    path.mkdir()
+    return path
 
 
 class TestEnsureDb:
