@@ -282,6 +282,7 @@ ll-verify-skill-budget Check skill description token footprint against listing b
 ll-verify-skills  Check that no SKILL.md exceeds 500 lines
 ll-verify-triggers Validate skill description trigger accuracy against fixtures
 ll-verify-design-tokens Lint design-token profiles for half-flipped (incomplete dark) themes
+ll-verify-des-audit  Walk the source tree and verify every event-emit site maps to a registered DES variant (F5 adoption gate)
 ll-check-links    Check markdown documentation for broken links
 ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
 ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)

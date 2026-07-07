@@ -22,6 +22,7 @@ Provides command-line interfaces for automated issue management:
 - ll-verify-docs: Documentation count verification
 - ll-verify-package-data: Lint package code for __file__ escapes and verify manifest assets are in-wheel
 - ll-verify-design-tokens: Structural lint for half-flipped design-token theme profiles
+- ll-verify-des-audit: Walk source tree and verify every event-emit site maps to a registered DES variant (ENH-2475 / F5 adoption gate)
 - ll-check-links: Markdown link checking
 - ll-issues: Issue management and visualization utilities
 - ll-gitignore: Suggest and apply .gitignore patterns
@@ -79,6 +80,7 @@ from little_loops.cli.sprint import (
 )
 from little_loops.cli.sync import main_sync
 from little_loops.cli.verify_design_tokens import main_verify_design_tokens
+from little_loops.cli.verify_des_audit import main_verify_des_audit
 from little_loops.cli.verify_package_data import main_verify_package_data
 from little_loops.cli.verify_triggers import main_verify_triggers
 from little_loops.init.cli import main_init
@@ -117,6 +119,7 @@ __all__ = [
     "main_sync",
     "main_verify_docs",
     "main_verify_design_tokens",
+    "main_verify_des_audit",
     "main_verify_package_data",
     "main_verify_skill_budget",
     "main_verify_skills",

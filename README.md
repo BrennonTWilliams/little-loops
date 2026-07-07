@@ -43,7 +43,7 @@ The unit of work is the feature, the sprint, or the overnight optimization — n
 
 Raw agents re-derive the same structural moves differently each run. The `ll-` CLI removes the improvisation surface: context gathering, issue lifecycle, sprint moves, and worktree setup all run as typed commands. Two runs of the same feature land in the same shape — by construction, not by prompting.
 
-- **37 typed CLI tools** (`ll-issues`, `ll-sprint`, `ll-loop`, `ll-parallel`, `ll-action`, …) — structural work runs as commands, not improvised tool calls.
+- **38 typed CLI tools** (`ll-issues`, `ll-sprint`, `ll-loop`, `ll-parallel`, `ll-action`, …) — structural work runs as commands, not improvised tool calls.
 - **`/ll:manage-issue`** — composes the CLIs into a fixed plan → implement → verify → complete sequence. The agent reasons *inside* steps, not about *which* steps to take.
 - **Skill harnesses** (`/ll:ready-issue`, `/ll:wire-issue`, `/ll:confidence-check`) — same inputs, same gates, same outputs.
 - **Worktree setup, branch naming, issue ID generation** — mechanical operations that produce identical structure across runs.
@@ -75,7 +75,7 @@ Harness-driven development is TDD's analog for agent-built software: define what
 - **28 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
 - **67 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
-- **37 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
+- **38 CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **81 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 - **Design tokens** — WCAG AA palette template set with FSM context injection for artifact-generating loops

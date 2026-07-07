@@ -2606,6 +2606,30 @@ ll-verify-design-tokens -C /path/to/root         # Discover under a specific pro
 
 ---
 
+### ll-verify-des-audit
+
+Walk the source tree and verify every event-emit site maps to a registered DES variant — the F5 adoption gate (ENH-2475). The audit reads every emit-call string literal in `scripts/little_loops/`, then checks each against the canonical `DES_VARIANTS` registry (defined in `little_loops.observability.schema`). Exit 0 means every currently-emitted event type has a registered variant; exit 1 means a new event was emitted without being registered — block F5's `gen_ai.usage.*` adoption until the variant is added.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Project root to discover the source directory under (default: cwd) |
+| `--source-dir` | | Explicit path to a `little_loops` source/ directory (overrides `-C` discovery) |
+
+**Exit codes:** `0` = every emit site maps to a registered DES variant; `1` = one or more uncovered event types (or source dir not found).
+
+**Examples:**
+```bash
+ll-verify-des-audit                          # Auto-discover source dir from cwd
+ll-verify-des-audit --json                   # Machine-readable JSON output
+ll-verify-des-audit --source-dir DIR         # Walk a specific source directory
+ll-verify-des-audit -C /path/to/root         # Discover under a specific project root
+```
+
+---
+
 ### ll-check-links
 
 Check markdown documentation for broken links.

@@ -1,22 +1,33 @@
 ---
 id: ENH-2475
-title: "F5.1 — Existing-event audit (DES adoption prerequisite)"
+title: "F5.1 \u2014 Existing-event audit (DES adoption prerequisite)"
 type: ENH
 priority: P2
-status: open
-captured_at: "2026-07-04T20:05:34Z"
+status: done
+captured_at: '2026-07-04T20:05:34Z'
+completed_at: 2026-07-07 04:27:22+00:00
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [FEAT-2470, FEAT-2476, FEAT-2478]
-blocks: [FEAT-2478]
+relates_to:
+- FEAT-2470
+- FEAT-2476
+- FEAT-2478
+blocks:
+- FEAT-2478
 decision_needed: false
 labels:
-  - token-cost
-  - observability
-  - des
-  - history-db
-  - tier-1
+- token-cost
+- observability
+- des
+- history-db
+- tier-1
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 25
 ---
 
 # ENH-2475: F5.1 — Existing-event audit (DES adoption prerequisite)
@@ -420,10 +431,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-07-04 | Priority: P2
+**Done** | Created: 2026-07-04 | Priority: P2 | Completed: 2026-07-07
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-07T03:38:09 - `dae638b1-ff71-4075-91db-d423028513e4.jsonl`
+- `/ll:ready-issue` - 2026-07-07T03:37:50 - `dae638b1-ff71-4075-91db-d423028513e4.jsonl`
 - `/ll:wire-issue` - 2026-07-05T04:25:40 - `96cde535-2534-4eef-a0ab-403a9dd9c557.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:12:27 - `33f03ea0-c7a0-42a0-9db7-35a7941f27c4.jsonl`
+- `/ll:manage-issue` - 2026-07-07T04:27:22Z - implementation complete: 65 variants registered, `ll-verify-des-audit` passes against the real tree, full test suite green
 
 - `/ll:capture-issue` - 2026-07-04T20:05:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a4ee548-94b7-4694-b8c1-49e3f31cc127.jsonl`

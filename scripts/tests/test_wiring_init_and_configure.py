@@ -85,7 +85,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/configure/show-output.md", "history.go_no_go", "ENH-1916"),
     ("skills/configure/show-output.md", "history.capture_issue", "ENH-1916"),
     # REMOVED (stub ENH-1982): ("skills/init/SKILL.md", '"Bash(ll-create-extension:*)"', "FEAT-1049"),
-    ("skills/configure/areas.md", "Authorize all 30", "FEAT-1049"),
+    ("skills/configure/areas.md", "Authorize all 31", "FEAT-1049"),
     ("skills/configure/areas.md", "ll-create-extension", "FEAT-1049"),
     # REMOVED (stub ENH-1982): ("skills/init/SKILL.md", "hooks fire automatically", "BUG-863"),
     ("skills/configure/areas.md", "Manual hook installation is not needed", "BUG-863"),

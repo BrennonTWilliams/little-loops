@@ -3806,6 +3806,14 @@ def main_verify_docs() -> int
 
 Entry point for `ll-verify-docs` command. Verify that documented counts match actual file counts in the project.
 
+### main_verify_des_audit
+
+```python
+def main_verify_des_audit() -> int
+```
+
+Entry point for `ll-verify-des-audit` command (ENH-2475). Walk the source tree, classify every event-emit site against the canonical `DES_VARIANTS` registry, and exit 0 iff every currently-emitted event has a registered variant — the F5 adoption gate (EPIC-2456 § Tier 1).
+
 **Returns:** Exit code
 
 ### main_check_links
@@ -4372,6 +4380,51 @@ orchestrator = ParallelOrchestrator(
     br_config=br_config,
 )
 exit_code = orchestrator.run()
+```
+
+---
+
+## little_loops.observability
+
+DES (discriminated-union) variant registry for every event shape currently emitted to `.ll/history.db` (ENH-2475). The registry enumerates the full event surface so F5 (`observability/tracing.py`, EPIC-2456 § Tier 1) can adopt a canonical emit schema without runtime shape-coercion.
+
+### little_loops.observability.schema
+
+```python
+from little_loops.observability.schema import DESVariant, DES_VARIANTS, DES_VARIANT_TYPES
+```
+
+Frozen dataclasses (per `little_loops.host_runner` value-object convention) keyed by a `type: Literal[...]` discriminator. Every variant matches a wire-format event type currently emitted from `scripts/little_loops/`:
+
+| Export | Description |
+|--------|-------------|
+| `DESVariant` | Base frozen dataclass for every registered variant |
+| `DES_VARIANTS` | `Final[Tuple[Type[DESVariant], ...]]` — every registered variant class |
+| `DES_VARIANT_TYPES` | `Final[frozenset[str]]` — every discriminator string (the audit walker's allow-list) |
+
+Each concrete variant subclasses `DESVariant` and declares its discriminator via `type: Literal["exact_string"] = "exact_string"`. Example:
+
+```python
+@dataclass(frozen=True)
+class LoopStartVariant(DESVariant):
+    """FSMExecutor._emit('loop_start') — FSM loop begins execution."""
+    type: Literal["loop_start"] = "loop_start"
+    loop: str = ""
+```
+
+### little_loops.observability.audit
+
+```python
+from little_loops.observability.audit import audit_tree, AuditResult
+```
+
+Static walker that classifies every emit site in a source tree against `DES_VARIANT_TYPES`. Two-phase detection (regex for positional string literals, AST for `event=...` keyword args) covers both `_emit("type", {...})` and `event_bus.emit({..., "event": "type", ...})` patterns.
+
+```python
+result = audit_tree(Path("scripts/little_loops"))
+if not result.passed:
+    for etype in result.uncovered_event_types:
+        print(f"Uncovered event type: {etype}")
 ```
 
 ---
