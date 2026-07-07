@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498]
+relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512]
 labels:
   - epic
   - history-db
@@ -119,11 +119,78 @@ table, no new child) rather than a new sibling.
   backfill for the outcome. Today the one hook that mutates user intent leaves
   no trace, so the feature is unmeasured. *(P3)*
 
+### Third-pass expansion (added 2026-07-06)
+
+A second-pass producer-surface sweep on 2026-07-06, prompted by the
+`autodev-bug2501-kill-analysis` (2026-07-07) — which found that the
+post-tool-use / context-monitor / session-store-trace mechanics had
+several uncaptured producer sites that materially hampered debugging —
+surfaced nine additional gaps. Per this EPIC's "may gain additional
+siblings over time" clause, they are added as children rather than a
+new EPIC:
+
+- **ENH-2504** — Persist verification / readiness-review verdicts
+  (`ll-ready-issue`, `ll-confidence-check`, `ll-tradeoff-review`,
+  `ll-go-no-go`, `ll-refine-issue`, `ll-format-issue`,
+  `ll-verify-issues`, `ll-prioritize-issues`, `ll-align-issues`,
+  `/ll:verify-issue-loop`) into a `verdict_events` table. Adjacent to
+  ENH-2493 but for the *read-side verifiers* rather than executors.
+  *(P3 — paired with ENH-2493 as the third leg of the read-side
+  stool.)*
+- **ENH-2505** — Link subagent session-tree (parent→child) into a
+  `subagent_runs` table (`parent_session_id`, `child_session_id`,
+  `agent_type`, `started_at`, `ended_at`). ENH-2497 captures
+  `agent_type` on `tool_events` but doesn't link the spawned session
+  back to its parent — this issue closes the join. *(P3 — enables
+  "which parent sessions burn budget on subagent retries".)*
+- **ENH-2506** — Capture hook execution telemetry (event_name,
+  matcher, script, exit_code, duration_ms, stderr_preview) into a
+  `hook_events` table. The hook dispatcher wraps every handler in a
+  `try/except Exception: return LLHookResult(exit_code=0)`; this
+  issue persists the fires that the wrapper currently swallows.
+  *(P3 — most "the hook didn't fire" debug threads start with no
+  data.)*
+- **ENH-2507** — Persist context-window pressure measurements (50 / 75
+  / 90 / 100% crossings from `context-monitor.sh`) into a
+  `context_pressure_events` table. Pairs with `tool_events.bytes_in/
+  out/cache_hit` as the missing end-of-pipeline signal. *(P3 — cheap,
+  ~one row per PostToolUse fire.)*
+- **ENH-2508** — Link commits to git tags and release versions: two
+  nullable columns (`tag TEXT`, `release_version TEXT`) on
+  `commit_events`, backfilled from `git tag --points-at <sha>`. Widens
+  ENH-2458. Lets `ll-session search` find "everything touched by
+  v0.4.2." *(P3 — trivial additive column.)*
+- **ENH-2509** — Capture worktree lifecycle events
+  (`worktree_create` / `worktree_merge` / `worktree_delete`) into
+  `session_lifecycle_events`. Widens ENH-2495 with three new event
+  discriminators rather than a new child. *(P3 — very low effort as
+  a fold into ENH-2495.)*
+- **ENH-2510** — Persist `ll-history-context` query telemetry
+  (queried_kind, queried_id, result_tokens, hit_rate) into a
+  `context_query_events` table. Pairs naturally with `ll-ctx-stats`
+  for cost analysis — together they answer "is the history-context
+  fetcher a meaningful slice of session spend." *(P3 — enables
+  data-driven tuning of `history.compaction.budget_tokens`.)*
+- **ENH-2511** — Capture MCP tool-call telemetry
+  (`mcp_server`, `mcp_tool`, `mcp_outcome`, `latency_ms`) on
+  `tool_events`. Widens ENH-2497's v19 migration with four additive
+  columns instead of a separate table. *(P3 — same migration target
+  as ENH-2497; coordinate as a single batch.)*
+- **ENH-2512** — Persist read-side audit / review outcomes
+  (`/ll:review-epic`, `/ll:review-sprint`, `/ll:review-loop`,
+  `/ll:audit-architecture`, `/ll:audit-claude-config`,
+  `/ll:audit-docs`, `/ll:audit-loop-run`) into a `review_events`
+  table with `severity_counts` + `findings_json_summary`. Adjacent to
+  ENH-2493 but for opinion-bearing audits rather than harness
+  evaluators. *(P3 — backs velocity-tracking questions like "how
+  many P0 review findings closed this week?".)*
+
 ## Children (filled post-write by `/ll:capture-issue`)
 
-_See `## Children` section above. File system source: this EPIC and 16 child ENH
-files (9 original + 6 from the 2026-07-05 expansion + ENH-2498 from the
-second-pass expansion)._
+_See `## Children` section above. File system source: this EPIC and 25 child ENH
+files (9 original + 6 from the 2026-07-05 first-pass expansion + ENH-2498 from
+the 2026-07-05 second-pass expansion + 9 from the 2026-07-06 third-pass
+expansion)._
 
 ## Integration Map
 
@@ -149,14 +216,14 @@ Children may be implemented in any order; the P2 pair landed first as recommende
 
 ## Impact
 
-- **Priority**: P3 — Rollup epic for sixteen independent enhancements (9 original + 7 added 2026-07-05); no coordinated release pressure.
+- **Priority**: P3 — Rollup epic for twenty-five independent enhancements (9 original + 7 added 2026-07-05 + 9 added 2026-07-06); no coordinated release pressure.
 - **Effort**: Variable, per child. Sum across children: estimated Medium-Large (six small per-child slices + three medium ones based on doc's own complexity signal).
 - **Risk**: Low per child; cumulative risk is "schema sprawl" if children land uncoordinated — mitigated by each child adding at most one migration per the EPIC-1707 graceful-degradation contract.
 - **Breaking Change**: No — every child is additive; no existing tables modified beyond optional additive columns and indexes.
 
 ## Success Metrics
 
-- All 16 children reach `status: done` (or are explicitly cancelled/deferred with rationale). _Progress as of 2026-07-06: 4 done (ENH-2458, ENH-2459, ENH-2460, ENH-2462), 12 open._
+- All 25 children reach `status: done` (or are explicitly cancelled/deferred with rationale). _Progress as of 2026-07-06: 4 done (ENH-2458, ENH-2459, ENH-2460, ENH-2462), 21 open._
 - `ll-session search --fts` returns results across the new kinds (`commit`, `test_run`, `loop_run`, `learning_test`).
 - A new contributor can ask `ll-session recent --kind commit` and see a real row, proving schema migration landed.
 - The findings report's "Source" section becomes a historical record of *what was missing* — re-running the report's inventory should show zero items in §2.
@@ -186,5 +253,6 @@ _Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
-- audit - 2026-07-06 - Reconciled child counts (9 → 16) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 12 open, schema v18 verified in code).
+- audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).
+- third-pass expansion - 2026-07-06 - Added 9 children (ENH-2504..ENH-2512) following the autodev-bug2501-kill-analysis prompt: `verdict_events` (read-side verifier signals), `subagent_runs` (parent→child session linkage), `hook_events` (per-fire telemetry), `context_pressure_events` (PostToolUse pressure curve), `commit→tag` linkage on `commit_events`, worktree lifecycle widening of `session_lifecycle_events`, `context_query_events` (history-context fetcher cost), MCP tool-call telemetry on `tool_events`, and `review_events` (audit/review verdicts). Item sources: the user-reported gap list (2026-07-06); several fold into existing children (ENH-2495, ENH-2497, ENH-2458) as scope-widening.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
