@@ -195,6 +195,16 @@
             "statusMessage": "Cleaning up scratch pad..."
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/orphan-worker-sweep.sh",
+            "timeout": 5,
+            "statusMessage": "Reaping orphaned pytest-xdist workers..."
+          }
+        ]
       }
     ],
     "PreCompact": [
