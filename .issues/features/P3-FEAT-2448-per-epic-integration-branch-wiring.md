@@ -1,6 +1,6 @@
 ---
 id: FEAT-2448
-title: per-EPIC integration branch — worker_pool + merge_coordinator wiring
+title: "per-EPIC integration branch \u2014 worker_pool + merge_coordinator wiring"
 type: FEAT
 priority: P3
 status: open
@@ -21,22 +21,38 @@ relates_to:
 - FEAT-2447
 - FEAT-2449
 - FEAT-2450
+- FEAT-2452
+- FEAT-2453
 blocked_by:
 - FEAT-2447
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 60
-score_complexity: 7
-score_test_coverage: 18
-score_ambiguity: 6
-score_change_surface: 0
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # FEAT-2448: per-EPIC integration branch — worker_pool + merge_coordinator wiring
 
 ## Summary
 
-Second of four sequenced children decomposed from FEAT-2339. This child
+> **Coordination container — split on 2026-07-07.**
+> This issue is decomposed into two sequenced children:
+> **[FEAT-2452](./P3-FEAT-2452-workerpool-and-dataclass-wiring.md)** —
+> WorkerPool + `WorkerResult` dataclass wiring (broad fanout: 12-return
+> kwarg threading, instance-state dict, `_get_changed_files` /
+> `_update_branch_base` variants, `types.py` 4-edit pattern).
+> **[FEAT-2453](./P3-FEAT-2453-downstream-consumer-read-sites.md)** —
+> Downstream consumer read-sites (3 `or` substitutions at
+> `merge_coordinator.py:624 / :875` and `orchestrator.py:1142`,
+> plus `branch_state["epic_branch"]` mutation).
+> Land **FEAT-2452 first**, then **FEAT-2453**; both must complete
+> before **FEAT-2449**. See `## Decomposition` below for the
+> rationale and outcome-confidence table.
+
+Second of four sequenced children decomposed from FEAT-2339. This issue
 **wires the resolver into worker_pool and merge_coordinator** so that
 when epic mode is active, an EPIC child's branch forks from and merges
 into the shared `epic/<EPIC-ID>-<slug>` branch instead of
@@ -133,6 +149,71 @@ ll-parallel/ll-sprint.
   — **FEAT-2450**.
 - Docs, 9 templates parity, prune_merged_feature_branches docstring
   — **FEAT-2450**.
+
+## Decomposition
+
+Decomposed into two sequenced children on 2026-07-07 via
+`/ll:confidence-check` (this issue scored 74/100 outcome,
+MODERATE tier). The split was driven by the **shape asymmetry**
+in this issue's scope: the broad-fanout dataclass piece
+(`WorkerResult` ripple + 12-return kwarg threading +
+WorkerPool-side methods) sat awkwardly alongside three
+clean read-site substitutions at `merge_coordinator.py:624,
+:875` and `orchestrator.py:1142`.
+
+### Children
+
+- **[FEAT-2452](./P3-FEAT-2452-workerpool-and-dataclass-wiring.md)** —
+  WorkerPool + `WorkerResult` dataclass wiring (steps 1-6 of the
+  Scope section). Lands the `epic_branch` field, populates it
+  once at `_process_issue` head, threads it as a kwarg to all
+  12 `WorkerResult(...)` returns, and reads it back via the
+  `_worker_epic_branches` instance-state dict in
+  `_get_changed_files` and `_update_branch_base`. Carries the
+  irreducible broad fanout — `score_change_surface = 10` is
+  inherent to the dataclass change.
+- **[FEAT-2453](./P3-FEAT-2453-downstream-consumer-read-sites.md)** —
+  Downstream consumer read-sites. Four 1-2 line mechanical
+  substitutions: two `or` idioms in `merge_coordinator.py`, the
+  `branch_state["epic_branch"] = result.epic_branch` mutation
+  in `orchestrator.py:1005`, and the `--base` read at
+  `orchestrator.py:1142`. Ships with `outcome_confidence = 86
+  → HIGH` once FEAT-2452 lands.
+
+### Outcome Confidence Table
+
+| Issue | A | B | C | D | Total | Tier |
+|---|---|---|---|---|---|---|
+| FEAT-2448 (this, unsplit) | 14 | 25 | 25 | 10 | 74 | MODERATE |
+| **FEAT-2452** (WorkerPool + dataclass) | 14 | 25 | 25 | 10 | 74 | MODERATE |
+| **FEAT-2453** (downstream consumers) | 18 | 25 | 25 | 18 | **86** | **HIGH** |
+
+The aggregate risk profile is similar to the unsplit issue;
+per-issue tractability jumps dramatically — the clean piece no
+longer carries the broad-fanout burden.
+
+### Execution Pattern
+
+`blocked_by: [FEAT-2447]` is satisfied (FEAT-2447 is landed).
+Land **FEAT-2452 first**, then **FEAT-2453** in the same
+sprint wave. Both must complete before FEAT-2449 (orchestrator
+EPIC-completion flow). The orchestrator-side end-to-end test
+surface for FEAT-2449 depends on FEAT-2453's `--base` switching
+having landed.
+
+### What moved and why
+
+| Scope item from this issue (Section 1-6) | Now lives in |
+|---|---|
+| §1 `WorkerResult.epic_branch` field + 4-edit pattern | FEAT-2452 step 1 |
+| §2 12-return kwarg threading in `_process_issue` | FEAT-2452 step 2 |
+| (new in FEAT-2452) `self._worker_epic_branches` instance-state dict | FEAT-2452 step 3 |
+| §4 `_get_changed_files()` epic-mode variant | FEAT-2452 step 4 |
+| §5 `_update_branch_base()` epic-mode variant | FEAT-2452 step 5 |
+| §6 tests (WorkerPool-side) | FEAT-2452 step 6 |
+| §3 merge_coordinator.py read-sites (2 sites) | FEAT-2453 steps 1-2 |
+| §3 orchestrator.py `branch_state` mutation + `--base` | FEAT-2453 steps 3-4 |
+| §6 tests (merge_coordinator, orchestrator) | FEAT-2453 step 5 |
 
 ## Acceptance Criteria
 
@@ -600,7 +681,589 @@ analysis:_
   `self.parallel_config.epic_branches.enabled` (via the resolver)
   and writes `result.epic_branch` to `WorkerResult`.
 
+### Phase 2 Research Findings — Refinement Pass (2026-07-07)
+
+_Added by second `/ll:refine-issue` pass — codebase state has moved since
+the Phase 1 pass (FEAT-2447 is now landed). Verified all anchors against
+current source._
+
+- **FEAT-2447 is fully landed — Standalone Implementation Blocker
+  is OBSOLETE.** Verified at `worker_pool.py:1564-1699` and
+  `types.py:305-328, 415-423, 504-509, 556`: the resolver
+  `_resolve_branch_targets()` returns `(fork_point, merge_target)`
+  tuple, with helpers `_find_nearest_epic_ancestor` (line 1592),
+  `_build_parent_map` (line 1611), `_load_epic_slug` (line 1638),
+  `_ensure_epic_branch` (line 1663), and the
+  `self._epic_branches_created: set[str]` instance cache at
+  `worker_pool.py:189-190`. The schema block landed at
+  `config-schema.json:407-433`. FEAT-2448 can now be implemented
+  standalone — Options 1, 2, 3 in the existing
+  `### CRITICAL: Standalone Implementation Blocker` section are no
+  longer required; the resolver is callable. **The original blocker
+  note (lines 309-335) is preserved verbatim per additive-only
+  contract; this finding supersedes it for implementer purposes.**
+- **`_setup_worktree` is a thin wrapper at
+  `worker_pool.py:650-678`.** The function delegates to
+  `setup_worktree()` from `little_loops.worktree_utils`,
+  threading `repo_path`, `worktree_path`, `branch_name`,
+  `parallel_config.worktree_copy_files`, `logger`, `git_lock`, and
+  the `base_branch` kwarg through verbatim. `base_branch` is
+  `Optional[str]` — `None` means "fork from HEAD" per the
+  docstring at lines 654-658. The `_detect_worktree_model_via_api`
+  follow-up at lines 672-678 is unrelated to base-branch wiring
+  and is not in the FEAT-2448 scope. The function currently does
+  not need modification for epic mode — the existing
+  `base_branch=` kwarg threading is sufficient because the
+  resolver returns a non-None string when epic mode is active.
+- **`_get_changed_files` callers in `_process_issue`.** The
+  function at `worker_pool.py:1078-1098` is called from two sites
+  in `_process_issue()`: line 534 (first call, before the
+  verification gate) and line 562 (after `_recover_committed_leaks`
+  returns). Both call sites use the standard
+  `worker_pool._get_changed_files(worktree_path)` shape — the
+  epic-mode threading via either option (a) instance-state dict
+  or option (b) extra-param pattern applies to both call sites.
+- **`_update_branch_base` single caller is `_process_issue:602`.**
+  The single call site is
+  `base_updated, base_error = self._update_branch_base(worktree_path, issue.issue_id)`
+  at line 602, followed by the `WorkerStage.MERGING` stage update
+  at line 605 and a `WorkerResult` return at lines 608-619 when
+  `base_updated` is False. Adding a third parameter (option b) only
+  requires updating this one caller; the 3 existing tests in
+  `TestUpdateBranchBase` use direct method invocation and would
+  need parallel updates for option (b), or seed
+  `worker_pool._worker_epic_branches[issue_id]` for option (a).
+- **Orchestrator caller chain for `_open_pr_for_branch`.** The
+  function is called once from `_on_worker_complete` at
+  `orchestrator.py:1006`, inside the
+  `if self.parallel_config.open_pr_for_feature_branches:` block at
+  line 1005. The `branch_state` dict is constructed at lines
+  980-984 as
+  `{"branch_name": ..., "pushed": False, "pr_url": None}`.
+  `ParallelOrchestrator.__init__` constructs `WorkerPool` and
+  `MergeCoordinator` at lines 113-118 — no constructor signature
+  change needed for FEAT-2448. The two viable threading paths for
+  the epic-mode switch: (a) new kwarg
+  `_open_pr_for_branch(self, issue_id, branch_name, branch_state, epic_branch=None)`,
+  or (b) mutate `branch_state["epic_branch"] = result.epic_branch`
+  at line 1005 before the call. Option (b) is preferred per the
+  existing wiring-pass decision (FEAT-2448:362-365) and matches
+  the existing `branch_state["pushed"] = True` mutation pattern.
+- **Two `TestWorkerResult` classes exist — both need `epic_branch`
+  coverage.** Phase 1 wiring-pass item 7 (FEAT-2448:235-254)
+  identified only `test_parallel_types.py:161-359`. The
+  pattern-finder agent also verified a compact
+  `TestWorkerResult` class at `test_worker_pool.py:120-149` with
+  two tests (`test_interrupted_can_be_set_true` at 123-135 and
+  `test_interrupted_serialization` at 137-149) — both tests
+  follow the canonical `interrupted` precedent shape and must
+  receive epic-branch counterparts
+  (`test_epic_branch_can_be_set` and
+  `test_epic_branch_serialization`). Total `WorkerResult` test
+  surface for `epic_branch` spans 4 test files (test_worker_pool.py
+  at 120-149, test_parallel_types.py at 161-359, plus the existing
+  test_merge_coordinator.py and test_orchestrator.py tests
+  exercising `WorkerResult` construction).
+- **Existing `_resolve_branch_targets` tests at
+  `test_worker_pool.py:3296-3482`.** FEAT-2447's tests use the
+  `mock_issue` fixture (lines 110-117) with explicit
+  `mock_issue.parent = "EPIC-XXXX"` assignment (e.g., line 3334).
+  These tests confirm the parent-walking behavior and serve as
+  the canonical reference for the issue-side threading pattern.
+  New `_process_issue` epic-mode tests can borrow the same
+  fixture shape.
+- **Existing `EpicBranchesConfig` and `ParallelConfig.epic_branches`
+  test coverage.** `test_parallel_types.py:757-761` covers
+  `EpicBranchesConfig` defaults; `test_parallel_types.py:1034-1051`
+  covers `ParallelConfig` `to_dict`/`from_dict` round-trip with the
+  new `epic_branches` block. These tests confirm FEAT-2447's
+  config wiring works end-to-end. FEAT-2448 does not add new
+  config tests — it inherits these as ground truth.
+- **`test_cli.py` hardcoded `"parallel"` block at 1638-1642** (not
+  1642-1647 as the FEAT-2447 wiring pass cited). The block ends
+  at line 1642. The end-of-fixture closing brace sits at 1642, so
+  any `epic_branches` addition would be inside this range.
+- **`test_cli_e2e.py` block at 105-111** (not 105-110).
+- **`test_issue_workflow_integration.py` block at 197-205** (not
+  197-202).
+- **`config-schema.json:402-406` — `parallel.remote_name` block**
+  sits between `base_branch` (397-401) and the new
+  `epic_branches` block (407-433). The `epic_branches` block
+  closes with `additionalProperties: false` at **line 432** (not
+  line 408 — that is the outer `parallel` properties close).
+- **Docstring on `ParallelConfig.base_branch` at `types.py:407-412`**
+  describes the BUG-2323 auto-detection fallback chain
+  (`origin/HEAD` → current branch → `"main"`). The new
+  `epic_branches` field at line 415-416 follows immediately after
+  this docstring. No docstring conflict — both are independently
+  documented.
+- **`_resolve_branch_targets` exists — confirmed at
+  `worker_pool.py:1564-1590`.** The resolver returns
+  `(fork_point, merge_target)` — both currently the same string
+  per FEAT-2339 Decision Rationale #1 (flatten to nearest).
+  When `epic_branches.enabled` is False or `issue.parent` is
+  None, returns `(base_branch, base_branch)` no-op. When enabled
+  and an EPIC ancestor exists, returns
+  `(epic/<EPIC-ID>-<slug>, epic/<EPIC-ID>-<slug>)` after
+  `_ensure_epic_branch()` idempotent create. This confirms
+  FEAT-2448 can call `epic_branch, _ = self._resolve_branch_targets(issue)`
+  directly inside `_process_issue` — no shim needed.
+- **`ParallelOrchestrator.__init__` constructs WorkerPool +
+  MergeCoordinator at `orchestrator.py:113-118`.** Verified no
+  signature changes propagate to the orchestrator for
+  FEAT-2448. The `MergeCoordinator.__init__` signature at
+  `merge_coordinator.py:44` similarly takes
+  `(self, *, config, repo_path, git_lock, logger, ...)` — no
+  `WorkerResult.epic_branch` threading needed at construction
+  time because `WorkerResult` is passed at merge-request time via
+  `MergeRequest.worker_result` (built at `merge_coordinator.py:119`).
+- **`WorkerResult` callers in `_handle_completion` at
+  `worker_pool.py:304-310`.** Phase 1 (FEAT-2448:431-433) cites
+  the single `_handle_completion` return as receiving
+  `worker_result: WorkerResult` parameter. Verified: the
+  function takes `worker_result: WorkerResult` and returns it
+  unchanged in the worker-future-failed fallback. The new
+  `epic_branch` field flows through transparently — no edit
+  needed at this site beyond ensuring the original
+  `WorkerResult` constructed upstream in `_process_issue`
+  already has `epic_branch=` populated.
+- **`_open_pr_for_branch` test fixture needs args-capture
+  enhancement.** The existing
+  `test_on_worker_complete_feature_branch_open_pr` at
+  `test_orchestrator.py:2008-2052` uses an inline
+  `fake_subprocess_run` that does NOT capture args (returns
+  a `CompletedProcess` per command but discards the args).
+  For the FEAT-2448 wiring to assert on the actual `--base`
+  value (per Phase 1 wiring-pass item 6 at FEAT-2448:118-121),
+  the test needs a `captured_args: list[list[str]] = []`
+  accumulator and an `args` append inside `fake_subprocess_run`.
+  Pattern is the same as the `TestUpdateBranchBase` tests'
+  inline `captured_cmds` list at `test_worker_pool.py:1714-1794`.
+- **`MergeCoordinator` signature unchanged.** Both consumer
+  sites at `_process_merge` (line 624) and `_handle_conflict`
+  (line 875) receive `result = request.worker_result` at the
+  method head (lines 586 and 816 respectively). The
+  `or` idiom
+  `base = result.epic_branch or self.config.base_branch` is
+  byte-for-byte identical to today's behavior when
+  `epic_branch is None` (the default for non-EPIC issues), so
+  no behavioral change for the no-op case. Verified by direct
+  read of both methods.
+
+### Test Surface Summary (Phase 2 verified)
+
+For FEAT-2448's epic-branch test coverage, the canonical test
+locations and patterns are:
+
+| Test class / file | Lines | Pattern | Status |
+|---|---|---|---|
+| `TestWorkerResult` (`test_worker_pool.py`) | 120-149 | 2-test compact (`test_*_can_be_set` + `test_*_serialization`) | Needs 2 epic-branch tests |
+| `TestWorkerResult` (`test_parallel_types.py`) | 161-359 | 5+ test broad coverage (`test_default_values`, `test_creation_with_all_fields`, `test_to_dict`, `test_from_dict`, `test_roundtrip_serialization`) | Needs 5 epic-branch updates |
+| `TestUpdateBranchBase` (`test_worker_pool.py`) | 1711-1794 | 3-test inline-captured-cmds class | Needs 3 epic-mode counterparts |
+| `test_process_issue_uses_feature_branch_name_when_enabled` (`test_worker_pool.py`) | 2191-2236 | Single-process-issue integration test | Needs `issue.parent = None` (Phase 1, line 105-106) |
+| `test_setup_worktree_with_base_branch_appends_commit_ish` (`test_subprocess_mocks.py`) | 615-663 | Inline tempdir + captured_commands | Needs epic-branch variant |
+| `test_process_merge_uses_merge_request` (`test_subprocess_mocks.py`) | 801-844 | Mock run + checkout assertion at 838 | Needs epic-branch variant |
+| `test_restash_after_pull_with_local_changes` (`test_subprocess_mocks.py`) | 846-918 | Mock run + command-prefix check at 892 | Needs epic-branch variant |
+| `test_on_worker_complete_feature_branch_open_pr` (`test_orchestrator.py`) | 2008-2052 | Fake subprocess without args capture | Needs args capture + `--base` assertion |
+
+## Wiring Pass Round 2 — 2026-07-07
+
+_Added by second `/ll:wire-issue` pass — three parallel agents re-traced the
+wiring surface after FEAT-2447 landed and the Phase 2 research pass found new
+codebase state. Anchors verified against current source (2026-07-07)._
+
+### Critical: ENH-2492 SQLite Schema Coordination
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The `WorkerResult.to_dict()` shape becomes **load-bearing for SQLite round-trip**
+when ENH-2492 lands (proposed SQLite table `orchestration_runs` will store per-worker
+results per issue). The proposed DDL at
+`.issues/enhancements/P2-ENH-2492-capture-orchestration-run-outcomes-into-history-db.md:274-292`
+**does not include an `epic_branch` column** — only `branch` at line 287:
+
+```sql
+CREATE TABLE IF NOT EXISTS orchestration_runs (
+    ...
+    branch TEXT,                    -- line 287 (per-worker branch_name)
+    ...
+);
+```
+
+If ENH-2492 lands BEFORE FEAT-2448, the orchestrator's per-worker flush site
+(`scripts/little_loops/parallel/orchestrator.py:_run_issue`) will silently drop
+`result.epic_branch` when calling `record_orchestration_run()` because the
+function signature at ENH-2492:301-303 does not expose an `epic_branch` kwarg.
+
+**Two coordination options:**
+
+1. **Sequenced landing** — land FEAT-2448 first, then update ENH-2492's DDL +
+   `record_orchestration_run()` signature to include `epic_branch` (mirroring
+   `branch`). Add a follow-on coordination note to ENH-2492's Acceptance
+   Criteria referencing FEAT-2448.
+2. **Symmetric addition now** — when FEAT-2448 lands, also add `epic_branch` to
+   ENH-2492's schema migration as part of the same PR (off-FEAT-2448 path but
+   prevents the silent-drop regression).
+
+**[Agent 2 finding — CRITICAL downstream coordination miss; FEAT-2448's
+implementation is correct but the persistence layer needs a paired update.]**
+
+### Critical: `site/` HTML Files Embed `WorkerResult` Listing
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The `site/` directory contains git-tracked rendered HTML that mirrors the
+source docs. Updates to `docs/reference/API.md:3211-3235` do **not** auto-
+regenerate the HTML. The implementer must either regenerate the doc site or
+manually mirror the new `epic_branch: str | None = None` row in the HTML:
+
+- `site/reference/API/index.html:11556-11634` — `<h3 id="workerresult">WorkerResult</h3>`
+  block with the dataclass field listing at lines 11558-11576 (the FEAT-2448
+  wiring point).
+- `site/reference/API/index.html:11247-11251` — code example using `WorkerResult`.
+- `site/reference/API/index.html:11420` — table cell "Generic handling via
+  WorkerResult flags" (no field edit, but the surrounding dataclass signature
+  reference must stay in sync).
+- `site/reference/API/index.html:12302` — re-export block listing `WorkerResult`
+  in `__all__`.
+- `site/ARCHITECTURE/index.html:2282, 2289` — sequence diagram arrows labelled
+  `Pool: WorkerResult` (no field edit, but the dataclass shape reference must
+  stay in sync).
+- `site/development/MERGE-COORDINATOR/index.html:2263, 2537` — `worker_result`
+  in code examples.
+
+If the doc-site generator (`ll-artifact` or equivalent) is run, these HTML
+files will auto-update. If not, the implementer needs to manually patch the
+dataclass listing at `site/reference/API/index.html:11558-11576` to add the
+`epic_branch` row after the `interrupted` row, matching the source-doc
+ordering.
+
+**[Agent 2 finding — site regeneration is conventional, but worth flagging so
+the implementer doesn't ship a stale published site.]**
+
+### ARCHITECTURE-095 Decision Anchor — DO NOT Make `prune_merged_feature_branches` Epic-Aware
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The implementer reading only this issue may be tempted to add epic-awareness to
+`prune_merged_feature_branches()` at `worker_pool.py:1772-1790` or to the CLI
+mode at `cli/parallel.py:267-287`. The decision rule explicitly **forbids** this
+(cited but not anchored in the prior wiring pass). Anchored at
+`.ll/decisions.yaml:3803-3810` (ARCHITECTURE-095):
+
+> "Branch-prefix cleanup-gate ownership: no changes to the three existing gates
+> (`_is_ll_branch()`, `_cleanup_worktree()`'s `parallel/` check,
+> `prune_merged_feature_branches()`'s `feature/` check); epic/* lifecycle is
+> owned exclusively by the new `delete_epic_branch()` step."
+
+The new `delete_epic_branch()` step is **FEAT-2449's** responsibility. FEAT-2448
+must NOT touch any of the three existing cleanup gates. Surface this in the
+implementation PR description so a reviewer catching a stray `if epic_branch:`
+in `prune_merged_feature_branches` knows it's intentional to omit.
+
+**[Agent 2 finding — decision anchor missed by prior wiring pass; high-value
+context for implementer + reviewer.]**
+
+### `MergeRequest.to_dict()` Ripple Effect
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+`scripts/little_loops/parallel/types.py:217` directly nests `WorkerResult.to_dict()`:
+
+```python
+"worker_result": self.worker_result.to_dict(),
+```
+
+The `MergeRequest` shape is part of the JSON-serializable contract and is
+re-exported from `scripts/little_loops/parallel/__init__.py:41`. Adding
+`epic_branch` to `WorkerResult.to_dict()` will surface as a new
+`worker_result.epic_branch` key in any `MergeRequest.to_dict()` consumer.
+
+**Verified safe today:** Existing tests at `test_parallel_types.py:418-468` use
+the `sample_worker_result` fixture and only assert
+`result["worker_result"]["issue_id"] == "BUG-001"` (field-level, not strict-
+shape). No test asserts on the literal full `MergeRequest.to_dict()` shape.
+
+**Future risk:** Any future strict-contract test (e.g., snapshot test of
+`MergeRequest.to_dict()`) will need to include the new `worker_result.epic_branch`
+key. Worth noting in the test-design pattern for follow-on work.
+
+**[Agent 2 finding — not breaking, but a ripple to record so future test
+authors know the new key exists.]**
+
+### Mock-Patch Test Files (Verification Only, No Code Change)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Three test files monkey-patch `ParallelOrchestrator` / `WorkerPool` for CLI /
+sprint integration testing. **No FEAT-2448 code change required**, but they
+should be re-run after FEAT-2448 lands to verify the epic-branch threading
+doesn't break their assertions:
+
+- `scripts/tests/test_parallel_cli.py:59, 85, 120, 150, 188, 210, 234, 269` —
+  patches `little_loops.parallel.ParallelOrchestrator` and
+  `little_loops.parallel.WorkerPool`.
+- `scripts/tests/test_sprint.py:2282, 2292, 2317` — imports `ParallelConfig`;
+  patches `little_loops.cli.sprint.run.ParallelOrchestrator`.
+- `scripts/tests/test_sprint_integration.py:296, 323, 400, 420, 471, 492, 538,
+  656, 929, 1005, 1072, 1137, 1407` — extensive `ParallelOrchestrator`
+  patching across sprint integration scenarios.
+
+These tests use mocks at the class boundary, so constructor signature changes
+(there are none) wouldn't affect them; only behavioral changes would. The
+epic-branch `WorkerResult` field is opaque to mocks at this layer, but verify
+the full suite passes after FEAT-2448 lands per the Acceptance Criterion
+"`python -m pytest scripts/tests/` exits 0".
+
+**[Agent 1 finding — verification surface, not new wiring.]**
+
+### FEAT-2447 Verification Tests (Re-Run After FEAT-2448 Lands)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Two tests verify FEAT-2447's `epic_branches` config wiring landed correctly.
+They are FEAT-2447's test surface, but they implicitly verify the config
+plumbing that FEAT-2448 reads via `_resolve_branch_targets`. Run them after
+FEAT-2448 lands to confirm no regression:
+
+- `scripts/tests/test_init_core.py:2630-2659` —
+  `test_all_project_type_templates_have_epic_branches_stamp` — verifies all 9
+  templates have `epic_branches: {enabled: false}`.
+- `scripts/tests/test_config_schema.py:686-702` —
+  `test_parallel_epic_branches_in_schema` — verifies `config-schema.json`
+  declares `parallel.epic_branches`.
+
+**[Agent 1 finding — not new wiring, but verification surface to include in
+the post-implementation test run.]**
+
+### Second `_open_pr_for_branch` Test — Args-Capture Enhancement
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The Phase 2 research pass (line 750-760) flagged `test_orchestrator.py:2008-2052`
+(`test_on_worker_complete_feature_branch_open_pr`) as needing a `captured_args`
+accumulator to assert on the actual `--base` value. **A second test at
+`test_orchestrator.py:2260-2321` (`test_on_worker_complete_feature_branch_pr_url_idempotency`)
+has the same fake_subprocess_run shape and is a natural second place to assert
+on the `--base` value.** The idempotency test preserves an existing `pr_url`;
+adding a `assert base == "epic/EPIC-XXXX-..."` assertion on the `gh pr create`
+call would catch a regression where epic mode accidentally re-targets an
+existing PR's base branch.
+
+The gh-missing test at `test_orchestrator.py:2090-2123` (`test_on_worker_complete_feature_branch_gh_missing`)
+does **not** exercise `--base` (gh is missing before `pr create` is reached),
+so args-capture there is lower priority — listed as optional.
+
+**Recommended:** Add args-capture to both the open-pr test (2008-2052) and
+the idempotency test (2260-2321). Same `captured_args: list[list[str]] = []`
+accumulator pattern, same `args` append inside `fake_subprocess_run`.
+
+**[Agent 3 finding — Phase 2 missed this; same enhancement opportunity.]**
+
+### Anchor Drift Corrections
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Verified against current source (2026-07-07). Most anchors are accurate; the
+following minor drifts were found (all within the existing wiring pass's
+expected tolerance, but worth recording):
+
+| Cited anchor | Current line | Delta | Impact |
+|---|---|---|---|
+| `worker_pool.py:324` (`_process_issue` def) | 326 | +2 | None — function-by-name lookup |
+| `worker_pool.py:1098` (`_update_branch_base` def) | 1100 | +2 | None — function-by-name lookup |
+| `test_config.py:850` (`test_create_parallel_config`) | 893 | +43 | Verify reference still accurate |
+| `test_config.py:2324` (`test_from_dict_parallel_override`) | 2423 | +99 | Verify reference still accurate |
+| `test_cli.py:1642-1647` (second `"parallel"` block) | 1638-1642 | -4 to -5 | Phase 2 anchor is correct |
+| `test_cli_e2e.py:105-110` | 105-111 | +1 | Phase 2 anchor is correct |
+| `test_issue_workflow_integration.py:197-202` | 197-205 | +3 | Phase 2 anchor is correct |
+
+The `test_config.py:850` and `:2324` citations appear in the prior wiring
+pass's "Test files that don't need updating (verified)" section (lines 284-285)
+as references to existing tests that should keep passing — the line drift does
+not change the conclusion (those tests are unaffected by FEAT-2448), but the
+specific line numbers cited are stale.
+
+**All implementation-file anchors (`worker_pool.py:190, 290, 326, 602, 650,
+1078, 1100, 1564, 1592, 1611, 1638, 1663`; `merge_coordinator.py:577, 624,
+808, 875`; `orchestrator.py:914, 1006, 1109, 1142`; `types.py:52, 89-90, 91
+[empty], 306, 332, 416, 504-509, 556`; `config/core.py:38-39, 439, 510, 513,
+528-529`; `config/automation.py:40, 54, 91, 127`; `config-schema.json:407-433`)
+verified accurate.**
+
+**[Agent 1 finding — minor drift, low priority but worth recording so the
+implementer doesn't chase stale line numbers.]**
+
+### Internal Sibling Import Lines
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Three import lines that were not anchored in the prior wiring pass (the files
+are in the "4 implementation files" scope, but the specific import statements
+that pull in `WorkerResult` / `ParallelConfig` are listed here for the
+implementer's reference):
+
+- `scripts/little_loops/parallel/orchestrator.py:30` — imports from `parallel.types`
+- `scripts/little_loops/parallel/merge_coordinator.py:18-23` — imports
+  `MergeRequest`, `MergeStatus`, `ParallelConfig`, `WorkerResult`
+- `scripts/little_loops/parallel/worker_pool.py:26` — imports `ParallelConfig`,
+  `WorkerResult`, `WorkerStage`
+
+No code change required — these imports are by name and the new
+`WorkerResult.epic_branch` field flows through transparently. Anchored here
+so the implementer can find them if a stale-lint warning fires.
+
+**[Agent 1 finding — anchor completeness, not new wiring.]**
+
+### Confirmed Non-Breakage — All `WorkerResult(...)` Constructions Use Kwargs
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**All 40+ `WorkerResult(...)` constructions across the test suite use kwargs
+only** (no positional args). Verified at:
+
+- `test_parallel_types.py:65, 167, 181, 203, 248, 273, 293, 307, 324` (9 sites)
+- `test_worker_pool.py:125, 139, 408, 428, 452, 483, 559, 586` (8 sites)
+- `test_subprocess_mocks.py:817, 862` (2 sites)
+- `test_merge_coordinator.py:702, 735, 773, 815, 902, 1089, 1177, 1224, 1291,
+  1350, 1450, 1551, 1575, 1687, 1768, 2150, 2350` (17 sites)
+- `test_orchestrator.py:1670, 1694, 1714, 1733, 1760, 1786, 1810, 1832, 1873,
+  1904, 1926, 1947, 1977, 2019, 2063, 2099, 2214, 2246, 2305, 2468, 2551, 2583,
+  2602, 2621, 3059, 3224, 3347, 3375, 3398, 3417, 3629, 3756, 3888, 3907,
+  3926, 3945, 3965` (37 sites)
+
+**No test asserts on a literal full `WorkerResult.to_dict()` dict** (no `==`
+against a complete expected dict). The single closest pattern in
+`test_parallel_types.py:235-244` only asserts individual fields. Adding
+`epic_branch` to the dict output is **safe** for the existing test suite.
+
+**No test will break from the `WorkerResult.epic_branch` field addition alone.**
+The `was_blocked` (ENH-036) and `interrupted` field additions are the
+precedent — each was a no-op on existing tests, and only the new tests
+assert on the new key. Same shape applies for `epic_branch`.
+
+**[Agent 3 finding — high-value confirmation; the implementer can proceed with
+confidence that no existing test will break from the dataclass change.]**
+
+### Follow-On: `IssueProcessingResult` Symmetric Field (OUT OF SCOPE for FEAT-2448)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+`IssueProcessingResult` at `scripts/little_loops/issue_manager.py:545-557`
+mirrors the `WorkerResult.was_blocked` / `interrupted` pattern with its own
+`was_closed: bool = False, was_blocked: bool = False, failure_reason: str = ""`
+fields. It is used by `ll-auto` and sprint sequential-retry.
+
+**It is NOT on FEAT-2448's critical path:**
+
+- `_process_issue` in `WorkerPool` produces `WorkerResult`, not
+  `IssueProcessingResult` (verified at `worker_pool.py:326-644`).
+- `merge_coordinator.py` consumes `WorkerResult` only (via `MergeRequest`).
+- `_run_issue_with_wall_clock_timeout` at `cli/sprint/run.py:44-88` returns
+  `IssueProcessingResult` for the wall-clock-timeout path (out of FEAT-2448
+  scope per the issue's "Out of Scope" line 131).
+
+If FEAT-2449 or FEAT-2450 extend the in-place path with epic-branch awareness,
+this dataclass will need an analogous `epic_branch: str | None = None` field.
+Flagged here as a follow-on consideration.
+
+**[Agent 2 finding — out of scope for FEAT-2448; recorded so the implementer
+knows not to add it here.]**
+
+### Summary of Round 2 Additions
+
+| Category | Count | Action |
+|---|---|---|
+| Critical downstream coordination (ENH-2492 schema) | 1 | Coordinate with ENH-2492 implementation |
+| Published site HTML update | 6 files | Regenerate `site/` or manual patch |
+| Decision-anchor citation (ARCHITECTURE-095) | 1 | Cite in PR description |
+| Ripple-effect documentation | 1 | Recorded for future test authors |
+| Mock-patch test files (verification) | 3 files | Re-run after FEAT-2448 lands |
+| FEAT-2447 verification tests | 2 files | Re-run after FEAT-2448 lands |
+| Test enhancement (args-capture) | +1 test | Add to `_open_pr_for_branch` test surface |
+| Anchor drift corrections | 7 anchors | Recorded, low priority |
+| Internal sibling imports | 3 lines | Recorded for implementer reference |
+| Non-breakage confirmation | 73+ `WorkerResult(...)` sites | Confidence-building |
+| Follow-on consideration (out of scope) | 1 | Flag for FEAT-2449 / FEAT-2450 |
+
+## Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-07.
+
+Two orthogonal epic-branch threading choices carried expressed preferences
+across the refinement and wiring passes but were never locked into a single
+callout. This section formalizes both so the implementer does not re-litigate
+them. (The earlier "Standalone Implementation Blocker" options 1/2/3 are not
+included here — they are OBSOLETE now that FEAT-2447 has landed and the
+resolver is callable; see the Phase 2 finding at lines 609–623.)
+
+### Decision 1 — `_open_pr_for_branch()` epic-branch threading
+
+**Selected**: Option (b) — mutate `branch_state["epic_branch"] = result.epic_branch`
+at the `_on_worker_complete` call site (`orchestrator.py:1005`) before invoking
+`_open_pr_for_branch()`; read `--base` from `branch_state.get("epic_branch") or
+self.parallel_config.base_branch` at `orchestrator.py:1142`.
+
+**Rejected**: Option (a) — add a new `epic_branch=None` kwarg to the
+`_open_pr_for_branch(self, issue_id, branch_name, branch_state)` signature.
+
+**Reasoning**: `branch_state` is the existing carrier for cross-call worker
+state; the codebase already mutates it in place (`branch_state["pushed"] = True`),
+so routing `epic_branch` the same way matches the established pattern and avoids
+a signature change on `_open_pr_for_branch`. Confirmed preferred per Agent 2 and
+the Phase 2 research (lines 665–670).
+
+### Decision 2 — `_get_changed_files()` / `_update_branch_base()` epic-branch threading
+
+**Selected**: Option (a) — store per-issue epic branch on the `WorkerPool`
+instance via `self._worker_epic_branches: dict[str, str | None]`, populated once
+in `_process_issue()`, and look it up in `_get_changed_files()` and
+`_update_branch_base()` via `self._worker_epic_branches.get(issue_id)`.
+
+**Rejected**: Option (b) — add a new parameter to both functions and update the
+3 existing callers + their tests.
+
+**Reasoning**: Neither `_get_changed_files(self, worktree_path)` nor
+`_update_branch_base(self, worktree_path, issue_id)` receives `IssueInfo`, so
+they cannot call `_resolve_branch_targets(issue)` directly. The instance-state
+dict is the less-invasive threading path (no signature churn across the 3
+callers and their inline-captured-cmds tests) and keeps the fork/merge branch a
+single source of truth computed once at the `_process_issue` head. Confirmed
+preferred per Agent 2 (lines 368–370, 457–465).
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-07_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide but bounded file surface: 4 implementation + 4 test files modified; ~12 internal `WorkerResult(...)` return sites in `_process_issue` must thread the new kwarg; 6 `site/` HTML files need regeneration or manual patch to mirror the `WorkerResult` field addition in published docs.
+- Cross-module state threading risk: `WorkerPool` → `MergeCoordinator` handoff requires kwarg consistency across all `WorkerResult` construction sites — the typed-field shape (populated once at `_process_issue` head, read downstream via `result.epic_branch or self.config.base_branch`) eliminates fork/merge divergence by construction but demands the 12-return kwarg discipline.
+- Downstream ENH-2492 SQLite coordination: the proposed `orchestration_runs` schema at ENH-2492:274-292 does not yet declare an `epic_branch` column; if ENH-2492 lands before FEAT-2448, the orchestrator's per-worker flush site will silently drop `result.epic_branch` when calling `record_orchestration_run()`. Sequence the landings or extend ENH-2492's DDL as a paired PR.
+- `site/` doc regeneration: `site/reference/API/index.html:11556-11634` (WorkerResult dataclass listing) must mirror the `epic_branch: str | None = None` row; either regenerate via `ll-artifact` or manual-patch the published site.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-07_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- Cross-module state threading: 12 `WorkerResult(...)` return sites in `_process_issue` must receive the new `epic_branch=` kwarg uniformly; failure to thread at any site would silently fall back to `base_branch` in downstream consumers (`merge_coordinator`, `orchestrator`). Mitigate via explicit args-capture tests in `TestUpdateBranchBase` (`test_worker_pool.py:1711-1794`) and the new orchestrator args-capture test.
+- Downstream ENH-2492 SQLite coordination: the proposed `orchestration_runs` schema at ENH-2492:274-292 does not yet declare an `epic_branch` column; if ENH-2492 lands before FEAT-2448, `record_orchestration_run()` will silently drop the field. Sequence the landings or extend ENH-2492's DDL as a paired PR.
+- Published site HTML updates: `site/reference/API/index.html:11556-11634` (WorkerResult dataclass listing) must mirror the new field; 5 additional `site/` HTML pages reference WorkerResult shape and need regeneration via `ll-artifact` or manual patch.
+- Two `TestWorkerResult` classes require parallel updates: `test_worker_pool.py:120-149` (compact 2-test class) and `test_parallel_types.py:161-359` (broad 5+ test class) both need `epic_branch` field updates; missing either location breaks round-trip serialization coverage.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
+- `/ll:decide-issue` - 2026-07-07T16:50:34 - `c4211e5f-e844-40e5-b3a9-7fd3a3605a2b.jsonl`
+- `/ll:confidence-check` - 2026-07-07T<time>TBD - `69f38caf-6f0f-4b3d-8e25-94fe51f2fc37.jsonl`
+- `/ll:wire-issue` - 2026-07-07T16:39:15 - `9d6a4cb1-d0a9-4055-9756-6b047ca62f08.jsonl`
+- `/ll:wire-issue` - 2026-07-07T<time>TBD - `82c7969d-268c-405c-871c-89861eb8d1cd.jsonl`
+- `/ll:refine-issue` - 2026-07-07T15:26:46 - `82c7969d-268c-405c-871c-89861eb8d1cd.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:20:17 - `f3fff147-d97f-42e2-945a-790e562c6c5b.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:21:42 - `ad8ca7f6-66d7-4f8c-ae58-3ea979d78b4d.jsonl`
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`

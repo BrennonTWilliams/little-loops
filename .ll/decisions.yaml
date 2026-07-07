@@ -4181,3 +4181,60 @@
     coverage must exercise the post-argparse code '
   enforcement: advisory
   issue: BUG-2502
+- id: ARCHITECTURE-109
+  type: decision
+  timestamp: '2026-07-07T16:38:19Z'
+  category: architecture
+  labels: []
+  rationale: 'Routing analysis shows the gate is reachable (recheck_scores.on_no/on_error)
+    but redundant for decision_needed:true; removal (Option A) would reverse BUG-1277
+    and drop tests. Document via inline # comment (not comment: key) and add on_error:
+    run_size_review to close the dead-end.'
+  rule: Option B — Document check_decision_before_size_review as defense-in-depth
+  scope: issue
+  alternatives_rejected: Option A (remove — premise falsified, gate is reachable);
+    Option C (defer — leaves gate uncharacterized)
+  issue: BUG-2519
+- id: ARCHITECTURE-110
+  type: decision
+  timestamp: '2026-07-07T16:49:37Z'
+  category: architecture
+  labels: []
+  rationale: terminated_by='interrupted' is currently overloaded across three structurally
+    different causes (user-initiated ll-loop stop, kernel SIGKILL, host pressure);
+    audit tooling cannot disambiguate, which produced a misattributed OOM diagnostic
+    on 2026-07-07 (.loops/diagnostics/general-task-20260707T152654Z.md). Adding user_stopped
+    and system_signal enum values plus a cmd_stop sentinel gives the loop-specialist
+    agent a first-class discrimination signal.
+  rule: 'Captured: Distinguish user-stop / OS-signal / OOM in loop termination taxonomy'
+  scope: issue
+  issue: ENH-2522
+- id: ARCHITECTURE-111
+  type: decision
+  timestamp: '2026-07-07T16:50:33Z'
+  category: architecture
+  labels: []
+  rationale: branch_state is the existing cross-call carrier and is already mutated
+    in place (branch_state['pushed']=True); routing epic_branch the same way avoids
+    a _open_pr_for_branch signature change and matches the established pattern.
+  rule: _open_pr_for_branch epic-branch threading via branch_state mutation (option
+    b)
+  scope: issue
+  alternatives_rejected: Add a new epic_branch kwarg to _open_pr_for_branch signature
+    (option a)
+  issue: FEAT-2448
+- id: ARCHITECTURE-112
+  type: decision
+  timestamp: '2026-07-07T16:50:33Z'
+  category: architecture
+  labels: []
+  rationale: Neither function receives IssueInfo, so they cannot call _resolve_branch_targets(issue);
+    self._worker_epic_branches dict populated once in _process_issue is the less-invasive
+    path (no signature churn across 3 callers + tests) and keeps fork/merge branch
+    a single source of truth.
+  rule: _get_changed_files/_update_branch_base epic-branch threading via WorkerPool
+    instance-state dict (option a)
+  scope: issue
+  alternatives_rejected: Add a new parameter to both functions and update 3 callers
+    + tests (option b)
+  issue: FEAT-2448
