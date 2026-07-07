@@ -546,6 +546,7 @@ Run a loop.
 | `--baseline-skill` | | Override the baseline arm skill (default: extracted from the execute state action). Accepts a full slash command such as `/ll:some-skill`. |
 | `--cross-host` | | Re-run the loop on a second available host CLI and append a cross-host comparison table to the baseline report. Requires `--baseline`. The comparison runs the execute state on the alternate host, then feeds both outputs into the same blind LLM judge. (ENH-2086) |
 | `--items` | | Number of compare cycles to run (default: iterate with MIMO packing heuristics) |
+| `--cost-output-json PATH` | | Also write the per-state cost report to `PATH` as machine-readable JSON (same shape as `CostReport.write_json` — see [Per-State Token/Cost Summary](#per-state-tokencost-summary-enh-1797)). The human-readable table is unaffected. Forwarded through `ll-loop run --background` re-exec so detached runs honor the flag (BUG-1414). |
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
@@ -589,6 +590,37 @@ TOTAL                        6   15 600    2 580   11 400      $0.053
 Shell (`action_type: shell`) and MCP tool (`action_type: mcp_tool`) states are omitted from the table — they produce no token usage row in `usage.jsonl`.
 
 The raw per-iteration data lives at `.loops/runs/<run-id>/usage.jsonl` (not archived to `.loops/.history/`). See [Output Artifacts](loops.md#output-artifacts) for the `usage.jsonl` schema.
+
+##### Machine-Readable JSON Output (`--cost-output-json`, ENH-2477)
+
+Pass `--cost-output-json PATH` to also write the same per-state aggregates as a stable JSON document (built by `CostReport.from_usage_jsonl().write_json()` at `fsm/cost_graph.py`). The shape is locked so downstream dashboards can parse without depending on the human-readable table layout:
+
+```json
+{
+  "states": [
+    {
+      "state": "execute",
+      "iterations": 3,
+      "input_tokens": 12400,
+      "output_tokens": 2100,
+      "cache_read_tokens": 8500,
+      "cache_creation_tokens": 0,
+      "cost_usd": 0.0421,
+      "wallclock_ms": 18500
+    }
+  ],
+  "totals": {
+    "iterations": 6,
+    "input_tokens": 15600,
+    "output_tokens": 2580,
+    "cache_read_tokens": 11400,
+    "cost_usd": 0.0533,
+    "wallclock_ms": 24300
+  }
+}
+```
+
+State rows are sorted by name. Totals mirror the same metric keys. `cost_usd` is `0.0` for any state where at least one row used an unknown model (the `has_unknown_model` flag is surfaced only in the Python API, not the JSON). The flag is forwarded through `ll-loop run --background` re-exec so detached runs honor the same destination (BUG-1414 prevention).
 
 > **Note:** `agent:`, `tools:`, and `model:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent, tool, and model scoping options.
 
@@ -703,7 +735,7 @@ Also handles loops in `interrupted` state that hold an orphaned lock-file PID: i
 
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
-Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, and `"interrupted"` — loops stopped via `ll-loop stop` or Ctrl-C are fully resumable. When no `--instance-id` is given, the most recent resumable instance is auto-selected. Use `--instance-id` to disambiguate when you need a specific instance.
+Resume a loop. Resumable statuses are `"running"`, `"awaiting_continuation"`, `"interrupted"` (Ctrl-C, the runner caught the signal itself), and `"user_stopped"` (clean `ll-loop stop` — ENH-2522 wrote a `user-stop.marker` so the runner can distinguish this from a kernel kill). Loops that died from a kernel/SIGKILL/OOM kill terminate with `terminated_by="system_signal"` and are **not** resumable — the runner died mid-state and there is no clean recovery point. When no `--instance-id` is given, the most recent resumable instance is auto-selected. Use `--instance-id` to disambiguate when you need a specific instance.
 
 | Flag | Short | Description |
 |------|-------|-------------|

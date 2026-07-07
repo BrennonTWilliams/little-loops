@@ -192,6 +192,30 @@ terminates with `terminated_by="host_budget_exceeded"`. Override the budget
 per-run with `--host-guard-budget-mb N`. Probe failures degrade to a no-op —
 the guard never blocks a loop on an unreadable host.
 
+### Per-State Cost Ceiling (`cost_ceiling:`)
+
+A loop where one or two states account for the bulk of spend (e.g. an `execute` state that fans out 30 LLM invocations) needs a tighter cap than the loop-wide `--max-cost` ceiling. The `cost_ceiling:` block (ENH-2477) lives **per state** and trips when a single state visit's USD cost crosses the threshold:
+
+```yaml
+states:
+  - name: execute
+    action:
+      type: prompt
+      prompt: |
+        ...
+    cost_ceiling:
+      cost_ceiling_per_state: 1.50   # hard cap; routes/aborts when exceeded
+      cost_warn_at: 0.50            # optional warn-only threshold (visible spend)
+    # ... other state fields ...
+```
+
+| Field | Default | Behavior |
+|-------|---------|----------|
+| `cost_ceiling_per_state` | `null` (no cap) | When a state visit's USD cost exceeds this value, the run routes to `on_ceiling_exceeded` (if set) or terminates with `terminated_by="cost_ceiling_exceeded"`. Validator rejects negative values. |
+| `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_warn` event when crossed but does not block. Validator WARNS when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
+
+The validator at `fsm/validation.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` warning. Composes with the global `--max-cost` ceiling (FEAT-2476); neither replaces the other.
+
 ### Prompt-Size Guard (prompt_size_guard)
 
 A long-running state that re-embeds a monotonically growing captured output or
@@ -683,7 +707,9 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 | `host_pressure_abort` | `host_guard` aborted an iteration | Cool down host, or relax `host_guard.critical_pct` |
 | `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |
 | `error` | Uncaught exception in action or evaluator | The `loop_complete` event has an `error` field with the crash reason |
-| `user_stopped` | `ll-loop stop` invoked | Resume with `ll-loop resume` |
+| `user_stopped` | `ll-loop stop` invoked (writes a `user-stop.marker` sentinel so the runner can attribute the cause even when SIGKILL races past `_finish()`) | Resume with `ll-loop resume` |
+| `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or raise `host_guard.max_cumulative_subproc_mb`; rerun |
+| `interrupted` | Ctrl-C caught by our own signal handler (the subprocess was killed by `proc.kill()`) | Resume with `ll-loop resume` |
 
 ### Evaluator verdict → recovery mapping
 

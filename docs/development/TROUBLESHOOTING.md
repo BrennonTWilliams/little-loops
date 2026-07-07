@@ -756,7 +756,7 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 
 **Cause**: A foreground run exited (or was killed) without releasing its `.lock` file. The wrapper process that held the scope lock is gone, but the `.lock` file persists and blocks the next run. This can happen on hard kill, crash, or session disconnect.
 
-**Note**: As of ENH-1605, `"interrupted"` loops (stopped via `ll-loop stop` or Ctrl-C) are **resumable** — `_reconcile_stale_runs()` no longer sweeps them at startup. If you want to pick up where you left off, try `ll-loop resume <name>` first. If you actually want to discard the interrupted run and start fresh, use `ll-loop stop` to clear the lock and then re-run.
+**Note**: As of ENH-1605, `"interrupted"` loops (Ctrl-C) and `"user_stopped"` loops (clean `ll-loop stop`) are both **resumable** — `_reconcile_stale_runs()` no longer sweeps them at startup. ENH-2522 split the historical catch-all into three values: `user_stopped` (clean stop, resumable), `interrupted` (Ctrl-C, resumable), and `system_signal` (kernel/SIGKILL/OOM kill — **not resumable**, the runner died mid-state). If you want to pick up where you left off, try `ll-loop resume <name>` first. If you actually want to discard the interrupted run and start fresh, use `ll-loop stop` to clear the lock and then re-run.
 
 **Solution for scope conflict**: Run `ll-loop stop <name>`. The command checks the `.lock` file for a live PID regardless of `status`, terminates the orphaned process if alive, and removes the lock. If the PID is already dead it cleans up the stale file:
 ```bash
