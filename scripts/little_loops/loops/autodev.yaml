@@ -95,9 +95,23 @@ states:
       echo "$CURRENT"
     fragment: queue_pop
     capture: input
-    on_yes: refine_current
+    on_yes: check_decision_at_dequeue
     on_no: done
     on_error: done
+
+  check_decision_at_dequeue:
+    # BUG-2513: route decision_needed:true issues to run_decide on first dequeue,
+    # BEFORE refine_current runs. Decouples the decision gate from the sub-loop's
+    # on_success / on_failure / on_error / on_no / on_rate_limit_exhausted outcome.
+    # dequeue_next clears autodev-decide-ran and autodev-decide-options-deposited
+    # on every dequeue, so this gate enters clean. The existing
+    # check_decision_after_refine gate still catches flags added during refinement
+    # (defense in depth) on the post-refine path.
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: refine_current
+    on_error: refine_current
 
   refine_current:
     # Delegate format → refine → wire → confidence-check for a single issue to

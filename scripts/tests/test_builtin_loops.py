@@ -2427,10 +2427,13 @@ class TestAutodevLoop:
         state = data["states"].get("dequeue_next", {})
         assert state.get("capture") == "input"
 
-    def test_dequeue_next_routes_to_refine_current(self, data: dict) -> None:
-        """dequeue_next must route to refine_current on success."""
+    def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict) -> None:
+        """BUG-2513: dequeue_next must route to check_decision_at_dequeue on success
+        (NOT directly to refine_current) so the decision_needed gate intercepts every
+        dequeue. check_decision_at_dequeue then routes to refine_current on_no/on_error
+        after consulting ll-issues check-flag."""
         state = data["states"].get("dequeue_next", {})
-        assert state.get("on_yes") == "refine_current"
+        assert state.get("on_yes") == "check_decision_at_dequeue"
 
     def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
         """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
