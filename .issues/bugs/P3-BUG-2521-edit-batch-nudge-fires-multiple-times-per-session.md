@@ -1,9 +1,10 @@
 ---
 id: BUG-2521
-title: "edit-batch-nudge hook fires more than once per session despite \"at most once\" contract"
+title: edit-batch-nudge hook fires more than once per session despite "at most once"
+  contract
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-07T16:44:51Z'
 discovered_date: 2026-07-07
 discovered_by: capture-issue
@@ -13,6 +14,13 @@ labels:
 - regression
 - post-tool-use
 decision_needed: true
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
+completed_at: '2026-07-07T18:02:35Z'
 ---
 
 # BUG-2521: edit-batch-nudge hook fires more than once per session despite "at most once" contract
@@ -404,6 +412,59 @@ or session-id churn.
    `python -m pytest scripts/tests/` to confirm no hook-adjacent regression
    (the dispatch change at step 5 may surface a stray assertion elsewhere).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+9. **Add autouse fixture for `_NUDGED_IN_THIS_PROCESS` cleanup**. The new
+   module-level set (step 4) is keyed on `session_id`; many existing tests
+   use the literal `"s1"` at
+   `scripts/tests/test_edit_batch_hook.py:81, 124, 137, 166, 233` and
+   `scripts/tests/test_hook_intents.py:399, 413`. Without a per-test
+   `clear_session_cache`-style fixture, an early test that nudges `"s1"`
+   leaks `True` into every later test. Follow the proven pattern at
+   `scripts/tests/test_install_learning_gate.py:66-71` (also
+   `scripts/tests/test_learning_tests_discoverability.py:80-85`):
+
+   ```python
+   @pytest.fixture(autouse=True)
+   def clear_nudged_cache():
+       edit_batch_nudge._NUDGED_IN_THIS_PROCESS.clear()
+       yield
+       edit_batch_nudge._NUDGED_IN_THIS_PROCESS.clear()
+   ```
+
+   Place in `scripts/tests/test_edit_batch_hook.py` (and equivalent in
+   `scripts/tests/test_hook_intents.py` if the new dispatch tests share the
+   same Python process; pytest imports the module once per session, so
+   the cache *does* survive across dispatch tests).
+
+10. **Update direct `_load_state` call sites if signature changes**
+    (`scripts/tests/test_edit_batch_hook.py:197, 210`). Used by
+    `test_state_records_nudged_flag:195-206` and
+    `test_state_omits_nudged_until_first_fire:208-218`. If step 5 makes
+    `_load_state(state_path: Path)` per-call (the natural shape for
+    `event.cwd`-anchored state paths), update both call sites with
+    `state_path = tmp_path / ".ll" / "ll-edit-batch-state.json"`. If the
+    signature stays module-level, no edit needed — verify after step 5.
+
+11. **Verify `_event()` helper at
+    `scripts/tests/test_edit_batch_hook.py:26-32`** continues to work — it
+    builds `LLHookEvent(cwd=None)` by default. The new per-call state-path
+    resolver **must** fall back to `Path.cwd()` when `event.cwd is None`,
+    matching `scripts/little_loops/hooks/learning_tests_gate.py:88` and
+    `scripts/little_loops/hooks/install_learning_gate.py:94` shape. Without
+    that fallback, every in-process test in this file that doesn't
+    explicitly pass `cwd=` breaks (`Path(None)` raises).
+
+12. **(Optional) Update docstring at
+    `scripts/little_loops/hooks/edit_batch_nudge.py:29-31`**. Currently
+    states "resolved against the process cwd" — step 5 anchors to
+    `event.cwd` (the dispatcher sets `event.cwd = os.getcwd()` at
+    `scripts/little_loops/hooks/__init__.py:136`, so production behavior
+    is value-identical). For precision: change to "anchored to
+    `event.cwd` (falls back to `Path.cwd()`)". No user-facing impact.
+
 ## Impact
 
 - **Priority**: P3 — not a correctness or safety bug, but a self-defeating
@@ -444,10 +505,110 @@ or session-id churn.
 | `docs/guides/BUILTIN_HOOKS_GUIDE.md:65, 295-319` | PostToolUse summary + full "Edit-batch nudge" subsection (stateful once-per-session behavior, `_BATCH_WINDOW_SECONDS` heuristic) |
 | `.ll/decisions.yaml:4046-4088` | ARCH-176/177/178/179 (ENH-2503) — "corrective hooks fire at most once per session", "hook fire = persistent tax", etc. |
 
+## Integration Map
+
+_Added by `/ll:wire-issue` based on a 3-agent wiring sweep (caller/importer
+tracer, side-effect tracer, test-gap finder)._
+
+### Files to Modify (production)
+
+- `scripts/little_loops/hooks/edit_batch_nudge.py` — handle(), _persist_state(), _STATE_PATH resolution, session_id fallback, debug logging, new `_NUDGED_IN_THIS_PROCESS` cache
+
+### Files to Modify (registration / manifest) — _Confirmed Inert_
+
+| File | Why Inert |
+|---|---|
+| `hooks/hooks.json` (claude-code `PostToolUse` matcher at ~L143-152) | Adapter shell invocation only; no symbol-level wiring |
+| `scripts/little_loops/hooks/adapters/codex/hooks.json` (codex `PostToolUse` matcher at L52-62) | Adapter shell invocation only; no symbol-level wiring |
+| `hooks/adapters/claude-code/edit-batch-nudge.sh` | Pure stdin pass-through to `python -m little_loops.hooks edit_batch_nudge`; no state-file or session_id awareness |
+| `scripts/little_loops/hooks/adapters/codex/edit-batch-nudge.sh` | Same shape as claude-code shell; only differs by `export LL_HOOK_HOST=codex` |
+| `scripts/little_loops/hooks/__init__.py:96` (dispatch table) | `"edit_batch_nudge": edit_batch_nudge.handle` — callable reference unchanged |
+| `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | No hook-intent enumeration in either manifest |
+| `scripts/little_loops/hooks/__init__.py:52-56` (`_USAGE` banner) | Lists intent names only; no state-file references |
+
+_No adapter shell, manifest, or dispatch-table edits required._ Confirmation per Agent 1 adapter coverage summary: `claude-code` ✅ wired, `codex` ✅ wired, `opencode` ⚠️ no shell (would require a new adapter shell to wire `edit_batch_nudge` to that host, but **out of scope for BUG-2521**), `pi` ⚠️ no shell (same caveat).
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_edit_batch_hook.py` — add autouse fixture for
+  `_NUDGED_IN_THIS_PROCESS` cleanup (see Implementation Step 9 / Wiring Phase)
+  — existing tests at L81, L124, L137, L166, L233 use literal `session_id="s1"`
+  and would leak a stale `True` across the suite without cleanup
+- `scripts/tests/test_edit_batch_hook.py:197, 210` — direct imports of
+  `_load_state`; if Implementation Step 5 changes the helper signature to
+  take a `Path`, both call sites need updating (see Wiring Phase step 10)
+- `scripts/tests/test_hook_intents.py` — likely needs an equivalent
+  `_NUDGED_IN_THIS_PROCESS.clear()` fixture for the new
+  `test_dispatch_edit_batch_nudge_persists_latch` test
+- `scripts/tests/test_hook_intents.py:380-407` — extend
+  `test_dispatch_edit_batch_nudge_happy_path` to assert the post-state
+  file content (Implementation Step 1); follow the read-back pattern at
+  `test_dispatch_pre_compact_happy_path:273-285`
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:65, 295-319` — _Confirmed Inert_: the
+  documented once-per-session contract stays true after the fix; no semantic
+  regression. **No update required.**
+- `.ll/decisions.yaml:4046-4088` (ARCH-176/177/178/179) — _Confirmed Inert_:
+  all four rules reference latch *semantics*, which the fix preserves.
+  **No update required.**
+- `scripts/little_loops/hooks/edit_batch_nudge.py:29-31` (docstring) —
+  _Optional precision update_: change "resolved against the process cwd" →
+  "anchored to `event.cwd` (falls back to `Path.cwd()`)". See Wiring Phase
+  step 12.
+- `.claude/CLAUDE.md:33-35` — _Confirmed Inert_: the `optimize-prompt` skill
+  description references "Edit-batch nudge" by intent only; no behavior or
+  state-file details that would change.
+- `commands/*.md`, `skills/*/SKILL.md`, `docs/reference/CLI.md` — _Confirmed
+  Inert_: zero references to `.ll/ll-edit-batch-state.json` or the
+  `_BATCH_WINDOW_SECONDS` knobs (Agent 2 search verified). No update required.
+
+### Configuration
+
+_None required._ The implementation introduces no new config key (Agent 2
+confirmed `config-schema.json` has zero matches for `edit_batch_nudge`,
+`ll-edit-batch-state`, or `edit-batch-nudge`). The codebase-research note
+correctly avoids inventing an `LL_DEBUG` env var that doesn't exist
+elsewhere in the repo — use the standard `logging` module per
+`scripts/little_loops/hooks/session_start.py:33-44` instead.
+
+### CHANGELOG
+
+_Defer to release prep._ Per CLAUDE.md / MEMORY
+(`feedback_changelog_no_unreleased.md`): "Don't put new CHANGELOG entries
+under `[Unreleased]`; promote to a concrete `## [X.Y.Z] - DATE` section
+during release prep." Precedent: BUG-2485 fix landed at
+`## [1.138.1] - 2026-07-05` with a `### Fixed` line. **Do NOT add an
+`[Unreleased]` entry for BUG-2521 in this PR.**
+
 ## Status
 
 **Open** | Created: 2026-07-07 | Priority: P3 | Captured from ENH-2518 review session
 
 ## Session Log
+- `ll-auto` - 2026-07-07T18:02:35 - `2c565431-f7e1-42aa-9979-ebd7e7a2bf2e.jsonl`
+- `/ll:wire-issue` - 2026-07-07T17:24:27 - `cdecb919-ccd0-43b4-a67d-058057e7ef42.jsonl`
 - `/ll:refine-issue` - 2026-07-07T17:14:03 - `44595ebe-b58a-4ce5-b41b-f97ef564b6ef.jsonl`
 - `/ll:capture-issue` - 2026-07-07T16:44:51Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9d6a4cb1-d0a9-4055-9756-6b047ca62f08.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-07-07
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
