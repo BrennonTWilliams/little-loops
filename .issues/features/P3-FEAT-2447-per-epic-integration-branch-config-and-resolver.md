@@ -1,6 +1,7 @@
 ---
 id: FEAT-2447
-title: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
+title: "per-EPIC integration branch \u2014 config schema, dataclasses, resolver, and\
+  \ serialization"
 type: FEAT
 priority: P3
 status: open
@@ -23,11 +24,11 @@ relates_to:
 - FEAT-2450
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 60
-score_complexity: 6
+outcome_confidence: 72
+score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 6
-score_change_surface: 0
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-2447: per-EPIC integration branch — config schema, dataclasses, resolver, and serialization
@@ -217,6 +218,94 @@ _Added by `/ll:refine-issue` — anchor drift and pattern corrections from codeb
   (`scripts/tests/test_config.py:773`) — a flat key check on a
   parent-dict that contains a nested sub-dict.
 
+#### Resolver implementation guidance (added by `/ll:refine-issue` 2026-07-06)
+
+_Concrete primitives for the lazy-create + slug-source logic, surfaced
+from codebase pattern analysis (Agent 3 findings):_
+
+- **Slug source for `epic/<EPIC-ID>-<slug>` is the EPIC's title, not
+  the issue's title.** The canonical `slugify()` function lives at
+  `scripts/little_loops/issue_parser.py:287-298` (already imported by
+  `scripts/little_loops/parallel/worker_pool.py:336` for the existing
+  `feature/<id>-<slug>` template at line 338). The new EPIC branch
+  name composes as
+  `f"{self.parallel_config.epic_branches.prefix}{epic_id.lower()}-{slugify(epic_title)}"`,
+  where `epic_title` is read from the EPIC ancestor's frontmatter
+  (load the EPIC's `IssueInfo` via `scripts/little_loops/issue_parser.py`
+  — same module `IssueInfo` already provides `title`). **The current
+  issue body shows `<slug>` but does not pin its source** — implementer
+  must resolve this. Fallback when EPIC title is unavailable: use a
+  slug of the EPIC ID alone (e.g. `epic/epic-2451`).
+
+- **No existing idempotent branch-create helper — the resolver must
+  compose its own.** `setup_worktree()` at
+  `scripts/little_loops/worktree_utils.py:63-159` fails if the branch
+  already exists (uses `git worktree add -b <name>`, which errors on
+  duplicate). The new resolver's lazy-create sequence:
+  1. Local check:
+     `self._git_lock.run(["rev-parse", "--verify", branch_name], cwd=self.repo_path, timeout=10)` —
+     returncode 0 means branch exists locally (existing precedent at
+     `worktree_utils.py:95-102`).
+  2. Remote check:
+     `self._git_lock.run(["ls-remote", "--heads", self.parallel_config.remote_name, branch_name], cwd=self.repo_path, timeout=30)` —
+     non-empty stdout means branch exists on remote. **NEW idiom** —
+     `git ls-remote` has no existing usage in `scripts/little_loops/`;
+     introduction here is in scope (sub-feature surface, not net-new
+     infra). The only existing remote-aware git calls are
+     `git fetch <remote> <base>` at `worker_pool.py:1115-1121` and
+     `git symbolic-ref --short refs/remotes/origin/HEAD` at
+     `worktree_utils.py:51-53`.
+  3. Create:
+     `self._git_lock.run(["branch", branch_name, base_branch], cwd=self.repo_path, timeout=30)` —
+     creates branch off base only when both checks above failed.
+  4. Cache per-`epic_id`: add
+     `self._epic_branches_created: set[str] = set()` to
+     `WorkerPool.__init__` (init at line 169-188 cluster) to short-circuit
+     subsequent calls within the same WorkerPool instance lifetime
+     without re-hitting git.
+
+- **`EpicBranchesConfig` should NOT define its own `to_dict()` —
+  inline fields in `BRConfig.to_dict()` following the
+  `commands.confidence_gate` precedent at
+  `scripts/little_loops/config/core.py:581-585`:
+  ```python
+  "confidence_gate": {
+      "enabled": self._commands.confidence_gate.enabled,
+      "readiness_threshold": self._commands.confidence_gate.readiness_threshold,
+      "outcome_threshold": self._commands.confidence_gate.outcome_threshold,
+  },
+  ```
+  Apply the same shape for the new `parallel.epic_branches` block
+  (4 fields inlined: `enabled`, `prefix`, `merge_to_base_on_complete`,
+  `open_pr`). The alternative `loops.glyphs` precedent (delegates to
+  `LoopsGlyphsConfig.to_dict()` at `core.py:610`) is **less** consistent
+  with the existing `parallel.*` block style and would break the
+  convention established by the `commands.confidence_gate` /
+  `commands.rate_limits` sub-blocks. Add the `epic_branches` literal
+  between line 573 (`open_pr_for_feature_branches` close) and line 574
+  (`base_branch` open) per Agent 1's confirmed slot.
+
+- **`worktree_utils._is_ll_branch()` does NOT detect `epic/*`.** At
+  `scripts/little_loops/worktree_utils.py:213-223`, the cleanup-classifier
+  only matches `parallel/*` or `^\d{8}-\d{6}-*` patterns. Not required
+  in FEAT-2447 (cleanup deferred to FEAT-2449), but flagged so
+  FEAT-2449 can add `or branch_name.startswith("epic/")` if/when
+  auto-cleanup of merged EPIC branches lands.
+
+- **Wiring site pinpoint** (FEAT-2448 will consume here, FEAT-2447
+  adds only the method):
+  `WorkerPool._process_issue()` at
+  `scripts/little_loops/parallel/worker_pool.py:335-340` computes
+  `branch_name` today; the `_setup_worktree()` call at line 361
+  currently passes `base_branch=self.parallel_config.base_branch` —
+  the resolver's `fork_point` will override that argument in FEAT-2448.
+  The `branch_name` computation at line 338 (`feature/<id>-<slug>`)
+  is independent and not affected by epic-mode unless FEAT-2448 also
+  wires that. The resolver output `(epic/..., epic/...)` will flow
+  through `_setup_worktree(..., base_branch=fork_point)`,
+  causing worktree creation to fork off the EPIC branch rather than
+  `main`.
+
 ## Parent Issue
 
 Decomposed from FEAT-2339: Per-EPIC integration branch strategy for
@@ -368,6 +457,21 @@ This child covers the **foundation** only:
    epic-off paths. Cycle-guard modeled on the
    `_issue_descends_to()` shape from
    `scripts/little_loops/issue_progress.py`.
+   - **Slug source**: read the EPIC ancestor's `title` from its
+     frontmatter via `IssueInfo.title` (parsed by
+     `scripts/little_loops/issue_parser.py`); apply
+     `slugify()` (`issue_parser.py:287-298`). Branch name composes as
+     `f"{self.parallel_config.epic_branches.prefix}{epic_id.lower()}-{slugify(epic_title)}"`.
+     Fallback to slug of EPIC ID alone if EPIC title cannot be
+     resolved.
+   - **Lazy-create primitives**: local check via
+     `git rev-parse --verify <branch>`, remote check via
+     `git ls-remote --heads <remote> <branch>`, create via
+     `git branch <branch> <base>` — all routed through
+     `self._git_lock.run([...], cwd=self.repo_path, timeout=...)`.
+     Cache per-`epic_id` in a new
+     `self._epic_branches_created: set[str]` initialized in
+     `WorkerPool.__init__`.
 4. **Tests** — extend `test_parallel_types.py` roundtrip case, add
    `test_parallel_epic_branches_in_schema()` to `test_config_schema.py`,
    add `epic_branches` counterpart to `TestParallelAutomationConfig`
@@ -571,8 +675,9 @@ project-type templates, matching the existing `use_feature_branches:
 false` convention. NOTE: this contradicts the **Out of Scope**
 deferral above (which assigns templates to FEAT-2450). Pick one of:
 
-- (A) Land the template stamps in this child (FEAT-2447) per the
-  decision rule — 9 small mechanical edits.
+- **(A) Land the template stamps in this child (FEAT-2447) per the
+  decision rule — 9 small mechanical edits.**
+  > **Selected:** (A) — Decision ARCHITECTURE-096 (`scope: issue` tied to FEAT-2339) verbatim mandates the 9-template stamp; this reuses the existing `use_feature_branches` precedent (commit `795160cb`) across the same 9 files.
 - (B) Land in FEAT-2450 with the rest of the TUI/configure surface —
   accepts that init/TUI parity will lag schema acceptance by one
   child._
@@ -588,6 +693,25 @@ The 9 templates (Agent 2 findings):
 - `scripts/little_loops/templates/go.json:64-65`
 - `scripts/little_loops/templates/dotnet.json:67-68`
 - `scripts/little_loops/templates/generic.json:39-40`
+
+#### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-06.
+
+**Selected**: (A) — Land the 9 project-type template stamps in this child (FEAT-2447).
+
+**Reasoning**: Decision ARCHITECTURE-096 (`.ll/decisions.yaml:3829-3843`, `scope: issue` tied to FEAT-2339) explicitly mandates stamping `parallel.epic_branches: {enabled: false}` across all 9 project-type templates, and its `alternatives_rejected` field enumerates the "schema-default fallback" path that Option B takes — i.e., Option B isn't a parallel choice, it requires amending a binding decision. The same 9-template `use_feature_branches: false` stamp already exists (commit `795160cb`) and provides a direct, identical-shape precedent. Test-init parity (`test_init_core.py:707`) is non-blocking because `init/core.py:build_config()` never emits `parallel` from the no-choices baseline (verified at `init/core.py:104-121`); the 5 hardcoded `"parallel"` fixtures survive `additionalProperties: false` because the new key is not in any `required` array (verified at `config-schema.json:305-408`). The issue's "Out of Scope" deferral to FEAT-2450 is silently overruled by the `scope: issue` decision rule.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| (A) Land stamps in FEAT-2447 | 3/3 | 3/3 | 3/3 | 3/3 | **12/12** |
+| (B) Defer to FEAT-2450 | 0/3 | 2/3 | 3/3 | 1/3 | **6/12** |
+
+**Key evidence**:
+- **(A)**: Decision ARCHITECTURE-096 (`scope: issue`, `alternatives_rejected`) mandates the stamp; identical 9-template `use_feature_branches` precedent already in repo (commit `795160cb`); non-blocking parity/fixture concerns (verified via `init/core.py:104-121` and `test_init_core.py:680-708`).
+- **(B)**: Violates a binding architecture decision (`scope: issue`); `init/core.py:build_config()` ignores template `parallel` block, so deferring is technically feasible but provides no compensating benefit; creates a one-child cycle of init/TUI parity drift.
 
 #### `init/core.py` schema-default parity guard
 
@@ -701,7 +825,24 @@ def _resolve_branch_targets(self, issue: IssueInfo) -> tuple[str, str]:
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-06_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- **Open decision: Option A vs B template parity (wiring step 7)** — the issue body defers templates to FEAT-2450, but Decision `ARCHITECTURE-096` (`.ll/decisions.yaml:3829-3843`) mandates stamping `parallel.epic_branches: {enabled: false}` across all 9 project-type templates. Resolve before implementation: pick (A) land 9 mechanical template stamps in this child, or (B) explicitly amend ARCHITECTURE-096 to defer to FEAT-2450. Choosing one eliminates the surface ambiguity and unblocks implementation.
+- **Verify during implementation: 5 hardcoded `"parallel"` test fixtures** — `scripts/tests/conftest.py:284`, `scripts/tests/test_cli.py:479`, `scripts/tests/test_cli.py:1642`, `scripts/tests/test_cli_e2e.py:105`, `scripts/tests/test_issue_workflow_integration.py:197` may each need `"epic_branches": {"enabled": false}` appended if `config-schema.json`'s `additionalProperties: false` is strict on missing keys. Run the affected test files after the schema edit to confirm.
+- **Verify during implementation: `test_init_core.py:707` schema-default ↔ `init/core.py:build_config()` parity guard** — adding `parallel.epic_branches` defaults to `config-schema.json` without matching `init/core.py` literal defaults (or vice versa) fails this guard. Confirm parity after the schema/dataclass edits.
+- **Verify during implementation: `feature_config = ParallelConfig(**default_parallel_config.to_dict(), "use_feature_branches": True)` at `scripts/tests/test_worker_pool.py:2201`** — once `to_dict()` includes `epic_branches`, the comparison diffs the full nested dict. Both configs use `default_factory` so default values should be equal; confirm with a test run.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T04:36:04 - `95f88292-612e-4892-933e-81358f655580.jsonl`
+- `/ll:decide-issue` - 2026-07-07T04:22:00 - `8f30824a-c88d-4846-8634-8ea4b2ddbbb7.jsonl`
+- `/ll:confidence-check` - 2026-07-06 - `b148c016-4bc6-4a95-b7d6-210fceb04d5a.jsonl`
+- `/ll:verify-issues` - 2026-07-07T04:08:53 - `d7a68ca8-d2b9-42d9-9ec1-b78d0c5c5841.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:09:05 - `21cbc8bc-ce15-4912-bb93-e3574c91e49c.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:14:35 - `a621374e-67ee-4d36-8474-5106e009ded9.jsonl`
 - `/ll:format-issue` - 2026-07-03T02:25:51 - `4b4fed19-776f-4701-9732-113c091c2f49.jsonl`

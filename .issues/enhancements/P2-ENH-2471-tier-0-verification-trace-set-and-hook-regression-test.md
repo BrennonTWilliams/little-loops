@@ -4,16 +4,19 @@ title: "Tier 0 verification trace set (locked \u22652 traces; was 3\u20135, rela
   \ 2026-07-05) + P1 edit-batch hook regression test"
 type: ENH
 priority: P2
-status: open
+status: done
+size: Very Large
 captured_at: '2026-07-03T00:00:00Z'
 discovered_date: 2026-07-03
 discovered_by: scope-epic
+completed_at: '2026-07-06T04:22:16Z'
 parent: EPIC-2456
 relates_to:
 - FEAT-2470
 - ENH-2479
 - ENH-2490
 - ENH-2499
+- ENH-2502
 decision_needed: false
 missing_artifacts: true
 labels:
@@ -21,12 +24,12 @@ labels:
 - testing
 - measurement
 - tier-0
-confidence_score: 85
-outcome_confidence: 37
-score_complexity: 9
+confidence_score: 91
+outcome_confidence: 78
+score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 0
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2471: Tier 0 verification trace set + P1 hook regression test
@@ -312,6 +315,17 @@ _Wiring pass added by `/ll:wire-issue` (second pass; only NEW gaps the 2026-07-0
 - `config-schema.json` has **no** runtime jsonschema validator; `scripts/little_loops/init/core.py` (`_load_schema`/`schema_default`) is its only programmatic consumer. `additionalProperties: false` is enforced only by hand-written pytest assertions, so the new schema block needs its own test method (above). [Agent 2 finding]
 - `agents/plugin-config-auditor.md`'s "17 recognized hook event types" list does **not** need updating — `edit_batch_nudge` is a new *intent* within the existing `PostToolUse` event type, not a new event type. [Agent 2 finding]
 
+### Refinement re-verification (2026-07-06)
+
+_Added by `/ll:refine-issue --auto` — live codebase re-verification of the remaining (trace-set) scope; all findings confirmed on disk this pass. Additive only; nothing above removed._
+
+- **Both locked-set candidates confirmed on disk** — `.loops/runs/general-task-20260608T194041/usage.jsonl` (56 rows) and `.loops/runs/general-task-20260619T225602/usage.jsonl` (93 rows), both **single-model `claude-sonnet-4-6`** (no `unknown`-model rows). State coverage verified: trace 1 = `{define_done, plan, do_work, check_done, continue_work, final_verify}`; trace 2 additionally has **`summarize_partial`** (7 states, not 6). Option A's `baseline_cost_usd` computation still needs no `estimate_cost_usd() → None` handling.
+- **⚠ Correction to Decision Rationale (line 89–96) and Integration Map (line 167):** the claim that `.loops/runs/general-task-20260530T143631/` "does not exist" is now stale — the directory **exists but is empty** (no `usage.jsonl`, no artifacts). It is therefore still **unpromotable**, which *reinforces* Option A (2 traces + `>= 2` assertion) rather than reopening Option B. No third `general-task-*` trace is lockable.
+- **Per-trace `states` key will NOT be uniform** — because trace 2 carries `summarize_partial`, downstream F6 `PerStateCost` re-aggregation (ENH-2477) must tolerate a superset of the canonical `general-task.yaml` 6-state list, not assume exact equality. Document this in the per-trace JSON schema note.
+- **Cache footprint (contrastive baseline)** — trace 1 `cache_read_tokens` total ≈ 14.75M; trace 2 ≈ 48.07M (the line-5 `1517891` figure at line 242 is a single row, not the trace total). Both are cache-heavy; useful for cache-aware Tier 0 win measurement.
+- **⚠ Count-relaxation precedent anchor drifted** — the `>=`-threshold precedent is now at `scripts/tests/test_policy_builder_corpus.py:51-52` (`>= 12` / `>= 6`), not `:46-58` as cited at lines 92, 106, 181, 355. Update the anchor when authoring `test_tier0_traces.py`.
+- **Config-wiring staleness confirmed by grep** — `grep -rn edit_batch_nudge config-schema.json scripts/little_loops/config/features.py` returns **zero hits**: the FEAT-2470/ENH-2499 hook shipped with **no new config keys**, exactly as the 2026-07-06 audit note states. The entire `EditBatchNudgeConfig` wiring (Steps 9–11, 17–23; the `config-schema.json:949-957` / `features.py:480-499` / `core.py` / `ll-init` / `BRConfig` / adapter-parity / skill-doc touchpoints) is **out of scope for the remaining trace-set work** — it was authored against a since-abandoned design. Do not implement it; the only live deliverables are the manifest, per-trace JSON, `test_tier0_traces.py`, and `docs/observability/tier0-traces.md`.
+
 ## Implementation Steps
 
 _Added by `/ll:refine-issue` — concrete file references from research:_
@@ -479,9 +493,67 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 
 ## Status
 
-**Open** | Created: 2026-07-03 | Priority: P2
+**Done — split 2026-07-06.** The P1 edit-batch hook regression test half shipped
+under this issue (via FEAT-2470 + ENH-2499, completed 2026-07-06). The trace-set
+half is split out to **ENH-2502** because the implementation scope is small and
+self-contained, and the 500+ lines of stale Integration Map / Wiring Phase
+content (authored against the since-abandoned `EditBatchNudgeConfig` design)
+should not be inherited by the next implementer. See `## Closure` below for the
+rationale and what's been retired.
+
+## Closure
+
+**What shipped under ENH-2471**:
+
+- `scripts/little_loops/hooks/edit_batch_nudge.py` — handler shipped by FEAT-2470
+  (`status: done`, 2026-07-06); stateful rewrite + threshold gating by
+  ENH-2499 (`status: done`, 2026-07-06T04:22:16Z). No new config keys — the
+  `EditBatchNudgeConfig` dataclass / schema / adapter-parity / `ll-init` work
+  proposed in Steps 9–11, 17–23 was authored against a since-abandoned design
+  and is **explicitly out of scope** for the remaining trace-set work (per the
+  2026-07-06 audit at line 52 / 325).
+- `scripts/tests/test_edit_batch_hook.py` — 11 tests covering threshold firing,
+  reset-after-fire, batched-never-nudges, MultiEdit reset, session-change reset,
+  and write-failure pass-through (extended by ENH-2499's stateful rewrite).
+- Dispatch parity tests in `scripts/tests/test_hook_intents.py`.
+
+**What is retired**:
+
+- Steps 9–11, 17–23 (Integration Map "Files to Modify" + "Wiring Phase" passes
+  one and two): the `EditBatchNudgeConfig` wiring across `config-schema.json`,
+  `scripts/little_loops/config/features.py`, `scripts/little_loops/config/core.py`,
+  `scripts/little_loops/init/core.py`, `scripts/little_loops/init/cli.py`,
+  `BRConfig` aggregator surface, `hooks/adapters/opencode/index.ts`,
+  `hooks/adapters/claude-code/edit-batch-nudge.sh`, Codex adapter parity, and
+  `skills/configure/SKILL.md` enumeration. The shipped handler uses **no new
+  config keys** (`grep -rn edit_batch_nudge config-schema.json
+  scripts/little_loops/config/features.py` returns zero hits), so this wiring is
+  premature.
+- Documentation coupling for `edit_batch_nudge` (Steps 13's `BUILTIN_HOOKS_GUIDE.md`
+  / `ARCHITECTURE.md` / `API.md` / `CONFIGURATION.md` / `CLI.md` /
+  `HOST_COMPATIBILITY.md` rows; `CHANGELOG.md` hook entry). To be evaluated by
+  ENH-2499 / `BUILTIN_HOOKS_GUIDE.md` editors if the surface grows; not part of
+  ENH-2471's done criteria.
+- `TestEditBatchNudgeBaseline` / `TestEditBatchNudgeWithAutomationContext`
+  layout in Steps 2 / 22 — superseded by ENH-2499's stateful-rewrite test
+  structure (`scripts/tests/test_edit_batch_hook.py` is the canonical home).
+
+**What continues under ENH-2502**:
+
+- Tier 0 trace-set lock: `.loops/runs/general-task-20260608T194041/` (56 rows)
+  and `.loops/runs/general-task-20260619T225602/` (93 rows), both verified
+  single-model `claude-sonnet-4-6` with full state coverage.
+- `scripts/tests/fixtures/tier0_traces/manifest.json` + per-trace JSON.
+- `scripts/tests/test_tier0_traces.py` (manifest-shape + `>= 2` assertion).
+- `docs/observability/tier0-traces.md` (coordinate with ENH-2479 for folder
+  creation).
+- FEAT-2470 before/after delta report against the locked set.
+
+The 2026-07-06 audit note at line 52 / 325 and the refinement re-verification
+at lines 316–325 remain valid and are retained as historical context.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-07T02:02:05 - `b650cfea-cf54-49a3-b174-481ce7b8bedd.jsonl`
 - epic-audit - 2026-07-06 - Marked the hook-regression-test half done (landed via FEAT-2470 + ENH-2499; `test_edit_batch_hook.py`, 11 tests); flagged stale Integration Map wiring notes; added ENH-2490/ENH-2499 to `relates_to`. Remaining scope: trace-set lock (≥2) + baseline capture + before/after delta.
 - `/ll:decide-issue` - 2026-07-06T02:49:39 - `ac6b8a93-299d-4e0a-8b17-eeddf1f743fa.jsonl`
 - `/ll:refine-issue` - 2026-07-06T02:46:27 - `7151a6fa-8ed4-4bde-b715-7adbbf0f873f.jsonl`
@@ -492,3 +564,4 @@ _Added by `/ll:confidence-check` on 2026-07-05_
 - `/ll:refine-issue` - 2026-07-04T20:24:50 - `c598e9f8-80b2-4ec0-9e0f-bc292080ce64.jsonl`
 
 - `/ll:scope-epic` - 2026-07-03T00:00:00Z - filed from EPIC-2456 § Children [TBD-2] (Tier 0 verification)
+- `/ll:confidence-check` - 2026-07-06T21:30:00-07:00 - `29bc1f3f-cc4e-4e8b-a9bd-dca8e9d99210.jsonl`

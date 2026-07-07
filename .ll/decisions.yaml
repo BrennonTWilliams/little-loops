@@ -4021,3 +4021,163 @@
     instances are isolated by LockManager.'
   scope: issue
   issue: ENH-2500
+- id: ARCHITECTURE-107
+  type: decision
+  timestamp: '2026-07-07T02:58:46Z'
+  category: architecture
+  labels: []
+  rationale: 'Option B scores 10/12 across Consistency/Simplicity/Testability/Risk
+    — the highest of three options. The monkeypatch.chdir pattern is the in-tree default
+    (539 usages across 48 test files including test_pre_compact.py:32-34, test_sweep_stale_refs.py:23-27,
+    test_loop_cli_defaults.py:23-27), so the swap is mechanical rather than architectural.
+    Option B also addresses the root cause: the os.chdir + try/finally idiom is both
+    error-prone (cwd leak between os.getcwd() capture and try: entry — the same failure
+    mode _isolate_session_log_dir at scripts/tests/conftest.py:585-611 was created
+    to fix via monkeypatch.setattr-with-finalizer) and contributes to launchservicesd
+    re-indexing (one CWD change per os.chdir call, two per try/finally block).'
+  rule: Option B — Reduce os.chdir pattern (project change, medium leverage)
+  scope: issue
+  alternatives_rejected: 'Option A (mdutil -i off, system-level): higher leverage
+    but zero testability — system-level macOS config has no CI-enforceable gate; per-machine
+    only. Option C (cpus // 2 -> cpus // 3): already achievable without code change
+    via PYTEST_XDIST_AUTO_NUM_WORKERS=4; lowest leverage (~70s wall-clock cost for
+    ~43% launchservicesd CPU reduction); BUG-2488 does not recommend a divisor reduction.'
+  issue: BUG-2501
+- id: ARCH-176
+  type: rule
+  timestamp: '2026-07-07T03:46:28Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'ENH-2503 shows the first edit-batch nudge has attention weight but subsequent
+    nudges are habituated away and only add ~80 tokens of dead context each; a `nudged:
+    bool` latch keyed to session_id makes the hook "fire once and trust" rather than
+    spam.'
+  rule: Corrective/feedback hooks should fire at most once per session; persist a
+    sticky latch keyed to session_id to suppress r
+  enforcement: advisory
+  issue: ENH-2503
+- id: PERF-177
+  type: rule
+  timestamp: '2026-07-07T03:46:28Z'
+  category: performance
+  labels:
+  - extracted
+  - global
+  rationale: Hook stderr/stdout and feedback strings live in context for the rest
+    of the session; ENH-2503 demonstrated 4× redundant fires in one session, each
+    compounding the cost. The performance ceiling is set per-session, not per-call.
+  rule: Treat every hook fire as adding a persistent tax to session context — design
+    hooks to minimize redundant output over a s
+  enforcement: advisory
+  issue: ENH-2503
+- id: ARCH-178
+  type: rule
+  timestamp: '2026-07-07T03:46:28Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2503 calls out that `nudged` must be persisted as an explicit `false`
+    before the first fire so downstream readers don't need defensive `.get(..., False)`
+    dances and the field's semantics aren't ambiguous across code paths.
+  rule: Persisted state schemas should be explicit (always-write all keys, including
+    explicit false/null), not implicit (rely on
+  enforcement: advisory
+  issue: ENH-2503
+- id: ARCH-179
+  type: rule
+  timestamp: '2026-07-07T03:46:28Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2503 explicitly requires the reset path to carry forward the prior
+    `nudged` value rather than overwriting with a fresh default — otherwise a single
+    batched edit after the first nudge would silently re-arm the hook.
+  rule: When resetting transient counters on incidental events (e.g. run resetting
+    after a batched edit), preserve terminal/latc
+  enforcement: advisory
+  issue: ENH-2503
+- id: ARCHITECTURE-108
+  type: decision
+  timestamp: '2026-07-07T04:21:49Z'
+  category: architecture
+  labels: []
+  rationale: 'Decision ARCHITECTURE-096 (scope: issue tied to FEAT-2339, .ll/decisions.yaml:3829-3843)
+    mandates stamping parallel.epic_branches:{enabled:false} in all 9 project-type
+    templates. alternatives_rejected explicitly enumerates the schema-default fallback
+    path. Identical 9-template use_feature_branches:false precedent (commit 795160cb)
+    already exists; init/core.py:build_config never emits parallel, so test_init_core.py:707
+    parity guard is non-binding; the 5 hardcoded parallel fixtures survive because
+    the new key is not in any required array. Decision rule wins by default over the
+    issue''s Out-of-Scope deferral to FEAT-2450.'
+  rule: Land 9-template stamp in this child
+  scope: issue
+  alternatives_rejected: 'Defer to FEAT-2450 (Option B): violates ARCHITECTURE-096
+    with scope:issue binding; would require amending the decision to create the deferral;
+    no compensating benefit since init/core.py ignores the template parallel block
+    anyway.'
+  issue: FEAT-2447
+- id: TEST-180
+  type: rule
+  timestamp: '2026-07-07T04:22:06Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2502's 4 tests assumed the developer's ~/.claude/projects/<encoded-cwd>
+    existed; that implicit host dependency made them fail on every machine where it
+    didn't. The host filesystem is outside pytest's control, so any test reading it
+    must isolate via patches.
+  rule: Tests that exercise code reading Path.home() or Path.cwd() must patch both
+    via mock.patch, never depend on host filesyst
+  enforcement: advisory
+  issue: BUG-2502
+- id: TEST-181
+  type: rule
+  timestamp: '2026-07-07T04:22:06Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: TestExtract.test_extract_project_creates_output_file (scripts/tests/test_ll_logs.py:1483-1514)
+    already encoded the right pattern for probing ~/.claude/projects, but TestEvalExport
+    reinvented (and skipped) the scaffolding. Reusing an established pattern in the
+    same file prevents drift and surfaces contract expectations.
+  rule: When adding a new test class that touches session/host state, reuse the existing
+    fixture pattern in the same module befo
+  enforcement: advisory
+  issue: BUG-2502
+- id: TEST-182
+  type: rule
+  timestamp: '2026-07-07T04:22:06Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: _cmd_eval_export's contract is 'missing project folder is an error →
+    exit 1'; the 4 broken tests assumed happy-path output without setting up the project
+    folder. The two passing tests only exercised --help, which exits argparse before
+    hitting the contract — masking the regression for months. Tests that don't reach
+    the code path they assert on provide false coverage.
+  rule: Tests must honor the strict contract of the code under test by either providing
+    prerequisites or asserting the error pat
+  enforcement: advisory
+  issue: BUG-2502
+- id: TEST-183
+  type: rule
+  timestamp: '2026-07-07T04:22:06Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: Two of six tests in TestEvalExport only exited at argparse and passed;
+    the other four failed the contract. A test class where most 'passing' tests never
+    reach the production code path gives misleading green signals and hides regressions
+    for years.
+  rule: 'Prefer argparse-exit tests (--help) only as smoke checks; the substantive
+    coverage must exercise the post-argparse code '
+  enforcement: advisory
+  issue: BUG-2502
