@@ -4238,3 +4238,83 @@
   alternatives_rejected: Add a new parameter to both functions and update 3 callers
     + tests (option b)
   issue: FEAT-2448
+- id: ARCHITECTURE-113
+  type: decision
+  timestamp: '2026-07-07T18:50:17Z'
+  category: architecture
+  labels: []
+  rationale: 'Use the shared no_parallel marker (1-line decorator on TestRateLimitCircuitIntegration).
+    The BUG-2523 marker infrastructure is fully landed in the repo today (marker registered,
+    routing hook installed, 4 routing-contract tests, troubleshooting section already
+    cross-linking BUG-2524). The patch-scope theory behind Option B (Speed up the
+    test) is weakly supported statically: 12+ sibling tests in test_fsm_executor.py
+    use the IDENTICAL with patch(...) pattern and complete in <100ms each.'
+  rule: Option A — Marker (recommended, ships with BUG-2523)
+  scope: issue
+  alternatives_rejected: Option B — Speed up the test
+  issue: BUG-2524
+- id: ARCHITECTURE-114
+  type: decision
+  timestamp: '2026-07-07T18:52:44Z'
+  category: architecture
+  labels: []
+  rationale: Option B inverts the cleanup hook's contract to match the original kill
+    -0 PID-liveness intent. Option A's LL_NON_INTERACTIVE gate is structurally inert
+    in interactive SessionEnd (no payload, no inherited env var). Option C is a stopgap
+    — skills/manage-issue/SKILL.md:374 still teaches the broken recipe.
+  rule: 'scratch-cleanup.sh: preserve user-typed files (no -<pid> suffix) — invert
+    cleanup contract from ''sweep everything'' to ''sweep only files this hook created'''
+  scope: issue
+  alternatives_rejected: A (config-gated cleanup — gate inert in interactive sessions);
+    C (docs only — bug premise not eliminated)
+  issue: BUG-2525
+- id: ARCH-184
+  type: rule
+  timestamp: '2026-07-07T19:10:46Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2527's `_choose_pinned_layout` checked only line count (height) when
+    iterating the [full, window, neighborhood, single] ladder, so a `full` rung whose
+    widest line exceeded terminal columns was picked and emitted anyway, producing
+    wrapped/broken connectors. Picker logic must treat the full output shape as the
+    validity criterion.
+  rule: When picking content from a degradation ladder for a constrained viewport,
+    validate that the chosen rung fits EVERY spat
+  enforcement: advisory
+  issue: BUG-2527
+- id: TEST-185
+  type: rule
+  timestamp: '2026-07-07T19:10:46Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2425 fixed the streaming path's back-edge left gutter; the forward
+    skip-layer right gutter, the pinned/TTY path, and the dry-run / `info` paths all
+    had the same broken-output class of bug but were not touched in that fix, so BUG-2527
+    surfaced in `rn-implement --show-diagrams clean` (the project's default). Defense
+    in depth requires the constraint at every emission point, not the first one that
+    was instrumented.
+  rule: When fixing a defect in one render/output path of a feature, audit and apply
+    the same fix to every sibling path (streami
+  enforcement: advisory
+  issue: BUG-2527
+- id: ARCH-186
+  type: rule
+  timestamp: '2026-07-07T19:10:46Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: '`_render_layered_diagram` allowed `total_content_w + right_edge_margin
+    + 4 > tw` when forward-skip-layer edges pushed content right, and the final centering
+    used `max(0, (tw - max_line_len) // 2)` which silently degraded to 0 when the
+    line was already too wide, so the raw over-wide line was emitted and the terminal
+    wrapped it. Output emission is the last line of defense; it must refuse to emit
+    a line wider than the viewport, not trust the layout math.'
+  rule: Terminal/UI output renderers must defensively clamp produced lines to the
+    target viewport dimensions, even when an upstr
+  enforcement: advisory
+  issue: BUG-2527
