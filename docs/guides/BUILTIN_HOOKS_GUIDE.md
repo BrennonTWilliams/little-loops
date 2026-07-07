@@ -346,7 +346,7 @@ Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) �
 
 **Hook:** `scratch-cleanup.sh` (pure bash)
 
-Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. Always on.
+Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Always on.
 
 > Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
 

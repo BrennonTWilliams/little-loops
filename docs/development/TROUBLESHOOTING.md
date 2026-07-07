@@ -912,6 +912,7 @@ in release notes.
    chmod +x scripts/little_loops/hooks/adapters/codex/session-start.sh
    chmod +x scripts/little_loops/hooks/adapters/codex/pre-compact.sh
    chmod +x hooks/scripts/scratch-pad-redirect.sh
+   chmod +x hooks/scripts/scratch-cleanup.sh
    ```
 
    The OpenCode adapter at `hooks/adapters/opencode/index.ts` is a Bun-runtime

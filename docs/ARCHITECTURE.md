@@ -103,6 +103,7 @@ little-loops/
 │       ├── context-monitor.sh
 │       ├── precompact-state.sh  # Legacy shell handler; replaced by adapters/claude-code/precompact.sh
 │       ├── scratch-pad-redirect.sh
+│       ├── scratch-cleanup.sh
 │       ├── session-cleanup.sh
 │       ├── session-start.sh  # Legacy shell handler; replaced by adapters/claude-code/session-start.sh
 │       ├── user-prompt-check.sh

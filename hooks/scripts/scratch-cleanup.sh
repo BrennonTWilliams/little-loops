@@ -25,6 +25,12 @@
 #
 # IMPORTANT: This is a cleanup script - it must NEVER fail. All operations are
 # wrapped to succeed even if the underlying command fails.
+#
+# Cleanup contract (BUG-2525): only sweep files this hook's sibling
+# (scratch-pad-redirect.sh) created — those whose name embeds the writing
+# process's PID via the `${SAFE_NAME}-$$.txt` shape. User-typed files written
+# via `> .loops/tmp/scratch/<name>.txt` have no `-<pid>` suffix and are
+# preserved unconditionally; the cleanup does not own them.
 
 # Runs relative to CWD, which should be the project root.
 SCRATCH_DIR=".loops/tmp/scratch"
@@ -34,7 +40,9 @@ if [ -d "$SCRATCH_DIR" ]; then
         [ -e "$f" ] || continue
         base=$(basename "$f")
         pid=$(echo "$base" | sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p')
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        # User-typed files have no -<pid> suffix — skip unconditionally (BUG-2525).
+        [ -n "$pid" ] || continue
+        if kill -0 "$pid" 2>/dev/null; then
             # Owning process is still alive — leave its scratch file alone.
             continue
         fi

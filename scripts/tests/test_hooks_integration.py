@@ -2554,20 +2554,24 @@ class TestScratchCleanupSessionEnd:
         )
         assert result.returncode == 0
 
-    def test_scratch_cleanup_removes_dir_when_present(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """scratch-cleanup.sh removes unowned files and the now-empty dir."""
+    def test_scratch_cleanup_preserves_file_without_pid_suffix(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """BUG-2525: a scratch file written without the -<pid> suffix convention
+        (e.g. user-typed `> .loops/tmp/scratch/test-results.txt`) must survive
+        the SessionEnd sweep — the cleanup only owns files its sibling
+        scratch-pad-redirect.sh created, identified by the PID-suffix shape."""
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
         monkeypatch.chdir(tmp_path)
         scratch = tmp_path / ".loops/tmp/scratch"
         scratch.mkdir(parents=True)
-        # No PID suffix -> treated as unowned litter, always pruned.
-        (scratch / "x.txt").write_text("data")
+        user_file = scratch / "test-results.txt"
+        user_file.write_text("data the user redirected and expected to read back")
         result = subprocess.run(
             [str(script)], input="{}", capture_output=True, text=True, timeout=5
         )
         assert result.returncode == 0
-        assert not scratch.exists(), "scratch dir should be removed by scratch-cleanup.sh"
+        assert user_file.exists(), "user-typed scratch file (no -<pid> suffix) must survive cleanup"
+        assert scratch.exists(), "scratch dir must survive while a user-typed file remains"
 
     def test_scratch_cleanup_preserves_file_owned_by_live_process(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """A scratch file whose owning PID is still alive must survive cleanup.
