@@ -130,6 +130,33 @@ These tests cannot reproduce whatever race or persistence failure occurred in
 production, because production shares the real `.ll/` directory across hook
 fires and uses wall-clock time.
 
+### Candidate 4: `_STATE_PATH` is cwd-relative and may resolve to a different file
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The state path is defined at `edit_batch_nudge.py:70` as:
+
+```python
+_STATE_PATH = Path(".ll/ll-edit-batch-state.json")
+```
+
+This is a **relative `Path` object**, not absolute. `Path` operations resolve
+against `Path.cwd()` at the time of the call, not at import time.
+
+- The dispatcher (`scripts/little_loops/hooks/__init__.py:136`) captures
+  `cwd=os.getcwd()` into `event.cwd` but `edit_batch_nudge` does **not** use
+  it — it uses `Path.cwd()` indirectly via the relative `_STATE_PATH`.
+- If the Python process's cwd changes between two consecutive PostToolUse
+  invocations (e.g., the user ran a `Bash` tool call with `cd subdir` between
+  two `Edit` calls), the second hook reads from a **different file** (or no
+  file at all). A clean `.ll/ll-edit-batch-state.json` in the new cwd →
+  `nudged` latch not present → handler treats it as a fresh session → re-nudges.
+
+This is a third pathway by which the `nudged: true` write can fail to "stick"
+across hook invocations, independent of the persistence and session-id paths
+in Candidates 1–2. Same `Bash` → `Edit` sequence was almost certainly part of
+the ENH-2518 review session that captured this bug.
+
 ## Proposed Solution
 
 Three layered defenses — each addresses one of the candidates above. All three
@@ -171,6 +198,116 @@ over-suppresses if the same Python process hosts multiple sessions. That's the
 correct trade for a token-cost hook — false negatives (over-suppress) cost zero
 tokens, false positives (re-nudge) cost ~50 tokens each.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The three proposed fixes are not greenfield; each maps to an existing pattern
+already in the codebase. Implementation should follow these anchors, not invent
+new shapes:
+
+**Fix 1 (regression test) — model after `test_dispatch_pre_compact_happy_path`**
+
+The existing dispatch happy-path test for `edit_batch_nudge` at
+`scripts/tests/test_hook_intents.py:380-407` asserts `returncode == 2` and
+`"batch" in stderr.lower()` but never reads the state file afterward — the
+exact gap the issue calls out.
+
+The template to follow is **`test_dispatch_pre_compact_happy_path`** at
+`scripts/tests/test_hook_intents.py:273-285`, which asserts:
+
+```python
+assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+```
+
+For the new test, follow this pattern but assert `nudged: True` is in the JSON
+content (not just that the file exists). Also relevant: the in-process test
+`test_state_records_nudged_flag` at `scripts/tests/test_edit_batch_hook.py:195-206`
+already asserts `_load_state()["nudged"] is True` post-fire, but only under
+monkeypatched isolation — the dispatch version is the missing piece.
+
+**Fix 2 (debug logging) — use the existing `logging.getLogger(__name__)` convention**
+
+`LL_DEBUG` is **not** an env var that exists in the codebase. The only
+references to it are inside this BUG-2521 issue itself. Implementing a new
+env var would be inconsistent.
+
+The established convention in `scripts/little_loops/hooks/` is the standard
+`logging` module. Only one hook currently uses it:
+`scripts/little_loops/hooks/session_start.py:33-44`:
+
+```python
+import logging
+...
+logger = logging.getLogger(__name__)
+```
+
+Fix 2 should follow this same pattern: add the import, get a logger, and use
+`logger.warning(...)` for suspect-fire diagnostics. The level is controlled by
+the standard logging machinery (effective level set by root config or by the
+host adapter's logging setup), no new env var needed. If a stderr-only opt-in
+is desired, gate the calls on `logger.isEnabledFor(logging.DEBUG)`.
+
+**Fix 3 (in-process latch) — the pattern already exists**
+
+The exact shape proposed (`_SESSION_CACHE` as a module-level `dict[str, bool]`)
+is already in use at two sites:
+
+- `scripts/little_loops/hooks/learning_tests_gate.py:40-42`
+  ```python
+  # Session-level cache: package name → True (proven) / False (no record or refuted/stale).
+  # Avoids repeated registry lookups for the same package within a session.
+  _SESSION_CACHE: dict[str, bool] = {}
+  ```
+- `scripts/little_loops/hooks/install_learning_gate.py:43-46`
+  (same pattern, same docstring shape)
+
+Usage example in `install_learning_gate.py:112-116`:
+
+```python
+# Session cache hit
+if pkg in _SESSION_CACHE:
+    if _SESSION_CACHE[pkg]:
+        return LLHookResult(exit_code=0)
+    return LLHookResult(exit_code=0, feedback=format_nudge_message(pkg, stale=False))
+```
+
+For BUG-2521 the analogous shape is `_NUDGED_IN_THIS_PROCESS: set[str] = set()`
+keyed on `session_id` (or `""` for missing). Check membership first; only fall
+through to the on-disk state if the session hasn't nudged *in this process*.
+This catches Candidates 1, 2, **and** 4 (cwd drift) because all of them
+happen between processes, not within one.
+
+A second, related instance-level pattern lives at
+`scripts/little_loops/fsm/host_guard.py:344-349` and `:397-417`:
+`HostGuard._budget_fired` (instance boolean) flips to `True` on first
+threshold crossing and is never reset — same semantics, scoped to one
+executor instance instead of one Python process.
+
+**Additional fix for Candidate 4 — anchor `_STATE_PATH` to `event.cwd`**
+
+Candidate 4 is independent of the three listed fixes. The minimum fix is to
+change `edit_batch_nudge.py:70` from:
+
+```python
+_STATE_PATH = Path(".ll/ll-edit-batch-state.json")
+```
+
+to an absolute path resolved from `event.cwd` at handler-entry (the dispatcher
+already captures it at `__init__.py:136`). Without this, the in-process latch
+of Fix 3 will still mask the symptom, but the underlying state file remains
+per-cwd-fragment, which is a latent footgun for any future host that runs
+hooks from multiple cwds in one process.
+
+**Sibling `session_id` resolution divergence to fix in passing**
+
+`edit_batch_nudge.py:118` reads only `event.payload.get("session_id") or ""`,
+while the sibling code at `user_prompt_submit.py:82,90` uses
+`event.payload.get("session_id") or event.session_id` (broader fallback).
+The top-level `event.session_id` field lives on `LLHookEvent` at
+`scripts/little_loops/hooks/types.py:44`. Aligning the resolution path is
+a low-risk extra hardening that closes another vector for Candidate 1.
+
 ## Error Messages
 
 None — the bug is silent (extra context injection, no exit-code change visible
@@ -198,6 +335,13 @@ of at least one double-fire approaches 100% over time.
   (`handle()` — the latch logic and persistence call)
 - **Persistence**: `scripts/little_loops/hooks/edit_batch_nudge.py:95-105`
   (`_persist_state` — silent exception swallowing)
+- **State path declaration**: `scripts/little_loops/hooks/edit_batch_nudge.py:70`
+  (`_STATE_PATH = Path(".ll/ll-edit-batch-state.json")` — cwd-relative; Candidate 4)
+- **session_id resolution**: `scripts/little_loops/hooks/edit_batch_nudge.py:118`
+  (reads only `event.payload.get("session_id") or ""` — diverges from sibling
+  `user_prompt_submit.py:82,90` which falls back to `event.session_id`)
+- **Dispatcher (provides `event.cwd`)**: `scripts/little_loops/hooks/__init__.py:136`
+  (handler currently ignores this — Candidate 4 root cause)
 - **Tests**: `scripts/tests/test_edit_batch_hook.py:140-156`
   (existing once-per-session test) and `scripts/tests/test_hook_intents.py:380-407`
   (dispatch test that lacks post-state assertion)
@@ -219,20 +363,45 @@ or session-id churn.
    - Run one Edit via the subprocess dispatcher
    - Assert the state file on disk has `nudged: true` after the call
    - If this test fails: confirms Candidate 2 (silent persist failure)
-   - If this test passes: candidates 1 or 3 are more likely
-2. **Instrument the hook** with optional debug logging of `session_id`,
-   `_persist_state` outcome, and the post-write state-file readback. Gate on
-   `LL_DEBUG=1` so it stays silent in production.
+   - If this test passes: candidates 1, 4, or test-gap are more likely
+   - **Model the assertion after `test_dispatch_pre_compact_happy_path` at
+     `scripts/tests/test_hook_intents.py:273-285`** — read the JSON file back
+     and assert specific fields, not just file existence.
+2. **Instrument the hook** with debug logging of `session_id`,
+   `_persist_state` outcome, and the post-write state-file readback. Use the
+   established `logging.getLogger(__name__)` convention from
+   `scripts/little_loops/hooks/session_start.py:33-44` (NOT a new `LL_DEBUG`
+   env var — no such env var exists in the codebase). Gate `logger.warning(...)`
+   calls on `logger.isEnabledFor(logging.DEBUG)` to stay silent in production.
 3. **Capture a real session trace.** Run a Claude Code session that triggers
    a double-fire; dump the payload `session_id` for every Edit-hook invocation
-   to determine whether Candidate 1 is the cause.
+   to determine whether Candidate 1 is the cause. Capture `os.getcwd()` at the
+   same time to evaluate Candidate 4 (cwd drift).
 4. **Implement Fix 3** (in-process latch) as the defensive default — it's the
-   only fix that catches both Candidate 1 and Candidate 2 without a runtime
-   cost.
-5. **Add Fix 1** (regression test) regardless of which candidate wins.
-6. **Verify**: `python -m pytest scripts/tests/test_edit_batch_hook.py
+   only fix that catches Candidates 1, 2, AND 4 without a runtime cost.
+   Use the existing pattern: add
+   `_NUDGED_IN_THIS_PROCESS: set[str] = set()` at module scope (modeled on
+   `_SESSION_CACHE` in `scripts/little_loops/hooks/learning_tests_gate.py:40-42`
+   and `scripts/little_loops/hooks/install_learning_gate.py:43-46`).
+   Membership check must run **before** the on-disk state read.
+5. **Anchor `_STATE_PATH` to `event.cwd`.** Change `edit_batch_nudge.py:70`
+   from a module-level relative `Path` to a per-call absolute path resolved
+   from `event.cwd` (already captured by the dispatcher at
+   `scripts/little_loops/hooks/__init__.py:136`). This addresses Candidate 4
+   directly; without it, the in-process latch masks the symptom but the
+   underlying per-cwd state-file footgun remains.
+6. **Align `session_id` resolution** with sibling code. Change
+   `edit_batch_nudge.py:118` from `event.payload.get("session_id") or ""` to
+   `event.payload.get("session_id") or event.session_id or ""`, matching
+   `user_prompt_submit.py:82,90`. The top-level `event.session_id` field is
+   declared on `LLHookEvent` at `scripts/little_loops/hooks/types.py:44`.
+7. **Add Fix 1** (regression test) regardless of which candidate wins —
+   use the pattern in step 1, anchored to `test_dispatch_pre_compact_happy_path`.
+8. **Verify**: `python -m pytest scripts/tests/test_edit_batch_hook.py
    scripts/tests/test_hook_intents.py -v` passes; manually run a Claude Code
-   session and confirm only one nudge fires across many unbatched edits.
+   session and confirm only one nudge fires across many unbatched edits; also
+   `python -m pytest scripts/tests/` to confirm no hook-adjacent regression
+   (the dispatch change at step 5 may surface a stray assertion elsewhere).
 
 ## Impact
 
