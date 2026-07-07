@@ -910,6 +910,94 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
                 )
             )
 
+    # Validate cost_ceiling config when present (ENH-2477)
+    if state.cost_ceiling is not None:
+        errors.extend(_validate_state_cost_ceiling(state_name, state, path))
+
+    return errors
+
+
+def _validate_state_cost_ceiling(
+    state_name: str, state: StateConfig, path: str
+) -> list[ValidationError]:
+    """Validate per-state ``cost_ceiling`` config (ENH-2477).
+
+    Rejects:
+      - non-numeric values (type mismatch)
+      - negative ``cost_ceiling_per_state`` or ``cost_warn_at`` values
+      - ``cost_warn_at`` >= ``cost_ceiling_per_state`` (logically inconsistent —
+        the warning would fire at or above the hard cap)
+
+    Returns an empty list when no ceiling is set, or when the config is valid.
+    """
+    errors: list[ValidationError] = []
+    ceiling = state.cost_ceiling
+    assert ceiling is not None  # caller guards
+
+    cap = ceiling.cost_ceiling_per_state
+    warn = ceiling.cost_warn_at
+
+    if cap is not None:
+        if not isinstance(cap, (int, float)) or isinstance(cap, bool):
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'cost_ceiling.cost_ceiling_per_state' must be a number, "
+                        f"got {cap!r}"
+                    ),
+                    path=path,
+                )
+            )
+        elif cap < 0:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'cost_ceiling.cost_ceiling_per_state' must be non-negative, "
+                        f"got {cap}"
+                    ),
+                    path=path,
+                )
+            )
+
+    if warn is not None:
+        if not isinstance(warn, (int, float)) or isinstance(warn, bool):
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'cost_ceiling.cost_warn_at' must be a number, got {warn!r}"
+                    ),
+                    path=path,
+                )
+            )
+        elif warn < 0:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"'cost_ceiling.cost_warn_at' must be non-negative, got {warn}"
+                    ),
+                    path=path,
+                )
+            )
+
+    if (
+        cap is not None
+        and warn is not None
+        and isinstance(cap, (int, float))
+        and isinstance(warn, (int, float))
+        and not isinstance(cap, bool)
+        and not isinstance(warn, bool)
+        and warn > cap
+    ):
+        errors.append(
+            ValidationError(
+                message=(
+                    f"'cost_ceiling.cost_warn_at' ({warn}) must not exceed "
+                    f"'cost_ceiling.cost_ceiling_per_state' ({cap})"
+                ),
+                path=path,
+            )
+        )
+
     return errors
 
 

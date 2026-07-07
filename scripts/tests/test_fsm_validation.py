@@ -12,6 +12,7 @@ import pytest
 
 from little_loops.fsm.schema import (
     CircuitConfig,
+    CostCeilingConfig,
     EvaluateConfig,
     FSMLoop,
     LearningConfig,
@@ -670,6 +671,64 @@ class TestThrottleValidation:
         errors = validate_fsm(fsm)
         throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
         assert throttle_errors == []
+
+
+class TestCostCeilingValidation:
+    """Tests for cost_ceiling_per_state / cost_warn_at validation (ENH-2477)."""
+
+    def _make_fsm(self, ceiling: CostCeilingConfig | None) -> FSMLoop:
+        kwargs: dict = {
+            "name": "test",
+            "initial": "work",
+            "states": {
+                "work": StateConfig(
+                    action="run.sh",
+                    on_yes="done",
+                    cost_ceiling=ceiling,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        }
+        return FSMLoop(**kwargs)
+
+    def test_valid_ceiling_no_errors(self) -> None:
+        fsm = self._make_fsm(CostCeilingConfig(cost_ceiling_per_state=1.0, cost_warn_at=0.5))
+        errors = validate_fsm(fsm)
+        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        assert ceiling_errors == []
+
+    def test_partial_ceiling_valid(self) -> None:
+        """A ceiling with only one of the two fields set is valid."""
+        fsm = self._make_fsm(CostCeilingConfig(cost_warn_at=0.5))
+        errors = validate_fsm(fsm)
+        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        assert ceiling_errors == []
+
+    def test_negative_ceiling_rejected(self) -> None:
+        fsm = self._make_fsm(CostCeilingConfig(cost_ceiling_per_state=-1.0))
+        errors = validate_fsm(fsm)
+        assert any("cost_ceiling" in e.message.lower() or "cost_ceiling_per_state" in e.message.lower() for e in errors)
+
+    def test_negative_warn_at_rejected(self) -> None:
+        fsm = self._make_fsm(CostCeilingConfig(cost_warn_at=-0.5))
+        errors = validate_fsm(fsm)
+        assert any("cost_warn_at" in e.message.lower() for e in errors)
+
+    def test_warn_at_must_be_less_than_ceiling(self) -> None:
+        fsm = self._make_fsm(CostCeilingConfig(cost_ceiling_per_state=0.5, cost_warn_at=1.0))
+        errors = validate_fsm(fsm)
+        # warn_at > ceiling is an inconsistent configuration.
+        assert any(
+            ("cost_warn_at" in e.message.lower() or "warn_at" in e.message.lower())
+            and ("ceiling" in e.message.lower() or "cost_ceiling_per_state" in e.message.lower())
+            for e in errors
+        )
+
+    def test_no_ceiling_means_no_validation_errors(self) -> None:
+        fsm = self._make_fsm(None)
+        errors = validate_fsm(fsm)
+        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        assert ceiling_errors == []
 
 
 class TestPromptSizeGuardValidation:

@@ -166,6 +166,62 @@ def _aggregate_tool_events(db_path: Path) -> dict[str, Any] | None:
     }
 
 
+def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
+    """Sum per-state cost from the ``usage_event`` table (ENH-2477, ENH-2461).
+
+    This function is feature-gated: the ``usage_event`` table is
+    proposed in sibling ENH-2461 (P3) and is not present at the time
+    of this writing. Until ENH-2461 lands, this returns ``None`` and
+    the JSON payload's ``per_state`` field is ``null``.
+
+    When ENH-2461 merges, the function will read the
+    ``usage_event`` table (mirroring ``_aggregate_tool_events`` at
+    :118-166 for the SQL/group-by shape) and return a dict shaped
+    like::
+
+        {
+            "totals": {
+                "input_tokens": ...,
+                "output_tokens": ...,
+                "cache_read_tokens": ...,
+                "cache_creation_tokens": ...,
+                "cost_usd": ...,
+            },
+            "per_state": {
+                "state_name": {
+                    "iterations": ...,
+                    "input_tokens": ...,
+                    "output_tokens": ...,
+                    "cache_read_tokens": ...,
+                    "cache_creation_tokens": ...,
+                    "cost_usd": ...,
+                    "wallclock_ms": ...,
+                },
+                ...
+            },
+        }
+
+    The per-state shape is locked by
+    ``scripts/tests/test_fsm_cost_graph.py::TestPerStateCost::to_dict_exact_keys``
+    so JSON consumers can rely on it.
+    """
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.Error:
+        return None
+    try:
+        # Probe for the ENH-2461 table; missing table is the expected
+        # state at this commit, so silently return None.
+        conn.execute("SELECT 1 FROM usage_event LIMIT 1").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        conn.close()
+    return None  # ENH-2461 not yet merged — keep this branch once it lands.
+
+
 def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     """Return ``.ll/ll-context-state.json`` parsed, or ``None`` if absent/invalid."""
     if not path.exists():
@@ -354,6 +410,7 @@ def _print_json(
     skill_stats: dict[str, dict[str, int]] | None = None,
     cache_rate: dict[str, Any] | None = None,
     lt_stats: dict[str, Any] | None = None,
+    usage_events: dict[str, Any] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -392,6 +449,7 @@ def _print_json(
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
             "learning_tests": lt_stats,
+            "per_state_cost": usage_events,
         }
     elif state is not None:
         payload = {
@@ -507,9 +565,12 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         cache_rate = _compute_cache_rate_from_jsonl(cwd)
         lt_config = _load_lt_config(cwd)
         lt_stats = _compute_learning_tests_stats(cwd, lt_config)
+        usage_events = _aggregate_usage_events(db_path)
 
         if args.json_mode:
-            _print_json(summary, fallback, skill_stats, cache_rate, lt_stats)
+            _print_json(
+                summary, fallback, skill_stats, cache_rate, lt_stats, usage_events
+            )
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:

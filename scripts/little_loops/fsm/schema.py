@@ -322,6 +322,46 @@ class ThrottleConfig:
 
 
 @dataclass
+class CostCeilingConfig:
+    """Per-state cost / token-spend ceilings (ENH-2477).
+
+    Composes with FEAT-2476's global ``--max-cost`` ceiling: when a
+    state visit's cost exceeds ``cost_ceiling_per_state`` USD, the
+    run routes to a ceiling-exhausted target. ``cost_warn_at`` is a
+    warning-only threshold for visible spend, not a hard cap.
+
+    Both fields are optional and default to ``None`` (no cap, no
+    warning). Setting one does not require setting the other.
+
+    Validation (``fsm/validation.py:_validate_state_cost_ceiling``)
+    rejects negative values and warns when ``cost_warn_at`` exceeds
+    ``cost_ceiling_per_state`` (a logically inconsistent config).
+    """
+
+    cost_ceiling_per_state: float | None = None
+    cost_warn_at: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-None)."""
+        result: dict[str, Any] = {}
+        if self.cost_ceiling_per_state is not None:
+            result["cost_ceiling_per_state"] = self.cost_ceiling_per_state
+        if self.cost_warn_at is not None:
+            result["cost_warn_at"] = self.cost_warn_at
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CostCeilingConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        ceiling = data.get("cost_ceiling_per_state")
+        warn = data.get("cost_warn_at")
+        return cls(
+            cost_ceiling_per_state=float(ceiling) if ceiling is not None else None,
+            cost_warn_at=float(warn) if warn is not None else None,
+        )
+
+
+@dataclass
 class PromptSizeGuardConfig:
     """Per-loop guard that WARNs when a fully-interpolated action grows large (ENH-2486).
 
@@ -521,6 +561,7 @@ class StateConfig:
     throttle: ThrottleConfig | None = None
     on_throttle_hard: str | None = None
     learning: LearningConfig | None = None
+    cost_ceiling: CostCeilingConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -598,6 +639,8 @@ class StateConfig:
             result["on_throttle_hard"] = self.on_throttle_hard
         if self.learning is not None:
             result["learning"] = self.learning.to_dict()
+        if self.cost_ceiling is not None:
+            result["cost_ceiling"] = self.cost_ceiling.to_dict()
 
         return result
 
@@ -619,6 +662,10 @@ class StateConfig:
         learning = None
         if "learning" in data:
             learning = LearningConfig.from_dict(data["learning"])
+
+        cost_ceiling = None
+        if "cost_ceiling" in data:
+            cost_ceiling = CostCeilingConfig.from_dict(data["cost_ceiling"])
 
         _known_on_keys = {
             "on_yes",
@@ -675,6 +722,7 @@ class StateConfig:
             throttle=throttle,
             on_throttle_hard=data.get("on_throttle_hard"),
             learning=learning,
+            cost_ceiling=cost_ceiling,
             fragment_name=data.get("fragment_name"),
             fragment_bindings=data.get("fragment_bindings", {}),
             fragment_parameters={

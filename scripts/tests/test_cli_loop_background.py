@@ -989,6 +989,59 @@ class TestRunBackground:
         assert "--baseline-skill" in cmd
         assert "my-optimize-skill" in cmd
 
+    def test_forwards_cost_output_json(self, tmp_path: Path) -> None:
+        """Forwards --cost-output-json PATH to child process (ENH-2477).
+
+        BUG-1414 precedent: detached-process runs silently drop unforwarded
+        flags; this test locks the forwarding contract.
+        """
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            cost_output_json=tmp_path / "per-state.json",
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--cost-output-json" in cmd
+        assert str(tmp_path / "per-state.json") in cmd
+
+    def test_cost_output_json_not_forwarded_when_none(self, tmp_path: Path) -> None:
+        """Does not forward --cost-output-json when None."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            cost_output_json=None,
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--cost-output-json" not in cmd
+
     def test_forwards_items(self, tmp_path: Path) -> None:
         """Forwards --items N to child process."""
         import argparse

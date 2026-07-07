@@ -21,7 +21,6 @@ from little_loops.cli.loop.diagram_modes import (
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
 from little_loops.logger import Logger
-from little_loops.pricing import estimate_cost_usd
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
@@ -1388,6 +1387,9 @@ def run_background(
         cmd.extend(["--items", str(items)])
     if getattr(args, "cross_host", False):
         cmd.append("--cross-host")
+    cost_output_json = getattr(args, "cost_output_json", None)
+    if cost_output_json is not None:
+        cmd.extend(["--cost-output-json", str(cost_output_json)])
 
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log_fh:
@@ -1421,6 +1423,7 @@ def run_foreground(
     running_dir: Path | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    cost_output_json: Path | None = None,
 ) -> int:
     """Run loop with progress display.
 
@@ -1620,7 +1623,10 @@ def run_foreground(
             run_dir = fsm.context.get("run_dir", "")
             if run_dir:
                 try:
-                    _print_usage_summary(Path(run_dir) / "usage.jsonl")
+                    _print_usage_summary(
+                        Path(run_dir) / "usage.jsonl",
+                        cost_output_json=cost_output_json,
+                    )
                 except Exception:
                     pass  # Non-fatal: display failure shouldn't block exit
 
@@ -1660,69 +1666,32 @@ def run_foreground(
             _log_fh.close()
 
 
-def _print_usage_summary(usage_path: Path) -> None:
+def _print_usage_summary(usage_path: Path, cost_output_json: Path | None = None) -> None:
     """Print per-state token usage summary from usage.jsonl.
 
     Args:
         usage_path: Path to usage.jsonl written by PersistentExecutor
+        cost_output_json: Optional path to also write the stable-JSON
+            report (ENH-2477). Write failures are non-fatal: a missing
+            parent dir or unwritable path must not block the run's
+            normal exit path.
     """
-    from collections import defaultdict
+    from little_loops.fsm.cost_graph import CostReport
 
     if not usage_path.exists():
         return
-    lines = usage_path.read_text(encoding="utf-8").splitlines()
-    if not lines:
+    report = CostReport.from_usage_jsonl(usage_path)
+    if not report.states:
         return
 
-    per_state: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {
-            "invocations": 0,
-            "input": 0,
-            "output": 0,
-            "cache_read": 0,
-            "cache_creation": 0,
-            "model": "unknown",
-            "est_cost": 0.0,
-            "has_unknown_model": False,
-        }
-    )
-    for raw in lines:
+    print()
+    print(report.table())
+
+    if cost_output_json is not None:
         try:
-            row = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        state = row.get("state", "unknown")
-        model = row.get("model", "unknown")
-        inp = row.get("input_tokens", 0)
-        out = row.get("output_tokens", 0)
-        cr = row.get("cache_read_tokens", 0)
-        cc = row.get("cache_creation_tokens", 0)
-        bucket = per_state[state]
-        bucket["invocations"] += 1
-        bucket["input"] += inp
-        bucket["output"] += out
-        bucket["cache_read"] += cr
-        bucket["cache_creation"] += cc
-        bucket["model"] = model
-        cost = estimate_cost_usd(model, inp, out, cr, cc)
-        if cost is None:
-            bucket["has_unknown_model"] = True
-        else:
-            bucket["est_cost"] += cost
-
-    if not per_state:
-        return
-
-    print()
-    print(f"{'state':<24} {'invoc':>5} {'input':>8} {'output':>8} {'cache':>8} {'est_cost':>10}")
-    print("-" * 68)
-    for state, b in sorted(per_state.items()):
-        cache = b["cache_read"] + b["cache_creation"]
-        cost_str = f"${b['est_cost']:.4f}" if not b["has_unknown_model"] else "n/a"
-        print(
-            f"{state:<24} {b['invocations']:>5} {b['input']:>8} {b['output']:>8} {cache:>8} {cost_str:>10}"
-        )
-    print()
+            report.write_json(cost_output_json)
+        except OSError:
+            pass  # Non-fatal: a failed write shouldn't block the run
 
 
 def _print_ab_summary(ab_path: Path) -> None:

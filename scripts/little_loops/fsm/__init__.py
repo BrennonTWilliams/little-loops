@@ -79,6 +79,7 @@ from little_loops.fsm.concurrency import (
     ScopeLock,
     resolve_scope,
 )
+from little_loops.fsm.cost_graph import CostReport, PerStateCost
 from little_loops.fsm.evaluators import (
     DEFAULT_LLM_PROMPT,
     DEFAULT_LLM_SCHEMA,
@@ -135,6 +136,7 @@ from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
     CircuitConfig,
     CommandEntry,
+    CostCeilingConfig,
     EvaluateConfig,
     FSMLoop,
     LearningConfig,
@@ -171,6 +173,9 @@ __all__ = [
     "ActionRunner",
     "CircuitConfig",
     "CommandEntry",
+    "CostCeilingConfig",
+    "CostReport",
+    "PerStateCost",
     "PROMPT_SIZE_WARN_EVENT",
     "RATE_LIMIT_EXHAUSTED_EVENT",
     "RATE_LIMIT_STORM_EVENT",

@@ -17,6 +17,7 @@ from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
     CircuitConfig,
     CommandEntry,
+    CostCeilingConfig,
     EvaluateConfig,
     FSMLoop,
     LearningConfig,
@@ -3061,6 +3062,64 @@ class TestFSMLoopTargetsField:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+
+class TestCostCeilingConfig:
+    """Tests for CostCeilingConfig dataclass (ENH-2477)."""
+
+    def test_defaults(self) -> None:
+        cfg = CostCeilingConfig()
+        assert cfg.cost_ceiling_per_state is None
+        assert cfg.cost_warn_at is None
+
+    def test_from_dict_all_fields(self) -> None:
+        cfg = CostCeilingConfig.from_dict({"cost_ceiling_per_state": 1.5, "cost_warn_at": 0.75})
+        assert cfg.cost_ceiling_per_state == 1.5
+        assert cfg.cost_warn_at == 0.75
+
+    def test_from_dict_partial_fields(self) -> None:
+        cfg = CostCeilingConfig.from_dict({"cost_warn_at": 0.5})
+        assert cfg.cost_ceiling_per_state is None
+        assert cfg.cost_warn_at == 0.5
+
+    def test_from_dict_empty(self) -> None:
+        cfg = CostCeilingConfig.from_dict({})
+        assert cfg.cost_ceiling_per_state is None
+        assert cfg.cost_warn_at is None
+
+    def test_to_dict_omits_none(self) -> None:
+        assert CostCeilingConfig().to_dict() == {}
+
+    def test_to_dict_includes_non_none(self) -> None:
+        d = CostCeilingConfig(cost_ceiling_per_state=2.0).to_dict()
+        assert d == {"cost_ceiling_per_state": 2.0}
+
+    def test_round_trip(self) -> None:
+        original = CostCeilingConfig(cost_ceiling_per_state=3.0, cost_warn_at=1.0)
+        restored = CostCeilingConfig.from_dict(original.to_dict())
+        assert restored.cost_ceiling_per_state == 3.0
+        assert restored.cost_warn_at == 1.0
+
+    def test_state_config_omits_when_unset(self) -> None:
+        state = StateConfig.from_dict({"action": "work.sh", "on_yes": "done"})
+        assert state.cost_ceiling is None
+
+    def test_state_config_round_trip(self) -> None:
+        state = StateConfig.from_dict(
+            {
+                "action": "work.sh",
+                "on_yes": "done",
+                "cost_ceiling": {"cost_ceiling_per_state": 2.5, "cost_warn_at": 1.0},
+            }
+        )
+        assert state.cost_ceiling is not None
+        assert state.cost_ceiling.cost_ceiling_per_state == 2.5
+        assert state.cost_ceiling.cost_warn_at == 1.0
+        # Round-trip through to_dict/from_dict.
+        restored = StateConfig.from_dict(state.to_dict())
+        assert restored.cost_ceiling is not None
+        assert restored.cost_ceiling.cost_ceiling_per_state == 2.5
+        assert restored.cost_ceiling.cost_warn_at == 1.0
 
 
 class TestCircuitConfig:

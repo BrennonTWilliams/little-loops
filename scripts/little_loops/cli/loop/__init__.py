@@ -316,6 +316,16 @@ Examples:
             action="store_true",
             help="Re-run the loop on a second available host and append a cross-host comparison table",
         )
+        run_parser.add_argument(
+            "--cost-output-json",
+            type=Path,
+            default=None,
+            metavar="PATH",
+            help=(
+                "Write per-state cost JSON to PATH (stable schema: see "
+                "scripts/tests/test_cli_cost_table.py for the locked shape)"
+            ),
+        )
 
         # Validate subcommand
         validate_parser = subparsers.add_parser(

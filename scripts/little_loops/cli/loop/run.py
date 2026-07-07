@@ -509,6 +509,7 @@ def cmd_run(
             loop_path=path,
             running_dir=running_dir,
             model=fsm.llm.model,
+            cost_output_json=getattr(args, "cost_output_json", None),
         )
     finally:
         if executor is not None:

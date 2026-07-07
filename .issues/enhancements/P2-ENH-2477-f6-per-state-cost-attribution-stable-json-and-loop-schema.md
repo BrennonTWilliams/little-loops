@@ -3,8 +3,9 @@ id: ENH-2477
 title: "F6 (finishes) \u2014 Per-state cost attribution: stable JSON + per-state ceilings"
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-04T20:05:34Z'
+completed_at: 2026-07-07 15:54:07+00:00
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
@@ -31,7 +32,8 @@ score_change_surface: 25
 ## Summary
 
 Finish the per-state cost table already partially built at
-`scripts/little_loops/cli/loop/_helpers.py:1665–1690`: stabilize its JSON
+`scripts/little_loops/cli/loop/_helpers.py:1663–1726` (`_print_usage_summary(usage_path)`,
+def at 1663, print block at 1722–1726): stabilize its JSON
 schema, surface `cache_read` / `cache_creation` broken out (already in
 the underlying `usage` aggregate), add a stable JSON output path for
 downstream consumers, and add `cost_ceiling_per_state` /
@@ -51,10 +53,11 @@ would silently break consumers.
 
 ## Current Behavior
 
-- `scripts/little_loops/cli/loop/_helpers.py:1665–1690` prints a per-
-  state cost table by reading `UsageEvent` rows from `history.db`.
-- `scripts/little_loops/fsm/executor.py:1295–1305` already aggregates
-  `cache_read_tokens` / `cache_creation_tokens` per state.
+- `scripts/little_loops/cli/loop/_helpers.py:1663–1726` (`_print_usage_summary()`)
+  prints a per-state cost table by reading JSONL rows from `<run_dir>/usage.jsonl`.
+- `scripts/little_loops/fsm/executor.py:1413–1422` already aggregates
+  `cache_read_tokens` / `cache_creation_tokens` per action in
+  `FSMExecutor._run_action()`.
 - The CLI prints a textual table; no stable JSON shape exists; no
   `cost_ceiling_per_state` field in the loop YAML schema.
 
@@ -92,7 +95,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `.to_dict()` — returns the stable JSON shape above
    - `.table()` — returns the existing human-readable column layout
 
-2. **`scripts/little_loops/cli/loop/_helpers.py:1665–1690` extension**:
+2. **`scripts/little_loops/cli/loop/_helpers.py:1663–1726` extension** (`_print_usage_summary()`):
    - Replace the inline table builder with `PerStateCost.from_history`
    - Add `--cost-output-json <path>` flag for machine-readable output
    - JSON shape locked in `scripts/tests/test_cli_cost_table.py`
@@ -135,7 +138,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `--cost-output-json` through the `run_background` re-exec block
   (mirroring the `max_iter` block at `:1317–1319`); BUG-1414-style
   silent-drop otherwise
-- `scripts/little_loops/cli/loop/_helpers.py:1665–1690` — replace inline
+- `scripts/little_loops/cli/loop/_helpers.py:1663–1726` — replace inline
 - `scripts/little_loops/fsm/schema.py` — YAML schema additions
 - `scripts/little_loops/cli/ctx_stats.py` — per-state readout
 - `scripts/little_loops/fsm/executor.py:1295` — wire JSON emission
@@ -299,7 +302,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. Add `cost_ceiling_per_state` / `cost_warn_at` to `fsm/schema.py`
 2. Author `fsm/cost_graph.py` with `PerStateCost`
-3. Replace the inline table builder at `_helpers.py:1665–1690` with
+3. Replace the inline table builder at `_helpers.py:1663–1726` with
    `PerStateCost.from_history(...).table()`
 4. Add `--cost-output-json <path>` flag to `ll-loop run`
 5. Extend `cli/ctx_stats.py` to read per-state cost
@@ -401,7 +404,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | Document | Why Relevant |
 |----------|--------------|
 | `.issues/epics/P2-EPIC-2456-token-cost-reduction.md` | Parent; § Tier 1 [TBD-5], Goal #2 |
-| `scripts/little_loops/cli/loop/_helpers.py:1665–1690` | Where the new builder plugs in |
+| `scripts/little_loops/cli/loop/_helpers.py:1663–1726` | Where the new builder plugs in |
 | `FEAT-2476` | Sibling: composes per-state ceilings with the global `--max-cost` flag |
 | `ENH-2461` | Persistence layer for the underlying `input_tokens` etc. |
 
@@ -432,8 +435,11 @@ _Added by `/ll:confidence-check` on 2026-07-07_
 - **ENH-2461 feature-flag fallback**: The `from_history(db_path)` constructor is spec, not current reality — `usage_event` table is gated by sibling ENH-2461 (P3). Issue handles this with `try/except sqlite3.OperationalError`, but the wrapper code path needs an explicit smoke test or the feature flag can silently regress when ENH-2461 merges.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-07T15:28:16 - `22b33ebd-a3cd-4da8-9982-c9c64f050054.jsonl`
+- `/ll:ready-issue` - 2026-07-07T15:27:38 - `22b33ebd-a3cd-4da8-9982-c9c64f050054.jsonl`
 - `/ll:wire-issue` - 2026-07-05T04:06:04 - `24e80095-e5ab-460d-a045-d84cf2220c68.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:11:30 - `6412d46f-caf7-49a3-86b3-b6f00ea65f1f.jsonl`
 - `/ll:confidence-check` - 2026-07-07 - `110be12b-df0f-44e6-864d-f358d69fb864.jsonl`
 
 - `/ll:capture-issue` - 2026-07-04T20:05:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a4ee548-94b7-4694-b8c1-49e3f31cc127.jsonl`
+- `/ll:manage-issue` - 2026-07-07T15:54:07Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/899e153b-13e2-44c5-b988-57e1b2ae658d.jsonl`
