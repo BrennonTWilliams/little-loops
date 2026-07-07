@@ -35,6 +35,9 @@ Use this when you want to query what happened in past sessions, inject historica
 | A trend analysis for the last quarter | `ll-history analyze --since 2026-01-01 --format markdown` |
 | All tools used across sessions | `ll-session recent --kind tool --limit 20` |
 | What the project summary looks like | `ll-history summary` |
+| What shipped recently (commits with issue linkage) | `ll-session recent --kind commit` |
+| Last pytest run on this branch | `ll-session recent --kind test_run --limit 1` |
+| Which skills succeed vs. fail | `ll-session skill-stats` |
 
 ---
 
@@ -42,7 +45,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 14.
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 18. The v15–v18 migrations are driven by EPIC-2457 children (ENH-2458 `commit_events`, ENH-2459 `test_run_events`, ENH-2460 `skill_events` completion columns, ENH-2462 `issue_events.session_id`) and are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -52,15 +55,19 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 |-------|---------------|
 | `tool_events` | Every tool call (Bash, Read, Write, etc.) with token counts and cache-hit flag |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
-| `issue_events` | Issue state transitions: captured, started, completed, deferred |
+| `issue_events` | Issue state transitions: captured, started, completed, deferred. v16 added a `session_id` column (indexed) so the `issue_sessions` view no longer relies on timestamp overlap (ENH-2462). |
 | `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; FTS-indexed via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |
 | `loop_events` | FSM state-machine transitions with loop name and retry count |
 | `message_events` | User message content for FTS indexing |
 | `assistant_messages` | Assistant response content with tool-use count |
 | `user_corrections` | Messages matching correction patterns ("no", "don't", "instead", "remember") |
-| `skill_events` | `/ll:` skill invocations with args |
+| `skill_events` | `/ll:` skill invocations with args. v15 added nullable `exit_code`, `success`, and `duration_ms` columns so `ll-session skill-stats` can compute per-skill success rates (ENH-2460). |
 | `cli_events` | `ll-*` CLI commands with exit code and duration |
 | `sessions` | Maps session IDs to their `.jsonl` file paths |
+| `commit_events` | Git commit metadata: `commit_sha` (unique), `parent_sha`, message, author, branch, `issue_id` (linked when known), `files_json`. Populated live by the session-start backfill. Queryable via `ll-session recent --kind commit` (ENH-2458, v17). |
+| `test_run_events` | Pytest runs: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Queryable via `ll-session recent --kind test_run` (ENH-2459, v18). |
+| `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
+| `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 
 Two captures are opt-in via config (both enabled by default):
 - `analytics.capture.file_events` — file reads/writes
@@ -128,7 +135,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`.
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `commit`, `test_run`.
 
 ### Most recent events
 
@@ -161,7 +168,7 @@ Useful when you want to open the raw session transcript.
 
 ## Issue ↔ Session Cross-References
 
-The `issue_sessions` view joins issue lifecycle events with session messages by timestamp overlap: a session is considered to have "touched" an issue if the session's message activity falls between the issue's `captured_at` and `completed_at` timestamps.
+The `issue_sessions` view joins issue lifecycle events with session messages. Since v16 (ENH-2462), the join is **authoritative**: every `issue_events` row carries a `session_id` column (indexed) recorded at write time, so the view no longer infers association from timestamp overlap. A legacy view `legacy_issue_sessions_ts_overlap` is retained as a backward-compat fallback for sessions recorded before the v16 migration — new code should use `issue_sessions` directly.
 
 **List sessions that worked on an issue:**
 
@@ -284,7 +291,23 @@ ll-history root --expand
 
 Shows the top-level condensed summary node when LCM compaction is enabled. `--expand` drills down to the underlying message events. See [LCM Compaction](#optional-lcm-compaction) below.
 
----
+### Test runs
+
+```bash
+ll-session recent --kind test_run --limit 5
+ll-session recent --kind test_run --branch main
+```
+
+Each row is a pytest invocation captured live during a session or by `ll-session backfill` from a recorded run: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Use this to spot a branch where tests started failing, or to find the commit that flipped a passing run red. (ENH-2459.)
+
+### Skill success signal
+
+```bash
+ll-session skill-stats
+ll-session skill-stats --skill /ll:manage-issue --window-days 30
+```
+
+Per-skill invocation count, completion count, and success rate, derived from the `exit_code` / `success` / `duration_ms` columns on `skill_events` (added in v15, ENH-2460). Use this to surface skills that users are pushing back on most, or to measure whether a recent change improved a skill's reliability.
 
 ## Session Log Tooling (`ll-logs`)
 
