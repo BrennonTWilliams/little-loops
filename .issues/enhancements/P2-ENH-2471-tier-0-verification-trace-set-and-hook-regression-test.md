@@ -229,9 +229,9 @@ _Wiring pass added by `/ll:wire-issue` (specific line anchors for the new `edit_
 
 - **No precedent for locked trace sets** in this repo — this issue creates the convention (`scripts/tests/fixtures/tier0_traces/manifest.json` + per-trace JSON).
 - **Handler doesn't exist yet** — `edit_batch_nudge.py` is greenfield; this test issues the assumption that FEAT-2470 lands the handler first (or the test lands concurrent with FEAT-2470's T1 step). If FEAT-2470 not yet merged, write the test against a stub `edit_batch_nudge.handle` that returns `LLHookResult(exit_code=0)` — the test asserts on the contract, not the implementation.
-- **Nudge-not-block contract** — exit 0 + non-None `feedback` is the correct nudge channel; exit 2 blocks (per `types.py:96`). Tests must assert `result.exit_code == 0`, not `result.exit_code == 2`.
+- **Nudge-not-block contract** — ~~exit 0 + non-None `feedback` is the correct nudge channel; tests must assert `result.exit_code == 0`~~ **STALE (audit 2026-07-06)**: FEAT-2470's Decision 1 settled on `exit_code=2` (context-injected nudge, established non-blocking pattern per `pre_compact_handoff.py` / `pre_compact.py`), and the shipped handler + `test_edit_batch_hook.py` assert `exit_code=2` on the nudge path (threshold-gated per ENH-2499). Do not "fix" the tests back to exit 0.
 - **No `rebuild.sh`** precedent — `Glob '**/rebuild.sh'` returns no files in this repo (the codebase convention is "rerun the loop to regenerate"). Plan to either follow that convention or land `rebuild.sh` in this PR.
-- **`agent/*` audit-style candidates** (from FEAT-2470 research): the agents the test should NOT touch — `codebase-analyzer`, `codebase-pattern-finder`, `consistency-checker`, `plugin-config-auditor` get haiku-pinned by FEAT-2470; this issue does not need to verify those.
+- **`agent/*` audit-style candidates** (from FEAT-2470 research): the agents the test should NOT touch — `codebase-analyzer`, `codebase-pattern-finder`, `consistency-checker`, `plugin-config-auditor`. _(Stale note: the haiku pin was extracted from FEAT-2470 to ENH-2490 and deferred; no agent was pinned.)_ This issue does not need to verify those.
 
 ### Second-pass re-verification (2026-07-05)
 

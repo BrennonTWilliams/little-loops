@@ -332,7 +332,9 @@ analyzer + pattern-finder):_
   `gen_ai.provider.vendor`.
 - **Streaming-vs-blocking test cannot run in production** — the
   `anthropic` SDK is **not** imported anywhere in `scripts/little_loops/`
-  today; F1 (FEAT-2476) brings it in. The parity test must be a
+  today; F1 (EPIC-2456 § Tier 2 [TBD-10], not yet filed — NOT
+  FEAT-2476, which is F2/`--max-cost` and adds no pip deps) brings it
+  in. The parity test must be a
   test-only harness gated on `importlib.util.find_spec("anthropic")`,
   wrapped per the `_HAS_OTEL_SDK` skipif pattern at
   `scripts/tests/test_transport.py:1`.

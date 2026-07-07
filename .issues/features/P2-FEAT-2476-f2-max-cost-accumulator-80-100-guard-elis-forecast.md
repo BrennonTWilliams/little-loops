@@ -167,11 +167,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `scripts/little_loops/fsm/budget.py` (new) — accumulator + guard + ELIS
 - `scripts/little_loops/cli/loop/__main__.py` — `--max-cost` argparse
-- `scripts/little_loops/fsm/executor.py:1295–1305` — wire accumulator + guard
+- `scripts/little_loops/fsm/executor.py` — wire accumulator + guard (corrected anchors: aggregation at `1382-1392`, RSS-budget twin at `1395-1414` — the captured `1295–1305` range is the interceptor hook; see Codebase Research Findings)
 - `scripts/little_loops/fsm/schema.py` — `cost_ceiling_per_state` /
   `cost_warn_at` loop-YAML keys
 - `scripts/little_loops/pricing.py` (no change, already supports)
-- `.ll/ll-config.json` (already documents `cost_limits.*`; verify naming)
+- `.ll/ll-config.json` — add `cost_limits.*` keys (they do **not** exist yet; the earlier "already documents" claim was stale — see § Motivation and Codebase Research Findings)
 
 ### Dependent Files (Callers/Importers)
 
