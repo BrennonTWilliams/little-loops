@@ -8,6 +8,12 @@ status: open
 discovered_date: 2026-07-07
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 91
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # BUG-2528: `refine-to-ready-issue` does not short-circuit on `decision_needed: true` set by mid-chain skills
@@ -128,7 +134,7 @@ Insert two mid-chain `check_decision_mid` states that run
 ### Part 1 — gate after refine (insert between `refine_issue`/`refine_followup` and `check_wire_done`)
 
 ```yaml
-check_decision_after_refine:
+check_decision_mid_refine:
   # Mid-chain gate: if /ll:refine-issue set decision_needed: true, skip the
   # remaining wire + confidence_check invocations and exit via done so the
   # outer autodev loop's check_decision_after_refine (autodev.yaml:165) can
@@ -142,12 +148,12 @@ check_decision_after_refine:
 ```
 
 Update line 88 (`refine_issue.next`) and line 98 (`refine_followup.next`) to
-point to `check_decision_after_refine` instead of `check_wire_done`.
+point to `check_decision_mid_refine` instead of `check_wire_done`.
 
 ### Part 2 — gate after wire (insert between `mark_wire_done` and `confidence_check`)
 
 ```yaml
-check_decision_after_wire:
+check_decision_mid_wire:
   # Mid-chain gate: if /ll:wire-issue set decision_needed: true, skip the
   # confidence_check invocation. Same exit-via-done contract as Part 1.
   action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
@@ -157,7 +163,7 @@ check_decision_after_wire:
   on_error: confidence_check
 ```
 
-Update line 122 (`mark_wire_done.next`) to point to `check_decision_after_wire`
+Update line 122 (`mark_wire_done.next`) to point to `check_decision_mid_wire`
 instead of `confidence_check`.
 
 ### Notes
@@ -171,20 +177,20 @@ instead of `confidence_check`.
   ("Exit via done so autodev's check_decision_after_refine can route to
   run_decide"). `decide-issue` remains an outer-loop concern with its
   rate-limit handling, decidable-check, and deposit_options detour.
-- A single `check_decision_after_refine` retry path is fine; the `refine_followup`
-  → `check_decision_after_refine` transition is identical to the
-  `refine_issue` → `check_decision_after_refine` transition.
+- A single `check_decision_mid_refine` retry path is fine; the `refine_followup`
+  → `check_decision_mid_refine` transition is identical to the
+  `refine_issue` → `check_decision_mid_refine` transition.
 
 ## Location
 
 - **File**: `scripts/little_loops/loops/refine-to-ready-issue.yaml`
 - **Anchors**:
-  - Line 88: `refine_issue.next` change to `check_decision_after_refine`
-  - Line 98: `refine_followup.next` change to `check_decision_after_refine`
-  - Insert new `check_decision_after_refine` state (location: after
+  - Line 88: `refine_issue.next` change to `check_decision_mid_refine`
+  - Line 98: `refine_followup.next` change to `check_decision_mid_refine`
+  - Insert new `check_decision_mid_refine` state (location: after
     `refine_followup`, before `check_wire_done`)
-  - Line 122: `mark_wire_done.next` change to `check_decision_after_wire`
-  - Insert new `check_decision_after_wire` state (location: after
+  - Line 122: `mark_wire_done.next` change to `check_decision_mid_wire`
+  - Insert new `check_decision_mid_wire` state (location: after
     `mark_wire_done`, before `confidence_check`)
 
 ## Integration Map
@@ -208,7 +214,7 @@ instead of `confidence_check`.
   when no flag is set, including the existing `max_refine_count` retry
   loop.
 - `test_refine_followup_decision_gate` — assert `refine_followup` →
-  `check_decision_after_refine` is consulted exactly once per retry (not
+  `check_decision_mid_refine` is consulted exactly once per retry (not
   re-consulted on the same refine pass).
 
 ### Reuse, Not Reinvent
@@ -272,25 +278,116 @@ mirroring `test_refine_issue_next_is_check_wire_done` at line 1309):
 - assert `refine_issue.next`, `refine_followup.next`, and `mark_wire_done.next`
   now point at the new gate states
 
-**Naming caution.** The proposed inner state name `check_decision_after_refine`
-(Part 1) is **identical** to the OUTER autodev state at `autodev.yaml:165`
-that this issue references throughout. There is no technical collision
-(states are namespaced per YAML file), but two same-named states across the
-two composed loops is a readability/debugging trap in run logs and traces.
-Consider naming the inner gates `check_decision_mid_refine` /
-`check_decision_mid_wire` to keep the inner/outer distinction obvious.
+**Naming caution (RESOLVED).** The *originally* proposed inner state name
+`check_decision_after_refine` (Part 1) was **identical** to the OUTER autodev
+state at `autodev.yaml:165` that this issue references throughout. There is no
+technical collision (states are namespaced per YAML file), but two same-named
+states across the two composed loops is a readability/debugging trap in run
+logs and traces. **The inner gates are now named `check_decision_mid_refine` /
+`check_decision_mid_wire`** — see "Naming Collision — Load-Bearing (RESOLVED)"
+below. Every surviving `check_decision_after_refine` mention in this file now
+refers to the OUTER autodev state.
 
 **Variable reference confirmed.** The proposed snippets correctly use
 `${captured.issue_id.output}` — this loop captures `issue_id` at
 `resolve_issue` (line 31). Do NOT copy autodev's `${captured.input.output}`
 form (autodev captures `input`, this sub-loop captures `issue_id`).
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue` — verified 2026-07-07:_
+
+- `scripts/little_loops/loops/recursive-refine.yaml` — **second composing
+  parent, not mentioned elsewhere in this issue.** Its `run_refine` state
+  (line 217) invokes `loop: refine-to-ready-issue` with
+  `context_passthrough: true`, exactly as `autodev.yaml:126` (`refine_current`)
+  does. recursive-refine defines its own post-sub-loop `check_decision_needed`
+  (line 538) whose comment already cross-references
+  `refine-to-ready-issue:check_missing_artifacts`. **Implication:** the
+  mid-chain early-`done` exit this bug adds must preserve the same externally
+  visible contract for BOTH parents — when the sub-loop exits `done` with
+  `decision_needed: true`, autodev's `check_decision_after_refine`
+  (`autodev.yaml:165`) AND recursive-refine's `check_decision_needed`
+  (`recursive-refine.yaml:538`) each catch the flag post-return. No change
+  needed in either parent; the fix is contract-preserving, but the
+  end-to-end verification step should confirm recursive-refine's path too,
+  not just autodev's. [Agent 1 finding]
+- `scripts/little_loops/loops/autodev.yaml:126` — `refine_current`
+  (`loop: refine-to-ready-issue`), already the issue's named outer loop.
+  Its `check_decision_after_refine` (line 165) is the post-return safety net
+  described throughout. [confirms existing text]
+
+### Naming Collision — Load-Bearing (RESOLVED)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The "Naming caution" in Codebase Research Findings above recommended
+`check_decision_mid_refine` / `check_decision_mid_wire`. The wiring pass
+**confirmed this is not cosmetic**: `scripts/tests/test_autodev_decision_gate.py`
+pins 8+ assertions to the OUTER autodev state `check_decision_after_refine`
+(`autodev.yaml:165`), including its `on_error: check_passed` routing. Reusing
+the identical name on the inner sub-loop would be a real debugging/trace-reading
+hazard (two same-named states across two composed loops in one run trace), even
+though states are namespaced per YAML file and there is no technical collision.
+
+**RESOLVED — the two new inner gates are named `check_decision_mid_refine`
+(Part 1) and `check_decision_mid_wire` (Part 2)** throughout the Proposed
+Solution snippets, Location anchors, and Acceptance Criteria of this issue.
+Every remaining mention of `check_decision_after_refine` in this file refers
+to the OUTER autodev state at `autodev.yaml:165` (the post-return safety net)
+and is intentionally left unchanged. This was a naming choice with an obvious
+better answer (avoid the collision), not an open design fork —
+`decision_needed` stays `false`.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_autodev_decision_gate.py` — **verify NO regression.**
+  Contains 8+ tests pinned to autodev's `check_decision_after_refine` and
+  sibling decision-gate states. The side-effect analysis confirms these are
+  autodev-side and stay green **provided the inner gates use different names**
+  (see Naming Collision above). Run to confirm the outer contract is intact.
+  [Agent 2 finding]
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_all_validate_as_valid_fsm`
+  (line 46) and
+  `::TestBuiltinLoopReferencesResolve::test_all_static_loop_references_resolve`
+  (line 8448) — **auto-cover the new states.** These parametrized suite-wide
+  tests `load_and_validate` every builtin loop, so they catch a broken `next:`
+  target, a dangling `on_yes`/`on_no`/`on_error`, an unreachable state, or a
+  non-terminal `done`/`failed` without any new test being written. No action
+  beyond keeping the new states reachable and routing into existing states.
+  [Agent 3 finding]
+- No additional breaking tests beyond the three already named in the
+  Codebase Research Findings (`test_refine_issue_next_is_check_wire_done`,
+  `test_refine_followup_next_is_check_wire_done`,
+  `test_mark_wire_done_routes_to_confidence_check`). No `test_required_states_exist`
+  / state-count assertion exists for this loop, so adding two states breaks
+  nothing on the count axis. The strongest structural template for the NEW
+  gate-state tests is `check_missing_artifacts`
+  (`test_builtin_loops.py:1246-1272`), which asserts all four of:
+  state-exists, `fragment == shell_exit`, `on_yes`, `on_no` — clone it (the
+  `check_decision_needed` test at :1274 asserts only `on_no` and is a weaker
+  model). [Agent 3 finding]
+
+### Documentation (advisory — likely no change)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/guides/LOOPS_REFERENCE.md` — documents `refine-to-ready-issue` at the
+  composition level (lines 79-80, 131-145, and the recursive-refine sub-loop
+  diagrams at 893-897, 1011-1028). Because the sub-loop's external contract
+  (returns `done` when the flag is set; outer loop handles decide) is
+  **unchanged**, these composition-level docs remain accurate. Review only if
+  a diagram enumerates the internal `refine → wire → confidence_check` chain
+  the two gates interrupt; none was found to. [Agent 1 finding — advisory only]
+
 ## Acceptance Criteria
 
-- [ ] New `check_decision_after_refine` state inserted after
+- [ ] New `check_decision_mid_refine` state inserted after
       `refine_followup`; `refine_issue.next` and `refine_followup.next`
       updated to point to it.
-- [ ] New `check_decision_after_wire` state inserted after
+- [ ] New `check_decision_mid_wire` state inserted after
       `mark_wire_done`; `mark_wire_done.next` updated to point to it.
 - [ ] Both new states use `fragment: shell_exit` and run
       `ll-issues check-flag ${captured.issue_id.output} decision_needed`.
@@ -314,6 +411,13 @@ form (autodev captures `input`, this sub-loop captures `issue_id`).
       the new gate states instead of the old `next:` targets.
 - [ ] Full suite green: `python -m pytest scripts/tests/` exits 0 with
       no new skips.
+- [ ] _(wiring pass)_ New inner gate names do NOT collide with autodev's
+      `check_decision_after_refine`; `test_autodev_decision_gate.py` stays
+      green (adopt `check_decision_mid_refine` / `check_decision_mid_wire`).
+- [ ] _(wiring pass)_ Sub-loop contract preserved for BOTH composing parents:
+      autodev (`autodev.yaml:126`) AND recursive-refine
+      (`recursive-refine.yaml:217`) still route to their post-return decision
+      gate when the sub-loop exits `done` with `decision_needed: true`.
 
 ## Verification
 
@@ -373,6 +477,7 @@ form (autodev captures `input`, this sub-loop captures `issue_id`).
 open
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-07T19:56:26 - `b2a3b08a-28fc-4770-8881-32bb3cbe918e.jsonl`
 - `/ll:refine-issue` - 2026-07-07T19:49:17 - `14039683-e0ea-4bd7-a9c4-78de45770ee0.jsonl`
 - `/ll:capture-issue` - 2026-07-07T19:43:26Z - captured from conversation
   about `refine-to-ready-issue` mid-chain decision_needed handling
