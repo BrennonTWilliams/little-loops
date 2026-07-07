@@ -173,7 +173,7 @@ class TestGoalsParserFuzz:
     @given(content=malformed_goals_content())
     @settings(
         max_examples=500,
-        deadline=None,
+        deadline=5000,
         suppress_health_check=list(HealthCheck),
     )
     def test_from_content_never_crashes(self, content: str) -> None:
@@ -196,7 +196,7 @@ class TestGoalsParserFuzz:
     @given(content=yaml_bomb_content())
     @settings(
         max_examples=200,
-        deadline=None,
+        deadline=5000,
         suppress_health_check=[HealthCheck.too_slow],
     )
     def test_yaml_bomb_protection(self, content: str) -> None:
@@ -217,7 +217,7 @@ class TestGoalsParserFuzz:
     @given(content=deeply_nested_yaml())
     @settings(
         max_examples=100,
-        deadline=None,
+        deadline=5000,
         suppress_health_check=[HealthCheck.too_slow],
     )
     def test_deep_nesting_protection(self, content: str) -> None:
@@ -239,7 +239,7 @@ class TestGoalsParserFuzz:
         content=st.text(min_size=0, max_size=100000),
         filename=st.text(min_size=1, max_size=100),
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(max_examples=200, deadline=5000)
     def test_from_file_with_various_content(self, content: str, filename: str) -> None:
         """File parsing should handle various file contents gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
