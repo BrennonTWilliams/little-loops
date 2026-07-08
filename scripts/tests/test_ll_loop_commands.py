@@ -1645,6 +1645,63 @@ class TestCmdListENH2539Polished:
         assert "2 project" in out
         assert "1 built-in" in out
 
+    def test_rollup_badge_uses_gray(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2542: rollup badge is rendered in ANSI 90 (gray), not ANSI 36 (cyan).
+
+        The badge inside each category header (e.g. "18 built-in, 1 project")
+        was previously cyan — which reads as greenish on teal-leaning dark
+        palettes. Gray is a neutral de-emphasis that doesn't compete with the
+        bold category header color above it.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "p1.yaml").write_text(_runnable("name: p1\ncategory: harness\n"))
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        (builtin_dir / "b1.yaml").write_text(_runnable("name: b1\ncategory: harness\n"))
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=builtin_dir,
+        ):
+            with patch("little_loops.cli.output._USE_COLOR", True):
+                result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Locate the category-header line carrying the rollup badge.
+        header_line = next(
+            ln for ln in out.split("\n") if "HARNESS" in ln and "built-in" in ln
+        )
+        # The badge substring (between the ANSI opener and reset) should be
+        # wrapped in ANSI 90 (gray), not ANSI 36 (cyan).
+        # Sanity: the badge text is present.
+        assert "1 built-in" in header_line
+        # Find the ANSI opener immediately preceding "1 built-in" — it must
+        # be the gray opener (\033[90m), not a cyan one (\033[36m).
+        badge_idx = header_line.index("1 built-in")
+        before_badge = header_line[:badge_idx]
+        # Strip ANSI codes from `before_badge` to find the last opener
+        import re as _re
+
+        last_opener_match = list(
+            _re.finditer(r"\x1b\[([0-9;]*)m", before_badge)
+        )
+        assert last_opener_match, f"No ANSI opener before badge: {header_line!r}"
+        last_opener_code = last_opener_match[-1].group(1)
+        assert last_opener_code == "90", (
+            f"Rollup badge opener should be ANSI 90 (gray), got "
+            f"\\033[{last_opener_code}m: {header_line!r}"
+        )
+
     def test_kind_column_first_class(
         self,
         tmp_path: Path,
@@ -1974,6 +2031,52 @@ class TestCmdListENH2539Polished:
         # Sanity: TW=80 would have truncated to ~20 chars; the substring at
         # position 30+ would be absent.
         assert "forty chars long" in out
+
+    def test_loop_name_bold_white(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop name column renders with bold ANSI ("1"), not color.
+
+        Weight-based emphasis reads identically across every terminal palette
+        (no chromatic ambiguity with category headers or kind labels). The
+        bold weight keeps it the most prominent thing in the row.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "alpha.yaml").write_text(_runnable("name: alpha\ncategory: cat\n"))
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.output._USE_COLOR", True):
+                result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # The row containing "alpha" should be wrapped in bold ANSI, and the
+        # bold opener must precede "alpha" with no intervening color code.
+        row = next(ln for ln in out.split("\n") if "alpha" in ln)
+        # Find every ANSI opener that appears in the row before "alpha".
+        before_alpha = row[: row.index("alpha")]
+        # At minimum, a \033[1m must open the loop-name cell (the bold code).
+        assert "\033[1m" in before_alpha, (
+            f"Expected bold opener (\033[1m) before loop name: {row!r}"
+        )
+        # No chromatic opener should directly precede "alpha" — the bold cell
+        # should be the only ANSI block wrapping the name (no intervening color
+        # code like \033[36m or \033[38;5;67m between the bold opener and alpha).
+        last_opener = before_alpha.rsplit("\033[", 1)[-1]
+        assert last_opener.startswith("1m"), (
+            f"Last ANSI block before loop name should be the bold opener "
+            f"(\\033[1m), got \\033[{last_opener!r}: {row!r}"
+        )
 
 
 class TestCmdHistory:

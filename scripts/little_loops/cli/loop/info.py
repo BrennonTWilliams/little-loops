@@ -306,7 +306,11 @@ def cmd_list(
         header_label = f"  ▸ {cat_title}  ({len(group)})"
         rollup = _category_rollup(group, hidden_counts)
         if rollup:
-            header_label += f"  {colorize(rollup, '36')}"
+            # ANSI 90 (bright black / "gray") for the rollup badge: a
+            # chromatic de-emphasis that doesn't compete with the bold
+            # category header color. ANSI 36 (cyan) reads greenish on
+            # teal-leaning dark palettes and was visually distracting.
+            header_label += f"  {colorize(rollup, '90')}"
         print(colorize(header_label, cat_color))
 
         kind_color_map = {
@@ -332,7 +336,11 @@ def cmd_list(
             *,
             _kcm: dict[str, str] = kind_color_map,
         ) -> None:
-            name_str = colorize(_truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "36")
+            # Bold white ("1") for loop-name column: weight-based emphasis that
+            # reads identically across every terminal palette (no chromatic
+            # ambiguity with category headers or kind labels). The bold weight
+            # keeps it the most prominent thing in the row.
+            name_str = colorize(_truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "1")
             kind_value = _kind_for(lp)
             kind_str = colorize(
                 kind_value.ljust(kind_col),
