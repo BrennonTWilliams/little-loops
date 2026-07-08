@@ -265,6 +265,24 @@ rather than dead-ending. Both gate sites share the identical three-tier resoluti
 and `timeout=1800` prove budget, so decomposed children re-entering the pipeline
 get the same behavior at every recursion depth.
 
+**Diagnostic stderr tokens from `check_blocked_by` (ENH-2534).** `rn-implement`'s
+`check_blocked_by` state emits three diagnostic tokens to **stderr** immediately
+before each silent fail-open exit so `audit-loop-run` and the
+`fsm/executor.py:stderr_preview` surface (ENH-2469) can distinguish a real
+"READY — proceed" from a degraded empty-parse:
+
+| Token | Meaning |
+|-------|---------|
+| `UNRESOLVED` | `blocked_by` file exists but no blocker IDs could be resolved (parse failure) |
+| `PARSE_ERROR` | The bash wrapper's `$UNMET` capture itself broke (jq / regex failure) |
+| `DONE_SET_ERROR` | Issue is already `done` in `.issues/completed/` but also appears in the queue (drift) |
+
+The tokens are emitted **before** the existing silent `sys.exit(0)` fail-open
+exits — the fail-open semantics are unchanged (the wrapper stdout still sees
+empty `$UNMET`, so `route_blocked_by` still routes `READY → check_depth`), but
+the stderr marker is now observable. The legitimate no-deps / READY exit
+emits no token.
+
 `rn-decompose` emits `DECOMPOSED` (children enqueued) or `NO_CHILDREN` (atomic);
 the parent uses the stall-vs-atomic distinction above to decide between deferring
 and skipping.

@@ -350,6 +350,14 @@ Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive
 
 > Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
 
+### Orphan pytest-xdist worker sweep
+
+**Hook:** `orphan-worker-sweep.sh` (pure bash, ENH-2531)
+
+Reaps orphaned `pytest-xdist` workers left behind by killed pytest runs. Killed xdist workers have their command line rewritten by `setproctitle` to `[pytest-xdist running]`, so naive `pkill -f 'pytest'` patterns miss them — and each orphan spins at ~100% CPU. Only kills workers reparented to init (PPID 1) to avoid terminating a live pytest run still parented to its controller in a concurrent session. The match needle is built from a split literal so the `ps+awk` pipeline never self-matches. Always on.
+
+> Added as a second SessionEnd entry after `scratch-cleanup.sh` so dead pytest workers don't survive the session that killed them.
+
 ---
 
 ## PreCompact
