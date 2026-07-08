@@ -4417,3 +4417,45 @@
   rule: 'Captured: Polish ll-loop list output to match ll-issues list --group-by epic'
   scope: issue
   issue: ENH-2539
+- id: ARCH-189
+  type: rule
+  timestamp: '2026-07-08T02:44:25Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: scratch-cleanup.sh, session-cleanup.sh, and check-duplicate-issue-id
+    all scope to plugin-created artifacts; the orphan-worker-sweep matched pytest-xdist
+    orphan processes (external tool state), and PPID-1 reparenting was partial mitigation,
+    not a scope guarantee
+  rule: Built-in plugin hooks must operate only on state the plugin created (scratch
+    files, locks, issues base_dir); hooks touch
+  enforcement: advisory
+  issue: BUG-2540
+- id: ARCH-190
+  type: rule
+  timestamp: '2026-07-08T02:44:25Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The orphan sweep ran ps|awk and matched zero rows for non-xdist projects;
+    built-in hooks are a trust surface that runs in every consumer session and should
+    be obviously valuable across the consumer base
+  rule: Do not register dev-only or narrowly-scoped hooks in hooks/hooks.json; route
+    them through gitignored .claude/settings.lo
+  enforcement: advisory
+  issue: BUG-2540
+- id: ARCH-191
+  type: rule
+  timestamp: '2026-07-08T02:44:25Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: The explicit scope was 'local-only'; widening the installer would silently
+    re-create the original distribution problem and re-pollute every consumer's SessionEnd
+  rule: Do not widen ll-init to re-inject local-only hooks into fresh installs once
+    a hook has been moved to .claude/settings.lo
+  enforcement: advisory
+  issue: BUG-2540
