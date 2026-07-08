@@ -5,38 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.140.0] - 2026-07-07
-
-### Fixed
-
-- **`ll-auto --only` race in autodev implementation phase** — Two concurrent
-  `ll-loop run autodev` invocations previously reached `implement_current` on
-  disjoint `${context.run_dir}` scopes and both shelled out to `ll-auto --only`
-  on the main working tree, corrupting `.auto-manage-state.json` (double-processed
-  issues, lost `--resume` history) and tangling git history. Added `singleton:
-  bool = False` to `FSMLoop` and `ScopeLock`; `LockManager.find_conflict()` now
-  treats any two locks with the same `loop_name` and `singleton=True` as a
-  conflict regardless of scope, and `autodev.yaml` opts in with `singleton:
-  true`. Users who relied on FEAT-1789's parallel-refinement goal can use
-  `--worktree` (whole-loop filesystem isolation) or fork to a new loop name with
-  `singleton: false`. (BUG-2526)
-
-## [Unreleased]
-
-### Changed
-
-- **All 30 `ll-*` Codex bridge skills now carry `disable-model-invocation: true`** —
-  the stubs exist only for Codex Skills API discovery (via `agents/openai.yaml`);
-  Claude Code users invoke the identically-named `/ll:` slash commands. Removes the
-  bridges from the skill listing budget (~54% reduction); `ll-adapt --host codex`
-  generates new bridges with the field included — (ENH-1615)
-
-### Planned
-
-- Windows compatibility testing (tracked: ENH-2472)
-- Performance benchmarks for large repositories (tracked: ENH-2473)
-
-## [1.139.0] - 2026-07-05
+## [1.139.0] - 2026-07-08
 
 ### Added
 
@@ -53,18 +22,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost.
   - **`little_loops.output_cleaner`** — anti-event + duplicate-window pre-filter
     (`filter_output`) that trims progress-bar/spinner/duplicate noise from tool/log output.
-
-## [1.138.1] - 2026-07-05
+- **per-EPIC integration branch** — config schema, dataclasses, resolver, and
+  serialization for whole-EPIC parallel runs — (FEAT-2447)
 
 ### Fixed
 
-- **`ll-loop resume` drops `fsm.context` (including `input`), so resumed states
-  fail immediately with "Path 'input' not found in context"** — `LoopState` now
+- **`ll-auto --only` race in autodev implementation phase** — Two concurrent
+  `ll-loop run autodev` invocations previously reached `implement_current` on
+  disjoint `${context.run_dir}` scopes and both shelled out to `ll-auto --only`
+  on the main working tree, corrupting `.auto-manage-state.json` (double-processed
+  issues, lost `--resume` history) and tangling git history. Added `singleton:
+  bool = False` to `FSMLoop` and `ScopeLock`; `LockManager.find_conflict()` now
+  treats any two locks with the same `loop_name` and `singleton=True` as a
+  conflict regardless of scope, and `autodev.yaml` opts in with `singleton:
+  true`. Users who relied on FEAT-1789's parallel-refinement goal can use
+  `--worktree` (whole-loop filesystem isolation) or fork to a new loop name with
+  `singleton: false`. (BUG-2526)
+- **`ll-loop resume` drops `fsm.context` (including `input`)** — `LoopState` now
   persists and restores the full FSM context (positional `input`, `program.md`
-  fields, `--context` values) across stop/resume. Context is kept internal to the
-  on-disk `.state.json` (emitted only via `to_dict(include_context=True)`), so the
-  `ll-loop status`/`list --json` contract is unchanged. `--context` overrides
-  supplied at resume time still win over restored values — (BUG-2485)
+  fields, `--context` values) across stop/resume. Context is kept internal to
+  the on-disk `.state.json` (emitted only via `to_dict(include_context=True)`),
+  so the `ll-loop status`/`list --json` contract is unchanged. `--context`
+  overrides supplied at resume time still win over restored values — (BUG-2485)
+- **autodev `check_decision_before_size_review` shares BUG-2513's `on_success`-coupled
+  decision-gate defect** — (BUG-2519)
+- **SIGINT subprocess test flakes under xdist parallel load** — (BUG-2523)
+- **`--show-diagrams clean` emits broken connectors (trailing `───── ┘`) when the
+  pinned pane overflows terminal width** — width-aware pinned-pane picker +
+  render clamp — (BUG-2527)
+- **`--show-diagrams clean` produces inconsistent color across invocations (some
+  diagrams have color, others have none) for the same FSM and CLI flags** — (BUG-2536)
+- **4 Tests in `TestEvalExport` Fail Without Project-Folder Fixture** — (BUG-2502)
+- **xdist worker crashes on long-running rate-limit test** — (BUG-2524)
+- **Scratch-pad redirect drops output file outside automation context** —
+  preserve user-typed scratch files in cleanup sweep — (BUG-2525)
+- **`refine-to-ready-issue` does not short-circuit on `decision_needed: true` set
+  by mid-chain skills, wasting LLM budget on wire and confidence-check
+  invocations** — (BUG-2528)
+- **Shell kind-color cyan renders as bright green on warm-paper dark palette —
+  recede via bright-black** — (BUG-2537)
+
+### Changed
+
+- **All 30 `ll-*` Codex bridge skills now carry `disable-model-invocation: true`** —
+  the stubs exist only for Codex Skills API discovery (via `agents/openai.yaml`);
+  Claude Code users invoke the identically-named `/ll:` slash commands. Removes the
+  bridges from the skill listing budget (~54% reduction); `ll-adapt --host codex`
+  generates new bridges with the field included — (ENH-1615)
+- **F5.1 — Existing-event audit (DES adoption prerequisite)** — (ENH-2475)
+- **F6 (finishes) — Per-state cost attribution: stable JSON + per-state
+  ceilings** — (ENH-2477)
+- **Add per-event flush+fsync at StatePersistence append sites** for
+  audit-trail durability — (ENH-2515)
+- **Real-subprocess SIGINT integration test + SIGKILL documentation** — (ENH-2517)
+- **`ll-issues show`: surface closure context, relationships, discovery, and
+  decision coupling** — (ENH-2535)
+- **Scope `prompt-across-issues` to full EPIC subtree (transitive children)** — (ENH-2481)
+- **Make the edit-batching nudge stateful** — fire only after a run of unbatched
+  single edits — (ENH-2499)
+- **`prompt-across-issues`: per-run-dir pending file + scope declaration** — (ENH-2500)
+- **Edit-batch nudge: fire at most once per session** — (ENH-2503)
+- **Distinguish user-stop, OS-signal, and OOM in loop termination taxonomy** — (ENH-2522)
+- **`rn-remediate` — `manual_review_handoff_<id>.md` with `decision_context`** — (ENH-2530)
+- **Polish `ll-loop list` output to match `ll-issues list --group-by epic`** —
+  per-category color, columns, rollup, all-caps, no-dim, palette fix, bold name
+  with gray rollup — (ENH-2539)
+- **`rn-implement` — `check_blocked_by` should emit `UNRESOLVED` / `PARSE_ERROR`
+  tokens to stderr** — (ENH-2534)
+
+## [Unreleased]
+
+### Planned
+
+- Windows compatibility testing (tracked: ENH-2472)
+- Performance benchmarks for large repositories (tracked: ENH-2473)
 
 ## [1.138.0] - 2026-07-02
 
@@ -3767,5 +3798,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.139.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.138.0...v1.139.0
 [1.138.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.137.0...v1.138.0
 [1.137.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.136.0...v1.137.0
