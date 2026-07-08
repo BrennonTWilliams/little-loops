@@ -3,8 +3,9 @@ id: ENH-2479
 title: "F5 \u2014 Streaming-vs-blocking cache-accounting parity trace set"
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-04T20:05:34Z'
+completed_at: 2026-07-08 17:21:47+00:00
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
@@ -22,12 +23,12 @@ labels:
 - parity
 - measurement
 - tier-1
-confidence_score: 89
-outcome_confidence: 80
-score_complexity: 14
+confidence_score: 96
+outcome_confidence: 83
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 16
-score_change_surface: 25
+score_ambiguity: 20
+score_change_surface: 20
 decision_needed: false
 ---
 
@@ -884,10 +885,13 @@ _Added by `/ll:confidence-check` on 2026-07-08_
 - **Trace selection is "owner's pick" with no recorded exemplar**: Implementation Step 1 leaves which specific `claude -p` runs to record entirely to the implementer; if the picked traces don't hit all 3 patterns robustly (especially the cache-hit-across-tool-result case), the gate recovers regressions poorly and re-recording is expensive.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-08T17:21:47 - `89dffb3d-ea92-4923-ba35-72704c8557cf.jsonl`
+- `/ll:ready-issue` - 2026-07-08T17:06:41 - `93b843c3-f574-42fd-8e83-bdc4c8c96d22.jsonl`
 - `/ll:refine-issue` - 2026-07-08T16:52:59 - `28b992b1-e4e9-4155-a8ba-e57b7494e278.jsonl`
 - `/ll:decide-issue` - 2026-07-08T16:21:07 - `8d696055-7781-45b9-8bd6-a1d624496851.jsonl`
 - `/ll:refine-issue` - 2026-07-08T16:12:12 - `578de1eb-3694-416c-86d4-15ce68048d56.jsonl`
 - `/ll:confidence-check` - 2026-07-08T20:00:00 - `21c4ca12-8459-4830-980d-9c6b48436021.jsonl`
+- `/ll:confidence-check` - 2026-07-08T17:04:04 - `277f22d7-9e3b-4317-8034-b526d8801c48.jsonl`
 - `/ll:wire-issue` - 2026-07-05T04:48:27 - `6fd14997-4081-4bdd-9b13-bc7e438a05c9.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:09:15 - `b5376f77-ab19-4ac6-88a0-b8ad4c01a6e9.jsonl`
 - `/ll:refine-issue` - 2026-07-05T01:08:51 - `b5376f77-ab19-4ac6-88a0-b8ad4c01a6e9.jsonl`
