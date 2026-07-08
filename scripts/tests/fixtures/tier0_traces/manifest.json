@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "schema_version": "2.0",
+    "type": "tier0_traces_manifest",
+    "name": "tier0_traces",
+    "description": "EPIC-2456 Tier 0 verification trace set (>=2 single-model general-task traces).",
+    "tags": [
+      "tier-0",
+      "epic-2456",
+      "trace-set"
+    ],
+    "owner": "ENH-2518",
+    "epic": "EPIC-2456",
+    "tier": "tier-0",
+    "lock_date": "2026-07-08",
+    "baseline_source": "host_cli_usage_block",
+    "aggregation_consumer": "scripts/little_loops/fsm/cost_graph.py:CostReport.from_usage_jsonl",
+    "count_relaxation_note": ">=2 (was 3-5); see ENH-2518 issue Locked Trace Set - third candidate (general-task-20260530T143631) is empty",
+    "command_options": {
+      "min_count": 2,
+      "single_model_only": true,
+      "model": "claude-sonnet-4-6"
+    }
+  },
+  "traces": [
+    {
+      "id": "general-task-20260608T194041",
+      "path": "general-task-20260608T194041.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-20260619T225602",
+      "path": "general-task-20260619T225602.json",
+      "loop": "general-task"
+    }
+  ]
+}

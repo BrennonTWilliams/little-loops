@@ -3,9 +3,10 @@ id: ENH-2518
 title: "Lock Tier 0 verification trace set (\u22652 traces) for FEAT-2470 measurement"
 type: ENH
 priority: P2
-status: open
+status: done
 size: Small
 captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-08T17:56:59Z'
 discovered_date: 2026-07-06
 discovered_by: issue-split
 parent: EPIC-2456
@@ -20,11 +21,11 @@ labels:
 - testing
 - measurement
 - tier-0
-confidence_score: 98
-outcome_confidence: 88
-score_complexity: 19
-score_test_coverage: 23
-score_ambiguity: 23
+confidence_score: 97
+outcome_confidence: 91
+score_complexity: 24
+score_test_coverage: 22
+score_ambiguity: 22
 score_change_surface: 23
 ---
 
@@ -208,7 +209,11 @@ fixtures that drift from the canonical consumer):
    `MODEL_PRICING` or relax this assertion.
 
 4. **Print output is sorted lexicographically, not in YAML order.**
-   `_helpers.py:1708` iterates `sorted(per_state.items())`. The
+   `scripts/little_loops/fsm/cost_graph.py:136` (`CostReport.table()`) iterates
+   `sorted(self.states, key=lambda s: s.state)` to render rows in the table; the
+   legacy delegator at `scripts/little_loops/cli/loop/_helpers.py:1742-1767`
+   (`_print_usage_summary`) no longer sorts in-place — it delegates to
+   `CostReport.from_usage_jsonl` and prints the pre-sorted table. The
    per-trace fixture's `states: {...}` map may preserve canonical order
    for human readability, but downstream diff consumers MUST sort before
    comparing — otherwise F6 re-aggregation diffs will be order-sensitive.
@@ -262,8 +267,12 @@ fixtures that drift from the canonical consumer):
    (`baseline_cost_usd` filled in step 3 once computed.)
 
 2. **Compute baselines** from the on-disk `usage.jsonl` files using the
-   `_print_usage_summary` aggregation order (`scripts/little_loops/cli/loop/
-   _helpers.py:1652-1714`):
+   canonical aggregation order. As of ENH-2477, `_print_usage_summary` is a
+   thin delegator at `scripts/little_loops/cli/loop/_helpers.py:1742-1767`;
+   the actual aggregation lives in
+   `scripts/little_loops/fsm/cost_graph.py:184-254`
+   (`CostReport.from_usage_jsonl`). Anchor baseline computation on
+   `cost_graph.py:184-254` for diff parity:
    ```python
    import json
    from pathlib import Path
@@ -359,9 +368,10 @@ fixtures that drift from the canonical consumer):
    - Manifest format (`_meta` envelope + `traces` array)
    - Per-trace JSON envelope (`schema`, `rows`, `totals`, `states`,
      `budget_accumulator`)
-   - The exact `_print_usage_summary` aggregation order
-     (``scripts/little_loops/fsm/cost_graph.py` `CostReport.from_usage_jsonl` (`fsm/cost_graph.py:241-246`), delegated to via) — required for
-     downstream F6 / OTel consumers
+   - The exact `_print_usage_summary` aggregation order (now a thin delegator
+     at `scripts/little_loops/cli/loop/_helpers.py:1742-1767` that calls
+     `scripts/little_loops/fsm/cost_graph.py:184-254`
+     `CostReport.from_usage_jsonl`) — required for downstream F6 / OTel consumers
    - Forward-compat notes for `budget_accumulator` (FEAT-2476) and the
      `has_unknown_model` flag (cross-host when non-Claude traces arrive per
      `docs/reference/HOST_COMPATIBILITY.md:132` `[^tok]` footnote)
@@ -434,10 +444,13 @@ codebase-analyzer:
   The 6th field `state` is added by the executor at write time.
 - `scripts/little_loops/subprocess_utils.py:449-470` — `run_claude_command()`
   populates `TokenUsage` from the host CLI's 4-field usage block.
-- `scripts/little_loops/fsm/persistence.py:679-708` — actual `usage.jsonl`
-  writer inside `PersistentExecutor._handle_event()`. Writes 9 fields per
-  row: `state`, `iteration`, `action_type`, `model`, the 5 `TokenUsage`
-  fields, and `timestamp` (RFC3339 with `+00:00` suffix).
+- `scripts/little_loops/fsm/persistence.py:700-727` — actual `usage.jsonl`
+  writer inside `PersistentExecutor._handle_event()`. The function def
+  starts at line 700; the `action_complete` branch (line 712) constructs
+  the row at lines 716-726 and writes it via `_append_jsonl(usage_path, entry)`
+  at line 727. Writes 9 fields per row: `iteration`, `state`, `action_type`,
+  `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`,
+  `model`, `timestamp` (RFC3339 with `+00:00` suffix).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - The issue originally cited `scripts/little_loops/fsm/executor.py:1382-1392`
@@ -540,7 +553,7 @@ break the module-level `MANIFEST` constant.
 | `.loops/runs/general-task-20260608T194041/usage.jsonl` | First locked trace (56 rows) |
 | `.loops/runs/general-task-20260619T225602/usage.jsonl` | Second locked trace (93 rows) |
 | `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md:54` | § Tier 0 success gate spells out the original 3-5 trace set requirement |
-| ``scripts/little_loops/fsm/cost_graph.py` `CostReport.from_usage_jsonl` (`fsm/cost_graph.py:241-246`), delegated to via | `_print_usage_summary` aggregation order (canonical consumer) |
+| `scripts/little_loops/cli/loop/_helpers.py:1742-1767` (`_print_usage_summary`) → `scripts/little_loops/fsm/cost_graph.py:184-254` (`CostReport.from_usage_jsonl`) | Canonical aggregation order (delegator → consumer) |
 | `scripts/tests/test_policy_builder_corpus.py:51-52` | `>=`-threshold relaxation precedent |
 | `scripts/tests/test_usage_reporter.py:18-201` | Aggregator parity check |
 
@@ -556,7 +569,7 @@ Additional anchors surfaced by codebase-locator and codebase-pattern-finder:
 - `scripts/little_loops/subprocess_utils.py:449-470` —
   `run_claude_command()` populates `TokenUsage` from the host CLI's
   4-field usage block.
-- `scripts/little_loops/fsm/persistence.py:679-708` — actual `usage.jsonl`
+- `scripts/little_loops/fsm/persistence.py:700-727` — actual `usage.jsonl`
   writer inside `PersistentExecutor._handle_event()`. Writes 9 fields per
   row (4 writer-added + 5 TokenUsage); `fsm/executor.py:1382-1392` only
   populates `usage_events` which persistence then flushes — not the
@@ -605,8 +618,15 @@ Additional anchors surfaced by codebase-locator and codebase-pattern-finder:
 
 **Open** | Created: 2026-07-06 | Priority: P2 | Split from ENH-2471
 
+## Resolution
+
+Locked the Tier 0 trace set (2 single-model `claude-sonnet-4-6` general-task runs) as fixtures under `scripts/tests/fixtures/tier0_traces/` plus a regression test at `scripts/tests/test_tier0_traces.py` (14 tests, all passing) and an observability doc at `docs/observability/tier0-traces.md`. Baseline cost captured: $11.50 (trace 1, 56 rows, 14.75M cache_read) and $36.72 (trace 2, 93 rows, 48.07M cache_read), computed via the canonical `CostReport.from_usage_jsonl` aggregator at `scripts/little_loops/fsm/cost_graph.py:184-254`. The `>= 2` count relaxation is documented inline at `_meta.count_relaxation_note` (third candidate `general-task-20260530T143631` is empty). RFC3339 `+00:00` timestamps preserved verbatim in fixture rows. Plan: `thoughts/shared/plans/2026-07-08-ENH-2518-management.md`. Partially resolves EPIC-2456 Open Question #6 (this issue owns the Tier 0 trace set; ENH-2479 owns F5; F4/F8 sets remain TBD).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-08T17:37:05 - `102c3581-ea1d-4686-ad81-6a1537bef2a8.jsonl`
+- `/ll:confidence-check` - 2026-07-08T19:55:00 - `85f3be32-e6b7-42d7-aa9e-9c649f24ad2b.jsonl`
 - `/ll:ready-issue` - 2026-07-07T04:34:42 - `71556a01-644a-4aca-a3b7-5235418df0f0.jsonl`
 - `/ll:wire-issue` - 2026-07-07T02:55:24 - `df9eb152-e5b0-421f-82b4-251e88e53f04.jsonl`
 - `/ll:refine-issue` - 2026-07-07T02:43:55 - `6fad77bc-f16c-48a5-b236-3cc5a1594b2e.jsonl`
 - issue-split - 2026-07-06 - Extracted trace-set half from closed ENH-2471. Predecessor ENH-2471 done via FEAT-2470 + ENH-2499 (P1 hook test shipped 2026-07-06). Stale EditBatchNudgeConfig wiring explicitly retired.
+- `/ll:manage-issue` - 2026-07-08T17:56:59 - `b85906d2-f94c-4a67-85f6-d9ad373b0e9c.jsonl` - Implemented: manifest + 2 per-trace JSONs + test_tier0_traces.py (14 tests) + docs/observability/tier0-traces.md. Baselines $11.50 / $36.72 captured via CostReport.from_usage_jsonl. RFC3339 preserved. Lint clean.
