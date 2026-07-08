@@ -4459,3 +4459,18 @@
     a hook has been moved to .claude/settings.lo
   enforcement: advisory
   issue: BUG-2540
+- id: TEST-192
+  type: rule
+  timestamp: '2026-07-08T04:08:49Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: ENH-2542 explicitly notes the test does not assert '\033[36m' is absent
+    globally because the rollup badge, kind-color map, and hitl label still legitimately
+    use cyan. Blanket absence assertions would force spurious collateral changes or
+    false-positive regressions.
+  rule: When asserting a visual change in output, scope absence-of-old-value assertions
+    to the specific element being changed, n
+  enforcement: advisory
+  issue: ENH-2542
