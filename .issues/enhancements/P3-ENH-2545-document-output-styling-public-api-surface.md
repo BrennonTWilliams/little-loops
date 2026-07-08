@@ -74,4 +74,93 @@ Each entry shows the import path (`from little_loops.cli.format_helpers import .
 - `python -m pytest scripts/tests/` green (this is doc-only).
 - A quick `grep -rE 'def (success|error|warning|info|hint)' scripts/little_loops/cli/` corroborates the listed signatures.
 
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on direct reading of `scripts/little_loops/cli/output.py` (line-by-line) and `docs/reference/OUTPUT_STYLING.md`:_
+
+### File-path correction
+
+The issue body references three files — `cli/format_helpers.py`, `cli/output.py`, and `cli/table.py` — but **only `scripts/little_loops/cli/output.py` exists.** `ls scripts/little_loops/cli/` confirms there is no `format_helpers.py` or `table.py` in the cli package. The four "rendering helpers" plus the five status channels, plus `terminal_size` / `wrap_text` / `colorize` / `configure_output` etc., are **all in one module: `cli/output.py`**. The doc-update should rewrite the issue's expected layout to a single import path: `from little_loops.cli.output import ...`.
+
+### There is no `__all__` in `output.py`
+
+`output.py` defines no `__all__` list, so every top-level `def`/`class` is technically public. Convention: underscore-prefixed helpers (`_smart_title` at `:136`, `_all_caps` at `:143`) are internal. The doc should explicitly mark internal-only helpers as such rather than treating the absence of an `__all__` as a public API signal.
+
+### Actual public API in `cli/output.py` (line-anchored)
+
+**Status channels (`output.py:241-277`)** — all use the `_ICONS` dict to prefix the message with a glyph when color is enabled; `success`, `info`, `warning`, `hint` print to stdout; `error` prints to stderr; all use `flush=True`.
+
+| Function | Line | Stream | Icon prefix | Color code |
+|----------|------|--------|-------------|------------|
+| `success(msg: str)` | 250 | stdout | `✓ ` | `32` (green) |
+| `error(msg: str)` | 256 | stderr | `✗ ` | `38;5;208` (orange) |
+| `warning(msg: str)` | 262 | stdout | `⚠ ` | `33` (yellow) |
+| `info(msg: str)` | 268 | stdout | `ℹ ` | `36` (cyan) |
+| `hint(msg: str)` | 274 | stdout | `› ` | `2` (dim) |
+
+All five take a single positional `msg` arg — **no `**kw`** (the issue table suggests `success(msg, **kw)` etc., which is incorrect).
+
+**Terminal / text helpers (`output.py:17-45, 154, 201-218`)**:
+
+| Function | Line | Returns | Notes |
+|----------|------|---------|-------|
+| `terminal_size(default_cols=80, default_rows=24)` | 17 | `tuple[int, int]` | Calls `shutil.get_terminal_size((dc, dr))` |
+| `terminal_width(default=80)` | 27 | `int` | Thin wrapper around `terminal_size()` |
+| `wrap_text(text: str, indent: str = "  ", width: int \| None = None)` | 32 | `str` | `width=None` ⇒ auto from `terminal_width()` |
+| `strip_ansi(text: str)` | 45 | `str` | Removes `\033[...]m` escape sequences |
+| `configure_output(config: CliConfig \| None = None)` | 154 | `None` | Merges `config.cli.colors.{priority,type}` into module dicts; `NO_COLOR` always wins |
+| `use_color_enabled()` | 201 | `bool` | Returns `_USE_COLOR` module-global (import-time TTY check + `FORCE_COLOR=1` opt-in) |
+| `colorize(text: str, code: str)` | 206 | `str` | No-op when `_USE_COLOR` is False |
+| `print_json(data: Any)` | 213 | `None` | Stdout JSON dump |
+| `format_relative_time(seconds: float)` | 218 | `str` | e.g. "5m ago", "in 3h" |
+
+**Structural / pure-string formatters (`output.py:285-377`)**:
+
+| Function | Line | Args | Returns |
+|----------|------|------|---------|
+| `table(headers: list[str], rows: list[list[str]], max_col_width: int = 40)` | 285 | `headers`, `rows`, optional `max_col_width` | `str` — box-drawn table; values exceeding `max_col_width` are truncated with `…` (U+2026) |
+| `status_block(items: dict[str, str])` | 333 | **single dict arg** (NOT `(title, lines)`) | `str` — right-padded key/value pairs; empty dict ⇒ empty string |
+| `progress(current: int, total: int, width: int = 20)` | 348 | `(current, total)` ints + optional `width` | `str` — bar rendered with `█`/`░` Unicode block characters |
+| `sparkline(current: int, total: int, width: int = 16)` | 362 | **(current, total) ints** (NOT `(values)`) | `str` — compact progress indicator |
+
+**Output-mode control (`output.py:380-386`)**:
+
+| Function | Line | Notes |
+|----------|------|-------|
+| `set_output_mode(mode: Literal["human", "json", "plain"])` | 380 | Switches the global `_OUTPUT_MODE` |
+| `get_output_mode() -> Literal["human", "json", "plain"]` | 386 | Reads the current `_OUTPUT_MODE` |
+
+### Functions the issue body claims exist but don't
+
+- **`truncate(s, width)`** — **does not exist** in `cli/output.py`. Grep across `scripts/little_loops/cli/` returns only **module-local** `_truncate_title` / `_truncate` helpers in `issues/list_cmd.py:14`, `issues/refine_status.py:151`, `loop/__init__.py:523`, `loop/info.py:343`. These are **private to their callers** and should not be promoted to "public API" without extracting them.
+- **`format_size(n_bytes)`** — **does not exist** anywhere in the `cli/` package. Grep returns zero matches. If size-formatting is needed for external callers, this is a feature, not a doc — file a follow-up.
+- **`parse_color_string(spec)`** — **does not exist** anywhere in the `cli/` package. Grep returns zero matches. ANSI color parsing happens inline (`_resolve_color_spec` lives in the config module, not `cli/output.py`).
+- **`bullet_list(items)`** — **does not exist** anywhere in the `cli/` package. Grep returns zero matches. The issue's structural-helpers row should drop it.
+
+These four are **stale references** carried over from a hypothetical earlier doc draft. Removing them from the issue's expected-API table (and from the doc) avoids creating a documentation contract that points at non-existent code.
+
+### Color-palette dicts that already **are** documented
+
+The issue's "ANSI Palette" reference is correct: `PRIORITY_COLOR` and `TYPE_COLOR` are exported (per `OUTPUT_STYLING.md:33-55`) and used widely. The doc also covers `CATEGORY_COLOR` (`OUTPUT_STYLING.md:60-75`) and edge-color dicts separately. The new `## Public API` section should reference these tables rather than re-enumerate them.
+
+### `issue_history/formatting.py` (separate from the cli package)
+
+The issue mentions the four `format_*` helpers in `issue_history/formatting.py`. Confirmed: `format_summary_text/json/analysis_text/analysis_json/analysis_yaml/analysis_markdown` live there (`OUTPUT_STYLING.md:340-353`), not in `cli/output.py`. Their import path is `from little_loops.issue_history.formatting import ...` — distinct from `cli.output`.
+
+### Recommended section layout for `OUTPUT_STYLING.md`
+
+1. **Single module reference** — `from little_loops.cli.output import ...`
+2. **Subsections matching the table above**, ordered: Status channels → Terminal/text → Structural formatters → Output mode → Color/configuration helpers.
+3. Each entry should be one line (signature) + one line (purpose) + one short example invocation, mirroring the count from the original issue (~40 lines).
+4. Cross-reference `issue_history/formatting.py` in a separate "Issue-history formatters" subsection (keeping the existing ordering of the file, since the issue notes it was "orphaned").
+5. **Insertion point**: between the "ANSI Palette" / edge-color tables (ending around `OUTPUT_STYLING.md:107`) and the "Logo" / "Issue Card" sections (starting at line 122). This keeps the "engine" public API in one block before the higher-level renderers are introduced.
+
+### `__all__` hardening (optional follow-up, not in scope of this issue)
+
+Since `output.py` ships no `__all__`, consider a future hardening ENH to add `__all__ = ["success", "error", "warning", "info", "hint", "terminal_size", "terminal_width", "wrap_text", "strip_ansi", "colorize", "configure_output", "use_color_enabled", "table", "status_block", "progress", "sparkline", "set_output_mode", "get_output_mode", "format_relative_time", "print_json", ...]`. Out of scope for ENH-2545 (doc-only).
+
 Captured by `/ll:audit-docs docs/reference/` Phase 2 review (2026-07-08).
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-07-08T14:40:51 - `ea1dab68-2ebe-4bc4-99ae-67df8309e565.jsonl`
