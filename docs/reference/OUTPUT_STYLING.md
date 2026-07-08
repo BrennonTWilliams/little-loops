@@ -117,6 +117,82 @@ configure_output(config.cli)   # or configure_output(None) for defaults
 
 `configure_output` merges `config.cli.colors.priority` and `config.cli.colors.type` into the module-level dicts. `NO_COLOR` env var always takes precedence over config.
 
+### Public API
+
+All public functions in `little_loops.cli.output` that external callers (custom commands, extension authors, downstream `ll-` tools) are expected to use. The module ships no `__all__`; this list reflects the convention that underscore-prefixed symbols (e.g. `_smart_title`, `_all_caps`) are internal.
+
+The size/text helpers (`terminal_size`, `terminal_width`, `wrap_text`, `strip_ansi`), the color entry points (`configure_output`, `use_color_enabled`, `colorize`), and the JSON/text helpers (`print_json`, `format_relative_time`) are documented in their owning subsections above. The four families below complete the public surface.
+
+#### Status channels
+
+Five untimestamped, icon-prefixed message helpers. `success`, `info`, `warning`, and `hint` write to stdout; `error` writes to stderr. All use `flush=True`. The icons render only when color is enabled (see `use_color_enabled()`).
+
+```python
+from little_loops.cli.output import success, error, warning, info, hint
+
+success("Built 3 issues")
+error("Failed to parse config")           # → stderr
+warning("Issue IDs are deprecated")
+info("Sprint created")
+hint("Run /ll:sprint-show for details")
+```
+
+| Function | Stream | Icon | Color code |
+|----------|--------|------|------------|
+| `success(msg)` | stdout | `✓` | `32` (green) |
+| `error(msg)` | stderr | `✗` | `38;5;208` (orange) |
+| `warning(msg)` | stdout | `⚠` | `33` (yellow) |
+| `info(msg)` | stdout | `ℹ` | `36` (cyan) |
+| `hint(msg)` | stdout | `›` | `2` (dim) |
+
+#### Text helpers
+
+`strip_ansi`, `format_relative_time`, and `print_json` complete the text-surface trio. `strip_ansi` is documented at the top of this section (under the ANSI helpers); the latter two are pure-string or pure-output helpers.
+
+```python
+from little_loops.cli.output import strip_ansi, format_relative_time, print_json
+
+plain = strip_ansi(colored_text)             # drop \033[...m sequences
+print(format_relative_time(180))             # "3m ago"
+print_json({"issues": 3})                    # dumps to stdout, indented
+```
+
+- `format_relative_time(seconds: float) -> str` — `"Ns ago"` / `"Nm ago"` / `"Nh Nm ago"` / `"Nd Nh ago"`
+- `print_json(data: Any) -> None` — `json.dumps(data, indent=2)` to stdout
+
+#### Structural formatters (pure strings)
+
+These return strings; print them yourself. Useful for building composite
+output (cards, status blocks, progress overlays) without committing to a
+specific stream.
+
+```python
+from little_loops.cli.output import table, status_block, progress, sparkline
+
+print(table(["ID", "Title"], [["B-1", "Crash"], ["B-2", "Slow"]]))
+print(status_block({"status": "open", "priority": "P1"}))
+print(progress(current=3, total=10))
+print(sparkline(current=7, total=20))
+```
+
+| Function | Signature | Renders |
+|----------|-----------|---------|
+| `table` | `(headers, rows, max_col_width=40)` | Box-drawn table; values exceeding `max_col_width` truncate with `…` (U+2026) |
+| `status_block` | `(items: dict[str, str])` | Right-padded key/value pairs; empty dict returns `""` |
+| `progress` | `(current: int, total: int, width: int = 20)` | ASCII bar `` \|####... \| `` |
+| `sparkline` | `(current: int, total: int, width: int = 16)` | Unicode block bar of `█`/`░` |
+
+#### Output-mode control
+
+```python
+from little_loops.cli.output import set_output_mode, get_output_mode
+
+set_output_mode("json")           # callers gate rendering on this
+mode = get_output_mode()          # returns Literal["human", "json", "plain"]
+```
+
+`set_output_mode(mode)` toggles the module-global `_OUTPUT_MODE`; `get_output_mode()` reads it. Tools that support `--json` flip this once at startup and branch later formatters accordingly. The default is `"human"`; `"plain"` strips color regardless of `_USE_COLOR` at the formatter level.
+
 ---
 
 ## Logo: `scripts/little_loops/logo.py`

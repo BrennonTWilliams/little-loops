@@ -1,25 +1,28 @@
 ---
 id: ENH-2545
-title: 'Document the full `OUTPUT_STYLING.md` public-API surface (rendering helpers + formatters)'
+title: Document the full `OUTPUT_STYLING.md` public-API surface (rendering helpers
+  + formatters)
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-08
 captured_at: '2026-07-08T09:20:00+00:00'
+completed_at: 2026-07-08 15:28:42+00:00
 discovered_by: audit
 decision_needed: false
 labels:
-  - enhancement
-  - documentation
-  - output-styling
-  - public-api
-  - follow-up-from-docs-audit-2026-07-08
+- enhancement
+- documentation
+- output-styling
+- public-api
+- follow-up-from-docs-audit-2026-07-08
 confidence_score: 90
 outcome_confidence: 90
 score_complexity: 3
 score_test_coverage: 3
 score_ambiguity: 2
 score_change_surface: 4
+testable: false
 ---
 
 # ENH-2545: Document the full `OUTPUT_STYLING.md` public-API surface
@@ -58,9 +61,21 @@ Each entry shows the import path (`from little_loops.cli.format_helpers import .
 
 ## Resolution
 
-1. Grep `scripts/little_loops/cli/` for functions named `def render_*`, `def format_*` (excluding the issue_history formatters), `def table`, `def status_block`, `def progress`, `def sparkline`, `def bullet_list`, and the five `success/error/warning/info/hint` definitions.
-2. Verify which are `__all__`-exported (public) vs internal-only.
-3. Add `## Public API` section to `OUTPUT_STYLING.md` between the "ANSI Palette" section and the issue-history formatter section.
+Completed in two phases (refine-issue research → manage-issue implementation):
+
+1. **Refine-issue research** (see [Codebase Research Findings](#codebase-research-findings) below): enumerated the actual public surface of `scripts/little_loops/cli/output.py` by direct line-anchored reading; flagged four helpers (`truncate`, `format_size`, `parse_color_string`, `bullet_list`) the issue body claimed existed but do not — these are dropped from the doc to avoid creating a documentation contract against non-existent code.
+2. **Manage-issue implementation** ([plan](../../../thoughts/shared/plans/2026-07-08-ENH-2545-management.md)): inserted a new `### Public API` subsection inside `## Core Module: output.py` of `docs/reference/OUTPUT_STYLING.md`, immediately after the existing `### Startup configuration` subsection (lines 109-118). The new subsection is grouped into four families:
+   - **Status channels** — `success`, `error`, `warning`, `info`, `hint` (stdout/stderr stream, icon, ANSI code per function)
+   - **Text helpers** — `format_relative_time`, `print_json` (cross-references the `strip_ansi` doc above; avoids duplication)
+   - **Structural formatters (pure strings)** — `table`, `status_block`, `progress`, `sparkline`
+   - **Output-mode control** — `set_output_mode`, `get_output_mode`
+3. **Cross-references** — the nine functions already documented in the prior Core Module subsections (`terminal_size`/`terminal_width`/`wrap_text`/`strip_ansi`/`configure_output`/`use_color_enabled`/`colorize`/`print_json`/`format_relative_time`) are referenced rather than re-stated.
+
+### Acceptance evidence
+
+- All 20 documented functions importable: `python -c "from little_loops.cli.output import ..."` → `OK`.
+- `grep -nE 'truncate|format_size|parse_color_string|bullet_list' docs/reference/OUTPUT_STYLING.md` returns only contextually-correct uses of the word "truncate" (describing the `table` truncation behavior) — none of the four non-existent helpers is claimed as a public API.
+- Doc diff: `+76` lines (one new `### Public API` subsection); no other sections touched.
 
 ## Out of scope
 
@@ -163,4 +178,6 @@ Captured by `/ll:audit-docs docs/reference/` Phase 2 review (2026-07-08).
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-08T15:22:45 - `7f1fd7a6-62cb-4edc-b4c5-954b0ed4f95e.jsonl`
 - `/ll:refine-issue` - 2026-07-08T14:40:51 - `ea1dab68-2ebe-4bc4-99ae-67df8309e565.jsonl`
+- `/ll:manage-issue` - 2026-07-08T15:28:42 - `e23b6e66-ab93-4605-82bb-cf83246a9ea2.jsonl`
