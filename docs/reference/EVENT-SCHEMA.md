@@ -951,6 +951,122 @@ Emitted when a parallel worker finishes processing an issue in its isolated git 
 
 ---
 
+## Error Handling Contract
+
+This section documents, for every event-emitter surface, what JSON callers can expect when the underlying emit path fails. **All event delivery in little-loops is best-effort by design:** the bus never propagates exceptions to the caller, and each transport has its own failure surface. Consumers should treat absent or partial output as success-with-soft-fail and never rely on emission of any specific event as a hard control-flow signal.
+
+> **Related Documentation:**
+> - [API Reference — EventBus and LLExtension](API.md#littleloopsevents) — bus registration, transports, filter patterns
+> - [Architecture Overview — Event persistence](../ARCHITECTURE.md) — how events flow from emit sites to transports and persistence
+
+### EventBus.emit() dispatch contract
+
+**Source:** `scripts/little_loops/events.py:117-138` — `EventBus.emit()`
+
+- **Observer and transport exceptions are caught and logged.** `logger.warning("EventBus observer raised an exception", exc_info=True)` and `logger.warning("EventBus transport raised an exception", exc_info=True)` swallow every failure. **No exit-code bump, no error envelope, and no exception is propagated to the caller.** A failing sink never blocks the others.
+- **Filtered observers silently skip non-matching events.** Observers registered with a `filter=...` pattern only see events where `fnmatch.fnmatch(event_type, p)` matches at least one pattern; non-matching events are skipped with no notification.
+- **Dispatch order is deterministic.** Observers are iterated in registration order first, then transports in registration order. There is no priority, preemption, or backpressure.
+- **`close()` exceptions are isolated per transport.** `scripts/little_loops/events.py:110-115` catches and logs exceptions from `transport.close()` so one misbehaving transport cannot prevent others from shutting down.
+
+**Caller implications:** Treat `bus.emit(event)` as fire-and-forget. To assert that an event reached a sink, query the sink itself (e.g. `transport.get_stats()` for the Unix-socket transport) — do not rely on `emit()` return value (it returns `None`).
+
+### `JsonlTransport`
+
+**Source:** `scripts/little_loops/transport.py:81-98`
+
+- **No retry, no buffering, no rotation.** `send()` opens the file, writes `json.dumps(event) + "\n"`, and closes on every event.
+- **Failures bubble to EventBus.** Disk-full, permission-denied, or JSON-encoder exceptions are caught by the `EventBus.emit` except-block (`events.py:137-138`) and become a `logger.warning(...)` line. They never reach the caller.
+- **`close()` is a no-op.** The constructor creates the parent directory once; each `send()` is self-contained.
+
+**Caller implications:** A missing or unwritable `path` produces **no events and no error** to the caller — only log lines at `WARNING` level on stderr. Inspect the log or the file directly to confirm delivery.
+
+### `UnixSocketTransport`
+
+**Source:** `scripts/little_loops/transport.py:115-320` · Constants at `transport.py:47-54`
+
+- **Full outbound queue → drop newest.** If a client's outbound queue is full (`_CLIENT_QUEUE_MAXSIZE = 1024`), the event is dropped and `dropped_count` is incremented. A rate-limited `WARNING` is logged at most once per `_DROP_LOG_INTERVAL_SEC = 5.0` seconds.
+- **Connection cap exceeded → reject.** When `max_clients` is reached, new connections are rejected and counted via `get_stats()["client_rejections"]` (`transport.py:281-283`).
+- **AF_UNIX unavailable at startup → `RuntimeError` from `wire_transports()`.** This is the **one path** in transport construction that propagates out — silently dropping a requested transport would be confusing. Once `wire_transports()` returns, all subsequent `send()` errors are caught by `EventBus.emit`.
+- **Disconnected clients are removed from the pool.** Per-client `sendall` failures are isolated in a `try/except`; they do not affect other clients or the FSM thread.
+- **Accept-thread shutdown is bounded.** `close()` joins with `_ACCEPT_THREAD_JOIN_TIMEOUT = 2.0` and per-client threads with `_CLIENT_THREAD_JOIN_TIMEOUT = 1.0`; the total close path is bounded by `_CLOSE_TOTAL_TIMEOUT = 10.0`.
+
+**Caller implications:** Under load, expect silent drops. Inspect `get_stats()["dropped_count"]` and `get_stats()["client_rejections"]` after a run to detect backpressure.
+
+### `OTelTransport`
+
+**Source:** `scripts/little_loops/transport.py:338-492`
+
+- **Sub-loop events are no-ops.** Events with `depth > 0` (nested loop spans) are dropped after a one-time per-session warning (`transport.py:385-395`). Nested OTel tracing is intentionally out of scope.
+- **Out-of-order events log a warning and skip span creation.** A `state_enter` without a prior `loop_start`, or an `action_start` without a prior `state_enter`, emits a warning and returns without creating a span. These warnings are the only signal that the span hierarchy is broken.
+- **`close()` blocks on `force_flush()` + `shutdown()`.** There is no engine-level timeout; rely on the OTel SDK's own deadlines.
+- **Optional SDK import.** The constructor raises `RuntimeError` with install guidance if `opentelemetry-sdk` or `opentelemetry-exporter-otlp-grpc` are missing (`transport.py:358-368`).
+- **Errors are caught at the EventBus level.** Span-export failures (network, auth, throttling) do not surface to the caller.
+
+**Caller implications:** Run with `OTEL_SDK_DISABLED=true` to skip this transport in environments without a collector. The dropped sub-loop events are expected — do not treat the warning as a bug.
+
+### `WebhookTransport`
+
+**Source:** `scripts/little_loops/transport.py:495-575` · Constants at `transport.py:56-59`
+
+- **HTTP 5xx and transport exceptions trigger exponential-backoff retry.** Up to `max_retries=3` retries (overridable). Backoff starts at `_WEBHOOK_RETRY_BASE_S = 0.5` and doubles up to a cap of `_WEBHOOK_RETRY_MAX_S = 8.0`. **Non-5xx HTTP responses (`< 500`) are treated as success.**
+- **Retry exhaustion → batch dropped with warning.** `logger.warning("WebhookTransport: giving up after %d retries posting to %r", ...)` (`transport.py:571-575`) and the batch is discarded. **Never raised to the caller.** This is the documented "best-effort" guarantee.
+- **Non-blocking `send()`.** Events enqueue on a `Queue`; a daemon thread drains and POSTs in batches every `_WEBHOOK_BATCH_MS_DEFAULT = 1000` ms. Queue overflow is not guarded — relies on consumer thread pacing.
+- **Optional `httpx`.** The constructor raises `RuntimeError` with install guidance if `httpx` is missing (`transport.py:513-518`).
+
+**Caller implications:** Configure a webhook receiver that returns `2xx` for accepted events and `5xx` (or times out) for retriable failures. There is no caller-visible signal for dropped batches — log scraping is the only failure-detection path.
+
+### `SQLiteTransport`
+
+**Source:** `scripts/little_loops/session_store.py:1311-1430` (despite the path, this transport lives with the session store, not in `transport.py`).
+
+- **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early at `session_store.py:1343-1345`. **No error is raised to the caller.**
+- **Per-write failures are logged + swallowed.** `session_store.py:1421-1422`. Writes are serialized with a `threading.Lock`.
+- **Recognises a closed set of event types only.** `_LOOP_EVENT_TYPES = frozenset({"loop_start", "loop_resume", "loop_complete", "state_enter", "route", "retry_exhausted", "cycle_detected", "max_steps_summary", "max_iterations_reached_summary"})` (`session_store.py:133-145`) plus the `issue.*` prefix. **All other event types silently `return` without insert** — there is no error envelope or warning.
+- **`close()` is best-effort** and swallows `sqlite3.Error`.
+
+**Caller implications:** Treat the SQLite transport as an indexed history of FSM and issue events only. Other event types are intentionally not persisted; the absence of a row is not a failure.
+
+### `action_error` event contract
+
+**Source:** `scripts/little_loops/fsm/executor.py:1970-1983`
+
+- **Emitted only when a state config defines `on_error`.** If `on_error` is absent on the failing state, the exception re-raises and the top-level loop handler terminates the loop with `loop_complete.terminated_by="error"` and the message in `loop_complete.error`. **No `action_error` event is emitted in that case** — the loop just ends.
+- **Payload schema:** `{state, error, route: "on_error"}` — same shape as a `route` event plus the original `error` string.
+- **Ordering invariant:** `action_error` is emitted **after** the action that failed but **before** the loop routes to the next state. Consumers can rely on this for sequencing (always pair `action_start` ↔ either `action_complete` or `action_error` from the same `state`).
+
+**Caller implications:** **Consumers MUST treat `action_error` as a first-class event type.** Without it, a thrown exception in a state with `on_error` would be silently absorbed by the routing layer — the only externally visible signal that something went wrong is the `action_error` event itself. If your consumer is interested in failures, register a filter for `action_error` and treat it as equivalent to a non-zero exit code at the state level.
+
+### CLI exit-code conventions
+
+The following conventions apply to little-loops CLI tools that emit JSON output. They are not redefined here in full — see [API.md — CLI Conventions](API.md) for the per-tool table.
+
+- **`--json` output with no events / no findings.** Most `ll-verify-*` tools emit a JSON envelope of the shape `{"errors": [...], "warnings": [...], "data": ...}`. An empty result is an empty array or empty object inside the envelope — **not** a `null` or a thrown error.
+- **Exit codes (typical pattern):**
+  - `0` — success (or "findings present but tool ran successfully" for verify-style tools).
+  - `1` — tool failure (could not read inputs, crashed, etc.).
+  - `2` — validation failure (e.g. schema lint, audit gate).
+  - `124` — timeout (matches the GNU `timeout(1)` convention; used by `ll-action`).
+  - `130` — `KeyboardInterrupt` (matches the conventional `128 + SIGINT` value).
+- **`ll-harness`** uses `RunnerResult.exit_code` with a caller-supplied `--exit-code` threshold (default `2` for timeout/exception markers, `0` for success).
+- **`ll-sprint run`** uses `exit_code = 1` for worker failure / abort paths and `130` for `KeyboardInterrupt`.
+
+**Caller implications:** When scripting against `ll-verify-*` tools, parse the JSON envelope first and treat non-zero exit as "tool failed" (separate from "tool ran and found issues"). Do not assume `0` means "no problems found" — see the tool's documentation for the meaning of its exit codes.
+
+### Summary table — failure surfaces at a glance
+
+| Surface | Failure mode | Caller-visible signal |
+|---------|--------------|----------------------|
+| `EventBus.emit()` | observer/transport exception | none (logged at `WARNING`) |
+| `JsonlTransport` | IO / permission / encoder | none (logged at `WARNING`) |
+| `UnixSocketTransport` | queue full / client disconnect | `get_stats()` counters; rate-limited log |
+| `OTelTransport` | SDK missing / out-of-order | `RuntimeError` (construction); warning (out-of-order) |
+| `WebhookTransport` | retry exhaustion | none (logged at `WARNING`) |
+| `SQLiteTransport` | connection / write | none (logged at `WARNING`); silent `return` on unrecognised event type |
+| `action_error` event | absent `on_error` on state | loop terminates via `loop_complete.terminated_by="error"`; **no `action_error` event** |
+| CLI tools (`--json`) | tool failure | non-zero exit code; JSON envelope `errors[]` populated |
+
+---
+
 ## Machine-Readable Schemas
 
 Every event type listed in this document has a corresponding JSON Schema (draft-07) file committed to `docs/reference/schemas/`. These files can be used for programmatic validation, IDE autocomplete, and external tooling.

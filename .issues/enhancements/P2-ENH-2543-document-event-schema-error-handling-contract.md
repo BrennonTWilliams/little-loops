@@ -1,25 +1,27 @@
 ---
 id: ENH-2543
-title: 'Document event-schema error-handling contract for JSON callers'
+title: Document event-schema error-handling contract for JSON callers
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-08
 captured_at: '2026-07-08T09:20:00+00:00'
+completed_at: 2026-07-08 15:07:58+00:00
 discovered_by: audit
 decision_needed: false
 labels:
-  - enhancement
-  - documentation
-  - event-schema
-  - api-contract
-  - follow-up-from-docs-audit-2026-07-08
+- enhancement
+- documentation
+- event-schema
+- api-contract
+- follow-up-from-docs-audit-2026-07-08
 confidence_score: 80
 outcome_confidence: 80
 score_complexity: 4
 score_test_coverage: 4
 score_ambiguity: 6
 score_change_surface: 5
+testable: false
 ---
 
 # ENH-2543: Document event-schema error-handling contract for JSON callers
@@ -129,4 +131,32 @@ Captured by `/ll:audit-docs docs/reference/` Phase 2 review (2026-07-08).
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-08T15:02:23 - `038ead0f-46d6-4450-b675-7591196a3115.jsonl`
 - `/ll:refine-issue` - 2026-07-08T14:38:41 - `ea1dab68-2ebe-4bc4-99ae-67df8309e565.jsonl`
+- `/ll:ready-issue` - 2026-07-08T15:30:00 - (current session)
+- `/ll:manage-issue` - 2026-07-08T15:07:58 - (current session) — implemented the documented contract; section landed at `EVENT-SCHEMA.md:954`
+
+## Status
+
+**Done** | Created: 2026-07-08 | Priority: P2
+
+## Resolution
+
+Added a new `## Error Handling Contract` section to `docs/reference/EVENT-SCHEMA.md` (inserted between `## Subsystem: Parallel Orchestrator` and `## Machine-Readable Schemas` at the previously-empty line 953). The section contains one subsection per event-emitter surface with the contract that the issue called for:
+
+- `EventBus.emit()` dispatch contract — anchored to `events.py:117-138` (always swallows observer/transport exceptions, no exit-code bump or error envelope).
+- `JsonlTransport` — anchored to `transport.py:81-98` (no retry, per-event open/close, failures logged at WARNING).
+- `UnixSocketTransport` — anchored to `transport.py:115-320` (queue-full drops newest, `get_stats()` counters, `RuntimeError` only on construction).
+- `OTelTransport` — anchored to `transport.py:338-492` (sub-loop no-op, out-of-order warn-and-skip, `RuntimeError` if SDK missing).
+- `WebhookTransport` — anchored to `transport.py:495-575` (exponential backoff with `_WEBHOOK_RETRY_BASE_S = 0.5` → `_WEBHOOK_RETRY_MAX_S = 8.0`, retry exhaustion drops batch at WARNING).
+- `SQLiteTransport` — anchored to `session_store.py:1311-1430` (connection failure → silent no-op, unrecognised event types silently `return`).
+- `action_error` event contract — anchored to `fsm/executor.py:1970-1983` (only emitted when `state.on_error` is defined; consumers MUST treat as first-class).
+- CLI exit-code conventions — cross-references `docs/reference/API.md` for the per-tool table; documents the `ll-verify-*` JSON envelope pattern (`{"errors": [...], "warnings": [...], "data": ...}`) and typical exit codes (0/1/2/124/130).
+- Summary table — at-a-glance failure surfaces with caller-visible signals.
+
+**Verification:**
+- `python -m pytest scripts/tests/test_wiring_reference_docs.py -k EVENT-SCHEMA` → 28 passed.
+- `python -m pytest scripts/tests/test_wiring_guides_and_meta.py -k EVENT-SCHEMA` → 1 passed.
+- Full suite (`python -m pytest scripts/tests/`) → 14246 passed, 35 skipped, 5 failed — all 5 failures are pre-existing in unrelated files (README hero page, README/GETTING_STARTED/LOOPS_REFERENCE string-presence lints, one flaky FSM test that passes in isolation). None touch `EVENT-SCHEMA.md` or the new section.
+
+**Out of scope (re-confirmed at completion):** No code changes, no transport behaviour changes, no new error envelopes, no `action_error` event variants.
