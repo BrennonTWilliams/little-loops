@@ -241,7 +241,7 @@ Emitted after the action finishes, regardless of success or failure.
   "output_tokens": 567,
   "cache_read_tokens": 890,
   "cache_creation_tokens": 0,
-  "model": "claude-sonnet-4-6"
+  "model": "claude-sonnet-4-5"
 }
 ```
 

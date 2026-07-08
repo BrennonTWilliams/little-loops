@@ -51,7 +51,7 @@ Interactively configure specific areas in ll-config.json.
 - `allowed-tools` — writes to `.claude/settings.json` or `.claude/settings.local.json`, not `ll-config.json`
 - `hooks` — shows/validates ll- lifecycle hooks (not `ll-config.json`; hooks are automatic via plugin)
 
-**Auto-update:** `configure` checks the installed package version and auto-upgrades if a mismatch is detected.
+**Version check:** `configure` checks the installed pip package version against the plugin version and prints a non-blocking `Warning: pip package version mismatch` notification on a mismatch (configure does NOT auto-upgrade; user must run `pip install --upgrade little-loops` manually).
 
 ### `/ll:update`
 Update the little-loops Claude Code plugin and pip package to the latest version. Consumer-first: works in any project.
@@ -72,7 +72,7 @@ Update the little-loops Claude Code plugin and pip package to the latest version
 Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Available only in the little-loops source repo via `.claude/commands/publish.md` — not distributed to consumer projects.
 
 **Arguments:**
-- `version` — New version string (e.g., `1.67.0`) or bump level (`patch`, `minor`, `major`)
+- `version` — New version string (e.g., `1.139.0`) or bump level (`patch`, `minor`, `major`)
 - `--dry-run` — Preview changes without applying
 
 ---
@@ -458,10 +458,9 @@ Audit documentation for accuracy and completeness. Auto-fixable findings (wrong 
 ### `/ll:update-docs`
 Identify stale or missing documentation by analyzing git commits and completed issues since a given reference. Detects *coverage gaps* from recent work — complements `/ll:audit-docs` (which validates accuracy of existing content).
 
-**Arguments:**
+**Flags:**
 - `--since` (optional): Change window start — date (`YYYY-MM-DD`) or git ref (commit hash or branch). Defaults to last commit touching a doc file, or the watermark in `.ll/ll-update-docs.watermark` if present.
-
-**Flags:** `--fix` (draft stub documentation sections inline for all gaps rather than prompting)
+- `--fix` (draft stub documentation sections inline for all gaps rather than prompting)
 
 **Trigger keywords:** "update docs", "stale docs", "missing docs", "docs since sprint", "doc coverage", "documentation gaps"
 

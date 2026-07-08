@@ -67,6 +67,23 @@ pip install -e "./scripts[dev]"
 | `little_loops.output_parsing` | Claude CLI output parsing utilities used by `issue_manager` and `parallel` |
 | `little_loops.output.parse` | Stop-sequence / prefill JSON output helpers (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost |
 | `little_loops.output_cleaner` | Anti-event + duplicate-window pre-filter (`filter_output`) that trims tool/log noise before it enters context |
+| `little_loops.ab_writer` | A/B baseline results aggregation and `ab.json` writer (FEAT-1790). Provides `ABResults` dataclass + summary calculation + JSON schema generation. |
+| `little_loops.analytics` | Analytics subpackage — association-rule mining (lift/PMI) and per-evaluator Bernoulli variance for loop diagnostics. |
+| `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. |
+| `little_loops.extensions` | Reference extension implementations — `ReferenceInterceptorExtension` copy-paste starting point for custom interceptors / event handlers. |
+| `little_loops.issue_progress` | EPIC progress aggregation: child-issue status rollup (`IssueProgress`), oldest-open detection, and `epic-progress` CLI support. |
+| `little_loops.issues` | Issue utility subpackage — anchor generation and sweep utilities used by `ll-issues anchor-sweep`. |
+| `little_loops.observability` | DES variant registry and audit-tree walker for cross-checking every emit site against registered event shapes (ENH-2475, F5 adoption gate). |
+| `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
+| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. |
+| `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
+| `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking for `rn-implement` loops. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4). |
+| `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
+| `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
+| `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
+| `little_loops.stats` | Statistical utilities — Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes. |
+| `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
+| `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 
 ---
@@ -4514,7 +4531,9 @@ class FSMLoop:
     name: str                          # Unique loop identifier
     initial: str                       # Starting state name
     states: dict[str, StateConfig]     # State configurations
+    description: str | None = None     # Free-text summary surfaced by `ll-loop list` and `--explain`
     context: dict[str, Any] = {}       # User-defined shared variables
+    parameters: dict[str, ParameterSpec] = {}  # Declared loop inputs (validated at --from-yaml / --input)
     scope: list[str] = []              # Paths for concurrency control
     max_steps: int = 50                # Step cap (individual state executions)
     on_max_steps: str | None = None    # State to run once when step cap fires (ENH-1631)
@@ -4523,11 +4542,22 @@ class FSMLoop:
     max_edge_revisits: int = 100       # Per-edge cycle detection limit (see below)
     backoff: float | None = None       # Seconds between iterations
     timeout: int | None = None         # Max runtime in seconds
+    default_timeout: int | None = None # Per-action default when state.timeout is unset
     maintain: bool = False             # If True, restart after completion
+    singleton: bool = False            # BUG-2526: serialize loop-name conflicts regardless of scope
     llm: LLMConfig = LLMConfig()       # LLM evaluation settings
+    on_handoff: Literal["pause", "spawn", "terminate"] = "pause"  # ContextLimitHandoff handler
+    input_key: str = "input"           # Context var that contains the initial input
+    config: LoopConfigOverrides | None = None  # Per-loop ll-config.json overrides
+    category: str = ""                 # Topical grouping for `ll-loop list` filtering (orthogonal to visibility)
+    labels: list[str] = []             # Free-form tags surfaced by `ll-loop list --labels k=v`
+    visibility: str = "public"         # Audience tier: "public" (user-facing), "internal" (sub-loop only), or "example" (template)
+    required_inputs: list[str] = []    # Names of context vars that must be populated before invocation
     commands: list[CommandEntry] = []  # Optional Commands section override for ll-loop show
     targets: list[TargetFileSpec] = []  # Per-FSM-state targeting spec for harness-optimize APO (ENH-1552)
     circuit: CircuitConfig | None = None  # Top-level safety knobs; currently the stall detector (FEAT-1637)
+    host_guard: HostGuardConfig = HostGuardConfig()  # ENH-2452 (memory pressure) + ENH-2453 (subprocess RSS budget)
+    prompt_size_guard: PromptSizeGuardConfig = PromptSizeGuardConfig()  # ENH-2486 interpolated-prompt size guard (WARN-only)
     meta_self_eval_ok: bool = False       # Suppress MR-1/MR-2 meta-loop lint rules (ENH-1665)
     shared_state_ok: bool = False         # Suppress MR-3 artifact-isolation lint rule
     partial_route_ok: bool = False        # Suppress MR-4 partial-route dead-end lint rule (ENH-1917)
@@ -4537,6 +4567,8 @@ class FSMLoop:
     bash_default_ok: bool = False         # Suppress MR-7 bash-default interpolation lint rule (ENH-2348)
     evidence_contract_ok: bool = False    # Suppress MR-8 evidence-contract lint rule (ENH-2342)
     shell_pid_ok: bool = False            # Suppress MR-9 over-escaped shell $$ PID-corruption lint rule (BUG-2368)
+    parse_swallow_ok: bool = False        # Suppress MR-10 inline-Python parse-swallow lint rule
+    policy_dims_scored_ok: bool = False   # Suppress policy-table inactive-rubric-dim lint rule
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -4677,6 +4709,7 @@ class StateConfig:
     throttle: ThrottleConfig | None = None           # Per-state progressive tool-call throttling
     on_throttle_hard: str | None = None              # Target state when hard_max is reached (or hard-stop if unset)
     learning: LearningConfig | None = None           # FEAT-1283: type=learning state targets + retry budget
+    cost_ceiling: CostCeilingConfig | None = None    # Per-state USD limit for LLM actions; routes on cost ceiling trip
 ```
 
 #### ThrottleConfig

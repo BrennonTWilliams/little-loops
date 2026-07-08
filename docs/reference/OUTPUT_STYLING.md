@@ -343,7 +343,7 @@ Multiple output format functions for `ll-history`:
 
 | Function | Output format |
 |----------|--------------|
-| `format_summary_text(summary)` | Plain text with `=`/`-` headers and aligned columns |
+| `format_summary_text(summary)` | Plain text with `=` headers (section titles) and aligned column rows |
 | `format_summary_json(summary)` | JSON |
 | `format_analysis_text(analysis)` | Plain text with unicode trend arrows (`↑↓→`) |
 | `format_analysis_json(analysis)` | JSON |

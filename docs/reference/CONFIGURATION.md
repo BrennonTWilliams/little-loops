@@ -304,7 +304,7 @@ Issue management settings:
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 | `auto_commit` | `false` | When `true`, the `issue-auto-commit.sh` PostToolUse hook automatically commits issue file changes (Write/Edit) with no other staged files present. |
-| `auto_commit_prefix` | `"chore(issues)"` | Commit message prefix used by the auto-commit hook. Final message is `<prefix>: <verb> <filename>`. |
+| `auto_commit_prefix` | `"chore(issues)"` | Commit message prefix used by the auto-commit hook. Final message format is `<prefix>: <verb> <ISSUE_ID> <slug>` where `verb` is `capture` (Write) or `update` (Edit/Update) and `<ISSUE_ID>` + `<slug>` are parsed from the issue filename (`P[0-5]-TYPE-NNN-slug.md`). |
 
 **Custom Categories**: The four core categories (bugs, features, enhancements, epics) are always included automatically. You can add custom categories and they will be merged with the required ones:
 

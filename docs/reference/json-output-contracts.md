@@ -138,7 +138,7 @@ Returns a JSON array. Each element describes one issue file.
 | `title` | string | yes | Issue title from the markdown heading |
 | `path` | string | yes | Absolute path to the issue file |
 | `status` | string | yes | Issue status: `"open"`, `"in_progress"`, `"blocked"`, `"deferred"`, `"done"`, `"cancelled"` |
-| `discovered_date` | string or null | yes | ISO 8601 date the issue was captured (null if not set) |
+| `discovered_date` | string or null | yes | `YYYY-MM-DD` date the issue was captured (null if not set) |
 | `parent` | string or null | yes | Parent epic ID (null if not set) |
 | `labels` | array of strings | yes | Labels from the issue frontmatter |
 | `milestone` | string or null | yes | Milestone tag (null if not set) |
