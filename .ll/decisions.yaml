@@ -4500,3 +4500,40 @@
     text but truncate the ORIGINAL (preserve
   enforcement: advisory
   issue: BUG-2546
+- id: ARCHITECTURE-120
+  type: decision
+  timestamp: '2026-07-08T19:06:23Z'
+  category: architecture
+  labels: []
+  rationale: All 3 formal Acceptance Criteria are met by the two existing regression
+    tests at test_fsm_executor.py:7120 and :7169; the setdefault fix is locked in
+    at executor.py:805-806 with a comment block at :798-805 documenting the why. The
+    context_passthrough contrast test is described in the issue itself as 'not a regression
+    blocker' and is not in the formal ACs.
+  rule: Close the issue as done
+  scope: issue
+  alternatives_rejected: 'Land the optional contrast test — symmetric to the existing
+    with: regression test, but adds maintenance surface for a legacy branch the issue
+    describes as already working; the formal ACs do not require it.'
+  issue: ENH-2419
+- id: ARCHITECTURE-121
+  type: decision
+  timestamp: '2026-07-08T19:23:22Z'
+  category: architecture
+  labels: []
+  rationale: 'Split-state architecture chosen because rn-* family consistently uses
+    split-state for pre-destructive-write checks (rn-build.build_failed, rn-remediate.emit_*_failed,
+    loop-composer-adaptive.abort_composer); inline precedents all gate non-destructive
+    side-effects only, and inline would shift finalize.on_error: report from exit-code-bound
+    to verdict-bound (defeating rollback). New finalize_aborted terminal chosen over
+    routing to existing failed because 3 rn-* family precedents establish the domain-specific
+    failure-terminal convention and the registry touch is mechanical (1-line frozenset
+    + 1-line test tuple).'
+  rule: 'rn-refine finalize guard: add preflight_check state + new finalize_aborted
+    terminal (registered in FAILURE_TERMINAL_NAMES), floor_fraction=0.5 default'
+  scope: issue
+  alternatives_rejected: Inline invariant check inside finalize state (mixes concerns;
+    destructive overwrite executes before evaluator routes); route abort to existing
+    failed terminal (skips init.on_error→diagnose path; semantic conflation with infrastructure
+    failures)
+  issue: ENH-2418
