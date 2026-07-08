@@ -132,6 +132,27 @@ class TestClaudeCodeAdapterIntegration:
             f"session-end.sh must be removed from the SessionEnd array; got {se_cmds!r}"
         )
 
+    def test_hooks_json_session_end_no_longer_references_orphan_worker_sweep(self) -> None:
+        """The SessionEnd array must no longer reference orphan-worker-sweep.sh.
+
+        The orphan xdist sweep is a local-only hook (registered in
+        .claude/settings.local.json, gitignored) — it is NOT a built-in plugin
+        hook and must not ship via hooks/hooks.json. See the design discussion
+        recorded at .claude/plans/make-it-a-local-only-groovy-stallman.md.
+        """
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "SessionEnd" in data["hooks"], "hooks.json is missing SessionEnd key"
+        se_cmds = [
+            h["command"]
+            for group in data["hooks"]["SessionEnd"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert not any("orphan-worker-sweep" in cmd for cmd in se_cmds), (
+            f"orphan-worker-sweep.sh must not be in SessionEnd (it is a "
+            f"local-only hook, not a built-in); got {se_cmds!r}"
+        )
+
     def test_post_tool_use_default_host_claude_code(self, tmp_path: Path) -> None:
         """post-tool-use.sh runs the Python handler without setting LL_HOOK_HOST.
 

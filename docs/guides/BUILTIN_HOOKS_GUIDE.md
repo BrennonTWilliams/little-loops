@@ -8,7 +8,7 @@ Read this when you want to understand what little-loops is doing in the backgrou
 
 A hook is a lifecycle callback — a script that fires automatically at a specific moment in your Claude Code session. Hooks can load config, inject context, record events, or block tool calls. They run silently: you usually only notice them when they inject a message or deny an action.
 
-All little-loops hooks are declared in `hooks/hooks.json`. They fire through a thin adapter layer and route to Python handlers under `scripts/little_loops/hooks/`. You never need to invoke them directly.
+All **built-in** little-loops hooks are declared in `hooks/hooks.json`. They fire through a thin adapter layer and route to Python handlers under `scripts/little_loops/hooks/`. You never need to invoke them directly. (Developers may also register their own local-only hooks in `.claude/settings.local.json` — gitignored, fire only in their own checkout.)
 
 ---
 
@@ -349,14 +349,6 @@ Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) �
 Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Always on.
 
 > Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
-
-### Orphan pytest-xdist worker sweep
-
-**Hook:** `orphan-worker-sweep.sh` (pure bash, ENH-2531)
-
-Reaps orphaned `pytest-xdist` workers left behind by killed pytest runs. Killed xdist workers have their command line rewritten by `setproctitle` to `[pytest-xdist running]`, so naive `pkill -f 'pytest'` patterns miss them — and each orphan spins at ~100% CPU. Only kills workers reparented to init (PPID 1) to avoid terminating a live pytest run still parented to its controller in a concurrent session. The match needle is built from a split literal so the `ps+awk` pipeline never self-matches. Always on.
-
-> Added as a second SessionEnd entry after `scratch-cleanup.sh` so dead pytest workers don't survive the session that killed them.
 
 ---
 
