@@ -2,7 +2,7 @@
 
 ## When to Use This Guide
 
-Use a sprint when you have 4 or more issues, or issues with dependencies that must run in order. For 1–3 independent issues, `/ll:manage-issue` is simpler. For recurring automated workflows, use a loop instead.
+Use a sprint when you have 4 or more issues, or issues with dependencies that must run in order. For 1–3 independent issues, `/ll:manage-issue` is simpler. For recurring automated workflows, use a loop instead — a YAML-defined finite-state machine (FSM) workflow; see the [Loops Guide](LOOPS_GUIDE.md).
 
 **Sprint sizing guidance:**
 - **1–5 issues** — focused burst (a morning's work)
@@ -87,9 +87,9 @@ Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
   Tune: dependency_mapping.overlap_min_files / overlap_min_ratio in ll-config.json
 ```
 
-Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `ll-config.json` if the sprint over-serializes.
+Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `.ll/ll-config.json` if the sprint over-serializes.
 
-**Both thresholds must be crossed to trigger serialization** — crossing just one is not enough. An issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both `overlap_min_files` and `overlap_min_ratio` are exceeded simultaneously. Raise either threshold in `ll-config.json` to reduce over-serialization on large issue sets.
+**Both thresholds must be crossed to trigger serialization** — crossing just one is not enough. An issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both `overlap_min_files` and `overlap_min_ratio` are exceeded simultaneously. Raise either threshold in `.ll/ll-config.json` to reduce over-serialization on large issue sets.
 
 ---
 
@@ -183,7 +183,7 @@ The skill performs a six-phase analysis:
 5. **Backlog scan** — are there related issues not in the sprint that belong?
 6. **Removal proposals** — issues that are completed, invalid, or out of scope
 
-**EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-sprint show EPIC-NNN`) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
+**EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-issues list --group-by epic`) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
 
 The skill is interactive: it proposes changes and you approve or reject each one. Accepted changes are applied via `ll-sprint edit`. When you're done reviewing, the sprint is ready to run.
 
@@ -260,7 +260,7 @@ Use `--dry-run` to see this plan without executing anything.
 Each wave runs as follows:
 
 - **Single-issue wave**: `/ll:manage-issue` runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
-- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
+- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `.ll/ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
 > **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When `use_feature_branches` is set and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch the work lands on. Dependency chains that produce all single-issue waves will see this warning for every sprint run; if per-issue feature branches are required for all issues, avoid all-sequential dependency chains or track the follow-up enhancement.
 
@@ -287,8 +287,6 @@ By default, multi-issue waves auto-merge each worktree back to the current branc
 | `open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push; records `pr_url:` on the issue; requires `push_feature_branches: true` and `gh auth status` |
 
 Set `push_feature_branches: true` to push branches automatically after each issue finishes. Add `open_pr_for_feature_branches: true` to also open a draft PR and record `pr_url:` on the issue. If `gh` is unavailable or unauthenticated, the push proceeds but the PR step is skipped with a warning.
-
-> **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When feature branches are enabled and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch where work lands.
 
 ### Cleaning up merged feature branches
 
@@ -392,7 +390,7 @@ ll-sprint edit sprint-1 --revalidate               # re-run dependency analysis
 ll-sprint delete sprint-1                          # delete a sprint entirely
 ```
 
-`--prune` scans each issue ID in the sprint and removes any that no longer have a file on disk (either completed and archived, or deleted). Use this to clean up a sprint that's been running for a while.
+`--prune` scans each issue ID in the sprint and removes any that are completed (`status: done` or `status: cancelled` in frontmatter) or whose file no longer exists on disk. Use this to clean up a sprint that's been running for a while.
 
 `--revalidate` re-reads the dependency graph after edits and updates any ordering implications. Run this after adding new issues to ensure wave groupings are still accurate.
 
@@ -463,7 +461,7 @@ Capture recent bugs, enrich them, and run a sprint in one session:
    /ll:capture-issue "description of bug 2"
    /ll:capture-issue "description of bug 3"
 2. /ll:format-issue --auto
-3. /ll:refine-issue
+3. /ll:refine-issue <issue-id>      ← run once per captured issue
 4. /ll:ready-issue
 5. /ll:create-sprint               ← pick "all bugs" auto-group
    ll-sprint run bug-sprint

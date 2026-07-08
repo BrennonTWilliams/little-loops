@@ -22,15 +22,16 @@ Read the rest of this guide if you want to interpret the output, run steps manua
 - [The Pipeline at a Glance](#the-pipeline-at-a-glance)
 - [Prerequisites: Extracting Messages (`ll-messages`)](#prerequisites-extracting-messages-ll-messages)
 - [Running the Full Pipeline: `/ll:analyze-workflows`](#running-the-full-pipeline-llanalyze-workflows)
-- [Reading Your Output](#reading-your-output)
 - [Understanding the Outputs](#understanding-the-outputs)
   - [Key fields in `step1-patterns.yaml`](#key-fields-in-step1-patternsyaml)
   - [Key fields in `step2-workflows.yaml`](#key-fields-in-step2-workflowsyaml)
   - [Key fields in `step3-proposals.yaml`](#key-fields-in-step3-proposalsyaml)
-- [Manual Pipeline: `ll-workflows`](#cli-deep-dive-ll-workflows)
+- [Reading Your Output](#reading-your-output)
+- [Manual Pipeline: `ll-workflows`](#manual-pipeline-ll-workflows)
   - [Argument Reference](#argument-reference)
   - [How the Analysis Works](#how-the-analysis-works)
 - [The Automation Proposer: `/ll:workflow-automation-proposer`](#the-automation-proposer-llworkflow-automation-proposer)
+  - [CLI alternative: `ll-workflows propose`](#cli-alternative-ll-workflows-propose)
   - [What It Looks For](#what-it-looks-for)
   - [The 9 Automation Types](#the-9-automation-types)
   - [Priority Scoring](#priority-scoring)
@@ -55,7 +56,7 @@ What it discovers:
 - **Friction points** — debug → fix → test cycles where you're retrying the same thing
 - **Automation candidates** — workflows that already have, or could have, a `/ll:*` command
 
-What you get at the end: a prioritized list of hooks, commands, scripts, and FSM loops — each with rationale, effort estimate, and implementation sketch.
+What you get at the end: a prioritized list of hooks, commands, scripts, and FSM (finite-state machine) loops — each with rationale, effort estimate, and implementation sketch.
 
 ## The Pipeline at a Glance
 
@@ -118,7 +119,7 @@ Key flags reference:
 The simplest way to run all three steps is the single orchestrating command:
 
 ```bash
-# Auto-detect most recent messages file in .claude/
+# Auto-detect most recent messages file in .ll/
 /ll:analyze-workflows
 
 # Use a specific file
@@ -176,9 +177,7 @@ Here's what a typical pattern entry looks like:
 - `workflow_boundaries` — detected transitions between distinct workflows
 - `workflows` — named multi-step workflow patterns, each with a `pattern_confidence` score (0.0–1.0) and session count
 
-**`pattern_confidence`** reflects how consistent the sequence is across observed instances. A score above 0.7 is strong; below 0.4 means the pattern is loosely structured and harder to automate reliably.
-
-**`cohesion_score`** appears on entity clusters. It measures how tightly the messages in a cluster relate to each other (0.0–1.0). High cohesion (≥ 0.7) means messages are clearly about one thing; low cohesion means the cluster is loosely connected.
+See [Reading Your Output](#reading-your-output) for how to interpret the `pattern_confidence` and `cohesion_score` values.
 
 ### Key fields in `step3-proposals.yaml`
 
@@ -235,7 +234,7 @@ ll-workflows analyze \
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.ll/workflow-analysis/step1-patterns.jsonl`) |
+| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.ll/workflow-analysis/user-messages.jsonl`) |
 | `--patterns FILE` | `-p FILE` | Yes | Step 1 output YAML (from workflow-pattern-analyzer) |
 | `--output FILE` | `-o FILE` | No | Output YAML (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | No | Print detailed progress |
@@ -303,7 +302,7 @@ It also checks for existing `/ll:*` commands before proposing new ones. If your 
 
 | Type | Use Case | Example |
 |------|----------|---------|
-| `slash_command` | Multi-step workflow with 3+ occurrences | `/ll:cleanup-refs` for repeated reference removal |
+| `slash_command` | Multi-step workflow with 3+ occurrences | A proposed new `/ll:cleanup-refs` command for repeated reference removal |
 | `script_python` | Complex logic, data processing, external APIs | Entity extraction script with argparse |
 | `script_bash` | Simple file operations, tool chains | Batch rename script |
 | `hook_pre_tool` | Prevent unwanted tool usage before it happens | Block `rm -rf` patterns before they run |
@@ -322,9 +321,6 @@ HIGH:   score ≥ 8   →  5+ occurrences, major friction
 MEDIUM: score ≥ 4   →  3-4 occurrences, moderate friction
 LOW:    score < 4   →  1-2 occurrences, minor friction
 ```
-
-> **Note:** Frequency ≥ 5 is the threshold for *high-priority* automation. Lower-frequency
-> patterns can still appear in the output — they'll be scored as LOW or MEDIUM priority.
 
 Variable definitions:
 
@@ -371,7 +367,7 @@ ll-messages -n 200                    # Extract recent messages
 
 ### Quick pattern check (Step 1 patterns only)
 
-Run only Step 1 to get a fast category breakdown without the full pipeline. In Claude Code, run `/ll:analyze-workflows` to execute the full pipeline, or ask Claude to 'use the workflow-pattern-analyzer agent' to run Step 1 on its own.
+Run only Step 1 to get a fast category breakdown without the full pipeline: in Claude Code, ask Claude to 'use the workflow-pattern-analyzer agent' with your messages file.
 
 ```bash
 ll-messages                           # Extract messages to .ll/user-messages-{ts}.jsonl

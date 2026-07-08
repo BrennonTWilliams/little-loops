@@ -2,7 +2,7 @@
 
 ## When to Use This Guide
 
-Use the full refinement pipeline when you have multiple issues to prepare for a sprint, or when implementing a feature that requires careful planning. For a quick bug fix, skip to the [Fix a Bug in 5 Steps](#fix-a-bug-in-5-steps) recipe at the end.
+Use the full refinement pipeline when you have multiple issues to prepare for a sprint, or when implementing a feature that requires careful planning. For a quick bug fix, skip to the [Fix a Bug in 5 Steps](#fix-a-bug-in-5-steps) recipe in Common Workflows.
 
 ---
 
@@ -65,7 +65,7 @@ For the full frontmatter schema, see the [Issue Template reference](../reference
 
 ## The Lifecycle
 
-Issues move through seven states:
+Issues move through seven states (plus Deferred, a parking state outside the main flow):
 
 ```
   ┌────────────┐
@@ -124,7 +124,7 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 
 Synonyms (`complete`, `completed`, `finished`, `wip`, `in-progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
-**Frontmatter `status` determines CLI bucketing.** Tools like `ll-issues list`, `ll-auto`, and `ll-sprint` filter issues by the `status` frontmatter field — not by directory location. All active issues live in type directories (`bugs/`, `features/`, `enhancements/`, `epics/`); their lifecycle state is recorded in frontmatter.
+As noted in [Issue File Anatomy](#issue-file-anatomy), CLI tools bucket issues by this `status` field, never by directory location.
 
 Not every issue goes through every state. A trivial bug fix might go Discovered → Ready → Completed in one session. A large feature might stay in Validating for multiple refinement cycles.
 
@@ -181,7 +181,7 @@ Both commands can generate many issues at once. Run them when onboarding to a ne
 
 ### Quick vs. Full Templates
 
-`/ll:capture-issue` uses the template style set in `ll-config.json` (`issues.capture_template`, default: `"full"`). Pass `--quick` to force the minimal template (Summary, Current Behavior, Expected Behavior, Impact, and Status) regardless of config. The `/ll:format-issue` command (Phase 2) promotes a minimal issue to the full v2.0 template.
+`/ll:capture-issue` uses the template style set in `.ll/ll-config.json` (`issues.capture_template`, default: `"full"`). Pass `--quick` to force the minimal template (Summary, Current Behavior, Expected Behavior, Impact, and Status) regardless of config. The `/ll:format-issue` command (Phase 2) promotes a minimal issue to the full v2.0 template.
 
 ---
 
@@ -302,7 +302,7 @@ A post-refinement pass focused on **completeness of the Integration Map**. Where
 
 Run after `refine-issue` when the Integration Map looks thin — callers underspecified, test coverage missing, or side-effect files absent. Use `--dry-run` to preview what would be added without modifying the issue file.
 
-**Flags:** `--auto` — non-interactive mode for FSM loop automation. `--dry-run` — preview proposed additions.
+**Flags:** `--auto` — non-interactive mode for FSM (finite-state machine) loop automation. `--dry-run` — preview proposed additions.
 
 ### Verifying Against Codebase
 
@@ -356,7 +356,7 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 - For BUGs: Root Cause identifies file + function anchor + explanation
 - For FEATs: Acceptance Criteria are individually testable
 
-Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: done` with a "Closed: invalid" resolution note.
+Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: cancelled` with a "Closed: invalid" resolution note.
 
 ### Confidence Scoring
 
@@ -512,7 +512,6 @@ Processes issues one at a time, in priority order (P0 first). After each issue, 
 
 ```bash
 ll-parallel --workers 3             ← process 3 issues simultaneously
-ll-sprint run sprint-name           ← process issues in a sprint
 ```
 
 Runs multiple issues in separate git worktrees simultaneously. Each worker gets an isolated branch; the coordinator merges results. Significantly faster than sequential, but requires issues to have non-overlapping file changes. Run `/ll:map-dependencies` first to identify conflicts.
@@ -581,8 +580,6 @@ When you inherit an unfamiliar project and need to understand what's broken:
 ```
 
 After triage, you have a prioritized backlog of real problems with dependency ordering. Start with P0/P1 issues and work down.
-
----
 
 ---
 

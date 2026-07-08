@@ -12,8 +12,6 @@ All **built-in** little-loops hooks are declared in `hooks/hooks.json`. They fir
 
 ---
 
-Everything little-loops does automatically in the background — and the exact config key that turns each behavior on or off.
-
 When you install the little-loops plugin, it registers a set of Claude Code lifecycle hooks. These fire silently as you work: loading config when a session starts, recording what ran, watching context usage, guarding issue-file integrity, and preserving state before compaction. This guide documents every one of them so nothing about your session is a mystery — and so you can disable anything you don't want.
 
 ## Table of Contents
@@ -107,8 +105,6 @@ Session ends
 
 ---
 
----
-
 ## Safe by Default
 
 The behaviors that **write data or change your repo** are **off until you opt in**:
@@ -187,7 +183,7 @@ If analytics is enabled, it records user **corrections** (messages matching patt
 
 ## PreToolUse
 
-Three hooks run before a tool executes. These are the only place little-loops can **deny** an action outright.
+Four hooks run before a tool executes. These are the only place little-loops can **deny** an action outright.
 
 ### Duplicate issue-ID guard (blocks)
 
@@ -271,7 +267,9 @@ This pairs with [Session Handoff](SESSION_HANDOFF.md).
 
 On `Write` of an issue `.md` whose frontmatter is `status: done`, appends a session-log entry to the issue file for historical traceability, then fires `ll-issues decisions extract-from-completed --issue <ID> --min-confidence 0.8` in a background subshell to mine the closed issue for generalizable rules and append them to `.ll/decisions.yaml`. The extraction runs asynchronously (fire-and-forget), so the hook exits immediately regardless of LLM latency. Always on; silent. Never blocks.
 
-### Duplicate issue-ID cleanup (TOCTOU guard, exit 2)
+### Duplicate issue-ID cleanup (TOCTOU race guard, exit 2)
+
+TOCTOU — "time-of-check to time-of-use" — is the race window between checking a condition and acting on it.
 
 **Hook:** `check-duplicate-issue-id-post.sh` (pure bash)
 

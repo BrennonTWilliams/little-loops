@@ -8,6 +8,7 @@ Record implementation choices, enforce team rules, and prevent automation from p
 
 ## Table of Contents
 
+- [Why Record Decisions?](#why-record-decisions)
 - [What Is the Decisions Log?](#what-is-the-decisions-log)
 - [The Four Entry Types](#the-four-entry-types)
 - [The Automation Workflow](#the-automation-workflow)
@@ -36,10 +37,7 @@ Record implementation choices, enforce team rules, and prevent automation from p
 
 `.ll/decisions.yaml` is a project-level governance file that records four types of entries: architectural decisions made, rules the team enforces, exceptions granted to those rules, and coupling contracts that tell `wire-issue` what to audit when specific files change.
 
-The log serves two purposes:
-
-1. **Institutional memory** — "why did we pick Option A?" has an answer you can `ll-issues decisions list` instead of `git log` for.
-2. **Automation gating** — when `confidence-check` detects unresolved options in an issue, it sets `decision_needed: true` in the frontmatter. `ll-auto` and `ll-parallel` will not implement that issue until `/ll:decide-issue` clears the flag and records the chosen option in this file.
+The log serves two purposes: **institutional memory** (settled choices stay queryable via `ll-issues decisions list`) and **automation gating** (`ll-auto` and `ll-parallel` will not implement an issue while `decision_needed: true` is set — see [The Automation Workflow](#the-automation-workflow)).
 
 ---
 
@@ -179,7 +177,7 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 
 The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it after selecting an option. Automation never implements an issue while the flag is set.
 
-**The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this: `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling back to `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) if the retry also finds nothing. FSM callers (`rn-remediate`, `autodev`) pre-check with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score.
+**The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this: `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling back to `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) if the retry also finds nothing. FSM (finite-state machine) loop callers (`rn-remediate`, `autodev`) pre-check with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score.
 
 **Signal phrases that trigger `decision_needed: true`:**
 

@@ -154,7 +154,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 
 | Loop | Description |
 |------|-------------|
-| `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL via `/ll:scrape-docs`, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
+| `adopt-third-party-api` | End-to-end API adoption pipeline — scrapes a vendor docs URL, enumerates up to 7 significant endpoints/features, proves each via `ready-to-implement-gate`, and writes a citation-linked integration playbook to `docs/integration-<domain>.md`. Partial coverage (some targets refuted or exhausted) still produces a playbook with a top warning block listing unverified sections. |
 | `ready-to-implement-gate` | Sub-loop primitive — given a list of external-API targets, proves each against the Learning-Test Registry via `/ll:explore-api`; routes `done` when all targets are proven, `blocked` when any are refuted or exhausted. Used as a child by `adopt-third-party-api` and `assumption-firewall`, but runnable standalone to gate any pre-implementation proof step. |
 | `assumption-firewall` | Issue gating loop — extracts up to 7 external-API assumptions from an issue file via LLM, classifies each as testable (proven via `ready-to-implement-gate`) or untestable (recorded via `--assume` flag as `result: untested` in the Learning-Test Registry), and routes `done` (all testable proven), `blocked` (any testable refuted), or `no_external_deps` (no testable assumptions found). Use before starting implementation on issues that touch unfamiliar third-party APIs. |
 | `integrate-sdk` | Proof-driven SDK integration — branches on existing usage (code branch) vs. greenfield (docs branch), enumerates up to 7 required API surfaces, proves each via `ready-to-implement-gate`, then scaffolds integration code with `# Verified: .ll/learning-tests/<slug>.md` citations. Blocks with a structured diagnosis if any surface is refuted or citations don't resolve to proven records. |
@@ -275,7 +275,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
               on_no  (ITERATE)       → research_iteration (next iteration)
 ```
 
-> **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](../HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
+> **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 ### `rn-refine` — Recursive Refinement of an Existing Plan
 
@@ -626,7 +626,7 @@ Phase 5 — Convergence:
 
 End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → **check_substrate** (ENH-2098) → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
 
-> **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](../HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
+> **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
 Use `rn-build` for all new spec-driven greenfield projects.
 
@@ -804,7 +804,7 @@ route_input → [sprint_name provided?]
 
 ### `sprint-refine-and-implement` — Sprint-Scoped Refine-and-Implement Loop
 
-**Technique**: A thin alias for `auto-refine-and-implement` scoped to a named sprint or `EPIC-NNN`. Delegates to `auto-refine-and-implement` with `scope=<sprint-name|EPIC-NNN>`, which resolves the sprint's issue set and drives it through the interleaved `autodev` engine: each issue is refined to readiness, implemented immediately via `ll-auto --only`, and on decomposition its children are processed depth-first (refined **and** implemented) before the next sibling. Equivalent to `ll-loop run auto-refine-and-implement --input scope=<sprint-name|EPIC-NNN>`.
+**Technique**: A thin alias for `auto-refine-and-implement` scoped to a named sprint or `EPIC-NNN`. Delegates to `auto-refine-and-implement` with `scope=<sprint-name|EPIC-NNN>`, which resolves the sprint's issue set and drives it through the interleaved `autodev` engine: each issue is refined to readiness, implemented immediately via `ll-auto --only`, and on decomposition its children are processed depth-first (refined **and** implemented) before the next sibling. Equivalent to `ll-loop run auto-refine-and-implement --context scope=<sprint-name|EPIC-NNN>`.
 
 **When to use**: When you have a defined sprint or EPIC and want the full refine-and-implement pipeline over exactly those issues. Prefer `auto-refine-and-implement` (no scope) for open-ended backlog processing.
 
@@ -1213,6 +1213,7 @@ ll-loop run worktree-health
 | Loop | Description |
 |------|-------------|
 | `agent-eval-improve` | Evaluate an AI agent on a task suite, score outputs, identify failure patterns, and iteratively refine agent config/prompts until quality target is reached. Exits `done` on convergence or no actionable patterns; exits `failed` when any state exhausts its `max_retries` |
+| `policy-refine` | Score an artifact on a multi-axis rubric (clarity/completeness/feasibility/security), then route through a declarative `policy_rules` decision table to tier-specific repair, rethink, or security escalation — repeating until the rules route to `done`. Canonical demo of `lib/policy-router.yaml` table routing; see the [Policy Router Guide](POLICY_ROUTER_GUIDE.md) |
 | `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
 | `rl-coding-agent` | Policy+RLHF composite loop for agentic coding — outer policy loop adapts coding strategy while inner RLHF loop polishes each artifact to a quality threshold |
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
@@ -1309,7 +1310,7 @@ run_eval → score_results → analyze_failures
 | `rlhf-svg-generate` | Sub-loop: handles the `plan_animation → render_animation → verify_render` generation pipeline for `rlhf-animated-svg`; accepts `input`, `run_dir`, `global_iteration`, `design_tokens_context`, `quality_target`, `explore_cutoff`, and `exploit_cutoff` context parameters; produces `output.html` in `run_dir` on success or terminates at `plan_failed` on retry exhaustion (ENH-2051) |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `cua-agent-desktop` | Computer-Use Agent harness for macOS desktop automation — observe → plan → act → verify cycles via the `agent-desktop` CLI; uses macOS Accessibility API for element-level interaction (click, type, scroll, keyboard shortcuts, window management) with structured error recovery for `STALE_REF`, `ELEMENT_NOT_FOUND`, `PERM_DENIED`, `TIMEOUT`, and `ACTION_FAILED`; produces a `summary.md` artifact with the full action evidence chain in the run directory |
-| `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --input concept="how a transformer attends"` |
+| `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --context concept="how a transformer attends"` |
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, `rlhf-animated-svg`, `openscad-model-generator`, and `interactive-component-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
@@ -1454,7 +1455,7 @@ init → identify → prune → generate → evaluate
 
 > **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`), deliberately diverging from the standard LOOPS_GUIDE.md design rule at line 897 ("never back to generate"). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern.
 
-**When to use**: After running `/ll:recursive-refine` or a planning skill to produce a long PRD or implementation plan markdown file. Rather than reviewing linearly in an editor, run `hitl-md` to get a focused segment-level review surface. Also useful for reviewing AI-generated research notes, design documents, or refined issues where you want to flag specific spans for targeted AI revision without losing positional context.
+**When to use**: After running the `recursive-refine` loop or a planning skill to produce a long PRD or implementation plan markdown file. Rather than reviewing linearly in an editor, run `hitl-md` to get a focused segment-level review surface. Also useful for reviewing AI-generated research notes, design documents, or refined issues where you want to flag specific spans for targeted AI revision without losing positional context.
 
 **Usage:**
 
@@ -2429,13 +2430,13 @@ Use when a goal naturally spans 3–6 existing loops in a fixed sequence and you
 #### Invocation
 
 ```bash
-ll-loop run loop-composer --input "your multi-step goal"
+ll-loop run loop-composer "your multi-step goal"
 
 # Skip HITL approval
-ll-loop run loop-composer --input "your goal" --context auto=true
+ll-loop run loop-composer "your goal" --context auto=true
 
 # Exclude specific loops from the catalog
-ll-loop run loop-composer --input "your goal" --context exclude="rn-plan,rn-refine"
+ll-loop run loop-composer "your goal" --context exclude="rn-plan,rn-refine"
 ```
 
 #### Context Variables
@@ -2478,10 +2479,10 @@ Use when mid-plan failures are likely and you prefer structured recovery over a 
 #### Invocation
 
 ```bash
-ll-loop run loop-composer-adaptive --input "your multi-step goal"
+ll-loop run loop-composer-adaptive "your multi-step goal"
 
 # Allow up to 3 replan attempts (default 2)
-ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
+ll-loop run loop-composer-adaptive "your goal" --context max_replans=3
 ```
 
 #### Context Variables
@@ -2512,18 +2513,18 @@ Use when you have **multiple related goals** that share context and benefit from
 
 ```bash
 # Multi-line goals (one per line)
-ll-loop run goal-cluster --input "Fix auth bug
+ll-loop run goal-cluster "Fix auth bug
 Add retry logic
 Update API docs"
 
 # EPIC ID — goals are the EPIC's open child issues
-ll-loop run goal-cluster --input "EPIC-1811"
+ll-loop run goal-cluster "EPIC-1811"
 
 # Sprint name
-ll-loop run goal-cluster --input "sprint-2026-06"
+ll-loop run goal-cluster "sprint-2026-06"
 
 # JSON list
-ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
+ll-loop run goal-cluster '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
 ```
 
 #### Context Variables
@@ -2584,10 +2585,10 @@ Eight built-in APO loops ship with little-loops:
 
 ```bash
 # Run with defaults (improves system.md in the current directory)
-ll-loop apo-feedback-refinement
+ll-loop run apo-feedback-refinement
 
 # Override context variables
-ll-loop apo-feedback-refinement \
+ll-loop run apo-feedback-refinement \
   --context prompt_file=prompts/classifier.md \
   --context eval_criteria="accuracy and conciseness" \
   --context quality_threshold=90
@@ -2626,10 +2627,10 @@ generate_candidate ──→ evaluate_candidate ──→ route_convergence
 
 ```bash
 # Run with defaults
-ll-loop apo-contrastive
+ll-loop run apo-contrastive
 
 # Tune for deeper search
-ll-loop apo-contrastive \
+ll-loop run apo-contrastive \
   --context prompt_file=prompts/system.md \
   --context num_variants=5 \
   --context quality_threshold=95
@@ -2662,10 +2663,10 @@ generate_variants ──→ score_and_select ──→ route_convergence
 
 ```bash
 # Run with defaults (improves system.md in the current directory)
-ll-loop apo-opro
+ll-loop run apo-opro
 
 # Customize prompt file and criteria
-ll-loop apo-opro \
+ll-loop run apo-opro \
   --context prompt_file=prompts/classifier.md \
   --context eval_criteria="accuracy and conciseness" \
   --context target_score=85
@@ -2704,10 +2705,10 @@ init_history ──→ propose_candidate ──→ evaluate_candidate ──→ 
 
 ```bash
 # Run with defaults (beam_width=4)
-ll-loop apo-beam
+ll-loop run apo-beam
 
 # Wider beam for higher-stakes optimization
-ll-loop apo-beam \
+ll-loop run apo-beam \
   --context prompt_file=prompts/triage.md \
   --context eval_criteria="correctly triage support tickets by severity" \
   --context beam_width=6 \
@@ -2755,10 +2756,10 @@ Each object must have an `input` field (the text to pass to the prompt) and an `
 
 ```bash
 # Run with defaults (system.md + examples.json in current directory)
-ll-loop apo-textgrad
+ll-loop run apo-textgrad
 
 # Point at specific prompt and examples files
-ll-loop apo-textgrad \
+ll-loop run apo-textgrad \
   --context prompt_file=prompts/extractor.md \
   --context examples_file=tests/extraction-examples.json \
   --context target_pass_rate=95
@@ -3098,11 +3099,9 @@ State mode activates when `context.targets` points to a loop YAML file whose `ta
 - States are processed in declaration order via a runtime queue (`check_queue` / `dequeue_state` cycle)
 - Each state's `action:` block is mutated and benchmarked independently — accepting or reverting one state does not affect any other state's accepted mutation
 - Per-state scoring: each state's `eval` threshold is evaluated against that state's benchmark result only
-- Trajectories are written per-state to `.ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl`
+- Trajectories are written per-state to `.loops/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl`
 
 See [harness-optimize reference](../reference/loops.md#harness-optimize) for the full state graph showing the `check_queue` / `dequeue_state` dispatch.
-
----
 
 ---
 

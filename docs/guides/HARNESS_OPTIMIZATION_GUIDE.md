@@ -98,7 +98,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **MR-5** | A harness loop that writes artifacts in a generate→evaluate cycle must snapshot per-iteration (`artifact_versioning: true`), not overwrite a flat path | Errors persist — keep the trajectory (ENH-1957) | WARNING | `artifact_versioning_ok: true` |
 | **MR-6** | A meta-loop must not have a `shell` state that writes to the same path as an LLM-generator state (`prompt`/`slash_command` with `yaml_state_editor` or `replace_action` markers) | Hand-patching creates output that diverges from the generator on the next run; fix the generator instead (ENH-2079) | WARNING | `generator_fix_ok: true` |
 | **MR-7** | No FSM action string may contain an unescaped `${namespace.path:-default}` (bash `:-` default syntax) — the interpolation engine crashes on this form at runtime | Use `${ns.path:default=value}` (engine-native) or `$${VAR:-value}` (shell-escaped) instead (ENH-2348) | **ERROR** | `bash_default_ok: true` |
-| **MR-8** | A `check_semantic`/`llm_structured` state whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) may return verdicts without citing output text, defaulting to optimism (SHOR Table 1: 33–55% accuracy) | Require the LLM to quote specific output text; absent evidence is coerced to `"no"` at the parsing layer (ENH-2342). States with no `evaluate.prompt` (using `DEFAULT_LLM_PROMPT`) are exempt — the contract is injected automatically | WARNING | `evidence_contract_ok: true` |
+| **MR-8** | A `check_semantic`/`llm_structured` state whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) may return verdicts without citing output text, defaulting to optimism (SHOR Table 1 — the study cited in [See Also](#see-also): 33–55% accuracy) | Require the LLM to quote specific output text; absent evidence is coerced to `"no"` at the parsing layer (ENH-2342). States with no `evaluate.prompt` (using `DEFAULT_LLM_PROMPT`) are exempt — the contract is injected automatically | WARNING | `evidence_contract_ok: true` |
 | **MR-9** | A shell action string contains `$$(` or `$$VAR` — over-escaped bash. The FSM interpolator only rewrites `$${...}` → `${...}`; bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference | Use single `$` for command substitution and variables; reserve `$$` exclusively for the `$${VAR}` brace form that collides with `${ns.path}` interpolation | **ERROR** | `shell_pid_ok: true` |
 | **MR-10** | A `shell` state whose inline Python calls `json.load`/`json.loads`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and `exit(0)`s without an `on_error:` route | Swallowed parse failures reach the FSM as exit 0 → treated as successful, producing zero results with no log, stderr, or non-zero exit (BUG-2383, observed across three loops). Add an `on_error:` route so parse failures route explicitly | WARNING | `parse_swallow_ok: true` |
 | **policy-table** | For any loop with `context.policy_rules`, every predicate dimension must be *scored* — listed in `context.rubric_dimensions` (normalized: lowercase + spaces→hyphens) or written by a shell state as `rubric-dim-<name>.txt` | An unscored dimension is silently inert: `_eval_predicate` returns `True` only for `!=`, so `==`/`>=`/`<=`/`<`/`>` predicates never match and routing always falls to the catch-all (ENH-2309) | WARNING | `policy_dims_scored_ok: true` |
@@ -192,7 +192,7 @@ Two properties make this shape safe by construction:
   satisfies MR-1 by construction (there is no `check_semantic` to pair). The accept/revert
   branch is the operational answer to "half of edits are detrimental."
 
-Artifacts isolate per run under `.ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`,
+Artifacts isolate per run under `.loops/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`,
 recording every iteration's score and accept/reject verdict — so the trajectory survives
 even when individual edits are reverted (MR-3 / MR-5).
 
@@ -203,7 +203,7 @@ even when individual edits are reverted (MR-3 / MR-5).
 
 ### Minimal Example
 
-A 20-line harness optimizer for a single skill file, with one comment per key state:
+A minimal harness optimizer for a single skill file, with one comment per key state:
 
 ```yaml
 name: optimize-capture-issue

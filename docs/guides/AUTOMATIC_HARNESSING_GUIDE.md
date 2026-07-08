@@ -23,9 +23,13 @@ The hard problem in automated iteration isn't running the skill — it's knowing
 - [Evaluation Phases Explained](#evaluation-phases-explained)
   - [Tool-Based Gates (`check_concrete`)](#tool-based-gates-check_concrete)
   - [MCP Tool Gates (`check_mcp`)](#mcp-tool-gates-check_mcp)
+  - [Contract Gates (`check_contract`)](#contract-gates-check_contract)
   - [Skill-as-Judge (`check_skill`)](#skill-as-judge-check_skill)
   - [LLM-as-Judge (`check_semantic`)](#llm-as-judge-check_semantic)
+  - [Baseline Regression Guard (`check_comparator`)](#baseline-regression-guard-check_comparator)
   - [Diff Invariants (`check_invariants`)](#diff-invariants-check_invariants)
+  - [Referencing Captured Outputs](#referencing-captured-outputs)
+  - [Shared Messages Log (`append_to_messages`)](#shared-messages-log-append_to_messages)
   - [Stall Detection (`check_stall`)](#stall-detection-check_stall)
 - [When to Use a Harness](#when-to-use-a-harness)
 - [Creating a Harness: The 5-Step Wizard](#creating-a-harness-the-5-step-wizard)
@@ -42,13 +46,15 @@ The hard problem in automated iteration isn't running the skill — it's knowing
 - [Worked Example: Harness `refine-issue`](#worked-example-harness-refine-issue)
 - [Tips](#tips)
 - [Troubleshooting](#troubleshooting)
+- [Validating Your Harness](#validating-your-harness)
+- [Signal Handling (`ll-loop run`)](#signal-handling-ll-loop-run)
 - [See Also](#see-also)
 
 ---
 
 ## What Is a Harness Loop?
 
-A harness loop is a pre-structured FSM pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run through a layered quality pipeline.
+A harness loop is a pre-structured finite-state machine (FSM) pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run through a layered quality pipeline.
 
 ### The Evaluation Pipeline
 
@@ -62,7 +68,7 @@ Each harness applies up to five evaluation phases in sequence, cheapest first:
 | `check_semantic` | LLM judges output quality — semantic correctness |
 | `check_invariants` | Diff line count — catches runaway changes |
 
-Each phase is optional; the wizard pre-selects based on your project config. All five can be active simultaneously, or you can use any subset.
+Each phase is optional; the wizard pre-selects based on your project config. All five can be active simultaneously, or you can use any subset. Additional optional gates — `check_contract`, `check_comparator`, and `check_stall` — are covered below alongside these five.
 
 **Conceptual cycle:**
 
@@ -175,7 +181,7 @@ check_mcp:
 
 `check_contract` is a deterministic-input + LLM-judged evaluator that reads *two related artifacts simultaneously* and asserts alignment at the integration seam between a producer and a consumer. It targets the boundary-mismatch failure class: two components each correctly implemented but disagreeing at their interface.
 
-**When to use**: After `check_concrete` (cheap shell gates) and before `check_semantic`. Use when a PR implements both a producer (API endpoint, exported function, config file) and a consumer (front-end hook, import, downstream reader) and you need to gate on shape alignment — field names, casing, type structure — rather than just existence.
+**When to use**: Use when a PR implements both a producer (API endpoint, exported function, config file) and a consumer (front-end hook, import, downstream reader) and you need to gate on shape alignment — field names, casing, type structure — rather than just existence.
 
 **How it differs from `check_semantic`:**
 
@@ -223,7 +229,7 @@ check_contract:
 
 **Placement**: `check_contract` slots after `check_concrete` (cheap shell gates first) and before `check_skill` / `check_semantic`. It reads files directly — no shell action needed — and runs at LLM-judge latency (~2–5s per pair). Use it when your harness implements both sides of an interface in the same session and you want an explicit integration gate before the full user-simulation phase.
 
-**MR-1 note**: `check_contract` uses an LLM judge and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
+**MR-1 note**: MR-1 is the meta-loop design rule requiring every LLM-judged state to be paired with a non-LLM evaluator (see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-10)). `check_contract` uses an LLM judge and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
 
 ### Skill-as-Judge (`check_skill`)
 
@@ -244,6 +250,7 @@ The skill runs as a full agentic Claude session and produces natural-language ou
 
 ```yaml
 check_skill:
+  # /ll:act-as-user is illustrative, not a built-in — substitute your own user-simulation skill
   action: "/ll:act-as-user 'Navigate to /dashboard and verify the new filter works'"
   action_type: slash_command
   timeout: 300
@@ -268,7 +275,7 @@ For skills invoked as free-form prompts (no fixed slash command), use `action_ty
 
 ```yaml
 check_skill:
-  action: "Use the scrape-docs skill to fetch /api/users and confirm the new 'role' field appears in the response"
+  action: "Use the explore-api skill to fetch /api/users and confirm the new 'role' field appears in the response"
   action_type: prompt
   timeout: 180
   evaluate:
@@ -304,7 +311,7 @@ The wizard asks two follow-up questions when LLM-as-judge is selected: "What sho
 
 #### Evidence Contract (ENH-2342 / MR-8)
 
-LLM self-grades average 33–55% accuracy without grounding (SHOR Table 1; Sonnet 4.6 = 33.4%). The evidence contract addresses this by requiring the judge to cite verbatim output text for every verdict.
+LLM self-grades average 33–55% accuracy without grounding (Table 1 of the SHOR study — the harness-optimizer research cited in [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#see-also); Sonnet 4.6 = 33.4%). The evidence contract addresses this by requiring the judge to cite verbatim output text for every verdict.
 
 **Runtime enforcement** (always on): `evaluate_llm_structured()` injects `CHECK_SEMANTIC_EVIDENCE_CONTRACT` into every prompt and coerces any verdict with an empty `evidence` field to `"no"` at the parsing layer — verdicts cannot pass through without a citation. Custom schemas (explicit `schema:` parameter) bypass coercion; callers who supply their own schema control the contract.
 
@@ -383,7 +390,7 @@ For pipelines where **every later state needs the accumulated prior reasoning** 
 ```yaml
 states:
   plan:
-    action: "/ll:plan ${context.issue_id}"
+    action: "/ll:iterate-plan ${context.issue_id}"
     capture: plan_out
     append_to_messages: "${captured.plan_out.output}"
     next: execute
@@ -529,7 +536,7 @@ The wizard generates a complete harness that covers the most common cases. Here'
 
 | You want to... | How |
 |---------------|-----|
-| Add an MCP verification gate | Add a `check_mcp` state after `check_concrete` (see [MCP Tool Gates](#mcp-tool-gates-check_mcp)). The wizard omits this if your project has no `.mcp.json`. |
+| Add an MCP verification gate | Add a `check_mcp` state after `check_concrete` (see [MCP Tool Gates](#mcp-tool-gates-check_mcp)). The wizard never generates this state — add it manually after generation. |
 | Drop a phase that's too expensive | Remove the state and update any `on_yes` transitions that pointed to it to skip directly to the next state. |
 | Add a phase after generation | Install the loop locally with `ll-loop install <name>`, edit the YAML, and re-validate with `ll-loop validate`. |
 | Raise the retry cap | Increase `max_retries` on the `execute` state. Default is 3; raise for skills that occasionally time out. |
@@ -586,7 +593,7 @@ The active issues command filters for `status == 'open'`, prints the first issue
 
 ### Step H3: Evaluation Phases
 
-The wizard reads `.ll/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected (default, can be changed); stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
+The wizard reads `.ll/ll-config.json` to detect configured tool commands and presents only relevant options. All phases except skill-based evaluation are pre-selected (defaults, can be changed); stall detection is pre-selected by default since all H1 choices produce prompt-based execution. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
 
 ```
 Which evaluation phases should be included? (multi-select)
@@ -800,7 +807,7 @@ plan -> research -> implement -> check_stall -> check_concrete -> check_semantic
 | Implementer | `implement` | Apply the plan using research context; equivalent to `execute` in Variants A/B |
 | Reporter | `report` | Summarize what was done after the evaluation chain passes |
 
-**HITL gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the workaround pattern from `scripts/little_loops/loops/loop-router.yaml` (a prompt state with `output_contains` routing). The ready-to-run example includes the HITL gate as a commented-out `# OPTIONAL: review_plan` block.
+**Human-in-the-loop (HITL) gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the workaround pattern from `scripts/little_loops/loops/loop-router.yaml` (a prompt state with `output_contains` routing). The ready-to-run example includes the HITL gate as a commented-out `# OPTIONAL: review_plan` block.
 
 **Evaluation chain:** Variants A and B evaluation phases (`check_stall`, `check_concrete`, `check_semantic`, `check_invariants`) apply between `implement` and `report`, identical to Variant A. The stall route goes to `report` rather than `done`, so the earlier planning and research context is always surfaced in the final report even when implementation stalls.
 
@@ -818,7 +825,7 @@ Three annotated example harness loops are built in to `loops/`:
 | [`scripts/little_loops/loops/harness-multi-item.yaml`](../../scripts/little_loops/loops/harness-multi-item.yaml) | B — Multi-item | All five phases active: `check_concrete`, `check_mcp`, `check_skill`, `check_semantic`, `check_invariants` |
 | [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) | C — Specialist-role pipeline | `plan`, `research`, `implement` roles with full evaluation chain; `review_plan` HITL gate as commented-out `# OPTIONAL:` block |
 
-Each state in both files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
+Each state in all three files has an `# EXAMPLE:` comment explaining its pedagogical purpose.
 
 ### Validate structure
 

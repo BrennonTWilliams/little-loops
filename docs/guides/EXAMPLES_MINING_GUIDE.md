@@ -20,12 +20,12 @@ Static `examples.json` files have a natural expiry date. When `apo-textgrad` is 
 - [Quick Start](#quick-start)
 - [How the Pipeline Works](#how-the-pipeline-works)
   - [Stage 1: Harvest](#stage-1-harvest)
-  - [Stage 2: Judge — Three-Layer Quality Stack](#stage-2-judge-three-layer-quality-stack)
+  - [Stage 2: Judge — Three-Layer Quality Stack](#stage-2-judge--three-layer-quality-stack)
   - [Stage 3: Calibrate](#stage-3-calibrate)
-  - [Stage 4: Write + Optimize](#stage-4-write-optimize)
-  - [Stage 5: Synthesize — Adversarial Examples](#stage-5-synthesize-adversarial-examples)
-  - [Stage 6: Screen → Score → Merge](#stage-6-screen-score-merge)
-  - [Stage 7: Diversify + Publish](#stage-7-diversify-publish)
+  - [Stage 4: Write + Optimize](#stage-4-write--optimize)
+  - [Stage 5: Synthesize — Targeted Weakness Examples](#stage-5-synthesize--targeted-weakness-examples)
+  - [Stage 6: Screen → Score → Merge](#stage-6-screen--score--merge)
+  - [Stage 7: Diversify + Publish](#stage-7-diversify--publish)
 - [The examples.json Schema](#the-examplesjson-schema)
 - [Configuration Reference](#configuration-reference)
 - [File I/O Reference](#file-io-reference)
@@ -35,6 +35,7 @@ Static `examples.json` files have a natural expiry date. When `apo-textgrad` is 
 - [Monitoring a Run](#monitoring-a-run)
 - [Tips](#tips)
 - [Troubleshooting](#troubleshooting)
+- [End-to-End Example](#end-to-end-example)
 - [See Also](#see-also)
 
 ---
@@ -84,7 +85,7 @@ Two loops coupled together:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-The **outer loop** mines, calibrates, and publishes the corpus. The **inner loop** (`apo-textgrad`) runs as a child FSM via sub-loop chaining (`context_passthrough: true`), inheriting the outer loop's `prompt_file` and `examples_file`. After the inner loop completes, the outer loop reads its gradient signal from `${captured.run_optimizer.gradient.output}` and uses it to synthesize adversarial examples that target the exact failure pattern the optimizer found.
+The **outer loop** mines, calibrates, and publishes the corpus. The **inner loop** (`apo-textgrad`) runs as a child FSM (finite-state machine) via sub-loop chaining (`context_passthrough: true`), inheriting the outer loop's `prompt_file` and `examples_file`. After the inner loop completes, the outer loop reads its gradient signal from `${captured.run_optimizer.gradient.output}` and uses it to synthesize adversarial examples that target the exact failure pattern the optimizer found.
 
 ---
 
@@ -152,8 +153,8 @@ The `harvest` state runs `ll-messages` with `--examples-format` to extract `(inp
 ```
 
 > **ResponseMetadata** — A JSON object automatically captured by little-loops at issue completion.
-> Key fields: `issue_id` (string), `skill` (string), `duration_ms` (number), `tool_calls` (array),
-> `exit_status` (string). You don't create this manually — the harness captures it automatically.
+> Key fields: `tools_used` (array), `files_modified` (array), `completion_status` (string).
+> You don't create this manually — the harness captures it automatically.
 
 **Important**: the `output` field is not free text. It is a JSON-serialized `ResponseMetadata` object recording what tools the agent used and what files it changed — not the raw assistant response. The oracle judge evaluates tool choices and file changes, not prose quality.
 
@@ -482,16 +483,10 @@ ll-loop run examples-miner --context skill_name=<name> ...
 
 ## The Oracle Sub-loop (v2 Upgrade)
 
-The built-in inline oracle is a generic rubric that works across all skills. For production use on a specific skill where you need invariant checking (e.g., `refine-issue` must always modify an issue file), upgrade to a dedicated oracle sub-loop. **This upgrade is required for skill-specific quality gates** — optional for general use.
-
-This upgrade is optional for most projects. Adopt it when your quality rubric needs to vary per-skill rather than using a global judge.
+The built-in `examples-miner.yaml` uses inline LLM judging in the `judge` and `score_adversarial` states — a generic rubric that works across all skills but doesn't know skill-specific invariants. For production use on a specific skill where you need invariant checking (e.g., `refine-issue` must always modify an issue file), upgrade to a dedicated oracle sub-loop. The upgrade is optional for most projects; adopt it when your quality rubric needs to vary per-skill rather than using a global judge.
 
 > **Advanced** — The v2 oracle pattern requires familiarity with nested FSM loops.
 > Complete the rest of this guide before attempting this upgrade.
-
-The built-in `examples-miner.yaml` uses inline LLM judging in the `judge` and `score_adversarial` states. This is a generic rubric that works across all skills but doesn't know skill-specific invariants.
-
-For production use on a specific skill, upgrade to a dedicated oracle sub-loop:
 
 ### 1. Install the loop
 

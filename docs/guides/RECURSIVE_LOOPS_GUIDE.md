@@ -10,7 +10,7 @@
 
 ## Contents
 
-- [What the `rn-*` Family Is](#what-the-rn-family-is)
+- [What the `rn-*` Family Is](#what-the-rn--family-is)
 - [The Big Picture](#the-big-picture)
 - [Planning Loops: `rn-plan` & `rn-refine`](#planning-loops-rn-plan--rn-refine)
 - [Implementation Loops: `rn-implement`, `rn-remediate`, `rn-decompose`](#implementation-loops-rn-implement-rn-remediate-rn-decompose)
@@ -98,7 +98,7 @@ synthesizes the findings back into the plan. The loop keeps iterating until ever
 rubric dimension reaches `VERY-HIGH` or `max_steps` is hit.
 
 **`rn-plan` — plan from scratch.** Give it a natural-language task. It generates
-an outline plus an 8-dimension rubric (breadth, depth, complexity, clarity,
+an outline plus a nine-dimension rubric (breadth, depth, complexity, clarity,
 consistency, logic_strategy, feasibility, testability, risk_mitigation), starting
 *all* dimensions at `LOW`, then researches and refines upward.
 

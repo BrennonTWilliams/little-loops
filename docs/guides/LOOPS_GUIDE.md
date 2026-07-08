@@ -16,12 +16,13 @@
 - [Built-in Loops](#built-in-loops)
 - [Beyond the Basics](#beyond-the-basics)
 - [Background Mode](#background-mode)
+- [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons)
 - [Harness Loops](#harness-loops)
 - [CLI Quick Reference](#cli-quick-reference)
 - [Pattern: Using --check with Exit Code Evaluators](#pattern-using---check-with-exit-code-evaluators)
 - [Tips](#tips)
 - [Composable Sub-Loops](#composable-sub-loops)
-- [Loop Discovery: category and labels](#loop-discovery-category-and-labels)
+- [Loop Discovery: category, labels, and visibility](#loop-discovery-category-labels-and-visibility)
 - [Reusable State Fragments](#reusable-state-fragments)
 - [Loop Template Inheritance via `from:`](#loop-template-inheritance-via-from)
 - [Linear Flow Shorthand via `flow:`](#linear-flow-shorthand-via-flow)
@@ -112,7 +113,7 @@ Use `/ll:create-loop` for an interactive wizard, or write FSM YAML directly (see
 
 ### Safety Limits
 
-A loop whose fix never works would run forever. Picture a two-state loop: `check` fails, `fix` edits the wrong file, `check` fails again — nothing stops it, and every cycle costs tokens. Four loop-level guards exist to stop exactly this:
+A loop whose fix never works would run forever. Picture a two-state loop: `check` fails, `fix` edits the wrong file, `check` fails again — nothing stops it, and every cycle costs tokens. Several loop-level guards exist to stop exactly this:
 
 | Field | Default | What it stops |
 |-------|---------|---------------|
@@ -122,7 +123,7 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 | `on_max_iterations` | unset | Names a state to run exactly once when the full-pass cap fires before terminating. |
 | `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_steps` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |
 | `circuit.repeated_failure` | unset | A single state failing the same way every iteration. See the stall detector below. |
-| `host_guard` | enabled | Host memory exhaustion from sequential LLM subprocess spawns (macOS jetsam kills). See the host guard below. |
+| `host_guard` | enabled | Host memory exhaustion from sequential LLM subprocess spawns (kills by jetsam, the macOS out-of-memory manager). See the host guard below. |
 | `prompt_size_guard` | enabled | A silently ballooning per-invocation prompt (a state re-embedding a monotonically growing captured output/artifact). WARNs when an interpolated action reaches `warn_chars`. See the prompt-size guard below. |
 
 ### Stall Detector (circuit-repeated-failure)
@@ -692,7 +693,7 @@ ll-loop stop my-scan                 # SIGTERM → graceful; second signal force
 ll-loop resume my-scan --background  # continue a paused loop, detached
 ```
 
-`ll-loop resume` restores the loop to the exact state where it stopped, including the full `fsm.context`: positional `input`, `program.md` fields, and any `--context` overrides supplied at the original start. The on-disk state file is rewritten with `include_context=True` on every state-entry, so what you see in `ll-loop status` (state name + iteration) plus what is persisted (the context) is exactly what `ll-loop resume` puts back together (BUG-2485). Resume-time `--context` overrides win over the restored values — by design, so you can retarget a resumed loop without re-running from scratch. See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) below for the full reference.
+`ll-loop resume` restores the loop to the exact state where it stopped, including the full `fsm.context`; resume-time `--context` overrides win over the restored values, so you can retarget a resumed loop without re-running from scratch. See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) below for the full reference.
 
 ### Notes
 
@@ -727,7 +728,7 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 | `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |
 | `error` | Uncaught exception in action or evaluator | The `loop_complete` event has an `error` field with the crash reason |
 | `user_stopped` | `ll-loop stop` invoked (writes a `user-stop.marker` sentinel so the runner can attribute the cause even when SIGKILL races past `_finish()`) | Resume with `ll-loop resume` |
-| `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or raise `host_guard.max_cumulative_subproc_mb`; rerun |
+| `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or lower `host_guard.max_cumulative_subproc_mb` so the guard trips before the kernel does; rerun |
 | `interrupted` | Ctrl-C caught by our own signal handler (the subprocess was killed by `proc.kill()`) | Resume with `ll-loop resume` |
 
 ### Evaluator verdict → recovery mapping
@@ -891,7 +892,7 @@ Each `check-*` state routes on the skill's exit code (0 = clean, 1 = work remain
 ## Tips
 
 - **Start with low `max_steps`** (5-10) while developing a loop. Increase once the logic is proven.
-- **State is persisted to disk** after every transition, including `fsm.context`. If a loop is stopped or interrupted, `ll-loop resume` picks up where it left off — positional `input`, `program.md` fields, and `--context` overrides all survive (BUG-2485). See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) below for the full reference.
+- **State is persisted to disk** after every transition, including `fsm.context`. If a loop is stopped or interrupted, `ll-loop resume` picks up where it left off — positional `input`, `program.md` fields, and `--context` overrides all survive (BUG-2485). See [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons) above for the full reference.
 - **Bind checkpoints to their task** with `${context.input_hash}` (a 12-char digest of the loop's input, auto-injected by the runner) so stale checkpoint files from an unrelated prior run can't trigger false crash-recovery skips.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
 - **Runs are archived automatically** to `.loops/.history/<timestamp>-<loop-name>/` on completion (state, events, and meta-eval telemetry). `ll-loop history <name>` lists archived runs.
@@ -908,10 +909,10 @@ max_steps: 3
 states:
   run_quality:
     loop: "fix-quality-and-tests"   # runs the built-in loop as a child
-    on_success: "run_git"
+    on_success: "run_refine"
     on_failure: "done"
-  run_git:
-    loop: "issue-refinement-git"
+  run_refine:
+    loop: "issue-refinement"
     on_success: "done"
     on_failure: "done"
   done:
@@ -1165,9 +1166,9 @@ The `error_patterns` list on `output_contains` yields `verdict="error"` when any
 
 ### Evaluator Health
 
-Passing `ll-loop validate` (MR-1) confirms a non-LLM evaluator is _present_ — it does not confirm the evaluator is _discriminating_. An evaluator that always returns the same verdict (e.g., always `yes`) satisfies MR-1 but provides no useful signal.
+Passing `ll-loop validate` confirms a non-LLM evaluator is _present_ — it does not confirm the evaluator is _discriminating_. An evaluator that always returns the same verdict (e.g., always `yes`) passes validation but provides no useful signal.
 
-**`ll-loop diagnose-evaluators <name>`** — run this after MR-1 passes to validate that each evaluator actually discriminates across run history. The command computes Bernoulli variance `p*(1-p)` over ≥10 runs per evaluator state. Variance below 0.05 flags the evaluator as toothless — it is not measuring anything useful, and the per-state output includes a recommendation for how to fix it (broaden the judge prompt, tighten the exit-code command, etc.). See the [CLI reference](../reference/CLI.md) for full flag and exit-code documentation.
+**`ll-loop diagnose-evaluators <name>`** — run this after validation passes to confirm that each evaluator actually discriminates across run history. The command computes Bernoulli variance `p*(1-p)` over ≥10 runs per evaluator state. Variance below 0.05 flags the evaluator as toothless — it is not measuring anything useful, and the per-state output includes a recommendation for how to fix it (broaden the judge prompt, tighten the exit-code command, etc.). See the [CLI reference](../reference/CLI.md) for full flag and exit-code documentation.
 
 **`ll-loop calibrate-budget <name>`** — run this before raising `max_steps` to check whether additional iterations will actually earn their token cost. The command reports `⚠ WARN` for evaluators with low variance and `✓ OK` for healthy ones:
 

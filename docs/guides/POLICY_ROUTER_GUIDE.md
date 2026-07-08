@@ -188,11 +188,11 @@ security=88, aggregate=86`. The dispatcher walks the table:
 
 The `classify` evaluator reads `done` and the `route:` map sends the loop to the `done` state.
 
-You don't have to trace the table by hand — the worked trace above shows the step-by-step
-evaluation. `ll-loop simulate policy-refine` can trace FSM state connectivity without
-running real LLM calls, but it cannot evaluate policy rules (shell actions are not
-executed in simulation). To confirm which rule fires for a given score set, trace the
-table manually or run the loop with a real or mocked artifact.
+Tracing the table by hand, as above, is currently the only way to predict which rule
+fires for a given score set. `ll-loop simulate policy-refine` can trace FSM state
+connectivity without running real LLM calls, but it cannot evaluate policy rules (shell
+actions are not executed in simulation) — to confirm a match for real, run the loop with
+a real or mocked artifact.
 
 ## Visual Builder (greenfield)
 
@@ -213,7 +213,8 @@ works over `file://`). It presents a one-page form with two modes:
   valid operators and the numeric-coercion parse-error class is unrepresentable. Each outcome
   card authors its full target state along two axes — **Does** (`action_type` + body: a prompt,
   a skill/command from this project's stamped catalog, or nothing) and **Then** (transition:
-  re-score, go to another outcome, or finish) — so MR-4 dead-ends cannot be expressed.
+  re-score, go to another outcome, or finish) — so dead-end states (the MR-4 pitfall — see
+  the [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md)) cannot be expressed.
 - **Rubric** — one aggregate score with two threshold sliders feeding a fixed high/medium/low
   table (mirrors `lib/rubric-router.yaml`).
 
@@ -380,7 +381,7 @@ Tune `policy-refine` to be stricter — require a high security score before dec
 
    ```bash
    ll-loop validate policy-refine
-   ll-loop run policy-refine
+   ll-loop run policy-refine "artifact.md"
    ```
 
 ## See Also

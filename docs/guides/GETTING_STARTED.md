@@ -8,7 +8,7 @@ The system has three layers you can use independently or together:
 
 - **Issues** — Markdown files in `.issues/` that capture bugs, features, and enhancements. The atomic unit of work. You can use this layer alone indefinitely.
 - **Sprints** — Named batch runs with dependency-aware execution ordering. Useful when you have four or more issues, or issues that must run in sequence.
-- **Loops** — YAML-defined FSM automations that run recurring workflows (quality gates, scheduled scans) without repeated prompting.
+- **Loops** — YAML-defined finite-state machine (FSM) automations that run recurring workflows (quality gates, scheduled scans) without repeated prompting.
 
 The core flow in one line: **observe → capture → refine → implement → complete**.
 
@@ -21,7 +21,19 @@ observe ──→ /ll:capture-issue ──→ /ll:ready-issue ──→ /ll:mana
 
 ## Installation
 
-### Step 1: Install the Plugin
+### Step 1: Install the Python CLI Tools
+
+The CLI tools (`ll-init`, `ll-auto`, `ll-sprint`, `ll-loop`, etc.) run from your terminal and drive automated execution.
+
+```bash
+pip install little-loops
+```
+
+Then run `ll-init` once per project — see [Set Up Your Project](#set-up-your-project) below.
+
+### Step 2: Install the Plugin
+
+The slash commands (`/ll:*`) run inside Claude Code sessions. Install the plugin from within Claude Code:
 
 ```bash
 # Add the GitHub repository as a marketplace source
@@ -36,14 +48,6 @@ For local development, use a local path instead:
 ```bash
 /plugin marketplace add /path/to/little-loops
 /plugin install ll@little-loops
-```
-
-### Step 2: Install the Python CLI Tools
-
-The slash commands run inside Claude Code sessions. The CLI tools (`ll-auto`, `ll-sprint`, `ll-loop`, etc.) run from your terminal and drive automated execution.
-
-```bash
-pip install little-loops
 ```
 
 ### Step 3: Verify
@@ -165,7 +169,7 @@ For a trivial bug, skip this step and go straight to implementation. For anythin
 #    → Plans → implements → runs tests → sets status: done in frontmatter
 ```
 
-When it finishes, the issue file remains in `.issues/bugs/` with `status: done` in its frontmatter.
+When it finishes, the issue file remains in `.issues/bugs/` with `status: done` in its frontmatter (the YAML metadata block at the top of the file).
 
 ### Step 4: Commit
 
@@ -251,7 +255,7 @@ Three scanning commands find problems proactively. Use the table below to pick t
 | Feature gaps relative to what you said you wanted to build | `/ll:scan-product` |
 | A single issue you spotted yourself | `/ll:capture-issue "description"` |
 
-`/ll:scan-codebase` is the right default for most projects. `/ll:audit-architecture` is especially useful when you've just inherited an unfamiliar codebase and want to understand its systemic problems before diving in. `/ll:scan-product` requires a goals doc (`.ll/ll-goals.md`) — `ll-init` creates one automatically, or `scan-product` discovers goals automatically from your README and roadmap docs.
+`/ll:scan-codebase` is the right default for most projects. `/ll:audit-architecture` is especially useful when you've just inherited an unfamiliar codebase and want to understand its systemic problems before diving in. `/ll:scan-product` reads a goals doc (`.ll/ll-goals.md`) when one exists; otherwise it discovers goals from your README and roadmap docs.
 
 ### After Scanning
 
@@ -323,7 +327,7 @@ Once you're comfortable with the basic workflow, each guide covers a deeper area
 
 | Problem | Fix |
 |---------|-----|
-| `ll-init` fails with "project type not detected" | Run `ll-init` with the TUI (no flags) and specify `src_dir`, `test_cmd`, and `lint_cmd` manually. |
+| `ll-init` doesn't detect your project type (falls back to the generic template) | Run `ll-init` with the TUI (no flags) and specify `src_dir`, `test_cmd`, and `lint_cmd` manually. |
 | `/ll:manage-issue` says "issue not found" | Issue IDs are case-sensitive. Run `ll-issues list` to see exact IDs. Check that the issue has `status: open` (not `done` or `cancelled`). |
 | Issue doesn't appear in `ll-issues list` | The file may have a malformed filename. Run `/ll:normalize-issues` to fix naming problems. |
 | You assigned P1 but the issue isn't being processed first | `ll-auto` processes by filename priority prefix. Rename the file or run `/ll:prioritize-issues` to update the prefix. |

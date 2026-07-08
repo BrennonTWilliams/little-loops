@@ -19,7 +19,7 @@ Automatic context management and session continuation for long-running tasks.
 - [Configuration](#configuration)
   - [Full Configuration Options](#full-configuration-options)
   - [Configuration Reference](#configuration-reference)
-  - [Auto-Detect on Session Start](#auto-detect-on-session-start)
+  - [Transcript Baseline Mode (Default)](#transcript-baseline-mode-default)
   - [Token Estimation Weights](#token-estimation-weights)
 - [Files](#files)
 - [Troubleshooting](#troubleshooting)
@@ -39,6 +39,8 @@ Claude Code sessions have a context window limit. When working on complex tasks,
 ## Quick Start
 
 ### Prerequisites
+
+Session handoff ships with the little-loops plugin — install it first if you haven't (see [Getting Started](GETTING_STARTED.md)).
 
 The context monitor hook requires [`jq`](https://jqlang.github.io/jq/) to parse the config file at runtime:
 
@@ -98,7 +100,7 @@ When you want to preserve your work:
 │     ↓                                                           │
 │ Reminder repeats on every tool call until handoff executed      │
 │     ↓                                                           │
-│ /ll:handoff writes .ll/ll-continue-prompt.md                │
+│ /ll:handoff writes .ll/ll-continue-prompt.md                    │
 │     ↓                                                           │
 │ Start new session → /ll:resume → Continue working               │
 └─────────────────────────────────────────────────────────────────┘
@@ -121,7 +123,7 @@ Automation tools handle handoff automatically:
 │     ↓                                                           │
 │ /ll:handoff outputs: "CONTEXT_HANDOFF: Ready for fresh session" │
 │     ↓                                                           │
-│ CLI detects signal, reads .ll/ll-continue-prompt.md         │
+│ CLI detects signal, reads .ll/ll-continue-prompt.md             │
 │     ↓                                                           │
 │ Spawns fresh Claude session with continuation prompt            │
 │     ↓                                                           │
@@ -133,7 +135,7 @@ Automation tools handle handoff automatically:
 
 ### `/ll:handoff`
 
-Generates a continuation prompt capturing current session state. **Summarizes conversation history without running external tools** by default - using the conversation history already in context.
+Generates a continuation prompt capturing current session state. By default it **summarizes the conversation history already in context, without running external tools**.
 
 **Usage:**
 
@@ -295,7 +297,7 @@ ll-sprint run my-sprint --handoff-threshold 85
 ### Transcript Baseline Mode (Default)
 
 > **Advanced** — This section explains internal token estimation mechanics.
-> Most users can skip this. It's useful if you're tuning `threshold` for maximum accuracy.
+> Most users can skip this. It's useful if you're tuning `auto_handoff_threshold` for maximum accuracy.
 
 By default (`use_transcript_baseline: true`), the monitor uses the JSONL transcript at `transcript_path` (provided by the PostToolUse hook payload) as an API-exact baseline:
 

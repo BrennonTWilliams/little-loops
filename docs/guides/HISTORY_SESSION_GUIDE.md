@@ -4,6 +4,8 @@ Long-term observability for your little-loops project: what ran, what changed, w
 
 ## Table of Contents
 
+- [When to Use This Guide](#when-to-use-this-guide)
+- [Querying Recipes](#querying-recipes)
 - [What Is history.db?](#what-is-historydb)
 - [What Gets Recorded](#what-gets-recorded)
 - [Getting Started: Backfill](#getting-started-backfill)
@@ -12,7 +14,7 @@ Long-term observability for your little-loops project: what ran, what changed, w
 - [Planning Skill Injection](#planning-skill-injection)
 - [History Analytics](#history-analytics)
 - [Session Log Tooling (ll-logs)](#session-log-tooling-ll-logs)
-- [Optional: LCM Compaction](#optional-lcm-compaction)
+- [Advanced: LCM Compaction](#advanced-lcm-compaction)
 - [Retention & Pruning](#retention--pruning)
 - [Configuration Reference](#configuration-reference)
 - [See Also](#see-also)
@@ -56,8 +58,8 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | `tool_events` | Every tool call (Bash, Read, Write, etc.) with token counts and cache-hit flag |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
 | `issue_events` | Issue state transitions: captured, started, completed, deferred. v16 added a `session_id` column (indexed) so the `issue_sessions` view no longer relies on timestamp overlap (ENH-2462). |
-| `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; FTS-indexed via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |
-| `loop_events` | FSM state-machine transitions with loop name and retry count |
+| `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; indexed for full-text search (FTS) via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |
+| `loop_events` | FSM (finite-state machine) loop transitions with loop name and retry count |
 | `message_events` | User message content for FTS indexing |
 | `assistant_messages` | Assistant response content with tool-use count |
 | `user_corrections` | Messages matching correction patterns ("no", "don't", "instead", "remember") |
@@ -289,7 +291,7 @@ ll-history root
 ll-history root --expand
 ```
 
-Shows the top-level condensed summary node when LCM compaction is enabled. `--expand` drills down to the underlying message events. See [LCM Compaction](#optional-lcm-compaction) below.
+Shows the top-level condensed summary node when LCM compaction is enabled. `--expand` drills down to the underlying message events. See [LCM Compaction](#advanced-lcm-compaction) below.
 
 ### Test runs
 
@@ -359,8 +361,6 @@ Extracts turn-pair fixtures from session logs for SFT training corpus constructi
 
 ---
 
----
-
 ## Advanced: LCM Compaction
 
 By default, history.db stores raw events only. Enable LCM-style compaction to additionally generate hierarchical summaries:
@@ -384,6 +384,8 @@ When enabled, `ll-session backfill` calls LLM summarization after ingesting sess
 - **Project root node** — a single top-level summary accessible via `ll-history root`
 
 The compaction algorithm (LCM Algorithm 3) uses a three-level escalation: normal LLM → aggressive bullet-point → deterministic truncation.
+
+Three optional keys tune the pass (see [Configuration Reference](#configuration-reference)): `model` and `timeout` control the summarization LLM calls, and `max_level` caps cross-session recursion depth (default: unbounded — recurses until a single root node remains).
 
 > Compaction is disabled by default because it makes background LLM calls during backfill. Enable it when you want `ll-history root` and `ll-session expand/describe` to be useful.
 
@@ -442,6 +444,9 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `history.compaction.enabled` | `false` | LCM summarization during backfill |
 | `history.compaction.budget_tokens` | `4096` | Token budget per summary node |
 | `history.compaction.cross_session_enabled` | `true` | Build cross-session condensed nodes |
+| `history.compaction.model` | `null` | Model override for compaction LLM calls (null = host default) |
+| `history.compaction.timeout` | `60` | Timeout (seconds) per compaction LLM call; on timeout, escalation falls through to deterministic truncation |
+| `history.compaction.max_level` | `null` | Max cross-session condensation depth (null = recurse until one root node remains) |
 | `analytics.retention.min_project_age_days` | `365` | Min project age before pruning is allowed |
 | `analytics.retention.min_db_size_mb` | `800` | Min DB size before pruning is allowed |
 | `analytics.retention.raw_event_max_age_days` | `90` | Age threshold for raw event deletion |

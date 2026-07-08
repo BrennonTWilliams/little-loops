@@ -13,6 +13,8 @@
 - [Troubleshooting](#troubleshooting)
 - [Practical Patterns](#practical-patterns)
 - [Using Learning Tests in Issue Lifecycle Gates](#using-learning-tests-in-issue-lifecycle-gates)
+- [Discoverability: PreToolUse Gate](#discoverability-pretooluse-gate)
+- [Release Gate](#release-gate)
 - [Further Reading](#further-reading)
 
 ---
@@ -27,7 +29,7 @@ little-loops gives you three things to make this routine:
 
 - `/ll:explore-api` — a skill that runs the exploration and writes the record for you.
 - `.ll/learning-tests/` — a per-project registry of YAML-frontmatter Markdown files, one per target.
-- `ll-learning-tests` — a read-only CLI other skills and FSM loops use to check whether a target is already proven before re-doing the work.
+- `ll-learning-tests` — a read-only CLI other skills and FSM (finite-state machine) loops use to check whether a target is already proven before re-doing the work.
 
 The point is to stop re-discovering the same API behavior every session. Once a target is proven, every future agent gets the verified interface for free.
 
@@ -62,7 +64,7 @@ Enable automatic discovery of unproven API assumptions as you write code by sett
 
 ### 1. Ingest
 
-The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including anything previously mirrored by `/ll:scrape-docs`), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
+The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. by the `adopt-third-party-api` loop), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
 
 ### 2. Hypothesize
 
@@ -255,7 +257,7 @@ For automated detection of stale records across the entire registry — e.g., af
 ll-loop run learning-tests-audit
 ```
 
-The loop enumerates installed packages (pip + npm), uses the LLM to map record targets to canonical package names, queries PyPI and npm registries for newer versions, bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report under `.loops/runs/learning-tests-audit/report-<timestamp>.md`. See `docs/guides/LOOPS_GUIDE.md` → API Adoption for details.
+The loop enumerates installed packages (pip + npm), uses the LLM to map record targets to canonical package names, queries PyPI and npm registries for newer versions, bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report under `.loops/runs/learning-tests-audit/report-<timestamp>.md`. See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for details.
 
 **`/ll:explore-api` asks to overwrite a record I want to keep**
 
@@ -355,7 +357,7 @@ Enabling the gate:
 ```
 [ll: proof-first hint] No learning-test record found for "stripe".
 You're about to write integration code based on training-data assumptions.
-Consider: ll-loop run proof-first-task --context task="<your task>"
+Consider: ll-loop run proof-first-task "<your task>"
 ```
 
 The tool call proceeds — the nudge is informational. Set `mode: "block"` to require a proven record before any write, which is appropriate for teams where all external API assumptions must be pre-verified.
@@ -378,7 +380,7 @@ The gate caches each package lookup for the lifetime of the Python process (one 
 
 ## Release Gate
 
-When `learning_tests.enabled` is `true`, `ll-manage-release` runs a pre-release audit that scans actively-imported packages across `learning_tests.scan_dirs` source files (via `get_imported_packages()`) and cross-references them against the learning-test registry. If any imported package has a `refuted` record or a `proven` record older than `stale_after_days`, the gate reports or blocks depending on the `release_gate` config value.
+When `learning_tests.enabled` is `true`, `/ll:manage-release` runs a pre-release audit that scans actively-imported packages across `learning_tests.scan_dirs` source files (via `get_imported_packages()`) and cross-references them against the learning-test registry. If any imported package has a `refuted` record or a `proven` record older than `stale_after_days`, the gate reports or blocks depending on the `release_gate` config value.
 
 **What it flags:**
 
@@ -406,7 +408,7 @@ requests                       refuted    2026-04-15     64
 ✗ Release blocked: fix or re-prove the above records, or set release_gate: warn to proceed.
 ```
 
-For emergency releases, set `release_gate: "warn"` in `.ll/ll-config.json` temporarily — `ll-manage-release` has no `--skip-learning-gate` flag.
+For emergency releases, set `release_gate: "warn"` in `.ll/ll-config.json` temporarily — `/ll:manage-release` has no `--skip-learning-gate` flag.
 
 ---
 
