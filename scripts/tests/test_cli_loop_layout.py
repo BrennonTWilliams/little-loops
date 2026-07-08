@@ -169,17 +169,19 @@ class TestBoxKindColor:
         st = self._state(action="do x", action_type="prompt")
         assert _box_kind_color(st) == "35"
 
-    def test_shell_explicit_maps_to_cyan(self) -> None:
+    def test_shell_explicit_maps_to_bright_black(self) -> None:
+        # Per UX request: shell states render as bright black (gray) to recede
+        # on the warm-paper dark theme palette (cyan 36 was rendering greenish).
         from little_loops.cli.loop.layout import _box_kind_color
 
         st = self._state(action="echo hi", action_type="shell")
-        assert _box_kind_color(st) == "36"
+        assert _box_kind_color(st) == "90"
 
     def test_bare_action_defaults_to_shell(self) -> None:
         from little_loops.cli.loop.layout import _box_kind_color
 
         st = self._state(action="echo hi", action_type=None)
-        assert _box_kind_color(st) == "36"
+        assert _box_kind_color(st) == "90"
 
     def test_mcp_tool_maps_to_yellow(self) -> None:
         from little_loops.cli.loop.layout import _box_kind_color
@@ -299,7 +301,7 @@ class TestDiagramKindColors:
             title_only=True,
         )
 
-        assert "\033[36" in diagram, "shell action_type should color the box cyan"
+        assert "\033[90" in diagram, "shell action_type should color the box bright black (gray)"
         assert "\033[35" in diagram, "sub-loop state should be magenta"
         assert "\033[2m" in diagram, "terminal state should be dim"
 

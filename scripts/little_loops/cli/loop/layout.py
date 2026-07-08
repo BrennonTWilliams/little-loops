@@ -125,7 +125,7 @@ _ROUTE_BADGE = "\u2443"  # ⑃
 _ACTION_TYPE_KIND_COLORS: dict[str, str] = {
     "slash_command": "34",  # blue
     "prompt": "35",  # magenta
-    "shell": "36",  # cyan
+    "shell": "90",  # bright black (gray) — recedes on warm-paper dark theme
     "mcp_tool": "33",  # yellow
 }
 
