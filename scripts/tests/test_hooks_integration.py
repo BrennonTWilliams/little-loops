@@ -44,7 +44,7 @@ class TestContextMonitor:
         return Path(__file__).parent.parent.parent / "hooks/scripts/context-monitor.sh"
 
     @pytest.fixture
-    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> Path:
+    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """Create a test config file."""
         config = {
             "context_monitor": {
@@ -58,7 +58,9 @@ class TestContextMonitor:
         config_file.write_text(json.dumps(config, indent=2))
         return config_file
 
-    def test_concurrent_updates(self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_concurrent_updates(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Simulate concurrent PostToolUse hooks updating state file."""
         # Change to temp directory for test
 
@@ -108,10 +110,9 @@ class TestContextMonitor:
         assert state["tool_calls"] == 4, f"Expected 4 tool calls, got {state['tool_calls']}"
         assert state["estimated_tokens"] > 2000, "Token count seems too low"
 
-
     def test_transcript_baseline_used_when_jsonl_present(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that JSONL transcript token counts are used as the baseline."""
 
         monkeypatch.chdir(tmp_path)
@@ -161,10 +162,9 @@ class TestContextMonitor:
         # estimated_tokens should be baseline + current-turn delta (not a full heuristic accumulation)
         assert state["estimated_tokens"] > expected_baseline
 
-
     def test_transcript_baseline_falls_back_when_absent(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that pure heuristics are used when transcript_path is absent."""
 
         monkeypatch.chdir(tmp_path)
@@ -196,10 +196,9 @@ class TestContextMonitor:
         # Heuristic estimate should still be non-zero
         assert state["estimated_tokens"] > 0
 
-
     def test_state_file_corruption_resistance(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that atomic writes prevent state file corruption."""
 
         monkeypatch.chdir(tmp_path)
@@ -228,10 +227,9 @@ class TestContextMonitor:
         state = json.loads(state_file.read_text())
         assert state["tool_calls"] == 5
 
-
     def test_env_var_overrides_config_threshold(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """LL_HANDOFF_THRESHOLD env var overrides config auto_handoff_threshold."""
         import os
 
@@ -263,10 +261,9 @@ class TestContextMonitor:
         assert result.returncode == 2
         assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
 
-
     def test_env_var_overrides_context_limit(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """LL_CONTEXT_LIMIT env var overrides config context_limit_estimate."""
         import os
 
@@ -300,8 +297,9 @@ class TestContextMonitor:
         assert result.returncode == 2
         assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
 
-
-    def test_known_model_auto_detection(self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_known_model_auto_detection(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Known model in JSONL triggers auto-detection of 200K context limit.
 
         Uses baseline of 180K tokens. At 200K limit: 90% → triggers handoff (exit 2).
@@ -312,9 +310,7 @@ class TestContextMonitor:
 
         config_link = tmp_path / ".ll" / "ll-config.json"
         config_link.parent.mkdir(exist_ok=True)
-        config_link.write_text(
-            test_config.read_text()
-        )  # no context_limit_estimate -> auto-detect
+        config_link.write_text(test_config.read_text())  # no context_limit_estimate -> auto-detect
 
         transcript_file = tmp_path / "transcript.jsonl"
         assistant_entry = {
@@ -355,10 +351,9 @@ class TestContextMonitor:
             f"Expected '200000' in stderr to confirm auto-detected limit. stderr: {result.stderr}"
         )
 
-
     def test_1m_model_suffix_auto_detection(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """[1m]-suffixed model triggers auto-detection of 1M context limit.
 
         Uses baseline of 700K tokens. At 1M limit: 70% → no trigger (exit 0).
@@ -417,8 +412,9 @@ class TestContextMonitor:
             f"Full state: {state}"
         )
 
-
-    def test_unknown_model_config_fallback(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_unknown_model_config_fallback(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Unknown model falls back to context_limit_estimate from config.
 
         Uses baseline of 45K tokens with config limit 50K. At 50K: 90% → triggers (exit 2).
@@ -479,10 +475,9 @@ class TestContextMonitor:
             f"Expected '50000' in stderr to confirm config fallback limit. stderr: {result.stderr}"
         )
 
-
     def test_reminder_rate_limited_second_call(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Second call above threshold within 60s exits 0 silently (rate-limited).
 
         First call should produce exit 2 with stderr. Second call within 60s should
@@ -530,10 +525,9 @@ class TestContextMonitor:
             f"Expected no stderr on rate-limited call, got: {second.stderr!r}"
         )
 
-
     def test_state_contains_last_reminder_at_after_exit2(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """State file contains last_reminder_at timestamp after exit 2 fires."""
         import os
 
@@ -568,10 +562,9 @@ class TestContextMonitor:
         assert state["last_reminder_at"] is not None
         assert state["last_reminder_at"] != ""
 
-
     def test_fresh_state_with_handoff_file_sets_handoff_complete_false(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Fresh state initializes handoff_complete=false even when ll-continue-prompt.md exists.
 
         The continue-prompt file persists across sessions and must NOT suppress reminders in a
@@ -611,10 +604,9 @@ class TestContextMonitor:
             f"got: {state['handoff_complete']}"
         )
 
-
     def test_fresh_state_without_handoff_file_sets_handoff_complete_false(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Fresh state initializes handoff_complete=false when ll-continue-prompt.md is absent."""
 
         monkeypatch.chdir(tmp_path)
@@ -648,10 +640,9 @@ class TestContextMonitor:
             f"Expected handoff_complete=false when no handoff file, got: {state['handoff_complete']}"
         )
 
-
     def test_reminder_fires_again_after_cooldown_expires(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Reminder fires again (exit 2) when last_reminder_at is more than 60s ago."""
         import os
         from datetime import UTC, datetime, timedelta
@@ -702,10 +693,9 @@ class TestContextMonitor:
             f"stderr: {result.stderr}"
         )
 
-
     def test_detected_model_cached_in_state(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Detected model from transcript should be cached in state file."""
 
         monkeypatch.chdir(tmp_path)
@@ -754,10 +744,9 @@ class TestContextMonitor:
         )
         assert state["detected_model"] == "claude-sonnet-4-6"
 
-
     def test_large_tool_response_completes_within_timeout(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Hook should complete within 5s even with large tool_response and transcript."""
         import time
 
@@ -812,10 +801,9 @@ class TestContextMonitor:
             f"Hook took {elapsed:.2f}s, exceeding 5s timeout. stderr: {result.stderr}"
         )
 
-
     def test_result_token_count_used_when_present(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """When result_token_count > 0 in state, context-monitor uses it instead of heuristics."""
 
         monkeypatch.chdir(tmp_path)
@@ -859,10 +847,9 @@ class TestContextMonitor:
             f"(result_token_count path). Full state: {state}"
         )
 
-
     def test_result_token_count_zero_falls_back_to_heuristics(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """When result_token_count is 0 in state, context-monitor falls back to heuristics."""
 
         monkeypatch.chdir(tmp_path)
@@ -904,8 +891,9 @@ class TestContextMonitor:
             f"Full state: {state}"
         )
 
-
-    def test_1m_model_limit_resolution(self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_1m_model_limit_resolution(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Transcript baseline exceeding 200k auto-upgrades context limit to 1M.
 
         Uses baseline of 250K tokens on claude-opus-4-8 (maps to 200k by model name).
@@ -959,8 +947,9 @@ class TestContextMonitor:
                 f"Expected context_limit=1000000 in state. Full state: {state}"
             )
 
-
-    def test_sentinel_1000000_honored_as_explicit_override(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_sentinel_1000000_honored_as_explicit_override(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Explicit context_limit_estimate: 1000000 in config is honored (not treated as sentinel).
 
         Unknown model with 900k baseline and config limit 1000000. 900k / 1M = 90% -> trigger (exit 2).
@@ -1018,10 +1007,9 @@ class TestContextMonitor:
             f"Expected '1000000' in stderr to confirm explicit 1M limit. stderr: {result.stderr}"
         )
 
-
     def test_impossible_baseline_clamped(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Impossible token count (> 1.05x limit) is clamped to prior estimate, no spurious trigger.
 
         Pre-write state with result_token_count=1517046 (> 200k limit x 1.05 = 210k).
@@ -1067,10 +1055,9 @@ class TestContextMonitor:
             f"Full state: {state}"
         )
 
-
     def test_transcript_baseline_refreshed_on_new_turn(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Baseline re-reads JSONL when mtime advances (new turn); cached otherwise.
 
         Regression test for BUG-2145: baseline was read once and cached for the entire
@@ -1152,10 +1139,9 @@ class TestContextMonitor:
             "last_baseline_mtime should advance after new turn"
         )
 
-
     def test_system_prompt_baseline_not_added_when_transcript_available(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Regression test for BUG-2146: SYSTEM_PROMPT_BASELINE must not be added when
         TRANSCRIPT_BASELINE > 0.
 
@@ -1215,7 +1201,6 @@ class TestContextMonitor:
         )
 
 
-
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""
 
@@ -1225,7 +1210,7 @@ class TestUserPromptCheck:
         return Path(__file__).parent.parent.parent / "hooks/scripts/user-prompt-check.sh"
 
     @pytest.fixture
-    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> Path:
+    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """Create test config with prompt optimization disabled."""
         config = {"prompt_optimization": {"enabled": False}}
         config_file = tmp_path / ".ll" / "ll-config.json"
@@ -1249,8 +1234,13 @@ class TestUserPromptCheck:
         ],
     )
     def test_special_characters_no_injection(
-        self, hook_script: Path, test_config: Path, tmp_path: Path, prompt: str
-    , monkeypatch: pytest.MonkeyPatch):
+        self,
+        hook_script: Path,
+        test_config: Path,
+        tmp_path: Path,
+        prompt: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
         """Verify special characters don't cause shell injection or template corruption."""
 
         monkeypatch.chdir(tmp_path)
@@ -1279,7 +1269,6 @@ class TestUserPromptCheck:
             # Skipped - no error output expected
             pass
 
-
     @pytest.fixture
     def enabled_config(self, tmp_path: Path) -> Path:
         """Create test config with prompt optimization enabled."""
@@ -1290,8 +1279,12 @@ class TestUserPromptCheck:
         return config_file
 
     def test_optimization_template_injected_when_claude_plugin_root_set(
-        self, hook_script: Path, enabled_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self,
+        hook_script: Path,
+        enabled_config: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
         """Regression test: prompt optimization must not silently fail when CLAUDE_PLUGIN_ROOT is set.
 
         The bug: HOOK_PROMPT_FILE used CLAUDE_PLUGIN_ROOT which resolves to
@@ -1306,9 +1299,7 @@ class TestUserPromptCheck:
         config_link.parent.mkdir(exist_ok=True)
         config_link.write_text(enabled_config.read_text())
 
-        input_data = {
-            "prompt": "This is a qualifying prompt that is longer than ten characters"
-        }
+        input_data = {"prompt": "This is a qualifying prompt that is longer than ten characters"}
 
         # Set CLAUDE_PLUGIN_ROOT to the project root (not hooks/ dir) to reproduce the bug.
         # With the bug: path resolves to $CLAUDE_PLUGIN_ROOT/prompts/ (no such dir) → empty output.
@@ -1326,9 +1317,7 @@ class TestUserPromptCheck:
             env=env,
         )
 
-        assert result.returncode == 0, (
-            f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
         assert result.stdout.strip(), (
             "Prompt optimization produced no output — template was not injected. "
             "HOOK_PROMPT_FILE path is likely wrong when CLAUDE_PLUGIN_ROOT is set."
@@ -1371,8 +1360,12 @@ class TestIssueCompletionLog:
         ],
     )
     def test_single_quote_in_transcript_path_appends_log(
-        self, hook_script: Path, tmp_path: Path, transcript_name: str
-    , monkeypatch: pytest.MonkeyPatch):
+        self,
+        hook_script: Path,
+        tmp_path: Path,
+        transcript_name: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
         """Session log entry is appended even when transcript path contains single quotes.
 
         Paths with single quotes used to break shell interpolation into the Python
@@ -1405,9 +1398,7 @@ class TestIssueCompletionLog:
             timeout=10,
         )
 
-        assert result.returncode == 0, (
-            f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"Hook exited non-zero: {result.returncode}\n{result.stderr}"
         content = issue_file.read_text()
         assert "hook:posttooluse-status-done" in content, (
             f"Session log entry not appended for transcript path {transcript_name!r}. "
@@ -1417,7 +1408,9 @@ class TestIssueCompletionLog:
             f"Transcript path {transcript_name!r} missing from session log entry."
         )
 
-    def test_hook_exits_zero_when_ll_issues_fails(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_hook_exits_zero_when_ll_issues_fails(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Hook exits 0 even when ll-issues exits non-zero.
 
         The extract-from-completed call added in ENH-2152 runs in a background
@@ -1469,7 +1462,9 @@ class TestDuplicateIssueId:
         """Path to check-duplicate-issue-id.sh."""
         return Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id.sh"
 
-    def test_concurrent_duplicate_detection(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_concurrent_duplicate_detection(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test duplicate check with concurrent Write attempts."""
 
         monkeypatch.chdir(tmp_path)
@@ -1518,8 +1513,9 @@ class TestDuplicateIssueId:
         allowed_count = sum(1 for r in results if "allow" in r.stdout.lower())
         assert allowed_count >= 1, "At least one should be allowed"
 
-
-    def test_config_fallback_to_root_ll_config(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_config_fallback_to_root_ll_config(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that script reads issues.base_dir from ll-config.json when .claude/ config absent."""
 
         monkeypatch.chdir(tmp_path)
@@ -1553,8 +1549,9 @@ class TestDuplicateIssueId:
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
 
-
-    def test_null_byte_in_filename(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_null_byte_in_filename(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that null-terminated find handles unusual filenames correctly."""
 
         monkeypatch.chdir(tmp_path)
@@ -1584,8 +1581,9 @@ class TestDuplicateIssueId:
         # Should detect duplicate despite spaces in existing filename
         assert "deny" in result.stdout.lower(), "Should deny duplicate"
 
-
-    def test_cross_type_integer_collision(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_cross_type_integer_collision(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that write is denied when same integer is used with a different type prefix."""
 
         monkeypatch.chdir(tmp_path)
@@ -1633,7 +1631,6 @@ class TestDuplicateIssueId:
         )
 
 
-
 class TestDuplicateIssueIdPost:
     """Test check-duplicate-issue-id-post.sh PostToolUse reactive deletion."""
 
@@ -1648,7 +1645,9 @@ class TestDuplicateIssueIdPost:
         """Build JSON stdin simulating a PostToolUse Write event."""
         return json.dumps({"tool_name": "Write", "tool_input": {"file_path": file_path}})
 
-    def test_unique_issue_not_deleted(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_unique_issue_not_deleted(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A newly written file with a unique integer ID is left intact."""
 
         monkeypatch.chdir(tmp_path)
@@ -1667,12 +1666,12 @@ class TestDuplicateIssueIdPost:
             timeout=5,
         )
 
-        assert result.returncode == 0, (
-            f"Expected exit 0, got {result.returncode}: {result.stderr}"
-        )
+        assert result.returncode == 0, f"Expected exit 0, got {result.returncode}: {result.stderr}"
         assert new_file.exists(), "Unique issue file should not be deleted"
 
-    def test_duplicate_file_deleted_and_exit2(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_duplicate_file_deleted_and_exit2(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A newly written file whose integer ID already exists is deleted; hook exits 2."""
 
         monkeypatch.chdir(tmp_path)
@@ -1701,7 +1700,9 @@ class TestDuplicateIssueIdPost:
         assert existing.exists(), "Original file should remain"
         assert "007" in result.stderr, f"Feedback should mention integer: {result.stderr}"
 
-    def test_cross_type_duplicate_deleted(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_cross_type_duplicate_deleted(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A newly written file whose integer collides with a different-type file is deleted."""
 
         monkeypatch.chdir(tmp_path)
@@ -1731,7 +1732,9 @@ class TestDuplicateIssueIdPost:
         assert not duplicate.exists(), "Cross-type duplicate should be deleted"
         assert existing.exists(), "Original bug file should remain"
 
-    def test_non_issue_file_ignored(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_non_issue_file_ignored(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Files outside the issues directory are ignored without error."""
 
         monkeypatch.chdir(tmp_path)
@@ -1751,7 +1754,9 @@ class TestDuplicateIssueIdPost:
         assert result.returncode == 0, f"Expected exit 0 for non-issue file: {result.stderr}"
         assert other_file.exists(), "Non-issue file should not be touched"
 
-    def test_non_write_tool_ignored(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_non_write_tool_ignored(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Non-Write tool events (e.g., Bash) are ignored immediately."""
 
         monkeypatch.chdir(tmp_path)
@@ -1805,7 +1810,9 @@ class TestSessionStartValidation:
         """Path to the Claude Code session-start adapter."""
         return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/session-start.sh"
 
-    def test_warns_sync_without_github(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_warns_sync_without_github(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Warns when sync.enabled is true but sync.github is empty."""
 
         monkeypatch.chdir(tmp_path)
@@ -1823,7 +1830,9 @@ class TestSessionStartValidation:
 
         assert "sync.enabled is true but sync.github is not configured" in result.stderr
 
-    def test_warns_documents_without_categories(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_warns_documents_without_categories(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Warns when documents.enabled is true but no categories."""
 
         monkeypatch.chdir(tmp_path)
@@ -1839,11 +1848,11 @@ class TestSessionStartValidation:
             timeout=5,
         )
 
-        assert (
-            "documents.enabled is true but no document categories configured" in result.stderr
-        )
+        assert "documents.enabled is true but no document categories configured" in result.stderr
 
-    def test_no_warnings_when_properly_configured(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_no_warnings_when_properly_configured(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """No warnings when enabled features have required sub-configuration."""
 
         monkeypatch.chdir(tmp_path)
@@ -1880,7 +1889,9 @@ class TestSessionStartValidation:
 
         assert "Warning:" not in result.stderr
 
-    def test_no_warnings_when_features_disabled(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_no_warnings_when_features_disabled(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """No warnings when features are disabled."""
 
         monkeypatch.chdir(tmp_path)
@@ -1907,15 +1918,15 @@ class TestSessionStartValidation:
 
         assert "Warning:" not in result.stderr
 
-    def test_warns_design_tokens_enabled_without_path(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_warns_design_tokens_enabled_without_path(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Warns when design_tokens.enabled is true but the path does not exist."""
 
         monkeypatch.chdir(tmp_path)
         config_dir = tmp_path / ".ll"
         config_dir.mkdir(exist_ok=True)
-        (config_dir / "ll-config.json").write_text(
-            json.dumps({"design_tokens": {"enabled": True}})
-        )
+        (config_dir / "ll-config.json").write_text(json.dumps({"design_tokens": {"enabled": True}}))
 
         result = subprocess.run(
             [str(hook_script)],
@@ -1937,7 +1948,9 @@ class TestPrecompactState:
         """Path to the Claude Code precompact adapter (FEAT-1455)."""
         return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact.sh"
 
-    def test_atomic_write_with_missing_directory(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_atomic_write_with_missing_directory(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test that state is written even if thoughts directory doesn't exist."""
 
         monkeypatch.chdir(tmp_path)
@@ -1965,8 +1978,9 @@ class TestPrecompactState:
         assert "recent_plan_files" in state
         assert state["recent_plan_files"] == []  # Empty since dir doesn't exist
 
-
-    def test_concurrent_precompact_writes(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_concurrent_precompact_writes(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test concurrent precompact hook invocations."""
 
         monkeypatch.chdir(tmp_path)
@@ -1995,7 +2009,6 @@ class TestPrecompactState:
         assert state["preserved"] is True
 
 
-
 class TestPrecompactHandoff:
     """Integration tests for precompact-handoff.sh shell adapter.
 
@@ -2010,7 +2023,9 @@ class TestPrecompactHandoff:
             Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/precompact-handoff.sh"
         )
 
-    def test_produces_prompt_file_within_2kb(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_produces_prompt_file_within_2kb(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(a) Hook writes ll-continue-prompt.md ≤ 2KB and exits 2."""
         monkeypatch.chdir(tmp_path)
         result = subprocess.run(
@@ -2025,7 +2040,9 @@ class TestPrecompactHandoff:
         assert prompt_file.exists()
         assert len(prompt_file.read_bytes()) <= 2048
 
-    def test_priority_tier_dropping_under_size_pressure(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_priority_tier_dropping_under_size_pressure(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(b) Output stays ≤ 2KB even with a large in-progress issues list."""
         monkeypatch.chdir(tmp_path)
         ll_dir = tmp_path / ".ll"
@@ -2043,7 +2060,9 @@ class TestPrecompactHandoff:
         assert prompt_file.exists()
         assert len(prompt_file.read_bytes()) <= 2048
 
-    def test_idempotency_skips_when_prompt_is_fresh(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_idempotency_skips_when_prompt_is_fresh(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(c) Exit 0 (no write) when ll-continue-prompt.md mtime > compacted_at."""
 
         monkeypatch.chdir(tmp_path)
@@ -2067,7 +2086,9 @@ class TestPrecompactHandoff:
         )
         assert result.returncode == 0
 
-    def test_schema_has_required_resume_sections(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_schema_has_required_resume_sections(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(d) Produced file has YAML frontmatter, ## Intent, and ## Next Steps."""
         monkeypatch.chdir(tmp_path)
         result = subprocess.run(
@@ -2084,7 +2105,9 @@ class TestPrecompactHandoff:
         assert "## Intent" in content
         assert "## Next Steps" in content
 
-    def test_event_log_deduplicated_file_edits(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_event_log_deduplicated_file_edits(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(e) Event log with duplicate file events → single entry in ll-continue-prompt.md."""
 
         monkeypatch.chdir(tmp_path)
@@ -2121,7 +2144,9 @@ class TestPrecompactHandoff:
         content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
         assert content.count("scripts/bar.py") == 1
 
-    def test_event_log_unresolved_error_in_output(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_event_log_unresolved_error_in_output(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """(f) Unresolved error event → subject appears in Unresolved Errors section."""
 
         monkeypatch.chdir(tmp_path)
@@ -2185,7 +2210,9 @@ class TestScratchPadRedirect:
             timeout=5,
         )
 
-    def test_disabled_noop(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_disabled_noop(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """When scratch_pad.enabled is false, hook allows unchanged."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=False)
@@ -2202,7 +2229,9 @@ class TestScratchPadRedirect:
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert "updatedInput" not in output["hookSpecificOutput"]
 
-    def test_non_automation_noop(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_non_automation_noop(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """When permission_mode is not bypassPermissions, hook is a no-op."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2219,7 +2248,9 @@ class TestScratchPadRedirect:
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert "updatedInput" not in output["hookSpecificOutput"]
 
-    def test_bash_rewritten(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_bash_rewritten(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Allowlisted Bash command in automation context is rewritten to tee+tail."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2243,7 +2274,9 @@ class TestScratchPadRedirect:
         assert "additionalContext" in hso
         assert ".loops/tmp/scratch/" in hso["additionalContext"]
 
-    def test_bash_non_allowlist_allow(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_bash_non_allowlist_allow(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Non-allowlisted Bash command (e.g. git status) is allowed unchanged."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2260,7 +2293,9 @@ class TestScratchPadRedirect:
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert "updatedInput" not in output["hookSpecificOutput"]
 
-    def test_read_over_threshold_allowed(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_read_over_threshold_allowed(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Read is never intercepted, even for a large filtered-extension file (BUG-2357).
 
         Denying a Read leaves the Edit/Write "file has been read" precondition
@@ -2285,7 +2320,9 @@ class TestScratchPadRedirect:
         assert hso["permissionDecision"] == "allow"
         assert "updatedInput" not in hso
 
-    def test_read_small_file_allow(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_read_small_file_allow(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Small file Read is allowed unchanged."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2303,7 +2340,9 @@ class TestScratchPadRedirect:
         output = json.loads(result.stdout)
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
 
-    def test_read_unfiltered_extension_allow(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_read_unfiltered_extension_allow(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Read of large file with non-filtered extension is allowed."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2321,7 +2360,9 @@ class TestScratchPadRedirect:
         output = json.loads(result.stdout)
         assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
 
-    def test_python_dash_m_pytest_rewritten(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_python_dash_m_pytest_rewritten(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """`python -m pytest ...` is unwrapped to `pytest` and redirected (BUG-2407)."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2343,7 +2384,9 @@ class TestScratchPadRedirect:
         assert "tail -20" in new_cmd
         assert "python -m pytest scripts/tests/" in new_cmd
 
-    def test_python3_dash_m_mypy_rewritten(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_python3_dash_m_mypy_rewritten(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """`python3 -m mypy ...` is unwrapped to `mypy` and redirected (BUG-2407)."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2363,7 +2406,9 @@ class TestScratchPadRedirect:
         new_cmd = hso["updatedInput"]["command"]
         assert ".loops/tmp/scratch/" in new_cmd
 
-    def test_python_dash_m_non_allowlisted_module_allow(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_python_dash_m_non_allowlisted_module_allow(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """`python -m <module not in allowlist>` is allowed unchanged."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path, enabled=True)
@@ -2420,7 +2465,9 @@ class TestScratchPadRedirectBug2420:
             timeout=5,
         )
 
-    def test_already_redirecting_command_passthrough(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_already_redirecting_command_passthrough(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A command that already manages its own output (`>`) is passed through
         unchanged — appending a second redirect would bind to the trailing
         segment and misroute the real output (defect 1)."""
@@ -2434,7 +2481,9 @@ class TestScratchPadRedirectBug2420:
             "a command already managing its own output must not be re-wrapped"
         )
 
-    def test_tee_command_passthrough(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_tee_command_passthrough(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A command piping to `tee` already manages its output → passthrough."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path)
@@ -2443,7 +2492,9 @@ class TestScratchPadRedirectBug2420:
         hso = json.loads(result.stdout)["hookSpecificOutput"]
         assert "updatedInput" not in hso
 
-    def test_compound_command_group_wrapped(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_compound_command_group_wrapped(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A bare compound command (`;` between segments) is group-wrapped so a
         single redirect captures every segment, not just the trailing one."""
         monkeypatch.chdir(tmp_path)
@@ -2458,7 +2509,9 @@ class TestScratchPadRedirectBug2420:
         # ...and exactly one output redirect targets the scratch file.
         assert new_cmd.count("> .loops/tmp/scratch/") == 1
 
-    def test_rewrite_recreates_scratch_dir(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_rewrite_recreates_scratch_dir(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """The rewritten command recreates the scratch dir so it exists at
         execution time even if a prior sweep removed it (defect 2 belt-and-suspenders)."""
         monkeypatch.chdir(tmp_path)
@@ -2470,8 +2523,8 @@ class TestScratchPadRedirectBug2420:
         assert "mkdir -p .loops/tmp/scratch" in hso["updatedInput"]["command"]
 
     def test_compound_command_execution_captures_all_segments(
-        self, hook_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch):
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Execution-level: running the rewritten compound command lands BOTH
         segments' output in the scratch file, not just the trailing one."""
         monkeypatch.chdir(tmp_path)
@@ -2491,7 +2544,9 @@ class TestScratchPadRedirectBug2420:
             f"both segments' output must be captured; got: {contents!r}"
         )
 
-    def test_rewrite_preserves_nonzero_exit_code(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_rewrite_preserves_nonzero_exit_code(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """Execution-level: the wrapped command's FAILING exit status must survive.
 
         A bare `( CMD ) > file 2>&1; tail file` returns `tail`'s status (≈0),
@@ -2516,7 +2571,9 @@ class TestScratchPadRedirectBug2420:
         assert scratch_files, "scratch file was not created"
         assert scratch_files[0].read_text().strip(), "tail summary must still be captured"
 
-    def test_rewrite_preserves_zero_exit_code(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_rewrite_preserves_zero_exit_code(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A succeeding wrapped command must still report exit 0 (no false failure)."""
         monkeypatch.chdir(tmp_path)
         self._write_config(tmp_path)
@@ -2566,7 +2623,9 @@ class TestScratchCleanupSessionEnd:
         offending = [ln for ln in code_lines if "rm -rf" in ln and "scratch" in ln]
         assert not offending, f"must not blindly rm -rf the shared scratch dir: {offending!r}"
 
-    def test_scratch_cleanup_never_fails_when_dir_absent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_scratch_cleanup_never_fails_when_dir_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """scratch-cleanup.sh must exit 0 even when the scratch dir is absent."""
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
@@ -2576,7 +2635,9 @@ class TestScratchCleanupSessionEnd:
         )
         assert result.returncode == 0
 
-    def test_scratch_cleanup_preserves_file_without_pid_suffix(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_scratch_cleanup_preserves_file_without_pid_suffix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """BUG-2525: a scratch file written without the -<pid> suffix convention
         (e.g. user-typed `> .loops/tmp/scratch/test-results.txt`) must survive
         the SessionEnd sweep — the cleanup only owns files its sibling
@@ -2595,7 +2656,9 @@ class TestScratchCleanupSessionEnd:
         assert user_file.exists(), "user-typed scratch file (no -<pid> suffix) must survive cleanup"
         assert scratch.exists(), "scratch dir must survive while a user-typed file remains"
 
-    def test_scratch_cleanup_preserves_file_owned_by_live_process(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_scratch_cleanup_preserves_file_owned_by_live_process(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A scratch file whose owning PID is still alive must survive cleanup.
 
         Regression test for the cross-process collision: a concurrent
@@ -2618,7 +2681,9 @@ class TestScratchCleanupSessionEnd:
         assert owned.exists(), "file owned by a live PID must not be deleted"
         assert scratch.exists(), "dir must survive while a live-owned file remains"
 
-    def test_scratch_cleanup_removes_file_owned_by_dead_process(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_scratch_cleanup_removes_file_owned_by_dead_process(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         """A scratch file whose owning PID is no longer alive is pruned."""
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
@@ -2679,7 +2744,9 @@ class TestContextHandoffSentinel:
         """Path to context-handoff-sentinel.sh."""
         return Path(__file__).parent.parent.parent / "hooks/scripts/context-handoff-sentinel.sh"
 
-    def test_sentinel_written_above_threshold(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sentinel_written_above_threshold(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Sentinel file is written when estimated_tokens >= sentinel_threshold."""
 
         monkeypatch.chdir(tmp_path)
@@ -2714,8 +2781,9 @@ class TestContextHandoffSentinel:
         assert data["usage_percent"] >= 50
         assert data["token_count"] == 150000
 
-
-    def test_sentinel_not_written_below_threshold(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sentinel_not_written_below_threshold(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Sentinel file is NOT written when token usage is below threshold."""
 
         monkeypatch.chdir(tmp_path)
@@ -2743,10 +2811,9 @@ class TestContextHandoffSentinel:
         sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
         assert not sentinel_file.exists(), "Sentinel written despite low usage"
 
-
     def test_sentinel_not_written_when_handoff_complete(
-        self, hook_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Sentinel is skipped when handoff_complete=true (session already handed off)."""
 
         monkeypatch.chdir(tmp_path)
@@ -2774,8 +2841,9 @@ class TestContextHandoffSentinel:
         sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
         assert not sentinel_file.exists(), "Sentinel must not be written after handoff_complete"
 
-
-    def test_sentinel_survives_session_cleanup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sentinel_survives_session_cleanup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Sentinel file is NOT deleted by session-cleanup.sh (intentionally excluded)."""
         cleanup_script = Path(__file__).parent.parent.parent / "hooks/scripts/session-cleanup.sh"
 
@@ -2800,10 +2868,9 @@ class TestContextHandoffSentinel:
             "session-cleanup.sh should delete ll-context-state.json"
         )
 
-
     def test_result_token_count_preferred_over_estimated(
-        self, hook_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """result_token_count (accurate) is preferred over estimated_tokens (heuristic)."""
 
         monkeypatch.chdir(tmp_path)
@@ -2838,7 +2905,6 @@ class TestContextHandoffSentinel:
         assert data["token_count"] == 160000
 
 
-
 class TestSessionCleanupWorktrees:
     """Per-worktree liveness-check in session-cleanup.sh (BUG-1683)."""
 
@@ -2866,8 +2932,8 @@ class TestSessionCleanupWorktrees:
         return worker_dir
 
     def test_session_cleanup_skips_worktree_with_live_pid_marker(
-        self, cleanup_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Worktree with live PID marker must not be removed by session-cleanup.sh."""
         import os
 
@@ -2883,8 +2949,8 @@ class TestSessionCleanupWorktrees:
         )
 
     def test_session_cleanup_removes_worktree_with_dead_pid_marker(
-        self, cleanup_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Worktree with dead PID marker must be removed by session-cleanup.sh."""
 
         monkeypatch.chdir(tmp_path)
@@ -2899,8 +2965,8 @@ class TestSessionCleanupWorktrees:
         )
 
     def test_session_cleanup_removes_worktree_with_no_marker(
-        self, cleanup_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, cleanup_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Orphaned worktree (no .ll-session-* marker) must be removed by session-cleanup.sh."""
 
         monkeypatch.chdir(tmp_path)
@@ -2940,7 +3006,9 @@ class TestIssueAutoCommitHook:
             capture_output=True,
         )
 
-    def test_non_issue_file_exits_0(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_non_issue_file_exits_0(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Non-issue file path exits 0 immediately without touching git."""
 
         self._init_git_repo(tmp_path)
@@ -2961,7 +3029,9 @@ class TestIssueAutoCommitHook:
         )
         assert git_log.stdout.strip() == "", "Expected no commits for non-issue file"
 
-    def test_disabled_exits_0_without_git_commit(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_disabled_exits_0_without_git_commit(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """auto_commit absent (default false) → hook exits 0 without committing."""
 
         self._init_git_repo(tmp_path)
@@ -2984,7 +3054,9 @@ class TestIssueAutoCommitHook:
         )
         assert git_log.stdout.strip() == "", "Expected no commits when auto_commit disabled"
 
-    def test_enabled_clean_tree_commits_issue_file(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_enabled_clean_tree_commits_issue_file(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """auto_commit: true + clean working tree → git add + git commit run."""
 
         self._init_git_repo(tmp_path)
@@ -3028,7 +3100,9 @@ class TestIssueAutoCommitHook:
             f"Expected auto-commit message, got: {git_log.stdout!r}"
         )
 
-    def test_custom_prefix_in_commit_message(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_custom_prefix_in_commit_message(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Custom auto_commit_prefix appears in commit message."""
 
         self._init_git_repo(tmp_path)
@@ -3073,8 +3147,8 @@ class TestIssueAutoCommitHook:
         )
 
     def test_dirty_tree_skips_commit_prints_warning(
-        self, hook_script: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Dirty working tree → hook skips commit and prints warning to stderr."""
 
         self._init_git_repo(tmp_path)
@@ -3122,7 +3196,9 @@ class TestIssueAutoCommitHook:
         commit_count = len(git_log.stdout.strip().splitlines())
         assert commit_count == 1, f"Expected only init commit, got {commit_count} commits"
 
-    def test_edit_tool_uses_update_verb(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_edit_tool_uses_update_verb(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Edit tool calls produce 'update' verb in commit message."""
 
         self._init_git_repo(tmp_path)
@@ -3176,7 +3252,9 @@ class TestSessionEndSweep:
         """Path to the Claude Code session-end adapter."""
         return Path(__file__).parent.parent.parent / "hooks/adapters/claude-code/session-end.sh"
 
-    def test_adapter_exits_zero(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_adapter_exits_zero(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """session-end.sh exits 0 when run with minimal input and no project config."""
         result = subprocess.run(
             [str(hook_script)],
@@ -3201,7 +3279,7 @@ class TestSessionCapture:
         return Path(__file__).parent.parent.parent / "hooks/scripts/session-capture.sh"
 
     @pytest.fixture
-    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> Path:
+    def test_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         """Config file with session_capture.enabled: true."""
         config = {"session_capture": {"enabled": True}}
         config_file = tmp_path / ".ll" / "ll-config.json"
@@ -3250,8 +3328,8 @@ class TestSessionCapture:
         return [json.loads(ln) for ln in lines]
 
     def test_file_event_captured(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Write tool invocation produces a type=file event record."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input(
@@ -3271,8 +3349,8 @@ class TestSessionCapture:
         assert "status" in ev
 
     def test_task_event_captured(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """TaskCreate tool invocation produces a type=task event record."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input(
@@ -3289,7 +3367,9 @@ class TestSessionCapture:
         assert ev["op"] == "TaskCreate"
         assert "ts" in ev
 
-    def test_git_event_captured(self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_git_event_captured(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Bash invocation with git produces a type=git event record."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input(
@@ -3308,8 +3388,8 @@ class TestSessionCapture:
         assert "ts" in ev
 
     def test_error_event_captured(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Bash invocation with non-zero exit produces a type=error event record."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input(
@@ -3329,7 +3409,9 @@ class TestSessionCapture:
         assert "pytest" in ev["subject"]
         assert "ts" in ev
 
-    def test_exits_zero_when_feature_disabled(self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch)-> None:
+    def test_exits_zero_when_feature_disabled(
+        self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Hook exits 0 and produces no record when session_capture.enabled is false (default)."""
         monkeypatch.chdir(tmp_path)
         # No test_config fixture — feature defaults to disabled
@@ -3341,8 +3423,8 @@ class TestSessionCapture:
         assert len(events) == 0, "No events should be written when feature is disabled"
 
     def test_exits_zero_on_malformed_stdin(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Hook exits 0 and produces no record when stdin is malformed JSON."""
         monkeypatch.chdir(tmp_path)
         result = self._run_hook(hook_script, "not valid json {{{{", tmp_path)
@@ -3350,8 +3432,8 @@ class TestSessionCapture:
         assert result.returncode == 0, f"Hook exited non-zero on bad stdin: {result.stderr}"
 
     def test_unknown_tool_produces_no_record(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Unknown tool names produce no event record."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input("SomeUnknownTool", {"data": "value"})
@@ -3362,8 +3444,8 @@ class TestSessionCapture:
         assert len(events) == 0, "Unknown tools should produce no event record"
 
     def test_concurrent_writes_no_corruption(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """4 concurrent hook invocations produce 4 valid, uncorrupted JSONL lines."""
 
         monkeypatch.chdir(tmp_path)
@@ -3389,8 +3471,8 @@ class TestSessionCapture:
             assert "ts" in ev
 
     def test_file_subject_strips_leading_dot_slash(
-        self, hook_script: Path, test_config: Path, tmp_path: Path
-    , monkeypatch: pytest.MonkeyPatch) -> None:
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """File subject has leading ./ stripped per subject-normalization rule."""
         monkeypatch.chdir(tmp_path)
         stdin = self._make_input("Read", {"file_path": "./scripts/foo.py"})

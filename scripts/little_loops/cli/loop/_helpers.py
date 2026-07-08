@@ -28,6 +28,7 @@ from little_loops.logger import Logger
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
 
+
 @contextlib.contextmanager
 def with_diagram_color(enabled: bool):
     """Temporarily flip ``cli.output._USE_COLOR`` while rendering a diagram.

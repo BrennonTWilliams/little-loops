@@ -1346,9 +1346,9 @@ class TestRenderFsmDiagram:
             result = _render_fsm_diagram(fsm)
 
         # State names should be bold — accept bare (\\033[1m) or colored (\\033[X;1m).
-        assert (
-            "\033[1m" in result or re.search(r"\033\[\d+;1m", result) is not None
-        ), "Non-highlighted state names should use bold (ANSI code 1, bare or compounded)"
+        assert "\033[1m" in result or re.search(r"\033\[\d+;1m", result) is not None, (
+            "Non-highlighted state names should use bold (ANSI code 1, bare or compounded)"
+        )
 
     def test_back_edge_labels_no_collision_on_shared_midpoint(self) -> None:
         """Two back-edges with the same midpoint row must land on distinct lines.
@@ -2825,7 +2825,9 @@ class TestRunForegroundExitCodes:
         """terminal, interrupted, and handoff all return exit code 0."""
         assert self._run_with_terminated_by(terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"])
+    @pytest.mark.parametrize(
+        "terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"]
+    )
     def test_nonzero_exit_code_for_limit_termination(self, terminated_by: str) -> None:
         """max_steps, timeout, user_stopped, and system_signal return exit code 1."""
         assert self._run_with_terminated_by(terminated_by) == 1

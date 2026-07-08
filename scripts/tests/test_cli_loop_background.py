@@ -151,9 +151,7 @@ class TestLoopSignalHandler:
             self.helpers._loop_signal_handler(signal.SIGINT, None)
 
         assert exc_info.value.code == 1
-        mock_executor.archive_run_only.assert_called_once_with(
-            terminated_by="interrupted_force"
-        )
+        mock_executor.archive_run_only.assert_called_once_with(terminated_by="interrupted_force")
 
     def test_second_signal_swallows_archive_oserror(self) -> None:
         """OSError from archive_run_only() is swallowed — handler still exits cleanly.
@@ -171,9 +169,7 @@ class TestLoopSignalHandler:
             self.helpers._loop_signal_handler(signal.SIGINT, None)
 
         assert exc_info.value.code == 1
-        mock_executor.archive_run_only.assert_called_once_with(
-            terminated_by="interrupted_force"
-        )
+        mock_executor.archive_run_only.assert_called_once_with(terminated_by="interrupted_force")
 
     def test_second_signal_safe_when_no_executor(self) -> None:
         """Second SIGINT without a registered executor skips archive but still exits."""

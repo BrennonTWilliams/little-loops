@@ -370,11 +370,7 @@ class FSMExecutor:
         if marker is not None and marker.exists():
             return self._finish("user_stopped", error=error)
         last_exit = self._last_action_exit_code
-        if (
-            last_exit is not None
-            and last_exit <= -1
-            and not self._signal_handler_killed_subproc
-        ):
+        if last_exit is not None and last_exit <= -1 and not self._signal_handler_killed_subproc:
             return self._finish("system_signal", error=error)
         return self._finish("interrupted", error=error)
 

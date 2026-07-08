@@ -79,8 +79,8 @@ from little_loops.cli.sprint import (
     main_sprint,
 )
 from little_loops.cli.sync import main_sync
-from little_loops.cli.verify_design_tokens import main_verify_design_tokens
 from little_loops.cli.verify_des_audit import main_verify_des_audit
+from little_loops.cli.verify_design_tokens import main_verify_design_tokens
 from little_loops.cli.verify_package_data import main_verify_package_data
 from little_loops.cli.verify_triggers import main_verify_triggers
 from little_loops.init.cli import main_init

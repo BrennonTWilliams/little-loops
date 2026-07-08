@@ -27,9 +27,7 @@ import json
 from typing import Any
 
 
-def extract_between_tags(
-    start_tag: str, end_tag: str, raw: str
-) -> tuple[str | None, str | None]:
+def extract_between_tags(start_tag: str, end_tag: str, raw: str) -> tuple[str | None, str | None]:
     """Extract the text between ``start_tag`` and ``end_tag`` in ``raw``.
 
     Designed for the stop-sequence recipe: ``end_tag`` is typically set as the

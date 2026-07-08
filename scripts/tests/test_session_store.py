@@ -3150,7 +3150,9 @@ class TestSchemaV15SkillCompletionColumns:
         conn.row_factory = sqlite3.Row
         try:
             version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            row = conn.execute("SELECT * FROM skill_events WHERE skill_name='refine-issue'").fetchone()
+            row = conn.execute(
+                "SELECT * FROM skill_events WHERE skill_name='refine-issue'"
+            ).fetchone()
         finally:
             conn.close()
         assert int(version[0]) == SCHEMA_VERSION
@@ -3258,8 +3260,7 @@ class TestSchemaV16IssueSessionId:
             indexes = {
                 r[0]
                 for r in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='index' "
-                    "AND tbl_name='issue_events'"
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='issue_events'"
                 )
             }
             plan = " ".join(
@@ -3392,7 +3393,9 @@ class TestSchemaV16IssueSessionId:
         conn = sqlite3.connect(str(db))
         conn.row_factory = sqlite3.Row
         try:
-            row = conn.execute("SELECT session_id FROM issue_events WHERE issue_id='ENH-1'").fetchone()
+            row = conn.execute(
+                "SELECT session_id FROM issue_events WHERE issue_id='ENH-1'"
+            ).fetchone()
             views = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='view'")}
         finally:
             conn.close()
@@ -3518,9 +3521,7 @@ class TestBackfillCommitEvents:
 
     def test_backfill_populates_commit_events(self, repo: Path, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
-        counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
-        )
+        counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
         assert counts["commits"] == 2
         rows = recent(db, kind="commit")
         messages = {r["message"] for r in rows}
@@ -3537,12 +3538,8 @@ class TestBackfillCommitEvents:
 
     def test_backfill_idempotent(self, repo: Path, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
-        first = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
-        )
-        second = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo
-        )
+        first = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        second = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
         assert first["commits"] == 2
         assert second["commits"] == 0
         assert len(recent(db, kind="commit")) == 2

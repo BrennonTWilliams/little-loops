@@ -22,9 +22,7 @@ NON_ISSUES=$(printf '%s\\n' "$CHANGED" | grep -v '^\\.issues/' || true)
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    )
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
 
 
 def _init_repo(path: Path) -> Path:
@@ -81,9 +79,7 @@ class TestGateShellLogic:
     def _run_gate(self, repo: Path) -> str:
         """Run the gate snippet against the repo's staged set; return $NON_ISSUES."""
         script = GATE_SNIPPET + 'printf "%s" "$NON_ISSUES"\n'
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=repo, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=repo, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         return result.stdout.strip()
 

@@ -130,8 +130,7 @@ class CostReport:
         """
         lines: list[str] = []
         lines.append(
-            f"{'state':<24} {'invoc':>5} {'input':>8} {'output':>8} "
-            f"{'cache':>8} {'est_cost':>10}"
+            f"{'state':<24} {'invoc':>5} {'input':>8} {'output':>8} {'cache':>8} {'est_cost':>10}"
         )
         lines.append("-" * 68)
         for state in sorted(self.states, key=lambda s: s.state):

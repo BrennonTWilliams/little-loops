@@ -708,9 +708,7 @@ class TestBug2468ErrorRouting:
         assert result.stdout.strip() == "2"
         assert (run_dir / "saturation.txt").read_text().strip() == "0"
 
-    def test_zero_novel_exits_0_and_increments_saturation(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_zero_novel_exits_0_and_increments_saturation(self, data: dict, tmp_path: Path) -> None:
         """All-duplicate rounds are legitimate saturation: exit 0, counter increments."""
         run_dir = self._seeded_run_dir(tmp_path)
         existing = {"text": "use mutation testing", "rationale": "r"}

@@ -382,8 +382,7 @@ def cmd_stop(
             requested_by = "unknown"
         try:
             marker_path.write_text(
-                f"requested_by={requested_by}\n"
-                f"requested_at={datetime.now(UTC).isoformat()}\n"
+                f"requested_by={requested_by}\nrequested_at={datetime.now(UTC).isoformat()}\n"
             )
         except OSError as marker_err:
             logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")

@@ -74,6 +74,7 @@ def _json_safe_context(context: dict[str, Any]) -> dict[str, Any]:
         safe[key] = value
     return safe
 
+
 _RUN_FOLDER = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6})-(.+)$")
 _INSTANCE_SUFFIX = re.compile(r"-\d{8}T\d{6}$")
 

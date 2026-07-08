@@ -329,7 +329,9 @@ def cmd_run(
             _queue_entry_file.unlink(missing_ok=True)
 
     if not getattr(args, "no_lock", False):
-        if not lock_manager.acquire(fsm.name, scope, instance_id=instance_id, singleton=fsm.singleton):
+        if not lock_manager.acquire(
+            fsm.name, scope, instance_id=instance_id, singleton=fsm.singleton
+        ):
             conflict = lock_manager.find_conflict(
                 scope, caller_loop_name=fsm.name, caller_singleton=fsm.singleton
             )

@@ -1445,7 +1445,12 @@ class TestNewEventReaders:
 
         db = tmp_path / "history.db"
         record_test_run_event(
-            db, ts="2026-07-01T10:00:00Z", total=10, passed=9, failed=1, head_sha="aaa",
+            db,
+            ts="2026-07-01T10:00:00Z",
+            total=10,
+            passed=9,
+            failed=1,
+            head_sha="aaa",
             branch="main",
         )
         record_test_run_event(db, ts="2026-07-01T11:00:00Z", total=0, head_sha="bbb")

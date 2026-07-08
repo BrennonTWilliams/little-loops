@@ -439,9 +439,7 @@ class TestParallelAutomationConfig:
 
     def test_epic_branches_partial_dict_uses_defaults(self) -> None:
         """Partial EpicBranchesConfig dict fills missing keys with defaults."""
-        config = ParallelAutomationConfig.from_dict(
-            {"epic_branches": {"enabled": True}}
-        )
+        config = ParallelAutomationConfig.from_dict({"epic_branches": {"enabled": True}})
         assert config.epic_branches.enabled is True
         assert config.epic_branches.prefix == "epic/"
         assert config.epic_branches.merge_to_base_on_complete is True
@@ -993,9 +991,7 @@ class TestBRConfig:
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(cfg))
         config = BRConfig(temp_project_dir)
-        result = config.create_parallel_config(
-            epic_branches=EpicBranchesConfig(enabled=False)
-        )
+        result = config.create_parallel_config(epic_branches=EpicBranchesConfig(enabled=False))
         assert result.epic_branches.enabled is False
 
     def test_create_parallel_config_epic_branches_none_falls_back_to_config(

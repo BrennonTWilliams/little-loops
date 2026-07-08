@@ -2052,9 +2052,7 @@ class TestMainMessagesAdditionalCoverage:
 class TestMainLoopAdditionalCoverage:
     """Additional coverage tests for main_loop entry point."""
 
-    def test_argv_preprocessing_inserts_run(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_argv_preprocessing_inserts_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop inserts 'run' when first arg is not a subcommand."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2098,9 +2096,7 @@ class TestMainLoopAdditionalCoverage:
 
             assert result == 0
 
-    def test_loop_path_resolution_prefers_fsm_yaml(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_loop_path_resolution_prefers_fsm_yaml(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """resolve_loop_path prefers .fsm.yaml over .yaml."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -2367,9 +2363,7 @@ states:
 
             assert result == 0
 
-    def test_test_command_single_iteration(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_test_command_single_iteration(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main_loop test command runs single test iteration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"

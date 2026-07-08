@@ -232,9 +232,7 @@ class TestSprintPlanningWorkflow(E2ETestFixture):
 class TestSequentialExecutionWorkflow(E2ETestFixture):
     """E2E tests for sequential execution (ll-auto) workflow."""
 
-    def test_ll_auto_dry_run(
-        self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ll_auto_dry_run(self, e2e_project_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """ll-auto --dry-run should list issues without processing."""
         import sys
         from io import StringIO

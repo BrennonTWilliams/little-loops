@@ -965,9 +965,7 @@ class TestSkillStatsAndNewKinds:
         from little_loops.session_store import record_test_run_event
 
         db = tmp_path / "history.db"
-        record_test_run_event(
-            db, ts="2026-07-01T12:00:00Z", total=5, passed=5, env_label="local"
-        )
+        record_test_run_event(db, ts="2026-07-01T12:00:00Z", total=5, passed=5, env_label="local")
         with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "test_run"]):
             assert main_session() == 0
         out = capsys.readouterr().out

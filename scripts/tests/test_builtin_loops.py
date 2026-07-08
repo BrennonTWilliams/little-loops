@@ -1837,8 +1837,7 @@ class TestPromptAcrossIssuesLoop:
         (ENH-2500). Absence is treated equivalent to False (schema default).
         """
         assert data.get("shared_state_ok", False) is False, (
-            "shared_state_ok must be False now that the pending path is "
-            "per-instance (ENH-2500)."
+            "shared_state_ok must be False now that the pending path is per-instance (ENH-2500)."
         )
 
     def test_scope_declared(self, data: dict) -> None:
@@ -1851,9 +1850,7 @@ class TestPromptAcrossIssuesLoop:
             "prompt-across-issues.yaml must declare a 'scope' field for "
             "per-instance lock isolation (ENH-2500)."
         )
-        assert isinstance(scope, list), (
-            f"scope must be a list, got {type(scope).__name__}"
-        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
         assert "${context.run_dir}" in scope, (
             f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
         )
@@ -1862,16 +1859,14 @@ class TestPromptAcrossIssuesLoop:
         """init state writes pending.txt under ${context.run_dir} (ENH-2500)."""
         init_action = data["states"].get("init", {}).get("action", "")
         assert "${context.run_dir}/pending.txt" in init_action, (
-            "init state must write pending.txt under ${context.run_dir} "
-            "(ENH-2500)."
+            "init state must write pending.txt under ${context.run_dir} (ENH-2500)."
         )
 
     def test_advance_writes_under_run_dir(self, data: dict) -> None:
         """advance state mutates pending.txt under ${context.run_dir} (ENH-2500)."""
         advance_action = data["states"].get("advance", {}).get("action", "")
         assert "${context.run_dir}/pending.txt" in advance_action, (
-            "advance state must read/write pending.txt under ${context.run_dir} "
-            "(ENH-2500)."
+            "advance state must read/write pending.txt under ${context.run_dir} (ENH-2500)."
         )
 
 
@@ -9319,8 +9314,7 @@ class TestLearningGateConsistency:
         per-issue outcomes into summary.json."""
         action = rn_implement["states"]["report"]["action"]
         assert "subloop_outcome_" in action, (
-            "report must consume subloop_outcome_<ID>.txt sidecars to "
-            "build the per_issue array"
+            "report must consume subloop_outcome_<ID>.txt sidecars to build the per_issue array"
         )
 
     # --- autodev / auto-refine / sprint-refine skip threading ----------------

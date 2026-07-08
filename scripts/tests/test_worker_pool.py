@@ -3275,7 +3275,8 @@ class TestPerWorktreeProofFirstGate:
         issue = self._make_issue(tmp_path, "ENH-003", learning_tests_required=["httpx"])
         parallel_config = ParallelConfig(skip_learning_gate=True)
 
-        with patch("little_loops.parallel.worker_pool.subprocess.run") as mock_sub:
+        # Patch prevents accidental subprocess fallback; assertions below cover behavior.
+        with patch("little_loops.parallel.worker_pool.subprocess.run"):
             result = _run_per_worktree_proof_first_gate(
                 issue,
                 tmp_path,

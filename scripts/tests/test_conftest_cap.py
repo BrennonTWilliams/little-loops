@@ -47,9 +47,7 @@ class TestXdistAutoNumWorkers:
         monkeypatch.setenv("PYTEST_XDIST_AUTO_NUM_WORKERS", "3")
         assert conftest.pytest_xdist_auto_num_workers(MagicMock()) == 3
 
-    def test_invalid_env_var_falls_back_to_cpu_half(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_env_var_falls_back_to_cpu_half(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-integer env var is ignored; ``cpus // 2`` wins."""
         monkeypatch.setenv("PYTEST_XDIST_AUTO_NUM_WORKERS", "notanumber")
         with patch("os.cpu_count", return_value=14):
@@ -73,9 +71,7 @@ class TestXdistAutoNumWorkers:
         with patch("os.cpu_count", return_value=4):
             assert conftest.pytest_xdist_auto_num_workers(MagicMock()) == 2
 
-    def test_fourteen_cpu_count_yields_seven(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fourteen_cpu_count_yields_seven(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """``os.cpu_count() == 14`` (M4) → 14 // 2 == 7 (no env override)."""
         monkeypatch.delenv("PYTEST_XDIST_AUTO_NUM_WORKERS", raising=False)
         with patch("os.cpu_count", return_value=14):
@@ -169,8 +165,7 @@ class TestNoParallelMarkerRouting:
             and "no_parallel" in call_args.args[0].mark.kwargs.get("reason", "")
         ]
         assert skip_calls, (
-            "expected no_parallel-marked item to receive a skip marker "
-            "on an xdist worker"
+            "expected no_parallel-marked item to receive a skip marker on an xdist worker"
         )
 
     def test_xdist_worker_does_not_skip_unmarked_item(self) -> None:

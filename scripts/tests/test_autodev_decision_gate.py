@@ -25,9 +25,7 @@ from typing import Any
 import pytest
 import yaml
 
-AUTODEV_LOOP_PATH = (
-    Path(__file__).parent.parent / "little_loops" / "loops" / "autodev.yaml"
-)
+AUTODEV_LOOP_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "autodev.yaml"
 
 
 def _load_autodev_yaml() -> dict[str, Any]:
@@ -82,9 +80,7 @@ def _loop(**kwargs: Any) -> Any:
     return FSMLoop(**kwargs)
 
 
-def _run_decision_chain(
-    fsm: Any, action_runner: Any
-) -> tuple[Any, list[str]]:
+def _run_decision_chain(fsm: Any, action_runner: Any) -> tuple[Any, list[str]]:
     """Run a minimal autodev-shaped FSM and return (result, visited path)."""
     from little_loops.fsm.executor import FSMExecutor
 
@@ -121,17 +117,14 @@ class TestCheckDecisionAtDequeueStructural:
         state = data["states"]["check_decision_at_dequeue"]
         action = state.get("action", "")
         assert "ll-issues check-flag" in action, (
-            f"check_decision_at_dequeue.action must call 'll-issues check-flag', "
-            f"got {action!r}"
+            f"check_decision_at_dequeue.action must call 'll-issues check-flag', got {action!r}"
         )
         assert "decision_needed" in action, (
             f"check_decision_at_dequeue.action must check the decision_needed "
             f"frontmatter field, got {action!r}"
         )
 
-    def test_check_decision_at_dequeue_uses_shell_exit_fragment(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_check_decision_at_dequeue_uses_shell_exit_fragment(self, data: dict[str, Any]) -> None:
         """The state must use ``shell_exit`` fragment to route on exit code."""
         state = data["states"]["check_decision_at_dequeue"]
         assert state.get("fragment") == "shell_exit", (
@@ -171,9 +164,7 @@ class TestCheckDecisionAtDequeueStructural:
             f"(fail-open), got {state.get('on_error')!r}"
         )
 
-    def test_dequeue_next_routes_to_check_decision_at_dequeue(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict[str, Any]) -> None:
         """dequeue_next.on_yes must route to check_decision_at_dequeue
         (not directly to refine_current) so the gate fires on every dequeue."""
         state = data["states"]["dequeue_next"]
@@ -226,8 +217,7 @@ class TestCheckDecisionAtDequeueRouting:
         result, visited = _run_decision_chain(decision_chain_fsm, runner)
 
         assert "run_decide" in visited, (
-            f"run_decide must be entered for decision_needed=true; "
-            f"visited={visited!r}"
+            f"run_decide must be entered for decision_needed=true; visited={visited!r}"
         )
         assert "refine_current" not in visited, (
             f"refine_current must NOT be entered for decision_needed=true "
@@ -239,9 +229,7 @@ class TestCheckDecisionAtDequeueRouting:
             visited.index("refine_current") if "refine_current" in visited else len(visited)
         )
 
-    def test_decision_needed_false_routes_to_refine_current(
-        self, decision_chain_fsm: Any
-    ) -> None:
+    def test_decision_needed_false_routes_to_refine_current(self, decision_chain_fsm: Any) -> None:
         """When decision_needed=false (or absent), the gate falls through to
         refine_current — no behavioral change for non-decision issues."""
         runner = _StubRunner(results=[("ll-issues check-flag", {"exit_code": 1})])
@@ -249,12 +237,10 @@ class TestCheckDecisionAtDequeueRouting:
         result, visited = _run_decision_chain(decision_chain_fsm, runner)
 
         assert "refine_current" in visited, (
-            f"refine_current must be entered when decision_needed=false; "
-            f"visited={visited!r}"
+            f"refine_current must be entered when decision_needed=false; visited={visited!r}"
         )
         assert "run_decide" not in visited, (
-            f"run_decide must NOT be entered when decision_needed=false; "
-            f"visited={visited!r}"
+            f"run_decide must NOT be entered when decision_needed=false; visited={visited!r}"
         )
 
     def test_check_flag_error_falls_through_to_refine_current(
@@ -269,12 +255,10 @@ class TestCheckDecisionAtDequeueRouting:
         result, visited = _run_decision_chain(decision_chain_fsm, runner)
 
         assert "refine_current" in visited, (
-            f"refine_current must be entered on check-flag error (fail-open); "
-            f"visited={visited!r}"
+            f"refine_current must be entered on check-flag error (fail-open); visited={visited!r}"
         )
         assert "run_decide" not in visited, (
-            f"run_decide must NOT be entered on check-flag error; "
-            f"visited={visited!r}"
+            f"run_decide must NOT be entered on check-flag error; visited={visited!r}"
         )
 
 
@@ -292,8 +276,7 @@ class TestAutodevValidatesAfterFix:
         fsm, errors = load_and_validate(AUTODEV_LOOP_PATH)
         error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
         assert not error_list, (
-            f"autodev.yaml has validation errors after BUG-2513 fix: "
-            f"{[str(e) for e in error_list]}"
+            f"autodev.yaml has validation errors after BUG-2513 fix: {[str(e) for e in error_list]}"
         )
         # The new gate must be present after validation.
         assert "check_decision_at_dequeue" in fsm.states, (
@@ -313,9 +296,7 @@ class TestCheckDecisionBeforeSizeReviewStructural:
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_check_decision_before_size_review_state_exists(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_check_decision_before_size_review_state_exists(self, data: dict[str, Any]) -> None:
         """``check_decision_before_size_review`` must exist in autodev.yaml
         (BUG-1277 origin; BUG-2519 preserves it as defense-in-depth)."""
         states = data.get("states", {})

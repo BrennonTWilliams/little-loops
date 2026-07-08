@@ -341,9 +341,7 @@ class TestStatePersistence:
         persistence.initialize()
 
         fsync_mock = MagicMock()
-        monkeypatch.setattr(
-            "little_loops.fsm.persistence.os.fsync", fsync_mock
-        )
+        monkeypatch.setattr("little_loops.fsm.persistence.os.fsync", fsync_mock)
 
         persistence.append_event({"event": "loop_start", "ts": "x"})
 
@@ -2770,7 +2768,9 @@ class TestContextPersistence:
 
         persistence = StatePersistence("ctx-persist", tmp_path)
         persistence.initialize()
-        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=MockActionRunner())
+        executor = PersistentExecutor(
+            fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
         executor._save_state()
 
         loaded = persistence.load_state()

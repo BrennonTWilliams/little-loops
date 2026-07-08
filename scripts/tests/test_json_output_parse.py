@@ -12,7 +12,7 @@ from little_loops.output.parse import extract_between_tags, parse_prefilled_json
 
 class TestExtractBetweenTags:
     def test_clean_extraction(self) -> None:
-        value, err = extract_between_tags("<json>", "</json>", "noise <json>{\"a\": 1}</json> tail")
+        value, err = extract_between_tags("<json>", "</json>", 'noise <json>{"a": 1}</json> tail')
         assert err is None
         assert value == '{"a": 1}'
 

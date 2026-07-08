@@ -205,9 +205,8 @@ class TestSubprocessSignalIntegration:
             # Wait for loop_start to land in events.jsonl — proves the
             # executor is alive and the persistence layer is writing.
             assert _wait_for(
-                lambda: events_file.exists() and "loop_start" in {
-                    e.get("event") for e in _read_events(events_file)
-                },
+                lambda: events_file.exists()
+                and "loop_start" in {e.get("event") for e in _read_events(events_file)},
                 timeout=10.0,
             ), "loop_start event never appeared in events.jsonl"
 
@@ -240,12 +239,8 @@ class TestSubprocessSignalIntegration:
             archives = _history_archives(loops_dir)
             assert len(archives) >= 1, "no .history/<run_id>-<loop_name>/ archive created"
             archive = archives[0]
-            assert (archive / "events.jsonl").exists(), (
-                f"archive missing events.jsonl: {archive}"
-            )
-            assert (archive / "state.json").exists(), (
-                f"archive missing state.json: {archive}"
-            )
+            assert (archive / "events.jsonl").exists(), f"archive missing events.jsonl: {archive}"
+            assert (archive / "state.json").exists(), f"archive missing state.json: {archive}"
 
             # Archive contains at least one loop_start event.
             archived_events = _read_events(archive / "events.jsonl")
@@ -278,9 +273,8 @@ class TestSubprocessSignalIntegration:
 
             # Wait for the loop to actually start before sending signals.
             assert _wait_for(
-                lambda: events_file.exists() and "loop_start" in {
-                    e.get("event") for e in _read_events(events_file)
-                },
+                lambda: events_file.exists()
+                and "loop_start" in {e.get("event") for e in _read_events(events_file)},
                 timeout=10.0,
             ), "loop_start event never appeared in events.jsonl"
 
@@ -298,21 +292,16 @@ class TestSubprocessSignalIntegration:
             try:
                 proc.wait(timeout=10.0)
             except subprocess.TimeoutExpired:
-                pytest.fail(
-                    "subprocess did not exit within 10s of double-SIGINT"
-                )
+                pytest.fail("subprocess did not exit within 10s of double-SIGINT")
 
             # Force-exit path: returncode 1 (from sys.exit(1) in handler).
-            assert proc.returncode == 1, (
-                f"expected force-exit code 1, got {proc.returncode}"
-            )
+            assert proc.returncode == 1, f"expected force-exit code 1, got {proc.returncode}"
 
             # CRITICAL: archive still lands despite the abrupt exit. This
             # is the ENH-2516 contract.
             archives = _history_archives(loops_dir)
             assert len(archives) >= 1, (
-                "ENH-2516 contract violated: no .history/ archive after "
-                "double-SIGINT force-exit"
+                "ENH-2516 contract violated: no .history/ archive after double-SIGINT force-exit"
             )
             archive = archives[0]
             assert (archive / "events.jsonl").exists(), (
@@ -325,9 +314,7 @@ class TestSubprocessSignalIntegration:
             # Running state.json still parses — proves archive_run_only
             # wrote the final state snapshot before sys.exit(1).
             state_file = _running_state_path(loops_dir, instance_id)
-            assert state_file.exists(), (
-                f"missing running state.json after force-exit: {state_file}"
-            )
+            assert state_file.exists(), f"missing running state.json after force-exit: {state_file}"
             state = json.loads(state_file.read_text())
             assert isinstance(state, dict)
         finally:

@@ -325,9 +325,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
 
     # Closure: prefer per-status reason field (closing_note / closed_reason /
     # cancelled_reason / deferred_reason) and emit the right label.
-    closure_text: str | None = (
-        closing_note or closed_reason or cancelled_reason or deferred_reason
-    )
+    closure_text: str | None = closing_note or closed_reason or cancelled_reason or deferred_reason
 
     return {
         "issue_id": issue_id,
@@ -363,11 +361,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         else None,
         "missing_artifacts": _join_ids(missing_artifacts_raw)
         if isinstance(missing_artifacts_raw, list)
-        else (
-            str(missing_artifacts_raw).lower()
-            if missing_artifacts_raw is not None
-            else None
-        ),
+        else (str(missing_artifacts_raw).lower() if missing_artifacts_raw is not None else None),
         "implementation_order_risk": str(implementation_order_risk_raw).lower()
         if implementation_order_risk_raw is not None
         else None,
@@ -421,9 +415,7 @@ def _ljust(text: str, width: int) -> str:
 _TERMINAL_STATUSES = {"done", "cancelled", "deferred", "closed"}
 
 
-def _render_closure_block(
-    fields: dict[str, str | None], raw_status: str
-) -> list[str]:
+def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> list[str]:
     """Render closure-context lines for terminal statuses (ENH-2535).
 
     Args:

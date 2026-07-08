@@ -694,20 +694,31 @@ class TestCostCeilingValidation:
     def test_valid_ceiling_no_errors(self) -> None:
         fsm = self._make_fsm(CostCeilingConfig(cost_ceiling_per_state=1.0, cost_warn_at=0.5))
         errors = validate_fsm(fsm)
-        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        ceiling_errors = [
+            e
+            for e in errors
+            if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()
+        ]
         assert ceiling_errors == []
 
     def test_partial_ceiling_valid(self) -> None:
         """A ceiling with only one of the two fields set is valid."""
         fsm = self._make_fsm(CostCeilingConfig(cost_warn_at=0.5))
         errors = validate_fsm(fsm)
-        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        ceiling_errors = [
+            e
+            for e in errors
+            if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()
+        ]
         assert ceiling_errors == []
 
     def test_negative_ceiling_rejected(self) -> None:
         fsm = self._make_fsm(CostCeilingConfig(cost_ceiling_per_state=-1.0))
         errors = validate_fsm(fsm)
-        assert any("cost_ceiling" in e.message.lower() or "cost_ceiling_per_state" in e.message.lower() for e in errors)
+        assert any(
+            "cost_ceiling" in e.message.lower() or "cost_ceiling_per_state" in e.message.lower()
+            for e in errors
+        )
 
     def test_negative_warn_at_rejected(self) -> None:
         fsm = self._make_fsm(CostCeilingConfig(cost_warn_at=-0.5))
@@ -727,7 +738,11 @@ class TestCostCeilingValidation:
     def test_no_ceiling_means_no_validation_errors(self) -> None:
         fsm = self._make_fsm(None)
         errors = validate_fsm(fsm)
-        ceiling_errors = [e for e in errors if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()]
+        ceiling_errors = [
+            e
+            for e in errors
+            if "cost_ceiling" in e.message.lower() or "cost_warn_at" in e.message.lower()
+        ]
         assert ceiling_errors == []
 
 
@@ -756,9 +771,7 @@ class TestPromptSizeGuardValidation:
 
     def test_negative_warn_chars_rejected(self) -> None:
         errors = validate_fsm(self._make_fsm(PromptSizeGuardConfig(warn_chars=-1)))
-        assert any(
-            "prompt_size_guard.warn_chars" in e.path and ">= 0" in e.message for e in errors
-        )
+        assert any("prompt_size_guard.warn_chars" in e.path and ">= 0" in e.message for e in errors)
 
 
 class TestTargetsValidation:

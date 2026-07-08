@@ -443,9 +443,7 @@ class TestReportAndTerminal:
         action = data["states"]["report"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.run_dir.output}", str(run_dir))
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         if result.returncode != 0:
             raise AssertionError(
                 f"report action failed (rc={result.returncode}):\n"
@@ -453,9 +451,7 @@ class TestReportAndTerminal:
             )
         return json.loads((run_dir / "summary.json").read_text())
 
-    def test_report_writes_per_issue_array_with_outcome_per_id(
-        self, tmp_path: Path
-    ) -> None:
+    def test_report_writes_per_issue_array_with_outcome_per_id(self, tmp_path: Path) -> None:
         """ENH-2533: per_issue array contains one record per subloop_outcome_<ID>.txt sidecar,
         with the ID extracted from the filename and the outcome token from the body."""
         data = _load_loop()
@@ -575,9 +571,7 @@ class TestReportAndTerminal:
             "report must declare on_error: to satisfy MR-10 once the JSON-aggregation "
             "heredoc is in place"
         )
-        assert report["on_error"] not in (None, ""), (
-            "on_error route must not be empty"
-        )
+        assert report["on_error"] not in (None, ""), "on_error route must not be empty"
 
 
 # ---------------------------------------------------------------------------
@@ -1088,19 +1082,19 @@ class TestBlockedByGate:
         """
         action = _load_loop()["states"]["check_blocked_by"]["action"]
         assert "UNRESOLVED" in action
-        assert 'file=sys.stderr' in action or '>&2' in action
+        assert "file=sys.stderr" in action or ">&2" in action
 
     def test_check_blocked_by_emits_parse_error_token_to_stderr(self) -> None:
         """ENH-2534: frontmatter parse errors emit PARSE_ERROR to stderr."""
         action = _load_loop()["states"]["check_blocked_by"]["action"]
         assert "PARSE_ERROR" in action
-        assert 'file=sys.stderr' in action or '>&2' in action
+        assert "file=sys.stderr" in action or ">&2" in action
 
     def test_check_blocked_by_emits_done_set_error_token_to_stderr(self) -> None:
         """ENH-2534: done-set failures emit DONE_SET_ERROR to stderr (recheck parity)."""
         action = _load_loop()["states"]["check_blocked_by"]["action"]
         assert "DONE_SET_ERROR" in action
-        assert 'file=sys.stderr' in action or '>&2' in action
+        assert "file=sys.stderr" in action or ">&2" in action
 
 
 # ============================================================================

@@ -119,8 +119,12 @@ Examples:
 
         config = BRConfig(repo_root)
 
-        completed_dir: Path = config.project_root / config._issues.base_dir / config._issues.completed_dir
-        deferred_dir: Path = config.project_root / config._issues.base_dir / config._issues.deferred_dir
+        completed_dir: Path = (
+            config.project_root / config._issues.base_dir / config._issues.completed_dir
+        )
+        deferred_dir: Path = (
+            config.project_root / config._issues.base_dir / config._issues.deferred_dir
+        )
 
         # Build prefix → category-key mapping (e.g. "BUG" → "bugs")
         prefix_to_key: dict[str, str] = {

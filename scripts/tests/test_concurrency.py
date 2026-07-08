@@ -706,9 +706,7 @@ class TestSingletonLock:
 
         def try_acquire(instance_id: str, scope: list[str]) -> None:
             barrier.wait()
-            result = manager.acquire(
-                "autodev", scope, instance_id=instance_id, singleton=True
-            )
+            result = manager.acquire("autodev", scope, instance_id=instance_id, singleton=True)
             results.append(result)
 
         id1 = "autodev-20240115T103000"
@@ -725,8 +723,7 @@ class TestSingletonLock:
             f"got: {results}"
         )
         assert results.count(False) == 1, (
-            f"Singleton predicate: the second acquire must fail on loop_name match; "
-            f"got: {results}"
+            f"Singleton predicate: the second acquire must fail on loop_name match; got: {results}"
         )
 
     def test_non_singleton_same_name_disjoint_scopes_still_both_acquire(
@@ -753,9 +750,7 @@ class TestSingletonLock:
         def try_acquire(instance_id: str, scope: list[str]) -> None:
             barrier.wait()
             # Default singleton=False explicitly to assert backward compatibility
-            result = manager.acquire(
-                "autodev", scope, instance_id=instance_id, singleton=False
-            )
+            result = manager.acquire("autodev", scope, instance_id=instance_id, singleton=False)
             results.append(result)
 
         id1 = "autodev-20240115T103000"
@@ -768,8 +763,7 @@ class TestSingletonLock:
         t2.join()
 
         assert results.count(True) == 2, (
-            f"Non-singleton disjoint scopes must both acquire (ENH-1354 regression); "
-            f"got: {results}"
+            f"Non-singleton disjoint scopes must both acquire (ENH-1354 regression); got: {results}"
         )
 
     def test_singleton_paths_overlap_still_conflicts(
@@ -793,9 +787,7 @@ class TestSingletonLock:
 
         def try_acquire(instance_id: str, scope: list[str]) -> None:
             barrier.wait()
-            result = manager.acquire(
-                "autodev", scope, instance_id=instance_id, singleton=True
-            )
+            result = manager.acquire("autodev", scope, instance_id=instance_id, singleton=True)
             results.append(result)
 
         id1 = "autodev-20240115T103000"
@@ -828,8 +820,10 @@ class TestSingletonLock:
 
         # Hold a singleton lock as the parent
         assert manager.acquire(
-            "autodev", [str(run1.relative_to(tmp_path))],
-            instance_id="parent", singleton=True,
+            "autodev",
+            [str(run1.relative_to(tmp_path))],
+            instance_id="parent",
+            singleton=True,
         )
 
         # Patch _get_ancestry to include a sentinel ancestor PID so the
@@ -852,8 +846,10 @@ class TestSingletonLock:
             run2 = tmp_path / ".loops" / "runs" / "autodev-child"
             run2.mkdir(parents=True)
             result = manager.acquire(
-                "autodev", [str(run2.relative_to(tmp_path))],
-                instance_id="child", singleton=True,
+                "autodev",
+                [str(run2.relative_to(tmp_path))],
+                instance_id="child",
+                singleton=True,
             )
 
         assert result is True, (
@@ -985,9 +981,7 @@ class TestPromptAcrossIssuesScopeIsolation:
 
         def try_acquire(instance_id: str, scope: list[str]) -> None:
             barrier.wait()
-            result = manager.acquire(
-                "prompt-across-issues", scope, instance_id=instance_id
-            )
+            result = manager.acquire("prompt-across-issues", scope, instance_id=instance_id)
             results.append(result)
 
         id1 = "prompt-across-issues-20260706T140004"

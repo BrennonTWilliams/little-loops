@@ -502,9 +502,7 @@ class BRConfig:
             serialize_overlapping=serialize_overlapping,
             skip_learning_gate=skip_learning_gate,
             base_branch=(
-                base_branch
-                if base_branch is not None
-                else (self._parallel.base_branch or "main")
+                base_branch if base_branch is not None else (self._parallel.base_branch or "main")
             ),
             remote_name=remote_name if remote_name is not None else self._parallel.remote_name,
             epic_branches=self._build_parallel_epic_branches(epic_branches),

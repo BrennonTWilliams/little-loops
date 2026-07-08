@@ -538,7 +538,9 @@ class TestCmdStop:
             return real_write_text(self, *args, **kwargs)  # type: ignore[arg-type]
 
         mock_killpg = _MM()
-        mock_killpg.side_effect = lambda *a, **kw: killpg_call_times.append(__import__("time").time())
+        mock_killpg.side_effect = lambda *a, **kw: killpg_call_times.append(
+            __import__("time").time()
+        )
 
         with (
             patch(
@@ -1248,7 +1250,9 @@ class TestCmdResumeExitCodes:
         """terminal, interrupted, and handoff all return exit code 0."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 0
 
-    @pytest.mark.parametrize("terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"])
+    @pytest.mark.parametrize(
+        "terminated_by", ["max_steps", "timeout", "user_stopped", "system_signal"]
+    )
     def test_nonzero_exit_for_limit_termination(self, tmp_path: Path, terminated_by: str) -> None:
         """max_steps, timeout, user_stopped, and system_signal return exit code 1 (ENH-2522)."""
         assert self._resume_with_terminated_by(tmp_path, terminated_by) == 1

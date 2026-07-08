@@ -139,12 +139,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 nudge = True
                 run = 0
 
-        _persist_state({
-            "session_id": session,
-            "run": run,
-            "last_ts": now,
-            "nudged": nudge or (same_session and bool(state.get("nudged"))),
-        })
+        _persist_state(
+            {
+                "session_id": session,
+                "run": run,
+                "last_ts": now,
+                "nudged": nudge or (same_session and bool(state.get("nudged"))),
+            }
+        )
         return LLHookResult(exit_code=2, feedback=_NUDGE) if nudge else LLHookResult(exit_code=0)
     except Exception:  # pragma: no cover — defense in depth; never raise from a hook
         return LLHookResult(exit_code=0)

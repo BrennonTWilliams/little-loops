@@ -943,8 +943,7 @@ def _validate_state_cost_ceiling(
             errors.append(
                 ValidationError(
                     message=(
-                        f"'cost_ceiling.cost_ceiling_per_state' must be a number, "
-                        f"got {cap!r}"
+                        f"'cost_ceiling.cost_ceiling_per_state' must be a number, got {cap!r}"
                     ),
                     path=path,
                 )
@@ -953,8 +952,7 @@ def _validate_state_cost_ceiling(
             errors.append(
                 ValidationError(
                     message=(
-                        f"'cost_ceiling.cost_ceiling_per_state' must be non-negative, "
-                        f"got {cap}"
+                        f"'cost_ceiling.cost_ceiling_per_state' must be non-negative, got {cap}"
                     ),
                     path=path,
                 )
@@ -964,18 +962,14 @@ def _validate_state_cost_ceiling(
         if not isinstance(warn, (int, float)) or isinstance(warn, bool):
             errors.append(
                 ValidationError(
-                    message=(
-                        f"'cost_ceiling.cost_warn_at' must be a number, got {warn!r}"
-                    ),
+                    message=(f"'cost_ceiling.cost_warn_at' must be a number, got {warn!r}"),
                     path=path,
                 )
             )
         elif warn < 0:
             errors.append(
                 ValidationError(
-                    message=(
-                        f"'cost_ceiling.cost_warn_at' must be non-negative, got {warn}"
-                    ),
+                    message=(f"'cost_ceiling.cost_warn_at' must be non-negative, got {warn}"),
                     path=path,
                 )
             )

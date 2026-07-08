@@ -1678,9 +1678,7 @@ class TestCmdListENH2539Polished:
         assert result == 0
         out = capsys.readouterr().out
         # Locate the category-header line carrying the rollup badge.
-        header_line = next(
-            ln for ln in out.split("\n") if "HARNESS" in ln and "built-in" in ln
-        )
+        header_line = next(ln for ln in out.split("\n") if "HARNESS" in ln and "built-in" in ln)
         # The badge substring (between the ANSI opener and reset) should be
         # wrapped in ANSI 90 (gray), not ANSI 36 (cyan).
         # Sanity: the badge text is present.
@@ -1692,9 +1690,7 @@ class TestCmdListENH2539Polished:
         # Strip ANSI codes from `before_badge` to find the last opener
         import re as _re
 
-        last_opener_match = list(
-            _re.finditer(r"\x1b\[([0-9;]*)m", before_badge)
-        )
+        last_opener_match = list(_re.finditer(r"\x1b\[([0-9;]*)m", before_badge))
         assert last_opener_match, f"No ANSI opener before badge: {header_line!r}"
         last_opener_code = last_opener_match[-1].group(1)
         assert last_opener_code == "90", (

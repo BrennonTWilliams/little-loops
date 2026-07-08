@@ -271,8 +271,8 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
     seen_uuids: set[str] = set()
 
     try:
-        with open(latest, encoding="utf-8") as f:
-            for line in f:
+        with open(latest, encoding="utf-8") as handle:
+            for line in handle:
                 line = line.strip()
                 if not line:
                     continue
@@ -568,9 +568,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         usage_events = _aggregate_usage_events(db_path)
 
         if args.json_mode:
-            _print_json(
-                summary, fallback, skill_stats, cache_rate, lt_stats, usage_events
-            )
+            _print_json(summary, fallback, skill_stats, cache_rate, lt_stats, usage_events)
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:

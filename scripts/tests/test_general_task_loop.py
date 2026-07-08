@@ -673,12 +673,10 @@ class TestCheckpointClearShellAction:
         # BUG-2538: marker preservation must hold on the no-checkpoint path too —
         # the no-checkpoint branch of mark_done used to skip both rm statements.
         assert step_file.exists(), (
-            "BUG-2538: mark_done must preserve current-step.txt on the "
-            "no-checkpoint path as well"
+            "BUG-2538: mark_done must preserve current-step.txt on the no-checkpoint path as well"
         )
         assert step_file.read_text() == "- [ ] Step 1: write code\n", (
-            "BUG-2538: mark_done must not modify current-step.txt content "
-            "on the no-checkpoint path"
+            "BUG-2538: mark_done must not modify current-step.txt content on the no-checkpoint path"
         )
 
 

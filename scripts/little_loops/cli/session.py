@@ -512,9 +512,7 @@ def main_session() -> int:
                 return 0
             for s in stats:
                 rate = f"{s['success_rate']:.0%}" if s["success_rate"] is not None else "n/a"
-                avg = (
-                    f"{s['avg_duration_ms']:.0f}ms" if s["avg_duration_ms"] is not None else "n/a"
-                )
+                avg = f"{s['avg_duration_ms']:.0f}ms" if s["avg_duration_ms"] is not None else "n/a"
                 print(
                     f"{s['skill_name']}: invocations={s['invocations']} "
                     f"completions={s['completions']} success_rate={rate} avg_duration={avg}"

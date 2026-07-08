@@ -751,9 +751,7 @@ def _draw_box(
             else:
                 badge_w = _badge_display_width(badge)
                 dash_count = width - badge_w - 4
-                top_str = (
-                    "\u250c" + "\u2500" * dash_count + " " + badge + " " + "\u2510"
-                )
+                top_str = "\u250c" + "\u2500" * dash_count + " " + badge + " " + "\u2510"
                 grid[row][col] = colorize(top_str, nc)
                 for j in range(1, width):
                     if col + j < total_width:
@@ -1282,11 +1280,7 @@ def _render_layered_diagram(
     # Draw boxes
     for sname in all_states:
         is_highlighted = highlight_state is not None and sname == highlight_state
-        _kind = (
-            _box_kind_color(fsm_states.get(sname))
-            if fsm_states is not None
-            else None
-        )
+        _kind = _box_kind_color(fsm_states.get(sname)) if fsm_states is not None else None
         _draw_box(
             grid,
             row_start[sname],
@@ -2445,11 +2439,7 @@ def _render_horizontal_simple(
 
     for sname in main_path:
         is_highlighted = highlight_state is not None and sname == highlight_state
-        _kind = (
-            _box_kind_color(fsm_states.get(sname))
-            if fsm_states is not None
-            else None
-        )
+        _kind = _box_kind_color(fsm_states.get(sname)) if fsm_states is not None else None
         _draw_box(
             rows,
             0,

@@ -41,9 +41,7 @@ class TestSaveCombined:
         assert result_path == output_file
         assert output_file.exists()
 
-    def test_generates_default_path(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_generates_default_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Generates timestamped default path when no path given."""
         items = [MagicMock(to_dict=lambda: {"msg": "test"})]
 

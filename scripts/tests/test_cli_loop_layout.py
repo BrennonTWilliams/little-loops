@@ -152,7 +152,7 @@ class TestBoxKindColor:
         assert _box_kind_color(None) is None
 
     def test_sub_loop_maps_to_magenta(self) -> None:
-        from little_loops.cli.loop.layout import _box_kind_color, _SUB_LOOP_KIND_COLOR
+        from little_loops.cli.loop.layout import _SUB_LOOP_KIND_COLOR, _box_kind_color
 
         st = self._state(loop="inner-fsm", terminal=False)
         assert _box_kind_color(st) == _SUB_LOOP_KIND_COLOR == "35"
@@ -196,13 +196,13 @@ class TestBoxKindColor:
         assert _box_kind_color(st) is None
 
     def test_terminal_without_action_returns_dim(self) -> None:
-        from little_loops.cli.loop.layout import _box_kind_color, _TERMINAL_KIND_COLOR
+        from little_loops.cli.loop.layout import _TERMINAL_KIND_COLOR, _box_kind_color
 
         st = self._state(terminal=True, action=None, action_type=None)
         assert _box_kind_color(st) == _TERMINAL_KIND_COLOR == "2"
 
     def test_loop_wins_over_action_type(self) -> None:
-        from little_loops.cli.loop.layout import _box_kind_color, _SUB_LOOP_KIND_COLOR
+        from little_loops.cli.loop.layout import _SUB_LOOP_KIND_COLOR, _box_kind_color
 
         st = self._state(loop="child", action="/x", action_type="slash_command")
         assert _box_kind_color(st) == _SUB_LOOP_KIND_COLOR
