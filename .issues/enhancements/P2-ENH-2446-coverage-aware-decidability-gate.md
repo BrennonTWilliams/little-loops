@@ -3,7 +3,8 @@ id: ENH-2446
 type: enhancement
 status: open
 priority: P2
-title: Make decidability gate coverage-aware, not count-aware, and re-provision the refine/decide budget for high-open-question issues
+title: Make decidability gate coverage-aware, not count-aware, and re-provision the
+  refine/decide budget for high-open-question issues
 labels:
 - loops
 - rn-remediate
@@ -14,6 +15,12 @@ discovered_date: 2026-07-02
 discovered_by: capture-issue
 parent: EPIC-2412
 decision_needed: true
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # P2-ENH-2446: Make decidability gate coverage-aware, not count-aware, and re-provision the refine/decide budget for high-open-question issues
@@ -397,11 +404,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   outcome token should be designed as a *superstring* of an existing one
   if it must keep triggering the same parent arm.
 
+### Codebase Research Findings (Re-refinement 2026-07-08 by `/ll:refine-issue --auto`)
+
+_Added on re-refinement — based on 3-agent parallel research pass (locator / analyzer / pattern-finder) verifying freshness of all anchors against current `main`:_
+
+- **All implementation anchors verified current.** Every file path and line-number anchor cited in Implementation Steps 1–11 and Key Files resolves to the same (or +1/+2) line in current `main`. Two minor drifts to apply at implementation time:
+  - `issue_parser.py:269` (`count_enumerable_options`) → current line `271` (off by +2; new sibling should be inserted adjacent to current line)
+  - `fsm/validation.py:321-336` (`score_stall` validation block) → current lines `322-337` (off by +1)
+  - All other anchors (evaluators.py:602, schema.py:61-78 Literal, validation.py:64-79, loops/lib/common.yaml:162, cli/loop/info.py:1211, __init__.py:23/88/633/636/843-844) are exact.
+- **`test_autodev_decision_gate.py:36-68, 83-94` already provides a `_StubRunner` + `_run_decision_chain` scaffold** for FSMExecutor routing tests of `check_decision_decidable`. This file is NOT cited in the existing Implementation Steps but exists today — Implementation Step 8 should leverage it for the new gate-ordering test on the autodev side rather than building new FSMExecutor plumbing from scratch. Add a coverage extension here in addition to the `test_builtin_loops.py:3109-3112` parity test.
+- **`add_format_check_parser` factory pattern at `format_check.py:13-32`** is the alternative to the inlined `check-decidable` parser registration at `__init__.py:632-638`. The new `check-open-questions` parser should follow the inlined pattern (parity with the sibling `check-decidable`), not the factory pattern (which is format-check-specific because it supports `--format json`).
+- **No `test_ll_issues_check_decidable.py` exists today** — the existing `check-decidable` CLI is only exercised via the count-based tests in `test_decide_issue_skill.py:475-534` and the in-process unit tests, not via end-to-end subprocess tests. This means the new `test_ll_issues_check_open_questions.py` (Implementation Step 11g) is establishing a NEW pattern; the precedent is `test_ll_issues_format_check.py` (8 test classes, `_CLEAN_BUG_BODY` + `_write_issue` + `_invoke(argv)` helper, `format_check_dir` fixture using `temp_project_dir` + `sample_config`). Consider adding a `test_ll_issues_check_decidable.py` in the same commit to close the existing gap (side benefit, but tightly coupled to the new test file's scaffolding).
+- **ENH-2446 has NOT been implemented** as of `main` HEAD. All cited `## Codebase Research Findings` anchors point at predecessor/template code; none of the new symbols (`count_unresolved_options`, `count_open_questions_in_sections`, `cmd_check_open_questions`, `evaluate_open_question_stall`, `open_question_stall` literal in schema/validation/info, `open_question_stall_gate` fragment) exist anywhere in the tree yet. Implementation Steps 1–11 are the work plan; no early-pipeline drift to detect.
+- **No external API dependencies** — this is a pure-internal change (Python stdlib + existing repo primitives). No `learning_tests_required` to populate per ENH-2209 Step 7.5.
+
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2 | Refined: 2026-07-02 by `/ll:refine-issue --auto`
+**Open** | Created: 2026-07-02 | Priority: P2 | Refined: 2026-07-02 by `/ll:refine-issue --auto` | Re-refined: 2026-07-08 by `/ll:refine-issue --auto` (additive — anchor drift + autodev test scaffold noted)
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-08T17:57:01 - `a164647d-83a1-4e47-91ce-d572060b4b37.jsonl`
+- `/ll:refine-issue` - 2026-07-08T17:56:55 - `a164647d-83a1-4e47-91ce-d572060b4b37.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-2412 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:refine-issue` - 2026-07-03T00:46:39 - `230f87c5-0430-4e63-818f-efd86398fff5.jsonl`
+- `/ll:refine-issue` - 2026-07-08 - re-refinement: anchor-drift verification + autodev-decision-gate test scaffold discovery (additive, no removed content)
