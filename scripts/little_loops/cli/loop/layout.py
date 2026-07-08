@@ -170,7 +170,17 @@ def _display_width(s: str) -> int:
     Box layout reserves *display columns*, not characters, so widths must be
     measured this way; using ``len()`` undercounts wide glyphs (CJK, some
     symbols) and overflows the box border.
+
+    ANSI SGR / CSI sequences (``\\x1b[…m`` and friends) have zero visible
+    width and must not contribute to the budget. ``wcswidth`` returns ``-1``
+    for strings containing the ESC byte (it can't iterate the bytes as
+    printable text), so we strip ANSI first and then measure. Plain-text
+    callers (the common case — most call sites pass state names, action
+    bodies, badges, or row strings before colorization) skip the strip via
+    the ``\x1b`` fast path.
     """
+    if "\x1b" in s:
+        s = strip_ansi(s)
     w = _wcswidth(s)
     return w if w >= 0 else len(s)
 
@@ -198,6 +208,62 @@ def _truncate_to_width(text: str, width: int) -> str:
         out.append(ch)
         used += cw
     return "".join(out) + "…"
+
+
+# Matches any CSI sequence (the same subset ``cli.output.strip_ansi`` strips).
+# Used by ``_truncate_to_width_ansi`` to skip past escape codes without
+# consuming width budget or counting their bytes as visible columns.
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _truncate_to_width_ansi(text: str, width: int) -> str:
+    """ANSI-aware variant of :func:`_truncate_to_width`.
+
+    Truncates ``text`` to ``≤ width`` *visible* columns while preserving any
+    SGR (or other CSI) sequences embedded in it, so a colored diagram line
+    keeps its styling when it overflows the terminal width. When an SGR is
+    still active at the cut point, an explicit ``\\x1b[0m`` reset is emitted
+    before the trailing ``…`` so the active style does not leak onto the
+    next printed line.
+    """
+    if width <= 0:
+        return ""
+    if _display_width(text) <= width:
+        return text
+    # Reserve one column for the ellipsis.
+    budget = width - 1
+    out: list[str] = []
+    used = 0
+    sgr_open = False
+    i = 0
+    n = len(text)
+    while i < n:
+        # Pass CSI sequences through without consuming width budget.
+        m = _ANSI_CSI_RE.match(text, i)
+        if m is not None:
+            seq = m.group(0)
+            out.append(seq)
+            # Only SGR sequences (final byte ``m``) affect color state. An
+            # explicit reset closes any open SGR; any other SGR opens or
+            # switches the active style.
+            if seq == "\x1b[0m":
+                sgr_open = False
+            elif seq.endswith("m"):
+                sgr_open = True
+            i = m.end()
+            continue
+        cw = _wcwidth(text[i])
+        if cw < 0:
+            cw = 1
+        if used + cw > budget:
+            break
+        out.append(text[i])
+        used += cw
+        i += 1
+    result = "".join(out)
+    if sgr_open:
+        result += "\x1b[0m"
+    return result + "…"
 
 
 def _wrap_to_width(text: str, width: int) -> list[str]:
@@ -1875,13 +1941,15 @@ def _render_layered_diagram(
     if tw > 1:
         clamped: list[str] = []
         for ln in lines:
-            if _display_width(strip_ansi(ln)) > tw:
-                ln = _truncate_to_width(strip_ansi(ln), tw - 1) + "…"
+            if _display_width(ln) > tw:
+                ln = _truncate_to_width_ansi(ln, tw - 1)
             clamped.append(ln)
         lines = clamped
 
-    # Center diagram
-    max_line_len = max((_display_width(strip_ansi(ln)) for ln in lines), default=0)
+    # Center diagram. ``_display_width`` already handles SGR CSI sequences
+    # (via ``wcswidth``) so no pre-strip is needed — and stripping here would
+    # discard color information used by the post-clamp label colorizer.
+    max_line_len = max((_display_width(ln) for ln in lines), default=0)
     diagram_indent = max(0, (tw - max_line_len) // 2)
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]

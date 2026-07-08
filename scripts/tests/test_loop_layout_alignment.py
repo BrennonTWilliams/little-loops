@@ -534,5 +534,126 @@ def test_render_layered_diagram_output_clamped_to_tw(
     )
 
 
+# ---------------------------------------------------------------------------
+# Regression: terminal-width clamp must preserve ANSI styling
+# ---------------------------------------------------------------------------
+#
+# The user reported that deep FSM box diagrams lost their color halfway down
+# the printout. Root cause: ``_render_layered_diagram``'s final hard-clamp
+# ran the overflow line through ``strip_ansi`` *and* ``_truncate_to_width``
+# (which doesn't understand SGR bytes), so colored box borders / edges /
+# arrows were replaced by plain text on every line that exceeded ``tw``.
+# Fix: ``_truncate_to_width_ansi`` preserves embedded SGR CSI sequences
+# while measuring width by visible columns.
+
+
+def test_truncate_to_width_ansi_preserves_sgr_codes() -> None:
+    """Unit test for :func:`_truncate_to_width_ansi`.
+
+    - Surviving visible chars keep their SGR styling.
+    - Width is measured in visible columns (SGR bytes do not consume budget).
+    - An SGR open at the cut point is closed with ``\\x1b[0m`` *before* the
+      trailing ``…`` so the active style does not leak onto the next line.
+    """
+    from little_loops.cli.loop.layout import _truncate_to_width_ansi
+
+    # Two colored segments separated by a reset. Each segment is 4 visible
+    # columns of ``─``; total visible width = 8 (SGR bytes excluded).
+    text = "\x1b[32m────\x1b[0m\x1b[31m────\x1b[0m"
+    assert wcswidth(strip_ansi(text)) == 8
+
+    # No truncation needed: input returned verbatim.
+    out_no_trunc = _truncate_to_width_ansi(text, 8)
+    assert out_no_trunc == text, out_no_trunc
+
+    # Truncate to 6 columns: keep the green segment (4 cols) + 1 col of red
+    # + ``…``; the open SGR (red) is closed before ``…``.
+    out_trunc = _truncate_to_width_ansi(text, 6)
+    assert wcswidth(strip_ansi(out_trunc)) <= 6, strip_ansi(out_trunc)
+    assert out_trunc.endswith("\x1b[0m…"), (
+        f"open SGR not closed before ellipsis: {out_trunc!r}"
+    )
+    # The green segment survives intact.
+    assert "\x1b[32m────\x1b[0m" in out_trunc, out_trunc
+    # The red SGR (open at the cut point) is still in the output so the
+    # one surviving red ``─`` renders in red.
+    assert "\x1b[31m" in out_trunc, out_trunc
+
+    # Cut right after the green segment closes: ``\x1b[31m`` has been emitted
+    # (the open-red SGR) but no red char fits in the budget. The helper must
+    # close that open SGR before ``…`` so the active red style does not leak
+    # onto whatever the caller prints next.
+    out_at_reset = _truncate_to_width_ansi(text, 5)
+    assert out_at_reset.endswith("\x1b[0m…"), (
+        f"open SGR (\x1b[31m emitted with no following char) not closed: {out_at_reset!r}"
+    )
+    # And the visible width stays within the budget.
+    assert wcswidth(strip_ansi(out_at_reset)) <= 5, strip_ansi(out_at_reset)
+
+    # ``width <= 0`` returns the empty string.
+    assert _truncate_to_width_ansi(text, 0) == ""
+
+
+def test_render_layered_diagram_preserves_color_when_clamping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end regression: at ``tw=60`` a back-edge-heavy FSM triggers
+    the hard-clamp on at least one line, and the clamped output must still
+    contain SGR styling for box borders / edges / arrows.
+
+    The pre-fix clamp discarded all ANSI from overflowing lines, so deep
+    diagrams lost color from the first overflow row downward; this test
+    fails on the old code path and passes on the new one.
+    """
+    from little_loops.cli.output import colorize as real_colorize
+
+    tw = 60
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: tw)
+
+    # Force SGR emission regardless of TTY detection.
+    def _always_colorize(text: str, code: str) -> str:
+        return real_colorize(text, code) if code else text
+
+    # Force color by patching the colorize reference the layout module uses.
+    monkeypatch.setattr("little_loops.cli.loop.layout.colorize", _always_colorize)
+    # And make sure the global _USE_COLOR is on too (defense in depth).
+    monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True)
+
+    fsm = _make_back_edge_heavy_fsm(n=12)
+    rendered = _render_fsm_diagram(
+        fsm,
+        highlight_state="s0",
+        title_only=True,
+        suppress_labels=True,
+        mode="full",
+    )
+    assert rendered, "FSM rendered nothing"
+
+    # Invariant 1: clamp still caps line widths.
+    assert _max_line_display_width(rendered) <= tw, (
+        f"clamp failed: widest line is {_max_line_display_width(rendered)} cols (> {tw})"
+    )
+
+    # Invariant 2 (the regression): at least one SGR CSI sequence survived
+    # the clamp. ``\x1b[`` is the introducer; combined with the trailing
+    # parameter byte that defines an SGR (``m``), this catches any styling
+    # injected by ``_draw_box`` / per-edge ``_lc`` / label colorization.
+    assert "\x1b[" in rendered and "\x1b[" in rendered.replace("\x1b[0m", ""), (
+        "clamp stripped all ANSI styling from the rendered diagram — "
+        "regression of the 'color lost halfway down' bug"
+    )
+
+    # Invariant 3: the clamped line(s) still contain the ellipsis, but the
+    # trailing ``…`` is preceded by a reset (when an SGR was open at the
+    # cut point) or by a plain char (when no SGR was open). Either way, no
+    # truncated line ends with an unclosed SGR introducer.
+    for ln in rendered.splitlines():
+        if not ln.endswith("…"):
+            continue
+        # The byte immediately preceding the ellipsis must NOT be the open
+        # bracket of an SGR (which would mean we cut mid-sequence).
+        assert not ln.endswith("["), f"truncated line ends mid-CSI sequence: {ln!r}"
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

@@ -4486,3 +4486,17 @@
   alternatives_rejected: Option A — Wire the EpicsConfig dataclass (would re-litigate
     ARCHITECTURE-096, no template emits epics.* today)
   issue: ENH-2544
+- id: STYL-193
+  type: rule
+  timestamp: '2026-07-08T16:21:05Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: 'Stripping ANSI before truncating destroys upstream styling on overflow
+    lines (BUG-2546: deep FSM diagrams lost all color from the first row exceeding
+    terminal width).'
+  rule: When truncating text for terminal width, measure visible width on ANSI-stripped
+    text but truncate the ORIGINAL (preserve
+  enforcement: advisory
+  issue: BUG-2546
