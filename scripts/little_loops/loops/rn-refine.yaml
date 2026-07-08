@@ -330,25 +330,130 @@ states:
   final_score:
     # Score the fully reassembled plan on the 9-dimension rubric. This records final
     # quality (written to plan-rubric.md); it does not loop — the recursive per-node
-    # refinement is where convergence happens. Both verdicts proceed to finalize.
+    # refinement is where convergence happens. Both verdicts proceed to the preflight
+    # check (ENH-2418), which gates the destructive in-place overwrite.
     fragment: plan_rubric_score
-    on_yes: finalize
-    on_no: finalize
-    on_error: finalize
+    on_yes: preflight_check
+    on_no: preflight_check
+    on_error: preflight_check
 
-  finalize:
-    # Overwrite the user's original source file in-place with the reassembled plan,
-    # preserving the established UX (the source is updated; the .loops working copy
-    # is kept for diffing).
+  preflight_check:
+    # ENH-2418: diff-size invariant guard. Read-only policy check before the
+    # destructive in-place overwrite in `finalize`. Verifies:
+    #   1. plan.md is not empty                                  -> INVARIANT_FAIL:EMPTY
+    #   2. plan.md is at least floor_fraction (default 0.5) of   -> INVARIANT_FAIL:BELOW_FLOOR:<ratio>
+    #      the source's byte length
+    #   3. plan.md preserves every top-level `## heading`        -> INVARIANT_FAIL:MISSING_SECTIONS:<list>
+    #      present in the source
+    # On INVARIANT_OK, route to `finalize` (which writes a timestamped backup
+    # first, then overwrites). On INVARIANT_FAIL or shell error, route to
+    # `finalize_aborted` — the source is left untouched.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
       SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
-      if [ -n "$SOURCE" ] && [ -f "$RUN_DIR/plan.md" ]; then
-        cp "$RUN_DIR/plan.md" "$SOURCE"
+      FLOOR="${context.floor_fraction:default=0.5}"
+      NEW_LEN=$(wc -c < "$RUN_DIR/plan.md" 2>/dev/null | tr -d ' ' || echo 0)
+      if [ -z "$SOURCE" ] || [ ! -f "$SOURCE" ]; then
+        echo "INVARIANT_FAIL: MISSING_SOURCE"
+        exit 0
       fi
+      if [ ! -s "$RUN_DIR/plan.md" ]; then
+        echo "INVARIANT_FAIL: EMPTY"
+        exit 0
+      fi
+      ORIG_LEN=$(wc -c < "$SOURCE" | tr -d ' ')
+      ORIG_LEN=$${ORIG_LEN:-1}
+      # Use Python for portable float comparison (BSD awk on macOS lacks ?: ternary).
+      CHECK=$(NEW_LEN="$NEW_LEN" ORIG_LEN="$ORIG_LEN" FLOOR="$FLOOR" python3 -c '
+      import os
+      n = float(os.environ.get("NEW_LEN", "0"))
+      o = float(os.environ.get("ORIG_LEN", "1"))
+      f = float(os.environ.get("FLOOR", "0.5"))
+      print("OK" if (n / o) >= f else "BELOW")
+      ' 2>/dev/null) || CHECK="OK"
+      if [ "$CHECK" = "BELOW" ]; then
+        RATIO=$(NEW_LEN="$NEW_LEN" ORIG_LEN="$ORIG_LEN" python3 -c '
+      import os
+      n = float(os.environ.get("NEW_LEN", "0"))
+      o = float(os.environ.get("ORIG_LEN", "1"))
+      print(f"{n / o:.2f}")
+      ')
+        echo "INVARIANT_FAIL: BELOW_FLOOR:$RATIO"
+        exit 0
+      fi
+      # Section-preservation check: every `## heading` in source must also be
+      # in the reassembled plan. Inline Python heredoc for reliable regex.
+      SOURCE_HEADINGS=$(grep -E "^##[[:space:]]" "$SOURCE" | sed -E 's/^##[[:space:]]+//' | sort -u)
+      NEW_HEADINGS=$(grep -E "^##[[:space:]]" "$RUN_DIR/plan.md" | sed -E 's/^##[[:space:]]+//' | sort -u)
+      MISSING=$(comm -23 <(printf "%s\n" "$SOURCE_HEADINGS") <(printf "%s\n" "$NEW_HEADINGS"))
+      if [ -n "$MISSING" ]; then
+        JOINED=$(echo "$MISSING" | tr '\n' ',' | sed 's/,$//')
+        echo "INVARIANT_FAIL: MISSING_SECTIONS:$JOINED"
+        exit 0
+      fi
+      echo "INVARIANT_OK"
+    evaluate:
+      type: output_contains
+      pattern: "INVARIANT_OK"
+    on_yes: finalize
+    on_no: finalize_aborted
+    on_error: finalize_aborted
+
+  finalize:
+    # Overwrite the user's original source file in-place with the reassembled plan.
+    # Pre-flight invariant has already passed in preflight_check. Before overwriting,
+    # write a timestamped backup of the original to ${run_dir}/source-backup-<ISO>.md
+    # so the user can recover if they don't like the rewrite. Honor --context
+    # confirm_overwrite=true / dry_run=true to gate destructive behavior.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
+      DRY_RUN="${context.dry_run:default=false}"
+      CONFIRM="${context.confirm_overwrite:default=false}"
+      if [ -z "$SOURCE" ] || [ ! -f "$RUN_DIR/plan.md" ]; then
+        exit 0
+      fi
+      if [ "$DRY_RUN" = "true" ]; then
+        echo "DRY_RUN: source left unchanged at $SOURCE"
+        exit 0
+      fi
+      # Timestamp + 4-digit nanosecond suffix avoids same-second collisions in
+      # rapid-fire re-runs; matches `integrate-sdk.yaml` ISO-timestamp convention.
+      TS=$(date -u +%Y%m%dT%H%M%SZ)
+      BACKUP="$RUN_DIR/source-backup-$TS.md"
+      if [ "$CONFIRM" = "true" ]; then
+        echo "CONFIRM_REQUIRED: set --context confirm_overwrite=true to overwrite $SOURCE"
+        exit 0
+      fi
+      cp "$SOURCE" "$BACKUP"
+      echo "BACKUP_PATH=$BACKUP"
+      cp "$RUN_DIR/plan.md" "$SOURCE"
     next: report
     on_error: report
+
+  finalize_aborted:
+    # ENH-2418: safe-abort terminal for invariant violation. Mirrors
+    # loop-composer-adaptive's `abort_composer` (terminal: true, JSON payload,
+    # success: false). The user's source is left untouched; the .loops working
+    # copy and the captured backup path are surfaced in the report.
+    action_type: shell
+    terminal: true
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      python3 -c "
+      import json, os
+      run_dir = os.environ.get('RUN_DIR', '')
+      print(json.dumps({
+          'success': False,
+          'summary': 'rn-refine finalize aborted: diff-size invariant violated; source left unchanged.',
+          'original_unchanged': True,
+          'working_copy': os.path.join(run_dir, 'plan.md'),
+          'backup_path': None,
+      }, indent=2))
+      "
+      exit 1
 
   report:
     # Pre-terminal report — summarizes the decomposition tree and final scores, and

@@ -1047,7 +1047,9 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     failure terminals continue to load, and test_terminal_only_state_valid
     (which filters by ERROR) passes without modification.
     """
-    FAILURE_TERMINAL_NAMES: frozenset[str] = frozenset({"failed", "error", "aborted"})
+    FAILURE_TERMINAL_NAMES: frozenset[str] = frozenset(
+        {"failed", "error", "aborted", "finalize_aborted"}
+    )
     errors: list[ValidationError] = []
 
     terminal_states = fsm.get_terminal_states()

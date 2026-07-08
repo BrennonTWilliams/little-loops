@@ -267,7 +267,8 @@ class TestBuiltinLoopFiles:
             failure_terminals = {
                 name
                 for name, cfg in states.items()
-                if cfg.get("terminal") and name in ("failed", "error", "aborted")
+                if cfg.get("terminal")
+                and name in ("failed", "error", "aborted", "finalize_aborted")
             }
             if not failure_terminals:
                 continue

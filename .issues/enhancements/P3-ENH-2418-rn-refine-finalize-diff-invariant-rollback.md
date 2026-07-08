@@ -4,9 +4,10 @@ title: 'rn-refine finalize: diff-invariant guard and rollback for in-place sourc
   overwrite'
 type: ENH
 priority: P3
-status: open
+status: done
 parent: EPIC-2412
 captured_at: '2026-06-30T00:00:00Z'
+completed_at: 2026-07-08 19:52:32+00:00
 discovered_date: 2026-06-30
 discovered_by: capture-issue
 size: Medium
@@ -266,6 +267,8 @@ _Added by `/ll:refine-issue` (auto mode) — distilled from the three research a
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-08T19:52:32 - `a9e7d05a-e7e1-49e1-81c0-ba4d0fefbad6.jsonl`
+- `/ll:ready-issue` - 2026-07-08T19:45:05 - `41735b95-48eb-45c7-80b7-a85f23777a4a.jsonl`
 - `/ll:confidence-check` - 2026-07-08T19:40:46 - `1be81ae7-2a56-476a-afe4-10fc2599a89d.jsonl`
 - `/ll:wire-issue` - 2026-07-08T19:38:30 - `28a33135-d85e-41db-a823-249d38b11664.jsonl`
 - `/ll:decide-issue` - 2026-07-08T19:23:18 - `1fa0a2f6-4d3c-4cc6-b4dc-5ae278b14109.jsonl`

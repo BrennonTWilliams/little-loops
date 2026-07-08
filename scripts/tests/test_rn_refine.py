@@ -392,3 +392,116 @@ class TestAssembleAndFinalize:
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0
         assert source.read_text() == "# reassembled refined plan\n"
+        # ENH-2418: a timestamped backup of the ORIGINAL source is written before overwrite.
+        backups = list(rd.glob("source-backup-*.md"))
+        assert len(backups) == 1, f"expected exactly one backup, got: {backups}"
+        assert backups[0].read_text() == "# old\n"
+
+
+# ---------------------------------------------------------------------------
+# ENH-2418: preflight invariant + safe-abort terminal for the in-place write
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeSafety:
+    """Guard against a degenerate synthesis silently clobbering the user's source.
+
+    The recursive-descent pipeline re-assembles ${run_dir}/plan.md from the node
+    tree. If that file is empty, truncated below the floor, or drops required
+    sections, the run must NOT overwrite the original — it terminates via the
+    new `finalize_aborted` terminal with the invariant violation surfaced.
+    """
+
+    def _preflight_action(self) -> str:
+        return _load_rn_refine().states["preflight_check"].action
+
+    def _finalize_action(self) -> str:
+        return _load_rn_refine().states["finalize"].action
+
+    def _seed(self, tmp_path: Path, *, plan: str, source: str) -> Path:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "plan.md").write_text(plan)
+        source_path = tmp_path / "plan.md"
+        source_path.write_text(source)
+        (rd / ".source-path").write_text(str(source_path) + "\n")
+        return rd
+
+    def test_preflight_emits_ok_for_healthy_plan(self, tmp_path: Path) -> None:
+        source = "# Big Plan\n\n## Phase 1\n\n- a\n\n## Phase 2\n\n- b\n"
+        plan = source + "\n## Phase 3 (added)\n\n- c\n"
+        rd = self._seed(tmp_path, plan=plan, source=source)
+        rendered = _render(self._preflight_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "INVARIANT_OK" in result.stdout
+        assert "INVARIANT_FAIL" not in result.stdout
+
+    def test_preflight_aborts_on_empty_final(self, tmp_path: Path) -> None:
+        source = "# Big Plan\n\n## Phase 1\n\n- a\n"
+        rd = self._seed(tmp_path, plan="", source=source)
+        rendered = _render(self._preflight_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert "INVARIANT_FAIL" in result.stdout
+        assert "EMPTY" in result.stdout
+
+    def test_preflight_aborts_on_truncated_below_floor(self, tmp_path: Path) -> None:
+        # Source is ~80 bytes; final is 4 bytes (~5%) — well below the 0.5 floor.
+        source = "# Big Plan\n\n## Phase 1\n\n" + ("- bullet line\n" * 6) + "## Phase 2\n"
+        rd = self._seed(tmp_path, plan="# x\n", source=source)
+        rendered = _render(self._preflight_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert "INVARIANT_FAIL" in result.stdout
+        assert "BELOW_FLOOR" in result.stdout
+
+    def test_preflight_aborts_on_missing_required_sections(self, tmp_path: Path) -> None:
+        # Source has two top-level sections; final keeps only one.
+        source = "# Big Plan\n\n## Phase 1\n\n- a\n\n## Phase 2\n\n- b\n"
+        plan = "# Big Plan\n\n## Phase 1\n\n- a\n" + ("x" * 200)  # preserve length, drop section
+        rd = self._seed(tmp_path, plan=plan, source=source)
+        rendered = _render(self._preflight_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert "INVARIANT_FAIL" in result.stdout
+        assert "MISSING_SECTIONS" in result.stdout
+        assert "Phase 2" in result.stdout
+
+    def test_finalize_dry_run_does_not_overwrite_source(self, tmp_path: Path) -> None:
+        source = "# original\n"
+        rd = self._seed(tmp_path, plan="# reassembled\n", source=source)
+        rendered = _render(
+            self._finalize_action(),
+            captured={"run_dir": {"output": str(rd)}},
+            context={"dry_run": "true"},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0
+        # Source is untouched in dry-run mode.
+        assert (tmp_path / "plan.md").read_text() == "# original\n"
+        # No backup written in dry-run mode (nothing destructive attempted).
+        assert list(rd.glob("source-backup-*.md")) == []
+
+    def test_finalize_aborted_is_terminal(self) -> None:
+        fsm = _load_rn_refine()
+        assert "finalize_aborted" in fsm.states
+        assert fsm.states["finalize_aborted"].terminal is True
+
+    def test_finalize_aborted_action_is_shell(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["finalize_aborted"].action_type == "shell"
+
+    def test_preflight_routes_to_finalize_on_ok(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["preflight_check"].on_yes == "finalize"
+
+    def test_preflight_routes_to_finalize_aborted_on_fail(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["preflight_check"].on_no == "finalize_aborted"
+
+    def test_preflight_routes_to_finalize_aborted_on_error(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["preflight_check"].on_error == "finalize_aborted"
+
+    def test_final_score_routes_to_preflight_check(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["final_score"].on_yes == "preflight_check"
+        assert fsm.states["final_score"].on_no == "preflight_check"
