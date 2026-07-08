@@ -4474,3 +4474,15 @@
     to the specific element being changed, n
   enforcement: advisory
   issue: ENH-2542
+- id: ARCHITECTURE-119
+  type: decision
+  timestamp: '2026-07-08T14:48:48Z'
+  category: architecture
+  labels: []
+  rationale: Schema-only limbo; FEAT-2339/FEAT-2447 (ARCHITECTURE-096) deliberately
+    chose parallel.epic_branches.* over epics.*; mirrors BUG-1461 precedent (12/12).
+  rule: Option B — Remove the epics.* schema keys
+  scope: issue
+  alternatives_rejected: Option A — Wire the EpicsConfig dataclass (would re-litigate
+    ARCHITECTURE-096, no template emits epics.* today)
+  issue: ENH-2544
