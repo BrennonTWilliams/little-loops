@@ -717,6 +717,114 @@ class TestTopologyDetector:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# ENH-2539: cmd_list renderer helpers
+# ---------------------------------------------------------------------------
+
+
+class TestCategoryRollup:
+    """ENH-2539: `_category_rollup()` builds the inline header badge
+    `M built-in · K project · J internal · N example`."""
+
+    def test_all_built_in_public(self) -> None:
+        from little_loops.cli.loop.info import _category_rollup
+
+        group = [
+            {"visibility": "public", "builtin": True},
+            {"visibility": "public", "builtin": True},
+        ]
+        hidden = {"internal": 0, "example": 0}
+        assert _category_rollup(group, hidden) == "2 built-in"
+
+    def test_mixed_project_and_built_in(self) -> None:
+        from little_loops.cli.loop.info import _category_rollup
+
+        group = [
+            {"visibility": "public", "builtin": True},
+            {"visibility": "public", "builtin": False},
+        ]
+        hidden = {"internal": 0, "example": 0}
+        assert _category_rollup(group, hidden) == "1 built-in, 1 project"
+
+    def test_internal_hidden_count_included(self) -> None:
+        from little_loops.cli.loop.info import _category_rollup
+
+        group = [{"visibility": "internal", "builtin": True}]
+        hidden = {"internal": 0, "example": 0}
+        assert _category_rollup(group, hidden) == "1 internal"
+
+    def test_empty_group_returns_empty(self) -> None:
+        from little_loops.cli.loop.info import _category_rollup
+
+        hidden = {"internal": 0, "example": 0}
+        assert _category_rollup([], hidden) == ""
+
+
+class TestRenderLabels:
+    """ENH-2539: `_render_labels()` colors labels by semantic class."""
+
+    @pytest.fixture(autouse=True)
+    def _force_color(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+
+    def test_empty_labels_returns_empty(self) -> None:
+        from little_loops.cli.loop.info import _render_labels
+
+        assert _render_labels([]) == ""
+
+    def test_two_labels_both_visible(self) -> None:
+        from little_loops.cli.loop.info import _render_labels
+
+        out = _render_labels(["hitl", "comparison"])
+        assert "\033[36m[hitl]\033[0m" in out
+        assert "\033[35m[comparison]\033[0m" in out
+
+    def test_overflow_label_shows_plus_n(self) -> None:
+        from little_loops.cli.loop.info import _render_labels
+
+        out = _render_labels(["a", "b", "c", "d"])
+        assert "[+2]" in out
+        # c and d should NOT appear (only first 2 visible)
+        assert "[c]" not in out
+        assert "[d]" not in out
+
+    def test_unknown_label_uses_dim_green(self) -> None:
+        from little_loops.cli.loop.info import _render_labels
+
+        out = _render_labels(["unknown-label"])
+        assert "\033[2m[unknown-label]\033[0m" in out
+
+
+class TestDetectSubgroups:
+    """ENH-2539: `_detect_subgroups()` buckets loops sharing a name prefix."""
+
+    def test_all_share_prefix_forms_one_subgroup(self) -> None:
+        from little_loops.cli.loop.info import _detect_subgroups
+
+        group = [{"name": f"apo-{x}"} for x in ("beam", "contrastive", "feedback", "zany")]
+        result = _detect_subgroups(group)
+        prefixes = [p for p, _ in result]
+        assert "apo" in prefixes
+
+    def test_mixed_no_dominant_prefix_returns_flat(self) -> None:
+        from little_loops.cli.loop.info import _detect_subgroups
+
+        group = [{"name": n} for n in ("foo", "bar", "baz", "qux")]
+        result = _detect_subgroups(group)
+        # No subgroup should dominate; flat list with empty-prefix entry
+        assert all(p == "" for p, _ in result) or len(result) == 1
+
+    def test_below_threshold_no_subgroup(self) -> None:
+        from little_loops.cli.loop.info import _detect_subgroups
+
+        # Only 2 of 5 share "x" prefix; below ≥3 threshold
+        group = [{"name": n} for n in ("x-a", "x-b", "foo", "bar", "baz")]
+        result = _detect_subgroups(group)
+        # Result should not have "x" as a subgroup prefix
+        prefix_names = {p for p, _ in result}
+        assert "x" not in prefix_names
+
+
 class TestCountDisplayLines:
     """Direct unit tests for _count_display_lines()."""
 

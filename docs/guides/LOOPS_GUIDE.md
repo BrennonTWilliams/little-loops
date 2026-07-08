@@ -976,7 +976,7 @@ A loop can also declare a `visibility` tier — the *audience* axis, orthogonal 
 | `internal` | Delegated-only sub-loop, never run directly (e.g. `oracles/*`) | ❌ No — `--internal` or `--all` |
 | `example` | Demo or copy-me template (e.g. the `harness-*` EXAMPLE loops) | ❌ No — `--examples` or `--all` |
 
-`ll-loop list` shows only `public` loops by default and prints a footer summarizing the hidden count plus a pointer to `loop-router` (the natural-language "which loop?" entry point). Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
+`ll-loop list` shows only `public` loops by default; it ends with a `Total:` summary line that surfaces loop/category counts and, when hidden tiers exist, prints an extra hint line (`2 hidden (1 internal, 1 example) — pass --all to show`). The `kind` column (`built-in` / `project` / `internal` / `example`) makes the visibility of each row scannable. Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
 
 ```yaml
 name: my-sub-loop

@@ -54,6 +54,37 @@ Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is 
 | `ENH` | `34` | Blue |
 | `EPIC` | `35` | Purple-magenta |
 
+Category colors for `ll-loop list` headers (key is the lowercase slug used in `CATEGORY_COLOR`; keys are matched against each loop's `category:` field):
+
+| Slug | ANSI Code | Appearance |
+|------|-----------|------------|
+| `apo` | `38;5;141` | Purple |
+| `code-quality` | `32` | Green |
+| `data` | `34` | Blue |
+| `evaluation` | `38;5;208` | Orange |
+| `gate` | `38;5;160` | Red |
+| `harness` | `35` | Magenta |
+| `integration` | `38;5;39` | Sky |
+| `issue-management` | `36` | Cyan |
+| `meta` | `38;5;208` | Orange |
+| `planning` | `38;5;39` | Sky |
+| `research` | `36` | Cyan |
+| `rl` | `38;5;160` | Red |
+| `uncategorized` | `0;2` | Reset-dim |
+
+Label colors for `ll-loop list` rows (resolved via `LABEL_COLOR.get(label, "2")`; unknown labels default to dim-green `2`):
+
+| Label | ANSI Code | Appearance |
+|-------|-----------|------------|
+| `hitl` | `36` | Cyan |
+| `comparison` | `35` | Magenta |
+| `generated` | `33` | Yellow |
+| `meta` | `38;5;208` | Orange |
+
+The `ACRONYMS` frozenset (`{'APO', 'HITL', 'LLM', 'SVG', 'FSM', 'RLHF', 'API'}`) governs
+acronym-aware title casing via `_smart_title()` — `apo` renders as `APO` in
+`ll-loop list` headers rather than the `Apo` that plain `.title()` would produce.
+
 Edge colors (used in FSM diagrams — applied to both label text and connector line characters):
 
 | Label | ANSI Code | Appearance |
@@ -324,5 +355,5 @@ The Markdown formatter uses emoji only for machine-rendered output (files/PRs), 
    ```
 2. Use `terminal_width()` for any layout calculations — never hardcode widths.
 3. Call `colorize(text, code)` for color — it automatically no-ops when color is disabled.
-4. For new color mappings, add to `PRIORITY_COLOR` or `TYPE_COLOR` in `output.py`, or define a local dict following the same ANSI code format.
+4. For new color mappings, add to `PRIORITY_COLOR`, `TYPE_COLOR`, `CATEGORY_COLOR`, or `LABEL_COLOR` in `output.py`, or define a local dict following the same ANSI code format. `_smart_title()` is the canonical helper for acronym-aware category/subgroup title casing; consult `ACRONYMS` before adding a new acronym.
 5. Respect `NO_COLOR` by routing all color through `colorize()` rather than embedding raw ANSI escapes inline.

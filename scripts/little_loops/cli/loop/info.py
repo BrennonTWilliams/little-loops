@@ -22,7 +22,15 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _colorize_label,
     _render_fsm_diagram,
 )
-from little_loops.cli.output import colorize, print_json, strip_ansi, terminal_width
+from little_loops.cli.output import (
+    ACRONYMS,  # noqa: F401  (re-exported for tests/lint)
+    CATEGORY_COLOR,
+    LABEL_COLOR,
+    _smart_title,
+    colorize,
+    print_json,
+    terminal_width,
+)
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.fragments import resolve_inheritance
 from little_loops.fsm.schema import FSMLoop, StateConfig
@@ -265,12 +273,17 @@ def cmd_list(
     if "uncategorized" in buckets:
         sorted_cats.append("uncategorized")
 
-    # Cap name column so outlier names don't crush the description budget.
+    # ENH-2539: column widths computed once per render; description gets the
+    # remaining space with a 20-char floor mirroring ``_print_state_overview_table``.
     _MAX_NAME_COL = 32
-    _MAX_LABELS = 2
-    max_name_len = max((len(lp["name"]) for lp in all_loops), default=0)
-    name_col = min(max_name_len, _MAX_NAME_COL) + 2
+    _MAX_KIND_COL = 10
+    _MAX_LABEL_COL = 18
+    _DESC_FLOOR = 20
+    name_col = _MAX_NAME_COL + 2
+    kind_col = _MAX_KIND_COL
+    label_col = _MAX_LABEL_COL
     tw = terminal_width()
+    desc_col = max(_DESC_FLOOR, tw - name_col - kind_col - label_col - 6)
 
     # Summary header
     n_project = sum(1 for lp in all_loops if not lp["builtin"])
@@ -287,64 +300,92 @@ def cmd_list(
         if cats_printed:
             print()  # blank line between category groups
         cats_printed = True
-        cat_title = cat.replace("-", " ").title()
-        print(colorize(f"  ▸ {cat_title}  ({len(group)})", "36;1"))
-        for lp in group:
-            # Name: project loops get bold cyan, built-in loops get dimmer cyan
-            name_color = "36" if lp["builtin"] else "36;1"
-            display_name = (
-                _truncate(lp["name"], _MAX_NAME_COL)
-                if len(lp["name"]) > _MAX_NAME_COL
-                else lp["name"]
+        # ENH-2539: per-category color + inline rollup badge.
+        cat_color = CATEGORY_COLOR.get(cat, "36;1")
+        cat_title = _smart_title(cat)
+        header_label = f"  ▸ {cat_title}  ({len(group)})"
+        rollup = _category_rollup(group, hidden_counts)
+        if rollup:
+            header_label += f"  {colorize(rollup, '2')}"
+        print(colorize(header_label, cat_color))
+
+        kind_color_map = {
+            "project": "36;1",
+            "built-in": "2",
+            "internal": "3",
+            "example": "33;2",
+        }
+
+        def _kind_for(lp: dict[str, Any]) -> str:
+            """Render a single leaf row for ``lp`` (used by flat + subgroup paths)."""
+            if lp.get("visibility") == "internal":
+                return "internal"
+            if lp.get("visibility") == "example":
+                return "example"
+            if lp.get("builtin", True):
+                return "built-in"
+            return "project"
+
+        def _emit_row(
+            lp: dict[str, Any],
+            indent: str,
+            *,
+            _kcm: dict[str, str] = kind_color_map,
+        ) -> None:
+            name_str = colorize(
+                _truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "36"
             )
-            name_str = colorize(display_name.ljust(name_col), name_color)
-
-            # Suffix: cap labels; mark only project loops (built-in is the default)
-            suffix_parts: list[str] = []
-            labels = lp["labels"] or []
-            visible_labels = labels[:_MAX_LABELS]
-            hidden_label_count = len(labels) - _MAX_LABELS
-            for label in visible_labels:
-                suffix_parts.append(colorize(f"[{label}]", "2"))
-            if hidden_label_count > 0:
-                suffix_parts.append(colorize(f"[+{hidden_label_count}]", "2"))
-            if not lp["builtin"]:
-                suffix_parts.append(colorize("●", "36;1"))
-
-            if suffix_parts:
-                suffix_raw = "  " + " ".join(suffix_parts)
-                suffix_visible = len(strip_ansi(suffix_raw))
-            else:
-                suffix_raw = ""
-                suffix_visible = 0
-
-            # Available width for description: indent + name_col + "  " + desc + suffix
-            avail = tw - 2 - name_col - 2 - suffix_visible
+            kind_value = _kind_for(lp)
+            kind_str = colorize(
+                kind_value.ljust(kind_col),
+                _kcm.get(kind_value, "2"),
+            )
+            label_str = _render_labels(lp.get("labels") or [])
             desc_text = lp["description"] or ""
-            if desc_text and avail < len(desc_text):
-                desc_text = _truncate(desc_text, max(avail, 20))
+            if desc_text and len(desc_text) > desc_col:
+                desc_text = _truncate(desc_text, desc_col)
             desc_str = f"  {colorize(desc_text, '2')}" if desc_text else ""
+            print(f"{indent}{name_str}{kind_str}{label_str}{desc_str}")
 
-            print(f"  {name_str}{desc_str}{suffix_raw}")
+        # ENH-2539: subgroup subheads for categories with a dominant prefix
+        # cluster (≥3 members sharing a prefix). When no subgroup qualifies,
+        # fall through to the flat render path.
+        subgroups = _detect_subgroups(group)
+        has_subgroups = any(prefix for prefix, _ in subgroups)
+        if has_subgroups:
+            for prefix, members in subgroups:
+                if prefix:
+                    sub_label = _smart_title(prefix)
+                    print(colorize(f"    {sub_label} ({len(members)})", "0;2"))
+                    indent = "      "
+                else:
+                    indent = "  "
+                for lp in members:
+                    _emit_row(lp, indent)
+        else:
+            for lp in group:
+                _emit_row(lp, "  ")
 
-    # Footer: surface hidden tiers and point users at the natural-language router
-    # rather than asking them to scan dozens of loops.
+    # ENH-2539: closing Total: summary line + hidden-tier hint.
     print()
-    if n_project:
-        print(colorize("  ● = project loop (overrides built-in)", "2"))
-    hidden_bits: list[str] = []
-    if hidden_counts.get("internal"):
-        hidden_bits.append(f"{hidden_counts['internal']} internal (--internal)")
-    if hidden_counts.get("example"):
-        hidden_bits.append(f"{hidden_counts['example']} example (--examples)")
-    if hidden_bits:
-        print(colorize(f"  Hidden: {', '.join(hidden_bits)} · all with --all", "2"))
-    print(
-        colorize(
-            '  Not sure which loop? `ll-loop run loop-router --input goal="<what you want>"`',
-            "2",
+    total_parts = [
+        f"{len(all_loops)} loops",
+        f"{len(buckets)} categories",
+        f"{n_project} project, {n_builtin} built-in",
+    ]
+    total_str = "Total: " + " · ".join(total_parts)
+    print(total_str)
+    hidden_total = sum(hidden_counts.values())
+    if hidden_total:
+        hidden_bits = ", ".join(
+            f"{v} {k}" for k, v in hidden_counts.items() if v
         )
-    )
+        print(
+            colorize(
+                f"       {hidden_total} hidden ({hidden_bits}) — pass --all to show",
+                "2",
+            )
+        )
     return 0
 
 
@@ -358,6 +399,87 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 1] + "\u2026"
+
+
+def _category_rollup(group: list[dict[str, Any]], hidden_counts: dict[str, int]) -> str:
+    """Build the inline header badge: ``"M built-in \u00b7 K project \u00b7 J internal \u00b7 N example"``.
+
+    Consumes each loop's ``visibility`` (public/internal/example) and
+    ``builtin`` flag.  ``hidden_counts`` is unused directly here but is kept
+    in the signature for symmetry with potential future surfaces.
+    """
+    del hidden_counts  # currently derived entirely from group; reserved for shape parity
+    counts = {"built-in": 0, "project": 0, "internal": 0, "example": 0}
+    for lp in group:
+        vis = lp.get("visibility", "public")
+        if vis == "internal":
+            counts["internal"] += 1
+        elif vis == "example":
+            counts["example"] += 1
+        else:  # public
+            if lp.get("builtin", True):
+                counts["built-in"] += 1
+            else:
+                counts["project"] += 1
+    parts: list[str] = []
+    if counts["built-in"]:
+        parts.append(f"{counts['built-in']} built-in")
+    if counts["project"]:
+        parts.append(f"{counts['project']} project")
+    if counts["internal"]:
+        parts.append(f"{counts['internal']} internal")
+    if counts["example"]:
+        parts.append(f"{counts['example']} example")
+    return ", ".join(parts)
+
+
+def _render_labels(labels: list[str]) -> str:
+    """Render a loop's labels inline with semantic color via :data:`LABEL_COLOR`.
+
+    Up to 2 labels are shown; additional labels are summarized as ``[+N]``.
+    Unknown labels fall back to dim-green (code ``2``).
+    """
+    if not labels:
+        return ""
+    visible = labels[:2]
+    hidden = max(0, len(labels) - 2)
+    parts: list[str] = []
+    for lab in visible:
+        code = LABEL_COLOR.get(lab.lower(), "2")
+        parts.append(colorize(f"[{lab}]", code))
+    if hidden:
+        parts.append(colorize(f"[+{hidden}]", "2"))
+    return "  " + " ".join(parts)
+
+
+def _detect_subgroups(group: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Bucket members by their first-name-prefix sub-bucket.
+
+    Returns a list of ``(prefix, members)`` pairs.  A subgroup is emitted only
+    when at least 3 members share a prefix AND that prefix dominates the
+    category (\u226550 % of members).  Below either threshold the loop is added to
+    the ``("", flat)`` tail-bucket.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    flat: list[dict[str, Any]] = []
+    for lp in group:
+        name = lp.get("name", "")
+        first = name.split("-", 1)[0] if name else ""
+        if first and len(first) >= 2:
+            buckets.setdefault(first, []).append(lp)
+        else:
+            flat.append(lp)
+    subgroups: list[tuple[str, list[dict[str, Any]]]] = []
+    for prefix, members in buckets.items():
+        if len(members) >= 3 and len(members) >= max(1, len(group) // 2):
+            subgroups.append((prefix, sorted(members, key=lambda lp: lp["name"])))
+        else:
+            flat.extend(members)
+    subgroups.sort(key=lambda kv: kv[0])
+    if flat:
+        flat.sort(key=lambda lp: lp["name"])
+        subgroups.append(("", flat))
+    return subgroups
 
 
 def _format_history_event(

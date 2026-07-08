@@ -84,17 +84,64 @@ TYPE_COLOR: dict[str, str] = {
     "EPIC": "35",
 }
 
+# ENH-2539: per-category color map for ``ll-loop list`` headers. Slugs are
+# _smart_title() output (``"Apo"`` becomes ``"apo"`` slug in CATEGORY_COLOR;
+# see ``_smart_title`` for the reverse direction).
+CATEGORY_COLOR: dict[str, str] = {
+    "apo": "38;5;141",
+    "code-quality": "32",
+    "data": "34",
+    "evaluation": "38;5;208",
+    "example": "33;2",
+    "gate": "38;5;160",
+    "harness": "35",
+    "integration": "38;5;39",
+    "issue-management": "36",
+    "lib": "90",
+    "meta": "38;5;208",
+    "optimization": "33",
+    "orchestration": "38;5;141",
+    "planning": "38;5;39",
+    "quality": "32",
+    "research": "36",
+    "rl": "38;5;160",
+    "routing": "35",
+    "uncategorized": "0;2",
+    "api-adoption": "33",
+}
+
+# ENH-2539: per-label color map for ``ll-loop list`` rows. Used by
+# ``_render_labels`` in cli/loop/info.py.
+LABEL_COLOR: dict[str, str] = {
+    "hitl": "36",
+    "comparison": "35",
+    "generated": "33",
+    "meta": "38;5;208",
+}
+
+# ENH-2539: acronyms preserved by ``_smart_title`` for category and subgroup
+# subhead rendering. Keep entries UPPER-CASE.
+ACRONYMS: frozenset[str] = frozenset({"APO", "HITL", "LLM", "SVG", "FSM", "RLHF", "API"})
+
+
+def _smart_title(slug: str) -> str:
+    """Title-case a slug (``"issue-management"`` -> ``"Issue Management"``)
+    while preserving known acronyms (``"apo"`` -> ``"APO"``)."""
+    parts = slug.replace("-", " ").split()
+    return " ".join(p.upper() if p.upper() in ACRONYMS else p.capitalize() for p in parts)
+
 
 def configure_output(config: CliConfig | None = None) -> None:
     """Apply CLI color configuration to module-level color state.
 
     Call this once at startup after loading BRConfig. Updates _USE_COLOR,
-    PRIORITY_COLOR, and TYPE_COLOR based on config and NO_COLOR env var.
+    PRIORITY_COLOR, TYPE_COLOR, CATEGORY_COLOR, and LABEL_COLOR based on
+    config and NO_COLOR env var.
 
     Args:
         config: CliConfig from BRConfig.cli, or None for defaults.
     """
-    global _USE_COLOR, PRIORITY_COLOR, TYPE_COLOR
+    global _USE_COLOR, PRIORITY_COLOR, TYPE_COLOR, CATEGORY_COLOR, LABEL_COLOR
 
     # NO_COLOR env var always takes precedence (industry convention)
     no_color_env = os.environ.get("NO_COLOR", "") != ""

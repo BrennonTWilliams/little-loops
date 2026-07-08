@@ -3,11 +3,12 @@ id: ENH-2539
 title: Polish `ll-loop list` output to match `ll-issues list --group-by epic`
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-08
 captured_at: '2026-07-08T01:52:29Z'
 discovered_by: capture-issue
 decision_needed: false
+completed_at: 2026-07-08 03:13:49+00:00
 labels:
 - enhancement
 - cli-output
@@ -429,6 +430,43 @@ _These touchpoints were identified by wiring analysis (caller-tracer, side-effec
 
 - `/ll:capture-issue` - 2026-07-08T01:52:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20822008-f7d0-4e51-aa0a-634d036931b1.jsonl`
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-07-08 | Priority: P3
+Applied all 8 polish points to `ll-loop list`:
+
+1. **Per-category color** via new `CATEGORY_COLOR` map in `scripts/little_loops/cli/output.py:88-117` — `apo`/`harness`/`gate`/etc. each get a distinct ANSI code; unknown slugs fall back to `36;1`.
+2. **Inline rollup badge** on each header — `_category_rollup()` (info.py:374-401) emits `"M built-in · K project · J internal · N example"` from per-loop `visibility`+`builtin` flags, surfacing the previously-collected `hidden_counts` instead of dumping it only in a footer.
+3. **Column-aligned rows** with computed widths — `name | kind | labels | description` columns sized once per render: `name_col = 32`, `kind_col = 10`, `label_col = 18`, `desc_col = max(20, tw - sum - 6)` mirroring `_print_state_overview_table`'s floor.
+4. **Visibility as a kind column** (`built-in` / `project` / `internal` / `example`) with per-tier ANSI; trailing `●` marker eliminated.
+5. **Semantically color-coded labels** via new `LABEL_COLOR` map — `hitl`→36, `comparison`→35, `generated`→33, `meta`→38;5;208; unknown labels fall back to dim-green `2`.
+6. **Subgroup subheads** for categories with ≥3 members sharing a 2-3 char prefix AND dominating the category — `_detect_subgroups()` emits dim `Subgroup (N)` headers with leaves indented one level deeper (mirrors `list_cmd.py:279`'s `Sub-EPICs (N)`).
+7. **Closing `Total:` summary line** replacing the legacy `Hidden: … · all with --all` footer (mirrors `list_cmd.py:300`); hidden-tier hint emitted as a separate dim line below the summary when applicable.
+8. **Acronym-aware title casing** via new `_smart_title()` helper and `ACRONYMS = frozenset({"APO","HITL","LLM","SVG","FSM","RLHF","API"})` — `apo` renders as `APO`, `harness` as `Harness`.
+
+### Touchpoints
+
+- `scripts/little_loops/cli/output.py` — added `CATEGORY_COLOR`, `LABEL_COLOR`, `ACRONYMS`, `_smart_title()`.
+- `scripts/little_loops/cli/loop/info.py` — refactored `cmd_list` render block (lines 268-383) with column-driven layout + subgroup rendering; added `_category_rollup()`, `_render_labels()`, `_detect_subgroups()` helpers; replaced legacy footer.
+- `docs/reference/CLI.md:692-694` — rewrote the `ll-loop list` paragraph to describe new column-driven output.
+- `docs/guides/LOOPS_GUIDE.md:961-991` — refreshed the `Loop Discovery` section to reference the new `Total:` summary line instead of the old `Hidden:` footer.
+- `docs/reference/OUTPUT_STYLING.md:42-69, 327` — added CATEGORY_COLOR + LABEL_COLOR tables to "Default color codes"; mentioned them in the "Adding New Styled Output" recipe.
+
+### Tests
+
+Added 4 helper test classes (`TestCategoryRollup`, `TestRenderLabels`, `TestDetectSubgroups`, `TestSmartTitle` via `TestConfigureOutput`) and 1 integration class (`TestCmdListENH2539Polished`, 9 tests covering each polish point + a TW=80/120/200 parametrization). Rewrote 3 breaking tests (`test_grouped_display_by_category`, `test_builtin_vs_project_name_color`, `test_builtin_tag_absent_project_marker_present`) and updated 2 cosmetic-risk tests (`test_name_column_capped_at_32`, `test_default_hides_internal_and_example`). Full suite: 14244 passed, 35 skipped.
+
+### Out of scope (preserved per issue boundary)
+
+- Skills `review-loop/SKILL.md` / `simplify-loop/SKILL.md` — cosmetic changes; neither parses `ll-loop list` tokens (both `Bash` then `AskUserQuestion` on LLM-read text).
+- `config-schema.json` `cli.colors.categories` block — deferred (CliColorsConfig dataclass site unchanged).
+- `--group-by category|kind|visibility|label`, `--summary` flags — deferred.
+
+## Session Log
+- `/ll:manage-issue` - 2026-07-08T03:13:49 - `d08d3a3b-9348-472b-8f49-c80f909819b3.jsonl`
+- `/ll:wire-issue` - 2026-07-08T02:30:52 - `6e52c632-ce3f-40ce-bcec-9309e5b4ac40.jsonl`
+- `/ll:refine-issue` - 2026-07-08T02:04:29 - `24ce96b3-079e-47a2-9920-78567fe3eb7a.jsonl`
+- `/ll:capture-issue` - 2026-07-08T01:52:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20822008-f7d0-4e51-aa0a-634d036931b1.jsonl`
+
+---
+
+**Completed** | Created: 2026-07-08 | Completed: 2026-07-08 | Priority: P3

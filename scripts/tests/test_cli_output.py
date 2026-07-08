@@ -196,9 +196,44 @@ class TestOrangeDefaultColors:
 
         assert TYPE_COLOR["EPIC"] == "35"
 
+    def test_acronyms_set_contents(self) -> None:
+        """ENH-2539: ACRONYMS is a frozenset of known acronym strings."""
+        from little_loops.cli.output import ACRONYMS
+
+        assert isinstance(ACRONYMS, frozenset)
+        assert ACRONYMS >= {"APO", "HITL", "LLM", "SVG", "FSM", "RLHF", "API"}
+
+    def test_label_color_known_labels(self) -> None:
+        """ENH-2539: LABEL_COLOR maps known semantic labels to distinct ANSI codes."""
+        from little_loops.cli.output import LABEL_COLOR
+
+        assert LABEL_COLOR["hitl"] == "36"
+        assert LABEL_COLOR["comparison"] == "35"
+        assert LABEL_COLOR["generated"] == "33"
+        assert LABEL_COLOR["meta"] == "38;5;208"
+
+    def test_category_color_maps_known_categories(self) -> None:
+        """ENH-2539: CATEGORY_COLOR maps known category slugs (lowercase keys)."""
+        from little_loops.cli.output import CATEGORY_COLOR
+
+        # CATEGORY_COLOR uses lowercase slug keys; keys map category identities.
+        codes = {slug: CATEGORY_COLOR[slug] for slug in ("apo", "gate", "harness", "code-quality")}
+        assert len(set(codes.values())) >= 3, codes
+
 
 class TestConfigureOutput:
     """Tests for configure_output() function."""
+
+    # Canonical defaults used by both setup and teardown. Defined as a constant
+    # so the two methods cannot drift (ENH-2539).
+    _DEFAULT_DEFAULTS = {
+        "PRIORITY_COLOR": {
+            "P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2",
+        },
+        "TYPE_COLOR": {"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"},
+        # Filled in by setup from the actual module's defaults (which may grow
+        # over time as new categories are added). We capture then restore.
+    }
 
     def setup_method(self) -> None:
         """Reset output module state before each test."""
@@ -209,6 +244,20 @@ class TestConfigureOutput:
             {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
         )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
+        # ENH-2539: also reset new color maps to their module defaults
+        if hasattr(m, "CATEGORY_COLOR") and hasattr(self, "_category_defaults"):
+            m.CATEGORY_COLOR.clear()
+            m.CATEGORY_COLOR.update(self._category_defaults)
+        if hasattr(m, "LABEL_COLOR") and hasattr(self, "_label_defaults"):
+            m.LABEL_COLOR.clear()
+            m.LABEL_COLOR.update(self._label_defaults)
+
+    def setup_class(cls) -> None:  # noqa: N805
+        """Capture the actual module defaults once so test resets round-trip cleanly."""
+        import little_loops.cli.output as m
+
+        cls._category_defaults = dict(getattr(m, "CATEGORY_COLOR", {}))
+        cls._label_defaults = dict(getattr(m, "LABEL_COLOR", {}))
 
     def teardown_method(self) -> None:
         """Restore defaults after each test."""
@@ -219,6 +268,12 @@ class TestConfigureOutput:
             {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
         )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
+        if hasattr(m, "CATEGORY_COLOR") and hasattr(self, "_category_defaults"):
+            m.CATEGORY_COLOR.clear()
+            m.CATEGORY_COLOR.update(self._category_defaults)
+        if hasattr(m, "LABEL_COLOR") and hasattr(self, "_label_defaults"):
+            m.LABEL_COLOR.clear()
+            m.LABEL_COLOR.update(self._label_defaults)
 
     def test_configure_none_uses_tty_and_no_color_check(self) -> None:
         """configure_output(None) sets _USE_COLOR based on TTY and NO_COLOR."""
@@ -274,6 +329,17 @@ class TestConfigureOutput:
         configure_output(cli_config)
         assert TYPE_COLOR["BUG"] == "31"
         assert TYPE_COLOR["FEAT"] == "32"  # unchanged default
+
+    def test_smart_title_acronyms_uppercased(self) -> None:
+        """ENH-2539: _smart_title preserves known acronyms in all-caps."""
+        from little_loops.cli.output import _smart_title
+
+        assert _smart_title("apo") == "APO"
+        assert _smart_title("hitl") == "HITL"
+        assert _smart_title("harness") == "Harness"
+        assert _smart_title("issue-management") == "Issue Management"
+        assert _smart_title("apo-something-rlhf") == "APO Something RLHF"
+        assert _smart_title("") == ""
 
     def test_colorize_uses_updated_use_color(self) -> None:
         """colorize() respects _USE_COLOR after configure_output call."""
