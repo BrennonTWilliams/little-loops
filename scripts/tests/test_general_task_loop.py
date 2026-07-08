@@ -547,13 +547,28 @@ class TestMarkDoneShellAction:
         assert "- [x] Step 2: pending" in lines
         assert "- [ ] Step 3: also pending" in lines
 
-    def test_removes_current_step_temp_file(self, tmp_path: Path) -> None:
+    def test_preserves_current_step_marker_file(self, tmp_path: Path) -> None:
+        """BUG-2538: mark_done must NOT delete current-step.txt.
+
+        The marker is consumed by downstream check_done / continue_work states
+        (ENH-2486 bounded-marker pattern). Lifecycle: written by select_step,
+        read by do_work / verify_step / mark_done / check_done / continue_work,
+        and overwritten in place by the next select_step — never rm'd mid-loop.
+        This mirrors the last-files.txt lifecycle, which mark_done also leaves
+        intact for exactly the same reason.
+        """
         run_dir = _setup_run_dir(tmp_path)
         (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
         step_file = run_dir / "current-step.txt"
         step_file.write_text("- [ ] Step 1: write code\n")
         self._run(tmp_path)
-        assert not step_file.exists(), "mark_done must remove current-step.txt"
+        assert step_file.exists(), (
+            "BUG-2538: mark_done must preserve current-step.txt so downstream "
+            "states (check_done, continue_work) can read it"
+        )
+        assert step_file.read_text() == "- [ ] Step 1: write code\n", (
+            "BUG-2538: mark_done must not modify current-step.txt content"
+        )
 
     def test_marks_only_the_selected_step(self, tmp_path: Path) -> None:
         run_dir = _setup_run_dir(tmp_path)
@@ -563,6 +578,21 @@ class TestMarkDoneShellAction:
         plan = (run_dir / "plan.md").read_text()
         assert "- [x] Step 1: first" in plan
         assert "- [ ] Step 2: second" in plan
+
+    def test_action_does_not_rm_step_file(self, raw_data: dict) -> None:
+        """BUG-2538: structural guard — mark_done.action must not delete the marker.
+
+        The rm of current-step.txt was moved out of mark_done so downstream
+        states (check_done, continue_work) can still read it. select_step's
+        unconditional overwrite (line 179 of general-task.yaml) provides the
+        sole cleanup path for the marker now.
+        """
+        action = raw_data["states"]["mark_done"]["action"]
+        assert 'rm -f "$STEP_FILE"' not in action, (
+            "BUG-2538: mark_done.action must not rm $STEP_FILE — that marker is "
+            "read by downstream check_done / continue_work and is only safe to "
+            "overwrite on the next select_step"
+        )
 
 
 class TestCheckpointWriteShellAction:
@@ -623,6 +653,15 @@ class TestCheckpointClearShellAction:
         )
         self._run(tmp_path)
         assert not checkpoint.exists(), "mark_done must remove checkpoint.json"
+        # BUG-2538: the current-step.txt marker must survive mark_done so
+        # downstream check_done / continue_work can read it.
+        assert step_file.exists(), (
+            "BUG-2538: mark_done must preserve current-step.txt (lifecycle is "
+            "select_step write → downstream read → next select_step overwrite)"
+        )
+        assert step_file.read_text() == "- [ ] Step 1: write code\n", (
+            "BUG-2538: mark_done must not modify current-step.txt content"
+        )
 
     def test_tolerates_missing_checkpoint(self, tmp_path: Path) -> None:
         run_dir = _setup_run_dir(tmp_path)
@@ -631,6 +670,16 @@ class TestCheckpointClearShellAction:
         step_file.write_text("- [ ] Step 1: write code\n")
         result = self._run(tmp_path)
         assert result.returncode == 0, "mark_done must not fail when checkpoint is absent"
+        # BUG-2538: marker preservation must hold on the no-checkpoint path too —
+        # the no-checkpoint branch of mark_done used to skip both rm statements.
+        assert step_file.exists(), (
+            "BUG-2538: mark_done must preserve current-step.txt on the "
+            "no-checkpoint path as well"
+        )
+        assert step_file.read_text() == "- [ ] Step 1: write code\n", (
+            "BUG-2538: mark_done must not modify current-step.txt content "
+            "on the no-checkpoint path"
+        )
 
 
 class TestResumeCheckShellAction:

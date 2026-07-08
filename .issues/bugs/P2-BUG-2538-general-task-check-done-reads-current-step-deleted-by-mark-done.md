@@ -4,8 +4,9 @@ title: 'general-task.yaml: check_done/continue_work read current-step.txt delete
   by mark_done'
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-07T00:00:00Z'
+completed_at: '2026-07-08T02:01:47Z'
 discovered_date: '2026-07-07'
 discovered_by: capture-issue
 testable: true
@@ -198,6 +199,7 @@ _Added by `/ll:wire-issue` — documentation scope confirmation (no additional e
 - `/ll:refine-issue` - 2026-07-08T01:10:19 - `580b0186-6653-4e5a-9130-197bbb958dca.jsonl`
 
 - `/ll:capture-issue` - 2026-07-07 - capture triggered by user observation of recurring "current-step.txt doesn't exist" diagnostic in `general-task` runs
+- `/ll:manage-issue` - 2026-07-08T02:01:47 - `5fdce2b2-0412-4f3e-a374-b1f830b080cd.jsonl` - removed `rm -f "$STEP_FILE"` from mark_done; updated stale resume_check comment + LOOPS_REFERENCE.md; inverted test_removes_current_step_temp_file → test_preserves_current_step_marker_file; added test_action_does_not_rm_step_file (structural guard); extended TestCheckpointClearShellAction with `assert step_file.exists()` on both branches
 
 ## Status
 

@@ -117,8 +117,11 @@ states:
         exit 0
       fi
       # Fix 2: Inconsistent file set — checkpoint exists but current-step.txt doesn't.
-      # mark_done deletes both together; a checkpoint without its current-step.txt
-      # is a stale/corrupt artifact from a prior interrupted run.
+      # mark_done deletes the checkpoint (BUG-2538 inverted the lifecycle: current-step.txt
+      # is now overwritten by the next select_step rather than rm'd mid-loop, so that
+      # downstream check_done / continue_work can still read it as their LAST_STEP marker).
+      # A checkpoint without its current-step.txt is therefore a stale/corrupt artifact
+      # from a prior interrupted run; this guard still cleans it up defensively.
       if [ ! -f "$CURRENT_STEP" ]; then
         rm -f "$CHECKPOINT"
         echo "RESUME_CLEAN"
@@ -276,7 +279,6 @@ states:
       else
         awk 'found==0 && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); found=1 } 1' "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
       fi
-      rm -f "$STEP_FILE"
       rm -f "${context.run_dir}/checkpoint.json"
     action_type: shell
     next: check_done
