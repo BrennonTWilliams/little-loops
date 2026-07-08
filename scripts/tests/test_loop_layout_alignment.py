@@ -570,9 +570,7 @@ def test_truncate_to_width_ansi_preserves_sgr_codes() -> None:
     # + ``…``; the open SGR (red) is closed before ``…``.
     out_trunc = _truncate_to_width_ansi(text, 6)
     assert wcswidth(strip_ansi(out_trunc)) <= 6, strip_ansi(out_trunc)
-    assert out_trunc.endswith("\x1b[0m…"), (
-        f"open SGR not closed before ellipsis: {out_trunc!r}"
-    )
+    assert out_trunc.endswith("\x1b[0m…"), f"open SGR not closed before ellipsis: {out_trunc!r}"
     # The green segment survives intact.
     assert "\x1b[32m────\x1b[0m" in out_trunc, out_trunc
     # The red SGR (open at the cut point) is still in the output so the

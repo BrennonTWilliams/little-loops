@@ -255,7 +255,7 @@ Three scanning commands find problems proactively. Use the table below to pick t
 | Feature gaps relative to what you said you wanted to build | `/ll:scan-product` |
 | A single issue you spotted yourself | `/ll:capture-issue "description"` |
 
-`/ll:scan-codebase` is the right default for most projects. `/ll:audit-architecture` is especially useful when you've just inherited an unfamiliar codebase and want to understand its systemic problems before diving in. `/ll:scan-product` reads a goals doc (`.ll/ll-goals.md`) when one exists; otherwise it discovers goals from your README and roadmap docs.
+`/ll:scan-codebase` is the right default for most projects. `/ll:audit-architecture` is especially useful when you've just inherited an unfamiliar codebase and want to understand its systemic problems before diving in. `/ll:scan-product` reads a goals doc (`.ll/ll-goals.md`) when one exists; otherwise it **discovers goals automatically** from your README and roadmap docs.
 
 ### After Scanning
 

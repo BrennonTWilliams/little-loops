@@ -61,6 +61,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   invocations** — (BUG-2528)
 - **Shell kind-color cyan renders as bright green on warm-paper dark palette —
   recede via bright-black** — (BUG-2537)
+- **`ll-init --yes` crashes with `FileNotFoundError` on `config-schema.json` in
+  non-editable (wheel) installs** — `pip install little-loops` followed by
+  `ll-init --yes` previously failed because the schema lived at the repo root
+  (not packaged in the wheel) and `init/core.py:_load_schema` walked
+  `Path(__file__).resolve().parents[3]` to find it (only valid in editable
+  installs). Moved the canonical schema into `scripts/little_loops/config-schema.json`
+  (ships inside the wheel), switched the loader to `importlib.resources`, and
+  updated the GitHub-raw `$schema` URL emitted into user configs. `ll-verify-package-data`
+  was already flagging the `parents[3]` escape — added a fast unit regression
+  (`TestSchemaLoaderInWheelInstall`) and a wheel-install smoke test so the
+  regression cannot recur silently.
 
 ### Changed
 

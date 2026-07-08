@@ -4537,3 +4537,57 @@
     failed terminal (skips init.on_error→diagnose path; semantic conflation with infrastructure
     failures)
   issue: ENH-2418
+- id: ARCH-194
+  type: rule
+  timestamp: '2026-07-08T20:59:11Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Repo-root or parents[N] paths resolve correctly in editable installs
+    but break in wheel installs because pyproject's wheel target only includes little_loops/**.
+    The package has ll-verify-package-data for this exact pattern.
+  rule: Files needed at runtime must live inside the Python package and be loaded
+    via importlib.resources, never via Path(__file
+  enforcement: advisory
+  issue: BUG-2547
+- id: ARCH-195
+  type: rule
+  timestamp: '2026-07-08T20:59:11Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Asset being referenced in code is not sufficient — without manifest registration,
+    a missing include is a silent failure only caught by end users after publish.
+  rule: Every bundled runtime asset must be registered in the package-data manifest
+    so ll-verify-package-data enforces wheel inc
+  enforcement: advisory
+  issue: BUG-2547
+- id: TEST-196
+  type: rule
+  timestamp: '2026-07-08T20:59:11Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: BUG-2547's lint produced a violation but not a build failure, so the
+    bug shipped. Warnings get ignored; exit codes don't.
+  rule: Lint violations that would break the publish path must hard-fail the build,
+    not warn.
+  enforcement: advisory
+  issue: BUG-2547
+- id: TEST-197
+  type: rule
+  timestamp: '2026-07-08T20:59:11Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: tests/test_wheel_smoke.py would have caught BUG-2547 on day one, but
+    PYTEST_INTEGRATION=1 was unset, gating it off. CLAUDE.md declares that one pytest
+    command is the only CI gate.
+  rule: Wheel-install smoke tests must run by default in python -m pytest scripts/tests/,
+    not behind opt-in env vars the CI does
+  enforcement: advisory
+  issue: BUG-2547

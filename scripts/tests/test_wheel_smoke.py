@@ -164,3 +164,27 @@ class TestWheelSmoke:
             env={k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"},
         )
         assert result.returncode == 0, f"ll-init --yes --dry-run failed:\n{result.stderr}"
+
+    def test_schema_loads_in_wheel_install(self, installed_venv: Path) -> None:
+        """schema_default() must not raise FileNotFoundError in a wheel install.
+
+        Regression guard: the previous _load_schema() walked
+        Path(__file__).resolve().parents[3] which only resolved in editable
+        installs. `pip install little-loops && ll-init --yes` then crashed with
+        FileNotFoundError on the schema file. The loader was rewritten to use
+        importlib.resources so the schema ships inside the wheel.
+        """
+        result = self._run(
+            installed_venv,
+            """\
+            from little_loops.init import core as core_mod
+            core_mod._load_schema.cache_clear()
+            value = core_mod.schema_default("learning_tests.enabled")
+            assert value is False, f"unexpected default: {value!r}"
+            print("OK")
+            """,
+        )
+        assert result.returncode == 0, (
+            f"schema_default() failed in wheel install (FileNotFoundError means "
+            f"the schema did not ship in the wheel):\n{result.stderr}"
+        )

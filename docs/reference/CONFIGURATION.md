@@ -8,7 +8,7 @@ For interactive editing, use `/ll:configure`.
 
 ```json
 {
-  "$schema": "../config-schema.json",
+  "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/scripts/little_loops/config-schema.json",
 
   "project": {
     "name": "my-project",

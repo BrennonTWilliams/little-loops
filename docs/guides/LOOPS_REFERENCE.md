@@ -3106,7 +3106,7 @@ State mode activates when `context.targets` points to a loop YAML file whose `ta
 - States are processed in declaration order via a runtime queue (`check_queue` / `dequeue_state` cycle)
 - Each state's `action:` block is mutated and benchmarked independently — accepting or reverting one state does not affect any other state's accepted mutation
 - Per-state scoring: each state's `eval` threshold is evaluated against that state's benchmark result only
-- Trajectories are written per-state to `.loops/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl`
+- Trajectories are written per-state to `.ll/runs/harness-optimize/<run-id>/states/<state-name>/trajectory.jsonl`
 
 See [harness-optimize reference](../reference/loops.md#harness-optimize) for the full state graph showing the `check_queue` / `dequeue_state` dispatch.
 

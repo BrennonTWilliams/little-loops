@@ -1,5 +1,5 @@
 {
-  "$schema": "../config-schema.json",
+  "$schema": "config-schema.json",
   "_meta": {
     "name": "JavaScript (Node.js)",
     "description": "JavaScript/Node.js project with npm tooling",

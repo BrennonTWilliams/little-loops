@@ -2658,3 +2658,51 @@ class TestProjectTypeTemplatesEpicBranchesStamp:
             assert data["parallel"]["epic_branches"].get("enabled") is False, (
                 f"{name}: epic_branches.enabled should default to False"
             )
+
+
+# ===========================================================================
+# TestSchemaLoaderInWheelInstall — regression guard for the ll-init --yes
+# wheel-install crash. The previous Path(__file__).resolve().parents[3]
+# traversal in init/core.py:_load_schema only worked in editable installs.
+# ===========================================================================
+
+
+class TestSchemaLoaderInWheelInstall:
+    """config-schema.json must load in both editable AND wheel installs."""
+
+    def test_load_schema_succeeds_in_current_install(self) -> None:
+        """_load_schema() must return a dict with 'properties' from the bundled file.
+
+        Regression: the old loader walked Path(__file__).parents[3] to the repo
+        root, which exists in editable installs and not in wheel installs.
+        The new loader uses importlib.resources.files('little_loops'), which
+        resolves in both layouts.
+        """
+        from little_loops.init import core as core_mod
+
+        # Clear the lru_cache so we exercise the loader path, not the cache.
+        core_mod._load_schema.cache_clear()
+        try:
+            data = core_mod._load_schema()
+        finally:
+            core_mod._load_schema.cache_clear()
+        assert isinstance(data, dict), f"_load_schema returned {type(data).__name__}, expected dict"
+        assert "properties" in data, "bundled schema missing top-level 'properties'"
+        # Spot-check a few keys to confirm we got the real schema, not a stub.
+        assert "learning_tests" in data["properties"]
+        assert "analytics" in data["properties"]
+
+    def test_schema_default_returns_real_default(self) -> None:
+        """schema_default() — the function ll-init --yes actually calls — works."""
+        from little_loops.init import core as core_mod
+
+        core_mod._load_schema.cache_clear()
+        try:
+            # Exact dotted path exercised by _run_yes (init/cli.py:395 → core.py:125).
+            value = core_mod.schema_default("learning_tests.enabled")
+        finally:
+            core_mod._load_schema.cache_clear()
+        assert value is False, (
+            f"schema_default('learning_tests.enabled') returned {value!r}; "
+            f"bundled schema default is False"
+        )

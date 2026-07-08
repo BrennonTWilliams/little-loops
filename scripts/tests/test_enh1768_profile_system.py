@@ -12,6 +12,7 @@ Covers:
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from pathlib import Path
 
@@ -391,15 +392,25 @@ class TestBundledProfilesLoadEndToEnd:
 class TestConfigSchemaProfileFields:
     """`config-schema.json` declares `active` and `profiles_dir`."""
 
+    @staticmethod
+    def _schema_text() -> str:
+        # Resolve via importlib.resources so the test works in editable installs
+        # AND non-editable wheel installs (the schema now ships inside the package).
+        return (
+            importlib.resources.files("little_loops")
+            .joinpath("config-schema.json")
+            .read_text(encoding="utf-8")
+        )
+
     def test_active_declared_in_schema(self) -> None:
-        schema = json.loads((PROJECT_ROOT / "config-schema.json").read_text())
+        schema = json.loads(self._schema_text())
         props = schema["properties"]["design_tokens"]["properties"]
         assert "active" in props
         assert props["active"]["type"] == "string"
         assert props["active"]["default"] == "default"
 
     def test_profiles_dir_declared_in_schema(self) -> None:
-        schema = json.loads((PROJECT_ROOT / "config-schema.json").read_text())
+        schema = json.loads(self._schema_text())
         props = schema["properties"]["design_tokens"]["properties"]
         assert "profiles_dir" in props
 

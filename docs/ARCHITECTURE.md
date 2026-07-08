@@ -60,7 +60,7 @@ flowchart TB
 little-loops/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
-├── config-schema.json       # JSON Schema for validation
+├── config-schema.json       # JSON Schema for validation (canonical source lives at scripts/little_loops/config-schema.json inside the Python package)
 ├── commands/                # 28 slash command templates
 │   ├── help.md
 │   ├── check-code.md

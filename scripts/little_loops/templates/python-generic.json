@@ -1,5 +1,5 @@
 {
-  "$schema": "../config-schema.json",
+  "$schema": "config-schema.json",
   "_meta": {
     "name": "Python (Generic)",
     "description": "Standard Python project with pytest, ruff, and mypy",

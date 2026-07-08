@@ -2,23 +2,33 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_SCHEMA = PROJECT_ROOT / "config-schema.json"
+
+# Resolve via importlib.resources so tests work in both editable installs and
+# non-editable wheel installs (the schema now ships inside the package, not at
+# the repo root).
+CONFIG_SCHEMA = importlib.resources.files("little_loops").joinpath("config-schema.json")
+
+
+def _load_schema_text() -> str:
+    """Read the bundled config-schema.json as text."""
+    return CONFIG_SCHEMA.read_text(encoding="utf-8")
 
 
 class TestConfigSchema:
     """Regression guards for config-schema.json structure."""
 
     def test_schema_file_exists(self) -> None:
-        """config-schema.json must exist at project root."""
-        assert CONFIG_SCHEMA.exists(), f"config-schema.json not found: {CONFIG_SCHEMA}"
+        """config-schema.json must be accessible inside the package."""
+        assert CONFIG_SCHEMA.is_file(), f"config-schema.json not found: {CONFIG_SCHEMA}"
 
     def test_extensions_in_properties(self) -> None:
         """extensions key must be inside the properties block."""
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "properties" in data, "config-schema.json missing top-level properties block"
         assert "extensions" in data["properties"], (
             "extensions key is outside the properties block — "
@@ -27,7 +37,7 @@ class TestConfigSchema:
 
     def test_scratch_pad_properties(self) -> None:
         """scratch_pad block must expose all properties required by the PreToolUse hook."""
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         props = data["properties"]["scratch_pad"]["properties"]
         assert props["automation_contexts_only"]["default"] is True
         assert props["tail_lines"]["default"] == 20
@@ -42,7 +52,7 @@ class TestConfigSchema:
         Uses structural JSON-key assertions only; jsonschema is not a dependency,
         so this acts as a sentinel guard rather than runtime validation.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         issues_props = data["properties"]["issues"]["properties"]
         assert "next_issue" in issues_props, (
             "issues.next_issue is not declared in config-schema.json"
@@ -59,7 +69,7 @@ class TestConfigSchema:
         issues has additionalProperties: false, so these fields must be declared
         or any config using them will be rejected at validation time.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         issues_props = data["properties"]["issues"]["properties"]
         assert "auto_commit" in issues_props, (
             "issues.auto_commit is not declared in config-schema.json"
@@ -78,7 +88,7 @@ class TestConfigSchema:
         issues has additionalProperties: false, so this field must be declared
         or any config using it will be rejected at validation time.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         issues_props = data["properties"]["issues"]["properties"]
         assert "deploy_templates" in issues_props, (
             "issues.deploy_templates is not declared in config-schema.json"
@@ -93,7 +103,7 @@ class TestConfigSchema:
         that sets commands.recursive_refine will fail schema validation unless
         the block is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         commands = data["properties"]["commands"]
         assert commands.get("additionalProperties") is False, (
             "commands block is expected to have additionalProperties: false"
@@ -116,7 +126,7 @@ class TestConfigSchema:
         that sets commands.review_epic will fail schema validation unless
         the block is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         commands = data["properties"]["commands"]
         assert commands.get("additionalProperties") is False, (
             "commands block is expected to have additionalProperties: false"
@@ -141,7 +151,7 @@ class TestConfigSchema:
         that sets commands.rate_limits will fail schema validation unless the
         block is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         commands = data["properties"]["commands"]
         assert commands.get("additionalProperties") is False, (
             "commands block is expected to have additionalProperties: false — "
@@ -167,7 +177,7 @@ class TestConfigSchema:
         that set loops.glyphs.parallel will be rejected unless the property is
         declared here alongside the other glyph keys.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         glyph_props = data["properties"]["loops"]["properties"]["glyphs"]["properties"]
         assert "parallel" in glyph_props, (
             "loops.glyphs.parallel is not declared; configs using it will be "
@@ -182,7 +192,7 @@ class TestConfigSchema:
         config containing learning_tests will be rejected unless the property
         is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "learning_tests" in data["properties"], (
             "learning_tests is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -226,7 +236,7 @@ class TestConfigSchema:
         config containing decisions will be rejected unless the property
         is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "decisions" in data["properties"], (
             "decisions is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -251,7 +261,7 @@ class TestConfigSchema:
         config containing 'design_tokens' will be rejected unless the property
         is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "design_tokens" in data["properties"], (
             "design_tokens is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -281,7 +291,7 @@ class TestConfigSchema:
         declared here. The block backs ``BRConfig.artifacts`` / ``ArtifactsConfig``
         which supplies ll-artifact's default output directory.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "artifacts" in data["properties"], (
             "artifacts is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -301,7 +311,7 @@ class TestConfigSchema:
         declared here. The block gates the post_tool_use hook's per-tool byte
         tracking (FEAT-1623) consumed by ``ll-ctx-stats``.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "analytics" in data["properties"], (
             "analytics is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -321,7 +331,7 @@ class TestConfigSchema:
         config containing 'history' will be rejected unless the property is
         declared here. This block is the sole owner of the history.* namespace.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "history" in data["properties"], (
             "history is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -346,7 +356,7 @@ class TestConfigSchema:
 
     def test_history_compaction_in_schema(self) -> None:
         """history.compaction must be declared (FEAT-1712); additionalProperties: false rejects it otherwise."""
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         compaction = data["properties"]["history"]["properties"]["compaction"]
         assert compaction["type"] == "object"
         assert compaction.get("additionalProperties") is False
@@ -371,7 +381,7 @@ class TestConfigSchema:
     def test_analytics_capture_in_schema(self) -> None:
         """analytics.capture sub-object must be declared so additionalProperties: false
         doesn't silently reject it (ENH-1840)."""
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         analytics = data["properties"]["analytics"]
         assert analytics.get("additionalProperties") is False
 
@@ -414,7 +424,7 @@ class TestConfigSchema:
         declared. FEAT-1448 introduces this block as the foundation of the
         hook-intent abstraction layer (FEAT-1116).
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "hooks" in data["properties"], (
             "hooks is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -434,7 +444,7 @@ class TestConfigSchema:
         hooks.stale_ref_fix will be rejected unless the property is declared here.
         The value must be a string enum restricted to "report" or "auto".
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "stale_ref_fix" in data["properties"]["hooks"]["properties"], (
             "hooks.stale_ref_fix is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false on the hooks block"
@@ -452,7 +462,7 @@ class TestConfigSchema:
         The top-level properties block has additionalProperties: false, so a
         config containing events will be rejected unless the property is declared.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "events" in data["properties"], (
             "events is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -517,7 +527,7 @@ class TestConfigSchema:
         sets parent/blocked_by/depends_on/relates_to/duplicate_of will be
         rejected unless they are declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         issues = data["properties"]["issues"]
         assert issues.get("additionalProperties") is False, (
             "issues block is expected to have additionalProperties: false — "
@@ -548,7 +558,7 @@ class TestConfigSchema:
         Follows the test_hooks_in_schema pattern: structural JSON-key assertions only,
         no jsonschema runtime validation.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "orchestration" in data["properties"], (
             "orchestration key is not declared in config-schema.json"
         )
@@ -569,7 +579,7 @@ class TestConfigSchema:
         Follows the test_orchestration_host_cli_in_schema pattern: structural JSON-key
         assertions only, no jsonschema runtime validation.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "orchestration" in data["properties"], (
             "orchestration key is not declared in config-schema.json"
         )
@@ -602,7 +612,7 @@ class TestConfigSchema:
         and any user config setting `epics.*` must now be rejected by the
         root-level `additionalProperties: false`.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         root_props = data["properties"]
         assert "epics" not in root_props, (
             "epics is declared in config-schema.json; ENH-2544 Option B "
@@ -651,7 +661,7 @@ class TestConfigSchema:
         install_source to .ll/ll-config.json will be rejected by schema validation
         unless the property is declared here.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "install_source" in data["properties"], (
             "install_source is not declared in config-schema.json; writing it to config "
             "would violate additionalProperties: false"
@@ -671,7 +681,7 @@ class TestConfigSchema:
         is declared here. The block gates the session-capture.sh PostToolUse hook
         that appends per-tool event records to .ll/ll-session-events.jsonl.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         assert "session_capture" in data["properties"], (
             "session_capture is not declared in config-schema.json; configs using it will be "
             "rejected by additionalProperties: false"
@@ -690,7 +700,7 @@ class TestConfigSchema:
         The hooks block has additionalProperties: false, so pre_compact must be
         explicitly declared or any config using it will be rejected by JSON Schema.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         hooks_props = data["properties"]["hooks"]["properties"]
         assert "pre_compact" in hooks_props, (
             "hooks.pre_compact is not declared in config-schema.json; configs using "
@@ -716,7 +726,7 @@ class TestConfigSchema:
         must be explicitly declared or any config setting it will be rejected
         by JSON Schema validation.
         """
-        data = json.loads(CONFIG_SCHEMA.read_text())
+        data = json.loads(_load_schema_text())
         parallel = data["properties"]["parallel"]
         assert parallel.get("additionalProperties") is False, (
             "parallel block is expected to have additionalProperties: false"

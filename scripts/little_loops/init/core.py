@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from little_loops.init.detect import TemplateMatch
 
 SCHEMA_URL = (
-    "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json"
+    "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/"
+    "main/scripts/little_loops/config-schema.json"
 )
 
 _ANALYTICS_CAPTURE_KEYS = ("skills", "cli_commands", "corrections", "file_events")
@@ -18,10 +19,14 @@ _ANALYTICS_CAPTURE_KEYS = ("skills", "cli_commands", "corrections", "file_events
 
 @lru_cache(maxsize=1)
 def _load_schema() -> dict[str, Any]:
-    """Load and cache config-schema.json from the project root."""
-    schema_path = Path(__file__).resolve().parents[3] / "config-schema.json"
-    with schema_path.open(encoding="utf-8") as f:
-        return json.load(f)
+    """Load and cache the bundled config-schema.json.
+
+    Reads via importlib.resources so the file ships inside the wheel and works
+    in non-editable installs (the previous implementation walked out of the
+    package via a parent-traversal that only resolved in editable installs).
+    """
+    traversable = importlib.resources.files("little_loops").joinpath("config-schema.json")
+    return json.loads(traversable.read_text(encoding="utf-8"))
 
 
 def schema_default(dotted_path: str) -> Any:

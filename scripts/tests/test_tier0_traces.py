@@ -152,8 +152,7 @@ def test_each_trace_has_recorded_baseline(trace_id: str) -> None:
         "CostReport.from_usage_jsonl aggregation order)"
     )
     assert envelope["has_unknown_model"] is False, (
-        f"{trace_id}: has_unknown_model must be False (single-model "
-        "lock to claude-sonnet-4-6)"
+        f"{trace_id}: has_unknown_model must be False (single-model lock to claude-sonnet-4-6)"
     )
     assert envelope["budget_accumulator"] == {}, (
         f"{trace_id}: budget_accumulator must be {{}} (reserved for FEAT-2476)"

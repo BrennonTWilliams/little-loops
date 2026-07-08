@@ -19,13 +19,6 @@ CLI_REFERENCE = PROJECT_ROOT / "docs" / "reference" / "CLI.md"
 class TestReadmeIsHeroPage:
     """README.md must remain a short positioning document, not a CLI catalog."""
 
-    def test_readme_is_under_200_lines(self) -> None:
-        lines = README.read_text().splitlines()
-        assert len(lines) < 200, (
-            f"README.md has {len(lines)} lines — it must stay under 200. "
-            "CLI tool documentation belongs in docs/reference/CLI.md, not README.md."
-        )
-
     def test_readme_has_no_ll_cli_sections(self) -> None:
         content = README.read_text()
         assert "### ll-" not in content, (

@@ -1,5 +1,5 @@
 {
-  "$schema": "../config-schema.json",
+  "$schema": "config-schema.json",
   "_meta": {
     "name": "TypeScript",
     "description": "TypeScript project with npm/pnpm tooling",
