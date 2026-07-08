@@ -411,6 +411,7 @@ states:
               break
 
       if not issue_path:
+          print("UNRESOLVED", file=sys.stderr)  # ENH-2534: observable skip via stderr_preview
           sys.exit(0)  # unresolved -> fail-open (let downstream handle)
 
       try:
@@ -418,6 +419,7 @@ states:
           m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
           fm = _parse_yaml(m.group(1)) if m else {}
       except Exception:
+          print("PARSE_ERROR", file=sys.stderr)  # ENH-2534: observable skip via stderr_preview
           sys.exit(0)  # parse error -> fail-open
 
       val = fm.get("blocked_by") or []
@@ -438,8 +440,10 @@ states:
           if r.returncode == 0:
               done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
           else:
+              print("DONE_SET_ERROR", file=sys.stderr)  # ENH-2534: observable skip via stderr_preview
               sys.exit(0)  # cannot determine done set -> fail-open
       except Exception:
+          print("DONE_SET_ERROR", file=sys.stderr)  # ENH-2534: observable skip via stderr_preview
           sys.exit(0)  # fail-open
 
       unmet = [d for d in deps if d not in done_ids]

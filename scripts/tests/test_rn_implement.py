@@ -1079,6 +1079,29 @@ class TestBlockedByGate:
         assert "blocked_by_unmet_" in action
         assert "not done" in action
 
+    def test_check_blocked_by_emits_unresolved_token_to_stderr(self) -> None:
+        """ENH-2534: unresolved issue-file paths emit UNRESOLVED to stderr.
+
+        Stderr is observable via the FSM executor's `stderr_preview` (ENH-2469)
+        on the action_complete event payload, while stdout stays clean so the
+        bash wrapper's `$UNMET` continues to be empty → fail-open preserved.
+        """
+        action = _load_loop()["states"]["check_blocked_by"]["action"]
+        assert "UNRESOLVED" in action
+        assert 'file=sys.stderr' in action or '>&2' in action
+
+    def test_check_blocked_by_emits_parse_error_token_to_stderr(self) -> None:
+        """ENH-2534: frontmatter parse errors emit PARSE_ERROR to stderr."""
+        action = _load_loop()["states"]["check_blocked_by"]["action"]
+        assert "PARSE_ERROR" in action
+        assert 'file=sys.stderr' in action or '>&2' in action
+
+    def test_check_blocked_by_emits_done_set_error_token_to_stderr(self) -> None:
+        """ENH-2534: done-set failures emit DONE_SET_ERROR to stderr (recheck parity)."""
+        action = _load_loop()["states"]["check_blocked_by"]["action"]
+        assert "DONE_SET_ERROR" in action
+        assert 'file=sys.stderr' in action or '>&2' in action
+
 
 # ============================================================================
 # TestLearningReadyGate — ENH-2406: pre-dequeue learning-readiness gate
