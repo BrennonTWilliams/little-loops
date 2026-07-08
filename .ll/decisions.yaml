@@ -4591,3 +4591,21 @@
     not behind opt-in env vars the CI does
   enforcement: advisory
   issue: BUG-2547
+- id: ARCHITECTURE-122
+  type: decision
+  timestamp: '2026-07-08T22:18:49Z'
+  category: architecture
+  labels: []
+  rationale: 'Option B reuses every primitive from established infrastructure: from:-inheritable
+    oracle (FEAT-2269), _execute_sub_loop dispatch, subloop_outcome_<ID>.txt token
+    protocol, and Tier-1 evaluators (exit_code/output_numeric/classify) satisfying
+    MR-1 without meta_self_eval_ok. Option A would require porting pytest --json-report
+    test_pass_rate parsing inline (no precedent outside cli-anything-bootstrap.yaml:304-337)
+    and navigating awkward counter-coupling with check_remediation_budget at rn-remediate.yaml:782-800.
+    Reusability matters: 7+ loops benefit.'
+  rule: Sub-loop oracle oracles/code-run-gate.yaml (Option B)
+  scope: issue
+  alternatives_rejected: 'Option A — inline gate states in rn-remediate.yaml (reuse
+    score 2/3: missing pytest test_pass_rate inline precedent, counter-coupling double-count
+    risk, cannot serve FEAT-2414/FEAT-2416)'
+  issue: FEAT-2413
