@@ -272,12 +272,17 @@ states:
     # from a shell state (mirrors ensure_formatted -> ll-issues format-check).
     # Marker-bounded: once deposit_options has run once for this issue, skip
     # re-validation and go straight to decide (bounds the detour to one retry).
+    # ENH-2446: chain check-open-questions first — coverage-aware probe that
+    # catches the mixed case (resolved options + free-form open questions). The
+    # check-decidable fallback keeps the ENH-2443 behavior for issues that lack
+    # even one option block. Fail-open on_error: decide is preserved.
     fragment: shell_exit
     action: |
       if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
         exit 0
       fi
-      ll-issues check-decidable "${context.issue_id}"
+      ll-issues check-open-questions "${context.issue_id}" || \
+        ll-issues check-decidable "${context.issue_id}"
     on_yes: decide
     on_no: deposit_options
     on_error: decide
@@ -305,7 +310,49 @@ states:
     action_type: shell
     action: |
       echo "1" > "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt"
-    next: check_decision_decidable
+    next: check_open_question_progress
+
+  # ENH-2446: progress-gated deposit_options re-fire. The write-once marker above
+  # is the "tried at least once" anchor (preserved for MANUAL_REVIEW_RECOMMENDED
+  # semantics); this state lets deposit_options run more than once when it is
+  # *demonstrably still making progress* — i.e. the open-question count keeps
+  # strictly decreasing. The open_question_stall evaluator (max_stall: 2, mirrors
+  # score_stall) is self-bounding: once the count plateaus for two consecutive
+  # rounds, on_no routes to decide (let NEEDS_MANUAL_REVIEW fire) so the loop
+  # cannot infinite-loop on a stuck issue. The outer check_remediation_budget
+  # cap (max_remediation_passes: 3) bounds total iterations.
+  check_open_question_progress:
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
+
+      # Snapshot the current unresolved-question count from the deterministic probe
+      # (same probe ll-issues check-open-questions uses, but in-process via
+      # python instead of a subprocess for shell-state efficiency).
+      COUNT=$(python3 -c "
+      from little_loops.cli.issues.show import _resolve_issue_id
+      from little_loops.config import BRConfig
+      from little_loops.issue_parser import (
+          count_open_questions_in_sections,
+          count_unresolved_options,
+      )
+      cfg = BRConfig('.')
+      path = _resolve_issue_id(cfg, '$ID')
+      if path is None:
+          print(0)
+      else:
+          c = path.read_text()
+          print(count_unresolved_options(c) + count_open_questions_in_sections(c))
+      " 2>/dev/null || echo 0)
+
+      echo "$${COUNT}"
+      echo "$${COUNT}" >> "$${HISTORY_FILE}"
+    fragment: open_question_stall_gate
+    on_yes: check_decision_decidable
+    on_no: decide
+    on_error: decide
 
   # =========================================================================
   # Phase 2: Dimensional Diagnosis & Token Routing

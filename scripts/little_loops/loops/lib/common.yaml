@@ -180,6 +180,28 @@ fragments:
       type: score_stall
       max_stall: 2
 
+  open_question_stall_gate:
+    description: |
+      Evaluator-only fragment that supplies evaluate.type: open_question_stall
+      and evaluate.max_stall: 2. Detects an open-question-count plateau by
+      reading a per-round count-history file (one integer per line, appended
+      under ${context.run_dir}/.open_questions_history by the loop's deposit_options
+      progress state). Returns yes while counts keep strictly decreasing by more
+      than epsilon; returns no once the count has not decreased for max_stall
+      consecutive rounds. Companion to score_stall_gate: where score_stall
+      inverts "improvement" to "lower is better", open_question_stall tracks the
+      same plateau semantics but for the count of unresolved design questions
+      (ENH-2446).
+      State must supply: action, action_type, and routing (on_yes, on_no);
+      optionally on_error, evaluate.history_file (defaults to
+      ${context.run_dir}/.open_questions_history), and evaluate.epsilon
+      (default 0.0 — strict integer comparisons are typical for open questions).
+      Default max_stall: 2 (EvaluateConfig default is 1; override per-state if
+      needed).
+    evaluate:
+      type: open_question_stall
+      max_stall: 2
+
   snapshot_artifact:
     description: |
       Shell state that snapshots the current artifact into a per-iteration

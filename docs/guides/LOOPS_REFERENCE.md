@@ -577,11 +577,18 @@ Phase 1 — Assessment Bridge:
   assess → verify_scores_persisted → check_readiness → check_outcome → check_decision_needed
     (readiness passes → implement; decision_needed → check_decision_decidable; otherwise → diagnose)
 
-Phase 1.5 — Decidability Gate (ENH-2443):
-  check_decision_decidable (shell: ll-issues check-decidable <ID> — deterministic, non-LLM)
-    on_yes → decide | on_no → deposit_options → record_options_deposited → check_decision_decidable
-    (marker-bounded: after one deposit_options retry, check_decision_decidable short-circuits
-    straight to decide) | on_error → decide (fail-open)
+Phase 1.5 — Decidability Gate (ENH-2443, ENH-2446):
+  check_decision_decidable (shell: `ll-issues check-open-questions <ID> || ll-issues check-decidable <ID>`)
+    coverage-aware + count-aware — chained so the mixed case (resolved options + free-form
+    open questions) routes to deposit_options rather than straight to decide.
+    on_yes → decide | on_no → deposit_options → record_options_deposited → check_open_question_progress
+    → check_decision_decidable (after one deposit_options retry, the marker short-circuits straight
+    to decide) | on_error → decide (fail-open)
+  check_open_question_progress (shell + open_question_stall_gate fragment)
+    appends current unresolved-question count to `.open_questions_<ID>.history`; uses the
+    open_question_stall evaluator (max_stall: 2) to gate re-fire while still making progress.
+    on_yes → check_decision_decidable | on_no → decide (plateaued; let NEEDS_MANUAL_REVIEW fire)
+    on_error → decide (fail-open)
 
 Phase 2 — Dimensional Diagnosis:
   diagnose [classify evaluator + route: table]

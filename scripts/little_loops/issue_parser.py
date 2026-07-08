@@ -159,6 +159,29 @@ class FormatGaps:
         }
 
 
+@dataclass
+class QuestionGaps:
+    """Coverage-aware unresolved-decision gaps for an issue (ENH-2446).
+
+    Mirror of :class:`FormatGaps` (lines above): two list[str] fields (one per
+    gap category) plus a derived :attr:`has_gaps` property and :meth:`to_dict`
+    for --format json. Drives ``ll-issues check-open-questions``.
+    """
+
+    unresolved_options: list[str] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+
+    @property
+    def has_gaps(self) -> bool:
+        return bool(self.unresolved_options) or bool(self.open_questions)
+
+    def to_dict(self) -> dict[str, list[str]]:
+        return {
+            "unresolved_options": self.unresolved_options,
+            "open_questions": self.open_questions,
+        }
+
+
 def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> FormatGaps:
     """Grade an issue's structural format gaps against its type template.
 
@@ -282,6 +305,135 @@ def count_enumerable_options(content: str) -> int:
             if body:
                 count = max(count, _count_options_in_text(body))
     return count
+
+
+# ENH-2446: coverage-aware variants used by ll-issues check-open-questions.
+# A block in ## Proposed Solution is "resolved" if it carries a `> **Selected:**`
+# callout OR a `### Decision Rationale` subsection (the two markers that
+# /ll:decide-issue writes when it resolves an option). "Unresolved" = enumerable
+# option block with neither marker — i.e. options that still need to be decided.
+
+_RESOLVED_OPTION_MARKER_RE = re.compile(
+    r"^\s*>\s+\*\*Selected:\*\*|^\s*###\s+Decision Rationale\b",
+    re.MULTILINE,
+)
+
+# Pattern 1 + Pattern 2 headings: H3 "Option X" OR bold "**Option X: ...**" lines.
+_OPTION_HEADING_RE = re.compile(
+    r"^(?:###\s+Option\s+[A-Za-z0-9]|\*\*Option\s+[A-Za-z0-9]+)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def _iter_option_blocks(text: str) -> list[tuple[str, str]]:
+    """Yield ``(heading_line, block_body)`` for each ``### Option X`` / ``**Option X:**`` block in *text*.
+
+    Boundary = next ``###``, ``##``, or ``**Option`` line at the same or shallower
+    level. Patterns 1-2 from :data:`_OPTION_PATTERNS` (skipping the more approximate
+    Patterns 3-4 so the coverage-aware probe stays conservative).
+    """
+    if not text:
+        return []
+    blocks: list[tuple[str, str]] = []
+    matches = list(_OPTION_HEADING_RE.finditer(text))
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        line_start = text.rfind("\n", 0, start) + 1
+        blocks.append((text[line_start:start].strip(), text[start:end]))
+    return blocks
+
+
+def _is_option_resolved(block_body: str) -> bool:
+    """Return True if *block_body* contains a `> **Selected:**` or `### Decision Rationale`."""
+    return bool(_RESOLVED_OPTION_MARKER_RE.search(block_body))
+
+
+def count_unresolved_options(content: str) -> int:
+    """Count enumerable option blocks lacking a `> **Selected:**` or `### Decision Rationale` marker (ENH-2446).
+
+    Mirrors :func:`count_enumerable_options` for section selection (Proposed Solution
+    primary, fallback to ``_OPTION_FALLBACK_SECTIONS``), but only counts Pattern 1
+    + Pattern 2 blocks and filters those that lack a resolution marker. An
+    issue with resolved options PLUS unresolved open questions (free-form in
+    ``## Edge Cases`` etc.) is the coverage gap this probe catches.
+    """
+    sections = ["Proposed Solution", *_OPTION_FALLBACK_SECTIONS]
+    unresolved = 0
+    for heading in sections:
+        body = _section_body(content, heading) or ""
+        for _, block in _iter_option_blocks(body):
+            if not _is_option_resolved(block):
+                unresolved += 1
+    return unresolved
+
+
+# Resolved-question markers — same vocabulary as skills/decide-issue/SKILL.md:197
+# (ENH-2446 explicitly mirrors that regex to keep the deterministic probe and the
+# LLM skill reading the same markers).
+_RESOLVED_QUESTION_MARKER_RE = re.compile(
+    r"(?:✅|✔)\s*RESOLVED"
+    r"|>\s*\*\*RESOLVED\*\*"
+    r"|\*\*RESOLVED\*\*",
+    re.IGNORECASE,
+)
+
+# Open-question signals — a bullet/numbered item is "an open question" if it carries
+# any of these. Mirrors the confidence-check signal phrases from
+# skills/confidence-check/SKILL.md:356-371 and the canonical "Q:" / "?" patterns.
+_OPEN_QUESTION_SIGNAL_RE = re.compile(
+    r"\?\s*$"  # ends with question mark
+    r"|^\s*-\s*\*\*Q\d*"  # **Q1.** style
+    r"|^\s*-\s*Q:"  # Q: prefix
+    r"|\bopen question\b"
+    r"|\bneeds decision\b"
+    r"|\bdecision needed\b"
+    r"|\bopen decision\b"
+    r"|\bunresolved decision\b"
+    r"|\bdecision point\b",
+    re.IGNORECASE,
+)
+
+
+_OPEN_QUESTION_SECTIONS = ("Edge Cases", "Confidence Check Notes", "Open Questions")
+
+
+def _count_unresolved_items_in_text(text: str) -> int:
+    """Count bullet/numbered items carrying an open-question signal and NOT a RESOLVED marker."""
+    if not text:
+        return 0
+    unresolved = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        is_item = stripped.startswith(("-", "*")) or (
+            len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in (".", ")")
+        )
+        if not is_item:
+            continue
+        if _RESOLVED_QUESTION_MARKER_RE.search(stripped):
+            continue
+        if not _OPEN_QUESTION_SIGNAL_RE.search(stripped):
+            continue
+        unresolved += 1
+    return unresolved
+
+
+def count_open_questions_in_sections(content: str) -> int:
+    """Count unresolved open questions in ``## Edge Cases``, ``## Confidence Check Notes``, ``## Open Questions`` (ENH-2446).
+
+    Mirror of :func:`count_enumerable_options` (section-scoped, deprecated-aware
+    via :func:`_section_body`'s heading matching). Items prefixed with
+    ``✅ RESOLVED`` / ``✔ RESOLVED`` / ``**RESOLVED**`` / ``> **RESOLVED**`` are
+    excluded — same vocabulary as :func:`skills/decide-issue/SKILL.md` Phase 3b-i.
+    """
+    total = 0
+    for heading in _OPEN_QUESTION_SECTIONS:
+        body = _section_body(content, heading)
+        if body:
+            total += _count_unresolved_items_in_text(body)
+    return total
 
 
 def slugify(text: str) -> str:

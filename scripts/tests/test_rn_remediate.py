@@ -282,16 +282,33 @@ class TestRecordOptionsDepositedState:
         assert rod["action_type"] == "shell"
         assert "decide_options_deposited_${context.issue_id}.txt" in rod["action"]
 
-    def test_routes_back_to_check_decision_decidable(self) -> None:
+    def test_routes_to_open_question_progress(self) -> None:
+        """ENH-2446: record_options_deposited -> check_open_question_progress (progress gate),
+        not directly back to check_decision_decidable. The progress gate decides
+        whether to retry (on_yes -> check_decision_decidable) or fall through to
+        decide (on_no / on_error).
+        """
         data = _load_loop()
         rod = data["states"]["record_options_deposited"]
-        assert rod["next"] == "check_decision_decidable"
+        assert rod["next"] == "check_open_question_progress"
+
+    def test_open_question_progress_state_exists(self) -> None:
+        """ENH-2446: new check_open_question_progress state sits between
+        record_options_deposited and check_decision_decidable, gates re-fire
+        on the open_question_stall evaluator.
+        """
+        data = _load_loop()
+        cop = data["states"]["check_open_question_progress"]
+        assert cop.get("fragment") == "open_question_stall_gate"
+        assert cop["on_yes"] == "check_decision_decidable"
+        assert cop["on_no"] == "decide"
+        assert cop["on_error"] == "decide"
 
 
 class TestDecisionDecidableFlow:
     """State-flow walk: check_decision_needed -> check_decision_decidable (no) ->
-    deposit_options -> record_options_deposited -> check_decision_decidable (yes) ->
-    decide (ENH-2443)."""
+    deposit_options -> record_options_deposited -> check_open_question_progress (yes) ->
+    check_decision_decidable (yes) -> decide (ENH-2443 + ENH-2446)."""
 
     def test_full_retry_loop_reaches_decide(self) -> None:
         data = _load_loop()
@@ -300,10 +317,25 @@ class TestDecisionDecidableFlow:
         assert states["check_decision_needed"]["on_yes"] == "check_decision_decidable"
         assert states["check_decision_decidable"]["on_no"] == "deposit_options"
         assert states["deposit_options"]["on_yes"] == "record_options_deposited"
-        assert states["record_options_deposited"]["next"] == "check_decision_decidable"
-        # Second time through, the marker file (written by record_options_deposited)
-        # short-circuits check_decision_decidable straight to decide.
+        assert states["record_options_deposited"]["next"] == "check_open_question_progress"
+        # ENH-2446: progress gate routes on_yes back to check_decision_decidable,
+        # which on the second pass short-circuits via marker file -> decide.
+        assert states["check_open_question_progress"]["on_yes"] == "check_decision_decidable"
         assert states["check_decision_decidable"]["on_yes"] == "decide"
+
+
+class TestCheckDecisionDecidableCoverageAware:
+    """ENH-2446: check_decision_decidable chains the coverage-aware
+    check-open-questions probe before the ENH-2443 check-decidable fallback."""
+
+    def test_chains_check_open_questions_first(self) -> None:
+        data = _load_loop()
+        action = data["states"]["check_decision_decidable"]["action"]
+        assert "check-open-questions" in action
+        # The chained probe runs BEFORE check-decidable — coverage gap detection
+        # takes precedence so the mixed case (resolved options + open questions)
+        # routes to deposit_options instead of straight to decide.
+        assert action.index("check-open-questions") < action.index("check-decidable")
 
 
 class TestManualReviewRecommendedToken:

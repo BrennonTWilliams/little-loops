@@ -1468,6 +1468,26 @@ ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
 
 ---
 
+#### `ll-issues check-open-questions`
+
+Coverage-aware decidability probe (ENH-2446). Companion to `check-decidable` — exits 0 only when **both** (a) every option block in `## Proposed Solution` carries a `> **Selected:**` or `### Decision Rationale` marker AND (b) no bullet items in `## Edge Cases` / `## Confidence Check Notes` / `## Open Questions` carry an open-question signal (`Q:`, `?`, `open question`, `needs decision`, `decision needed`, `open decision`, `unresolved decision`, `decision point`) without a `✅ RESOLVED` / `✔ RESOLVED` / `**RESOLVED**` / `> **RESOLVED**` marker. Exits 1 with `OPEN_QUESTIONS_REMAIN: <ID> — N open question(s) and M unresolved option(s); run /ll:refine-issue <ID> --auto` otherwise.
+
+Closes the mixed-issue gap that the count-based `check-decidable` misses: an issue with already-resolved options PLUS unresolved free-form questions previously routed straight to `decide` (an idempotent no-op) and bypassed `deposit_options` entirely.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `2446`, `ENH-2446`, `P2-ENH-2446`) |
+
+**Examples:**
+```bash
+ll-issues check-open-questions FEAT-2339  # Exit 1 (mixed: 0 unresolved options + N open questions)
+ll-issues check-open-questions ENH-2446   # Exit 0 — no unresolved decision surface
+```
+
+**FSM loop use**: The `check_decision_decidable` gate in `rn-remediate.yaml:263` (and its parity insertion in `autodev.yaml:211`) chains this probe BEFORE `check-decidable` (`check-open-questions || check-decidable`) so the coverage gap is caught before the count-based fallback runs. Pair with the `open_question_stall` evaluator (`open_question_stall_gate` fragment in `lib/common.yaml`) for progress-gated re-fire.
+
+---
+
 #### `ll-issues format-check`
 
 Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in four classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), and `boilerplate` (a required section's body still equals its `creation_template`). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.

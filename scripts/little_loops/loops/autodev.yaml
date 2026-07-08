@@ -216,11 +216,14 @@ states:
     # deterministic (non-LLM) companion to /ll:decide-issue --validate-only.
     # Marker-bounded: once deposit_options has run once this iteration, skip
     # re-validation and go straight to run_decide (bounds the detour to one retry).
+    # ENH-2446: chain check-open-questions first — coverage-aware probe that
+    # catches the mixed case (resolved options + free-form open questions).
     action: |
       if [ -f ${context.run_dir}/autodev-decide-options-deposited ]; then
         exit 0
       fi
-      ll-issues check-decidable ${captured.input.output}
+      ll-issues check-open-questions ${captured.input.output} || \
+        ll-issues check-decidable ${captured.input.output}
     fragment: shell_exit
     on_yes: run_decide
     on_no: deposit_options
@@ -246,7 +249,41 @@ states:
     action_type: shell
     action: |
       printf '1' > ${context.run_dir}/autodev-decide-options-deposited
-    next: check_decision_decidable
+    next: check_open_question_progress
+
+  # ENH-2446: progress-gated deposit_options re-fire (parity with rn-remediate.yaml).
+  # Same shape: append current unresolved-question count to a per-issue history
+  # file, then let the open_question_stall evaluator decide whether to retry
+  # (on_yes: check_decision_decidable) or surface via run_decide (on_no / on_error).
+  check_open_question_progress:
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      RUN_DIR="${context.run_dir}"
+      HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
+
+      COUNT=$(python3 -c "
+      from little_loops.cli.issues.show import _resolve_issue_id
+      from little_loops.config import BRConfig
+      from little_loops.issue_parser import (
+          count_open_questions_in_sections,
+          count_unresolved_options,
+      )
+      cfg = BRConfig('.')
+      path = _resolve_issue_id(cfg, '$ID')
+      if path is None:
+          print(0)
+      else:
+          c = path.read_text()
+          print(count_unresolved_options(c) + count_open_questions_in_sections(c))
+      " 2>/dev/null || echo 0)
+
+      echo "$${COUNT}"
+      echo "$${COUNT}" >> "$${HISTORY_FILE}"
+    fragment: open_question_stall_gate
+    on_yes: check_decision_decidable
+    on_no: run_decide
+    on_error: run_decide
 
   run_decide:
     # Run /ll:decide-issue to select a winning implementation option and clear

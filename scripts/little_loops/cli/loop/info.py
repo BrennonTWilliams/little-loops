@@ -1209,6 +1209,7 @@ _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "convergence": "convergence",
     "diff_stall": "diff stall",
     "score_stall": "score stall",
+    "open_question_stall": "open question stall",
     "action_stall": "action stall",
     "comparator": "blind comparator",
 }

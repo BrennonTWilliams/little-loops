@@ -68,6 +68,7 @@ class EvaluateConfig:
         "convergence",
         "diff_stall",
         "score_stall",
+        "open_question_stall",
         "action_stall",
         "llm_structured",
         "mcp_result",

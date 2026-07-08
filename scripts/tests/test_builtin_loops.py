@@ -3116,7 +3116,8 @@ class TestAutodevLoop:
 
     def test_deposit_options_state_exists_and_routes(self, data: dict) -> None:
         """ENH-2443: deposit_options runs /ll:refine-issue --auto and routes success
-        through record_options_deposited back to check_decision_decidable."""
+        through record_options_deposited back to check_decision_decidable (via
+        check_open_question_progress as of ENH-2446)."""
         do = data["states"].get("deposit_options", {})
         assert do.get("fragment") == "with_rate_limit_handling"
         assert do.get("action_type") == "slash_command"
@@ -3129,8 +3130,27 @@ class TestAutodevLoop:
 
         rod = data["states"].get("record_options_deposited", {})
         assert rod.get("action_type") == "shell"
-        assert rod.get("next") == "check_decision_decidable"
+        # ENH-2446: routes through check_open_question_progress (progress gate)
+        # before reaching check_decision_decidable — lets deposit_options re-fire
+        # while open-question counts are still strictly decreasing.
+        assert rod.get("next") == "check_open_question_progress"
         assert "autodev-decide-options-deposited" in rod.get("action", "")
+
+    def test_check_decision_decidable_chains_coverage_probe(self, data: dict) -> None:
+        """ENH-2446: chains check-open-questions before check-decidable for
+        coverage-aware decidability detection (mixed resolved-options + open-questions)."""
+        action = data["states"]["check_decision_decidable"].get("action", "")
+        assert "check-open-questions" in action
+        assert action.index("check-open-questions") < action.index("check-decidable")
+
+    def test_check_open_question_progress_state_exists(self, data: dict) -> None:
+        """ENH-2446: progress-gated re-fire between record_options_deposited and
+        check_decision_decidable; uses open_question_stall_gate fragment."""
+        cop = data["states"].get("check_open_question_progress", {})
+        assert cop.get("fragment") == "open_question_stall_gate"
+        assert cop.get("on_yes") == "check_decision_decidable"
+        assert cop.get("on_no") == "run_decide"
+        assert cop.get("on_error") == "run_decide"
 
     def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
         """ENH-2443: the deposit-options marker must be cleared per-issue (mirrors the

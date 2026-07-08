@@ -1,7 +1,7 @@
 ---
 id: ENH-2446
 type: enhancement
-status: open
+status: done
 priority: P2
 title: Make decidability gate coverage-aware, not count-aware, and re-provision the
   refine/decide budget for high-open-question issues
@@ -14,13 +14,14 @@ captured_at: 2026-07-02 00:00:00+00:00
 discovered_date: 2026-07-02
 discovered_by: capture-issue
 parent: EPIC-2412
-decision_needed: true
+decision_needed: false
 confidence_score: 95
 outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: 2026-07-08 18:29:51+00:00
 ---
 
 # P2-ENH-2446: Make decidability gate coverage-aware, not count-aware, and re-provision the refine/decide budget for high-open-question issues
@@ -128,6 +129,10 @@ The user's explicit fork — pick one:
   count strictly decreasing, or new resolved options appearing), replacing the
   single write-once `decide_options_deposited_<ID>.txt` marker with a
   progress/stall check. Bound by a stall detector so it terminates.
+
+  > **Selected:** A — per the stated recommendation (progress gate is
+  > self-bounding; reuses existing convergence/stall machinery as the terminator).
+
 - **Option B — scale the remediation budget by open-question count**: raise
   `max_remediation_passes` (or add a derived per-issue budget) as a function of
   the number of detected open questions, so an N-question issue gets enough
@@ -420,10 +425,44 @@ _Added on re-refinement — based on 3-agent parallel research pass (locator / a
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2 | Refined: 2026-07-02 by `/ll:refine-issue --auto` | Re-refined: 2026-07-08 by `/ll:refine-issue --auto` (additive — anchor drift + autodev test scaffold noted)
+**Done** | Created: 2026-07-02 | Priority: P2 | Refined: 2026-07-02 by `/ll:refine-issue --auto` | Re-refined: 2026-07-08 by `/ll:refine-issue --auto` (additive — anchor drift + autodev test scaffold noted) | Implemented: 2026-07-08 by `/ll:manage-issue --quick` (Layer 1 coverage-aware probe + Layer 2 progress-gated re-fire per Option A)
+
+## Resolution
+
+Implemented both layers per the Proposed Solution:
+
+- **Layer 1 (coverage-aware probe)**: Added `count_unresolved_options` and
+  `count_open_questions_in_sections` to `issue_parser.py` (Pattern 1 + Pattern 2
+  blocks; resolved marker regex mirrors `skills/decide-issue/SKILL.md:197`).
+  Added `QuestionGaps` dataclass mirroring `FormatGaps` shape. New
+  `ll-issues check-open-questions` CLI subcommand chained in front of
+  `check-decidable` in both `rn-remediate.yaml` and `autodev.yaml` so the
+  mixed case (resolved options + free-form open questions) routes to
+  `deposit_options` instead of `decide`.
+
+- **Layer 2 (progress-gated re-fire, Option A)**: Added
+  `evaluate_open_question_stall` (mirrors `evaluate_score_stall` but inverted —
+  lower count = progress). New `open_question_stall` literal in
+  `EvaluateConfig.type` schema, `_EVALUATE_EVALUATORS`, dispatch arm, and
+  `_EVALUATE_TYPE_DISPLAY`. New `open_question_stall_gate` fragment in
+  `loops/lib/common.yaml`. The existing `decide_options_deposited_<ID>.txt`
+  marker remains the "tried at least once" anchor (preserves
+  `MANUAL_REVIEW_RECOMMENDED/NEEDED` semantics); the new
+  `check_open_question_progress` state sits between `record_options_deposited`
+  and `check_decision_decidable` and gates re-fire on the open_question_stall
+  evaluator (`max_stall: 2`, self-bounding).
+
+Tests: 19 parser tests + 20 evaluator/fragment/validation/display tests + 7
+CLI subprocess tests + 3 new FSM-loop wiring tests (rn-remediate.yaml + autodev.yaml
+parity), all passing. Integration review: clean (no BLOCKING issues; 3 minor
+WARNING-level nits on test contracts and intentional fail-open semantics,
+consistent with ENH-2428 score_stall precedent).
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-08T18:29:51Z - implementation completed (Layer 1 + Layer 2 Option A)
+- `/ll:decide-issue` - 2026-07-08T18:06:47 - `9c12d996-f421-4f6c-89fe-aea8ac5120e5.jsonl`
+- `/ll:ready-issue` - 2026-07-08T18:05:05 - `83b8720b-e2da-486d-b100-b31a96ef55ce.jsonl`
 - `/ll:refine-issue` - 2026-07-08T17:57:01 - `a164647d-83a1-4e47-91ce-d572060b4b37.jsonl`
 - `/ll:refine-issue` - 2026-07-08T17:56:55 - `a164647d-83a1-4e47-91ce-d572060b4b37.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-2412 (was unparented; assigned per /ll:create-epics-from-unparented sweep).

@@ -69,6 +69,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "convergence": ["target"],
     "diff_stall": [],
     "score_stall": [],
+    "open_question_stall": [],
     "action_stall": [],
     "llm_structured": [],
     "mcp_result": [],
@@ -321,6 +322,25 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
 
     # Validate score_stall-specific fields
     if evaluate.type == "score_stall":
+        if evaluate.max_stall < 1:
+            errors.append(
+                ValidationError(
+                    message="max_stall must be >= 1",
+                    path=f"{path}.max_stall",
+                )
+            )
+        if evaluate.epsilon < 0:
+            errors.append(
+                ValidationError(
+                    message="epsilon must be >= 0",
+                    path=f"{path}.epsilon",
+                )
+            )
+
+    # Validate open_question_stall-specific fields (ENH-2446).
+    # Mirrors score_stall's max_stall/epsilon guard so the schema rejects bad
+    # configurations at validate time rather than at runtime.
+    if evaluate.type == "open_question_stall":
         if evaluate.max_stall < 1:
             errors.append(
                 ValidationError(

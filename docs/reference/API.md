@@ -843,6 +843,61 @@ yields 0, mirroring Phase 3's own widening.
 
 **Returns:** Count of enumerable options found (0 when there is nothing to decide).
 
+#### count_unresolved_options
+
+```python
+def count_unresolved_options(content: str) -> int
+```
+
+Coverage-aware sibling of `count_enumerable_options` (ENH-2446). Counts only the
+`### Option X` / `**Option X: ...**` blocks in `## Proposed Solution` (with the same
+fallback widening to `## Codebase Research Findings` / `## Implementation Status`) that
+LACK a resolution marker — i.e. neither `> **Selected:**` callout nor `### Decision Rationale`
+subsection within the block's boundary. An issue with resolved options PLUS unresolved
+free-form questions is the coverage gap this probe catches (the count-based
+`count_enumerable_options` returns 2 in that case; this returns 0). Backs the
+`ll-issues check-open-questions` subcommand alongside `count_open_questions_in_sections`.
+
+**Parameters:**
+- `content` - Full issue file text
+
+**Returns:** Count of unresolved (unmarked) option blocks. 0 means every enumerable
+option in the issue has a `> **Selected:**` or `### Decision Rationale` marker.
+
+#### count_open_questions_in_sections
+
+```python
+def count_open_questions_in_sections(content: str) -> int
+```
+
+Counts unresolved open questions in `## Edge Cases`, `## Confidence Check Notes`, and
+`## Open Questions` sections (ENH-2446). An item is an "open question" if it is a
+bullet or numbered list line carrying an open-question signal (`Q:` prefix, ends with
+`?`, or contains `open question`, `needs decision`, `decision needed`, `open decision`,
+`unresolved decision`, or `decision point`) AND lacks a resolved-question marker
+(`✅ RESOLVED`, `✔ RESOLVED`, `**RESOLVED**`, or `> **RESOLVED**`). Mirrors the resolved-
+question vocabulary already defined in `skills/decide-issue/SKILL.md:197` so both the
+deterministic probe and the LLM skill read the same markers.
+
+**Parameters:**
+- `content` - Full issue file text
+
+**Returns:** Count of unresolved open questions across the three target sections. 0 means
+every bullet/numbered item is either resolved or not an open question.
+
+#### QuestionGaps
+
+```python
+@dataclass
+class QuestionGaps:
+    unresolved_options: list[str]
+    open_questions: list[str]
+```
+
+Typed return-value mirroring the `FormatGaps` shape (ENH-2446). Each list carries the
+respective markers/headings; `has_gaps` is derived; `to_dict()` serializes for
+`--format json`. Companion to `FormatGaps` for the coverage-aware decidability probe.
+
 #### find_issues
 
 ```python

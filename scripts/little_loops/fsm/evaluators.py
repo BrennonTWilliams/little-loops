@@ -682,6 +682,87 @@ def evaluate_score_stall(
     )
 
 
+def evaluate_open_question_stall(
+    history_file: str,
+    max_stall: int = 1,
+    epsilon: float = 0.0,
+) -> EvaluationResult:
+    """Detect an open-question-count plateau by reading a per-round count-history file (ENH-2446).
+
+    Companion to :func:`evaluate_score_stall`. Where score_stall tracks the
+    running *best* (higher = better), open_question_stall tracks the running
+    *minimum* (lower = better — open questions being resolved is progress).
+    A round counts as *progress* only when its count is strictly less than the
+    previous minimum by more than epsilon; otherwise the stall counter
+    increments. When the counter reaches ``max_stall`` consecutive
+    non-progress rounds the open-question reduction has plateaued and the
+    evaluator returns ``no`` (stop refining and let ``decide`` / ``emit_needs_manual_review``
+    surface). Mirrors the ENH-2428 score_stall pattern; inverts the direction
+    of progress so the same stall-plateau semantics apply.
+
+    Args:
+        history_file: Path to the newline-delimited open-question-count history file.
+        max_stall: Consecutive non-progress rounds before a stall verdict.
+        epsilon: Minimum count reduction (relative to min-so-far) counted as progress.
+
+    Returns:
+        EvaluationResult with verdict:
+            - yes: counts still decreasing, or not enough history yet (continue)
+            - no: counts plateaued for ``max_stall`` consecutive rounds (stop)
+    """
+    path = Path(history_file)
+    counts: list[float] = []
+    try:
+        raw = path.read_text()
+    except (FileNotFoundError, OSError):
+        raw = ""
+
+    for line in raw.splitlines():
+        token = line.strip()
+        if not token:
+            continue
+        try:
+            counts.append(float(token))
+        except ValueError:
+            continue
+
+    # Not enough history to judge a plateau — keep going.
+    if len(counts) < 2:
+        return EvaluationResult(
+            verdict="yes",
+            details={
+                "stall_count": 0,
+                "max_stall": max_stall,
+                "epsilon": epsilon,
+                "rounds": len(counts),
+                "best": counts[-1] if counts else None,
+            },
+        )
+
+    best = counts[0]
+    stall = 0
+    for count in counts[1:]:
+        if count < best - epsilon:
+            best = count
+            stall = 0
+        else:
+            if count < best:
+                best = count
+            stall += 1
+
+    verdict = "no" if stall >= max_stall else "yes"
+    return EvaluationResult(
+        verdict=verdict,
+        details={
+            "stall_count": stall,
+            "max_stall": max_stall,
+            "epsilon": epsilon,
+            "rounds": len(counts),
+            "best": best,
+        },
+    )
+
+
 def evaluate_action_stall(
     track: list[str] | None = None,
     max_repeat: int = 2,
@@ -1652,6 +1733,7 @@ def evaluate(
             "harbor_scorer",
             "diff_stall",
             "score_stall",
+            "open_question_stall",
             "action_stall",
             "llm_structured",
             "contract",
@@ -1771,6 +1853,19 @@ def evaluate(
             except InterpolationError:
                 pass  # Use raw path on resolution failure
         return evaluate_score_stall(
+            history_file=history_file,
+            max_stall=config.max_stall,
+            epsilon=config.epsilon,
+        )
+
+    elif eval_type == "open_question_stall":
+        history_file = config.history_file or "${context.run_dir}/.open_questions_history"
+        if context:
+            try:
+                history_file = interpolate(history_file, context)
+            except InterpolationError:
+                pass  # Use raw path on resolution failure
+        return evaluate_open_question_stall(
             history_file=history_file,
             max_stall=config.max_stall,
             epsilon=config.epsilon,

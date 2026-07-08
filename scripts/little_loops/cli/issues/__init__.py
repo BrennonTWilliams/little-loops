@@ -22,6 +22,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.append_log import cmd_append_log
         from little_loops.cli.issues.check_decidable import cmd_check_decidable
         from little_loops.cli.issues.check_flag import cmd_check_flag
+        from little_loops.cli.issues.check_open_questions import (
+            add_check_open_questions_parser,
+            cmd_check_open_questions,
+        )
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
@@ -637,6 +641,8 @@ Examples:
         cdec.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
         add_config_arg(cdec)
 
+        add_check_open_questions_parser(subs)
+
         cr = subs.add_parser(
             "check-readiness",
             aliases=["cr"],
@@ -842,6 +848,8 @@ Examples:
             return cmd_check_flag(config, args)
         if args.command == "check-decidable":
             return cmd_check_decidable(config, args)
+        if args.command == "check-open-questions":
+            return cmd_check_open_questions(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":
