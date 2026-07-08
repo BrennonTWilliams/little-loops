@@ -220,6 +220,17 @@ class TestOrangeDefaultColors:
         codes = {slug: CATEGORY_COLOR[slug] for slug in ("apo", "gate", "harness", "code-quality")}
         assert len(set(codes.values())) >= 3, codes
 
+    def test_category_color_no_green_for_quality_or_code_quality(self) -> None:
+        """v2 polish: code-quality and quality no longer reuse FEAT green ("32")."""
+        from little_loops.cli.output import CATEGORY_COLOR
+
+        feat_green = "32"
+        assert CATEGORY_COLOR["code-quality"] != feat_green
+        assert CATEGORY_COLOR["quality"] != feat_green
+        # No other loop category should reuse the FEAT green either.
+        collisions = [k for k, v in CATEGORY_COLOR.items() if v == feat_green]
+        assert not collisions, f"Loop categories must not reuse FEAT green: {collisions}"
+
 
 class TestConfigureOutput:
     """Tests for configure_output() function."""
@@ -228,7 +239,12 @@ class TestConfigureOutput:
     # so the two methods cannot drift (ENH-2539).
     _DEFAULT_DEFAULTS = {
         "PRIORITY_COLOR": {
-            "P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2",
+            "P0": "38;5;208;1",
+            "P1": "38;5;208",
+            "P2": "33",
+            "P3": "0",
+            "P4": "2",
+            "P5": "2",
         },
         "TYPE_COLOR": {"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"},
         # Filled in by setup from the actual module's defaults (which may grow
@@ -340,6 +356,20 @@ class TestConfigureOutput:
         assert _smart_title("issue-management") == "Issue Management"
         assert _smart_title("apo-something-rlhf") == "APO Something RLHF"
         assert _smart_title("") == ""
+
+    def test_all_caps_uppercases_all_words(self) -> None:
+        """v2 polish: _all_caps uppercases every word (no acronym preservation)."""
+        from little_loops.cli.output import _all_caps, _smart_title
+
+        assert _all_caps("apo") == "APO"
+        assert _all_caps("hitl") == "HITL"
+        assert _all_caps("harness") == "HARNESS"
+        assert _all_caps("issue-management") == "ISSUE MANAGEMENT"
+        assert _all_caps("apo-something-rlhf") == "APO SOMETHING RLHF"
+        assert _all_caps("") == ""
+        # Distinguishes from _smart_title: even non-acronyms are uppercased.
+        assert _all_caps("harness") != _smart_title("harness")
+        assert _all_caps("harness") == "HARNESS"
 
     def test_colorize_uses_updated_use_color(self) -> None:
         """colorize() respects _USE_COLOR after configure_output call."""

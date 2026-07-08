@@ -26,7 +26,7 @@ from little_loops.cli.output import (
     ACRONYMS,  # noqa: F401  (re-exported for tests/lint)
     CATEGORY_COLOR,
     LABEL_COLOR,
-    _smart_title,
+    _all_caps,
     colorize,
     print_json,
     terminal_width,
@@ -282,16 +282,16 @@ def cmd_list(
     name_col = _MAX_NAME_COL + 2
     kind_col = _MAX_KIND_COL
     label_col = _MAX_LABEL_COL
-    tw = terminal_width()
+    tw = terminal_width(default=120)
     desc_col = max(_DESC_FLOOR, tw - name_col - kind_col - label_col - 6)
 
     # Summary header
     n_project = sum(1 for lp in all_loops if not lp["builtin"])
     n_builtin = len(all_loops) - n_project
-    summary = f"  {len(all_loops)} loops · {len(buckets)} categories"
+    summary = f"  {len(all_loops)} LOOPS · {len(buckets)} CATEGORIES"
     if n_project:
-        summary += f" · {n_project} project, {n_builtin} built-in"
-    print(colorize(summary, "2"))
+        summary += f" · {n_project} PROJECT, {n_builtin} BUILT-IN"
+    print(colorize(summary, "1"))
     print()
 
     cats_printed = False
@@ -302,18 +302,18 @@ def cmd_list(
         cats_printed = True
         # ENH-2539: per-category color + inline rollup badge.
         cat_color = CATEGORY_COLOR.get(cat, "36;1")
-        cat_title = _smart_title(cat)
+        cat_title = _all_caps(cat)
         header_label = f"  ▸ {cat_title}  ({len(group)})"
         rollup = _category_rollup(group, hidden_counts)
         if rollup:
-            header_label += f"  {colorize(rollup, '2')}"
+            header_label += f"  {colorize(rollup, '36')}"
         print(colorize(header_label, cat_color))
 
         kind_color_map = {
             "project": "36;1",
-            "built-in": "2",
+            "built-in": "0",
             "internal": "3",
-            "example": "33;2",
+            "example": "33",
         }
 
         def _kind_for(lp: dict[str, Any]) -> str:
@@ -332,9 +332,7 @@ def cmd_list(
             *,
             _kcm: dict[str, str] = kind_color_map,
         ) -> None:
-            name_str = colorize(
-                _truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "36"
-            )
+            name_str = colorize(_truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "36")
             kind_value = _kind_for(lp)
             kind_str = colorize(
                 kind_value.ljust(kind_col),
@@ -344,7 +342,7 @@ def cmd_list(
             desc_text = lp["description"] or ""
             if desc_text and len(desc_text) > desc_col:
                 desc_text = _truncate(desc_text, desc_col)
-            desc_str = f"  {colorize(desc_text, '2')}" if desc_text else ""
+            desc_str = f"  {desc_text}" if desc_text else ""
             print(f"{indent}{name_str}{kind_str}{label_str}{desc_str}")
 
         # ENH-2539: subgroup subheads for categories with a dominant prefix
@@ -355,8 +353,9 @@ def cmd_list(
         if has_subgroups:
             for prefix, members in subgroups:
                 if prefix:
-                    sub_label = _smart_title(prefix)
-                    print(colorize(f"    {sub_label} ({len(members)})", "0;2"))
+                    sub_label = _all_caps(prefix)
+                    sub_color = f"{cat_color};1"
+                    print(colorize(f"    {sub_label} ({len(members)})", sub_color))
                     indent = "      "
                 else:
                     indent = "  "
@@ -369,17 +368,15 @@ def cmd_list(
     # ENH-2539: closing Total: summary line + hidden-tier hint.
     print()
     total_parts = [
-        f"{len(all_loops)} loops",
-        f"{len(buckets)} categories",
-        f"{n_project} project, {n_builtin} built-in",
+        f"{len(all_loops)} LOOPS",
+        f"{len(buckets)} CATEGORIES",
+        f"{n_project} PROJECT, {n_builtin} BUILT-IN",
     ]
-    total_str = "Total: " + " · ".join(total_parts)
+    total_str = colorize("TOTAL: " + " · ".join(total_parts), "1")
     print(total_str)
     hidden_total = sum(hidden_counts.values())
     if hidden_total:
-        hidden_bits = ", ".join(
-            f"{v} {k}" for k, v in hidden_counts.items() if v
-        )
+        hidden_bits = ", ".join(f"{v} {k}" for k, v in hidden_counts.items() if v)
         print(
             colorize(
                 f"       {hidden_total} hidden ({hidden_bits}) — pass --all to show",

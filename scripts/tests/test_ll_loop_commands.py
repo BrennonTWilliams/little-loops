@@ -526,7 +526,7 @@ class TestCmdList:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Uncategorized" in out
+        assert "UNCATEGORIZED" in out
         assert "my-loop" in out
 
     # --- BUG-1634: nested-loop enumeration -------------------------------
@@ -713,19 +713,19 @@ class TestLoopListCategoryFilter:
 
         assert result == 0
         out = capsys.readouterr().out
-        # `apo` is in ACRONYMS -> "APO"; `meta` isn't -> "Meta".
+        # `apo` is in ACRONYMS -> "APO"; `meta` isn't -> "META" (v2 polish: all-caps).
         assert "APO" in out, f"acronym casing: {out!r}"
-        assert "Meta" in out
+        assert "META" in out
         # The bare-old .title() rendering of `apo` would have produced "Apo"; ensure
         # that header form is no longer present.
         assert "Apo\n" not in out
-        assert "Uncategorized" in out
+        assert "UNCATEGORIZED" in out
         assert "loop-apo" in out
         assert "loop-meta" in out
         assert "loop-bare" in out
-        # APO and Meta headers should appear before Uncategorized
-        assert out.index("APO") < out.index("Uncategorized")
-        assert out.index("Meta") < out.index("Uncategorized")
+        # APO and META headers should appear before UNCATEGORIZED
+        assert out.index("APO") < out.index("UNCATEGORIZED")
+        assert out.index("META") < out.index("UNCATEGORIZED")
 
     def test_json_output_includes_category_and_labels(
         self,
@@ -1368,7 +1368,9 @@ class TestLoopListFormatting:
 
         # Patch CATEGORY_COLOR to a known code to make the assertion stable.
         with patch.dict(output_mod.CATEGORY_COLOR, {"test": "38;5;201"}, clear=False):
-            args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+            args = argparse.Namespace(
+                running=False, status=None, json=False, category=None, label=None
+            )
             with patch(
                 "little_loops.cli.loop.info.get_builtin_loops_dir",
                 return_value=builtin_dir,
@@ -1447,7 +1449,7 @@ class TestLoopListFormatting:
         out = capsys.readouterr().out
         lines = out.split("\n")
         # Check there's a blank line before the second category header (now title-cased: "Beta")
-        beta_header_idx = next(i for i, line in enumerate(lines) if "Beta" in line and "(" in line)
+        beta_header_idx = next(i for i, line in enumerate(lines) if "BETA" in line and "(" in line)
         assert beta_header_idx > 0
         assert lines[beta_header_idx - 1] == ""
 
@@ -1509,15 +1511,15 @@ class TestLoopListFormatting:
 
         assert result == 0
         out = capsys.readouterr().out
-        # Summary header appears before any category header
-        assert "2 loops" in out
-        assert "2 categories" in out
+        # Summary header appears before any category header (v2 polish: all-caps)
+        assert "2 LOOPS" in out
+        assert "2 CATEGORIES" in out
         # Summary appears before first category
         first_cat_pos = min(
-            out.index("Cat1") if "Cat1" in out else len(out),
-            out.index("Cat2") if "Cat2" in out else len(out),
+            out.index("CAT1") if "CAT1" in out else len(out),
+            out.index("CAT2") if "CAT2" in out else len(out),
         )
-        assert out.index("2 loops") < first_cat_pos
+        assert out.index("2 LOOPS") < first_cat_pos
 
     def test_no_color_output_no_ansi(
         self,
@@ -1700,8 +1702,8 @@ class TestCmdListENH2539Polished:
         out = capsys.readouterr().out
         # `apo` is in ACRONYMS -> "APO"
         assert "APO" in out
-        # `evaluation` is not in ACRONYMS -> "Evaluation" (plain title-case)
-        assert "Evaluation" in out
+        # `evaluation` -> "EVALUATION" (v2 polish: all-caps, not title-case)
+        assert "EVALUATION" in out
         # Old `.title()` form would have rendered `apo` -> "Apo"; ensure that
         # acronym-heading form is gone.
         assert "Apo\n" not in out
@@ -1729,10 +1731,11 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Total:" in out
+        # v2 polish: total line is uppercased + bold
+        assert "TOTAL:" in out
         # Total appears after the last category header
-        total_idx = out.index("Total:")
-        for cat in ("Foo", "Bar", "FOO", "BAR", "foo", "bar"):
+        total_idx = out.index("TOTAL:")
+        for cat in ("FOO", "BAR"):
             if cat in out:
                 assert out.index(cat) < total_idx
 
@@ -1746,9 +1749,7 @@ class TestCmdListENH2539Polished:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "apo-beam.yaml").write_text(
-            _runnable("name: apo-beam\ncategory: harness\n")
-        )
+        (loops_dir / "apo-beam.yaml").write_text(_runnable("name: apo-beam\ncategory: harness\n"))
         (loops_dir / "apo-contrastive.yaml").write_text(
             _runnable("name: apo-contrastive\ncategory: harness\n")
         )
@@ -1766,9 +1767,7 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Subgroup" in out or "APO" in out, (
-            f"Expected subgroup/subhead rendering: {out!r}"
-        )
+        assert "Subgroup" in out or "APO" in out, f"Expected subgroup/subhead rendering: {out!r}"
 
     def test_row_columns_aligned_at_tw_80(
         self,
@@ -1783,8 +1782,7 @@ class TestCmdListENH2539Polished:
         for n in ("alpha", "beta", "gamma"):
             (loops_dir / f"{n}.yaml").write_text(
                 _runnable(
-                    f"name: {n}\ncategory: cat\n"
-                    f"description: Short description text for {n}\n"
+                    f"name: {n}\ncategory: cat\ndescription: Short description text for {n}\n"
                 )
             )
 
@@ -1803,8 +1801,8 @@ class TestCmdListENH2539Polished:
         # description (rather than only ellipsis).
         assert "Short descr" in out  # first 13 chars of "Short description…"
         assert "alpha" in out and "beta" in out and "gamma" in out
-        # The "Total:" closing summary line should be present
-        assert "Total:" in out
+        # The "TOTAL:" closing summary line should be present (v2 polish: uppercased)
+        assert "TOTAL:" in out
 
     def test_row_columns_at_tw_120(
         self,
@@ -1865,6 +1863,117 @@ class TestCmdListENH2539Polished:
         assert result == 0
         out = capsys.readouterr().out
         assert "absolutely definitely fits" in out
+
+    def test_summary_header_bold_and_uppercase(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """v2 polish: top summary uses bold ANSI + uppercase labels."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "a.yaml").write_text(_runnable("name: a\ncategory: foo\n"))
+        (loops_dir / "b.yaml").write_text(_runnable("name: b\ncategory: foo\n"))
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.output._USE_COLOR", True):
+                result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Top summary header is bold + uppercase
+        first_summary_line = next(ln for ln in out.split("\n") if "LOOPS" in ln)
+        assert "\033[1m" in first_summary_line
+        assert "2 LOOPS" in first_summary_line
+        # Closing TOTAL line is also bold + uppercase
+        total_line = next(ln for ln in out.split("\n") if "TOTAL:" in ln)
+        assert "\033[1m" in total_line
+        assert "LOOPS" in total_line
+        assert "CATEGORIES" in total_line
+
+    def test_description_text_not_dim(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """v2 polish: per-row description is plain text (no dim ANSI code)."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "x.yaml").write_text(
+            _runnable("name: x\ncategory: cat\ndescription: This description should not be dim.\n")
+        )
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.output._USE_COLOR", True):
+                with patch("little_loops.cli.output.terminal_width", return_value=120):
+                    with patch("little_loops.cli.loop.info.terminal_width", return_value=120):
+                        result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Description text appears verbatim
+        assert "This description should not be dim." in out
+        # The dim ANSI code (\033[2m) should not be present in the row containing
+        # the description (subgroup subheads and the hidden-tier hint are the
+        # only remaining dim sites, and neither wraps a per-row description).
+        desc_row = next(ln for ln in out.split("\n") if "This description" in ln)
+        assert "\033[2m" not in desc_row
+
+    def test_default_terminal_width_120(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """v2 polish: cmd_list uses terminal_width(default=120).
+
+        At TW=80 the description column is floored to 20 chars; at TW=120 it
+        grows to 52. A 40-char description fits at TW=120 but is truncated at
+        TW=80 — so the substring at position 30-40 is the discriminator.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # 45-char description: present at TW=120 (52-col desc) but truncated
+        # at TW=80 (20-col desc). The substring at position ~30-45 is the
+        # discriminator.
+        long_desc = "A description that is forty chars long total!"
+        assert len(long_desc) == 45, len(long_desc)
+        (loops_dir / "x.yaml").write_text(
+            _runnable(f"name: x\ncategory: cat\ndescription: {long_desc}\n")
+        )
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.output.terminal_width", return_value=120):
+                with patch("little_loops.cli.loop.info.terminal_width", return_value=120):
+                    result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # At TW=120 desc_col=52, the 40-char description is fully visible.
+        assert long_desc in out
+        # Sanity: TW=80 would have truncated to ~20 chars; the substring at
+        # position 30+ would be absent.
+        assert "forty chars long" in out
 
 
 class TestCmdHistory:

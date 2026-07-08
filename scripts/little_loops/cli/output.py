@@ -84,12 +84,21 @@ TYPE_COLOR: dict[str, str] = {
     "EPIC": "35",
 }
 
-# ENH-2539: per-category color map for ``ll-loop list`` headers. Slugs are
-# _smart_title() output (``"Apo"`` becomes ``"apo"`` slug in CATEGORY_COLOR;
-# see ``_smart_title`` for the reverse direction).
+# ENH-2539 / v2-polish: per-category color map for ``ll-loop list`` headers.
+# Slugs are _smart_title() output (``"Apo"`` becomes ``"apo"`` slug in
+# CATEGORY_COLOR; see ``_smart_title`` for the reverse direction).
+#
+# Color choices avoid duplicating the issues-list TYPE_COLOR codes where
+# possible (the FEAT green ``"32"`` is the only canonical duplication we
+# actively reject — ``code-quality`` and ``quality`` previously both used
+# it). Remaining duplicates (apo/orchestration, gate/rl, harness/routing,
+# issue-management/research, integration/planning, optimization/api-adoption)
+# are intentional semantic groupings: gate/rl = training/safety-adjacent;
+# harness/routing = execution-flow; issue-management/research = investigation;
+# integration/planning = glue work; optimization/api-adoption = improvement.
 CATEGORY_COLOR: dict[str, str] = {
     "apo": "38;5;141",
-    "code-quality": "32",
+    "code-quality": "38;5;75",  # 256-blue; was "32" (FEAT green) — v2 polish
     "data": "34",
     "evaluation": "38;5;208",
     "example": "33;2",
@@ -98,11 +107,11 @@ CATEGORY_COLOR: dict[str, str] = {
     "integration": "38;5;39",
     "issue-management": "36",
     "lib": "90",
-    "meta": "38;5;208",
+    "meta": "38;5;220",  # 256-yellow; was "38;5;208" (BUG orange) — v2 polish
     "optimization": "33",
     "orchestration": "38;5;141",
     "planning": "38;5;39",
-    "quality": "32",
+    "quality": "38;5;178",  # 256-gold; was "32" (FEAT green) — v2 polish
     "research": "36",
     "rl": "38;5;160",
     "routing": "35",
@@ -129,6 +138,17 @@ def _smart_title(slug: str) -> str:
     while preserving known acronyms (``"apo"`` -> ``"APO"``)."""
     parts = slug.replace("-", " ").split()
     return " ".join(p.upper() if p.upper() in ACRONYMS else p.capitalize() for p in parts)
+
+
+def _all_caps(slug: str) -> str:
+    """Uppercase every word: ``"issue-management"`` -> ``"ISSUE MANAGEMENT"``.
+
+    Used by ``ll-loop list`` for headers/subheads/summary labels where the
+    whole line reads as a section marker. Differs from :func:`_smart_title`
+    in that non-acronyms are also uppercased (``"harness"`` -> ``"HARNESS"``,
+    not ``"Harness"``).
+    """
+    return " ".join(p.upper() for p in slug.replace("-", " ").split())
 
 
 def configure_output(config: CliConfig | None = None) -> None:

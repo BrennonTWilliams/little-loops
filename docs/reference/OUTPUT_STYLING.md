@@ -54,20 +54,21 @@ Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is 
 | `ENH` | `34` | Blue |
 | `EPIC` | `35` | Purple-magenta |
 
-Category colors for `ll-loop list` headers (key is the lowercase slug used in `CATEGORY_COLOR`; keys are matched against each loop's `category:` field):
+Category colors for `ll-loop list` headers (key is the lowercase slug used in `CATEGORY_COLOR`; keys are matched against each loop's `category:` field). v2 polish removes the FEAT-green duplication — `code-quality` and `quality` no longer share the issues-list FEAT green:
 
 | Slug | ANSI Code | Appearance |
 |------|-----------|------------|
 | `apo` | `38;5;141` | Purple |
-| `code-quality` | `32` | Green |
+| `code-quality` | `38;5;75` | 256-blue (v2: was `32` green) |
 | `data` | `34` | Blue |
 | `evaluation` | `38;5;208` | Orange |
 | `gate` | `38;5;160` | Red |
 | `harness` | `35` | Magenta |
 | `integration` | `38;5;39` | Sky |
 | `issue-management` | `36` | Cyan |
-| `meta` | `38;5;208` | Orange |
+| `meta` | `38;5;220` | 256-yellow (v2: was `38;5;208` orange) |
 | `planning` | `38;5;39` | Sky |
+| `quality` | `38;5;178` | 256-gold (v2: was `32` green) |
 | `research` | `36` | Cyan |
 | `rl` | `38;5;160` | Red |
 | `uncategorized` | `0;2` | Reset-dim |
@@ -84,6 +85,12 @@ Label colors for `ll-loop list` rows (resolved via `LABEL_COLOR.get(label, "2")`
 The `ACRONYMS` frozenset (`{'APO', 'HITL', 'LLM', 'SVG', 'FSM', 'RLHF', 'API'}`) governs
 acronym-aware title casing via `_smart_title()` — `apo` renders as `APO` in
 `ll-loop list` headers rather than the `Apo` that plain `.title()` would produce.
+
+A second helper, `_all_caps(slug)`, uppercases every word (e.g.
+`"issue-management"` → `"ISSUE MANAGEMENT"`) for section-marker labels:
+category headers, subgroup subheads, top/closing summary lines. `ll-loop list`
+uses `_all_caps` for those sites; body content (name, kind, labels,
+description) stays mixed case.
 
 Edge colors (used in FSM diagrams — applied to both label text and connector line characters):
 
