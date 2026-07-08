@@ -592,7 +592,13 @@ Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
   decide    (slash_command: /ll:decide-issue --auto) on_yes → re_assess | on_no → emit_needs_manual_review | on_error → emit_implement_failed
     (emit_needs_manual_review writes MANUAL_REVIEW_RECOMMENDED instead of MANUAL_REVIEW_NEEDED
-    when the deposit_options marker is present — "nothing to score even after one retry")
+    when the deposit_options marker is present — "nothing to score even after one retry".
+    ENH-2530: it also writes a per-issue manual_review_handoff_<ID>.md to the run
+    directory capturing the specific reason (outcome vs threshold, convergence
+    delta, remediation pass count), decision_context frontmatter verbatim when
+    present, and a recommended next action branched on the deposit marker. The
+    handoff is a human diagnostic only — no FSM routing reads it. The token
+    write remains byte-preserved because parent routing depends on it.)
   wire      (slash_command: /ll:wire-issue --auto) → mark_wired (on_no → refine_first)
   refine          (slash_command: /ll:refine-issue --auto --full-rewrite)   → mark_refined → re_assess  [ONLY diagnose → REFINE]
   refine_first    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [assess/gate/wire/check_wire_needed_outcome]

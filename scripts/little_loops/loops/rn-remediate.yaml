@@ -795,6 +795,17 @@ states:
     # decide" (MANUAL_REVIEW_RECOMMENDED) from a genuine human-required decision
     # (MANUAL_REVIEW_NEEDED). Sink for both decide.on_no and check_convergence's
     # NEEDS_MANUAL_REVIEW route, so the marker check covers both paths.
+    #
+    # ENH-2530: additionally write manual_review_handoff_<ID>.md under
+    # ${context.run_dir}/ — a per-issue diagnostic that captures the specific
+    # reason (outcome vs threshold, convergence delta, remediation pass count),
+    # verbatim decision_context frontmatter when present (fallback to a generic
+    # sentence otherwise), and a recommended next action branched on the
+    # decide_options_deposited marker. Token write above is byte-preserved —
+    # the parent's longest-prefix-first routing chain at rn-implement.yaml
+    # depends on MANUAL_REVIEW_RECOMMENDED / MANUAL_REVIEW_NEEDED exactly.
+    # Heredoc uses quoted delimiter to prevent shell expansion of dynamic
+    # markdown contents (mirrors cua-agent-desktop.yaml quoted-heredoc pattern).
     action_type: shell
     action: |
       if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
@@ -802,6 +813,137 @@ states:
       else
         echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
       fi
+
+      python3 << 'PYEOF'
+      import json
+      import os
+      import re
+      import sys
+      from pathlib import Path
+
+      RUN_DIR = "${context.run_dir}"
+      ISSUE_ID = "${context.issue_id}"
+
+      def _read_json(name):
+          try:
+              with open(os.path.join(RUN_DIR, name)) as f:
+                  return json.load(f)
+          except Exception:
+              return None
+
+      def _read_int(name):
+          try:
+              with open(os.path.join(RUN_DIR, name)) as f:
+                  return (f.read().strip() or "0")
+          except Exception:
+              return "0"
+
+      def _score(d, *keys):
+          if not isinstance(d, dict):
+              return "?"
+          for k in keys:
+              if k in d and d[k] is not None:
+                  return d[k]
+          return "?"
+
+      pre_scores = _read_json(f"pre_scores_{ISSUE_ID}.json") or {}
+      post_scores = _read_json(f"post_scores_{ISSUE_ID}.json") or {}
+      convergence = _read_json(f"convergence_{ISSUE_ID}.json")
+      counter = _read_int(f"remediation_count_{ISSUE_ID}.txt")
+
+      try:
+          import yaml as _yaml
+
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      issue_path = None
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m and m.group(1) == ISSUE_ID:
+                  issue_path = p
+                  break
+          if issue_path:
+              break
+
+      title = ISSUE_ID
+      decision_context = None
+      if issue_path:
+          try:
+              content = issue_path.read_text()
+              m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+              fm = _parse_yaml(m.group(1)) if m else {}
+              if isinstance(fm, dict):
+                  title = str(fm.get("title") or ISSUE_ID)
+                  raw_ctx = fm.get("decision_context")
+                  if raw_ctx:
+                      decision_context = str(raw_ctx).strip()
+          except Exception:
+              pass
+
+      marker_path = os.path.join(RUN_DIR, f"decide_options_deposited_{ISSUE_ID}.txt")
+      recommended = os.path.exists(marker_path)
+      token = "MANUAL_REVIEW_RECOMMENDED" if recommended else "MANUAL_REVIEW_NEEDED"
+      if recommended:
+          next_action = f"/ll:refine-issue {ISSUE_ID}  # manual: --auto already exhausted"
+      else:
+          next_action = f"/ll:refine-issue {ISSUE_ID} --auto"
+
+      pre_conf = _score(pre_scores, "confidence", "confidence_score")
+      pre_outcome = _score(pre_scores, "outcome", "outcome_confidence")
+      post_conf = _score(post_scores, "confidence", "confidence_score")
+      post_outcome = _score(post_scores, "outcome", "outcome_confidence")
+      complexity = _score(post_scores, "score_complexity") or _score(pre_scores, "score_complexity")
+      ambiguity = _score(post_scores, "score_ambiguity") or _score(pre_scores, "score_ambiguity")
+
+      if isinstance(convergence, dict):
+          conv_block = (
+              f"total_delta={convergence.get('total_delta', '?')} "
+              f"(Δconfidence={convergence.get('delta_confidence', '?')}, "
+              f"Δoutcome={convergence.get('delta_outcome', '?')}, pass-over-pass)"
+          )
+      else:
+          conv_block = "(convergence data unavailable)"
+
+      decision_text = decision_context or (
+          "Issue requires human decision; see convergence data and "
+          "issue frontmatter for context"
+      )
+
+      body = (
+          f"# Manual Review Handoff: {ISSUE_ID}\n\n"
+          f"- **Issue**: {title}\n"
+          f"- **Token**: {token}\n"
+          f"- **Reason**: outcome_confidence={post_outcome} (post-scores); "
+          f"remediation pass {counter}\n"
+          f"- **Convergence delta**: {conv_block}\n"
+          f"- **Decision needed**: {decision_text}\n"
+          f"- **Recommended next action**: {next_action}\n\n"
+          f"## Diagnostic Data\n"
+          f"- Pre-scores: confidence={pre_conf}, outcome={pre_outcome}\n"
+          f"- Post-scores: confidence={post_conf}, outcome={post_outcome}\n"
+          f"- Complexity band: {complexity} (ambiguity={ambiguity})\n"
+      )
+
+      try:
+          handoff_path = os.path.join(RUN_DIR, f"manual_review_handoff_{ISSUE_ID}.md")
+          Path(handoff_path).write_text(body)
+          print("HANDOFF_WRITTEN")
+      except Exception as exc:
+          print(f"HANDOFF_FAILED:{type(exc).__name__}")
+      PYEOF
     next: failed
 
   emit_implement_failed:

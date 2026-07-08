@@ -2,8 +2,9 @@
 id: ENH-2530
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-07T21:00:00Z'
+completed_at: 2026-07-08 00:25:21+00:00
 discovered_date: '2026-07-07'
 discovered_by: audit-loop-run
 relates_to:
@@ -73,10 +74,10 @@ _Added by `/ll:refine-issue` — codebase-derived file/caller/test surface._
   `.issues/{bugs,features,enhancements,epics}/*.md`; extract frontmatter
   with `re.match(r'^---\n(.*?)\n---', content, re.DOTALL)`; fail-open via
   `sys.exit(0)` at each parse step).
-- `scripts/little_loops/loops/rn-implement.yaml:1222–1240` — `mark_blocked`
-  and `mark_blocked_options_missing` are the parent-side analogs. The new
-  handoff's per-issue detail supplements the parent's one-line diagnostic
-  in `blocked.txt`.
+- `scripts/little_loops/loops/rn-implement.yaml:1224–1242` — `mark_blocked`
+  (`:1224–1230`) and `mark_blocked_options_missing` (`:1232–1242`) are the
+  parent-side analogs. The new handoff's per-issue detail supplements the
+  parent's one-line diagnostic in `blocked.txt`.
 
 ### Sidecar Producers (already exist; handoff consumes them)
 - `scripts/little_loops/loops/rn-remediate.yaml:158` — `verify_scores_persisted`
@@ -130,9 +131,11 @@ _Added by `/ll:refine-issue` — codebase-derived file/caller/test surface._
 - `scripts/tests/test_rn_remediate.py:1307–1320` — `TestEmitTokensWrittenToRunDir`:
   extend the expected-states dict or add a sibling test for the handoff
   markdown path.
-- `scripts/tests/test_rn_remediate.py:1939–1943` — `TestSubloopSidecarContract`:
-  add a per-state regex check that `manual_review_handoff_` substring
-  appears in `emit_needs_manual_review.action`.
+- `scripts/tests/test_rn_remediate.py:1938–1943` — `test_emit_env_not_ready_writes_sidecar`
+  (the leading test in the sidecar-contract test class, which currently
+  asserts `subloop_outcome_` for `emit_env_not_ready`): add a sibling
+  test asserting `manual_review_handoff_` substring appears in
+  `emit_needs_manual_review.action`.
 
 ### Documentation to Update
 - `docs/guides/LOOPS_REFERENCE.md:593–608` — `emit_needs_manual_review`
@@ -222,8 +225,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **MR-3 lint**: `test_rn_remediate.py:1187–1195` (`test_mr3_run_dir_used_for_writes`)
   will fail the loop if any state writes to `.loops/tmp/`. Confine the new
   artifact to `${context.run_dir}/` — the issue's proposal already does.
-- **Parent-side aftermath is unchanged**: `mark_blocked` (`:1222–1228`) and
-  `mark_blocked_options_missing` (`:1230–1240`) already log distinct
+- **Parent-side aftermath is unchanged**: `mark_blocked` (`:1224–1230`) and
+  `mark_blocked_options_missing` (`:1232–1242`) already log distinct
   diagnostic lines to `blocked.txt`. The new handoff is **additive terminal
   diagnostic** — does not change FSM routing. The handoff's "next action"
   recommendation should mirror the parent's diagnostic phrasing where
@@ -301,10 +304,10 @@ _Added by `/ll:refine-issue` — concrete code-level steps referencing real anch
 1. **Lint**: `python -m pytest scripts/tests/test_rn_remediate.py -v`
    should pass. The MR-3 lint at `test_rn_remediate.py:1187–1195` will
    catch any `.loops/tmp/` literal that creeps into the action.
-2. **Sidecar contract**: the existing
-   `TestSubloopSidecarContract` (`test_rn_remediate.py:1939–1943`)
-   continues to assert `subloop_outcome_` is in the action — preserve
-   that line.
+2. **Sidecar contract**: the existing sidecar-contract test class
+   (containing `test_emit_env_not_ready_writes_sidecar` at
+   `test_rn_remediate.py:1938–1943`) continues to assert `subloop_outcome_`
+   is in the action — preserve that line.
 3. **Manual smoke test**: run `ll-loop run rn-remediate <issue-with-decision-needed>`
    on a real `decision_needed: true` issue; verify
    `.loops/runs/<run>/manual_review_handoff_<ID>.md` exists, has the
@@ -328,7 +331,8 @@ _Added by `/ll:refine-issue` — concrete code-level steps referencing real anch
    extend the existing dict-driven loop to also assert the handoff path
    for `emit_needs_manual_review`, OR add a sibling test class.
 
-3. **Add to `TestSubloopSidecarContract`** (`test_rn_remediate.py:1939–1943`):
+3. **Add to the sidecar-contract test class** containing
+   `test_emit_env_not_ready_writes_sidecar` (`test_rn_remediate.py:1938–1943`):
    ```python
    def test_manual_review_emits_handoff_md(self) -> None:
        data = _load_loop()
@@ -356,6 +360,37 @@ _Added by `/ll:refine-issue` — concrete code-level steps referencing real anch
   have analogous `*_needs_manual_review` patterns but the issue scopes
   the change to `rn-remediate.yaml:793–805` only.
 
+## Scope Boundaries
+
+In-scope (this issue touches):
+
+- `scripts/little_loops/loops/rn-remediate.yaml` — the
+  `emit_needs_manual_review` shell action (lines 793–805).
+- `scripts/tests/test_rn_remediate.py` — additions to
+  `TestManualReviewRecommendedToken`, `TestEmitTokensWrittenToRunDir`,
+  and the existing sidecar-contract test that mirrors `subloop_outcome_`
+  assertions for the new handoff path.
+- `docs/guides/LOOPS_REFERENCE.md` — one paragraph noting the new
+  artifact and its MR-3 location.
+
+Out-of-scope (explicit non-goals):
+
+- `decision_context` producer in `/ll:refine-issue` or `/ll:decide-issue`.
+- A parent-side reader for the new handoff (no FSM routing change).
+- Sibling sub-loops `rn-decompose.yaml` and `rn-refine.yaml` (analogous
+  patterns but separate scope).
+- `CHANGELOG.md` (per project convention `feedback_changelog_no_unreleased.md`,
+  the entry lands at release prep under a concrete version).
+
+## Status
+
+- **Status**: open
+- **Priority**: P3 (medium — turns post-hoc audits into one-click handoffs)
+- **Decision needed**: false (issue has researched fallback path)
+- **Labels**: loops, observability
+- **Captured by**: `/ll:audit-loop-run` on an rn-implement run in a downstream
+  project (`AUDIT-rn-implement-2026-07-07T201030.md`)
+
 ## Impact
 
 - **Severity**: Medium (turns post-hoc audits into one-click handoffs)
@@ -364,4 +399,31 @@ _Added by `/ll:refine-issue` — concrete code-level steps referencing real anch
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-08T00:25:21 - `38c0b3f9-4ed8-4ace-a90d-f93b51033bdf.jsonl`
+- `/ll:ready-issue` - 2026-07-08T00:11:13 - `7ce14973-061a-42b8-88bc-431c3fb25880.jsonl`
 - `/ll:refine-issue` - 2026-07-07T22:51:38 - `06cf831f-8243-472a-958e-6e4b821c6604.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-08
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/rn-remediate.yaml:793-805` — extended `emit_needs_manual_review.action:` with a quoted-heredoc `python3 << 'PYEOF'` block that writes a per-issue `manual_review_handoff_<ID>.md` under `${context.run_dir}/`. Existing 4-line `if/else` token write (lines 800-803) preserved byte-for-byte; parent routing depends on it.
+- `scripts/tests/test_rn_remediate.py:329-340` — added `test_writes_manual_review_handoff_md` to `TestManualReviewRecommendedToken`; asserts the handoff path uses `${context.issue_id}` and lives under `${context.run_dir}/`.
+- `scripts/tests/test_rn_remediate.py:1960-1968` — added `test_manual_review_emits_handoff_md` to `TestRnRemediateAuthGuard` (sibling to `test_emit_env_not_ready_writes_sidecar`); asserts the `manual_review_handoff_` substring appears in the action.
+- `docs/guides/LOOPS_REFERENCE.md:593-608` — added a sibling sentence documenting the new handoff artifact and its terminal-human-diagnostic nature.
+
+### Verification Results
+- Tests: PASS — 14207 passed, 35 skipped (`python -m pytest scripts/tests/`)
+- RN-Remediate suite: PASS — 160 passed (`python -m pytest scripts/tests/test_rn_remediate.py`)
+- New tests: PASS — `test_writes_manual_review_handoff_md`, `test_manual_review_emits_handoff_md`
+- MR-3 lint: PASS — `test_mr3_run_dir_used_for_writes` (no `.loops/tmp/` literal anywhere in the new action)
+- Token preservation: PASS — `MANUAL_REVIEW_RECOMMENDED` / `MANUAL_REVIEW_NEEDED` and `subloop_outcome_<ID>.txt` are byte-identical to the prior emit
+- Lint: PASS for touched files (`scripts/little_loops/loops/rn-remediate.yaml` is YAML; `scripts/tests/test_rn_remediate.py` is lint-clean). Pre-existing ruff/mypy errors in unrelated files were not introduced by this change.
+- Smoke test: PASS — synthetic sidecars + stub issue rendered the expected markdown structure (issue ID, title, token, reason with pass count, convergence delta with pass-over-pass label, decision_context verbatim, recommended next action branched on deposit marker, pre/post scores, complexity band).
+
+Plan: `thoughts/shared/plans/2026-07-08-ENH-2530-management.md`

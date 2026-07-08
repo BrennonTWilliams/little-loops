@@ -326,6 +326,22 @@ class TestManualReviewRecommendedToken:
         action = data["states"]["emit_needs_manual_review"]["action"]
         assert "subloop_outcome_${context.issue_id}.txt" in action
 
+    def test_writes_manual_review_handoff_md(self) -> None:
+        """ENH-2530: emit_needs_manual_review also writes a per-issue handoff markdown
+        under ${context.run_dir}/ alongside the existing token sidecar."""
+        data = _load_loop()
+        action = data["states"]["emit_needs_manual_review"]["action"]
+        assert "manual_review_handoff_" in action, (
+            "emit_needs_manual_review must write manual_review_handoff_<ID>.md "
+            "(ENH-2530) — per-issue diagnostic for human operators"
+        )
+        assert "${context.issue_id}" in action, (
+            "handoff filename must scope to the per-issue ID via ${context.issue_id}"
+        )
+        assert "${context.run_dir}" in action, (
+            "handoff file must live under ${context.run_dir}/ per MR-3"
+        )
+
 
 # ---------------------------------------------------------------------------
 # TestDiagnoseRouting — States: diagnose (classify evaluator + route: table)
@@ -1942,6 +1958,17 @@ class TestRnRemediateAuthGuard:
         assert "subloop_outcome_" in action, (
             "emit_env_not_ready must write subloop_outcome_<ID>.txt — parent classify_remediation "
             "reads this sidecar; without it auth failures fall through as IMPLEMENT_FAILED"
+        )
+
+    def test_manual_review_emits_handoff_md(self) -> None:
+        """ENH-2530: emit_needs_manual_review must write the per-issue
+        manual_review_handoff_<ID>.md diagnostic alongside the token sidecar."""
+        data = _load_loop()
+        action = data["states"]["emit_needs_manual_review"].get("action", "")
+        assert "manual_review_handoff_" in action, (
+            "emit_needs_manual_review must write manual_review_handoff_<ID>.md "
+            "(ENH-2530) — per-issue diagnostic for human operators reviewing "
+            "parked issues; the token sidecar alone forces re-reading events.jsonl"
         )
 
     def test_emit_env_not_ready_writes_env_not_ready_token(self) -> None:
