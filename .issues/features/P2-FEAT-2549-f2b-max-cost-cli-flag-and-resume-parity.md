@@ -472,6 +472,17 @@ at `cli/loop/__init__.py:494`.
 
 ## Impact
 
+> **Codebase Research Note (anchor drift)** — verified 2026-07-08:
+> the Related Key Documentation table above cites several anchors
+> that have drifted in the current working tree. Corrections:
+> `__init__.py:280, 464` → `:494-495`; `_helpers.py:1313-1379` →
+> `:1323-1484`; `_helpers.py:1319` → `:1400-1402`; `run.py:133-134`
+> → `:132-135`; `lifecycle.py:503-504` → `:532-533`;
+> `_helpers.py:65` → `:64-77`. Full drift table appears under the
+> `## Current Behavior` section as a `### Codebase Research
+> Findings` subsection (additive-only — no existing content
+> removed).
+
 - **Priority**: P2 — first-clamp primitive for runaway cost.
 - **Effort**: Small — ~80 LOC across 4 files + ~150 LOC tests.
 - **Risk**: Low — additive; flag defaults to `None` (unlimited);
@@ -484,4 +495,5 @@ at `cli/loop/__init__.py:494`.
 **Depends on**: FEAT-2548 (primitive must exist for `fsm.budget_accumulator` field to override)
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-08T21:40:32 - `89abc41d-df5b-4fba-a423-6420ae802b60.jsonl`
 - `/ll:capture-issue` (split) - 2026-07-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d276935-0474-4bff-85e3-154d56cf1226.jsonl`

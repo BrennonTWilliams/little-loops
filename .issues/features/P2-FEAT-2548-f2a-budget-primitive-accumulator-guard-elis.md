@@ -1,20 +1,35 @@
 ---
 id: FEAT-2548
-title: "F2a — fsm/budget.py primitive (BudgetAccumulator + BudgetGuard + ELISForecast) + BudgetAccumulatorConfig schema + validation + JSON schema"
+title: "F2a \u2014 fsm/budget.py primitive (BudgetAccumulator + BudgetGuard + ELISForecast)\
+  \ + BudgetAccumulatorConfig schema + validation + JSON schema"
 type: FEAT
 priority: P2
 status: open
-captured_at: "2026-07-08T00:00:00Z"
+captured_at: '2026-07-08T00:00:00Z'
 discovered_date: 2026-07-08
 discovered_by: split-from-FEAT-2476
 parent: FEAT-2476
-relates_to: [EPIC-2456, FEAT-2549, FEAT-2550, ENH-2475, ENH-2477, FEAT-2478, ENH-2461, FEAT-2123]
+relates_to:
+- EPIC-2456
+- FEAT-2549
+- FEAT-2550
+- ENH-2475
+- ENH-2477
+- FEAT-2478
+- ENH-2461
+- FEAT-2123
 labels:
-  - token-cost
-  - budget
-  - fsm
-  - tier-1
+- token-cost
+- budget
+- fsm
+- tier-1
 decision_needed: false
+confidence_score: 99
+outcome_confidence: 85
+score_complexity: 19
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # FEAT-2548: F2a — fsm/budget.py primitive + BudgetAccumulatorConfig + validation + JSON schema
@@ -244,6 +259,32 @@ Hand-edit per Research Correction #3 (do NOT invoke `ll-generate-schemas`).
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema mirror
 - `scripts/little_loops/fsm/__init__.py` — re-exports
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The new top-level field, validator, and JSON Schema block flow downstream through these callers. None require direct edits, but they exercise the new surface and must round-trip cleanly. Per Pass-2 Research Corrections, `_validate_state_cost_limits` is the per-state validator (not top-level `_validate_cost_limits`); `KNOWN_TOP_LEVEL_KEYS` does NOT include `budget_accumulator` (mirror `host_guard` precedent).
+
+**Informational carriers / consumers** (input/output shape providers, no edits required):
+
+- `scripts/little_loops/cli/loop/info.py:1244` — calls `fsm.to_dict()` for terminal loop dumps; round-trip compatibility for the new `budget_accumulator` block is exercised here (verified by `test_builtin_loops.py:46-54` walking every builtin through `validate_fsm`). [Agent 1]
+- `scripts/little_loops/cli/loop/layout.py:19` — imports `StateConfig`; relevant only IF `cost_limits` lands as a per-state field (per Research Correction #2 at issue :300). [Agent 1]
+- `scripts/little_loops/fsm/cost_graph.py:25` — imports `estimate_cost_usd`; sister cost-aggregation module (ENH-2477). Shares the `estimate_cost_usd(usage) → float | None` shape that `BudgetAccumulator.add_state_usage()` will consume; keep signature parity. [Agent 1]
+- `scripts/little_loops/fsm/types.py:86` — `usage_events: list[TokenUsage] = field(default_factory=list)` on `ActionResult`. The F2c executor will feed these into the accumulator. [Agent 1]
+- `scripts/little_loops/subprocess_utils.py:45` — `TokenUsage` dataclass (5 required fields: `input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model`). Input shape `BudgetAccumulator.add_state_usage` accepts. [Agent 1]
+- `scripts/little_loops/pricing.py:58-78` — `estimate_cost_usd(model, input_tokens, output_tokens, cache_read_tokens=0, cache_creation_tokens=0) → float | None`. Returns `None` for unrecognized models — the trigger for `BudgetAccumulator.cost_unknown_model = True` and the `cost_unknown_model_fallback` policy. [Agent 1]
+
+**Out-of-scope** (F2b/FEAT-2549 or F2c/FEAT-2550 owned; listed for tracking only, NOT edited by F2a):
+- `scripts/little_loops/cli/loop/__init__.py:151-165, 484-493` — argparse `--no-host-guard`/`--host-guard-budget-mb` precedent (F2b mirrors with `--no-budget-accumulator`/`--max-cost`)
+- `scripts/little_loops/cli/loop/run.py:132-135` — `cmd_run` override on `fsm.host_guard` (F2b mirror)
+- `scripts/little_loops/cli/loop/lifecycle.py:532-536` — resume override on `fsm.host_guard.enabled` (F2c mirror)
+- `scripts/little_loops/cli/loop/_helpers.py:1442-1446` — `run_background`/`queue` forwarding (F2b mirror)
+- `scripts/little_loops/fsm/executor.py:301-311, 582, 634-638, 656, 1390, 1480-1491, 1552, 2136-2151` — `HostGuard` construction in FSMExecutor (F2c mirror)
+- `scripts/little_loops/fsm/runners.py:19` — `RssSampler` import (F2c mirror)
+- `scripts/little_loops/fsm/runners.py` (TokenUsage aggregation, F2c)
+- `scripts/little_loops/init/core.py:21, 32` — config-schema.json default threading (F2c)
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/development/TROUBLESHOOTING.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/reference/schemas/`, `docs/reference/CONFIGURATION.md` — documentation (F2c)
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -272,6 +313,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Action-runner fixture for `usage_events` lists: `scripts/tests/test_usage_journal.py:17-52` — `MockActionRunner` (injects `ActionResult(usage_events=[TokenUsage(...)])`); a `RssActionRunner` analog lives at `test_host_guard.py:55`.
 
 **Re-exports** — `host_guard` and `HostGuardConfig` are imported from their own submodule (`little_loops.fsm.host_guard`); they are NOT re-exported from `fsm/__init__.py`. `CostCeilingConfig` IS re-exported (from `fsm/__init__.py:139, 176`). FEAT-2548 can pick either precedent; the issue spec already calls for re-exports (preferred), which mirrors `CostCeilingConfig`'s behavior.
+
+**Pass-2 verification findings** (added by `/ll:refine-issue --auto`; all anchors re-verified against the live tree — no implementation has landed yet, `scripts/little_loops/fsm/budget.py` does NOT exist on disk):
+
+- **`Pricing.return-None semantics`** — `scripts/little_loops/pricing.py:58` `estimate_cost_usd(model, input_tokens, output_tokens, cache_read_tokens=0, cache_creation_tokens=0) -> float | None`. Returns `None` for unrecognized `model` strings (mirror of the recommendation in the existing Codebase Research Findings at the proposed-solution block above). The `None`-return path is the trigger for `BudgetAccumulator.cost_unknown_model` and the `cost_unknown_model_fallback` policy in `BudgetGuard.check(...)`.
+
+- **`add()` vs `add_state_usage()` naming inconsistency** — Proposed Solution Step 1 names the API `add(usage) -> bool` (line 115). The Tests section enumerates a method named `add_state_usage` (line 293). Pick one and use it consistently; the token-usage input is per-state (one FSM state emits one or more `TokenUsage` records into `ActionResult.usage_events`), so `add_state_usage(usage: TokenUsage) -> bool` reads more precisely. Either is acceptable; **recommended** name is `add_state_usage` (matches the throttle/usage-journal vocabulary used by `CostReport.from_usage_jsonl` at `cost_graph.py:183-254`).
+
+- **`GuardDecision` field justification** — host_guard's twin (`GuardDecision` at `host_guard.py:304-322`) carries `action, used_pct, cooldown_seconds, target, relieved`. The proposed `GuardDecision(action, used_pct, total_usd, target)` drops `cooldown_seconds` (no sleep primitive for budget — F2c/FEAT-2550 routes/aborts instead) and `relieved` (no hysteresis — budget either fires the latch once or stays armed). The drops are intentional; mirror them as stated, do not silently re-introduce the host_guard fields.
+
+- **`budget_enabled` is implicit, not explicit in Proposed Solution Step 1** — the Codebase Research Findings block above (around line 209) calls for a `budget_enabled` `@property` returning `self.config.max_cost_usd > 0`. The Proposed Solution Step 1 lists `BudgetAccumulator` with `total_usd`, `cumulative_state_count`, and `cost_unknown_model` only. Add `budget_enabled: bool` to the property list in Step 1 (mirror host_guard `budget_enabled` at `host_guard.py:392-394`) so the latch short-circuit path matches the documented precedent.
+
+- **`_validate_cost_limits` vs `_validate_state_cost_limits` — implementation must follow Correction #2** — Correction #2 already says `cost_limits` is a per-state field (sibling to `cost_ceiling`). The Proposed Solution Step 3 still invokes `_validate_cost_limits(fsm: FSMLoop, defined_states)` and dispatches from `validate_fsm()` at the top-level. Implement to follow Correction #2: write `_validate_state_cost_limits(state_name, state, path)` and dispatch from the per-state loop (the loop that calls `_validate_state_cost_ceiling` near `validation.py:934-936`), not from the `validate_fsm` body at `:1262`. The Proposed Solution text and Step 3 anchor numbers are stale on this point.
+
+- **JSON Schema block placement** — the `host_guard` block ends at `fsm-loop-schema.json:335` (additionalProperties:false at line 334). The next sibling block, `prompt_size_guard`, starts at `fsm-loop-schema.json:336`. Place the new `budget_accumulator:` block **immediately after `prompt_size_guard`** (alphabetically ordered: `b`udget_accumulator before `h`ost_guard before `p`rompt_size_guard — wait, insertion is at the alphabetically-correct position, which is BEFORE `host_guard` since `b` < `h`). Reorder so `budget_accumulator` precedes `host_guard` at lines ~273-274 (currently `host_guard` block starts there).
+
+- **`fsm/__init__.py` `__all__` insertion point** — the alphabetized list (`fsm/__init__.py:170-250`) currently contains no `B`-prefixed entries other than the embedded ones. Insert `BudgetAccumulator`, `BudgetAccumulatorConfig`, `BudgetGuard`, `ELISForecast`, `GuardDecision` alphabetically — `BudgetAccumulator` between existing entries near `B`-position, `BudgetAccumulatorConfig` adjacent, `BudgetGuard` adjacent, `ELISForecast` between `E`-prefixed and `F`-prefixed entries, `GuardDecision` after the `G`-prefixed entries. The Grouped import (`fsm/__init__.py:135-152`) also needs the new names added inside `from little_loops.fsm.budget import (...)` — but only IF `BudgetAccumulatorConfig` truly belongs on `FSMLoop` (it does, per the proposed solution); `HostGuardConfig` is NOT in this group import today, so `BudgetAccumulatorConfig` would actually be the first `FSMLoop`-level dataclass in the group import. Either precedent is defensible; mirror the `HostGuardConfig` non-re-export (let consumers import via `from little_loops.fsm.budget import BudgetAccumulatorConfig`).
+
+- **Test-method catalog to model** — the verification pass enumerated all 10 `TestHostGuardValidation` methods (`test_defaults_valid`, `test_route_requires_pressure_state`, `test_pressure_state_must_be_declared`, `test_invalid_on_pressure_value`, `test_critical_below_warn`, `test_pct_out_of_range`, `test_budget_route_requires_budget_state`, `test_budget_state_must_be_declared`, `test_on_abort_route_must_be_declared`, `test_invalid_on_budget_exceeded`). The `_validate_state_cost_limits` test class should cover the equivalent rejected-config cases: `max_cost_usd < 0`, `warn_at ∉ [0, 1]`, `warn_at > ceiling_ratio` (if any), and (if per-state-nested) per-state coverage-required checks.
 
 ### Research Corrections
 
@@ -307,6 +366,35 @@ _Facts in the original issue body that research contradicted:_
   TestEstimateCostUsd) — unchanged.
 - `scripts/tests/test_host_guard.py` — unchanged (twin surface,
   must remain bit-identical in spirit).
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_builtin_loops.py:46-54` — `TestBuiltinLoopFiles.test_all_validate_as_valid_fsm` walks every builtin loop YAML through `validate_fsm` (plus `test_all_parse_as_yaml` at :39, `test_all_have_description_field` at :56). Built-in loops do not set `budget_accumulator` or `cost_limits` (default `0.0`/`None`), so the new validator must NOT trip on defaults. Confirmed no built-in loop references `budget_accumulator` (Grep-verified zero matches). [Agent 3]
+- `scripts/tests/test_fsm_flow.py:325` — `test_all_builtin_loops_still_load` globs every builtin `*.yaml` and calls `load_and_validate`. Same coverage as `test_builtin_loops.py`. [Agent 3]
+- `scripts/tests/test_builtin_loops.py:8581` — `TestLoopReferencesResolve` — references-parsing gate; should pass unchanged. [Agent 3]
+- `scripts/tests/test_general_task_loop.py:43` — `test_validates_as_fsm` round-trips `general-task.yaml` builtin; relevant if `cost_limits` lands per-state. [Agent 3]
+- `scripts/tests/test_fsm_fragments.py:789-791` — `TestLoadAndValidateIntegration.test_import_and_fragments_keys_no_warning` and `:829 test_fragments_key_no_warning` — `KNOWN_TOP_LEVEL_KEYS` whitelist integration. Per Research Correction #1 (issue :298), do NOT add `budget_accumulator` to the whitelist, so these tests must continue to pass without edit. [Agent 3]
+- `scripts/tests/test_fsm_inheritance.py:6` (file-level integration with `load_and_validate`/`KNOWN_TOP_LEVEL_KEYS`) — no F2a edit; the new field defaults absorb cleanly. [Agent 3]
+
+### Tests Update Required (added by `/ll:wire-issue`)
+
+- `scripts/tests/test_cli_loop_layout.py:120-145` — `_make_state_dict()` fixture at :120-145 enumerates `StateConfig` defaults (includes `"cost_ceiling": None` at line 144). **IF `cost_limits` lands as a per-state field on `StateConfig` per Research Correction #2**, add `"cost_limits": None` here. This is a concrete edit conditional on the RC#2 decision. [Agent 1 + Agent 3]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be added to Proposed Solution steps 1-5 during implementation:_
+
+N. **`scripts/little_loops/fsm/schema.py:20`** — add `from little_loops.fsm.budget import BudgetAccumulatorConfig` parallel to the existing `from little_loops.fsm.host_guard import HostGuardConfig`. Proposed Solution Step 2 (issue :128-136) implies this but does not state the import line explicitly. [Agent 1]
+
+N+1. **`scripts/little_loops/fsm/__init__.py:170-250`** alphabetized `__all__` — insert `BudgetAccumulator`, `BudgetAccumulatorConfig`, `BudgetGuard`, `ELISForecast`, `GuardDecision` at the alphabetically-correct positions per Pass-2 finding #7 (issue :290): `Budget*` entries adjacent near `B`-position, `ELISForecast` between `E`- and `F`-prefixed entries, `GuardDecision` after `G`-prefixed entries. Also update the Grouped import block at :135-152 (`from little_loops.fsm.budget import (...)`). [Agent 1]
+
+N+2. **Per-state `cost_limits` placement (if RC#2 decides per-state)** — write `_validate_state_cost_limits(state_name, state, path)` and dispatch from the per-state loop at `validation.py:934-936` (alongside `_validate_state_cost_ceiling` at :941), NOT from `validate_fsm` body at :1262. Add `cost_limits` field to `StateConfig` near `cost_ceiling` at `schema.py:565`. Update the `_validate_state_cost_limits` test in `scripts/tests/test_fsm_validation.py` to use the per-state pattern (mirror `TestCostCeilingValidation` at :676-746). [Agent 2]
+
+N+3. **No-regression verification for known-top-level-keys whitelist** — Per Research Correction #1 (issue :298), `budget_accumulator` MUST NOT be added to `KNOWN_TOP_LEVEL_KEYS` (mirror `host_guard`/`prompt_size_guard`/`cost_ceiling`, none of which are in the whitelist today). Verify `scripts/tests/test_fsm_schema.py:1689-1806` patterns (`test_unknown_top_level_keys_warn`, `test_known_keys_no_warning`, `test_commands_key_no_warning`, `test_required_inputs_key_no_warning`) and `scripts/tests/test_fsm_fragments.py:789-791` still pass after implementation. No new test class needed; the existing assertions cover the new field's absence-from-whitelist automatically. [Agent 2 + Agent 3]
+
+N+4. **No-regression verification for builtin loops** — run `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_flow.py` after implementation. None of the builtin loops reference `budget_accumulator` or `cost_limits` (Grep-verified zero matches across `loops/`); the new validator/field must not trip on defaults. [Agent 3] 
+
+N+5. **CLI/info round-trip smoke test** — `scripts/little_loops/cli/loop/info.py:1244` calls `fsm.to_dict()` for terminal loop dumps. Verify `ll-loop info <file.yaml>` on the `examples/` sample loops still produces clean output (the new top-level field appears with skip-if-default, per `HostGuardConfig.to_dict()` parity at `host_guard.py:84-107`). No edit required; just a smoke verification step.
 
 ## Acceptance Criteria
 
@@ -377,5 +465,8 @@ _Facts in the original issue body that research contradicted:_
 **Open** | Created: 2026-07-08 | Priority: P2 | Split from FEAT-2476
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-08T23:15:00 - `f67bde41-aa84-4a1b-ad27-e8c1f9ebcae7.jsonl`
+- `/ll:wire-issue` - 2026-07-08T22:40:15 - `1e19d2a6-39cb-4104-99bb-22306a4c69f1.jsonl`
+- `/ll:refine-issue` - 2026-07-08T22:25:20 - `b84b69a0-56ff-48e1-86cd-c6975ea93ac9.jsonl`
 - `/ll:refine-issue` - 2026-07-08T21:40:43 - `f59d4918-2bde-4d86-8cf8-b501d4199e20.jsonl`
 - `/ll:capture-issue` (split) - 2026-07-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d276935-0474-4bff-85e3-154d56cf1226.jsonl`
