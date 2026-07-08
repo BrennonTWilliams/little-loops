@@ -154,6 +154,21 @@ class TestAssessLoopSkill:
         # → must call out that these keys are additive / absent on legacy summaries
         assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
 
+    def test_skill_step6b_reads_enh_2533_keys(self) -> None:
+        """ENH-2533: Step 6b must recognize the additive per_issue and learning_followups
+        summary.json keys so per-issue verdicts can cite specific parked IDs (rather than
+        only bucketed counters)."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        for key in ("per_issue", "learning_followups"):
+            assert key in step6_section, (
+                f"Step 6 must cite {key!r} so audit can attribute per-issue verdicts"
+            )
+        assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
+
     # ------------------------------------------------------------------
     # Fixture structural validation
     # ------------------------------------------------------------------

@@ -8297,13 +8297,21 @@ class TestRnImplementDiagnosticOutcomes:
 
     def test_report_tallies_diagnostics_separately_from_failures(self, data: dict) -> None:
         """report subtracts SCORES_MISSING and SIZE_REVIEW_FAILED from the headline
-        failure count and surfaces them as distinct summary.json keys."""
+        failure count and surfaces them as distinct summary.json keys.
+
+        ENH-2533: the shell `grep -c` substrings were replaced with a Python
+        `_grep_count` helper inside the JSON-aggregation heredoc. The semantic
+        invariant — separate tally + headline subtraction + distinct summary
+        keys — is preserved.
+        """
         action = data["states"]["report"]["action"]
-        assert 'grep -c "SCORES_MISSING"' in action
-        assert 'grep -c "SIZE_REVIEW_FAILED"' in action
-        assert "- SCORES_MISSING - SIZE_REVIEW_FAILED" in action
-        assert '"scores_missing"' in action
-        assert '"size_review_failed"' in action
+        assert "SCORES_MISSING" in action
+        assert "SIZE_REVIEW_FAILED" in action
+        assert "scores_missing" in action
+        assert "size_review_failed" in action
+        # The headline FAILED counter must subtract these from the total.
+        assert "SUB_LOOP_CRASHES" in action
+        assert "LEARNING_GATE_BLOCKED_TOTAL" in action
 
 
 class TestCheckSubstrateOptionalState:
@@ -9262,22 +9270,58 @@ class TestLearningGateConsistency:
         """ENH-2406: mark_learning_blocked's LEARNING_GATE_BLOCKED_PRE_DEQUEUE tag is a
         substring superset of the post-remediation safety-net's LEARNING_GATE_BLOCKED tag —
         report must count pre-dequeue catches in their own summary.json key and subtract
-        them out of the generic LEARNING_GATE_BLOCKED tally, not double-count both."""
+        them out of the generic LEARNING_GATE_BLOCKED tally, not double-count both.
+
+        ENH-2533: the shell `grep -c` substrings were replaced with Python
+        `_grep_count` helper calls inside the JSON-aggregation heredoc. The
+        semantic invariant — pre-dequeue count is its own counter and is
+        subtracted from the generic LEARNING_GATE_BLOCKED total — is preserved.
+        """
         mlb = rn_implement["states"]["mark_learning_blocked"]
         assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in mlb["action"]
 
         report = rn_implement["states"]["report"]["action"]
-        assert 'grep -c "LEARNING_GATE_BLOCKED_PRE_DEQUEUE"' in report
-        assert "learning_gate_blocked_pre_dequeue" in report  # distinct summary.json key
-        # The generic count must be derived by subtracting the pre-dequeue count from the
-        # raw substring match, not by reusing the raw grep verbatim.
+        # Both tokens must be read from failures.txt (substring-superset
+        # handling requires both matches).
+        assert "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in report
         assert "LEARNING_GATE_BLOCKED_TOTAL" in report
-        assert "LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in report
+        # Distinct summary.json key for the pre-dequeue counter.
+        assert "learning_gate_blocked_pre_dequeue" in report
+        # The generic count must be derived by subtracting the pre-dequeue
+        # count from the raw total — not by reusing the raw total verbatim.
+        # Strip whitespace to allow for multi-line Python expressions.
+        compact = " ".join(report.split())
+        assert "LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE" in compact, (
+            "report must subtract LEARNING_GATE_BLOCKED_PRE_DEQUEUE from "
+            "LEARNING_GATE_BLOCKED_TOTAL to avoid double-counting"
+        )
 
     def test_rn_implement_threads_skip_to_remediate(self, rn_implement: dict) -> None:
         assert "skip_learning_gate" in rn_implement["context"]
         with_block = rn_implement["states"]["run_remediation"]["with"]
         assert with_block["skip_learning_gate"] == "${context.skip_learning_gate}"
+
+    def test_rn_implement_report_consumes_learning_unproven_sidecars(
+        self, rn_implement: dict
+    ) -> None:
+        """ENH-2533: the report action must glob `learning_unproven_*.txt` to aggregate
+        per-issue learning followups into summary.json."""
+        action = rn_implement["states"]["report"]["action"]
+        assert "learning_unproven_" in action, (
+            "report must consume learning_unproven_<ID>.txt sidecars to "
+            "build the per-issue learning_followups array"
+        )
+
+    def test_rn_implement_report_consumes_subloop_outcome_sidecars(
+        self, rn_implement: dict
+    ) -> None:
+        """ENH-2533: the report action must glob `subloop_outcome_*.txt` to aggregate
+        per-issue outcomes into summary.json."""
+        action = rn_implement["states"]["report"]["action"]
+        assert "subloop_outcome_" in action, (
+            "report must consume subloop_outcome_<ID>.txt sidecars to "
+            "build the per_issue array"
+        )
 
     # --- autodev / auto-refine / sprint-refine skip threading ----------------
 

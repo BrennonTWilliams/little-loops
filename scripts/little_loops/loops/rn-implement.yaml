@@ -1334,64 +1334,194 @@ states:
     # terminal anchor. Exists as a separate state because the FSM runner skips
     # actions on terminal states (fires loop_complete immediately on routing
     # to a terminal without entering it).
+    #
+    # ENH-2533: enriched schema. The original 14 scalar counters remain
+    # unchanged so existing consumers (audit-loop-run, archive_run) keep
+    # working; per_issue and learning_followups are additive top-level keys
+    # aggregated from subloop_outcome_<ID>.txt and learning_unproven_<ID>.txt
+    # sidecars already on disk. MR-10 satisfied by the explicit on_error
+    # route below (the validator skips states with on_error set).
     action_type: shell
     action: |
-      RUN_DIR="${captured.run_dir.output}"
-      DEQUEUE_COUNT=$(cat "$RUN_DIR/dequeue_count.txt" 2>/dev/null || echo 0)
-      IMPLEMENTED=$(cat "$RUN_DIR/implemented_count.txt" 2>/dev/null || echo 0)
-      DECOMPOSED=$(cat "$RUN_DIR/decomposed_count.txt" 2>/dev/null || echo 0)
-      SKIPPED=$(wc -l < "$RUN_DIR/skipped.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      # BUG-2006: deferred ≠ skipped — issues that stalled and could not be
-      # decomposed are recorded with a dependency reason and a status change.
-      DEFERRED=$(wc -l < "$RUN_DIR/deferred.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      BLOCKED=$(wc -l < "$RUN_DIR/blocked.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      DEPTH_CAPPED=$(wc -l < "$RUN_DIR/depth_capped.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      python3 << 'PYEOF'
+      import json, glob
+      from pathlib import Path
+
+      RUN_DIR = "${captured.run_dir.output}"
+      run_dir = Path(RUN_DIR)
+
+      def _read_text_count(name):
+          p = run_dir / name
+          if not p.exists():
+              return 0
+          try:
+              return sum(1 for _ in open(p))
+          except Exception:
+              return 0
+
+      def _read_text(name, default=""):
+          p = run_dir / name
+          if not p.exists():
+              return default
+          try:
+              return p.read_text().strip()
+          except Exception:
+              return default
+
+      def _grep_count(name, pattern):
+          p = run_dir / name
+          if not p.exists():
+              return 0
+          try:
+              return sum(1 for line in open(p) if pattern in line)
+          except Exception:
+              return 0
+
+      # --- Existing scalar counters (substr assertions MUST survive) ---
+      DEQUEUE_COUNT = int(_read_text("dequeue_count.txt") or 0)
+      IMPLEMENTED = int(_read_text("implemented_count.txt") or 0)
+      DECOMPOSED = int(_read_text("decomposed_count.txt") or 0)
+      SKIPPED = _read_text_count("skipped.txt")
+      DEFERRED = _read_text_count("deferred.txt")
+      BLOCKED = _read_text_count("blocked.txt")
+      DEPTH_CAPPED = _read_text_count("depth_capped.txt")
       # ENH-2005: failures.txt holds both genuine implementation failures and
       # sub-loop infrastructure crashes (tagged SUB_LOOP_CRASH). Tally them
       # separately so "failed" reflects only implementation failures and
       # operators can triage crashes distinctly.
-      SUB_LOOP_CRASHES=$(grep -c "SUB_LOOP_CRASH" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      SUB_LOOP_CRASHES = _grep_count("failures.txt", "SUB_LOOP_CRASH")
       # Diagnostic outcomes tagged into failures.txt — tally separately so "failed"
       # reflects only genuine implementation failures (operator triage).
-      SCORES_MISSING=$(grep -c "SCORES_MISSING" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      SIZE_REVIEW_FAILED=$(grep -c "SIZE_REVIEW_FAILED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      # Learning-gate blocks are tagged into failures.txt but are not genuine
-      # implementation failures — tally separately (operator remedy: /ll:explore-api).
-      # ENH-2406: LEARNING_GATE_BLOCKED_PRE_DEQUEUE (the pre-dequeue gate's tag) is a
-      # substring superset of LEARNING_GATE_BLOCKED (the post-remediation safety-net's
-      # tag) — count the total substring match, then subtract the _PRE_DEQUEUE-only
-      # count so a pre-dequeue catch isn't double-counted into both buckets.
-      LEARNING_GATE_BLOCKED_PRE_DEQUEUE=$(grep -c "LEARNING_GATE_BLOCKED_PRE_DEQUEUE" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      LEARNING_GATE_BLOCKED_TOTAL=$(grep -c "LEARNING_GATE_BLOCKED" "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      LEARNING_GATE_BLOCKED=$((LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE))
-      TOTAL_FAILURES=$(wc -l < "$RUN_DIR/failures.txt" 2>/dev/null | tr -d ' ' || echo 0)
-      FAILURES=$((TOTAL_FAILURES - SUB_LOOP_CRASHES - SCORES_MISSING - SIZE_REVIEW_FAILED - LEARNING_GATE_BLOCKED_TOTAL))
-      RATE_LIMITED=$(wc -l < "$RUN_DIR/rate_limits.txt" 2>/dev/null | tr -d ' ' || echo 0)
+      SCORES_MISSING = _grep_count("failures.txt", "SCORES_MISSING")
+      SIZE_REVIEW_FAILED = _grep_count("failures.txt", "SIZE_REVIEW_FAILED")
+      # ENH-2406: LEARNING_GATE_BLOCKED_PRE_DEQUEUE is a substring superset of
+      # LEARNING_GATE_BLOCKED — count the total substring match, then subtract
+      # the _PRE_DEQUEUE-only count so a pre-dequeue catch isn't double-counted.
+      LEARNING_GATE_BLOCKED_PRE_DEQUEUE = _grep_count(
+          "failures.txt", "LEARNING_GATE_BLOCKED_PRE_DEQUEUE"
+      )
+      LEARNING_GATE_BLOCKED_TOTAL = _grep_count("failures.txt", "LEARNING_GATE_BLOCKED")
+      LEARNING_GATE_BLOCKED = (
+          LEARNING_GATE_BLOCKED_TOTAL - LEARNING_GATE_BLOCKED_PRE_DEQUEUE
+      )
+      TOTAL_FAILURES = _read_text_count("failures.txt")
+      FAILURES = (
+          TOTAL_FAILURES
+          - SUB_LOOP_CRASHES
+          - SCORES_MISSING
+          - SIZE_REVIEW_FAILED
+          - LEARNING_GATE_BLOCKED_TOTAL
+      )
+      RATE_LIMITED = _read_text_count("rate_limits.txt")
 
-      {
-        printf '{\n'
-        printf '  "total_processed": %s,\n' "$DEQUEUE_COUNT"
-        printf '  "implemented": %s,\n' "$IMPLEMENTED"
-        printf '  "decomposed": %s,\n' "$DECOMPOSED"
-        printf '  "skipped": %s,\n' "$SKIPPED"
-        printf '  "deferred": %s,\n' "$DEFERRED"
-        printf '  "blocked": %s,\n' "$BLOCKED"
-        printf '  "depth_capped": %s,\n' "$DEPTH_CAPPED"
-        printf '  "failed": %s,\n' "$FAILURES"
-        printf '  "sub_loop_crashes": %s,\n' "$SUB_LOOP_CRASHES"
-        printf '  "scores_missing": %s,\n' "$SCORES_MISSING"
-        printf '  "size_review_failed": %s,\n' "$SIZE_REVIEW_FAILED"
-        printf '  "learning_gate_blocked": %s,\n' "$LEARNING_GATE_BLOCKED"
-        printf '  "learning_gate_blocked_pre_dequeue": %s,\n' "$LEARNING_GATE_BLOCKED_PRE_DEQUEUE"
-        printf '  "rate_limited": %s\n' "$RATE_LIMITED"
-        printf '}\n'
-      } > "$RUN_DIR/summary.json"
+      # --- ENH-2533: per-issue aggregations ---
+      warnings = []
+      per_issue = []
+      failure_tags = (
+          "SUB_LOOP_CRASH",
+          "SCORES_MISSING",
+          "SIZE_REVIEW_FAILED",
+          "LEARNING_GATE_BLOCKED_PRE_DEQUEUE",
+          "LEARNING_GATE_BLOCKED",
+      )
 
-      echo "=== rn-implement Complete ==="
-      echo "  Processed: $DEQUEUE_COUNT | Implemented: $IMPLEMENTED | Decomposed: $DECOMPOSED"
-      echo "  Skipped: $SKIPPED | Deferred: $DEFERRED | Blocked: $BLOCKED | Depth-capped: $DEPTH_CAPPED | Failures: $FAILURES | Sub-loop crashes: $SUB_LOOP_CRASHES | Scores-missing: $SCORES_MISSING | Size-review-failed: $SIZE_REVIEW_FAILED | Learning-gate-blocked: $LEARNING_GATE_BLOCKED | Learning-gate-blocked-pre-dequeue: $LEARNING_GATE_BLOCKED_PRE_DEQUEUE | Rate-limited: $RATE_LIMITED"
-      echo "  Summary written to: $RUN_DIR/summary.json"
+      # 1. subloop_outcome_<ID>.txt → per_issue records
+      for sf in sorted(run_dir.glob("subloop_outcome_*.txt")):
+          sid = sf.stem[len("subloop_outcome_"):]
+          try:
+              token = sf.read_text().strip() or None
+          except Exception as exc:
+              warnings.append(f"unreadable {sf.name}: {exc}")
+              continue
+          rec = {"id": sid, "outcome": token}
+          # Cross-reference failures.txt for the diagnostic-tag rationale.
+          fp = run_dir / "failures.txt"
+          if fp.exists():
+              try:
+                  with open(fp) as _fpfail:
+                      for line in _fpfail:
+                          for tag in failure_tags:
+                              if tag in line and sid in line:
+                                  rec["reason"] = tag
+                                  break
+                          if "reason" in rec:
+                              break
+              except Exception:
+                  pass
+          # Embed optional JSON sidecars when present; on parse failure
+          # (truncated pre_scores_<ID>.json, etc.) skip the field and warn.
+          for body_key, fname in (
+              ("pre_scores", f"pre_scores_{sid}.json"),
+              ("post_scores", f"post_scores_{sid}.json"),
+              ("convergence", f"convergence_{sid}.json"),
+          ):
+              p = run_dir / fname
+              if p.exists():
+                  try:
+                      rec[body_key] = json.loads(p.read_text())
+                  except Exception as exc:
+                      warnings.append(f"malformed {fname}: {exc}")
+          per_issue.append(rec)
+
+      # 2. learning_unproven_<ID>.txt → learning_followups records
+      learning_followups = []
+      for lf in sorted(run_dir.glob("learning_unproven_*.txt")):
+          lid = lf.stem[len("learning_unproven_"):]
+          try:
+              body = lf.read_text().strip()
+          except Exception as exc:
+              warnings.append(f"unreadable {lf.name}: {exc}")
+              continue
+          targets = body.split() if body else []
+          if not targets:
+              continue
+          learning_followups.append({
+              "id": lid,
+              "targets": targets,
+              "remedy": "/ll:explore-api " + " ".join(targets),
+          })
+
+      summary = {
+          "total_processed": DEQUEUE_COUNT,
+          "implemented": IMPLEMENTED,
+          "decomposed": DECOMPOSED,
+          "skipped": SKIPPED,
+          "deferred": DEFERRED,
+          "blocked": BLOCKED,
+          "depth_capped": DEPTH_CAPPED,
+          "failed": FAILURES,
+          "sub_loop_crashes": SUB_LOOP_CRASHES,
+          "scores_missing": SCORES_MISSING,
+          "size_review_failed": SIZE_REVIEW_FAILED,
+          "learning_gate_blocked": LEARNING_GATE_BLOCKED,
+          "learning_gate_blocked_pre_dequeue": LEARNING_GATE_BLOCKED_PRE_DEQUEUE,
+          "rate_limited": RATE_LIMITED,
+          "per_issue": per_issue,
+          "learning_followups": learning_followups,
+      }
+
+      (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+      if warnings:
+          (run_dir / "summary_warnings.txt").write_text("\n".join(warnings) + "\n")
+
+      print("=== rn-implement Complete ===")
+      print(f"  Processed: {DEQUEUE_COUNT} | Implemented: {IMPLEMENTED} | Decomposed: {DECOMPOSED}")
+      print(
+          f"  Skipped: {SKIPPED} | Deferred: {DEFERRED} | Blocked: {BLOCKED} | "
+          f"Depth-capped: {DEPTH_CAPPED} | Failures: {FAILURES} | "
+          f"Sub-loop crashes: {SUB_LOOP_CRASHES} | Scores-missing: {SCORES_MISSING} | "
+          f"Size-review-failed: {SIZE_REVIEW_FAILED} | "
+          f"Learning-gate-blocked: {LEARNING_GATE_BLOCKED} | "
+          f"Learning-gate-blocked-pre-dequeue: {LEARNING_GATE_BLOCKED_PRE_DEQUEUE} | "
+          f"Rate-limited: {RATE_LIMITED}"
+      )
+      print(
+          f"  Per-issue records: {len(per_issue)} | Learning followups: {len(learning_followups)}"
+      )
+      print(f"  Summary written to: {RUN_DIR}/summary.json")
+      PYEOF
     next: done
+    on_error: failed
 
   done:
     # Terminal anchor — clean exit point with no action. Report is handled by

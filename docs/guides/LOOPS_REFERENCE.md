@@ -424,7 +424,7 @@ This mirrors the `blocked_by` gate's shape exactly: same fail-open contract, sam
 | `deferred.txt` | Issues deferred after a remediation stall + no-children decline, or due to unmet `blocked_by` deps (BUG-2006, ENH-2008); the issue's `status` is also set to `deferred`. `re_enqueue_unblocked` removes entries mid-run when their blockers resolve — only entries whose deferral reason contains `blocked_by` are eligible; stalled and depth-capped entries remain untouched (ENH-2195, BUG-2202). |
 | `learning_unproven_<ID>.txt` | Per-issue list of unproven `learning_tests_required` targets, written by `check_learning_ready` and read by `mark_learning_blocked` to name the specific targets (ENH-2406). |
 | `learning_prove_attempted_<ID>.txt` | Written by `check_learning_ready` when config-gated auto-prove (ENH-2487) triggered at least one `ll-learning-tests prove <target>` attempt for this issue; read by `mark_learning_blocked` to pick the attempted-vs-not-attempted tag (ENH-2431). |
-| `summary.json` | Final run summary (processed, implemented, decomposed, skipped, deferred, blocked, depth-capped, `learning_gate_blocked_pre_dequeue`) |
+| `summary.json` | Final run summary (processed, implemented, decomposed, skipped, deferred, blocked, depth-capped, `learning_gate_blocked_pre_dequeue`); ENH-2533 adds the additive `per_issue` array (one record per `subloop_outcome_<ID>.txt`, with `id` / `outcome` / optional `reason` / `pre_scores` / `post_scores` / `convergence` embeddings) and the `learning_followups` array (one record per `learning_unproven_<ID>.txt`, with `id` / `targets` / `remedy` formatted as `/ll:explore-api <targets>`). Malformed per-issue sidecars are written to `summary_warnings.txt` rather than aborting the report (MR-10). |
 
 **FSM flow:**
 

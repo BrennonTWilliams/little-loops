@@ -306,6 +306,19 @@ When `rn-implement` finishes it writes a `summary.json` and a human-readable
 completion message; check `failures.txt`, `deferred.txt`, and `blocked.txt` in
 the run directory for issues that need attention.
 
+The `summary.json` carries additive structured fields beyond the original 14
+scalar counters (ENH-2533): `per_issue` is an array of one record per
+`subloop_outcome_<ID>.txt` sidecar (`{id, outcome, reason?}` with optional
+`pre_scores` / `post_scores` / `convergence` embeddings) and `learning_followups`
+is an array of one record per `learning_unproven_<ID>.txt` sidecar
+(`{id, targets, remedy}` where `remedy` is `/ll:explore-api <targets>`).
+These make per-issue outcomes and learning-gate followups discoverable
+without grepping the sidecars directly; downstream tooling (audit-loop-run's
+Step 6b verdict, follow-up runs) reads them via the archived copy under
+`.loops/.history/<run_id>-rn-implement/summary.json`. Malformed per-issue
+sidecars are surfaced in `summary_warnings.txt` rather than aborting the
+report.
+
 > **Tip**: For the full end-to-end pipeline (spec → design → EPIC → batched
 > implementation), use `rn-build` — see its section in the
 > [Built-in Loops Reference](LOOPS_REFERENCE.md#rn-build--spec-to-project-capstone-orchestrator).

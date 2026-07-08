@@ -2,8 +2,9 @@
 id: ENH-2533
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-07T21:00:00Z'
+completed_at: '2026-07-08T00:46:08Z'
 discovered_date: '2026-07-07'
 discovered_by: audit-loop-run
 relates_to:
@@ -57,7 +58,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Report state location**: `scripts/little_loops/loops/rn-implement.yaml` lines 1330–1392. Uses shell `printf` to assemble 14 scalar keys (`total_processed`, `implemented`, `decomposed`, `skipped`, `deferred`, `blocked`, `depth_capped`, `failed`, `sub_loop_crashes`, `scores_missing`, `size_review_failed`, `learning_gate_blocked`, `learning_gate_blocked_pre_dequeue`, `rate_limited`) — all integers.
 - **Sidecar writers (verified line refs)**:
-  - `subloop_outcome_<ID>.txt` — `rn-remediate.yaml` lines 767/778/790/801/803/810/818/825/835; `rn-decompose.yaml` lines 227/244/250; `lib/common.yaml:subloop_rate_limit_diagnostic` line 346. Single token, no trailing newline.
+  - `subloop_outcome_<ID>.txt` — `rn-remediate.yaml` lines 767/778/790/812/814/952/960/967/977 (drifted from refine snapshot 801/803/810/818/825/835 after ENH-2530 added the `manual_review_handoff_<ID>.md` heredoc to `emit_needs_manual_review`); `rn-decompose.yaml` lines 227/244/250; `lib/common.yaml:subloop_rate_limit_diagnostic` line 346. Single token, no trailing newline.
   - `pre_scores_<ID>.json` — `rn-remediate.yaml:verify_scores_persisted` line 158 (then refreshed at line 695).
   - `post_scores_<ID>.json` — `rn-remediate.yaml:verify_re_assess_scores` line 628.
   - `convergence_<ID>.json` — `rn-remediate.yaml:check_convergence` lines 686–689 (single-line JSON: `id`, `pre_confidence`, `post_confidence`, deltas, `total_delta`).
@@ -65,7 +66,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   - `blocked_by_unmet_<ID>.txt` — `rn-implement.yaml:check_blocked_by` line 449.
 - **Subloop outcome token enum** (de facto, open free-form): `IMPLEMENTED`, `NEEDS_DECOMPOSE`, `STALLED_NEEDS_DECOMPOSE`, `MANUAL_REVIEW_NEEDED`, `MANUAL_REVIEW_RECOMMENDED`, `IMPLEMENT_FAILED`, `SCORES_MISSING`, `ENV_NOT_READY`, `LEARNING_GATE_BLOCKED`, `RATE_LIMITED` (remediate side); `DECOMPOSED`, `NO_CHILDREN`, `SIZE_REVIEW_FAILED` (decompose side). Substring-superset: `STALLED_NEEDS_DECOMPOSE` ⊃ `NEEDS_DECOMPOSE`; `LEARNING_GATE_BLOCKED_PRE_DEQUEUE[_ATTEMPTED]` ⊃ `LEARNING_GATE_BLOCKED`.
 - **Data flow**: `report` is reached only from `fifo_pop:on_yes` (line 180) / `select_next:on_yes` (line 356) when the queue empties, or from `*on_error` fallbacks (lines 182, 358). Never reached from a per-issue recording state — so all sidecars are guaranteed present in `run_dir` by the time `report` runs.
-- **Human-readable echo** (lines 1388–1391): three lines starting with `=== rn-implement Complete ===`, then a `Processed/Implemented/Decomposed` summary, then a secondary-metrics line.
+- **Human-readable echo** (lines 1387–1390): three lines starting with `=== rn-implement Complete ===`, then a `Processed/Implemented/Decomposed` summary, then a secondary-metrics line.
 
 ## Expected Behavior
 
@@ -199,7 +200,7 @@ Decided by `/ll:decide-issue` on 2026-07-07.
 
 ### Files to Modify
 
-- `scripts/little_loops/loops/rn-implement.yaml` — replace the `report` state body (lines 1330–1392) with an extended shell action that builds the enriched `summary.json`. Add `on_error: failed` (or another non-terminal fail-route) to satisfy MR-10. Update the human-readable echo lines (1388–1391) to surface `Per-issue records: N` and `Learning followups: N`.
+- `scripts/little_loops/loops/rn-implement.yaml` — replace the `report` state body (lines 1330–1392) with an extended shell action that builds the enriched `summary.json`. Add `on_error: failed` (or another non-terminal fail-route) to satisfy MR-10. Update the human-readable echo lines (1387–1390) to surface `Per-issue records: N` and `Learning followups: N`.
 
 ### Dependent Files (Callers / Consumers of summary.json)
 
@@ -305,7 +306,7 @@ These pre-existing decisions govern `summary.json` shape and MUST be honored by 
 
 2. **Add `on_error: failed`** to the `report` state (satisfies MR-10). Wire `failed:` to also write `summary_warnings.txt` if it isn't already present, so the diagnostic state is recoverable on the next run.
 
-3. **Update the human-readable echo** (was lines 1388–1391) to include `Per-issue records: $PER_ISSUE_COUNT | Learning followups: $FOLLOWUP_COUNT` on the secondary-metrics line.
+3. **Update the human-readable echo** (was lines 1387–1390) to include `Per-issue records: $PER_ISSUE_COUNT | Learning followups: $FOLLOWUP_COUNT` on the secondary-metrics line.
 
 4. **Add new tests** in `scripts/tests/test_rn_implement.py` (or extend `TestReportAndTerminal`):
    - `test_report_writes_per_issue_array` — synthesize 3 `subloop_outcome_<ID>.txt` sidecars, assert all 3 records appear in `summary["per_issue"]`.
@@ -362,8 +363,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `docs/guides/LOOPS_REFERENCE.md:405-427` lists `per_issue` and `learning_followups` in the Output-artifacts table with their schemas.
 - [ ] `skills/audit-loop-run/SKILL.md:275-319` (Step 6b) cites the new `per_issue` array as the source for per-issue verdicts.
 
+## Resolution
+
+Implemented Option A: replaced the `report` state body in `scripts/little_loops/loops/rn-implement.yaml` with a `python3 << 'PYEOF'` heredoc that builds an enriched `summary.json` containing the original 14 scalar counters plus two additive top-level keys:
+
+- `per_issue: [{id, outcome, reason?, pre_scores?, post_scores?, convergence?}]` — one record per `subloop_outcome_<ID>.txt` sidecar, with the diagnostic reason cross-referenced from `failures.txt` and optional JSON sidecar embeddings.
+- `learning_followups: [{id, targets, remedy}]` — one record per `learning_unproven_<ID>.txt` sidecar, with `remedy` formatted as `/ll:explore-api <targets>` (consistent with the hint emitted by `rn-remediate.yaml:emit_learning_gate_blocked`).
+
+Malformed per-issue sidecars are written to a new `summary_warnings.txt` sidecar rather than aborting the report (MR-10 spirit — surface failure, do not silently swallow). The state declares an explicit `on_error: failed` route to satisfy MR-10 (the validator skips states with `on_error` set).
+
+Tests added (8 new) and updated (2 existing):
+- `test_rn_implement.py::TestReportAndTerminal` — `_run_report` helper modeled on `test_builtin_loops.py:_run_finalize`; plus `test_report_writes_per_issue_array_with_outcome_per_id`, `test_report_writes_learning_followups_with_remedy`, `test_report_malformed_sidecar_does_not_crash_run`, `test_report_preserves_existing_scalar_keys`, `test_report_has_on_error_route`.
+- `test_builtin_loops.py::TestLearningGateConsistency` — `test_rn_implement_report_consumes_learning_unproven_sidecars`, `test_rn_implement_report_consumes_subloop_outcome_sidecars`. Updated `test_report_tallies_diagnostics_separately_from_failures` and `test_rn_implement_pre_dequeue_tag_does_not_double_count` to match the Python implementation (semantic intent — separate counters, no double-counting — preserved).
+- `test_audit_loop_run_skill.py` — `test_skill_step6b_reads_enh_2533_keys` mirroring the existing ENH-2404 pattern.
+
+Docs updated:
+- `docs/guides/LOOPS_REFERENCE.md` — Output-artifacts table expanded with `summary.json` schema note.
+- `docs/guides/RECURSIVE_LOOPS_GUIDE.md` — paragraph added on the enriched schema + downstream `archive_run()` propagation.
+- `skills/audit-loop-run/SKILL.md` — Step 6a enhanced with the ENH-2533 visibility note (citing specific parked IDs from `per_issue` in verdict rationale).
+
+Verification:
+- `python -m pytest scripts/tests/` — 14215 passed, 35 skipped.
+- `ruff check scripts/tests/test_rn_implement.py scripts/tests/test_builtin_loops.py scripts/tests/test_audit_loop_run_skill.py` — clean.
+- `python -m mypy` on touched test files — clean.
+- `ll-loop validate scripts/little_loops/loops/rn-implement.yaml` — clean (MR-10 stays silent via the `on_error: failed` route).
+
+Decoupling guards honored: `sprint-refine-and-implement.yaml:read_outcome`, `auto-refine-and-implement.yaml:finalize`, `rn-remediate.yaml`, `general-task.yaml`, `autodev.yaml`, and `rn-build.yaml:synthesize_result` are untouched — these emit/read their own distinct `summary.json` schemas outside `rn-implement`'s scope.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-08T00:46:08 - `f65f2135-758e-4fda-a4ce-7d08a8258f23.jsonl`
+- `/ll:ready-issue` - 2026-07-08T00:31:11 - `780acdc0-26bf-4aa1-844c-6adf3db1922b.jsonl`
 - `/ll:confidence-check` - 2026-07-07T23:14:00 - `c8a52db6-2114-42b4-9644-1d2ebe91b605.jsonl`
 - `/ll:wire-issue` - 2026-07-07T23:08:33 - `f9ec0e8a-cdaa-400f-a9d4-d5bdf7386ee3.jsonl`
 - `/ll:decide-issue` - 2026-07-07T22:58:53 - `24cdeaea-b8cc-400a-800e-ee06ba0ab109.jsonl`
