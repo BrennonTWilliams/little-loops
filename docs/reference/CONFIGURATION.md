@@ -777,23 +777,6 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
 | `auto_generate` | `list[str]` | `[]` | Issue type prefixes that filter which issue types are processed when running `ll-issues decisions generate`. Empty list processes all types. Example: `["FEAT", "ENH"]` skips BUG entries. |
 
-### `epics`
-
-> **Schema-only / not yet wired.** These keys are declared in `config-schema.json` and accepted by validation, but `BRConfig` does not yet expose an `EpicsConfig` dataclass or emit an `epics` key in `to_dict()`. Template substitution like `{{config.epics.scope.min_children}}` (used by `skills/scope-epic/SKILL.md`) currently produces nothing at runtime. The fields below describe the schema intent — implementation is tracked separately.
-
-#### `epics.scope`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `scope.min_children` | `integer` | `3` | Minimum EPIC children. Fewer proposals triggers a warning to consider `/ll:capture-issue` instead of creating an EPIC. |
-| `scope.max_children` | `integer` | `8` | Maximum EPIC children. More proposals triggers a sub-EPIC decomposition suggestion. |
-
-#### `epics.cascade`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `cascade.default_status` | `string` | `"deferred"` | Default status applied to child issues when cascading EPIC closure via `--cascade` (without explicit `--cascade-to`). Valid values: `"deferred"`, `"cancelled"`, `"done"`. |
-
 ### `learning_tests`
 
 Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.

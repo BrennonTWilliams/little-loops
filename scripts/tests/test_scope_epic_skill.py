@@ -100,14 +100,25 @@ class TestScopeEpicSkillExists:
 
     def test_min_children_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "min_children" in content, (
-            "Skill must reference min_children config for below-threshold warning"
+        # ENH-2544 Option B: `epics.*` config keys were removed (no EpicsConfig
+        # dataclass); the skill now uses a hard-coded MIN_CHILDREN constant
+        # (default 3) instead of {{config.epics.scope.min_children}}.
+        assert "MIN_CHILDREN" in content, (
+            "Skill must reference MIN_CHILDREN constant for below-threshold warning"
+        )
+        assert "MIN_CHILDREN = 3" in content, (
+            "Skill must define MIN_CHILDREN = 3 (the hard-coded default after ENH-2544)"
         )
 
     def test_max_children_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "max_children" in content, (
-            "Skill must reference max_children config for above-threshold suggestion"
+        # ENH-2544 Option B: see test_min_children_referenced. MAX_CHILDREN
+        # replaces the removed {{config.epics.scope.max_children}} placeholder.
+        assert "MAX_CHILDREN" in content, (
+            "Skill must reference MAX_CHILDREN constant for above-threshold suggestion"
+        )
+        assert "MAX_CHILDREN = 8" in content, (
+            "Skill must define MAX_CHILDREN = 8 (the hard-coded default after ENH-2544)"
         )
 
 

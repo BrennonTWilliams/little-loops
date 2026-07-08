@@ -592,31 +592,57 @@ class TestConfigSchema:
         )
         assert cluster["properties"]["propagate_context"]["type"] == "boolean"
 
-    def test_epics_scope_in_schema(self) -> None:
-        """epics.scope must be declared as a top-level property in config-schema.json.
+    def test_epics_removed_from_schema(self) -> None:
+        """ENH-2544 (Option B): `epics` must be absent from config-schema.json.
 
-        The root properties block has additionalProperties: false, so any config
-        that sets epics.scope.* will fail schema validation unless the epics
-        property and its scope sub-properties are declared here.
+        Decision ARCHITECTURE-096 (2026-06-30) explicitly chose
+        `parallel.epic_branches.*` over `epics.*` as a config namespace,
+        leaving the `epics.*` schema subtree as an abandoned alternative
+        with no in-repo consumer. Per ENH-2544, the schema block is removed
+        and any user config setting `epics.*` must now be rejected by the
+        root-level `additionalProperties: false`.
         """
         data = json.loads(CONFIG_SCHEMA.read_text())
         root_props = data["properties"]
-        assert "epics" in root_props, (
-            "epics is not declared in config-schema.json; configs using it will be "
-            "rejected by additionalProperties: false"
+        assert "epics" not in root_props, (
+            "epics is declared in config-schema.json; ENH-2544 Option B "
+            "removes the block. configs that set epics.* were already "
+            "schema-only / not wired into BRConfig.to_dict()."
         )
-        epics = root_props["epics"]
-        assert epics["type"] == "object"
-        assert "scope" in epics["properties"], "epics.scope is not declared in config-schema.json"
-        scope = epics["properties"]["scope"]
-        assert scope["type"] == "object"
-        scope_props = scope["properties"]
-        assert scope_props["min_children"]["type"] == "integer"
-        assert scope_props["min_children"]["minimum"] == 1
-        assert scope_props["min_children"]["default"] == 3
-        assert scope_props["max_children"]["type"] == "integer"
-        assert scope_props["max_children"]["minimum"] == 1
-        assert scope_props["max_children"]["default"] == 8
+
+    def test_scope_epic_skill_uses_literal_thresholds(self) -> None:
+        """ENH-2544 (Option B): scope-epic SKILL.md must use literal 3/8 thresholds.
+
+        Prior to ENH-2544, the skill used `{{config.epics.scope.min_children}}`
+        and `{{config.epics.scope.max_children}}` placeholders that resolved
+        to an empty string at runtime (no EpicsConfig dataclass). The blockquote
+        in CONFIGURATION.md surfaced this gap explicitly. After Option B the
+        skill body must hard-code the defaults (3 children min, 8 max).
+        """
+        skill_path = PROJECT_ROOT / "skills" / "scope-epic" / "SKILL.md"
+        assert skill_path.exists(), f"scope-epic SKILL.md not found: {skill_path}"
+        body = skill_path.read_text()
+        assert "{{config.epics.scope.min_children}}" not in body, (
+            "scope-epic SKILL.md still references {{config.epics.scope.min_children}}"
+            " — ENH-2544 Option B hard-codes the value (default 3)."
+        )
+        assert "{{config.epics.scope.max_children}}" not in body, (
+            "scope-epic SKILL.md still references {{config.epics.scope.max_children}}"
+            " — ENH-2544 Option B hard-codes the value (default 8)."
+        )
+        # The four substitution sites must now contain literal integers, not placeholders.
+        assert "Min children**: `3`" in body or "Min children**: 3" in body, (
+            "scope-epic SKILL.md does not contain the literal min-children default (3)."
+        )
+        assert "Max children**: `8`" in body or "Max children**: 8" in body, (
+            "scope-epic SKILL.md does not contain the literal max-children default (8)."
+        )
+        assert "MIN_CHILDREN = 3" in body, (
+            "scope-epic SKILL.md does not contain the literal `MIN_CHILDREN = 3`."
+        )
+        assert "MAX_CHILDREN = 8" in body, (
+            "scope-epic SKILL.md does not contain the literal `MAX_CHILDREN = 8`."
+        )
 
     def test_install_source_in_schema(self) -> None:
         """install_source must be declared in config-schema.json root properties.

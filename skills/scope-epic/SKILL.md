@@ -34,8 +34,8 @@ You are tasked with decomposing a high-level theme or goal into an EPIC issue fi
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **EPIC dir**: `{{config.issues.base_dir}}/epics/`
-- **Min children**: `{{config.epics.scope.min_children}}` (default: 3)
-- **Max children**: `{{config.epics.scope.max_children}}` (default: 8)
+- **Min children**: `3` (default: 3)
+- **Max children**: `8` (default: 8)
 - **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`
 
 ## Arguments
@@ -101,8 +101,8 @@ Decompose the theme into one EPIC summary and 3–8 child issue proposals. Each 
 **Read config thresholds:**
 
 ```
-MIN_CHILDREN = {{config.epics.scope.min_children}}  (default 3)
-MAX_CHILDREN = {{config.epics.scope.max_children}}  (default 8)
+MIN_CHILDREN = 3  (default 3)
+MAX_CHILDREN = 8  (default 8)
 ```
 
 To calibrate child-issue size estimates, fetch recent velocity:

@@ -1,19 +1,21 @@
 ---
 id: ENH-2544
-title: 'Resolve `epics.*` schema-only limbo: implement EpicsConfig or remove from schema'
+title: 'Resolve `epics.*` schema-only limbo: implement EpicsConfig or remove from
+  schema'
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-08
 captured_at: '2026-07-08T09:20:00+00:00'
 discovered_by: audit
+completed_at: 2026-07-08 15:19:32+00:00
 decision_needed: false
 labels:
-  - enhancement
-  - schema
-  - configuration
-  - documentation
-  - follow-up-from-docs-audit-2026-07-08
+- enhancement
+- schema
+- configuration
+- documentation
+- follow-up-from-docs-audit-2026-07-08
 confidence_score: 75
 outcome_confidence: 70
 score_complexity: 7
@@ -70,10 +72,18 @@ Decided by `/ll:decide-issue` on 2026-07-08.
 
 **Option B selected** (2026-07-08 by `/ll:decide-issue`). The follow-up implementation task is to remove the `properties.epics` block from `config-schema.json` (lines 1331-1369), drop the `### epics` / `#### epics.scope` / `#### epics.cascade` rows from `docs/reference/CONFIGURATION.md` (lines 780-795), replace the four `{{config.epics.*}}` substitutions in `skills/scope-epic/SKILL.md` (lines 37, 38, 104, 105) with the hardcoded integers `3` and `8`, and delete the `test_epics_scope_in_schema` test (`scripts/tests/test_config_schema.py:595-619`). Mirrors the BUG-1461 removal precedent.
 
-## Out of scope
+## Out of scope / Scope Boundaries
 
 - Changing the `scope-epic` skill algorithm itself (only its config-binding change).
 - Adding new `epics.*` keys beyond what schema already declares.
+- Touching FEAT-2339's `parallel.epic_branches.*` namespace; per ARCHITECTURE-096, that is the canonical home for per-EPIC integration strategy and stays untouched.
+
+## Impact
+
+- **Priority**: P2 — schema-only dead code; misleading user surface but no user-visible breakage today.
+- **Effort**: Small — 4 file edits (schema, doc, skill template, test) with no logic changes; BUG-1461 precedent scored 12/12 for identical pattern.
+- **Risk**: Low — Option B removal is purely subtractive; tests stay green because the only consumer (`scope-epic` skill) already displays hardcoded inline defaults.
+- **Breaking Change**: Yes — user configs containing `epics.scope.*` or `epics.cascade.*` will start failing schema validation. Acceptable: per Decision ARCHITECTURE-096 these keys are an abandoned alternative namespace and there is no in-repo consumer.
 
 ## Verification
 
@@ -148,7 +158,25 @@ Prefer **Option A** unless `FEAT-2339` is closed/deferred without epics-config n
 Captured by `/ll:audit-docs docs/reference/` Phase 2 review (2026-07-08).
 
 
+## Status
+
+**Open** | Created: 2026-07-08 | Priority: P2
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-08T15:11:13 - `bd328154-428d-4f19-895d-d347681e9341.jsonl`
 - `/ll:decide-issue` - 2026-07-08T14:48:41 - `af39a52e-94bf-4b16-9eb5-7c29f57a1a47.jsonl`
 - `/ll:decide-issue` - 2026-07-08T14:48:16 - `af39a52e-94bf-4b16-9eb5-7c29f57a1a47.jsonl`
 - `/ll:refine-issue` - 2026-07-08T14:39:47 - `ea1dab68-2ebe-4bc4-99ae-67df8309e565.jsonl`
+- `/ll:manage-issue improve` - 2026-07-08T15:19:32 - `cd7034c5-80cb-4e71-b0fc-65786f007e28.jsonl`
+
+## Resolution
+
+Implemented Option B (2026-07-08 by `/ll:manage-issue improve`):
+
+- **`config-schema.json`** — removed the entire `epics` property block (previously lines 1331-1369). User configs that set `epics.*` are now rejected by the root `additionalProperties: false`.
+- **`docs/reference/CONFIGURATION.md`** — removed the `### epics` section, the `#### epics.scope` / `#### epics.cascade` rows, and the "Schema-only / not yet wired" blockquote (previously lines 780-795).
+- **`skills/scope-epic/SKILL.md`** — replaced the four `{{config.epics.*}}` template substitutions (lines 37, 38, 104, 105) with the hardcoded defaults `3` and `8`.
+- **`scripts/tests/test_config_schema.py`** — deleted the now-obsolete `test_epics_scope_in_schema`; added `test_epics_removed_from_schema` (regression guard for the removal) and `test_scope_epic_skill_uses_literal_thresholds` (asserts the skill body has literal 3/8 with no `{{config.epics.*}}` placeholders).
+- **`scripts/tests/test_scope_epic_skill.py`** — updated `test_min_children_referenced` and `test_max_children_referenced` to assert the new Option B contract (skill uses `MIN_CHILDREN = 3` / `MAX_CHILDREN = 8` constants).
+
+**Verification**: `python -m pytest scripts/tests/` — 14,248 passed, 35 skipped, 4 pre-existing failures unrelated to ENH-2544 (1 README size + 3 wiring-guide regressions on ENH-1443/FEAT-1045/ENH-1557 docs, all confirmed-failing on baseline via `git stash`). `ruff check scripts/` — all checks passed.
