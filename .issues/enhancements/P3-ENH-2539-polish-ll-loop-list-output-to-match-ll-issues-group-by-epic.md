@@ -5,14 +5,20 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-08
-captured_at: "2026-07-08T01:52:29Z"
+captured_at: '2026-07-08T01:52:29Z'
 discovered_by: capture-issue
 decision_needed: false
 labels:
-  - enhancement
-  - cli-output
-  - ux
-  - captured
+- enhancement
+- cli-output
+- ux
+- captured
+confidence_score: 99
+outcome_confidence: 84
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2539: Polish `ll-loop list` output to match `ll-issues list --group-by epic`
