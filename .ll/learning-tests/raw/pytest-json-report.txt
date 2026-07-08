@@ -1,0 +1,28 @@
+workdir: /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/lt-pjr-0ifnppg5
+
+=== PASS case (2 passing tests) ===
+pytest exit code: 0
+json file exists at /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/lt-pjr-0ifnppg5/pass.json: True
+summary keys: ['collected', 'passed', 'total']
+summary.passed=2 failed=None skipped=None total=2 exitcode=None
+
+=== MIX case (1 pass, 1 fail) ===
+pytest exit code: 1
+json file exists at /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/lt-pjr-0ifnppg5/mix.json: True
+summary keys: ['collected', 'failed', 'passed', 'total']
+summary.passed=1 failed=1 skipped=None total=2 exitcode=None
+
+=== ASSERTIONS ===
+  [PASS] claim1: pass case wrote json file
+  [PASS] claim1: mix case wrote json file even when tests failed
+  [FAIL] claim2: pass summary has expected keys
+  [PASS] claim2: mix summary has expected keys
+  [PASS] claim3: pass case components sum equals total
+  [PASS] claim3: mix case components sum equals total
+  [FAIL] claim4: pass case has summary.failed == 0
+  [PASS] claim4: pass case has pytest exit code 0
+  [PASS] claim5: mix case JSON still written when tests fail
+  [PASS] claim5: mix case has summary.failed >= 1
+  [PASS] claim5: mix case has pytest exit code != 0
+
+ALL PASS: False

@@ -1,0 +1,20 @@
+CLAIM 1: Resource.create service.name -> 'test-svc'
+  -> PASS
+
+CLAIM 2: start_span name='proof-loop' kind=<SpanKind.INTERNAL: 0>
+  -> PASS
+
+CLAIM 3: parent.span_id=7496234349089928769 child.parent.span_id=7496234349089928769
+  -> PASS
+
+CLAIM 4: status_code=<StatusCode.ERROR: 2> description='boom'
+  -> PASS
+
+CLAIM 5: last_event.name='evaluate' last_event.attributes={'k': 'v'}
+  -> PASS
+
+CLAIM 6: finished_names=['proof-exported']
+  -> PASS
+
+CLAIM 7: OTLPSpanExporter constructed OK -> 'OTLPSpanExporter'
+  -> PASS
