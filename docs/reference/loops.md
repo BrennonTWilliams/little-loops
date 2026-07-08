@@ -104,7 +104,7 @@ The scorer command must follow the Harbor scorer protocol:
 
 ### Dependencies
 
-Imports `lib/benchmark.yaml` for the `run_benchmark` fragment.
+Imports `lib/benchmark.yaml` (for the `run_benchmark` fragment) and `lib/common.yaml`.
 
 ### Output Artifacts
 
@@ -393,13 +393,13 @@ When a flag is `false`/`0` (or `pii_action` is not `discard` with detected PII),
 
 Reusable iterative artifact generation oracle. Loops `generate → evaluate (Playwright screenshot) → score (LLM rubric)` until `ALL_PASS` or `max_steps`. Returns `done` on success; the calling thin-wrapper routes `on_yes` to its next state.
 
-Used by `html-website-generator`, `svg-image-generator`, `html-anything`, `hitl-md`, and `hitl-compare` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
+Used by `html-website-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `svg-image-generator`, and `interactive-component-generator` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
 
 ### Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `run_dir` | yes | — | Directory path for generated artifacts (always absolute — `loops_dir.resolve()` is applied at injection time; BUG-2435) |
+| `run_dir` | yes | — | Directory path for generated artifacts (relative or absolute; the `evaluate` action normalizes relative paths via `pwd` prefix). |
 | `generate_prompt` | yes | — | Full LLM prompt for the `generate` state, including output file instructions |
 | `rubric` | no | `""` | Rubric criteria markdown passed to the `score` state |
 | `pass_threshold` | no | `6` | Minimum score per criterion to accept (out of 10) |
@@ -553,7 +553,7 @@ The parent `generator-evaluator` snapshot copies `screenshot.png` (single file).
 
 Reusable iterative web research synthesis oracle. Runs `generate_queries → search_web → evaluate_sources → score_coverage` until coverage is sufficient, then `synthesize → done`. Parameterized for both general web research and arxiv-only academic research.
 
-Used by `deep-research` (general web, `source_filter=""`, `academic_mode=false`) and `deep-research-arxiv` (arxiv-only, `source_filter="site:arxiv.org"`, `academic_mode=true`) as a `loop:` delegation state named `run_research` (ENH-1876).
+Used by `deep-research` (general web, `source_filter=""`, `academic_mode=false`) as a `loop:` delegation state named `run_research`; `deep-research-arxiv` inherits from `deep-research` via `from:` and inherits the same delegation (ENH-1876, FEAT-1540/1673).
 
 ### Parameters
 
@@ -679,13 +679,14 @@ Config override: `orchestration.composer.max_plan_nodes` in `.ll/ll-config.json`
 ```
 discover_loops
   → decompose_goal
-      → (auto=true) execute_plan
-      → (auto=false) approve_plan
-          on_yes  → execute_plan
-          on_no   → revise_plan → approve_plan (loop)
-  execute_plan  (walks DAG: invokes each sub-loop via ll-loop run)
-      → summarize → done
+      → parse_plan → validate_plan → check_auto_plan
+          → (auto=true) execute_plan
+          → (auto=false) present_plan (fragment: HITL approval)
+              on_yes  → execute_plan
+              on_no   → present_result (terminal)
+  execute_plan  (walks DAG via dispatch_step → loop: <next_step_loop>)
       on_error → failed
+  present_result (terminal: emit JSON plan + step_results + summary)
 ```
 
 ---
@@ -781,7 +782,7 @@ load_goals → normalize_goals → plan_batches → [approve_plan] → execute_b
 
 ### Dispatch guard
 
-`loop-router` and `loop-composer` variants exclude `goal-cluster` from their catalogs. `goal-cluster` excludes `loop-composer` and `loop-router` from its own dispatch suggestions. This prevents recursive orchestration cycles.
+`loop-router` and `loop-composer` variants exclude `goal-cluster` from their catalogs. `goal-cluster` excludes `loop-composer`, `loop-composer-adaptive`, and itself (`goal-cluster`) from dispatch suggestions; `loop-router` is the suggested fallback when uncertain. This prevents recursive orchestration cycles.
 
 ---
 

@@ -60,7 +60,9 @@ on the number of instances found:
   `pid_source`, `log_file`, `log_updated_ago`, `last_event`, and `events_file`
   diagnostic fields that are not in the base contract).
 - **Multiple instances**: returns a JSON array of state objects, one per
-  instance (without the diagnostic fields above).
+  instance. Each entry additionally includes an `instance_id` field plus the
+  `pid`, `pid_source`, `log_file`, `log_updated_ago`, and `events_file`
+  diagnostic fields; `last_event` is only present in the single-instance case.
 
 Each state object corresponds to one active or interrupted loop instance.
 

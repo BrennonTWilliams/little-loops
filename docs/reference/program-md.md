@@ -106,7 +106,7 @@ Then run overnight:
 ll-loop run harness-optimize
 ```
 
-The loop reads `.ll/program.md`, sets `targets`, `tasks_dir`, and `scorer` from
+The `harness-optimize` loop reads `.ll/program.md`, sets `targets`, `tasks_dir`, and `scorer` from
 the file, and feeds the Directive prose to each LLM proposal step so the model
 knows the optimization goal.
 

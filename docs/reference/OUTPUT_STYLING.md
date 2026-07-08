@@ -73,7 +73,7 @@ Category colors for `ll-loop list` headers (key is the lowercase slug used in `C
 | `rl` | `38;5;160` | Red |
 | `uncategorized` | `0;2` | Reset-dim |
 
-Label colors for `ll-loop list` rows (resolved via `LABEL_COLOR.get(label, "2")`; unknown labels default to dim-green `2`):
+Label colors for `ll-loop list` rows (resolved via `LABEL_COLOR.get(label, "2")`; unknown labels default to dim `2`):
 
 | Label | ANSI Code | Appearance |
 |-------|-----------|------------|
@@ -103,7 +103,7 @@ Edge colors (used in FSM diagrams — applied to both label text and connector l
 | `partial` | `33` | Yellow |
 | `retry_exhausted` | `38;5;208` | Orange |
 | `rate_limit_exhausted` | `38;5;214` | Amber |
-| `throttle_hard` | `38;5;196` | Bold red |
+| `throttle_hard` | `38;5;196` | Bold red (hardcoded — not user-configurable via `cli.colors.fsm_edge_labels`) |
 | `next`, `_` | `2` | Dim |
 
 ### Startup configuration
@@ -190,7 +190,7 @@ logo = get_logo()     # returns str | None
 | `History` | `## Session Log` body section | Distinct `/ll:*` commands with occurrence counts; omitted if absent |
 | `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred` (ENH-2535) |
 
-Width is computed dynamically: the maximum of all content line lengths plus 2 padding, with a minimum of 62 characters. The summary section is wrapped with `textwrap.wrap()` to fit the structural width.
+Width is computed dynamically: the maximum of all content line lengths plus 2 padding, with a minimum of 60 characters. The summary section is wrapped with `textwrap.wrap()` to fit the structural width.
 
 ---
 
@@ -245,7 +245,7 @@ U-route for back-edges (main-to-main):
     label text
 ```
 
-Vertical connectors for off-path states use `│`, `▲`, `▼`, with separate label rows for down/up directions to prevent overlap.
+Vertical connectors for off-path states use `│` and `▼`, with separate label rows for down/up directions to prevent overlap. (`▲` U+25B2 is used only in the windowed-crop overflow banner at `layout.py:945`.)
 
 Self-loops render as `↺ label` below the box row.
 

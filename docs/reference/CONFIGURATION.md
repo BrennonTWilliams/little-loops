@@ -632,6 +632,7 @@ GitHub Issues synchronization for `/ll:sync-issues`:
 | `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
 | `github.state_file` | `.ll/ll-sync-state.json` | File to track sync state |
 | `github.pull_template` | `"minimal"` | Creation variant for issues pulled from GitHub (`"full"`, `"minimal"`, or `"legacy"`). Determines section structure of the generated issue file. |
+| `github.pull_limit` | `integer` | `500` | Max number of issues to pull from GitHub in a single sync run. |
 
 To enable sync, set `sync.enabled: true`. The repository is auto-detected from your git remote; set `sync.github.repo` to override.
 
@@ -778,7 +779,7 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 
 ### `epics`
 
-EPIC lifecycle and scoping settings:
+> **Schema-only / not yet wired.** These keys are declared in `config-schema.json` and accepted by validation, but `BRConfig` does not yet expose an `EpicsConfig` dataclass or emit an `epics` key in `to_dict()`. Template substitution like `{{config.epics.scope.min_children}}` (used by `skills/scope-epic/SKILL.md`) currently produces nothing at runtime. The fields below describe the schema intent — implementation is tracked separately.
 
 #### `epics.scope`
 
@@ -1230,7 +1231,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
     "transports": ["jsonl", "socket"],
     "socket": {
       "path": ".ll/events.sock",
-      "max_clients": 8
+      "max_clients": 32
     }
   }
 }
@@ -1241,7 +1242,7 @@ List of transports to wire onto the EventBus at runtime. Transports are additive
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `events.socket.path` | `string` | `".ll/events.sock"` | Filesystem path for the AF_UNIX socket. The transport unlinks any stale file before binding and removes the file on `close()`. |
-| `events.socket.max_clients` | `integer` | `8` | Maximum simultaneous clients. Connections beyond the cap are accepted-and-closed. |
+| `events.socket.max_clients` | `integer` | `32` | Maximum simultaneous clients. Connections beyond the cap are accepted-and-closed. |
 
 The socket file is `chmod 0600` immediately after `bind()` — owner-only, since the events stream may include issue titles, file paths, and branch names. Operators wanting wider access must relax permissions out-of-band.
 
@@ -1260,7 +1261,7 @@ Requires: `pip install 'little-loops[otel]'` (installs `opentelemetry-sdk` and `
 | `events.otel.endpoint` | `string` | `"http://localhost:4317"` | OTLP gRPC endpoint for the collector (Grafana Agent, Jaeger, Datadog, etc.). |
 | `events.otel.service_name` | `string` | `"little-loops"` | OpenTelemetry `service.name` resource attribute applied to all emitted spans. |
 
-**Span hierarchy:** Each loop run becomes an OTel trace. Loop = root span, state = child span, action = grandchild span. Events such as `evaluate`, `route`, `retry_exhausted`, `handoff_detected`, `handoff_spawned`, and `action_output` are recorded as span events on the innermost open span.
+**Span hierarchy:** Each loop run becomes an OTel trace. Loop = root span, state = child span, action = grandchild span. Events such as `evaluate`, `route`, `retry_exhausted`, `cycle_detected`, `stall_detected`, `handoff_detected`, `handoff_spawned`, and `action_output` are recorded as span events on the innermost open span.
 
 **Sub-loop behaviour:** Sub-loop events (`depth > 0`) are no-ops with a single warning per session. Full nested-trace support is deferred.
 
@@ -1284,11 +1285,11 @@ Requires: `pip install 'little-loops[webhooks]'` (installs `httpx`).
 |-----|------|---------|-------------|
 | `events.webhook.url` | `string \| null` | `null` | HTTP endpoint to POST batched events to. When `null`, the transport is skipped even if `"webhook"` is listed in `transports`. |
 | `events.webhook.batch_ms` | `integer` | `1000` | Flush interval in milliseconds. Events accumulate and are POSTed as a JSON array on each tick. |
-| `events.webhook.headers` | `object` | `{}` | Additional HTTP headers sent with every POST (e.g. `{"Authorization": "Bearer token"}`). |
+| `events.webhook.headers` | `object` | `{}` | Additional HTTP headers sent with every POST (e.g. `{"Authorization": "Bearer token"}`). User-supplied keys override defaults; `Content-Type` defaults to `application/json` and can be overridden. |
 
 **Batching:** Events are enqueued non-blocking in `send()` and flushed by a daemon thread. All events queued during a `batch_ms` window are included in one POST body as a JSON array.
 
-**Retry behaviour:** Failed POSTs (5xx responses or connection errors) are retried up to 3 times with exponential backoff (0.5s → 1s → 2s → 4s, capped at 8s). After retries are exhausted the batch is dropped with a warning — exceptions never propagate to the caller.
+**Retry behaviour:** Failed POSTs (5xx responses or connection errors) are retried up to 3 times with exponential backoff (0.5s → 1s → 2s, capped at 8s; 4 total attempts). After retries are exhausted the batch is dropped with a warning — exceptions never propagate to the caller.
 
 **Shutdown:** `close()` signals the daemon thread to stop, performs one final flush of any queued events, then joins the thread with a 10s timeout.
 

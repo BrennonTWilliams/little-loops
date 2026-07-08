@@ -1,6 +1,6 @@
 # Issue Template Guide (v2.0)
 
-**Last Updated**: 2026-06-25
+**Last Updated**: 2026-06-29
 **Template Version**: 2.0 (Optimized for AI Implementation)
 
 ## Overview
@@ -8,7 +8,7 @@
 The little-loops issue template has been optimized to maximize value for both AI agents during implementation and human reviewers. Version 2.0 reduces cognitive overhead by **removing 8 low-value sections** and **adding 4 high-impact sections** that appear in best-practice issues.
 
 **Key Changes**:
-- 21 sections → 17 sections (-19%)
+- 21 sections → ~19 sections (-10%) (per ENH-320)
 - Enhanced AI implementation guidance
 - Anchor-based code references (no more line number drift)
 - Integration Map to identify all affected files/components
@@ -35,10 +35,10 @@ The little-loops issue template has been optimized to maximize value for both AI
 
 ### Type-Specific Sections
 
-**BUG**: Steps to Reproduce, Actual Behavior, Root Cause (NEW), Error Messages, Location
+**BUG**: Steps to Reproduce (required), Actual Behavior (informal), Root Cause (conditional, NEW), Error Messages (conditional), Location (conditional)
 **FEAT**: Use Case (renamed from User Story), Acceptance Criteria, API/Interface (NEW)
 **ENH**: Success Metrics, Scope Boundaries
-**EPIC**: Child Issues (links to BUG/FEAT/ENH children, by ID), Coordination Scope, Acceptance Criteria (across children)
+**EPIC**: Goal, Scope, Children, Success Metrics (conditional)
 
 ### Deprecated Sections (Still Supported)
 
@@ -58,7 +58,7 @@ One-sentence description combining WHAT and WHY.
 **Good**:
 - BUG: "Sprint runner crashes when processing issues with merge conflicts, blocking automated workflows"
 - FEAT: "Add user authentication to protect admin endpoints"
-- ENH: "Add retry logic to sprint runner to handle transient failures"
+- ENH: "Add retry logic to `cli/sprint/run.py` to handle transient failures"
 
 **Bad**:
 - "Fix the bug" (no context)

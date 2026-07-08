@@ -9,6 +9,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | Flag | Behavior | Used by |
 |------|----------|---------|
 | `--quick` | Reduce analysis depth for faster results | `scan-codebase`, `manage-issue`, `capture-issue` |
+| `--parent EPIC-NNN` | Bind a captured issue as a child of the named EPIC | `capture-issue` |
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
@@ -467,7 +468,7 @@ Identify stale or missing documentation by analyzing git commits and completed i
 ### `/ll:audit-claude-config`
 Comprehensive audit of Claude Code plugin configuration with parallel sub-agents.
 
-**Scope:** `all`, `global`, `project`, `hooks`, `mcp`, `agents`, `commands`, `skills`
+**Scope:** `all`, `managed`, `user`, `project`, `hooks`, `mcp`, `agents`, `commands`, `skills`, `output-styles`, `lsp`, `keybindings`, `claudeignore`, `plugin-settings`, `settings`
 
 **Flags:** `--non-interactive`, `--fix`
 

@@ -27,7 +27,7 @@ into `LLHookEvent` payloads.
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` |
 | `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` |
 | `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` |
-| `session_end`        | ✓ (`SessionStart` event → `session_end`)[^ssend] | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
+| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only |
 
@@ -74,9 +74,9 @@ into `LLHookEvent` payloads.
 
 [^permreq]: Codex exposes a `permission_request` event when a tool requires
     user approval. The original tracking issue (FEAT-1720) was **cancelled**
-    and its scope absorbed into **FEAT-1719**, which now wires both
-    `PostCompact` and `PermissionRequest` no-op handlers in one pass. Deferred
-    until a concrete consumer exists; the cell flips to ✓ when FEAT-1719 lands.
+    and its scope absorbed into **FEAT-1719** (cancelled 2026-07-03 per SCOPE-041);
+    the PostCompact + PermissionRequest wiring is not yet tracked by an open
+    issue. Cell stays (deferred) until a concrete consumer exists.
 
 [^gemini]: Gemini CLI (`gemini` binary, npm `@google/gemini-cli`) support is
     tracked by **EPIC-2178**. Research spike **FEAT-2179** (2026-06-15) confirmed
@@ -114,9 +114,11 @@ into `LLHookEvent` payloads.
     is now exposed).
 
     **`disable-model-invocation` flag scope:** `ll-adapt --host codex`
-    does **not** read `disable-model-invocation: true`; all 16 SKILL.md files
-    carrying that flag are exposed in Codex. The flag governs two other tools
-    only: `ll-generate-skill-descriptions` (skips for token-budget compliance)
+    honours `disable-model-invocation: true` (see
+    `scripts/little_loops/adapters/core.py:process_skills`/`process_commands`);
+    the 50 SKILL.md files carrying that flag are skipped and NOT exposed in
+    Codex. The flag governs two other tools only:
+    `ll-generate-skill-descriptions` (skips for token-budget compliance)
     and Claude Code's auto-invocation gate. See ENH-1497.
 
 ## Runner Capabilities
@@ -125,7 +127,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 
 | Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         | omp                                |
 | ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- | ---------------------------------- |
-| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`-o stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     |
+| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`--output-format stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     |
 | Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] |
 | Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] |
 | Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   |
@@ -214,7 +216,7 @@ touching call sites.
     `--conformance-host <host>`. PASS/SKIP maps to ✓/stub in this table.
     See `docs/development/CONFORMANCE.md`.
 
-[^orch]: All seven call sites now route through
+[^orch]: All call sites in the table route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
     `ClaudeCodeRunner` + `CodexRunner` + `GeminiRunner` + `OmpRunner` +
     `OpenCodeRunner` + `PiRunner`).
@@ -290,7 +292,7 @@ manually to force the host probe order without invoking the adapter.
 
 - Claude Code: [`hooks/adapters/claude-code/`](../../hooks/adapters/claude-code/) — Bash shim
 - OpenCode: [`hooks/adapters/opencode/`](../../hooks/adapters/opencode/) — TypeScript/Bun plugin
-- Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"`
+- Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse handlers
 
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.

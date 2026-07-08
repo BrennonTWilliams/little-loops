@@ -1180,7 +1180,8 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--refine-cap N` | `5` | Max `/ll:refine-issue` runs before moving on |
 | `--ready-threshold N` | `85` | Minimum readiness score to consider issue ready |
 | `--outcome-threshold N` | `70` | Minimum outcome confidence score to consider issue ready |
-| `--skip ISSUE_ID[,...]` | — | Comma-separated issue IDs to exclude (e.g. `ENH-929,BUG-001`); absent `--skip` preserves existing behavior |
+| `--skip / -s ISSUE_ID[,...]` | — | Comma-separated issue IDs to exclude (e.g. `ENH-929,BUG-001`); absent `--skip` preserves existing behavior |
+| `--config` | (auto) | Override the config file path |
 
 > **Config-driven defaults**: `next-action` reads `commands.confidence_gate.readiness_threshold` from `.ll/ll-config.json` before falling back to the CLI default of `85`. Set `commands.confidence_gate.readiness_threshold: 90` in your project config to raise the bar globally without passing `--ready-threshold` on every call. The `--ready-threshold` flag still overrides the config value when provided explicitly.
 

@@ -474,7 +474,7 @@ class ParallelAutomationConfig:
 - `use_feature_branches` - Create `feature/<id>-<slug>` branches instead of auto-merged worktree branches; skips auto-merge, leaving branches as PR-ready
 - `push_feature_branches` - Push feature branches to remote after creation
 - `open_pr_for_feature_branches` - Open a PR automatically for each feature branch
-- `base_branch` - Base branch for rebase/merge operations (default: `"main"`)
+- `base_branch` - Base branch for rebase/merge operations (default: `None` — auto-detected at runtime as `origin/HEAD` → current branch → `main`)
 - `remote_name` - Git remote name for fetch/pull operations (default: `"origin"`)
 
 **Note:** Shared fields from `AutomationConfig` are accessed via `base.*`:
@@ -1737,15 +1737,18 @@ elif match.should_create:
 
 Analysis of completed issues for project health insights.
 
-### Public Functions (25)
+### Public Functions (28)
 
 #### Parsing & Scanning
 
 | Function | Purpose |
 |----------|---------|
 | `parse_completed_issue(file_path, *, batch_dates=None)` | Parse a single completed issue file |
-| `scan_completed_issues(completed_dir)` | Scan completed directory for all issues |
+| `scan_completed_issues(issues_dir, category_dirs=None)` | Scan `.issues/` for completed issues (takes the parent `.issues/` directory, not the completed subdir) |
 | `scan_active_issues(base_dir, categories)` | Scan active issue directories |
+| `detect_recurring_feedback(corrections)` | Detect recurring correction patterns |
+| `detect_skill_bypass(history)` | Detect skill bypass events |
+| `scan_completed_issues_from_db(db_path)` | Scan completed issues from history.db |
 
 #### parse_completed_issue
 
@@ -1912,8 +1915,8 @@ from little_loops.issue_history import (
 from pathlib import Path
 
 # Load and analyze
-completed_dir = Path(".issues/completed")
-issues = scan_completed_issues(completed_dir)
+issues_dir = Path(".issues")
+issues = scan_completed_issues(issues_dir)
 summary = calculate_summary(issues)
 
 print(f"Completed: {summary.total_count}")
@@ -2536,7 +2539,7 @@ StateManager(state_file: Path, logger: Logger, event_bus: EventBus | None = None
 | `load() -> ProcessingState \| None` | Load state from file |
 | `save()` | Save current state to file |
 | `cleanup()` | Remove state file |
-| `update_current(path, phase)` | Update current issue and phase |
+| `update_current(issue_path: str, phase: str)` | Update current issue and phase |
 | `mark_attempted(issue_id, *, save=True)` | Mark issue as attempted |
 | `mark_completed(issue_id, timing=None)` | Mark issue as completed |
 | `mark_failed(issue_id, reason)` | Mark issue as failed |
@@ -2942,7 +2945,7 @@ WorkerPool(
 | Method | Description |
 |--------|-------------|
 | `start()` | Start the worker pool |
-| `submit(issue_info, callback) -> Future` | Submit issue for processing |
+| `submit(issue: IssueInfo, on_complete: Callable[[WorkerResult], None] \| None = None) -> Future` | Submit issue for processing |
 | `shutdown(wait=True)` | Shutdown the worker pool |
 | `cleanup_all_worktrees()` | Remove all worktree directories |
 
@@ -3174,7 +3177,7 @@ class ParallelConfig:
     overlap_detection: bool = False
     serialize_overlapping: bool = True
     skip_learning_gate: bool = False
-    base_branch: str = "main"
+    base_branch: str | None = None
     remote_name: str = "origin"
 ```
 
@@ -4162,7 +4165,7 @@ entities = extract_entities("Fix BUG-123 in src/utils.py using /ll:manage-issue"
 #### calculate_boundary_weight
 
 ```python
-def calculate_boundary_weight(time_gap_seconds: float) -> float
+def calculate_boundary_weight(gap_seconds: int) -> float
 ```
 
 Map time gaps to boundary weights using tiered thresholds.
