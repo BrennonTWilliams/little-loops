@@ -4674,3 +4674,18 @@
     from rendered labels but keep the raw iden'
   enforcement: advisory
   issue: ENH-2554
+- id: OTHE-201
+  type: rule
+  timestamp: '2026-07-09T01:30:04Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: The issue calls out adding `description_line2` as an additive key alongside
+    the existing required fields (`name`, `path`, `category`, `labels`, `visibility`,
+    `description`) — consumers parse --json by key, so removing or renaming required
+    fields breaks them.
+  rule: Add new keys to --json output additively; never rename or remove required
+    fields.
+  enforcement: advisory
+  issue: ENH-2555
