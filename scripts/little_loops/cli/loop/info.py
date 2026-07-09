@@ -1223,6 +1223,8 @@ def _print_state_overview_table(fsm: FSMLoop) -> None:
         # Type column
         if state.terminal:
             type_col = "\u2014"
+        elif state.loop:
+            type_col = "sub-loop"
         elif state.action_type:
             type_col = state.action_type
         elif state.action:
@@ -1233,6 +1235,8 @@ def _print_state_overview_table(fsm: FSMLoop) -> None:
         # Action preview column
         if state.terminal:
             action_col = "(terminal)"
+        elif state.loop:
+            action_col = f"[sub-loop: {state.loop}]"
         elif state.action:
             src_lines = [ln.rstrip() for ln in state.action.strip().splitlines() if ln.rstrip()]
             action_col = src_lines[0] if src_lines else "\u2014"
@@ -1265,7 +1269,12 @@ def _print_state_overview_table(fsm: FSMLoop) -> None:
             action_col = action_col[: col2_w - 1] + "\u2026"
         if len(trans_col) > col3_w:
             trans_col = trans_col[: col3_w - 1] + "\u2026"
-        colored_type = colorize(type_col, "2") if type_col == "\u2014" else type_col
+        if type_col == "\u2014":
+            colored_type = colorize(type_col, "2")
+        elif type_col == "sub-loop":
+            colored_type = colorize(type_col, "35")
+        else:
+            colored_type = type_col
         print(
             f"  {state_col:<{col0_w}}  {colored_type:<{col1_w}}  "
             f"{action_col:<{col2_w}}  {trans_col}"
