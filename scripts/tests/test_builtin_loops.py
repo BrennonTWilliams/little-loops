@@ -7133,9 +7133,7 @@ class TestCodeRunGateOracle:
         # _ is the canonical default per scripts/little_loops/fsm/validation.py:1975-2006
         assert "_" in route, "aggregate route: must include '_' default fallback"
         assert "_error" in route, "aggregate route: must include '_error' fallback"
-        assert route.get("GATE_PASS") == "done", (
-            "aggregate route: GATE_PASS must map to done"
-        )
+        assert route.get("GATE_PASS") == "done", "aggregate route: GATE_PASS must map to done"
         assert route.get("GATE_FAILED") == "failed", (
             "aggregate route: GATE_FAILED must map to failed"
         )
@@ -7186,9 +7184,7 @@ class TestCodeRunGateOracle:
     def test_service_health_writes_pid_and_tears_down(self, data: dict) -> None:
         """service_health must track the service PID and kill it on teardown."""
         action = data["states"]["service_health"].get("action", "")
-        assert "service.pid" in action, (
-            "service_health must write ${context.run_dir}/service.pid"
-        )
+        assert "service.pid" in action, "service_health must write ${context.run_dir}/service.pid"
         assert "curl" in action or "wget" in action, (
             "service_health must probe the health URL with curl or wget"
         )
@@ -7212,9 +7208,7 @@ class TestCodeRunGateOracle:
         assert "typecheck_cmd" in action, (
             "resolve_commands must read typecheck_cmd (alias for type_cmd)"
         )
-        assert "type_cmd" in action, (
-            "resolve_commands must read type_cmd (canonical key)"
-        )
+        assert "type_cmd" in action, "resolve_commands must read type_cmd (canonical key)"
         # start_cmd is the alias for run_cmd per ARCHITECTURE-123
         assert "start_cmd" in action or "run_cmd" in action, (
             "resolve_commands must read run_cmd and/or start_cmd per ARCHITECTURE-123"
@@ -9855,9 +9849,7 @@ class TestCodeRunGateOracleWiring:
         oracle sets a default of 0.95; the parent (F2b) overrides to 1.0
         for strict pass on greenfield issues."""
         ctx = oracle_data.get("context", {})
-        assert "min_pass_rate" in ctx, (
-            "Oracle context.defaults must include min_pass_rate"
-        )
+        assert "min_pass_rate" in ctx, "Oracle context.defaults must include min_pass_rate"
 
     def test_oracle_writes_sidecar_terminal(self, oracle_data: dict) -> None:
         """The oracle's `aggregate` state writes
@@ -9876,9 +9868,7 @@ class TestCodeRunGateOracleWiring:
 
     def test_rn_remediate_run_code_gate_state_present(self, data: dict) -> None:
         states = data.get("states", {})
-        assert "run_code_gate" in states, (
-            "rn-remediate must add run_code_gate (FEAT-2552)"
-        )
+        assert "run_code_gate" in states, "rn-remediate must add run_code_gate (FEAT-2552)"
         assert "record_gate_failure" in states, (
             "rn-remediate must add record_gate_failure (FEAT-2552)"
         )

@@ -2178,9 +2178,7 @@ class TestRunCodeGate:
         context-resolution for issues that don't override min_pass_rate."""
         data = _load_loop()
         ctx = data.get("context", {})
-        assert "min_pass_rate" in ctx, (
-            "rn-remediate.context must define min_pass_rate default"
-        )
+        assert "min_pass_rate" in ctx, "rn-remediate.context must define min_pass_rate default"
         assert ctx["min_pass_rate"] == 1.0, (
             f"min_pass_rate default should be 1.0 (strict pass), got {ctx['min_pass_rate']!r}"
         )

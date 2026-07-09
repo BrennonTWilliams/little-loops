@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import argparse
 import os
+
+# Drop redundant filesystem prefixes from loop-name display. These mirror the
+# directory layout (tmp/=examples, generated/=per-host scaffolds,
+# lib/=fragments) that already lives in the category header — showing them
+# again on every row doubles the noise. ``oracles/`` is intentionally
+# PRESERVED because nested oracles are referenced by relative path from
+# parent loops (``ll-loop run`` round-trips through that path).
+import re as _re_path
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -38,14 +46,6 @@ from little_loops.fsm.fragments import resolve_inheritance
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
-
-# Drop redundant filesystem prefixes from loop-name display. These mirror the
-# directory layout (tmp/=examples, generated/=per-host scaffolds,
-# lib/=fragments) that already lives in the category header — showing them
-# again on every row doubles the noise. ``oracles/`` is intentionally
-# PRESERVED because nested oracles are referenced by relative path from
-# parent loops (``ll-loop run`` round-trips through that path).
-import re as _re_path
 
 _PATH_PREFIX_RE = _re_path.compile(r"^(?:tmp|generated|examples|lib)/")
 
