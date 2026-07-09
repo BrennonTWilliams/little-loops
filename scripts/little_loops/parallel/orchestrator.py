@@ -132,6 +132,9 @@ class ParallelOrchestrator:
         self._worker_errors: dict[str, str] = {}
         # Track feature-branch state when use_feature_branches=True (ENH-665, BUG-2172)
         self._pr_ready_branches: dict[str, dict] = {}  # issue_id -> {branch_name, pushed, pr_url}
+        # Track EPIC integration branches already merged/PR'd on completion so the
+        # completion trigger is idempotent across worker callbacks (FEAT-2449).
+        self._merged_epic_branches: set[str] = set()
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
@@ -1067,6 +1070,14 @@ class ParallelOrchestrator:
             self._worker_errors[result.issue_id] = result.error or "Failed"
             self.queue.mark_failed(result.issue_id)
 
+        # EPIC-completion merge (FEAT-2449): once every child of this issue's
+        # nearest EPIC ancestor reaches `done` (and none is failed/blocked),
+        # merge/PR the shared `epic/<id>-<slug>` integration branch to base.
+        # Runs on both the success and failure branches: a failed child holds
+        # the epic branch open via the partial-failure gate inside the helper.
+        if self.parallel_config.epic_branches.enabled and result.epic_branch:
+            self._maybe_complete_epic(result.issue_id, result.epic_branch)
+
         # Update timing
         with self._state_lock:
             self.state.timing[result.issue_id] = {
@@ -1162,6 +1173,190 @@ class ParallelOrchestrator:
             self.logger.warning(f"{issue_id}: gh CLI not found, skipping PR creation")
         except subprocess.TimeoutExpired:
             self.logger.warning(f"{issue_id}: gh pr create timed out")
+
+    def _maybe_complete_epic(self, issue_id: str, epic_branch: str) -> None:
+        """Merge/PR an EPIC integration branch once all its children are done (FEAT-2449).
+
+        Called from ``_on_worker_complete`` after each worker finishes. Resolves
+        the completed issue's nearest EPIC ancestor via the shared FEAT-2561
+        helpers, then consults ``compute_epic_progress`` (transitive child walk)
+        against the current on-disk statuses:
+
+        - **All children terminally ``done``** (``by_status["done"]`` alone;
+          cancelled children do NOT count) with no ``blocked``/``cancelled``
+          child and no child in this run's failure set → merge
+          ``epic/<id>-<slug>`` into ``base_branch`` (or open one PR when
+          ``epic_branches.open_pr``), then delete the branch on merge.
+        - **Any child failed/blocked** → the epic branch is held open (no merge,
+          no delete): the partial-failure gate scopes ``queue.failed_ids`` /
+          ``state.failed_issues`` to this EPIC's child-ID set.
+
+        Idempotent per branch via ``self._merged_epic_branches``.
+        """
+        cfg = self.parallel_config.epic_branches
+        # Config-branch gate (closes the FEAT-2448 dead-read gap): with neither
+        # a direct merge nor a PR requested there is nothing to trigger.
+        if not cfg.merge_to_base_on_complete and not cfg.open_pr:
+            return
+
+        issue_info = self._issue_info_by_id.get(issue_id)
+        if issue_info is None:
+            return
+
+        from little_loops.issue_parser import find_issues
+        from little_loops.issue_progress import (
+            build_parent_map,
+            compute_epic_progress,
+            find_nearest_epic_ancestor,
+        )
+
+        all_issues = find_issues(
+            self.br_config,
+            status_filter={
+                "open",
+                "in_progress",
+                "blocked",
+                "done",
+                "cancelled",
+                "deferred",
+            },
+        )
+        parent_map = build_parent_map(all_issues)
+        epic_id = find_nearest_epic_ancestor(issue_info, parent_map)
+        if epic_id is None:
+            return
+
+        prog = compute_epic_progress(epic_id, all_issues)
+        if prog is None:
+            return
+
+        total = len(prog.children)
+        # Use by_status["done"] ALONE — a cancelled child must NOT trigger a
+        # merge into base (diverges from the list_cmd badge which sums
+        # done+cancelled; see issue Codebase Research Findings).
+        done_count = prog.by_status.get("done", 0)
+        blocked_count = prog.by_status.get("blocked", 0)
+        cancelled_count = prog.by_status.get("cancelled", 0)
+        all_done = total > 0 and done_count == total and blocked_count == 0 and cancelled_count == 0
+        if not all_done:
+            return
+
+        # Partial-failure gate: even if disk status momentarily reads all-done,
+        # a child that failed/blocked in THIS run holds the branch open. Scope
+        # the flat run-level failure sets to this EPIC's child IDs (FEAT-2561).
+        epic_child_ids = {c.issue_id for c in prog.children}
+        failed_here = epic_child_ids & (set(self.queue.failed_ids) | set(self.state.failed_issues))
+        if failed_here:
+            self.logger.info(
+                f"EPIC {epic_id} integration branch held open — "
+                f"{len(failed_here)} child(ren) unresolved: {sorted(failed_here)}"
+            )
+            return
+
+        # Idempotency: merge/PR each epic branch at most once.
+        if epic_branch in self._merged_epic_branches:
+            return
+        self._merged_epic_branches.add(epic_branch)
+
+        if cfg.open_pr:
+            self._open_pr_for_epic_branch(epic_id, epic_branch)
+        else:
+            self._merge_epic_branch_to_base(epic_id, epic_branch)
+
+    def _merge_epic_branch_to_base(self, epic_id: str, epic_branch: str) -> None:
+        """Merge ``epic_branch`` into ``base_branch`` then delete it (FEAT-2449).
+
+        Lifts the ``git merge --no-ff`` + inline ``branch -D`` shape from
+        ``_merge_pending_worktrees`` (gated only on the merge succeeding — no
+        ``_is_ll_branch`` gate; explicit deletion per FEAT-2339 Rationale #3).
+        The main repo stays checked out on ``base_branch`` throughout a parallel
+        run, so no checkout is needed (mirrors the pending-merge precedent).
+        """
+        base = self.parallel_config.base_branch
+        try:
+            result = self._git_lock.run(
+                [
+                    "merge",
+                    "--no-ff",
+                    epic_branch,
+                    "-m",
+                    f"Merge EPIC integration branch {epic_id} into {base}",
+                ],
+                cwd=self.repo_path,
+                timeout=60,
+            )
+            if result.returncode == 0:
+                self.logger.success(f"EPIC {epic_id} integration branch merged into {base}")
+                self._git_lock.run(
+                    ["branch", "-D", epic_branch],
+                    cwd=self.repo_path,
+                    timeout=10,
+                )
+            else:
+                self.logger.warning(
+                    f"EPIC {epic_id} integration branch merge failed: {result.stderr}"
+                )
+                self._git_lock.run(
+                    ["merge", "--abort"],
+                    cwd=self.repo_path,
+                    timeout=10,
+                )
+        except Exception as e:  # noqa: BLE001 — never let completion crash the run
+            self.logger.warning(f"EPIC {epic_id} integration branch merge error: {e}")
+
+    def _open_pr_for_epic_branch(self, epic_id: str, epic_branch: str) -> None:
+        """Open one PR for a completed EPIC integration branch via gh (FEAT-2449).
+
+        Models the 3-tier graceful degradation of ``_open_pr_for_branch``
+        (auth check → create → catch missing/timeout gh). The branch is NOT
+        deleted on the PR path — the PR needs it. ``--head`` is the epic branch,
+        ``--base`` is ``base_branch``. Log lines avoid the ``"pushed"``/``"PR
+        opened"`` substrings asserted by the feature-branch tests.
+        """
+        base = self.parallel_config.base_branch
+        try:
+            auth_result = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if auth_result.returncode != 0:
+                self.logger.warning(
+                    f"EPIC {epic_id}: gh not authenticated, skipping integration PR"
+                )
+                return
+            pr_result = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--title",
+                    f"EPIC {epic_id} integration",
+                    "--body",
+                    f"Integration branch for {epic_id} (all children complete)",
+                    "--base",
+                    base,
+                    "--head",
+                    epic_branch,
+                ],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if pr_result.returncode == 0:
+                self.logger.info(
+                    f"EPIC {epic_id}: integration PR created: {pr_result.stdout.strip()}"
+                )
+            else:
+                self.logger.warning(
+                    f"EPIC {epic_id}: gh pr create failed: {pr_result.stderr.strip()}"
+                )
+        except FileNotFoundError:
+            self.logger.warning(f"EPIC {epic_id}: gh CLI not found, skipping integration PR")
+        except subprocess.TimeoutExpired:
+            self.logger.warning(f"EPIC {epic_id}: gh pr create timed out")
 
     def _merge_sequential(self, result: WorkerResult) -> None:
         """Merge a sequential (P0) result immediately.

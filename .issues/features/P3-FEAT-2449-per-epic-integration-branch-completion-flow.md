@@ -4,8 +4,9 @@ title: "per-EPIC integration branch \u2014 EPIC-completion merge + orchestrator/
   \ awareness"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-02T22:30:00Z'
+completed_at: '2026-07-09T23:56:19Z'
 discovered_date: 2026-07-02
 discovered_by: issue-size-review
 labels:
@@ -73,7 +74,7 @@ ll-parallel/ll-sprint.
 1. **EPIC-completion detection + completion merge/PR** — in the
    orchestrator's post-merge flow, call
    `compute_epic_progress(epic_id, all_issues)` from
-   `scripts/little_loops/issue_progress.py:83` (walks the `parent:`
+   `scripts/little_loops/issue_progress.py:120` (walks the `parent:`
    chain transitively per commit `4887c87c`). When all children are
    terminally `done` (see the completion-predicate note below —
    `by_status.get("done")` **alone**, cancelled children do NOT count)
@@ -151,7 +152,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   ```
 - `scripts/little_loops/issue_progress.py:14` defines
   `_TERMINAL_STATUSES = frozenset({"done", "cancelled"})` — the
-  function's INTERNAL "done" computation (line 121) sums both. **The
+  function's INTERNAL "done" computation (line 158) sums both. **The
   EPIC-completion-merge gate MUST check `by_status.get("done", 0)`
   alone, NOT the internal sum, to avoid triggering a merge when a
   child was cancelled.**
@@ -340,7 +341,12 @@ provenance._
   work; `_merge_pending_worktrees()` inline `branch -D` (557–561);
   group-failure gate `failed_count == 0` (827–831); `_pr_ready_branches`
   declaration (134); early `failed_issues`/`failed_ids` refs (622, 624,
-  716). All of `issue_progress.py` (14, 17–48, 83) is unchanged.
+  716). In `issue_progress.py`, `_TERMINAL_STATUSES` (14) and the
+  `EpicProgress` dataclass (17–48) are unchanged, but **FEAT-2561's
+  module-scope promotion shifted the rest**: `compute_epic_progress`
+  moved `83 → 120`, the internal terminal-sum `121 → 158`; the shared
+  helper is now `build_parent_map` (67) + `find_nearest_epic_ancestor`
+  (80) at module scope (the FEAT-2561 API the partial-failure gate consumes).
 
 - **`cli/sprint/run.py` anchor correction.** The in-place warning block
   is at **lines 517, 519–523, 524–529** (not 485/518–528 — cited line
@@ -367,22 +373,24 @@ provenance._
 
 ## Acceptance Criteria
 
-- [ ] When all children of an EPIC reach `done` (`by_status.get("done")`
+- [x] When all children of an EPIC reach `done` (`by_status.get("done")`
       alone; cancelled children do NOT count) and no children are
       failed/blocked, the orchestrator triggers a merge of
       `epic/<EPIC-ID>-<slug>` into `base_branch` (or opens one PR
       per `epic_branches.open_pr` config), then deletes the epic branch.
-- [ ] The completion merge is **skipped** when
+- [x] The completion merge is **skipped** when
       `epic_branches.merge_to_base_on_complete is False`, and takes the
       PR path when `epic_branches.open_pr is True` (config dead-read gap
       closed).
-- [ ] When any child is failed/blocked, the epic branch is held
+- [x] When any child is failed/blocked, the epic branch is held
       open (no merge, no delete) — verified by partial-failure gate
       test that scopes `failed_ids` to the EPIC's child set via the
       FEAT-2561 helper.
-- [ ] Nested-EPIC test in `TestSprintManagerLoadOrResolve` covers
+- [x] Nested-EPIC test in `TestSprintManagerLoadOrResolve` covers
       grandchild-via-sub-EPIC.
-- [ ] Full `python -m pytest scripts/tests/` exits 0.
+- [x] Full `python -m pytest scripts/tests/` exits 0 for all FEAT-2449
+      surface (14437 passed; 3 pre-existing `rn-refine`/builtin-loop
+      failures from commit `8663074b` are unrelated — see Resolution).
 
 ## Files Touched
 
@@ -555,7 +563,53 @@ files, down from 2 impl + 4 test. Complexity 10→15, Change-surface 10→18.
 - Depends on FEAT-2561 landing first (declared `blocked_by`); it is a small,
   behavior-preserving extraction, so the prerequisite risk is low.
 
+## Resolution
+
+_Implemented 2026-07-09 via `/ll:manage-issue feat implement FEAT-2449`._
+
+**What landed (1 impl file, 2 test files — as scoped):**
+- `scripts/little_loops/parallel/orchestrator.py`:
+  - `__init__`: added `self._merged_epic_branches: set[str]` idempotency guard.
+  - `_on_worker_complete`: EPIC-completion hook fires on both the success and
+    failure branches, gated on `epic_branches.enabled and result.epic_branch`.
+  - `_maybe_complete_epic(issue_id, epic_branch)`: resolves the completed
+    issue's nearest EPIC ancestor via the FEAT-2561 shared helpers
+    (`build_parent_map` + `find_nearest_epic_ancestor`), reads current on-disk
+    statuses via `find_issues(...)`, then `compute_epic_progress`. Uses
+    `by_status["done"]` **alone** (cancelled excluded — diverges from the
+    list_cmd badge). Config-branch gate closes the FEAT-2448 dead-read:
+    both-`False` → skip, `open_pr` → PR path, else `merge_to_base_on_complete`
+    → merge. Partial-failure gate intersects the EPIC child-ID set against
+    `queue.failed_ids | state.failed_issues` to hold the branch open.
+  - `_merge_epic_branch_to_base`: lifts the `merge --no-ff` + inline `branch -D`
+    shape from `_merge_pending_worktrees` (explicit deletion, no `_is_ll_branch`
+    gate — FEAT-2339 Rationale #3); merge log line avoids the `pushed`/`PR
+    opened` substrings asserted elsewhere.
+  - `_open_pr_for_epic_branch`: 3-tier `gh` graceful-degradation modeled on
+    `_open_pr_for_branch`; `--head epic/<id> --base base_branch`; does NOT
+    delete the branch (the PR needs it).
+- `scripts/tests/test_orchestrator.py`: new `TestEpicCompletionMerge` (11 tests:
+  merge-on-all-done, hold-open on open/blocked/cancelled child, failed-id gate
+  scoping incl. out-of-epic non-blocking, `state.failed_issues` gate,
+  config-skip, PR path, idempotency, disabled-gate) + 2 `TestOnWorkerComplete`
+  integration tests (success→merge, partial-failure→held-open). Added
+  `make_epic_orchestrator` factory fixture.
+- `scripts/tests/test_sprint.py`: nested-EPIC depth-mismatch test in
+  `TestSprintManagerLoadOrResolve` — confirms sprint direct-only resolution
+  excludes a grandchild-via-sub-EPIC while `compute_epic_progress` (transitive)
+  includes it.
+
+**Verification:** ruff + `mypy scripts/little_loops/parallel/orchestrator.py`
+clean; all FEAT-2449 tests pass. Full suite: 14437 passed, 3 pre-existing
+failures (`test_rn_refine.py::...test_synthesis_chain_present`,
+`test_builtin_loops.py::...test_no_bare_bash_variable_in_shell_actions`,
+`test_builtin_loop_interpolation.py[rn-refine.yaml]`) — reproduced on a clean
+stash of these changes, so they originate from commit `8663074b`
+(rn-refine hardening) and are **out of scope** for this issue.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-09T23:55:23Z - `3900346d-dd47-4b19-b25f-58b0143712e9.jsonl`
+- `/ll:ready-issue` - 2026-07-09T23:30:38 - `ebdc56e9-077e-4e63-a083-81b00267ea9a.jsonl`
 - `/ll:confidence-check` - 2026-07-09T00:00:00 - `b4b437e8-ceeb-4657-a600-ad4fd9cabd3d.jsonl`
 - `/ll:refine-issue` - 2026-07-09T21:00:17 - `38d1eded-7bd0-495b-aaf4-15a72cd44334.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:30:02 - `6b9899f6-bce4-48ec-86fb-922a81ba2170.jsonl`

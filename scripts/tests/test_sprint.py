@@ -2548,6 +2548,60 @@ class TestSprintManagerLoadOrResolve:
         assert data["name"] == "epic-700"
         assert "BUG-001" in data["issues"]
 
+    def test_load_or_resolve_nested_epic_grandchild_depth_mismatch(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """FEAT-2449: sprint resolution is direct-only; a grandchild reached via
+        an intermediate sub-EPIC is NOT included by ``load_or_resolve`` (which
+        does ``info.parent == epic_id`` at sprint.py:326), while
+        ``compute_epic_progress`` walks transitively and DOES include it. This
+        documents the run-construction vs. completion-gate depth mismatch the
+        EPIC-completion trigger relies on.
+        """
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-800-top.md").write_text(
+            "---\nid: EPIC-800\nstatus: in_progress\n---\n# EPIC-800: Top\n"
+        )
+        (issues_dir / "epics" / "P1-EPIC-801-sub.md").write_text(
+            "---\nid: EPIC-801\nstatus: open\nparent: EPIC-800\n---\n# EPIC-801: Sub\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-030-grandchild.md").write_text(
+            "---\nid: FEAT-030\nstatus: open\nparent: EPIC-801\n---\n"
+            "# FEAT-030: Grandchild\n\n## Summary\nImplement this.\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-800")
+
+        assert result is not None
+        # Direct-only backward lookup: the sub-EPIC is a direct child of EPIC-800,
+        # but the grandchild (parent == EPIC-801) is one hop too deep.
+        assert "EPIC-801" in result.issues
+        assert "FEAT-030" not in result.issues
+
+        # compute_epic_progress walks the parent chain transitively → the
+        # grandchild IS resolved as a child of EPIC-800 (the semantics the
+        # completion gate uses).
+        from little_loops.issue_parser import find_issues
+        from little_loops.issue_progress import compute_epic_progress
+
+        all_issues = find_issues(
+            epic_project,
+            status_filter={
+                "open",
+                "in_progress",
+                "blocked",
+                "done",
+                "cancelled",
+                "deferred",
+            },
+        )
+        prog = compute_epic_progress("EPIC-800", all_issues)
+        assert prog is not None
+        child_ids = {c.issue_id for c in prog.children}
+        assert "FEAT-030" in child_ids
+        assert "EPIC-801" in child_ids
+
 
 class TestSprintListJsonShortForm:
     """-j short form for --json in ll-sprint list subcommand (ENH-909)."""

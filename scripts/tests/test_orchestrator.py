@@ -35,7 +35,12 @@ from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.orchestrator import ParallelOrchestrator
-from little_loops.parallel.types import OrchestratorState, ParallelConfig, WorkerResult
+from little_loops.parallel.types import (
+    EpicBranchesConfig,
+    OrchestratorState,
+    ParallelConfig,
+    WorkerResult,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -139,6 +144,98 @@ def orchestrator(
         orch.queue.completed_count = 0  # type: ignore[misc]
         orch.queue.failed_count = 0  # type: ignore[misc]
         return orch
+
+
+@pytest.fixture
+def make_epic_orchestrator(
+    make_project: Callable[[dict[str, Any] | None, list[str] | None], tuple[Path, Path]],
+) -> Callable[..., tuple[ParallelOrchestrator, Path]]:
+    """Factory building an orchestrator over a repo with EPIC-2451 + children (FEAT-2449).
+
+    Writes an ``epics`` category, an ``EPIC-2451`` integration EPIC, and one
+    child issue per ``child_statuses`` entry (each ``parent: EPIC-2451``) with
+    the requested on-disk status. Returns ``(orchestrator, repo_path)`` with
+    ``epic_branches`` configured and ``_issue_info_by_id`` prepopulated so
+    ``_maybe_complete_epic`` can resolve the EPIC ancestor.
+    """
+
+    _SUBDIR = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
+
+    def _factory(
+        child_statuses: dict[str, str],
+        *,
+        enabled: bool = True,
+        merge_to_base: bool = True,
+        open_pr: bool = False,
+    ) -> tuple[ParallelOrchestrator, Path]:
+        config = {
+            "project": {"name": "test", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+                    "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        repo_path, issues_base = make_project(
+            config=config,
+            extra_dirs=[".issues/completed", ".worktrees"],
+        )
+        (issues_base / "epics" / "P3-EPIC-2451-integration.md").write_text(
+            "---\nid: EPIC-2451\nstatus: in_progress\n---\n# EPIC-2451: Integration\n"
+        )
+        for cid, status in child_statuses.items():
+            sub = _SUBDIR[cid.split("-")[0]]
+            (issues_base / sub / f"P3-{cid}-child.md").write_text(
+                f"---\nid: {cid}\nstatus: {status}\nparent: EPIC-2451\n---\n# {cid}: Child\n"
+            )
+
+        pconfig = ParallelConfig(
+            max_workers=2,
+            p0_sequential=True,
+            worktree_base=Path(".worktrees"),
+            state_file=Path(".parallel-manage-state.json"),
+            timeout_per_issue=1800,
+            max_merge_retries=2,
+            stream_subprocess_output=False,
+            command_prefix="/ll:",
+            ready_command="ready-issue {{issue_id}}",
+            manage_command="manage-issue {{issue_type}} {{action}} {{issue_id}}",
+            base_branch="main",
+            epic_branches=EpicBranchesConfig(
+                enabled=enabled,
+                merge_to_base_on_complete=merge_to_base,
+                open_pr=open_pr,
+            ),
+        )
+        br = BRConfig(repo_path)
+        with (
+            patch("little_loops.parallel.orchestrator.WorkerPool"),
+            patch("little_loops.parallel.orchestrator.MergeCoordinator"),
+            patch("little_loops.parallel.orchestrator.IssuePriorityQueue"),
+        ):
+            orch = ParallelOrchestrator(
+                parallel_config=pconfig,
+                br_config=br,
+                repo_path=repo_path,
+                verbose=False,
+            )
+        orch.queue.failed_ids = []  # type: ignore[misc]
+
+        from little_loops.issue_parser import IssueParser
+
+        parser = IssueParser(br)
+        for cid in child_statuses:
+            sub = _SUBDIR[cid.split("-")[0]]
+            path = next((issues_base / sub).glob(f"P3-{cid}-*.md"))
+            orch._issue_info_by_id[cid] = parser.parse_file(path)
+        return orch, repo_path
+
+    return _factory
 
 
 class TestOrchestratorInit:
@@ -1162,6 +1259,224 @@ class TestMergePendingWorktrees:
         assert "parallel/bug-001-20260117-120000" in merge_called[0]
 
 
+class TestEpicCompletionMerge:
+    """Tests for the EPIC-completion merge/PR trigger (FEAT-2449).
+
+    Modeled on TestMergePendingWorktrees.test_attempts_merge_with_commits_ahead:
+    mocks ``_git_lock.run``, captures the invocations, and asserts on the
+    ``git merge --no-ff epic/<id>`` + subsequent ``branch -D``.
+    """
+
+    _EPIC_BRANCH = "epic/epic-2451-integration"
+
+    @staticmethod
+    def _capture_git(orch: ParallelOrchestrator) -> list[list[str]]:
+        """Replace ``_git_lock.run`` with a success-returning capture stub."""
+        calls: list[list[str]] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            calls.append(args)
+            return result
+
+        orch._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+        return calls
+
+    def test_merges_epic_branch_when_all_children_done(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """All children `done` → merge --no-ff epic branch to base, then branch -D."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        merge_calls = [c for c in calls if c[0] == "merge" and "--abort" not in c]
+        del_calls = [c for c in calls if c[0] == "branch" and "-D" in c]
+        assert len(merge_calls) == 1
+        assert "--no-ff" in merge_calls[0]
+        assert self._EPIC_BRANCH in merge_calls[0]
+        assert len(del_calls) == 1
+        assert self._EPIC_BRANCH in del_calls[0]
+
+    def test_holds_open_when_child_not_done(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A still-open child holds the epic branch open (no merge, no delete)."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "open"})
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+        assert not [c for c in calls if c[0] == "branch"]
+
+    def test_blocked_child_holds_branch_open(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A blocked child blocks completion even though it is not `open`."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "blocked"})
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+    def test_cancelled_child_does_not_trigger_merge(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A cancelled child must NOT count as done (diverges from the badge)."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "cancelled"})
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+    def test_partial_failure_gate_scopes_failed_ids(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """Disk says all-done, but a child in this run's failed_ids holds it open."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        orch.queue.failed_ids = ["FEAT-020"]  # type: ignore[misc]
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+    def test_failed_id_outside_epic_does_not_block(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A failed issue that is NOT a child of this EPIC does not gate the merge."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        orch.queue.failed_ids = ["BUG-999"]  # type: ignore[misc]
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert [c for c in calls if c[0] == "merge"]
+
+    def test_state_failed_issues_holds_branch_open(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """The resumption-side ``state.failed_issues`` dict also gates completion."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        orch.state.failed_issues = {"FEAT-020": "boom"}
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+    def test_skipped_when_merge_to_base_false(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """Config dead-read gap closed: merge is skipped when merge_to_base_on_complete=False."""
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"},
+            merge_to_base=False,
+            open_pr=False,
+        )
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+    def test_opens_pr_when_open_pr_true(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """open_pr=True → gh pr create --head epic/<id> --base main; branch NOT deleted."""
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"},
+            merge_to_base=False,
+            open_pr=True,
+        )
+        git_calls = self._capture_git(orch)
+
+        import subprocess
+
+        captured: list[list[str]] = []
+
+        def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured.append(args)
+            if args[0] == "gh" and args[1] == "auth":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "pr":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="https://github.com/owner/repo/pull/7",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="x")
+
+        with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_run):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        pr_create = [a for a in captured if a[:3] == ["gh", "pr", "create"]]
+        assert pr_create, "expected a `gh pr create` invocation"
+        args = pr_create[0]
+        assert args[args.index("--head") + 1] == self._EPIC_BRANCH
+        assert args[args.index("--base") + 1] == "main"
+        # PR path must NOT merge or delete the branch (the PR needs it).
+        assert not [c for c in git_calls if c[0] in ("merge", "branch")]
+
+    def test_idempotent_across_calls(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A second completion call for the same branch is a no-op."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        calls = self._capture_git(orch)
+
+        orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+        orch._maybe_complete_epic("FEAT-020", self._EPIC_BRANCH)
+
+        assert len([c for c in calls if c[0] == "merge" and "--abort" not in c]) == 1
+
+    def test_no_merge_when_epic_branches_disabled(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """With epic_branches disabled the trigger is inert even if called directly."""
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"},
+            enabled=False,
+        )
+        calls = self._capture_git(orch)
+
+        # merge_to_base defaults True, so the helper still runs; the
+        # _on_worker_complete gate (enabled) is what suppresses it in practice.
+        # Here we assert the on_worker_complete-level gate via a WorkerResult.
+        result = WorkerResult(
+            issue_id="FEAT-010",
+            success=True,
+            branch_name="parallel/feat-010",
+            worktree_path=Path("/tmp/worktree"),
+            duration=1.0,
+            epic_branch=self._EPIC_BRANCH,
+        )
+        orch.merge_coordinator.merged_ids = ["FEAT-010"]  # type: ignore[misc]
+        orch._complete_issue_lifecycle_if_needed = MagicMock()  # type: ignore[method-assign]
+        orch._on_worker_complete(result)
+
+        assert not [c for c in calls if c[0] == "merge"]
+
+
 class TestStateManagement:
     """Tests for state load/save/cleanup."""
 
@@ -2113,6 +2428,73 @@ class TestOnWorkerComplete:
         assert pr_create, "expected a `gh pr create` invocation"
         base_args = pr_create[0]
         assert base_args[base_args.index("--base") + 1] == "epic/EPIC-2451-integration"
+
+    def test_on_worker_complete_epic_completion_merges(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """FEAT-2449: the last child's success triggers the epic-branch merge."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+
+        git_calls: list[list[str]] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = ""
+            git_calls.append(args)
+            return r
+
+        orch._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+        orch._complete_issue_lifecycle_if_needed = MagicMock()  # type: ignore[method-assign]
+        orch.merge_coordinator.merged_ids = ["FEAT-010"]  # type: ignore[misc]
+
+        result = WorkerResult(
+            issue_id="FEAT-010",
+            success=True,
+            branch_name="parallel/feat-010",
+            worktree_path=Path("/tmp/worktree"),
+            duration=5.0,
+            epic_branch="epic/epic-2451-integration",
+        )
+        orch._on_worker_complete(result)
+
+        merge_calls = [c for c in git_calls if c[0] == "merge" and "--abort" not in c]
+        assert len(merge_calls) == 1
+        assert "epic/epic-2451-integration" in merge_calls[0]
+
+    def test_on_worker_complete_epic_partial_failure_holds_open(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """FEAT-2449: a failed child holds the epic branch open (no merge)."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "open"})
+        orch.queue.failed_ids = ["FEAT-020"]  # type: ignore[misc]
+
+        git_calls: list[list[str]] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = ""
+            git_calls.append(args)
+            return r
+
+        orch._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        result = WorkerResult(
+            issue_id="FEAT-020",
+            success=False,
+            branch_name="parallel/feat-020",
+            worktree_path=Path("/tmp/worktree"),
+            error="boom",
+            epic_branch="epic/epic-2451-integration",
+        )
+        orch._on_worker_complete(result)
+
+        assert not [c for c in git_calls if c[0] == "merge"]
 
     def test_on_worker_complete_feature_branch_push_failure(
         self,
