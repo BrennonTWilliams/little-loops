@@ -203,7 +203,10 @@ it and route. For `rn-remediate`:
 
 | Outcome token | Meaning | `rn-implement` routes to |
 |---------------|---------|--------------------------|
-| `IMPLEMENTED` | Issue implemented | Re-enqueue newly-unblocked issues, continue |
+| `IMPLEMENTED` | Issue implemented (FEAT-2552: code-run-gate passed — build / test / typecheck / lint / health all green, or all commands null → `GATE_SKIP` treated as pass) | Re-enqueue newly-unblocked issues, continue |
+| `GATE_FAILED` | FEAT-2552: code-run-gate oracle reported a non-skip failure (build / test / typecheck / lint / health). Written by `rn-remediate.record_gate_failure`. Increments the same `remediation_count_<ID>.txt` counter that `check_remediation_budget` enforces, so a gate failure consumes a budget slot. Tagged `GATE_FAILED_CODE_QUALITY` in `failures.txt` for the report's per-tag tally. | `record_failure` (parent), dequeue next |
+| `GATE_FAILED_INFRA` | FEAT-2552 / ENH-2005 mirror: code-run-gate child crashed / timed out / context-resolution-failed before writing its token. Distinct from `GATE_FAILED` so a gate infrastructure failure isn't confused with a code-quality failure. | `emit_implement_failed` (terminal) |
+| `GATE_SKIP` | FEAT-2551 / FEAT-2552: oracle emitted SKIP (all commands null/empty — docs-only no-op pass). Treated identically to `GATE_PASS` by F2b's wiring (routes to `emit_implemented`); no separate routing row in `rn-implement`'s table. | `emit_implemented` (treated as pass) |
 | `NEEDS_DECOMPOSE` | Issue too large | Delegate to `rn-decompose` |
 | `STALLED_NEEDS_DECOMPOSE` | Remediation exhausted its budget | Try `rn-decompose`; if no children, defer |
 | `MANUAL_REVIEW_NEEDED` | Needs a human decision | Mark blocked |

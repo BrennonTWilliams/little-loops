@@ -938,6 +938,26 @@ states:
       source: "${captured.rem_outcome.output}"
       pattern: "LEARNING_GATE_BLOCKED"
     on_yes: prove_rem_learning_gate
+    on_no: route_rem_gate_failed   # FEAT-2552: route GATE_FAILED explicitly before generic failure
+    on_error: record_failure
+
+  route_rem_gate_failed:
+    # FEAT-2552: rn-remediate's `record_gate_failure` writes GATE_FAILED to the
+    # sidecar when the code-run-gate oracle (FEAT-2551) reports a non-skip
+    # failure (build / test / typecheck / lint / service_health). Route it
+    # explicitly for diagnostic counter separation — the actual recorder is
+    # `record_failure` (the gate's per-issue counter is owned by rn-remediate's
+    # `remediation_count_<ID>.txt`). Without this router, GATE_FAILED would
+    # still fall through to record_failure, but the chain loses its intent:
+    # a future GATE_FAILED-specific recorder (e.g. tallying build vs test vs
+    # typecheck failures from the oracle's per-sidecar exit codes) would need
+    # a chain reshuffle. The mirror of `route_rem_scores_missing` /
+    # `route_rem_learning_gate` keeps the chain composable.
+    evaluate:
+      type: output_contains
+      source: "${captured.rem_outcome.output}"
+      pattern: "GATE_FAILED"
+    on_yes: record_failure
     on_no: record_failure   # genuine IMPLEMENT_FAILED → recorded failure
     on_error: record_failure
 
@@ -1167,11 +1187,28 @@ states:
     # ENH-1977 Fix 1 (resolves C): genuine implement crashes / score errors /
     # size-review errors are counted as failures and do NOT trigger a
     # decomposition attempt.
+    #
+    # FEAT-2552: when the sidecar carries GATE_FAILED, tag the failure
+    # record with GATE_FAILED_CODE_QUALITY (distinct from the plain [FAILED]
+    # bucket) so the report's per-tag counter can surface gate code-quality
+    # failures separately from generic implementation failures. GATE_FAILED_INFRA
+    # is already tagged by rn-remediate's record_gate_error before the sidecar
+    # reaches classify_remediation; the report's existing GATE_FAILED_INFRA
+    # substring tally covers it.
     action_type: shell
     action: |
       ID="${captured.input.output}"
-      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID}" >> "${captured.run_dir.output}/failures.txt"
-      echo "[FAILED] $ID recorded as an implementation failure"
+      RUN_DIR="${captured.run_dir.output}"
+      # FEAT-2552: detect gate code-quality failure in the sidecar and tag it
+      # distinctly. Mirrors the SCORES_MISSING / SIZE_REVIEW_FAILED pattern —
+      # the [FAILED] bucket stays a clean IMPLEMENT_FAILED default; gate
+      # failures get the GATE_FAILED_CODE_QUALITY tag for report separation.
+      TAG="FAILED"
+      if [ -f "$${RUN_DIR}/subloop_outcome_$${ID}.txt" ] && grep -qxF "GATE_FAILED" "$${RUN_DIR}/subloop_outcome_$${ID}.txt"; then
+        TAG="GATE_FAILED_CODE_QUALITY"
+      fi
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} $${TAG}" >> "$${RUN_DIR}/failures.txt"
+      echo "[$${TAG}] $ID recorded as an implementation failure"
     next: dequeue_next
 
   record_sub_loop_crash:
@@ -1398,6 +1435,14 @@ states:
       # reflects only genuine implementation failures (operator triage).
       SCORES_MISSING = _grep_count("failures.txt", "SCORES_MISSING")
       SIZE_REVIEW_FAILED = _grep_count("failures.txt", "SIZE_REVIEW_FAILED")
+      # FEAT-2552: gate failures are tagged distinctly (GATE_FAILED_CODE_QUALITY
+      # by the parent's record_failure when the sidecar carries GATE_FAILED;
+      # GATE_FAILED_INFRA by rn-remediate's record_gate_error on gate child
+      # crash). Tally separately so the gate's failure rate is visible in
+      # summaries — without these, gate failures silently merge into the
+      # generic FAILED bucket and the gate's signal is invisible to operators.
+      GATE_FAILED_CODE_QUALITY = _grep_count("failures.txt", "GATE_FAILED_CODE_QUALITY")
+      GATE_FAILED_INFRA = _grep_count("failures.txt", "GATE_FAILED_INFRA")
       # ENH-2406: LEARNING_GATE_BLOCKED_PRE_DEQUEUE is a substring superset of
       # LEARNING_GATE_BLOCKED — count the total substring match, then subtract
       # the _PRE_DEQUEUE-only count so a pre-dequeue catch isn't double-counted.
@@ -1415,6 +1460,8 @@ states:
           - SCORES_MISSING
           - SIZE_REVIEW_FAILED
           - LEARNING_GATE_BLOCKED_TOTAL
+          - GATE_FAILED_CODE_QUALITY
+          - GATE_FAILED_INFRA
       )
       RATE_LIMITED = _read_text_count("rate_limits.txt")
 
@@ -1427,6 +1474,8 @@ states:
           "SIZE_REVIEW_FAILED",
           "LEARNING_GATE_BLOCKED_PRE_DEQUEUE",
           "LEARNING_GATE_BLOCKED",
+          "GATE_FAILED_CODE_QUALITY",
+          "GATE_FAILED_INFRA",
       )
 
       # 1. subloop_outcome_<ID>.txt → per_issue records
@@ -1497,6 +1546,8 @@ states:
           "sub_loop_crashes": SUB_LOOP_CRASHES,
           "scores_missing": SCORES_MISSING,
           "size_review_failed": SIZE_REVIEW_FAILED,
+          "gate_failed_code_quality": GATE_FAILED_CODE_QUALITY,
+          "gate_failed_infra": GATE_FAILED_INFRA,
           "learning_gate_blocked": LEARNING_GATE_BLOCKED,
           "learning_gate_blocked_pre_dequeue": LEARNING_GATE_BLOCKED_PRE_DEQUEUE,
           "rate_limited": RATE_LIMITED,
@@ -1515,6 +1566,8 @@ states:
           f"Depth-capped: {DEPTH_CAPPED} | Failures: {FAILURES} | "
           f"Sub-loop crashes: {SUB_LOOP_CRASHES} | Scores-missing: {SCORES_MISSING} | "
           f"Size-review-failed: {SIZE_REVIEW_FAILED} | "
+          f"Gate-failed-code-quality: {GATE_FAILED_CODE_QUALITY} | "
+          f"Gate-failed-infra: {GATE_FAILED_INFRA} | "
           f"Learning-gate-blocked: {LEARNING_GATE_BLOCKED} | "
           f"Learning-gate-blocked-pre-dequeue: {LEARNING_GATE_BLOCKED_PRE_DEQUEUE} | "
           f"Rate-limited: {RATE_LIMITED}"

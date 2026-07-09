@@ -1,10 +1,12 @@
 ---
 id: FEAT-2552
-title: 'F2b — wire code-run-gate oracle into rn-remediate + rn-implement token routing'
+title: "F2b \u2014 wire code-run-gate oracle into rn-remediate + rn-implement token\
+  \ routing"
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-08T00:00:00Z'
+completed_at: '2026-07-09T01:41:36Z'
 discovered_date: 2026-07-08
 discovered_by: split-from-FEAT-2413
 parent: FEAT-2413
@@ -24,6 +26,12 @@ decision_needed: false
 learning_tests_required:
 - pytest-json-report
 size: Large
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # FEAT-2552: F2b — wire code-run-gate oracle into rn-remediate / rn-implement
@@ -676,42 +684,92 @@ _Pattern references for the new tests:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-08_
+_Re-checked by `/ll:confidence-check` on 2026-07-08 after FEAT-2551 marked Completed._
 
-**Readiness Score**: 95/100 → PROCEED (threshold 85)
-**Outcome Confidence**: 62/100 → MODERATE (threshold 75)
+**Readiness Score**: 100/100 → PROCEED (threshold 85)
+**Outcome Confidence**: 67/100 → MODERATE (threshold 75)
 
 ### Outcome Risk Factors
 
-- **Transitive token-channel fanout** — 7+ loops inherit the gate
-  behavior via `subloop_outcome_<ID>.txt` (`autodev`,
-  `scan-and-implement`, `auto-refine-and-implement`, `rn-build`,
-  `goal-cluster`, `recursive_finalize`,
-  `workflow_sequence/analysis`). A bug in the new wiring or its
-  routing propagates across the entire greenfield family. This is
-  the dominant risk axis.
+- **Broad change surface via transitive token-channel fanout** —
+  7+ loops inherit the gate behavior via
+  `subloop_outcome_<ID>.txt` (`autodev`, `scan-and-implement`,
+  `auto-refine-and-implement`, `rn-build`, `goal-cluster`,
+  `recursive_finalize`, `workflow_sequence/analysis`). A bug in the
+  new wiring or its routing propagates across the entire greenfield
+  family. This is the dominant risk axis.
 - **Intentional test breakage** — two tests in
-  `test_rn_remediate.py` must be updated in the same commit as the
-  wiring. If the commit is split between author and reviewer, the
+  `test_rn_remediate.py` (`test_implement_routes_to_done` at
+  `:482-486` and `test_implement_success_emits_implemented` at
+  `:1374-1379`) must be updated in the same commit as the wiring.
+  If the commit is split between author and reviewer, the
   intermediate state will fail the suite.
-- **Sub-loop sidecar decision (FEAT-2551 dependency)** —
-  `TestSubloopSidecarContract`'s coverage depends on whether the
-  oracle writes `subloop_outcome_<ID>.txt` directly (option (a) in
-  Implementation Step 4) or whether `rn-remediate` translates the
-  oracle's verdict (option (b)). This decision must be locked in
-  FEAT-2551 before F2b lands.
+- **Sub-loop sidecar-write contract depends on FEAT-2551's design
+  decision** — `TestSubloopSidecarContract`'s coverage depends on
+  whether the oracle writes `subloop_outcome_<ID>.txt` directly
+  (option a) or whether `rn-remediate` translates the oracle's
+  verdict into the standard `IMPLEMENTED` / `IMPLEMENT_FAILED`
+  token (option b). FEAT-2551 is now Completed; verify the oracle's
+  actual sidecar-write behavior in `oracles/code-run-gate.yaml`
+  before committing F2b's `record_gate_failure` /
+  `record_gate_error` shell actions. (Spot-check confirms the
+  oracle's `aggregate` state writes `subloop_outcome_<ID>.txt`
+  directly — option a is in effect; `SUBLOOPS` extension at
+  `test_builtin_loops.py:314` is therefore required.)
+- **MR-1 evaluator coverage** — the new `run_code_gate` state is a
+  sub-loop delegation (no inline LLM evaluator), which is exactly
+  what MR-1 doctrine requires. However, the diagnostic-reporter
+  tests (`test_diagnostic_record_states_tag_and_continue` and
+  `test_report_tallies_diagnostics_separately_from_failures`) must
+  be parametrized over the new `GATE_FAILED` /
+  `GATE_FAILED_INFRA` tags so the report state's per-tag counter
+  distinguishes gate failures from generic `FAILED`. If skipped,
+  gate failures silently merge into the generic failure bucket
+  and the gate's failure rate becomes invisible in summaries.
 
 _No `decision_needed`, `missing_artifacts`, `mechanical_fanout_suppressed`,
 or `implementation_order_risk` flag updates triggered by these risk
 factors (no signal-phrase matches)._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-09T01:21:53 - `dd9221fd-d652-478e-8eb2-f93201a1c891.jsonl`
 - `/ll:wire-issue` - 2026-07-08T23:20:13 - `113eeae5-056f-4c48-9087-564f58c747ad.jsonl`
 - `/ll:refine-issue` - 2026-07-08T23:09:09 - `cd8692a4-2e8f-451c-a9c5-c3c7d206c1fd.jsonl`
 
 - `/ll:confidence-check` - 2026-07-08T23:10:00 - `a081f85a-6f32-4531-b0ca-f9df5eae6f9f.jsonl`
 - `/ll:split-issue` - 2026-07-08T23:10:00 - `a081f85a-6f32-4531-b0ca-f9df5eae6f9f.jsonl`
+- `/ll:confidence-check` - 2026-07-08T23:55:00 - `8f6427ea-9d1b-4d82-b7d4-0158a5af4f3f.jsonl`
+- `/ll:manage-issue` - 2026-07-09T01:41:36 - implementation complete (FEAT-2552 F2b wired)
 
 ## Status
 
-**Open** | Split from FEAT-2413 on 2026-07-08 | Priority: P2 | Depends on FEAT-2551
+**Done** | Split from FEAT-2413 on 2026-07-08 | Priority: P2 | Depends on FEAT-2551
+
+## Resolution
+
+F2b wired the `oracles/code-run-gate` oracle (FEAT-2551) into `rn-remediate`
+so an `IMPLEMENTED` verdict now requires the gate to pass. Three new states
+in `rn-remediate.yaml` (`run_code_gate`, `record_gate_failure`,
+`record_gate_error`) and a new diagnostic router `route_rem_gate_failed`
+in `rn-implement.yaml` chain the verdict through the existing
+`subloop_outcome_<ID>.txt` sidecar. `record_gate_failure` increments the
+same `remediation_count_<ID>.txt` counter that `check_remediation_budget`
+enforces (no parallel counter); `record_gate_error` writes
+`GATE_FAILED_INFRA` to `failures.txt` for report's per-tag tally
+(distinct from a clean IMPLEMENT_FAILED, mirroring the ENH-2005
+`record_sub_loop_crash` precedent). `route_rem_learning_gate.on_no`
+now chains to `route_rem_gate_failed` for diagnostic triage before
+`record_failure`. `min_pass_rate: 1.0` is added to
+`rn-remediate.context.defaults` (strict pass). The static `loop:`
+reference uses the `oracles/<name>` path. Two existing tests in
+`test_rn_remediate.py` (`test_implement_routes_to_done`,
+`test_implement_success_emits_implemented`) intentionally updated;
+new test classes `TestRunCodeGate` (17 tests),
+`TestRouteRemGateFailed` (6 tests), and
+`TestCodeRunGateOracleWiring` (10 tests) cover the wiring. Doc
+updates: `loops/README.md` catalog, `RECURSIVE_LOOPS_GUIDE.md` outcome
+tokens, `LOOPS_REFERENCE.md` `rn-remediate` row + flow diagram. Full
+test suite: 14394 passed, 36 skipped. `ll-loop validate rn-remediate`
+and `ll-loop validate rn-implement` both pass.
+
+Closes FEAT-2552.

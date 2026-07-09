@@ -74,6 +74,14 @@ context:
   # the ENH-2319 gate is bypassed for this issue. Threaded from the parent
   # (rn-implement) via with:. Default empty = gate active (config-gated).
   skip_learning_gate: ""
+  # FEAT-2552: min_pass_rate threshold for the code-run-gate oracle's
+  # pass_rate evaluator. Strict 1.0 = every test must pass for IMPLEMENTED.
+  # Overridable by the parent via with: binding (rn-implement). Mirrors
+  # max_remediation_passes (line 60) as a per-loop default that callers can
+  # tune; the oracle's own default is 0.95, but F2b pins 1.0 here so a
+  # deliberately broken implementation cannot earn IMPLEMENTED (the
+  # dominant robustness hole in the greenfield family).
+  min_pass_rate: 1.0
 
 states:
   # =========================================================================
@@ -495,9 +503,89 @@ states:
       # Failure recording is owned by the parent's record_failure state
       # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
       exit $?
-    on_yes: emit_implemented
+    # FEAT-2552: implement success no longer routes directly to
+    # emit_implemented. The code-run-gate oracle (FEAT-2551) is the new
+    # arbiter of IMPLEMENTED — a passing gate routes to emit_implemented,
+    # a failing gate routes to record_gate_failure (which increments the
+    # remediation counter and writes GATE_FAILED to the sidecar), a gate
+    # child crash routes to record_gate_error (GATE_FAILED_INFRA).
+    on_yes: run_code_gate
     on_no: check_learning_gate
     on_error: check_learning_gate
+
+  run_code_gate:
+    # FEAT-2552: sub-loop delegation to the code-run-gate oracle
+    # (oracles/code-run-gate.yaml, FEAT-2551). Mirrors the `run_remediation`
+    # pattern at `rn-implement.yaml:695-718` — `loop: <sub>` + `with:`
+    # bindings + `on_success` / `on_failure` / `on_error` shape.
+    #
+    # The oracle runs the project's build / test / typecheck / lint /
+    # service_health command matrix and writes its verdict
+    # (GATE_PASS / GATE_FAILED / GATE_SKIP) to
+    # `${run_dir}/subloop_outcome_<ID>.txt`. The executor maps GATE_PASS
+    # and GATE_SKIP to `done` (on_success) and GATE_FAILED to `failed`
+    # (on_failure). An infrastructure crash / context-resolution failure
+    # (on_error) is disambiguated from gate code-quality failure per
+    # ENH-2005 (mirrors `record_sub_loop_crash` precedent).
+    loop: oracles/code-run-gate
+    with:
+      issue_id: "${context.issue_id}"
+      run_dir: "${context.run_dir}"
+      min_pass_rate: "${context.min_pass_rate}"
+    on_success: emit_implemented
+    on_failure: record_gate_failure
+    on_error: record_gate_error
+
+  record_gate_failure:
+    # FEAT-2552: gate child reached its `failed` terminal (GATE_FAILED).
+    # Write the GATE_FAILED token to the sidecar so the parent's
+    # classify_remediation picks it up via the route_rem_* chain, and
+    # increment the same `remediation_count_<ID>.txt` counter that
+    # `check_remediation_budget` enforces — so a gate failure consumes
+    # a budget slot without needing a parallel counter. Route back to
+    # `implement` for one more remediation pass (cheap, one extra
+    # `ll-auto` call); the budget check on the next convergence cycle
+    # terminates via `emit_stalled_needs_decompose` if
+    # `max_remediation_passes` is exhausted (the "lazy" budget pattern
+    # noted in FEAT-2552's Additional Findings).
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      # Write the outcome token — parent's classify_remediation reads this
+      # via output_contains in the route_rem_* chain.
+      echo "GATE_FAILED" > "$${RUN_DIR}/subloop_outcome_$${ID}.txt"
+      # Increment the budget counter so the next convergence cycle
+      # terminates via check_remediation_budget's on_no route when the
+      # budget is exhausted.
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      echo $((REM_COUNT + 1)) > "$REM_COUNTER_FILE"
+      echo "[GATE_FAILED] $${ID} — code-run-gate reported a non-skip failure (build/test/typecheck/lint/health)"
+    next: implement
+
+  record_gate_error:
+    # FEAT-2552 / ENH-2005 mirror: gate child crashed / timed out /
+    # context-resolution-failed BEFORE writing its outcome token.
+    # Distinct from record_gate_failure — the GATE_FAILED_INFRA tag
+    # lets the parent (and report) tally gate infrastructure failures
+    # separately from gate code-quality failures. A gate child crash is
+    # an infrastructure failure (not retryable code quality), so route
+    # straight to emit_implement_failed rather than back to implement
+    # (where the same crash would recur).
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      # Write the distinct infra-failure token — parent's classify_remediation
+      # falls through to record_failure (IMPLEMENT_FAILED) via route_rem_*
+      # chain; the GATE_FAILED_INFRA tag appears in failures.txt so the
+      # report's per-tag counter can distinguish it from a clean
+      # IMPLEMENT_FAILED.
+      echo "GATE_FAILED_INFRA" > "$${RUN_DIR}/subloop_outcome_$${ID}.txt"
+      echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") $${ID} GATE_FAILED_INFRA" >> "$${RUN_DIR}/failures.txt"
+      echo "[GATE_FAILED_INFRA] $${ID} — code-run-gate child crashed/timeout/context error (distinct from code-quality failure)"
+    next: emit_implement_failed
 
   check_learning_gate:
     # Learning-gate consistency: a gate block (ENH-2319, marker LEARNING_GATE_BLOCKED
@@ -805,7 +893,14 @@ states:
   # Each terminal path writes exactly one outcome token to the shared run_dir so
   # the parent's classify_remediation can route deterministically rather than
   # collapsing every non-done terminal into "decompose". Tokens:
-  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY | LEARNING_GATE_BLOCKED
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY | LEARNING_GATE_BLOCKED | GATE_FAILED | GATE_FAILED_INFRA | GATE_SKIP
+  #
+  # FEAT-2552: GATE_FAILED is written by record_gate_failure (gate child
+  # reached its `failed` terminal — code quality issue). GATE_FAILED_INFRA
+  # is written by record_gate_error (gate child crashed/timed out — distinct
+  # from code quality, ENH-2005 mirror). GATE_SKIP is written by the oracle
+  # directly when all commands are null/empty (docs-only no-op pass) and is
+  # treated identically to GATE_PASS by run_code_gate's on_success route.
 
   emit_implemented:
     action_type: shell

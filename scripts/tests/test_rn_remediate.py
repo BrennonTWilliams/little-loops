@@ -480,10 +480,13 @@ class TestRemediationActions:
         assert "ll-auto --only" in impl["action"]
 
     def test_implement_routes_to_done(self) -> None:
-        """implement routes to done (terminal) on success — queue management stays in parent."""
+        """implement routes to run_code_gate on success (FEAT-2552) — the gate is the
+        final arbiter of IMPLEMENTED. The previous direct-to-emit_implemented route
+        is intentionally broken; gate → emit_implemented on pass / record_gate_failure
+        on fail. Queue management stays in parent."""
         data = _load_loop()
         impl = data["states"]["implement"]
-        assert impl["on_yes"] == "emit_implemented"
+        assert impl["on_yes"] == "run_code_gate"
 
     def test_implement_failure_routes_to_failed(self) -> None:
         """implement routes to check_learning_gate on failure — the learning-gate check
@@ -1372,8 +1375,11 @@ class TestOutcomeTokenChannel:
         assert data["states"]["emit_implemented"]["next"] == "done"
 
     def test_implement_success_emits_implemented(self) -> None:
+        """FEAT-2552: implement.on_yes routes to run_code_gate (not directly to
+        emit_implemented). emit_implemented is reached only after the gate passes
+        (GATE_PASS / GATE_SKIP). on_no routing unchanged."""
         data = _load_loop()
-        assert data["states"]["implement"]["on_yes"] == "emit_implemented"
+        assert data["states"]["implement"]["on_yes"] == "run_code_gate"
         # on_no routes through check_learning_gate first (550659db), then the
         # check_impl_auth auth guard (ENH-2353), then emit_implement_failed
         assert data["states"]["implement"]["on_no"] == "check_learning_gate"
@@ -2020,3 +2026,181 @@ class TestRnRemediateAuthGuard:
         data = _load_loop()
         action = data["states"]["emit_env_not_ready"].get("action", "")
         assert "echo" in action, "emit_env_not_ready must echo a diagnostic message"
+
+
+# ---------------------------------------------------------------------------
+# TestRunCodeGate — FEAT-2552: wire code-run-gate oracle into rn-remediate
+# ---------------------------------------------------------------------------
+
+
+class TestRunCodeGate:
+    """FEAT-2552: rn-remediate inserts a `run_code_gate` sub-loop delegation between
+    `implement` and `emit_implemented`. The oracle (`oracles/code-run-gate.yaml`,
+    FEAT-2551) emits GATE_PASS / GATE_FAILED / GATE_SKIP via the
+    `subloop_outcome_<ID>.txt` sidecar; the parent must route those verdicts to
+    `emit_implemented` (pass / skip) or `record_gate_failure` (fail), and
+    disambiguate infrastructure crashes (`on_error`) from gate code-quality failures
+    via the distinct `record_gate_error` state. The gate's verdict becomes the new
+    load-bearing signal for IMPLEMENTED vs IMPLEMENT_FAILED."""
+
+    # --- run_code_gate state shape ---
+
+    def test_run_code_gate_state_exists(self) -> None:
+        data = _load_loop()
+        assert "run_code_gate" in data["states"], (
+            "rn-remediate must add run_code_gate state (FEAT-2552)"
+        )
+
+    def test_run_code_gate_is_subloop_delegation(self) -> None:
+        """run_code_gate delegates to the code-run-gate oracle (FEAT-2551).
+
+        The static `loop:` reference uses the `oracles/<name>` path (full
+        relative path) per the loop-reference resolution contract — bare
+        `code-run-gate` would not resolve under the FSM static-reference
+        validator (`_validate_loop_references` at fsm/validation.py:508-544).
+        """
+        data = _load_loop()
+        state = data["states"]["run_code_gate"]
+        assert state.get("loop") == "oracles/code-run-gate", (
+            f"run_code_gate.loop must be 'oracles/code-run-gate', got {state.get('loop')!r}"
+        )
+
+    def test_run_code_gate_has_with_bindings(self) -> None:
+        """run_code_gate passes issue_id, run_dir, and min_pass_rate via with: bindings.
+
+        `min_pass_rate` is a new rn-remediate context default (FEAT-2552:226-229) so
+        the sub-loop dispatch never fails context-resolution for issues that don't
+        override it. The oracle's evaluator target is hardcoded 0.95; the binding is
+        passed for forward-compatibility and per-issue override.
+        """
+        data = _load_loop()
+        with_bindings = data["states"]["run_code_gate"]["with"]
+        assert with_bindings["issue_id"] == "${context.issue_id}"
+        assert with_bindings["run_dir"] == "${context.run_dir}"
+        assert with_bindings["min_pass_rate"] == "${context.min_pass_rate}"
+
+    def test_run_code_gate_routes_on_success_to_emit_implemented(self) -> None:
+        """GATE_PASS / GATE_SKIP both reach emit_implemented (the oracle maps both
+        verdicts to its `done` terminal, which the executor collapses to on_success)."""
+        data = _load_loop()
+        state = data["states"]["run_code_gate"]
+        assert state["on_success"] == "emit_implemented"
+
+    def test_run_code_gate_routes_on_failure_to_record_gate_failure(self) -> None:
+        """GATE_FAILED (oracle's failed terminal) routes to record_gate_failure,
+        which writes GATE_FAILED to the sidecar for the parent to classify."""
+        data = _load_loop()
+        state = data["states"]["run_code_gate"]
+        assert state["on_failure"] == "record_gate_failure"
+
+    def test_run_code_gate_routes_on_error_to_record_gate_error(self) -> None:
+        """ENH-2005 mirror: a gate child crash/timeout/context-resolution failure
+        routes to record_gate_error (not record_gate_failure) so the parent's
+        classifier can disambiguate gate infrastructure failure from gate
+        code-quality failure (GATE_FAILED_INFRA tag)."""
+        data = _load_loop()
+        state = data["states"]["run_code_gate"]
+        assert state["on_error"] == "record_gate_error"
+
+    def test_implement_on_yes_routes_to_run_code_gate(self) -> None:
+        """The implement → emit_implemented direct route is intentionally broken;
+        implement.on_yes now feeds the gate (FEAT-2552 AC: an IMPLEMENTED verdict
+        requires the gate to pass)."""
+        data = _load_loop()
+        assert data["states"]["implement"]["on_yes"] == "run_code_gate"
+
+    # --- record_gate_failure state ---
+
+    def test_record_gate_failure_state_exists(self) -> None:
+        data = _load_loop()
+        assert "record_gate_failure" in data["states"], (
+            "rn-remediate must add record_gate_failure state to handle GATE_FAILED"
+        )
+
+    def test_record_gate_failure_writes_gate_failed_sidecar(self) -> None:
+        """record_gate_failure writes GATE_FAILED to the sidecar so the parent's
+        classify_remediation can pick it up via the route_rem_* chain."""
+        data = _load_loop()
+        action = data["states"]["record_gate_failure"]["action"]
+        assert "GATE_FAILED" in action
+        assert "subloop_outcome_" in action
+
+    def test_record_gate_failure_increments_remediation_counter(self) -> None:
+        """record_gate_failure increments the same remediation_count_<ID>.txt
+        counter that check_remediation_budget enforces — so a gate failure
+        consumes a budget slot without needing a parallel counter."""
+        data = _load_loop()
+        action = data["states"]["record_gate_failure"]["action"]
+        assert "remediation_count_" in action
+
+    def test_record_gate_failure_routes_back_to_implement(self) -> None:
+        """A gate failure returns to `implement` (cheap, one extra ll-auto call
+        + a re-gate) rather than dead-ending on the first failure. The budget
+        check on the next convergence cycle terminates if max_remediation_passes
+        is exhausted (FEAT-2552 'lazy' budget pattern)."""
+        data = _load_loop()
+        state = data["states"]["record_gate_failure"]
+        assert state.get("next") == "implement"
+
+    # --- record_gate_error state ---
+
+    def test_record_gate_error_state_exists(self) -> None:
+        data = _load_loop()
+        assert "record_gate_error" in data["states"], (
+            "rn-remediate must add record_gate_error state to disambiguate gate "
+            "child crash from gate code-quality failure (ENH-2005 pattern)"
+        )
+
+    def test_record_gate_error_writes_gate_failed_infra_sidecar(self) -> None:
+        """record_gate_error writes GATE_FAILED_INFRA (distinct from GATE_FAILED) so
+        the parent can tally gate infrastructure failures separately from genuine
+        gate code-quality failures."""
+        data = _load_loop()
+        action = data["states"]["record_gate_error"]["action"]
+        assert "GATE_FAILED_INFRA" in action
+        assert "subloop_outcome_" in action
+
+    def test_record_gate_error_routes_to_implement_failed(self) -> None:
+        """A gate child crash is an infrastructure failure (not retryable code
+        quality), so record_gate_error goes straight to emit_implement_failed
+        rather than back to implement (where the same crash would recur)."""
+        data = _load_loop()
+        state = data["states"]["record_gate_error"]
+        # Routes to next: emit_implement_failed (terminal), or directly to
+        # the equivalent failure emitter.
+        assert state.get("next") in {"emit_implement_failed", "failed"}
+
+    # --- context defaults ---
+
+    def test_min_pass_rate_default_defined(self) -> None:
+        """min_pass_rate is a new rn-remediate context default (FEAT-2552:226-229)
+        mirroring max_remediation_passes — without it, sub-loop dispatch fails
+        context-resolution for issues that don't override min_pass_rate."""
+        data = _load_loop()
+        ctx = data.get("context", {})
+        assert "min_pass_rate" in ctx, (
+            "rn-remediate.context must define min_pass_rate default"
+        )
+        assert ctx["min_pass_rate"] == 1.0, (
+            f"min_pass_rate default should be 1.0 (strict pass), got {ctx['min_pass_rate']!r}"
+        )
+
+    # --- FSM validation ---
+
+    def test_rn_remediate_validates_after_gate_wiring(self) -> None:
+        """ll-loop validate rn-remediate must pass after FEAT-2552's state insertions
+        (no ERROR-severity validation findings)."""
+        fsm, _warnings = load_and_validate(RN_REMEDIATE_PATH)
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, (
+            f"rn-remediate has validation errors after FEAT-2552 wiring: "
+            f"{[str(e) for e in error_list]}"
+        )
+
+    def test_run_code_gate_is_runnable(self) -> None:
+        """rn-remediate remains a runnable loop after the gate wiring (no
+        detection regression from the new states)."""
+        assert is_runnable_loop(RN_REMEDIATE_PATH), (
+            "rn-remediate must remain a runnable loop after FEAT-2552 wiring"
+        )

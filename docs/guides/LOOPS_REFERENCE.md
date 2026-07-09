@@ -199,7 +199,7 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 | `oracles/plan-node-refine` | Per-node refinement oracle for `rn-refine`'s recursive tree — refines ONE node (a self-contained mini-plan under `nodes/<id>/`) to rubric convergence by reusing `oracles/plan-research-iteration` + `plan_rubric_score` scoped to the node, then makes the adaptive-depth decision: LEAF (atomic, coherent) vs DECOMPOSE (split 2–5 child sub-goals, write child sub-plans, allocate child node ids, enqueue depth-first). Depth/node caps suppress decomposition at `max_depth`/`max_nodes`. Emits `REFINED_LEAF` / `DECOMPOSED` / `REFINED_CAPPED` / `REFINE_FAILED` for the parent orchestrator |
 | `rn-implement` | Queue orchestrator for recursive plan-and-implement — manages a depth-bounded issue queue, delegating per-issue remediation to `rn-remediate` and decomposition to `rn-decompose` |
 | `rn-decompose` | Sub-loop for issue decomposition (size review → child detection → enqueue with cycle detection), extracted from `rn-implement` Phase 5 |
-| `rn-remediate` | Sub-loop for iterative deepening remediation cycle (diagnose → remediate → converge), extracted from `rn-implement` |
+| `rn-remediate` | Sub-loop for iterative deepening remediation cycle (diagnose → remediate → converge), extracted from `rn-implement`. After FEAT-2552, `implement.on_yes` → `run_code_gate` (code-run-gate oracle, FEAT-2551) → `emit_implemented` so a broken build/test/typecheck/lint can no longer earn `IMPLEMENTED` (writes `GATE_FAILED` to sidecar, increments `remediation_count_<ID>.txt` for budget enforcement) |
 
 Run:
 ```bash
@@ -446,6 +446,11 @@ init               (shell: seed queue from comma-separated input, init tracking 
       on_failure (FAIL/STALLED)     → run_decomposition
       on_error                      → skip_issue
       on_rate_limit_exhausted       → rate_limit_diagnostic
+    # FEAT-2552: rn-remediate inserts run_code_gate between implement and emit_implemented:
+    #   implement.on_yes → run_code_gate (sub-loop: oracles/code-run-gate)
+    #     on_success (GATE_PASS / GATE_SKIP)  → emit_implemented
+    #     on_failure (GATE_FAILED)             → record_gate_failure (writes GATE_FAILED, increments remediation counter) → implement (one more pass)
+    #     on_error (gate child crash)          → record_gate_error (writes GATE_FAILED_INFRA to sidecar + failures.txt) → emit_implement_failed (terminal)
     → run_decomposition  (sub-loop: rn-decompose, max_rate_limit_retries: 3)
       on_success (children enqueued) → dequeue_next
       on_failure (no children)       → route_dec_stalled_origin

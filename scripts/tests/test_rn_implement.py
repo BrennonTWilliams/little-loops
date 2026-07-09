@@ -779,10 +779,14 @@ class TestValidation:
         route_rem_learning_gate's on_yes edge before record_learning_gate_blocked so a
         target surfaced deep in the pipeline gets the same one-attempt prove that the
         pre-dequeue check_learning_ready gate does.
+        FEAT-2552 added route_rem_gate_failed (+1), raising it to 46 — the
+        GATE_FAILED diagnostic router, inserted on route_rem_learning_gate's on_no
+        edge so a GATE_FAILED outcome from the code-run-gate oracle is triaged
+        distinctly from a genuine IMPLEMENT_FAILED.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 45, f"Expected ≤45 states in orchestrator, got {state_count}"
+        assert state_count <= 46, f"Expected ≤46 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -1250,11 +1254,13 @@ class TestProveRemLearningGate:
 
     def test_route_rem_learning_gate_points_at_prove_state(self) -> None:
         """route_rem_learning_gate.on_yes goes through the prove step, not straight
-        to record_learning_gate_blocked; on_no is unchanged."""
+        to record_learning_gate_blocked; on_no falls through to route_rem_gate_failed
+        (FEAT-2552) so a GATE_FAILED outcome is triaged distinctly from a genuine
+        IMPLEMENT_FAILED before record_failure."""
         data = _load_loop()
         router = data["states"]["route_rem_learning_gate"]
         assert router["on_yes"] == "prove_rem_learning_gate"
-        assert router["on_no"] == "record_failure"
+        assert router["on_no"] == "route_rem_gate_failed"
 
     def test_prove_state_gates_and_proves(self) -> None:
         """The state resolves auto-prove the same 3-tier way and makes a prove call
@@ -1616,3 +1622,68 @@ class TestPreFlightStatusCheck:
         assert state["on_error"] == "run_remediation", (
             "on_error must fail open to run_remediation (never block processing on a gate error)"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestRouteRemGateFailed — FEAT-2552: route GATE_FAILED through diagnostic
+# ---------------------------------------------------------------------------
+
+
+class TestRouteRemGateFailed:
+    """FEAT-2552: GATE_FAILED is a new outcome token written by rn-remediate's
+    record_gate_failure when the code-run-gate oracle reports a non-skip failure
+    (build / test / typecheck / lint / service_health). The token reaches the
+    parent via the existing subloop_outcome_<ID>.txt sidecar; the parent must
+    route it through a dedicated route_rem_gate_failed router for diagnostic
+    counter separation, mirroring route_rem_scores_missing / route_rem_learning_gate.
+
+    Without this router, GATE_FAILED falls through to record_failure
+    (rn-implement.yaml:941) and is merged into the generic FAILED bucket —
+    operators lose the distinction between code-quality failures (gate hit) and
+    genuine ll-auto failures (no diff produced).
+    """
+
+    def test_route_rem_gate_failed_state_exists(self) -> None:
+        data = _load_loop()
+        assert "route_rem_gate_failed" in data["states"], (
+            "rn-implement must add route_rem_gate_failed router to triage GATE_FAILED "
+            "out of the generic record_failure bucket (FEAT-2552)"
+        )
+
+    def test_route_rem_gate_failed_matches_gate_failed_token(self) -> None:
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_failed"]
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "GATE_FAILED"
+
+    def test_route_rem_gate_failed_source_uses_rem_outcome_capture(self) -> None:
+        """The router reads the captured child outcome (the parent's rem_outcome
+        capture from classify_remediation), not a fresh sub-process invocation."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_failed"]
+        assert "${captured.rem_outcome.output}" in state["evaluate"]["source"]
+
+    def test_route_rem_gate_failed_routes_to_record_failure(self) -> None:
+        """GATE_FAILED → record_failure (the diagnostic-tagged state that records
+        IMPLEMENT_FAILED with the GATE_FAILED rationale in failures.txt). The
+        gate's separate counter is owned by rn-remediate's record_gate_failure
+        (which writes GATE_FAILED to the sidecar); the parent's job here is just
+        to route, not duplicate tagging."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_failed"]
+        assert state["on_yes"] == "record_failure"
+
+    def test_route_rem_gate_failed_on_error_routes_to_record_failure(self) -> None:
+        """on_error fails closed to record_failure (the evaluate itself crashed)."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_failed"]
+        assert state["on_error"] == "record_failure"
+
+    def test_record_failure_appends_and_dequeues_for_gate_failed(self) -> None:
+        """The end-to-end triage: GATE_FAILED sidecar → route_rem_gate_failed →
+        record_failure → failures.txt. Verify the route chain is plumbed end to end
+        so the next dequeue proceeds (record_failure's next is dequeue_next)."""
+        data = _load_loop()
+        rf = data["states"]["record_failure"]
+        assert "failures.txt" in rf["action"]
+        assert rf["next"] == "dequeue_next"

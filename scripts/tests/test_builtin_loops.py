@@ -311,7 +311,10 @@ class TestSubloopSidecarContract:
     """
 
     # Sub-loops whose outcome the parent reads through the sidecar channel.
-    SUBLOOPS = ("rn-remediate", "rn-decompose")
+    # FEAT-2551/2552: oracles/code-run-gate.yaml writes its verdict to the
+    # subloop_outcome_<ID>.txt sidecar directly, so the contract applies to it
+    # too (the parent's run_code_gate dispatches to it and reads the sidecar).
+    SUBLOOPS = ("rn-remediate", "rn-decompose", "oracles/code-run-gate")
     SIDECAR_MARKER = "subloop_outcome_"
     TERMINALS = {"done", "failed"}
 
@@ -8566,7 +8569,12 @@ class TestRnImplementDiagnosticOutcomes:
     ) -> None:
         """Each diagnostic record state writes a tagged line to failures.txt (so report
         can tally it separately) and continues the queue via next: dequeue_next —
-        mirroring the record_sub_loop_crash convention."""
+        mirroring the record_sub_loop_crash convention.
+
+        Note: FEAT-2552's `record_gate_error` is in rn-remediate.yaml (parent of
+        the gate), not rn-implement.yaml, so it is covered by
+        `TestCodeRunGateOracleWiring` below.
+        """
         state = data["states"][state_name]
         assert state["action_type"] == "shell"
         assert tag in state["action"]
@@ -8581,6 +8589,11 @@ class TestRnImplementDiagnosticOutcomes:
         `_grep_count` helper inside the JSON-aggregation heredoc. The semantic
         invariant — separate tally + headline subtraction + distinct summary
         keys — is preserved.
+
+        FEAT-2552: GATE_FAILED_CODE_QUALITY (tagged by the parent's record_failure
+        when the sidecar carries GATE_FAILED) and GATE_FAILED_INFRA (tagged by
+        rn-remediate's record_gate_error) are added to the diagnostic tally so
+        the gate's failure rate is visible in summaries.
         """
         action = data["states"]["report"]["action"]
         assert "SCORES_MISSING" in action
@@ -8590,6 +8603,11 @@ class TestRnImplementDiagnosticOutcomes:
         # The headline FAILED counter must subtract these from the total.
         assert "SUB_LOOP_CRASHES" in action
         assert "LEARNING_GATE_BLOCKED_TOTAL" in action
+        # FEAT-2552: gate failure tags are also subtracted from the headline.
+        assert "GATE_FAILED_CODE_QUALITY" in action
+        assert "GATE_FAILED_INFRA" in action
+        assert "gate_failed_code_quality" in action
+        assert "gate_failed_infra" in action
 
 
 class TestCheckSubstrateOptionalState:
@@ -9516,7 +9534,13 @@ class TestLearningGateConsistency:
         """The env-not-ready router hands off to route_rem_learning_gate, which
         routes a LEARNING_GATE_BLOCKED outcome through prove_rem_learning_gate
         (ENH-2487 gate-site-2 auto-prove) before recording the block, and only a
-        non-learning outcome falls through to record_failure."""
+        non-learning outcome falls through to the next router.
+
+        FEAT-2552: the non-learning fall-through now lands in
+        `route_rem_gate_failed` (the GATE_FAILED diagnostic router) before
+        `record_failure`, so a GATE_FAILED outcome can be triaged distinctly
+        from a genuine IMPLEMENT_FAILED.
+        """
         assert (
             rn_implement["states"]["route_rem_env_not_ready"]["on_no"] == "route_rem_learning_gate"
         )
@@ -9526,7 +9550,9 @@ class TestLearningGateConsistency:
         # ENH-2487: on_yes now goes through the config-gated prove step, not straight
         # to record_learning_gate_blocked.
         assert router["on_yes"] == "prove_rem_learning_gate"
-        assert router["on_no"] == "record_failure"
+        # FEAT-2552: non-learning outcome falls through to route_rem_gate_failed
+        # (GATE_FAILED diagnostic triage) before record_failure.
+        assert router["on_no"] == "route_rem_gate_failed"
 
     def test_rn_implement_record_state_tags_and_advances(self, rn_implement: dict) -> None:
         rec = rn_implement["states"]["record_learning_gate_blocked"]
@@ -9747,3 +9773,141 @@ class TestTaskTemplatesInitAbsolutePath:
             f"{template_name} init action must branch on whether $DIR is already absolute"
         )
         assert "/*)" in text
+
+
+# ---------------------------------------------------------------------------
+# TestCodeRunGateOracleWiring — FEAT-2552: code-run-gate oracle wired into
+# rn-remediate (parent-side wiring).
+# ---------------------------------------------------------------------------
+
+
+class TestCodeRunGateOracleWiring:
+    """FEAT-2552: F2b wires the code-run-gate oracle (FEAT-2551) into
+    `rn-remediate` so an `IMPLEMENTED` verdict requires the gate to pass; a
+    failing build / test / typecheck / lint / health route to
+    `record_gate_failure` and increment the remediation counter.
+
+    These are parent-side tests; FEAT-2551 owns the oracle's behavior tests.
+    The oracle writes its verdict to `subloop_outcome_<ID>.txt` directly
+    (verified by `TestSubloopSidecarContract` against
+    `oracles/code-run-gate.yaml`), so the parent's `record_gate_failure` /
+    `record_gate_error` states only need to forward / transform the verdict
+    for routing back to the implement path.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-remediate.yaml"
+    ORACLE_FILE = BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @pytest.fixture
+    def oracle_data(self) -> dict:
+        assert self.ORACLE_FILE.exists(), f"Oracle not found: {self.ORACLE_FILE}"
+        return yaml.safe_load(self.ORACLE_FILE.read_text())
+
+    def test_rn_remediate_validates_after_gate_wiring(self, data: dict) -> None:
+        """Confirm `ll-loop validate rn-remediate` exits 0 after F2b's state
+        insertions (no `ValidationSeverity.ERROR` findings). The validate
+        check is non-vacuous: it includes static `loop:` resolution
+        (`_validate_loop_references`) and `with:` binding cross-validation
+        (`_validate_with_bindings`) against the oracle's declared parameters.
+        """
+        from little_loops.fsm.validation import (
+            ValidationSeverity,
+            load_and_validate,
+            validate_fsm,
+        )
+
+        fsm, _warnings = load_and_validate(self.LOOP_FILE)
+        errors = validate_fsm(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert not error_list, (
+            f"rn-remediate has validation errors after FEAT-2552 wiring: "
+            f"{[str(e) for e in error_list]}"
+        )
+
+    def test_code_run_gate_oracle_exists(self, oracle_data: dict) -> None:
+        """F2b's `loop: code-run-gate` reference must resolve — without the
+        oracle on disk, `_validate_loop_references` raises ERROR-severity
+        and blocks the parent loop's load."""
+        assert oracle_data.get("name") == "code-run-gate"
+
+    def test_oracle_declares_required_parameters(self, oracle_data: dict) -> None:
+        """The oracle's `parameters` block must declare `issue_id` and `run_dir`
+        as `required: true` (matches the `with:` bindings F2b sends). The
+        `min_pass_rate` parameter is optional with a default (F2b still
+        passes it for forward-compat / per-issue override)."""
+        params = oracle_data.get("parameters", {})
+        for key in ("run_dir", "issue_id"):
+            assert params[key]["required"] is True, (
+                f"Oracle parameter {key!r} must be required: true"
+            )
+        assert "min_pass_rate" in params
+        assert params["min_pass_rate"]["required"] is False
+
+    def test_oracle_min_pass_rate_has_default(self, oracle_data: dict) -> None:
+        """`min_pass_rate` is `required: false` on the oracle; without a
+        `context.defaults.min_pass_rate` block the dispatch would fail
+        context-resolution for issues that don't override it. FEAT-2551's
+        oracle sets a default of 0.95; the parent (F2b) overrides to 1.0
+        for strict pass on greenfield issues."""
+        ctx = oracle_data.get("context", {})
+        assert "min_pass_rate" in ctx, (
+            "Oracle context.defaults must include min_pass_rate"
+        )
+
+    def test_oracle_writes_sidecar_terminal(self, oracle_data: dict) -> None:
+        """The oracle's `aggregate` state writes
+        `subloop_outcome_<ID>.txt` so F2b's reader (record_gate_failure /
+        record_gate_error) can dispatch on the verdict. Verify the action
+        body references the sidecar marker — this is the FEAT-2551 contract
+        that locks in option (a) for F2b's
+        `TestSubloopSidecarContract` coverage."""
+        states = oracle_data.get("states", {})
+        agg = states.get("aggregate", {})
+        action = agg.get("action", "")
+        assert "subloop_outcome_" in action, (
+            "code-run-gate.aggregate must write subloop_outcome_<ID>.txt "
+            "(FEAT-2551 contract for FEAT-2552 reader)"
+        )
+
+    def test_rn_remediate_run_code_gate_state_present(self, data: dict) -> None:
+        states = data.get("states", {})
+        assert "run_code_gate" in states, (
+            "rn-remediate must add run_code_gate (FEAT-2552)"
+        )
+        assert "record_gate_failure" in states, (
+            "rn-remediate must add record_gate_failure (FEAT-2552)"
+        )
+        assert "record_gate_error" in states, (
+            "rn-remediate must add record_gate_error (FEAT-2552 — ENH-2005 mirror)"
+        )
+
+    def test_rn_remediate_min_pass_rate_default_is_one(self, data: dict) -> None:
+        """rn-remediate's `context.defaults` defines `min_pass_rate: 1.0`
+        (strict pass — greenfield issues must build, test, typecheck, lint
+        cleanly to be considered IMPLEMENTED). FEAT-2552 refine-issue finding:
+        the oracle reads `min_pass_rate` from context; without this default
+        sub-loop dispatch fails context-resolution for issues that don't
+        override it.
+        """
+        ctx = data.get("context", {})
+        assert ctx.get("min_pass_rate") == 1.0, (
+            f"rn-remediate.context.min_pass_rate must be 1.0 (strict pass), "
+            f"got {ctx.get('min_pass_rate')!r}"
+        )
+
+    def test_record_gate_error_tags_failures_txt_with_infra(self, data: dict) -> None:
+        """FEAT-2552: rn-remediate's `record_gate_error` writes GATE_FAILED_INFRA
+        to failures.txt so the parent's report can tally gate infrastructure
+        failures separately from generic IMPLEMENT_FAILED records. Mirrors the
+        record_sub_loop_crash / record_scores_missing / record_size_review_failed
+        convention in rn-implement.yaml.
+        """
+        rec = data["states"]["record_gate_error"]
+        assert rec["action_type"] == "shell"
+        assert "GATE_FAILED_INFRA" in rec["action"]
+        assert "failures.txt" in rec["action"]
