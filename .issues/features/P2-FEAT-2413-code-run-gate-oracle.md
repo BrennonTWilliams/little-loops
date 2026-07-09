@@ -3,9 +3,10 @@ id: FEAT-2413
 title: Real code run-gate oracle wired into rn-implement/rn-remediate
 type: FEAT
 priority: P2
-status: open
+status: done
 parent: EPIC-2412
 captured_at: '2026-06-30T00:00:00Z'
+completed_at: 2026-07-09T01:50:00Z
 discovered_date: 2026-06-30
 discovered_by: capture-issue
 size: Large
@@ -735,7 +736,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-06-30 | Priority: P2 | Split 2026-07-08 → FEAT-2551 / FEAT-2552
+**Done** | Created: 2026-06-30 | Completed: 2026-07-09 | Priority: P2 | Split 2026-07-08 → FEAT-2551 / FEAT-2552
 
 
 ## Confidence Check Notes
