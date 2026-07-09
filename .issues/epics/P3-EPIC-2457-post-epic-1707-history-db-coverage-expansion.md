@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512]
+relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512, ENH-2519, ENH-2520, ENH-2521]
 labels:
   - epic
   - history-db
@@ -185,12 +185,42 @@ new EPIC:
   evaluators. *(P3 — backs velocity-tracking questions like "how
   many P0 review findings closed this week?".)*
 
+### Fourth-pass expansion (added 2026-07-08)
+
+A 2026-07-08 review of the producer/consumer architecture surfaced
+three structural changes that don't fit the per-feature-table pattern
+of the prior expansions. Per this EPIC's "may gain additional
+siblings over time" clause, they are added as children rather than a
+new EPIC. They are documented in detail in
+`thoughts/history-db-raw-events-architecture.md`. The three are
+ordered (ENH-2520 first, then ENH-2519 and ENH-2521) because
+ENH-2520's `raw_events` table is the structural foundation the other
+two depend on:
+
+- **ENH-2519** — User-root default + project-root fallback for
+  `ll-session backfill` source path; closes the asymmetry with
+  `ll-logs` (which already uses `~/.claude/projects/<host>/` via
+  `host_runner.resolve_host()`). *(P3 — depends on ENH-2520's
+  `raw_events` as the destination.)*
+- **ENH-2520** — `raw_events` source-of-truth + `rebuild`
+  subcommand + `compact`/`prune` split + `_VALID_KINDS`
+  centralization; structural foundation that simplifies the other
+  pending children (ENH-2461, 2493, 2494, 2506, 2507, 2511 become
+  "add a parser" tasks instead of "add a table" tasks) and fixes
+  the silent FTS5 leak in `prune()`. *(P3 — lands first as the
+  prerequisite for ENH-2519 and ENH-2521.)*
+- **ENH-2521** — `analytics.auto_collect` opt-in runner; wires
+  ENH-2520's `compact --and-prune` to a new `SessionEnd` hook.
+  Default off; **no auto-injection** of observations into prompt
+  context (defended in the issue body). *(P3 — depends on
+  ENH-2520.)*
+
 ## Children (filled post-write by `/ll:capture-issue`)
 
-_See `## Children` section above. File system source: this EPIC and 25 child ENH
+_See `## Children` section above. File system source: this EPIC and 28 child ENH
 files (9 original + 6 from the 2026-07-05 first-pass expansion + ENH-2498 from
 the 2026-07-05 second-pass expansion + 9 from the 2026-07-06 third-pass
-expansion)._
+expansion + 3 from the 2026-07-08 fourth-pass expansion)._
 
 ## Integration Map
 
@@ -214,16 +244,18 @@ There are **no hard dependencies** between children. Recommended implementation 
 
 Children may be implemented in any order; the P2 pair landed first as recommended. Among the 2026-07-05 siblings (ENH-2492…2498), land ENH-2492 (P2, orchestration run outcomes) before the P3s.
 
+Among the 2026-07-08 fourth-pass additions (ENH-2519, ENH-2520, ENH-2521), **ENH-2520 lands first** as the structural prerequisite: its `raw_events` table is the destination ENH-2519 ingests into and the source ENH-2521's `compact` reads from. After ENH-2520 lands, ENH-2519 and ENH-2521 can land in either order.
+
 ## Impact
 
-- **Priority**: P3 — Rollup epic for twenty-five independent enhancements (9 original + 7 added 2026-07-05 + 9 added 2026-07-06); no coordinated release pressure.
+- **Priority**: P3 — Rollup epic for twenty-eight independent enhancements (9 original + 7 added 2026-07-05 + 9 added 2026-07-06 + 3 added 2026-07-08); no coordinated release pressure.
 - **Effort**: Variable, per child. Sum across children: estimated Medium-Large (six small per-child slices + three medium ones based on doc's own complexity signal).
 - **Risk**: Low per child; cumulative risk is "schema sprawl" if children land uncoordinated — mitigated by each child adding at most one migration per the EPIC-1707 graceful-degradation contract.
 - **Breaking Change**: No — every child is additive; no existing tables modified beyond optional additive columns and indexes.
 
 ## Success Metrics
 
-- All 25 children reach `status: done` (or are explicitly cancelled/deferred with rationale). _Progress as of 2026-07-06: 4 done (ENH-2458, ENH-2459, ENH-2460, ENH-2462), 21 open._
+- All 28 children reach `status: done` (or are explicitly cancelled/deferred with rationale). _Progress as of 2026-07-08: 4 done (ENH-2458, ENH-2459, ENH-2460, ENH-2462), 24 open._
 - `ll-session search --fts` returns results across the new kinds (`commit`, `test_run`, `loop_run`, `learning_test`).
 - A new contributor can ask `ll-session recent --kind commit` and see a real row, proving schema migration landed.
 - The findings report's "Source" section becomes a historical record of *what was missing* — re-running the report's inventory should show zero items in §2.
@@ -241,6 +273,8 @@ _Added 2026-07-02 at capture time:_ EPIC is open with all 9 children listed in `
 
 _Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk (all carry `parent: EPIC-2457`). 4 done / 12 open. Done children verified against code: `commit_events` (v17), `test_run_events` (v18), `skill_events` completion columns (v15), `issue_events.session_id` (v16) all present in `session_store.py`; `SCHEMA_VERSION` is 18 and `_VALID_KINDS` includes `commit` and `test_run`. Success-metric kinds `loop_run` and `learning_test` remain pending (ENH-2463, ENH-2466).
 
+_Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2519, ENH-2520, ENH-2521). 4 done / 24 open. ENH-2520 is the structural prerequisite for ENH-2519 and ENH-2521 — recommended sequencing: ENH-2520 → ENH-2519 + ENH-2521 in either order. Architecture is documented in the new `thoughts/history-db-raw-events-architecture.md` design doc.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
@@ -253,6 +287,7 @@ _Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2519, ENH-2520, ENH-2521) following the raw-events architecture discussion. ENH-2520 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
 - audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).
 - third-pass expansion - 2026-07-06 - Added 9 children (ENH-2504..ENH-2512) following the autodev-bug2501-kill-analysis prompt: `verdict_events` (read-side verifier signals), `subagent_runs` (parent→child session linkage), `hook_events` (per-fire telemetry), `context_pressure_events` (PostToolUse pressure curve), `commit→tag` linkage on `commit_events`, worktree lifecycle widening of `session_lifecycle_events`, `context_query_events` (history-context fetcher cost), MCP tool-call telemetry on `tool_events`, and `review_events` (audit/review verdicts). Item sources: the user-reported gap list (2026-07-06); several fold into existing children (ENH-2495, ENH-2497, ENH-2458) as scope-widening.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
