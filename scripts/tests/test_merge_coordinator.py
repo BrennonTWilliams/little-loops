@@ -7,6 +7,7 @@ import tempfile
 from collections.abc import Generator
 from pathlib import Path
 from queue import Empty
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2447,3 +2448,164 @@ class TestPopStashConflictCleanup:
         assert "BUG-STASH-2" in coordinator.stash_pop_failures
         # Cleanup should NOT have run (no unmerged entries)
         assert ["checkout", "--theirs", "."] not in git_commands_run
+
+
+class TestEpicBranchMergeTarget:
+    """FEAT-2453: merge target routes to result.epic_branch when set.
+
+    The read-site substitution is ``base = result.epic_branch or
+    self.config.base_branch`` at both ``_process_merge`` (line 624) and
+    ``_handle_conflict`` (line 875). When ``epic_branch is None`` (the default
+    for non-EPIC issues) the behavior is byte-for-byte identical to today.
+    Modeled on ``TestUpdateBranchBase`` in ``test_worker_pool.py`` (the
+    FEAT-2452 analog) and the argv-capture shape of
+    ``test_subprocess_mocks.py::test_process_merge_uses_merge_request``.
+    """
+
+    def test_process_merge_checkout_uses_epic_branch(self, mock_logger: MagicMock) -> None:
+        """_process_merge checks out the epic branch (not base_branch) when set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            worktree_path = repo_path / ".worktrees" / "ll-BUG-001"
+            worktree_path.mkdir(parents=True)
+
+            config = ParallelConfig(max_workers=2, worktree_base=repo_path / ".worktrees")
+            coordinator = MergeCoordinator(config, mock_logger, repo_path)
+
+            worker_result = WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="ll-BUG-001",
+                worktree_path=worktree_path,
+                epic_branch="epic/EPIC-2451-integration",
+            )
+            merge_request = MergeRequest(worker_result=worker_result)
+
+            captured_commands: list[list[str]] = []
+
+            def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+                captured_commands.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_run):
+                coordinator._process_merge(merge_request)
+
+            checkout_cmds = [
+                c for c in captured_commands
+                if "checkout" in c and "epic/EPIC-2451-integration" in c
+            ]
+            assert len(checkout_cmds) >= 1
+            # Must NOT check out the plain base branch when an epic branch is set.
+            assert ["git", "checkout", config.base_branch] not in captured_commands
+
+    def test_process_merge_falls_back_to_base_branch(self, mock_logger: MagicMock) -> None:
+        """With epic_branch=None, _process_merge checks out base_branch (no-op regression)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            worktree_path = repo_path / ".worktrees" / "ll-BUG-001"
+            worktree_path.mkdir(parents=True)
+
+            config = ParallelConfig(max_workers=2, worktree_base=repo_path / ".worktrees")
+            coordinator = MergeCoordinator(config, mock_logger, repo_path)
+
+            worker_result = WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="ll-BUG-001",
+                worktree_path=worktree_path,
+                # epic_branch defaults to None
+            )
+            merge_request = MergeRequest(worker_result=worker_result)
+
+            captured_commands: list[list[str]] = []
+
+            def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+                captured_commands.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_run):
+                coordinator._process_merge(merge_request)
+
+            checkout_cmds = [
+                c for c in captured_commands if "checkout" in c and config.base_branch in c
+            ]
+            assert len(checkout_cmds) >= 1
+
+    def test_handle_conflict_rebase_uses_epic_branch(self, mock_logger: MagicMock) -> None:
+        """_handle_conflict fetch+rebase targets the epic branch when set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            worktree_path = repo_path / ".worktrees" / "ll-BUG-001"
+            worktree_path.mkdir(parents=True)
+
+            config = ParallelConfig(max_workers=2, worktree_base=repo_path / ".worktrees")
+            coordinator = MergeCoordinator(config, mock_logger, repo_path)
+
+            worker_result = WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="ll-BUG-001",
+                worktree_path=worktree_path,
+                epic_branch="epic/EPIC-2451-integration",
+            )
+            merge_request = MergeRequest(worker_result=worker_result)
+
+            captured_commands: list[list[str]] = []
+
+            def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+                captured_commands.append(cmd)
+                # Simulate epic branches being local-only: no remote to fetch from.
+                if cmd[:2] == ["git", "fetch"]:
+                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no such ref")
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_run):
+                coordinator._handle_conflict(merge_request)
+
+            # The fetch target carries the substituted base (the epic branch).
+            fetch_cmds = [
+                c for c in captured_commands
+                if "fetch" in c and "epic/EPIC-2451-integration" in c
+            ]
+            assert len(fetch_cmds) >= 1
+            # Fetch failed (local-only), so rebase falls back to the local epic branch.
+            rebase_cmds = [
+                c for c in captured_commands
+                if "rebase" in c and "--abort" not in c
+            ]
+            assert rebase_cmds
+            assert rebase_cmds[0] == ["git", "rebase", "epic/EPIC-2451-integration"]
+
+    def test_handle_conflict_falls_back_to_base_branch(self, mock_logger: MagicMock) -> None:
+        """With epic_branch=None, _handle_conflict fetch+rebase targets base_branch."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            worktree_path = repo_path / ".worktrees" / "ll-BUG-001"
+            worktree_path.mkdir(parents=True)
+
+            config = ParallelConfig(max_workers=2, worktree_base=repo_path / ".worktrees")
+            coordinator = MergeCoordinator(config, mock_logger, repo_path)
+
+            worker_result = WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="ll-BUG-001",
+                worktree_path=worktree_path,
+                # epic_branch defaults to None
+            )
+            merge_request = MergeRequest(worker_result=worker_result)
+
+            captured_commands: list[list[str]] = []
+
+            def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+                captured_commands.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_run):
+                coordinator._handle_conflict(merge_request)
+
+            fetch_cmds = [
+                c for c in captured_commands
+                if "fetch" in c and config.base_branch in c
+            ]
+            assert len(fetch_cmds) >= 1

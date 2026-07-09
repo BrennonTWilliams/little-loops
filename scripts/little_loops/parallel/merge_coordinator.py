@@ -620,8 +620,10 @@ class MergeCoordinator:
             # Stash any local changes before merge operations
             had_local_changes = self._stash_local_changes()
 
-            # Ensure we're on base branch in the main repo
-            base = self.config.base_branch
+            # Ensure we're on base branch in the main repo.
+            # Route to the per-EPIC integration branch when set (FEAT-2453);
+            # byte-for-byte identical when epic_branch is None (non-EPIC issues).
+            base = result.epic_branch or self.config.base_branch
             remote = self.config.remote_name
             checkout_result = self._git_lock.run(
                 ["checkout", base],
@@ -871,8 +873,11 @@ class MergeCoordinator:
                     self.logger.warning(f"Failed to stash worktree changes: {stash_result.stderr}")
 
             # Fetch latest base branch before rebase (BUG-180)
-            # Use remote/base if fetch succeeds, fall back to base if no remote
-            base = self.config.base_branch
+            # Use remote/base if fetch succeeds, fall back to base if no remote.
+            # Route to the per-EPIC integration branch when set (FEAT-2453); epic
+            # branches are local-only so the fetch fails and rebase falls back to
+            # the local epic branch. No-op when epic_branch is None.
+            base = result.epic_branch or self.config.base_branch
             remote = self.config.remote_name
             fetch_result = subprocess.run(
                 ["git", "fetch", remote, base],

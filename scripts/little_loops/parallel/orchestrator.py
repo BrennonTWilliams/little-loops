@@ -1003,6 +1003,10 @@ class ParallelOrchestrator:
                             f" to {self.parallel_config.remote_name}"
                         )
                         if self.parallel_config.open_pr_for_feature_branches:
+                            # Carry the per-EPIC integration branch through the
+                            # existing branch_state carrier (FEAT-2453); None for
+                            # non-EPIC issues so the PR --base falls back to base.
+                            branch_state["epic_branch"] = result.epic_branch
                             self._open_pr_for_branch(
                                 result.issue_id, result.branch_name, branch_state
                             )
@@ -1139,7 +1143,7 @@ class ParallelOrchestrator:
                     "--body",
                     f"Closes {issue_id}",
                     "--base",
-                    self.parallel_config.base_branch,
+                    branch_state.get("epic_branch") or self.parallel_config.base_branch,
                     "--draft",
                     "--head",
                     branch_name,

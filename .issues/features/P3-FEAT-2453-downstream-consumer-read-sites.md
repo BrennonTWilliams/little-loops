@@ -3,8 +3,9 @@ id: FEAT-2453
 title: "per-EPIC integration branch \u2014 downstream consumer read-sites"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-07T19:55:00Z'
+completed_at: '2026-07-09T20:29:59Z'
 discovered_date: 2026-07-07
 discovered_by: confidence-check-decomposition
 labels:
@@ -174,26 +175,26 @@ EPIC and remains the coordination container.
 
 ## Acceptance Criteria
 
-- [ ] `_process_merge` checks out against
+- [x] `_process_merge` checks out against
       `result.epic_branch or self.config.base_branch` at
       `merge_coordinator.py:624` (verified via args-capture).
-- [ ] `_handle_conflict` rebases against
+- [x] `_handle_conflict` rebases against
       `result.epic_branch or self.config.base_branch` at
       `merge_coordinator.py:875` (verified via args-capture).
-- [ ] `_on_worker_complete` mutates
+- [x] `_on_worker_complete` mutates
       `branch_state["epic_branch"] = result.epic_branch` at
       `orchestrator.py:1005` (verified by
       `_open_pr_for_branch` seeing the key).
-- [ ] `_open_pr_for_branch` reads `--base` from
+- [x] `_open_pr_for_branch` reads `--base` from
       `branch_state.get("epic_branch") or self.parallel_config.base_branch`
       at `orchestrator.py:1142` (verified via `--base` value
       captured in `test_orchestrator.py:2008-2052`).
-- [ ] With `epic_branches.enabled=False` (default), behavior is
+- [x] With `epic_branches.enabled=False` (default), behavior is
       byte-for-byte identical to today — covered by the
       "falls back to base_branch" tests.
-- [ ] `test_merge_coordinator.py` and `test_orchestrator.py`
+- [x] `test_merge_coordinator.py` and `test_orchestrator.py`
       new/modified tests pass.
-- [ ] Full `python -m pytest scripts/tests/` exits 0.
+- [x] Full `python -m pytest scripts/tests/` exits 0.
 
 ## Files Touched
 
@@ -480,6 +481,8 @@ FEAT-2453 ships with HIGH outcome confidence; FEAT-2452 inherits
 the broad-fanout burden (irreducible without a contract change).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-09T20:29:08 - `77f0f9cb-771b-4419-83f4-3699bac4fb3c.jsonl` (implemented 4 read-sites + tests; full suite green)
+- `/ll:ready-issue` - 2026-07-09T20:19:34 - `74c5f0e5-9839-43a7-8569-74b1280b6e51.jsonl`
 - `/ll:confidence-check` - 2026-07-09T20:00:00 - `88ef04c1-d16c-4a65-873a-b89370dd04c9.jsonl`
 - `/ll:wire-issue` - 2026-07-09T19:23:32 - `25450cda-adbf-415b-afa8-1faf98287221.jsonl`
 - `/ll:refine-issue` - 2026-07-09T19:01:46 - `08294d04-3d82-48ce-b783-c721bf549a4d.jsonl`

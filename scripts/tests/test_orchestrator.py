@@ -2026,7 +2026,10 @@ class TestOnWorkerComplete:
 
         import subprocess
 
+        captured_args: list[list[str]] = []
+
         def fake_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_args.append(args)
             if args[0] == "git" and "push" in args:
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
             if args[0] == "gh" and args[1] == "auth":
@@ -2050,6 +2053,66 @@ class TestOnWorkerComplete:
         state = orchestrator._pr_ready_branches["BUG-001"]
         assert state["pushed"] is True
         assert state["pr_url"] == "https://github.com/owner/repo/pull/42"
+        # FEAT-2453: with no epic branch, gh pr create --base falls back to base_branch.
+        pr_create = [a for a in captured_args if a[:3] == ["gh", "pr", "create"]]
+        assert pr_create, "expected a `gh pr create` invocation"
+        base_args = pr_create[0]
+        assert base_args[base_args.index("--base") + 1] == "main"
+
+    def test_on_worker_complete_feature_branch_pr_base_is_epic_branch(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """FEAT-2453: epic_branch flows into branch_state and gh pr create --base."""
+        orchestrator.parallel_config.use_feature_branches = True
+        orchestrator.parallel_config.push_feature_branches = True
+        orchestrator.parallel_config.open_pr_for_feature_branches = True
+        orchestrator.parallel_config.remote_name = "origin"
+        orchestrator.parallel_config.base_branch = "main"
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/bug-001-test",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+            epic_branch="epic/EPIC-2451-integration",
+        )
+
+        import subprocess
+
+        captured_args: list[list[str]] = []
+
+        def fake_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_args.append(args)
+            if args[0] == "git" and "push" in args:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "auth":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "gh" and args[1] == "pr":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="https://github.com/owner/repo/pull/42",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="unexpected"
+            )
+
+        with patch(
+            "little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_subprocess_run
+        ):
+            orchestrator._on_worker_complete(result)
+
+        # branch_state mutation recorded the epic branch (step 3).
+        state = orchestrator._pr_ready_branches["BUG-001"]
+        assert state["epic_branch"] == "epic/EPIC-2451-integration"
+        # --base read site targets the epic branch (step 4).
+        pr_create = [a for a in captured_args if a[:3] == ["gh", "pr", "create"]]
+        assert pr_create, "expected a `gh pr create` invocation"
+        base_args = pr_create[0]
+        assert base_args[base_args.index("--base") + 1] == "epic/EPIC-2451-integration"
 
     def test_on_worker_complete_feature_branch_push_failure(
         self,
@@ -2288,7 +2351,10 @@ class TestOnWorkerComplete:
 
         import subprocess
 
+        captured_args: list[list[str]] = []
+
         def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_args.append(args)
             if args[0] == "git" and "push" in args:
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
             if args[0] == "gh" and args[1] == "auth":
@@ -2308,6 +2374,7 @@ class TestOnWorkerComplete:
             branch_name="feature/bug-001-record-branch",
             worktree_path=Path("/tmp/worktree"),
             duration=10.0,
+            epic_branch="epic/EPIC-2451-integration",
         )
 
         with patch("little_loops.parallel.orchestrator.subprocess.run", side_effect=fake_run):
@@ -2319,6 +2386,12 @@ class TestOnWorkerComplete:
         assert fm.get("branch") == "feature/bug-001-record-branch"
         # pr_url: must NOT be overwritten — existing URL preserved
         assert fm.get("pr_url") == existing_url
+        # FEAT-2453: even in the pr_url-preserved path, gh pr create --base must
+        # target the epic branch (guards against re-targeting an existing PR's base).
+        pr_create = [a for a in captured_args if a[:3] == ["gh", "pr", "create"]]
+        assert pr_create, "expected a `gh pr create` invocation"
+        base_args = pr_create[0]
+        assert base_args[base_args.index("--base") + 1] == "epic/EPIC-2451-integration"
 
     def test_feature_branch_success_writes_in_progress_not_done(
         self,
