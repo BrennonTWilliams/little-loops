@@ -1,6 +1,7 @@
 ---
 id: FEAT-2449
-title: per-EPIC integration branch — EPIC-completion merge + orchestrator/sprint awareness
+title: "per-EPIC integration branch \u2014 EPIC-completion merge + orchestrator/sprint\
+  \ awareness"
 type: FEAT
 priority: P3
 status: open
@@ -21,31 +22,46 @@ relates_to:
 - FEAT-2447
 - FEAT-2448
 - FEAT-2450
+- FEAT-2561
+- FEAT-2562
+- FEAT-2563
 blocked_by:
 - FEAT-2448
+- FEAT-2561
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 55
-score_complexity: 7
-score_test_coverage: 18
-score_ambiguity: 6
-score_change_surface: 0
+outcome_confidence: 83
+score_complexity: 15
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-2449: per-EPIC integration branch — EPIC-completion merge + orchestrator/sprint awareness
 
 ## Summary
 
-Third of four sequenced children decomposed from FEAT-2339. This child
-implements **EPIC-completion detection** (when all children of an EPIC
-reach `done`, merge the `epic/<EPIC-ID>-<slug>` integration branch
-into `base_branch` or open one PR), and threads epic-branch awareness
-through the remaining cross-module sites: orchestrator inspection,
-sprint-runner in-place warning, and the partial-failure gate that
-blocks the completion-merge when any child has failed.
+**Unit A** of the per-EPIC integration branch completion work (re-scoped on
+2026-07-09 via `/ll:confidence-check`). This child owns the **stateful core**:
+**EPIC-completion detection** (when all children of an EPIC reach `done`, merge
+the `epic/<EPIC-ID>-<slug>` integration branch into `base_branch` or open one
+PR), the **config-branch wiring** that gates that trigger
+(`merge_to_base_on_complete` / `open_pr`), and the **partial-failure gate** that
+holds the epic branch open until every child is `done`.
+
+Two sibling units were split out of the original FEAT-2449 to shrink its blast
+radius (they became immediately actionable peers under EPIC-2451):
+- **FEAT-2562** — `_inspect_worktree()` epic-branch comparison.
+- **FEAT-2563** — `cli/sprint/run.py` in-place warning epic-awareness.
+
+The original Scope item #2 (`_open_pr_for_branch()` epic-child PR target) was
+**already delivered by FEAT-2448** and is no longer remaining work here.
 
 Depends on FEAT-2448 (worker_pool + merge_coordinator wiring +
-`WorkerResult.epic_branch` field).
+`WorkerResult.epic_branch` field) and on **FEAT-2561** (the shared
+`find_nearest_epic_ancestor` / `build_parent_map` helper the partial-failure
+gate uses to scope failure dicts by EPIC without reaching into WorkerPool
+internals).
 
 ## Parent Issue
 
@@ -54,72 +70,66 @@ ll-parallel/ll-sprint.
 
 ## Scope
 
-1. **EPIC-completion detection** — in the orchestrator's
-   post-merge flow, call
+1. **EPIC-completion detection + completion merge/PR** — in the
+   orchestrator's post-merge flow, call
    `compute_epic_progress(epic_id, all_issues)` from
    `scripts/little_loops/issue_progress.py:83` (walks the `parent:`
-   chain transitively per commit `4887c87c`). When
-   `prog.done_count == prog.total_count` and there are no failed
-   children (gate per Decision Rationale #2 — "Block until all
-   children are done"), merge the epic branch to `base_branch` (or
-   open one PR via `gh pr create --base base_branch --head epic/<id>`,
-   analogous to the existing `orchestrator._open_pr_for_branch()`
-   pattern). Then delete the epic branch (explicit deletion only —
-   **not** via `_is_ll_branch()` or `_cleanup_worktree()`; see
-   FEAT-2339 Decision Rationale #3).
-2. **`_open_pr_for_branch()` epic-child PR target** — when a
-   `WorkerResult.epic_branch` is set, the per-child PR created during
-   normal merge flow lands on the epic branch
-   (`--base epic/<id>` instead of `--base base_branch`). This
-   completes the FEAT-2448 consumer-site change at
-   `orchestrator.py:1142` to a fully-functional epic-child PR
-   target.
-3. **Orchestrator `_inspect_worktree()` epic-awareness**
-   (`scripts/little_loops/parallel/orchestrator.py`) — the
-   `rev-list --count base_branch..branch_name` call at line 415
-   (drifted from ~400 per FEAT-2339 anchor corrections) must compare
-   against the epic branch when the inspected worktree is an EPIC
-   child. Update
-   `test_cleanup_orphaned_worktrees` (line 509) and
-   `test_inspect_worktree_with_feature_branch` (line 1001) for
-   epic-prefix handling.
-4. **`cli/sprint/run.py` in-place/contention-subwave warning**
-   (lines 485, 518–528) — add a parallel `effective_epic_branches`
-   check (identical shape to `effective_feature_branches`) and append
-   to the existing warning message rather than replacing it,
-   preserving the `"feature-branch mode does not apply"` substring
-   that `scripts/tests/test_cli_sprint.py:TestFeatureBranchInPlaceWarning`
-   asserts on (per FEAT-2339 Decision Rationale #4).
-5. **Partial-failure gate** — completion-merge is blocked until
+   chain transitively per commit `4887c87c`). When all children are
+   terminally `done` (see the completion-predicate note below —
+   `by_status.get("done")` **alone**, cancelled children do NOT count)
+   and no children are failed/blocked, merge the epic branch to
+   `base_branch` (or open one PR via
+   `gh pr create --base base_branch --head epic/<id>`, analogous to the
+   existing `orchestrator._open_pr_for_branch()` pattern). Then delete
+   the epic branch (explicit deletion only — lift the inline
+   `branch -D` shape from `orchestrator.py:557-561`; **not** via
+   `_is_ll_branch()` or `_cleanup_worktree()`; see FEAT-2339 Decision
+   Rationale #3).
+2. **Config-branch wiring (closes the dead-read gap)** —
+   `EpicBranchesConfig.merge_to_base_on_complete` (default `True`) and
+   `EpicBranchesConfig.open_pr` (default `False`) at
+   `scripts/little_loops/parallel/types.py:311–334` are currently
+   **read nowhere** in orchestrator/worker_pool/merge_coordinator. The
+   Step 1 trigger MUST branch on them: `merge_to_base_on_complete` gates
+   the direct merge; `open_pr` selects the "open one PR" path instead.
+   Add an AC/test asserting the merge is **skipped** when
+   `merge_to_base_on_complete is False`.
+3. **Partial-failure gate** — completion-merge is blocked until
    **ALL** children reach `done`; a failed/blocked child holds the
    epic branch open (unmerged, undeleted). Reuse the existing
    `Orchestrator.run()` precedent for group-failure gating
    (`failed_count == 0` all-or-nothing cleanup gate at
    `orchestrator.py:827-831`). Cross-reference
    `state.failed_issues` / `queue.failed_ids` against the EPIC's
-   child-ID set (computed via the depth-aware helper from FEAT-2447)
-   — no existing structure already scopes these dicts by EPIC.
-6. **Tests** —
+   child-ID set — **computed via the FEAT-2561 shared helper**
+   (`find_nearest_epic_ancestor` + `compute_epic_progress().children`,
+   using the orchestrator's `self._issue_info_by_id`), NOT a reach into
+   `worker_pool._find_nearest_epic_ancestor`. No existing structure
+   already scopes these flat dicts by EPIC.
+4. **Tests** —
+   - `scripts/tests/test_orchestrator.py` — new `TestEpicCompletionMerge`
+     class modeled on
+     `TestMergePendingWorktrees.test_attempts_merge_with_commits_ahead`
+     (`:1122-1162`): mock `_git_lock.run`, capture `merge_called`,
+     assert on `git merge --no-ff epic/<id>` and the subsequent
+     `branch -D`.
+   - `scripts/tests/test_orchestrator.py::TestOnWorkerComplete`
+     (`:1687-1921`) — at least one epic-completion-hook integration
+     test covering both the success (all-done → merge) and
+     partial-failure (one child failed → held open) cases.
+   - Config-branch: test that EPIC-completion-merge is **skipped** when
+     `merge_to_base_on_complete is False`, and takes the PR path when
+     `open_pr is True`.
+   - Partial-failure gate: test that completion-merge is blocked when
+     any child is `failed` or `blocked`, not just when
+     `done_count < total_count`.
    - `scripts/tests/test_sprint.py:TestSprintManagerLoadOrResolve`
      (~lines 2329–2540, "FEAT-1737") — add nested-EPIC test
      (grandchild with intermediate sub-EPIC parent) to cover the
      run-construction depth-mismatch (sprint.py still does direct-only
-     `info.parent == epic_id` resolution — confirms and tests the
-     known gap, independent of the branch-routing flatten-to-nearest
-     decision).
-   - `scripts/tests/test_cli_sprint.py:TestFeatureBranchInPlaceWarning`
-     — add an `epic_branches` counterpart once the in-place warning
-     is made epic-aware (must not break the existing
-     `"feature-branch mode does not apply"` substring assertion).
-   - `scripts/tests/test_orchestrator.py` — new tests for
-     `_inspect_worktree` epic-branch comparison and
-     `_open_pr_for_branch()` `--base epic/<id>` epic-child PR target.
-   - `scripts/tests/test_worker_pool.py` —
-     `test_inspect_worktree_with_feature_branch` (line 1001) audit
-     and update for `epic/*` prefix handling.
-   - Partial-failure gate: test that EPIC-completion-merge is
-     blocked when any child is `failed` or `blocked`, not just when
-     `done_count < total_count`.
+     `info.parent == epic_id` resolution — confirms and tests the known
+     gap, and guards the transitive-walk semantics the completion gate
+     relies on).
 
 ### Codebase Research Findings
 
@@ -265,8 +275,91 @@ populated at `:1044-1045`)
   `epic_id` (or derive on-the-fly from `_issue_info_by_id` +
   `_pr_ready_branches`).
 
-## Out of Scope (deferred to follow-on child)
+### Post-FEAT-2448 Anchor Refresh
 
+_Added by `/ll:refine-issue` (2026-07-09) — FEAT-2448 has since landed
+(commits `749b8096`, `5ada5e63`), shifting anchors in `orchestrator.py`
+and **completing Scope item #2 ahead of this issue**. The refreshed
+current-state facts below supersede the pre-FEAT-2448 anchors above
+where they conflict; original findings are preserved verbatim for
+provenance._
+
+> ⚠ **Scope item #2 (`_open_pr_for_branch()` epic-child PR target) is
+> already implemented and tested — it is NOT remaining work for
+> FEAT-2449.** FEAT-2448 landed the epic-aware `--base`; the pre-FEAT-2448
+> claim that `--base` is "hardcoded at line 1142 to
+> `self.parallel_config.base_branch`" is now factually wrong.
+
+- **`_open_pr_for_branch()` — `--base` is epic-aware (DONE).** Current
+  `orchestrator.py:1146` reads
+  `branch_state.get("epic_branch") or self.parallel_config.base_branch`.
+  The epic branch is threaded via a `branch_state["epic_branch"]`
+  dict-mutation at `orchestrator.py:1009` (set from `result.epic_branch`
+  in `_on_worker_complete()`), NOT a new `_open_pr_for_branch()` kwarg —
+  the signature is still `(issue_id, branch_name, branch_state)`. Already
+  covered by `test_orchestrator.py`
+  `test_on_worker_complete_feature_branch_pr_base_is_epic_branch`
+  (~lines 2062–2116) and the `--base == "main"` fallback test
+  `test_on_worker_complete_feature_branch_open_pr` (~lines 2008–2060).
+  → **FEAT-2449 remaining PR work is only the EPIC-*completion*-merge PR
+  (Step 1: `--head epic/<id> --base base_branch`), not the per-child PR.**
+
+- **`_completed_epic_branches` dict is unnecessary — reuse the landed
+  carrier.** No separate dict was introduced; epic-branch state rides on
+  the existing per-issue `branch_state` dict stored in
+  `_pr_ready_branches` via the `branch_state["epic_branch"]` key. Prefer
+  deriving completion on-the-fly from `_pr_ready_branches` +
+  `compute_epic_progress()` over adding a parallel dict.
+
+- **NEW GAP — config fields are dead-read.**
+  `EpicBranchesConfig.merge_to_base_on_complete` (default `True`) and
+  `EpicBranchesConfig.open_pr` (default `False`) at
+  `scripts/little_loops/parallel/types.py:311–334` are read **nowhere**
+  in `orchestrator.py` / `worker_pool.py` / `merge_coordinator.py` (zero
+  grep hits outside `types.py`, `config/core.py`, `config/automation.py`,
+  `config-schema.json`, and their tests). Step 1's completion trigger
+  MUST branch on these: `merge_to_base_on_complete` gates the direct
+  merge; `open_pr` selects the "open one PR" path instead. Add an
+  AC/test asserting the merge is skipped when
+  `merge_to_base_on_complete is False`.
+
+- **Line-anchor drift (orchestrator.py), current values:**
+  | Anchor | Cited | Current | Note |
+  |--------|-------|---------|------|
+  | `_open_pr_for_branch()` body | 1109–1160 | **1113–1164** | +4 |
+  | `--base` argument | 1142 | **1146** | +4, now epic-aware |
+  | `branch_state["epic_branch"]` set | — | **1009** | new (FEAT-2448) |
+  | `_pr_ready_branches` population | 1044–1045 | **1048–1049** | +4 |
+  | `Failed: {failed_count}` log | 1249 | **1256** | +7 |
+  | `if self.queue.failed_ids:` | 1252 | **1270** | drift |
+  | `for issue_id in failed_ids` | 1269 | **1273** | +4 |
+
+- **Anchors CONFIRMED unchanged (no edit needed):**
+  `_inspect_worktree()` issue-ID regex (410) and `rev-list --count` (415)
+  — still base-branch-only, epic-awareness genuinely remains FEAT-2449
+  work; `_merge_pending_worktrees()` inline `branch -D` (557–561);
+  group-failure gate `failed_count == 0` (827–831); `_pr_ready_branches`
+  declaration (134); early `failed_issues`/`failed_ids` refs (622, 624,
+  716). All of `issue_progress.py` (14, 17–48, 83) is unchanged.
+
+- **`cli/sprint/run.py` anchor correction.** The in-place warning block
+  is at **lines 517, 519–523, 524–529** (not 485/518–528 — cited line
+  485 is unrelated `total_waves = len(waves)` scaffolding). No
+  `effective_epic_branches` exists here yet — confirmed greenfield for
+  FEAT-2449 (Scope #4).
+
+## Out of Scope (split into sibling / follow-on children)
+
+- **`_inspect_worktree()` epic-branch comparison** (former Scope #3) —
+  **FEAT-2562** (peer under EPIC-2451).
+- **`cli/sprint/run.py` in-place warning epic-awareness** (former
+  Scope #4) — **FEAT-2563** (peer under EPIC-2451).
+- **`_open_pr_for_branch()` epic-child PR target** (former Scope #2) —
+  **already delivered by FEAT-2448** (`orchestrator.py:1146` is epic-aware;
+  covered by `test_on_worker_complete_feature_branch_pr_base_is_epic_branch`).
+- **Shared `find_nearest_epic_ancestor` / `build_parent_map` helper
+  extraction** — **FEAT-2561** (this issue's declared blocker; consumed by the
+  partial-failure gate).
 - CLI flags (`--epic-branches`), TUI surface, configure skill updates
   — **FEAT-2450**.
 - Docs (ARCHITECTURE, API, CONFIGURATION, CLI, SPRINT_GUIDE), 9
@@ -274,22 +367,19 @@ populated at `:1044-1045`)
 
 ## Acceptance Criteria
 
-- [ ] When all children of an EPIC reach `done` (and no children are
-      failed/blocked), the orchestrator triggers a merge of
+- [ ] When all children of an EPIC reach `done` (`by_status.get("done")`
+      alone; cancelled children do NOT count) and no children are
+      failed/blocked, the orchestrator triggers a merge of
       `epic/<EPIC-ID>-<slug>` into `base_branch` (or opens one PR
-      per `epic_branches.open_pr` config).
+      per `epic_branches.open_pr` config), then deletes the epic branch.
+- [ ] The completion merge is **skipped** when
+      `epic_branches.merge_to_base_on_complete is False`, and takes the
+      PR path when `epic_branches.open_pr is True` (config dead-read gap
+      closed).
 - [ ] When any child is failed/blocked, the epic branch is held
       open (no merge, no delete) — verified by partial-failure gate
-      test.
-- [ ] Per-child PRs (in normal merge flow, not completion merge)
-      target the epic branch (`--base epic/<id>`) when
-      `WorkerResult.epic_branch` is set.
-- [ ] `_inspect_worktree()` correctly compares against the epic
-      branch for EPIC children.
-- [ ] `cli/sprint/run.py` in-place warning fires an
-      epic-branches-aware variant; existing
-      `"feature-branch mode does not apply"` substring test still
-      passes.
+      test that scopes `failed_ids` to the EPIC's child set via the
+      FEAT-2561 helper.
 - [ ] Nested-EPIC test in `TestSprintManagerLoadOrResolve` covers
       grandchild-via-sub-EPIC.
 - [ ] Full `python -m pytest scripts/tests/` exits 0.
@@ -298,22 +388,30 @@ populated at `:1044-1045`)
 
 **Implementation:**
 - `scripts/little_loops/parallel/orchestrator.py`
-  (EPIC-completion trigger, `_open_pr_for_branch()` epic-child PR
-  target, `_inspect_worktree()` epic-awareness)
-- `scripts/little_loops/cli/sprint/run.py` (in-place warning
-  epic-awareness at lines 485, 518–528)
+  (EPIC-completion trigger + merge/PR + `branch -D`, config-branch
+  gating, partial-failure gate scoped via the FEAT-2561 helper)
 
 **Tests:**
+- `scripts/tests/test_orchestrator.py` (`TestEpicCompletionMerge` +
+  `TestOnWorkerComplete` epic-completion hook + config-skip +
+  partial-failure gate)
 - `scripts/tests/test_sprint.py` (nested-EPIC test)
-- `scripts/tests/test_cli_sprint.py`
-  (`TestFeatureBranchInPlaceWarning` epic counterpart)
-- `scripts/tests/test_orchestrator.py` (epic-completion merge +
-  epic-child PR target + inspect epic-awareness)
-- `scripts/tests/test_worker_pool.py` (epic/* prefix audit)
 
-**Estimated file count:** 2 implementation + 4 test = **6 files**.
+**Estimated file count:** 1 implementation + 2 test = **3 files**.
+
+_(Down from 6: `_inspect_worktree`/`test_worker_pool` → FEAT-2562;
+`cli/sprint/run.py`/`test_cli_sprint` → FEAT-2563; `_open_pr_for_branch`
+already landed in FEAT-2448.)_
 
 ## Additional Wiring Findings
+
+> ⚠ **Post-split redirect (2026-07-09):** the `_inspect_worktree` /
+> `TestInspectWorktree` / `TestOrphanedWorktreeCleanup` findings below moved to
+> **FEAT-2562**, and the `cli/sprint/run.py` / `TestFeatureBranchInPlaceWarning`
+> findings moved to **FEAT-2563**. They are retained here as provenance (both
+> new issues cite these anchors). The items that remain in FEAT-2449's scope are
+> the `TestEpicCompletionMerge` / `TestOnWorkerComplete` / substring-collision
+> findings.
 
 _Wiring pass added by `/ll:wire-issue` — integration gaps discovered during
 caller/importer + side-effect + test-gap analysis:_
@@ -422,7 +520,44 @@ in the implementation:_
     `"pushed (PR skipped)"` and `"pushed + PR opened"` to preserve
     `test_orchestrator.py:2164, 2188` substring assertions.
 
+## Confidence Check Notes
+
+_Re-estimated by `/ll:confidence-check` on 2026-07-09 after the decomposition
+below. The prior 70/100 pass (retained for provenance) covered the pre-split
+6-file surface._
+
+**Readiness Score**: 95/100 → PROCEED (one open prerequisite: FEAT-2561)
+**Outcome Confidence**: 83/100 → HIGH
+
+### Decomposition (2026-07-09)
+Original FEAT-2449 (outcome 70/100, MODERATE) was split to shrink its blast
+radius. The two breadth-heavy, loosely-coupled units became immediately
+actionable peers, and the cross-module reach was lifted into a prerequisite
+helper:
+- **FEAT-2561** (prerequisite) — shared `find_nearest_epic_ancestor` /
+  `build_parent_map` in `issue_progress.py`; removes the partial-failure gate's
+  reach into `WorkerPool` internals.
+- **FEAT-2562** (peer) — `_inspect_worktree()` epic-branch comparison + its
+  `TestInspectWorktree` / `TestOrphanedWorktreeCleanup` audits.
+- **FEAT-2563** (peer) — `cli/sprint/run.py` in-place warning + its
+  `TestFeatureBranchInPlaceWarning` counterpart.
+
+Result: FEAT-2449 now touches **1 impl file** (`orchestrator.py`) + 2 test
+files, down from 2 impl + 4 test. Complexity 10→15, Change-surface 10→18.
+
+### Residual Outcome Risk Factors
+- The partial-failure gate is still the stateful core: it intersects the EPIC's
+  child-ID set against `queue.failed_ids` / `state.failed_issues`. The
+  cross-module reach is gone (FEAT-2561 supplies the mapping), but the
+  gate + config-branch trigger (`merge_to_base_on_complete` / `open_pr`) are
+  genuinely new control flow — the `TestEpicCompletionMerge` and config-skip
+  tests are the ones to write first.
+- Depends on FEAT-2561 landing first (declared `blocked_by`); it is a small,
+  behavior-preserving extraction, so the prerequisite risk is low.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-09T00:00:00 - `b4b437e8-ceeb-4657-a600-ad4fd9cabd3d.jsonl`
+- `/ll:refine-issue` - 2026-07-09T21:00:17 - `38d1eded-7bd0-495b-aaf4-15a72cd44334.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:30:02 - `6b9899f6-bce4-48ec-86fb-922a81ba2170.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:22:03 - `b455d593-e617-47e1-8dd2-6121f588fada.jsonl`
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`

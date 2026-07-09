@@ -23,8 +23,12 @@ relates_to:
 - FEAT-2447
 - FEAT-2448
 - FEAT-2449
+- FEAT-2562
+- FEAT-2563
 blocked_by:
 - FEAT-2449
+- FEAT-2562
+- FEAT-2563
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 70
@@ -47,7 +51,10 @@ implementation and most tests land in FEAT-2447 / FEAT-2448 /
 FEAT-2449; this child is the integration polish that makes the
 feature discoverable and consistent across the rest of the codebase.
 
-Depends on FEAT-2449 (completion merge + cross-module awareness).
+Depends on the completion core (FEAT-2449) plus the two peer units
+FEAT-2562 (`_inspect_worktree` epic-awareness) and FEAT-2563 (sprint
+in-place warning epic-awareness) — all functional work must land before
+this user-facing polish.
 
 ## Parent Issue
 
@@ -215,8 +222,8 @@ does not yet exist:
   (FEAT-2447 scope)
 - `WorkerResult.epic_branch` field — not yet threaded (FEAT-2448 scope)
 - Sprint in-place warning extension for epic-mode — not yet implemented
-  (FEAT-2449 scope; current `_cmd_sprint_run` warns only for feature branches at
-  `scripts/little_loops/cli/sprint/run.py:518-528`)
+  (**FEAT-2563** scope; current `_cmd_sprint_run` warns only for feature branches
+  at `scripts/little_loops/cli/sprint/run.py:518-528`)
 
 **Implication for FEAT-2450 implementation order**: When FEAT-2450 begins, the
 parallel-config plumbing does not exist, so acceptance tests cannot pass
@@ -273,8 +280,11 @@ For FEAT-2450:
   `create_parallel_config()` call at `cli/sprint/run.py:585-594` (mirror the
   `use_feature_branches` kwarg placement)
 - The in-place warning extension (`effective_epic_branches`) is owned by
-  **FEAT-2449**, not FEAT-2450 — do not duplicate. FEAT-2450 only consumes the
-  kwarg; FEAT-2449 emits the warning when the epic path runs in-place.
+  **FEAT-2563**, not FEAT-2450 — do not duplicate. FEAT-2450 only adds the
+  `--epic-branches` flag + consumes the kwarg; FEAT-2563 emits the warning when
+  the epic path runs in-place. (FEAT-2563 resolves the flag defensively via
+  `getattr(args, "epic_branches", None)`, so it works before FEAT-2450 wires the
+  flag and after.)
 
 ### Test Positional-List Mechanics (`test_init_tui.py`)
 
@@ -459,7 +469,7 @@ intentional design). FEAT-2450 must NOT modify these:
   cleanup-orphans `create_parallel_config()` call sites (FEAT-2180: do
   NOT touch these paths).
 - `scripts/little_loops/cli/sprint/run.py:518-528` —
-  `effective_feature_branches` in-place warning logic (FEAT-2449 owns the
+  `effective_feature_branches` in-place warning logic (**FEAT-2563** owns the
   `effective_epic_branches` extension; the
   `"feature-branch mode does not apply"` substring is preserved by
   `TestFeatureBranchInPlaceWarning` at `test_cli_sprint.py:732-879`).
@@ -480,7 +490,7 @@ intentional design). FEAT-2450 must NOT modify these:
 - `scripts/tests/test_merge_coordinator.py:2180-2208` —
   `TestMergeCoordinatorCleanupWorktree`.
 - `scripts/tests/test_cli_sprint.py:732-879` —
-  `TestFeatureBranchInPlaceWarning` (FEAT-2449 owns the epic-mode
+  `TestFeatureBranchInPlaceWarning` (**FEAT-2563** owns the epic-mode
   counterpart).
 - `scripts/tests/test_config.py:770, 881-923` —
   `test_to_dict_parallel_schema_aligned_keys` and the four

@@ -3,7 +3,7 @@ id: FEAT-2448
 title: "per-EPIC integration branch \u2014 worker_pool + merge_coordinator wiring"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-02T22:30:00Z'
 discovered_date: 2026-07-02
 discovered_by: issue-size-review
@@ -32,6 +32,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-07-09T20:54:42Z'
 ---
 
 # FEAT-2448: per-EPIC integration branch — worker_pool + merge_coordinator wiring
@@ -1258,6 +1259,7 @@ _Added by `/ll:confidence-check` on 2026-07-07_
 - Two `TestWorkerResult` classes require parallel updates: `test_worker_pool.py:120-149` (compact 2-test class) and `test_parallel_types.py:161-359` (broad 5+ test class) both need `epic_branch` field updates; missing either location breaks round-trip serialization coverage.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-09T20:47:24 - `a20618f0-ba1b-45b7-a585-3fe9e0f3b21c.jsonl`
 - `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
 - `/ll:decide-issue` - 2026-07-07T16:50:34 - `c4211e5f-e844-40e5-b3a9-7fd3a3605a2b.jsonl`
 - `/ll:confidence-check` - 2026-07-07T<time>TBD - `69f38caf-6f0f-4b3d-8e25-94fe51f2fc37.jsonl`
@@ -1267,6 +1269,42 @@ _Added by `/ll:confidence-check` on 2026-07-07_
 - `/ll:wire-issue` - 2026-07-06T23:20:17 - `f3fff147-d97f-42e2-945a-790e562c6c5b.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:21:42 - `ad8ca7f6-66d7-4f8c-ae58-3ea979d78b4d.jsonl`
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`
+
+## Implementation Status — Refine Pass (2026-07-09)
+
+_Added by `/ll:refine-issue --auto` — codebase verification against current
+source. Additive only; supersedes nothing above._
+
+**All six scope items are verified LANDED in current source.** This
+coordination container's full scope shipped via its two `status: done`
+children ([FEAT-2452](./P3-FEAT-2452-workerpool-and-dataclass-wiring.md),
+[FEAT-2453](./P3-FEAT-2453-downstream-consumer-read-sites.md)). Direct
+grep verification (2026-07-09):
+
+| Scope item | Landed anchor (current source) |
+|---|---|
+| §1 fork point → `_setup_worktree(base_branch=…)` | `worker_pool.py:382` (`base_branch=epic_branch`) |
+| §2 `WorkerResult.epic_branch` field + 4-edit pattern | `types.py:72` (docstring), `:94` (field), `:116` (`to_dict`), `:140` (`from_dict`) |
+| §2 `epic_branch` computed once + threaded to all returns | `worker_pool.py:360-364` (compute), `:409/:424/:441/:457/:485/:506/:550/:603/:618/:640/:654` (12 return-site kwargs) |
+| §2 instance-state dict (Decision 2, option a) | `worker_pool.py:194` (`self._worker_epic_branches`), populated at `:364` |
+| §3 merge_coordinator `or` idiom (2 sites) | `merge_coordinator.py:626` (`_process_merge`), `:880` (`_handle_conflict`) |
+| §3 orchestrator `branch_state` mutation + `--base` read (Decision 1, option b) | `orchestrator.py:1009` (mutation), `:1146` (read) |
+| §4/§5 `_get_changed_files` / `_update_branch_base` epic-mode | resolver cache `_epic_branches_created` at `worker_pool.py:190`; `_resolve_branch_targets` callable (FEAT-2447 landed) |
+
+**No implementation work remains.** The `_resolve_branch_targets` resolver
+(FEAT-2447) is landed and callable, so the "Standalone Implementation
+Blocker" section (lines 390-416) is OBSOLETE (already noted in the Phase 2
+finding). The two orthogonal threading decisions in `## Decision Rationale`
+both match what shipped: Decision 1 → `branch_state["epic_branch"]`
+mutation (orchestrator.py:1009), Decision 2 → `_worker_epic_branches`
+instance dict (worker_pool.py:194).
+
+**Recommended next step:** FEAT-2448 is a fully-implemented coordination
+container. Close it as `done` (its scope is delivered via FEAT-2452 +
+FEAT-2453) rather than sending it to `/ll:manage-issue` — there is nothing
+left to implement. Outstanding *coordination* items (ENH-2492 SQLite
+`epic_branch` column, `site/` HTML regeneration) are downstream of this
+issue's code scope and tracked in their own sections above.
 
 ## Blocks
 
