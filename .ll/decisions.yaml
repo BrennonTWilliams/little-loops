@@ -4689,3 +4689,48 @@
     fields.
   enforcement: advisory
   issue: ENH-2555
+- id: ARCH-202
+  type: rule
+  timestamp: '2026-07-09T02:18:22Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Per-render budgets assume every row's prefix has the same width; variable
+    fields (labels, badges, status tags) blow past the budget silently and wrap on
+    narrow terminals. Compute the budget from the row's own prefix each time it is
+    emitted.
+  rule: Compute terminal column budgets per row from actual rendered prefix width,
+    not once per render.
+  enforcement: advisory
+  issue: BUG-2554
+- id: ARCH-203
+  type: rule
+  timestamp: '2026-07-09T02:18:22Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: 'Defense-in-depth: even when the row formatter computes a budget correctly,
+    a field renderer that exceeds its reserved slot can still overflow. Each renderer
+    that owns a column slot must clamp its own output to that slot (or the broader
+    terminal width) using an ANSI-aware display-width helper.'
+  rule: Enforce per-column width caps inside the field renderer, not only at the row
+    formatter.
+  enforcement: advisory
+  issue: BUG-2554
+- id: ARCH-204
+  type: rule
+  timestamp: '2026-07-09T02:18:22Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: len() counts escape-sequence bytes, not visible columns, so colored tags
+    silently inflate budgets and cause wrap. A helper such as layout._display_width
+    must be used whenever computing column budgets, truncating, or deciding whether
+    to wrap.
+  rule: Measure terminal-column width with an ANSI-aware display-width helper, never
+    len().
+  enforcement: advisory
+  issue: BUG-2554
