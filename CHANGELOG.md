@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.140.0] - 2026-07-08
+
+### Added
+
+- **`code-run-gate` oracle** — a new oracle that runs real build / test /
+  typecheck / lint commands (plus an optional `health_url` probe) as a loop gate,
+  wired into `rn-remediate` and `rn-implement` so remediation and implementation
+  loops validate against actual command exit codes (FEAT-2551, FEAT-2552).
+- **Coverage-aware decidability gate** — the decidability gate now factors
+  coverage into its verdict (ENH-2446).
+- **`rn-refine` finalize diff-invariant guard + rollback** — the in-place
+  source-refinement finalize step now guards a diff invariant and rolls back on
+  violation (ENH-2418).
+- **Locked Tier 0 verification trace set** — pins the verification trace set at
+  ≥2 traces for FEAT-2470 measurement (ENH-2518).
+- **`ll-loop list` layout polish** — line-2 descriptions, differentiated
+  subgroup headers, and five additional layout improvements.
+
+### Fixed
+
+- **`ll-init --yes` crashes on `config-schema.json` in wheel installs** — the
+  schema is now shipped in the wheel via `importlib.resources` (BUG-2547).
+- **Pre-run context validator ignored `:default=` and `?` guards** — the
+  validator now honors both (fix(loop)).
+- **`ll-loop list` rows overflow terminal width** — rows are now truncated to
+  the terminal width (fix(loop)).
+- **Loop box diagrams lost ANSI styling through the terminal-width clamp** — the
+  clamp now preserves styling (fix(loop-diagrams)).
+
+### Changed
+
+- **Removed the unwired `epics.*` config subtree** — resolves the schema-only
+  limbo in favor of dropping the keys (ENH-2544).
+
+### Other
+
+- **Docs** — documented the full `cli.output` public-API surface; added an Error
+  Handling Contract section to `EVENT-SCHEMA`; applied Phase 1/2 audit fixes
+  across 16 guides and `docs/reference/`; filled gaps from the update-docs window
+  (FEAT-2447, ENH-2418, BUG-2547).
+- **Decisions** — recorded ARCHITECTURE-122 (FEAT-2413 sub-loop oracle),
+  ARCH-202/203/204 (terminal column budgets), and OTHE-201 (additive `--json`
+  keys).
+- **Tests / maintenance** — added a 3-trace streaming-vs-blocking
+  cache-accounting parity gate; recorded opentelemetry + pytest-json-report
+  learning-test proofs; import-ordering and multi-line-collapse style cleanups.
+
 ## [1.139.0] - 2026-07-08
 
 ### Added
@@ -3827,6 +3874,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.140.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.139.0...v1.140.0
 [1.139.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.138.0...v1.139.0
 [1.138.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.137.0...v1.138.0
 [1.137.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.136.0...v1.137.0
