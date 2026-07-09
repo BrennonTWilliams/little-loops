@@ -1262,15 +1262,19 @@ class TestLoopListFormatting:
         self,
         tmp_path: Path,
     ) -> None:
-        """_load_loop_meta() appends … when description has multiple lines."""
+        """_load_loop_meta() splits multi-line descriptions: line 1 stays as
+        ``description`` and remaining lines are joined into
+        ``description_line2`` (no trailing … — line 2 is rendered as a
+        wrapped continuation below the row instead)."""
         from little_loops.cli.loop.info import _load_loop_meta
 
         loop_file = tmp_path / "multi.yaml"
         loop_file.write_text("name: multi\ndescription: |\n  First line.\n  Second line.\n")
         meta = _load_loop_meta(loop_file)
 
-        assert "First line." in meta["description"]
-        assert "…" in meta["description"]
+        assert meta["description"] == "First line."
+        assert meta["description_line2"] == "Second line."
+        assert "…" not in meta["description"]
 
     def test_singleline_description_no_ellipsis(
         self,
@@ -1823,7 +1827,7 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Subgroup" in out or "APO" in out, f"Expected subgroup/subhead rendering: {out!r}"
+        assert "· apo-*" in out, f"Expected bullet-prefix-glob subhead: {out!r}"
 
     def test_row_columns_aligned_at_tw_80(
         self,
@@ -2075,6 +2079,124 @@ class TestCmdListENH2539Polished:
             f"Last ANSI block before loop name should be the bold opener "
             f"(\\033[1m), got \\033[{last_opener!r}: {row!r}"
         )
+
+    def test_description_line2_wraps_below_row(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Multi-line YAML descriptions render line 2 as a wrapped
+        continuation below the row, indented to clearly subordinate it.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "alpha.yaml").write_text(
+            _runnable(
+                "name: alpha\ncategory: cat\n"
+                "description: |\n"
+                "  First line summary.\n"
+                "  Second line continues here and gets wrapped below the row.\n"
+            )
+        )
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Line 1 stays on the row as before.
+        assert "First line summary." in out
+        # Line 2 appears below the row, wrapped and indented.
+        assert "Second line continues here" in out
+        # The continuation is indented to sit subordinate to the loop row.
+        continuation_line = next(
+            ln for ln in out.splitlines() if "Second line continues here" in ln
+        )
+        # 2-space leaf indent + 4-space line-2 indent = "      " (6 spaces).
+        assert continuation_line.startswith("      "), (
+            f"line-2 continuation must be indented past the row, got: {continuation_line!r}"
+        )
+
+    def test_single_line_description_no_extra_row(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Single-line descriptions do NOT emit a 4-space-indented
+        continuation row — that would create a phantom empty line.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "alpha.yaml").write_text(
+            _runnable("name: alpha\ncategory: cat\ndescription: Only one line.\n")
+        )
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # No line in the output should be a 4-space-indented continuation —
+        # the loop row itself begins with 2-space indent + colored name.
+        # Strip ANSI so we can detect pure whitespace indents.
+        import re as _re_ansi
+
+        stripped = _re_ansi.sub(r"\033\[[0-9;]*m", "", out)
+        for ln in stripped.splitlines():
+            if ln.startswith("    ") and ln[4:].strip():
+                pytest.fail(f"Unexpected 4-space-indented continuation row: {ln!r}")
+
+    def test_subgroup_header_uses_bullet_glyph(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Subgroup headers (prefix clusters of ≥3 loops) render as
+        ``· {prefix}-* (N)`` in dim gray — visually distinct from the
+        parent category's ``▸ {CATEGORY}  (N)`` heading.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "rn-implement.yaml").write_text(
+            _runnable("name: rn-implement\ncategory: planning\n")
+        )
+        (loops_dir / "rn-plan.yaml").write_text(_runnable("name: rn-plan\ncategory: planning\n"))
+        (loops_dir / "rn-refine.yaml").write_text(
+            _runnable("name: rn-refine\ncategory: planning\n")
+        )
+
+        args = _base_args(tmp_path)
+        args.label = []  # type: ignore[attr-defined]
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Subgroup header renders as bullet + lowercase prefix + glob.
+        assert "· rn-*" in out, f"Expected bullet-prefix-glob subhead: {out!r}"
+        # Parent category header keeps the arrow style.
+        assert "▸" in out
+        # The legacy "  RN (3)" all-caps style is gone.
+        assert "  RN (" not in out
 
 
 class TestCmdHistory:

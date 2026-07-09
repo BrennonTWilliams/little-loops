@@ -22,6 +22,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _colorize_label,
     _render_fsm_diagram,
     _truncate_to_width,
+    _wrap_to_width,
 )
 from little_loops.cli.output import (
     ACRONYMS,  # noqa: F401  (re-exported for tests/lint)
@@ -69,11 +70,16 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
         desc_raw = spec.get("description", "") or ""
         if desc_raw.strip():
             raw_lines = desc_raw.splitlines()
-            desc = raw_lines[0].rstrip()
+            desc = raw_lines[0].rstrip() if raw_lines else ""
+            # ENH: surface remaining description as a wrapped continuation
+            # line below the row. Empty when the description is single-line.
+            description_line2 = ""
             if len(raw_lines) > 1:
-                desc += "…"
+                tail = [ln.strip() for ln in raw_lines[1:] if ln.strip()]
+                description_line2 = " ".join(tail).rstrip()
         else:
             desc = ""
+            description_line2 = ""
         category = spec.get("category", "") or ""
         labels: list[str] = spec.get("labels", []) or []
         visibility = spec.get("visibility", "public") or "public"
@@ -81,12 +87,19 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             visibility = "public"
         return {
             "description": desc,
+            "description_line2": description_line2,
             "category": category,
             "labels": labels,
             "visibility": visibility,
         }
     except Exception:
-        return {"description": "", "category": "", "labels": [], "visibility": "public"}
+        return {
+            "description": "",
+            "description_line2": "",
+            "category": "",
+            "labels": [],
+            "visibility": "public",
+        }
 
 
 def cmd_list(
@@ -270,6 +283,7 @@ def cmd_list(
                 "labels": lp["labels"],
                 "visibility": lp.get("visibility", "public"),
                 "description": lp["description"],
+                "description_line2": lp.get("description_line2", ""),
             }
             if lp["builtin"]:
                 item["built_in"] = True
@@ -372,6 +386,15 @@ def cmd_list(
                 desc_text = _truncate(desc_text, desc_col)
             desc_str = f"  {desc_text}" if desc_text else ""
             print(f"{indent}{name_str}{kind_str}{label_str}{desc_str}")
+            # Surface the rest of the description as a wrapped continuation
+            # line below the row. Plain text — the dim attribute is reserved
+            # for category headers and rollup badges (test_description_text_not_dim).
+            line2 = lp.get("description_line2") or ""
+            tw_now = terminal_width(default=120)
+            if line2 and tw_now >= 50:
+                wrap_w = max(20, tw_now - 4)
+                for cont in _wrap_to_width(line2, wrap_w):
+                    print(f"{indent}    {cont}")
 
         # ENH-2539: subgroup subheads for categories with a dominant prefix
         # cluster (≥3 members sharing a prefix). When no subgroup qualifies,
@@ -381,12 +404,14 @@ def cmd_list(
         if has_subgroups:
             for prefix, members in subgroups:
                 if prefix:
-                    sub_label = _all_caps(prefix)
-                    sub_color = f"{cat_color};1"
-                    print(colorize(f"  {sub_label} ({len(members)})", sub_color))
+                    # Differentiate auto-clustered subgroup headers from real
+                    # category headers: bullet + lowercase prefix + glob, dim
+                    # gray. The "▸ ALL-CAPS (N)" pattern is reserved for
+                    # top-level categories so the eye can tell them apart.
+                    print(colorize(f"  · {prefix}-* ({len(members)})", "2"))
                     leaf_indent = "    "  # 4-space leaves under a 2-space subhead
                 else:
-                    leaf_indent = "  "    # 2-space flat tail (matches no-subgroup case)
+                    leaf_indent = "  "  # 2-space flat tail (matches no-subgroup case)
                 for lp in members:
                     _emit_row(lp, leaf_indent)
         else:
