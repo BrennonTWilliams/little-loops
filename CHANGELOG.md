@@ -73,6 +73,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`TestSchemaLoaderInWheelInstall`) and a wheel-install smoke test so the
   regression cannot recur silently.
 
+## [1.139.1] - 2026-07-09
+
+### Fixed
+
+- **`ll-loop run` pre-run validator falsely flags `:default=` /
+  `?`-guarded `${context.X}` refs as missing required context variables** —
+  Pre-flight check now mirrors the engine split (fsm/interpolation.py:230-241)
+  and the static-validator idiom (fsm/validation.py:135-156
+  `_unguarded_captured_refs`), so guarded refs are skipped and only bare
+  `${context.X}` references for keys absent from `fsm.context` trip the
+  validator. Effect: every loop whose states rely on engine-native `:default=`
+  guards (14 loops, including `rn-refine` — `floor_fraction`, `dry_run`,
+  `confirm_overwrite`; `recursive-refine` — `order`, `commit_every`,
+  `no_recursion`; `rl-coding-agent`; `composer.yaml` `include`, etc.) is
+  once again runnable with `ll-loop run <loop> <input>` alone. Validator
+  error message also drops the spurious `:default=` suffix from the printed
+  key. (BUG-2553)
+
 ### Changed
 
 - **All 30 `ll-*` Codex bridge skills now carry `disable-model-invocation: true`** —

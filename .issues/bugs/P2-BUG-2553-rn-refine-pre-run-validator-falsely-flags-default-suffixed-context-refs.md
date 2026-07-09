@@ -1,8 +1,9 @@
 ---
 captured_at: '2026-07-09T00:35:54Z'
+completed_at: 2026-07-09 01:13:42+00:00
 discovered_date: 2026-07-09
 discovered_by: capture-issue
-status: open
+status: done
 confidence_score: 98
 outcome_confidence: 85
 score_complexity: 20
@@ -160,6 +161,13 @@ _Added by `/ll:refine-issue` — sequenced steps for the implementer._
    ```
    Should no longer exit 1 with `Missing required context variable: 'floor_fraction:default=0.5'`, `'dry_run:default=false'`, or `'confirm_overwrite:default=false'`
 
+## Impact
+
+- **Priority**: P2 — affects every loop that uses engine-native `:default=` guards (14 loops including the primary `rn-refine` victim), but the underlying loop code is correct; only the CLI pre-flight check is out of sync with the engine.
+- **Effort**: Small — single regex consumer loop (~10 lines) + 1 regression test class (~80 lines). Mirrors the existing `_unguarded_captured_refs()` idiom in `fsm/validation.py:146-156`.
+- **Risk**: Low — the fix only relaxes the validator for already-safe references (`:default=` and `?` guards); unguarded refs continue to be flagged. No behavior change for already-passing invocations.
+- **Breaking Change**: No — the validator's success/error message will now match what the engine already does. Invocations that previously worked will continue to work.
+
 ## Acceptance Criteria
 
 _Added by `/ll:refine-issue` — testable gates._
@@ -176,5 +184,13 @@ _Added by `/ll:refine-issue` — testable gates._
 ## Session Log
 - `/ll:confidence-check` - 2026-07-08 - `3cd58548-e8d8-45ad-abb7-51b698ff28bf.jsonl`
 - `/ll:refine-issue` - 2026-07-09T00:42:50 - `db5d428e-6214-4eed-8f35-6bb1fbbfb780.jsonl`
+- `/ll:ready-issue` - 2026-07-09T01:35:54Z - `<this-session-jsonl>`
+- `/ll:manage-issue` - 2026-07-09T01:13:42Z - applied fix per Resolution § patch shape (skip guarded refs entirely); added `TestPreRunContextValidator` (4 cases) to `scripts/tests/test_ll_loop_commands.py`; 14,360 passed / 36 skipped in full suite; mypy + ruff clean
 
 - `/ll:capture-issue` - 2026-07-09T00:35:54Z
+
+## Resolution
+
+Fixed in `scripts/little_loops/cli/loop/run.py:252-275` (pre-run validator block). The regex consumer now mirrors the engine split idiom in `fsm/interpolation.py:230-241` and the `_unguarded_captured_refs` pattern in `fsm/validation.py:135-156`: when the captured group contains `:default=` or ends with `?`, the ref is skipped (the engine supplies a fallback at render time, so the missing context key is provably safe). All previously-failing loops (`rn-refine`, `recursive-refine`, `rl-coding-agent`, `composer.yaml`, and 10 others using engine-native `:default=` guards) are once again runnable with `ll-loop run <loop> <input>` alone. The error message printed for genuinely bare `${context.X}` refs no longer carries a spurious `:default=` suffix. Regression coverage added in `scripts/tests/test_ll_loop_commands.py::TestPreRunContextValidator` (4 cases: default-guard, nullable, bare, mixed guarded+unguarded).
+
+**Status**: Done | Created: 2026-07-09 | Priority: P2

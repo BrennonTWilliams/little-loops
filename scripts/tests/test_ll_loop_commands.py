@@ -1641,9 +1641,14 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        # 2 project + 1 built-in → rollup "2 project, 1 built-in"
-        assert "2 project" in out
+        # 2 project + 1 built-in → 3 total. Dominant is 2 project (matches
+        # the (N) header), so the rollup badge emits only the minority:
+        # "1 built-in".
+        assert "(3)" in out
         assert "1 built-in" in out
+        # The dominant count is no longer echoed in the rollup; the (N) in
+        # the category header carries it.
+        assert "2 project" not in out
 
     def test_rollup_badge_uses_gray(
         self,
@@ -1784,13 +1789,11 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        # v2 polish: total line is uppercased + bold
-        assert "TOTAL:" in out
-        # Total appears after the last category header
-        total_idx = out.index("TOTAL:")
-        for cat in ("FOO", "BAR"):
-            if cat in out:
-                assert out.index(cat) < total_idx
+        # v2 polish: top summary is uppercased + bold
+        assert "TOTAL:" not in out  # removed in favor of single header summary
+        # The top summary header still carries the totals.
+        assert "2 LOOPS" in out
+        assert "CATEGORIES" in out
 
     def test_subgroup_subhead_for_shared_prefix(
         self,
@@ -1854,8 +1857,10 @@ class TestCmdListENH2539Polished:
         # description (rather than only ellipsis).
         assert "Short descr" in out  # first 13 chars of "Short description…"
         assert "alpha" in out and "beta" in out and "gamma" in out
-        # The "TOTAL:" closing summary line should be present (v2 polish: uppercased)
-        assert "TOTAL:" in out
+        # The redundant "TOTAL:" closing summary line was removed; the top
+        # summary header carries the totals.
+        assert "TOTAL:" not in out
+        assert "3 LOOPS" in out
 
     def test_row_columns_at_tw_120(
         self,
@@ -1945,11 +1950,8 @@ class TestCmdListENH2539Polished:
         first_summary_line = next(ln for ln in out.split("\n") if "LOOPS" in ln)
         assert "\033[1m" in first_summary_line
         assert "2 LOOPS" in first_summary_line
-        # Closing TOTAL line is also bold + uppercase
-        total_line = next(ln for ln in out.split("\n") if "TOTAL:" in ln)
-        assert "\033[1m" in total_line
-        assert "LOOPS" in total_line
-        assert "CATEGORIES" in total_line
+        # Closing TOTAL line was removed; the top summary is the only one.
+        assert "TOTAL:" not in out
 
     def test_description_text_not_dim(
         self,
@@ -5732,3 +5734,200 @@ class TestCmdPromoteBaseline:
         assert result == 0
         baseline = loops_dir / "baselines" / "my-loop" / "output.txt"
         assert "new output" in baseline.read_text()
+
+
+class TestPreRunContextValidator:
+    """Regression tests for BUG-2553: pre-run validator must honor :default=
+    and ? guards in `${context.X:default=Y}` / `${context.X?}` references.
+
+    The validator extracts the captured key between `${context.` and `}` via
+    `r"\\$\\{context\\.([^}.]+)"` in cli/loop/run.py:253. The captured Group 1
+    must be checked against `fsm.context` as the bare key, NOT as
+    `key:default=value` (which would never match). The engine-side split in
+    fsm/interpolation.py:230-241 and the validator idiom at
+    fsm/validation.py:135-156 (`_unguarded_captured_refs`) both honor guards;
+    this CLI pre-flight check must too.
+
+    Test strategy: chain `required_inputs:` (checked AFTER the context
+    validator at run.py:272-279) so that when the context validator is
+    bypassed successfully (Cases 1 & 2), the loop exits 1 with a
+    `requires input` error rather than reaching the LLM — providing a clean
+    discriminator that the validator was indeed bypassed.
+    """
+
+    @staticmethod
+    def _write_loop(loops_dir: Path, name: str, *, action: str, required_input: str) -> None:
+        """Write a minimal loop whose single state has the given action string.
+
+        `required_input` is added to `required_inputs:` so the test can
+        short-circuit at the next validator layer (after the context
+        validator at run.py:252-270) without invoking an LLM.
+        """
+        (loops_dir / f"{name}.yaml").write_text(
+            f"""
+name: {name}
+initial: execute
+max_iterations: 100
+required_inputs:
+  - {required_input}
+context:
+  {required_input}: ""
+states:
+  execute:
+    action: "{action}"
+    action_type: prompt
+    next: done
+    on_error: failed
+  done:
+    terminal: true
+  failed:
+    terminal: true
+"""
+        )
+
+    def test_default_guarded_ref_does_not_trip_validator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Case 1: `${context.x:default=true}` with x absent from fsm.context
+        does NOT cause exit 1 from the context validator. Should fall through
+        to the next validator (required_inputs) which IS expected to fire.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "default-guard",
+            action="${context.guarded_key:default=true}",
+            required_input="guarded_key",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "default-guard"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        # Validator was bypassed → no "Missing required context variable" error
+        assert "Missing required context variable" not in combined, (
+            f"Validator falsely flagged guarded ref as missing:\n{combined}"
+        )
+        # Required_inputs check fires next, exiting 1
+        assert result == 1
+        assert "requires input" in combined and "guarded_key" in combined
+
+    def test_nullable_ref_does_not_trip_validator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Case 2: `${context.x?}` (nullable fallback) with x absent from
+        fsm.context does NOT cause exit 1 from the context validator.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "nullable-guard",
+            action="${context.nullable_key?}",
+            required_input="nullable_key",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "nullable-guard"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "Missing required context variable" not in combined, (
+            f"Validator falsely flagged nullable ref as missing:\n{combined}"
+        )
+        assert result == 1
+        assert "requires input" in combined and "nullable_key" in combined
+
+    def test_bare_ref_still_trips_validator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Case 3: bare `${context.x}` (no guard) with x absent STILL trips
+        the validator. Error message must list x WITHOUT a `:default=` suffix
+        (the engine+validator alignment claim from BUG-2553).
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "bare-ref",
+            action="${context.bare_key}",
+            required_input="unused_input",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "bare-ref"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert result == 1
+        assert "Missing required context variable" in combined
+        assert "'bare_key'" in combined
+        # Critical: the printed key must NOT carry a `:default=` suffix
+        assert "bare_key:default" not in combined, (
+            f"Validator surfaced key with :default= suffix (BUG-2553 regression):\n{combined}"
+        )
+
+    def test_mixed_guarded_and_unguarded_flags_only_unguarded(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Case 4: a loop mixing guarded and unguarded refs to the same key
+        flags ONLY the unguarded form. Mirrors the `_unguarded_captured_refs`
+        idiom at fsm/validation.py:146-156.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Note: context.mixed_key:default=true carries the guarded form,
+        # context.mixed_key appears bare in the action.
+        (loops_dir / "mixed.yaml").write_text(
+            """
+name: mixed
+initial: execute
+max_iterations: 100
+states:
+  execute:
+    action: "echo ${context.mixed_key:default=fallback} vs ${context.mixed_key}"
+    action_type: prompt
+    next: done
+    on_error: failed
+  done:
+    terminal: true
+  failed:
+    terminal: true
+"""
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "mixed"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert result == 1
+        assert "Missing required context variable" in combined
+        # Should list the bare key
+        assert "'mixed_key'" in combined
+        # Should NOT echo any `:default=value` suffix in the reported key
+        assert "mixed_key:default" not in combined, (
+            f"Validator surfaced key with :default= suffix (BUG-2553 regression):\n{combined}"
+        )
