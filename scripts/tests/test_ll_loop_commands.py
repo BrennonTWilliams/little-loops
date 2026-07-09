@@ -1556,6 +1556,233 @@ class TestLoopListFormatting:
         assert "A test loop" in out
         assert "[experimental]" in out
 
+    def test_row_fits_terminal_with_wide_labels(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Wide labels must not overflow the terminal width.
+
+        Regression test: previously the description column budget was computed
+        once per render and did not shrink when labels were wider than the
+        reserved 18-col slot, so rows with two long labels could render to
+        82-94 cols at TW=80.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "wide.yaml").write_text(
+            _runnable(
+                "name: wide\n"
+                "category: test\n"
+                "description: A simple description\n"
+                "labels:\n"
+                "  - experimental\n"
+                "  - performance-critical\n"
+            )
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
+                result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        # Walk every non-blank, non-header line; entry rows contain the loop name.
+        for line in out.split("\n"):
+            stripped = ansi_re.sub("", line)
+            if "wide" not in stripped or "experimental" not in stripped:
+                continue
+            assert len(stripped.rstrip()) <= 80, (
+                f"row overflows TW=80 with wide labels: len={len(stripped.rstrip())} {stripped!r}"
+            )
+
+    def test_desc_budget_shrinks_when_labels_wide(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Wide labels reduce the desc budget so the row fits.
+
+        Same description, same TW=80 — with wide labels the desc truncates
+        (ends with …); without labels the desc renders fully.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        long_desc = (
+            "This is a fairly long description that definitely exceeds the "
+            "shrunk desc budget when wide labels consume most of the row."
+        )
+
+        # Wide labels variant
+        loops_dir_wide = tmp_path / "loops_wide"
+        loops_dir_wide.mkdir()
+        (loops_dir_wide / "wide.yaml").write_text(
+            _runnable(
+                "name: wide\n"
+                "category: test\n"
+                f"description: {long_desc}\n"
+                "labels:\n"
+                "  - experimental\n"
+                "  - performance-critical\n"
+            )
+        )
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
+                cmd_list(args, loops_dir_wide)
+        out_wide = capsys.readouterr().out
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        entry_wide = next(
+            ansi_re.sub("", ln) for ln in out_wide.split("\n") if "wide" in ln and "experimental" in ln
+        )
+        assert "…" in entry_wide, f"desc should be truncated with wide labels: {entry_wide!r}"
+        assert long_desc not in entry_wide
+
+        # No-labels variant — desc renders more of itself
+        loops_dir_bare = tmp_path / "loops_bare"
+        loops_dir_bare.mkdir()
+        (loops_dir_bare / "bare.yaml").write_text(
+            _runnable("name: bare\ncategory: test\ndescription: " + long_desc + "\n")
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
+                cmd_list(args, loops_dir_bare)
+        out_bare = capsys.readouterr().out
+        entry_bare = next(
+            ansi_re.sub("", ln) for ln in out_bare.split("\n") if "bare" in ln
+        )
+        # Compare visible desc length: with wide labels the desc budget
+        # shrinks, so the rendered description must be shorter than without
+        # labels. Use the ellipsis boundary as the marker — anything beyond
+        # the ellipsis is hidden either way for a 121-char input at TW=80.
+        import re as _re
+
+        def _visible_desc(entry: str) -> int:
+            """Length of text between the '  ' desc gap and the ellipsis (or end)."""
+            m = _re.search(r"  (\S.*)", entry)
+            if not m:
+                return 0
+            seg = m.group(1)
+            if "…" in seg:
+                return seg.index("…")
+            return len(seg)
+
+        wide_visible = _visible_desc(entry_wide)
+        bare_visible = _visible_desc(entry_bare)
+        assert wide_visible < bare_visible, (
+            f"wide labels should shrink desc budget: wide={wide_visible}, bare={bare_visible}\n"
+            f"wide_entry={entry_wide!r}\nbare_entry={entry_bare!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "labels_yaml",
+        [
+            "",  # no labels
+            'labels:\n  - a\n',
+            'labels:\n  - a\n  - b\n',
+            'labels:\n  - experimental\n  - performance-critical\n  - optimization\n',  # +1 collapse
+        ],
+    )
+    def test_row_width_invariant_across_label_counts(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        labels_yaml: str,
+    ) -> None:
+        """Every entry row fits within TW regardless of label count/size."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # File name matches the loop name we expect to see in the rendered row.
+        (loops_dir / "myloop.yaml").write_text(
+            _runnable(f"name: myloop\ncategory: test\ndescription: A description\n{labels_yaml}")
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=100):
+                cmd_list(args, loops_dir)
+        out = capsys.readouterr().out
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        entry = next(
+            ansi_re.sub("", ln) for ln in out.split("\n") if "myloop" in ln
+        )
+        assert len(entry.rstrip()) <= 100, (
+            f"row overflows TW=100 (labels_yaml={labels_yaml!r}): "
+            f"len={len(entry.rstrip())} {entry!r}"
+        )
+
+    def test_no_truncate_flag_bypasses_truncation(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--no-truncate renders the full description even at narrow TW."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_desc = "A description that is way longer than what fits at TW=60"
+        # File name matches the loop name we expect to see in the rendered row.
+        (loops_dir / "longloop.yaml").write_text(
+            _runnable(f"name: longloop\ncategory: test\ndescription: {long_desc}\n")
+        )
+
+        args = argparse.Namespace(
+            running=False,
+            status=None,
+            json=False,
+            category=None,
+            label=None,
+            no_truncate=True,
+        )
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=60):
+                cmd_list(args, loops_dir)
+        out = capsys.readouterr().out
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        entry = next(
+            ansi_re.sub("", ln) for ln in out.split("\n") if "longloop" in ln
+        )
+        # Full description present, no ellipsis
+        assert long_desc in entry, f"no-truncate should render full desc: {entry!r}"
+        assert "…" not in entry
+
+    def test_no_truncate_flag_round_trip_through_argparse(self) -> None:
+        """--no-truncate round-trips through argparse into cmd_list args."""
+        import argparse as _argparse
+
+        # Build a minimal parser mirroring the real list subparser.
+        parser = _argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command", required=True)
+        list_p = sub.add_parser("list")
+        list_p.add_argument("--no-truncate", action="store_true")
+
+        ns_on = parser.parse_args(["list", "--no-truncate"])
+        assert ns_on.no_truncate is True
+        ns_off = parser.parse_args(["list"])
+        assert ns_off.no_truncate is False
+
 
 # ---------------------------------------------------------------------------
 # ENH-2539: cmd_list Polish — integration tests for the 8 polish points

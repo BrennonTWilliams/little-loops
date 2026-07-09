@@ -360,6 +360,14 @@ Examples:
             help="Filter by label tag (repeatable)",
         )
         list_parser.add_argument(
+            "--no-truncate",
+            action="store_true",
+            help=(
+                "Show full titles and descriptions without truncating to terminal "
+                "width. Useful for piping output or capturing to a file."
+            ),
+        )
+        list_parser.add_argument(
             "-a",
             "--all",
             action="store_true",

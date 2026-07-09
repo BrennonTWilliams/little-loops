@@ -28,8 +28,10 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _box_inner_lines,
     _colorize_diagram_labels,
     _colorize_label,
+    _display_width,
     _render_fsm_diagram,
     _truncate_to_width,
+    _truncate_to_width_ansi,
     _wrap_to_width,
 )
 from little_loops.cli.output import (
@@ -176,6 +178,7 @@ def cmd_list(
         return 0
 
     builtin_only = getattr(args, "builtin", False)
+    no_truncate = getattr(args, "no_truncate", False)
 
     def _rel_key(path: Path, base: Path) -> str:
         """Relative-path identifier matching what `ll-loop run` accepts."""
@@ -306,15 +309,16 @@ def cmd_list(
 
     # ENH-2539: column widths computed once per render; description gets the
     # remaining space with a 20-char floor mirroring ``_print_state_overview_table``.
+    # The per-row desc_budget is recomputed in _emit_row from the actual
+    # rendered prefix (indent + name + kind + labels + desc-gap) so wide labels
+    # shrink the desc column rather than overflow the terminal.
     _MAX_NAME_COL = 32
     _MAX_KIND_COL = 10
     _MAX_LABEL_COL = 18
     _DESC_FLOOR = 20
     name_col = _MAX_NAME_COL + 2
     kind_col = _MAX_KIND_COL
-    label_col = _MAX_LABEL_COL
     tw = terminal_width(default=120)
-    desc_col = max(_DESC_FLOOR, tw - name_col - kind_col - label_col - 6)
 
     # Summary header
     n_project = sum(1 for lp in all_loops if not lp["builtin"])
@@ -381,11 +385,36 @@ def cmd_list(
                 _kcm.get(kind_value, "2"),
             )
             label_str = _render_labels(lp.get("labels") or [])
-            desc_text = lp["description"] or ""
-            if desc_text and len(desc_text) > desc_col:
-                desc_text = _truncate(desc_text, desc_col)
-            desc_str = f"  {desc_text}" if desc_text else ""
-            print(f"{indent}{name_str}{kind_str}{label_str}{desc_str}")
+            desc_src = lp["description"] or ""
+            # Per-row prefix budget: shrink the desc column when labels are
+            # wide rather than letting the row overflow the terminal. Mirrors
+            # the ll-issues list pattern of "compute prefix, truncate the rest".
+            # ``_display_width`` strips ANSI via its \x1b fast path so the
+            # colorized segments measure correctly.
+            used = (
+                _display_width(indent)
+                + _display_width(name_str)
+                + _display_width(kind_str)
+                + _display_width(label_str)
+                + 2  # "  " gap before desc_text
+            )
+            desc_budget = max(_DESC_FLOOR, tw - used)
+            if no_truncate:
+                desc_str = f"  {desc_src}" if desc_src else ""
+            elif desc_budget <= 0:
+                desc_str = ""
+            elif desc_src and _display_width(desc_src) > desc_budget:
+                desc_str = "  " + _truncate(desc_src, desc_budget)
+            elif desc_src:
+                desc_str = "  " + desc_src
+            else:
+                desc_str = ""
+            row_str = f"{indent}{name_str}{kind_str}{label_str}{desc_str}"
+            # Defense in depth: ANSI-aware clamp for any edge-case overflow
+            # (e.g. wide-glyph names that defeat the pre-truncation cap).
+            if not no_truncate and _display_width(row_str) > tw:
+                row_str = _truncate_to_width_ansi(row_str, tw - 1)
+            print(row_str)
             # Surface the rest of the description as a wrapped continuation
             # line below the row. Plain text — the dim attribute is reserved
             # for category headers and rollup badges (test_description_text_not_dim).
