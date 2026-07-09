@@ -30,7 +30,7 @@ scope:
   - "${context.plan_file}"
 initial: init
 max_steps: 300
-timeout: 14400
+timeout: 21600
 on_handoff: spawn
 required_inputs: ["plan_file"]
 artifact_versioning: true
@@ -311,11 +311,32 @@ states:
 
       The result must read as one continuous, self-contained section — not a list of
       links. Do not lose any concrete detail from the children's final.md files.
+    next: snapshot_node
+    on_error: synth_pop
+
+  snapshot_node:
+    # Diagnostics: copy the just-integrated node's final.md to a durable location
+    # outside the (potentially interrupted) run dir, so a mid-integration timeout
+    # never loses completed integration work. Best-effort only — never blocks the
+    # main synth loop on a copy failure.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      NODE="${captured.synth_node.output}"
+      RUN_ID=$(basename "$RUN_DIR")
+      mkdir -p .loops/diagnostics
+      if [ -f "$RUN_DIR/nodes/$NODE/final.md" ]; then
+        cp "$RUN_DIR/nodes/$NODE/final.md" ".loops/diagnostics/${RUN_ID}-${NODE}.md"
+      fi
     next: synth_pop
     on_error: synth_pop
 
   assemble:
     # Final assembly: the root's reassembled content becomes the working plan.md.
+    # If nodes/n0/final.md is missing (e.g. root integration never ran before a
+    # timeout), fall back to the un-integrated root plan.md and flag it: this is
+    # the REFINED-but-not-INTEGRATED case, so plan-rubric.md must not read as a
+    # normal clean pass.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
@@ -323,6 +344,7 @@ states:
         cp "$RUN_DIR/nodes/n0/final.md" "$RUN_DIR/plan.md"
       elif [ -f "$RUN_DIR/nodes/n0/plan.md" ]; then
         cp "$RUN_DIR/nodes/n0/plan.md" "$RUN_DIR/plan.md"
+        echo "RECOVERY_NEEDED: nodes/n0/final.md was missing; plan.md is the refined-but-not-integrated root (bottom-up integration did not complete before assemble ran)." >> "$RUN_DIR/plan-rubric.md"
       fi
     next: final_score
     on_error: finalize
@@ -470,7 +492,9 @@ states:
       - edges.tsv        — the decomposition tree ("<parent>\t<child>\t<title>")
 
       Step 1: Read ${captured.run_dir.output}/plan-rubric.md and report the final
-      dimension scores and aggregate verdict.
+      dimension scores and aggregate verdict. If the file contains a
+      "RECOVERY_NEEDED" line, surface it prominently — it means root integration
+      never completed and the written-back plan is refined-but-not-integrated.
 
       Step 2: Summarize the decomposition tree from ${captured.run_dir.output}/edges.tsv
       and ${captured.run_dir.output}/depth_map.txt: how many nodes, the maximum depth
