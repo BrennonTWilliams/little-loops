@@ -150,6 +150,41 @@ class TestWorkerResult:
         restored = WorkerResult.from_dict(data)
         assert restored.interrupted is True
 
+    def test_epic_branch_can_be_set(self) -> None:
+        """WorkerResult.epic_branch defaults to None and can carry a branch (FEAT-2452)."""
+        default = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+        assert default.epic_branch is None
+
+        result = WorkerResult(
+            issue_id="FEAT-2452",
+            success=True,
+            branch_name="feature/feat-2452-thing",
+            worktree_path=Path("/tmp/worktree"),
+            epic_branch="epic/epic-2451-integration",
+        )
+        assert result.epic_branch == "epic/epic-2451-integration"
+
+    def test_epic_branch_serialization(self) -> None:
+        """WorkerResult.epic_branch round-trips through to_dict/from_dict (FEAT-2452)."""
+        result = WorkerResult(
+            issue_id="FEAT-2452",
+            success=True,
+            branch_name="feature/feat-2452-thing",
+            worktree_path=Path("/tmp/worktree"),
+            epic_branch="epic/epic-2451-integration",
+        )
+
+        data = result.to_dict()
+        assert data["epic_branch"] == "epic/epic-2451-integration"
+
+        restored = WorkerResult.from_dict(data)
+        assert restored.epic_branch == "epic/epic-2451-integration"
+
 
 class TestWorkerPoolInit:
     """Tests for WorkerPool initialization."""
@@ -1793,6 +1828,86 @@ class TestUpdateBranchBase:
         fetch_cmds = [c for c in captured_cmds if "fetch" in c]
         assert fetch_cmds[0] == ["git", "fetch", "origin", "main"]
 
+    def test_update_branch_base_rebases_onto_epic_branch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_update_branch_base() rebases onto the epic branch when one is set (FEAT-2452)."""
+        worker_pool.parallel_config.base_branch = "main"
+        worker_pool.parallel_config.epic_branches.enabled = True
+        worker_pool._worker_epic_branches["BUG-001"] = "epic/epic-2451-integration"
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            success, error = worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        assert success is True
+        assert error == ""
+        rebase_cmds = [c for c in captured_cmds if "rebase" in c and "--abort" not in c]
+        assert len(rebase_cmds) == 1
+        assert rebase_cmds[0] == ["git", "rebase", "epic/epic-2451-integration"]
+
+    def test_update_branch_base_epic_branch_skips_remote_fetch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Epic branches are local-only, so no remote fetch is issued (FEAT-2452)."""
+        worker_pool.parallel_config.base_branch = "main"
+        worker_pool.parallel_config.epic_branches.enabled = True
+        worker_pool._worker_epic_branches["BUG-001"] = "epic/epic-2451-integration"
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        fetch_cmds = [c for c in captured_cmds if "fetch" in c]
+        assert fetch_cmds == []
+
+    def test_update_branch_base_no_epic_branch_uses_base_branch(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """With no epic branch set, behavior is byte-for-byte identical (FEAT-2452 regression)."""
+        worker_pool.parallel_config.remote_name = "origin"
+        worker_pool.parallel_config.base_branch = "main"
+        # Epic mode enabled but this issue has no epic branch (standalone).
+        worker_pool.parallel_config.epic_branches.enabled = True
+        worker_pool._worker_epic_branches["BUG-001"] = None
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        captured_cmds: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_cmds.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            success, error = worker_pool._update_branch_base(worktree_path, "BUG-001")
+
+        assert success is True
+        fetch_cmds = [c for c in captured_cmds if "fetch" in c]
+        assert fetch_cmds[0] == ["git", "fetch", "origin", "main"]
+        rebase_cmds = [c for c in captured_cmds if "rebase" in c and "--abort" not in c]
+        assert rebase_cmds[0] == ["git", "rebase", "origin/main"]
+
 
 class TestWorkerPoolModelDetection:
     """Tests for _detect_worktree_model_via_api()."""
@@ -2142,7 +2257,7 @@ CORRECTED
         # Simulate: worktree has no changes (committed to main instead)
         get_changed_files_calls = [0]
 
-        def mock_get_changed_files(path: Path) -> list[str]:
+        def mock_get_changed_files(path: Path, *args: Any, **kwargs: Any) -> list[str]:
             get_changed_files_calls[0] += 1
             if get_changed_files_calls[0] == 1:
                 return []  # First call: worktree empty (committed to main)
@@ -2213,6 +2328,10 @@ CORRECTED
         issue.issue_type = "enhancements"
         issue.path = Path(".issues/enhancements/P3-ENH-665-add-feature.md")
         issue.title = "Add Feature Branch Config"
+        # A MagicMock without an explicit parent has a truthy auto-attribute;
+        # pin it to None so epic-mode branch-naming stays inert (FEAT-2452 /
+        # FEAT-2339).
+        issue.parent = None
 
         captured: list[str] = []
 

@@ -662,6 +662,55 @@ class TestWorkerPoolSetupWorktree:
         assert len(worktree_cmd) >= 1
         assert "main" in worktree_cmd[0]
 
+    def test_setup_worktree_forks_from_epic_branch(self, mock_logger: MagicMock) -> None:
+        """Worktree setup forks from the EPIC integration branch when given one (FEAT-2452)."""
+        import tempfile
+        from pathlib import Path
+
+        from little_loops.config import BRConfig
+        from little_loops.parallel.types import ParallelConfig
+        from little_loops.parallel.worker_pool import WorkerPool
+
+        captured_commands: list[list[str]] = []
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            captured_commands.append(cmd)
+            if cmd[0] == "git" and cmd[1] == "config":
+                if "user.email" in cmd:
+                    return subprocess.CompletedProcess(
+                        cmd, 0, stdout="test@example.com\n", stderr=""
+                    )
+                if "user.name" in cmd:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="Test User\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc1234\n", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            ll_dir = repo_path / ".ll"
+            ll_dir.mkdir()
+            (ll_dir / "ll-config.json").write_text("{}")
+            claude_dir = repo_path / ".claude"
+            claude_dir.mkdir()
+
+            worktree_base = repo_path / ".worktrees"
+            worktree_base.mkdir()
+
+            config = ParallelConfig(max_workers=2, worktree_base=worktree_base)
+            br_config = BRConfig(repo_path)
+            pool = WorkerPool(config, br_config, mock_logger, repo_path)
+
+            worktree_path = worktree_base / "feature-feat-2452"
+            branch_name = "feature/feat-2452-thing"
+            epic_branch = "epic/epic-2451-integration"
+
+            with patch("subprocess.run", side_effect=mock_run):
+                with patch("shutil.copy2"):
+                    pool._setup_worktree(worktree_path, branch_name, base_branch=epic_branch)
+
+        worktree_cmd = [c for c in captured_commands if "worktree" in c and "add" in c]
+        assert len(worktree_cmd) >= 1
+        assert epic_branch in worktree_cmd[0]
+
     def test_cleanup_worktree_removes_worktree(self, mock_logger: MagicMock) -> None:
         """Worktree cleanup calls git worktree remove."""
         import tempfile

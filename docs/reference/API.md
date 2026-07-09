@@ -3308,6 +3308,10 @@ class WorkerResult:
     close_status: str | None = None
     was_blocked: bool = False
     interrupted: bool = False
+    epic_branch: str | None = None  # EPIC integration branch this worker forked
+                                    # from / merges into (FEAT-2452); None for
+                                    # standalone issues or when epic_branches is
+                                    # disabled
 ```
 
 ### IssuePriorityQueue

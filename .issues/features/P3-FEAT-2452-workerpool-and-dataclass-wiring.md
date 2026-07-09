@@ -1,10 +1,11 @@
 ---
 id: FEAT-2452
-title: "per-EPIC integration branch — WorkerPool + WorkerResult dataclass wiring"
+title: "per-EPIC integration branch \u2014 WorkerPool + WorkerResult dataclass wiring"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-07T19:55:00Z'
+completed_at: '2026-07-09T18:58:36Z'
 discovered_date: 2026-07-07
 discovered_by: confidence-check-decomposition
 labels:
@@ -22,17 +23,17 @@ relates_to:
 - FEAT-2448
 - FEAT-2449
 - FEAT-2453
-blocked_by:
-- FEAT-2447
+blocked_by: []
 unblocks:
 - FEAT-2453
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 76
+outcome_confidence: 74
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+size: Very Large
 ---
 
 # FEAT-2452: per-EPIC integration branch — WorkerPool + WorkerResult dataclass wiring
@@ -70,6 +71,43 @@ HIGH outcome confidence without losing aggregate tractability).
 
 EPIC-2451 (Per-EPIC integration branch strategy) is the parent
 EPIC and remains the coordination container.
+
+## Use Case
+
+As a maintainer running `ll-parallel` with `epic_branches.enabled=True`, when
+EPIC children are processed I need each `WorkerResult` to carry a typed
+`epic_branch` so downstream consumers (MergeCoordinator, Orchestrator) can
+distinguish EPIC children from standalone issues and diff/rebase against the
+correct integration branch instead of always against `base_branch`. This issue
+lands that typed source of truth plus the WorkerPool git-mechanics wiring
+(`_get_changed_files` / `_update_branch_base` epic-mode variants); the read-site
+consumers land in FEAT-2453. With `epic_branches.enabled=False` (default),
+behavior is byte-for-byte identical to today.
+
+## Current Behavior
+
+`_resolve_branch_targets()` (`worker_pool.py:1564`, landed in
+FEAT-2447) computes the fork/merge branch for an EPIC child, but its
+output is discarded: `WorkerResult` has no field to carry it, so
+downstream consumers (MergeCoordinator, Orchestrator) have no typed
+source of truth for "what the worker forked from / merges into".
+`_get_changed_files()` (`worker_pool.py:1078`) and
+`_update_branch_base()` (`worker_pool.py:1100`) always diff/rebase
+against `self.parallel_config.base_branch`, ignoring the epic branch
+even when `epic_branches.enabled` is True. With the field absent, EPIC
+children are indistinguishable from standalone issues downstream.
+
+## Expected Behavior
+
+`WorkerResult.epic_branch: str | None` carries the resolver's
+fork/merge target, computed once at the head of `_process_issue()` and
+threaded through all 12 `WorkerResult(...)` returns (`None` for
+standalone issues). `_get_changed_files()` diffs against the epic
+branch and `_update_branch_base()` rebases against it whenever
+`self._worker_epic_branches[<issue_id>]` is set. With
+`epic_branches.enabled` False (the default), behavior is byte-for-byte
+identical to today. Downstream consumers gain a typed signal; their
+read-site substitutions land separately in FEAT-2453.
 
 ## Scope
 
@@ -245,6 +283,27 @@ EPIC and remains the coordination container.
 
 **Estimated file count:** 3 implementation + 4 test + 1 docs = **8 files**.
 
+## Impact
+
+**Priority: P3** — Enabling scaffolding for the EPIC integration-branch
+strategy (EPIC-2451). Not user-facing on its own; blocks FEAT-2453 (the
+read-site consumer slice) and coordinates with FEAT-2449/2450. Correctly
+sequenced after FEAT-2447 (resolver foundation, already landed on `main`
+as `32ebdebb`).
+
+**Effort: Medium** — 8 files (3 implementation + 4 test + 1 docs). The
+change surface is broad but mechanical: a 4-edit dataclass pattern plus
+12-return kwarg threading (`score_change_surface = 10`,
+`score_complexity = 14`). No new architecture; mirrors the `was_blocked`
+/ `interrupted` precedent exactly.
+
+**Risk: Moderate** (outcome confidence 76/100). Primary risk is 12-return
+kwarg discipline — a missed site falls back to `base_branch` silently;
+mitigated by TDD on the `_process_issue` epic-branch capture. Secondary:
+instance-state dict (`self._worker_epic_branches`) key collisions on
+retry/resume paths. The default path (`epic_branches.enabled=False`) is
+regression-guarded byte-for-byte.
+
 ## Decision Rationale
 
 Two threading choices were locked in by `/ll:decide-issue` on
@@ -389,6 +448,35 @@ current `main` (only the FEAT-2447 foundation commit `32ebdebb` landed since
   (Scope item 1 lists 91/71/111/134). The "insert after the `interrupted`
   line" instruction remains correct regardless of exact number.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` on 2026-07-09 (second pass, `--full-rewrite`) —
+re-verification against current `main` (now includes the `add8a463` lint/format
+commit on top of the FEAT-2447 foundation `32ebdebb`):_
+
+- **Zero drift since the earlier 2026-07-09 pass.** All 12 `return
+  WorkerResult(...)` sites in `_process_issue` remain at **386, 400, 416, 431,
+  458, 478, 521, 573, 587, 608, 621, 637** (exactly as the prior note recorded;
+  `grep -c 'return WorkerResult(' worker_pool.py` = 12).
+- **All function anchors still exact**: `_process_issue` (`:326`),
+  `_get_changed_files` (`:1078`, callers `:534` and `:562`),
+  `_update_branch_base` (`:1100`, single caller `:602` —
+  `self._update_branch_base(worktree_path, issue.issue_id)`),
+  `_resolve_branch_targets` (`:1564`), `_epic_branches_created` init (`:190`).
+  `types.py` `interrupted` rows still field `:90` / docstring `:71` / `to_dict`
+  `:111` / `from_dict` `:134` (new `epic_branch` rows insert at 91/72/112/135).
+- **All test anchors still exact**: `test_parallel_types.py` `TestWorkerResult`
+  (`:162`); `test_worker_pool.py` `TestWorkerResult` (`:120`),
+  `TestUpdateBranchBase` (`:1711`),
+  `test_process_issue_uses_feature_branch_name_when_enabled` (`:2191`);
+  `test_subprocess_mocks.py`
+  `test_setup_worktree_with_base_branch_appends_commit_ish` (`:615`).
+- **Dependency gate satisfied**: `FEAT-2447` (blocker) is **Completed** on
+  `main`; `FEAT-2453` (unblocks) is **Open** and correctly waiting. `epic_branch`
+  remains absent from `WorkerResult` — feature unimplemented as expected.
+- No new gaps surfaced. The issue is implementation-ready; all Scope, AC, and
+  Files-Touched references resolve against current `main`.
+
 ## Wiring Pass — 2026-07-07
 
 ### Configuration
@@ -439,11 +527,17 @@ current `main` (only the FEAT-2447 foundation commit `32ebdebb` landed since
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-07 (decomposition
-re-validation after FEAT-2448 split)._
+_Re-validated by `/ll:confidence-check` on 2026-07-09 (post
+`/ll:refine-issue` anchor re-verification; `FEAT-2447` confirmed
+Completed on `main` as `32ebdebb`)._
 
 **Readiness Score**: 100/100 → PROCEED
-**Outcome Confidence**: 76/100 → MODERATE
+**Outcome Confidence**: 74/100 → MODERATE
+_(corrected from 76 — the four Phase 2b criterion scores
+(14+25+25+10) sum to 74, not 76; frontmatter now matches.)_
+
+_Original assessment, added by `/ll:confidence-check` on 2026-07-07
+(decomposition re-validation after FEAT-2448 split)._
 
 ### Outcome Risk Factors
 - **12-return kwarg discipline**: All 12 `WorkerResult(...)` returns
@@ -490,7 +584,92 @@ The 3 read-site substitutions (the clean piece) move to
 FEAT-2453 and achieve HIGH outcome confidence. Aggregate risk is
 similar; per-issue tractability jumps dramatically.
 
+## Confidence Check Notes
+
+_Re-validated by `/ll:confidence-check --auto` on 2026-07-09 (post second
+`/ll:refine-issue --full-rewrite` pass; HEAD `a9caae05`)._
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE (unchanged)
+
+All 12 `WorkerResult(...)` return-site line numbers, the `types.py` 4-edit
+anchors, and test anchors were re-verified directly against `worker_pool.py`
+at HEAD `a9caae05` and match the prior 2026-07-09 pass exactly — zero drift.
+`epic_branch` remains absent from `WorkerResult` (unimplemented, as expected).
+Scores and Outcome Risk Factors are unchanged from the prior check; see the
+original **Confidence Check Notes** and **Decomposition Rationale** sections
+above for the full risk-factor list (12-return kwarg discipline,
+instance-state dict collisions, ENH-2492 SQLite coordination, WorkerPool-wide
+instance-state impact). No new gaps found.
+
+## Confidence Check Notes
+
+_Re-validated by `/ll:confidence-check --auto` on 2026-07-09 (HEAD unchanged
+at `a9caae05`)._
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE (unchanged)
+
+Zero drift since the prior 2026-07-09 pass: all 12 `return WorkerResult(...)`
+sites confirmed at lines 386, 400, 416, 431, 458, 478, 521, 573, 587, 608,
+621, 637; blocker `FEAT-2447` confirmed `done` on `main`. No new gaps.
+
+### Outcome Risk Factors
+- **12-return kwarg discipline**: deep per-site complexity — a missed
+  `epic_branch=epic_branch` kwarg on any of the 12 `WorkerResult(...)`
+  returns falls back to `base_branch` silently. See the original
+  **Confidence Check Notes** section above for the full risk-factor list
+  (instance-state dict collisions, ENH-2492 SQLite coordination,
+  WorkerPool-wide instance-state impact) — unchanged.
+
+## Resolution
+
+Implemented 2026-07-09. All 8 acceptance criteria satisfied; full
+`python -m pytest scripts/tests/` exits 0 (14411 passed, 36 skipped).
+
+**Changes:**
+- `types.py` — added `WorkerResult.epic_branch: str | None = None` via the
+  4-edit pattern (field, `Attributes:` docstring, `to_dict`, `from_dict`),
+  mirroring the `interrupted` precedent.
+- `worker_pool.py`:
+  - New `self._worker_epic_branches: dict[str, str | None]` instance state
+    alongside `_epic_branches_created`.
+  - `_process_issue` computes `epic_branch` once at the head via
+    `_resolve_branch_targets(issue)`, normalizing the resolver's no-op
+    `base_branch` return to `None`; populates the dict; threads
+    `epic_branch=epic_branch` into all 12 `WorkerResult(...)` returns; and
+    forks the worktree from the epic branch when set.
+  - `_get_changed_files(worktree_path, issue_id=None)` diffs against the epic
+    branch when the dict has a non-None entry.
+  - `_update_branch_base` rebases directly onto the local epic branch (no
+    remote fetch) when set; standalone path unchanged.
+- Tests: `test_parallel_types.py` `TestWorkerResult` round-trip coverage;
+  `test_worker_pool.py` 2 `TestWorkerResult` + 3 `TestUpdateBranchBase`
+  epic-mode counterparts, `issue.parent = None` on the feature-branch test,
+  and a `*args`-tolerant `mock_get_changed_files`; `test_subprocess_mocks.py`
+  epic-fork counterpart.
+- Docs: `docs/reference/API.md` `WorkerResult` listing gains the field
+  (broader `docs/` sweep remains with FEAT-2450).
+
+With `epic_branches.enabled=False` (default), behavior is byte-for-byte
+identical to prior. Read-site consumers (MergeCoordinator / Orchestrator)
+remain deferred to **FEAT-2453**, now unblocked.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-09T18:57:49Z - `45a56f3e-99e2-425b-9d74-8bc8e49aa086.jsonl`
+- `/ll:ready-issue` - 2026-07-09T18:39:22 - `7384e9b7-3a22-411a-a727-ca3b027573b8.jsonl`
+- `/ll:refine-issue` - 2026-07-09T18:17:13 - `e402cd57-22c6-4b4a-a9ad-45a538419eb4.jsonl`
+- `/ll:refine-issue` - 2026-07-09T18:14:30 - `0c3a3e3c-e9de-428f-862c-1b10b893567a.jsonl`
+- `/ll:refine-issue` - 2026-07-09T18:11:19 - `04a77baa-c61a-4825-817f-993caeca72dc.jsonl`
+- `/ll:format-issue` - 2026-07-09T18:08:42 - `52677662-fb7d-4637-9d1e-bd07e2701cc6.jsonl`
+- `/ll:confidence-check` - 2026-07-09T06:24:13Z - `0786b08c-9316-4bd6-8316-0d20701ee90c.jsonl`
+- `/ll:refine-issue` - 2026-07-09T06:22:00 - `52075df2-c325-49ce-8fc7-103a442bdc6d.jsonl`
+- `/ll:confidence-check` - 2026-07-09T06:20:04Z - `2bcdfc9d-08e7-44a5-8c16-655e68b1a3cb.jsonl`
+- `/ll:refine-issue` - 2026-07-09T06:18:08 - `3340fe3f-5975-4f39-865d-fd195dac2e64.jsonl`
+- `/ll:refine-issue` - 2026-07-09T06:14:37 - `d0dede05-f894-417a-9212-83f694958c89.jsonl`
+- `/ll:refine-issue` - 2026-07-09T06:14:13 - `d0dede05-f894-417a-9212-83f694958c89.jsonl`
+- `/ll:confidence-check` - 2026-07-09T06:11:36 - `cceb71c9-78d9-4aa9-a775-4ee8f0490e78.jsonl`
+- `/ll:format-issue` - 2026-07-09T06:08:56 - `31178140-4c59-4c58-81af-2c64fc94ef8d.jsonl`
 - `/ll:refine-issue` - 2026-07-09T05:14:25 - `bd469245-20a5-4329-84fa-c42291a847a7.jsonl`
 
 - `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl` (decomposition re-validation)

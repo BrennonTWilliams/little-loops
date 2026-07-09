@@ -188,6 +188,10 @@ class WorkerPool:
         self._worker_stages: dict[str, WorkerStage] = {}
         # Cache of EPIC integration branches already created/verified (FEAT-2447)
         self._epic_branches_created: set[str] = set()
+        # Per-issue EPIC integration branch a worker forks from / merges into
+        # (FEAT-2452); None when the issue is standalone or epic_branches is
+        # disabled, in which case git mechanics fall back to base_branch.
+        self._worker_epic_branches: dict[str, str | None] = {}
 
     def start(self) -> None:
         """Start the worker pool."""
@@ -346,6 +350,19 @@ class WorkerPool:
             / f"worker-{issue.issue_id.lower()}-{timestamp}"
         )
 
+        # Resolve the EPIC integration branch this worker forks from / merges
+        # into (FEAT-2452). Both targets are the same string by construction
+        # (FEAT-2339 Decision Rationale #1), so we take the fork point. The
+        # resolver returns base_branch for standalone issues or when
+        # epic_branches is disabled — normalize that no-op case to None so
+        # downstream git mechanics (and WorkerResult.epic_branch) stay
+        # byte-for-byte identical to today's base_branch behavior.
+        fork_point, _ = self._resolve_branch_targets(issue)
+        epic_branch: str | None = (
+            fork_point if fork_point != self.parallel_config.base_branch else None
+        )
+        self._worker_epic_branches[issue.issue_id] = epic_branch
+
         # Set initial stage for progress tracking (ENH-262)
         self.set_worker_stage(issue.issue_id, WorkerStage.SETUP)
 
@@ -356,13 +373,18 @@ class WorkerPool:
         baseline_head_sha = self._get_main_head_sha()
 
         try:
-            # Step 1: Create worktree with new branch
+            # Step 1: Create worktree with new branch. Fork from the EPIC
+            # integration branch when set (FEAT-2452); otherwise keep today's
+            # base_branch / HEAD behavior.
             self._setup_worktree(
                 worktree_path,
                 branch_name,
-                base_branch=self.parallel_config.base_branch
-                if self.parallel_config.use_feature_branches
-                else None,
+                base_branch=epic_branch
+                or (
+                    self.parallel_config.base_branch
+                    if self.parallel_config.use_feature_branches
+                    else None
+                ),
             )
 
             # Register worktree as active to prevent cleanup while in use (BUG-142)
@@ -384,6 +406,7 @@ class WorkerPool:
             if issue.issue_id in self._terminated_during_shutdown:
                 self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     interrupted=True,
@@ -398,6 +421,7 @@ class WorkerPool:
             if ready_result.returncode != 0:
                 err_detail = ready_result.stderr or (ready_result.stdout or "")[:500]
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -414,6 +438,7 @@ class WorkerPool:
             # Handle CLOSE verdict - issue should not be implemented
             if ready_parsed.get("should_close"):
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=True,  # Closure is a valid outcome
                     branch_name=branch_name,
@@ -429,6 +454,7 @@ class WorkerPool:
             # Handle BLOCKED verdict - issue has open dependencies
             if ready_parsed.get("is_blocked"):
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     was_blocked=True,
@@ -456,6 +482,7 @@ class WorkerPool:
                 else:
                     concern_msg = "Issue not ready"
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -476,6 +503,7 @@ class WorkerPool:
                 issue, worktree_path, self.br_config, self.parallel_config, self.logger
             ):
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -519,6 +547,7 @@ class WorkerPool:
             if issue.issue_id in self._terminated_during_shutdown:
                 self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     interrupted=True,
@@ -531,7 +560,7 @@ class WorkerPool:
                 )
 
             # Step 6: Get list of changed files in worktree
-            changed_files = self._get_changed_files(worktree_path)
+            changed_files = self._get_changed_files(worktree_path, issue.issue_id)
 
             # Step 8: Detect files leaked to main repo instead of worktree (unstaged)
             leaked_files = self._detect_main_repo_leaks(issue.issue_id, baseline_status)
@@ -559,7 +588,7 @@ class WorkerPool:
                         committed_leaks, worktree_path, baseline_head_sha, issue.issue_id
                     )
                     if recovered:
-                        changed_files = self._get_changed_files(worktree_path)
+                        changed_files = self._get_changed_files(worktree_path, issue.issue_id)
 
             # Step 7: Verify actual work was done (after potential committed-leak recovery)
             # Pass full filename for better doc-only keyword matching
@@ -571,6 +600,7 @@ class WorkerPool:
             if manage_result.returncode != 0:
                 err_detail = manage_result.stderr or (manage_result.stdout or "")[:500]
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -585,6 +615,7 @@ class WorkerPool:
 
             if not work_verified:
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -606,6 +637,7 @@ class WorkerPool:
 
             if not base_updated:
                 return WorkerResult(
+                    epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
                     branch_name=branch_name,
@@ -619,6 +651,7 @@ class WorkerPool:
                 )
 
             return WorkerResult(
+                epic_branch=epic_branch,
                 issue_id=issue.issue_id,
                 success=True,
                 branch_name=branch_name,
@@ -635,6 +668,7 @@ class WorkerPool:
 
         except Exception as e:
             return WorkerResult(
+                epic_branch=epic_branch,
                 issue_id=issue.issue_id,
                 success=False,
                 branch_name=branch_name,
@@ -1075,17 +1109,25 @@ class WorkerPool:
             stderr="\n---CONTINUATION---\n".join(all_stderr),
         )
 
-    def _get_changed_files(self, worktree_path: Path) -> list[str]:
+    def _get_changed_files(self, worktree_path: Path, issue_id: str | None = None) -> list[str]:
         """Get list of files changed in the worktree.
 
         Args:
             worktree_path: Path to the worktree
+            issue_id: Issue ID used to look up the EPIC integration branch to
+                diff against (FEAT-2452); when the worker has an epic branch
+                set, files are diffed against it instead of ``base_branch``.
 
         Returns:
             List of changed file paths relative to repo root
         """
+        diff_base = self.parallel_config.base_branch
+        if issue_id is not None:
+            epic_branch = self._worker_epic_branches.get(issue_id)
+            if epic_branch:
+                diff_base = epic_branch
         result = subprocess.run(
-            ["git", "diff", "--name-only", self.parallel_config.base_branch, "HEAD"],
+            ["git", "diff", "--name-only", diff_base, "HEAD"],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -1111,18 +1153,27 @@ class WorkerPool:
         Returns:
             Tuple of (success, error_message)
         """
-        # Fetch latest base branch from configured remote (fall back to local if fetch fails)
-        base = self.parallel_config.base_branch
-        remote = self.parallel_config.remote_name
-        fetch_result = subprocess.run(
-            ["git", "fetch", remote, base],
-            cwd=worktree_path,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+        # EPIC integration branches are local-only (created off base_branch by
+        # _resolve_branch_targets), so rebase directly onto the local branch
+        # without a remote fetch (FEAT-2452). Standalone issues keep today's
+        # fetch-then-rebase-onto-remote behavior.
+        epic_branch = self._worker_epic_branches.get(issue_id)
+        if epic_branch:
+            rebase_target = epic_branch
+        else:
+            # Fetch latest base branch from configured remote (fall back to
+            # local if fetch fails)
+            base = self.parallel_config.base_branch
+            remote = self.parallel_config.remote_name
+            fetch_result = subprocess.run(
+                ["git", "fetch", remote, base],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
 
-        rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
+            rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
         # Rebase current branch onto base (remote or local fallback)
         rebase_result = subprocess.run(

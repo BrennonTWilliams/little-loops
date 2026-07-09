@@ -197,6 +197,7 @@ class TestWorkerResult:
         assert result.close_reason is None
         assert result.close_status is None
         assert result.interrupted is False
+        assert result.epic_branch is None
 
     def test_creation_with_all_fields(self) -> None:
         """WorkerResult can be created with all fields."""
@@ -217,6 +218,7 @@ class TestWorkerResult:
             close_reason="already_fixed",
             close_status="Closed - Already Fixed",
             interrupted=True,
+            epic_branch="epic/epic-2451-integration",
         )
 
         assert result.changed_files == ["file1.py", "file2.py"]
@@ -231,6 +233,7 @@ class TestWorkerResult:
         assert result.close_reason == "already_fixed"
         assert result.close_status == "Closed - Already Fixed"
         assert result.interrupted is True
+        assert result.epic_branch == "epic/epic-2451-integration"
 
     def test_to_dict(self, sample_worker_result: WorkerResult) -> None:
         """to_dict serializes all fields."""
@@ -242,6 +245,7 @@ class TestWorkerResult:
         assert result["worktree_path"] == "/tmp/worktrees/bug-001"
         assert result["changed_files"] == []
         assert result["interrupted"] is False
+        assert result["epic_branch"] is None
 
     def test_to_dict_path_converted_to_string(self) -> None:
         """to_dict converts Path to string."""
@@ -268,6 +272,7 @@ class TestWorkerResult:
             "duration": 10.5,
             "error": "failed",
             "interrupted": True,
+            "epic_branch": "epic/epic-2451-integration",
         }
 
         result = WorkerResult.from_dict(data)
@@ -280,6 +285,7 @@ class TestWorkerResult:
         assert result.duration == 10.5
         assert result.error == "failed"
         assert result.interrupted is True
+        assert result.epic_branch == "epic/epic-2451-integration"
 
     def test_from_dict_string_to_path_conversion(self) -> None:
         """from_dict converts worktree_path string to Path."""
@@ -318,6 +324,7 @@ class TestWorkerResult:
         assert result.close_reason is None
         assert result.close_status is None
         assert result.interrupted is False
+        assert result.epic_branch is None
 
     def test_roundtrip_serialization(self) -> None:
         """Roundtrip through to_dict/from_dict preserves all fields."""
@@ -338,6 +345,7 @@ class TestWorkerResult:
             close_reason="reason",
             close_status="status",
             interrupted=True,
+            epic_branch="epic/epic-2451-integration",
         )
 
         restored = WorkerResult.from_dict(original.to_dict())
@@ -358,6 +366,7 @@ class TestWorkerResult:
         assert restored.close_reason == original.close_reason
         assert restored.close_status == original.close_status
         assert restored.interrupted == original.interrupted
+        assert restored.epic_branch == original.epic_branch
 
 
 # =============================================================================

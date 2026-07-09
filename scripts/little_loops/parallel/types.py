@@ -69,6 +69,9 @@ class WorkerResult:
         close_reason: Reason code for closure (e.g., "already_fixed")
         close_status: Status text for closure (e.g., "Closed - Already Fixed")
         interrupted: Whether the worker was interrupted during shutdown
+        epic_branch: EPIC integration branch this worker forked from / merges
+            into (FEAT-2452); None for standalone issues or when
+            epic_branches is disabled (use base_branch)
     """
 
     issue_id: str
@@ -88,6 +91,7 @@ class WorkerResult:
     close_status: str | None = None
     was_blocked: bool = False
     interrupted: bool = False
+    epic_branch: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -109,6 +113,7 @@ class WorkerResult:
             "close_status": self.close_status,
             "was_blocked": self.was_blocked,
             "interrupted": self.interrupted,
+            "epic_branch": self.epic_branch,
         }
 
     @classmethod
@@ -132,6 +137,7 @@ class WorkerResult:
             close_status=data.get("close_status"),
             was_blocked=data.get("was_blocked", False),
             interrupted=data.get("interrupted", False),
+            epic_branch=data.get("epic_branch"),
         )
 
 
