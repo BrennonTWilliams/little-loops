@@ -3,8 +3,9 @@ id: FEAT-2551
 title: "F2a \u2014 code-run-gate oracle + config schema (build/test/typecheck/lint/health)"
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-08T00:00:00Z'
+completed_at: 2026-07-09 00:58:49+00:00
 discovered_date: 2026-07-08
 discovered_by: split-from-FEAT-2413
 parent: FEAT-2413
@@ -702,6 +703,7 @@ or `implementation_order_risk` flag updates triggered by these risk
 factors (no signal-phrase matches)._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-09T00:35:36 - `74c66907-f58a-4814-8a29-61a0c6e0d9f6.jsonl`
 - `/ll:decide-issue` - 2026-07-08T23:52:22 - `74a262ef-3d77-43bb-b2eb-f135b3e55a92.jsonl`
 - `/ll:decide-issue` - 2026-07-08T23:21:33 - `4159613b-e25e-4c7f-adcb-e3732fbe4519.jsonl`
 - `/ll:format-issue` - 2026-07-08T23:18:49 - `545c6ef1-08b7-43c3-a62f-be48a9a4e635.jsonl`
@@ -711,7 +713,78 @@ factors (no signal-phrase matches)._
 - `/ll:split-issue` - 2026-07-08T23:10:00 - `a081f85a-6f32-4531-b0ca-f9df5eae6f9f.jsonl`
 - `/ll:wire-issue` - 2026-07-08T00:00:00 - `<auto>`
 - `/ll:confidence-check` - 2026-07-08T19:30:46 - `0ba409de-9bbe-4eb0-9942-6d4cfe14a215.jsonl`
+- `/ll:manage-issue` - 2026-07-09T00:58:49 - implementation complete
+- `/ll:confidence-check` - 2026-07-08T19:30:46 - `0ba409de-9bbe-4eb0-9942-6d4cfe14a215.jsonl`
 
 ## Status
 
 **Open** | Split from FEAT-2413 on 2026-07-08 | Priority: P2
+
+## Verification Notes
+
+_Verified 2026-07-08 by `/ll:verify-issues FEAT-2551 --auto`. Verdict: **NEEDS_UPDATE** (minor anchor drift; substance accurate)._
+
+### Anchor drift (cosmetic, not blocking)
+
+All anchor references resolve to the right entities, but the following
+line-number ranges drifted between issue authoring and verification. The
+underlying code shapes are unchanged — only the lines moved within their
+files. Implementation should re-confirm against current code:
+
+| Reference | Issue says | Actual (2026-07-08) | Drift |
+|-----------|-----------|---------------------|-------|
+| `ProjectConfig` class | `config/core.py:142-161` | `config/core.py:135-162` | -7 / +1 |
+| `from_dict()` | `config/core.py:142-161` | `config/core.py:149-162` | -7 / +1 |
+| `to_dict()` | `config/core.py:554-559` | `config/core.py:544-559` | -10 |
+| `init/tui.py:_build_final_config()` signature | `init/tui.py:560-563` | `init/tui.py:620` | -60 (function moved to a later block) |
+| `init/tui.py` summary table | `init/tui.py:737-740` | `init/tui.py:737` (entry exists; line moves with table growth) | minor |
+| `config-schema.json` `project.properties` block | `:30-59` | `:30-60` (with `additionalProperties: false` at `:61`) | +2 |
+
+The `_ask_command` function definition at `init/tui.py:103` and the
+first prompt call at `:282` are unchanged, so the Step-6 advisory
+prompt addition should anchor at `:282-308` exactly as written.
+
+### Confirmed accurate (no change)
+
+- `oracles/code-run-gate.yaml` does NOT exist (correct — open issue, work not started).
+- `config-schema.json` does NOT have `health_url` (correct — Step 2 work).
+- `ProjectConfig` has 9 fields today; `health_url` field absent (correct).
+- `.ll/decisions.yaml` records `ARCHITECTURE-123` (alias-vs-rename, Option A selected) under `issue: FEAT-2551` at lines 4612-4634 — Step 4 pre-blocker is satisfied.
+- `.ll/decisions.yaml` records `ARCHITECTURE-122` (umbrella FEAT-2413 → sub-loop oracle, Option B selected) at lines 4594-4611.
+- `oracles/generator-evaluator-cli.yaml:2` `from: generator-evaluator` (FEAT-2269 precedent) — confirmed.
+- `oracles/generator-evaluator.yaml:71-74` `${context.run_dir}` → absolute-path idiom — confirmed.
+- `fsm/validation.py:84` `NON_LLM_EVALUATOR_TYPES`, `:108` `_SHARED_TMP_PATH_RE`, `:1300` `_validate_meta_loop_evaluation`, `:1523` `_validate_artifact_isolation`, `:1556` `_is_llm_judged` — all confirmed.
+- `cli-anything-bootstrap.yaml:252` `verify-cli`, `:304` `run-cli-tests`, `:483` `count-refine-cycle` — confirmed.
+- `core.py:813` `CLConfig = BRConfig`, `features.py:197-198` DEPRECATED comments, `schema.py:696-697` `on_yes`/`on_success` dataclass shim, `test_fsm_schema.py:3781` `test_legacy_max_iterations_aliases_to_max_steps` — all confirmed.
+- `docs/reference/loops.md:389` `oracles/generator-evaluator`, `:463` `oracles/generator-evaluator-cli`, `:597` `oracles/enumerate-and-prove` — all confirmed (target insertion point for new section is post-`:597`).
+- `docs/reference/CONFIGURATION.md:281-286` — has rows for `test_cmd` / `lint_cmd` / `type_cmd` / `build_cmd` / `run_cmd`; `health_url` row to be inserted at `:287` (after `run_cmd`).
+- `README.md:179` `**81 FSM loops**` — confirmed; will need to bump to `**82 FSM loops**` once the oracle file lands.
+- `doc_counts.py:144-146` `verify_documentation` uses `is_runnable_loop` — confirmed.
+- `test_builtin_loops.py:46` `test_all_validate_as_valid_fsm` — confirmed (the new oracle will be auto-iterated).
+- `test_builtin_loops.py:6808` `TestGeneratorEvaluatorOracle` — confirmed; the new `TestCodeRunGateOracle` should mirror its shape.
+- `test_config.py:95, 120` `test_from_dict_with_all_fields` / `test_from_dict_with_defaults` — confirmed (currently enumerate 9 fields; +1 for `health_url`).
+- `work_verification.py:44` `verify_work_was_done` — confirmed; this is the implementation-completion oracle F2b replaces.
+
+### Dependency integrity (PASS)
+
+All `relates_to` and `parent` references resolve:
+- `EPIC-2412` — exists (`.issues/epics/P2-EPIC-2412-first-class-greenfield-development.md`, status: open)
+- `FEAT-2413` (parent) — exists, references FEAT-2551 in the split note at lines 757-764
+- `FEAT-2552` (sibling, F2b wiring) — exists
+- `FEAT-2414`, `FEAT-2416`, `FEAT-2269` — all exist
+
+No broken refs, no missing backlinks, no cycles detected.
+
+### Decisions check (PASS)
+
+- `.ll/decisions.yaml` exists.
+- `ARCHITECTURE-123` recorded with `issue: FEAT-2551`, `scope: issue`, `enforcement: required` (alias-vs-rename, Option A) — the Step-4 pre-blocker is satisfied.
+- No conflict detected between the issue's proposed solution and any active required rule.
+
+### Implementation ready
+
+Issue is ready for `/ll:ready-issue` → implementation. The substantive
+design (oracle topology, evaluator choices, alias-vs-rename decision,
+scope boundaries) is intact and grounded; the anchor drift does not
+block implementation. The implementer should resolve current line
+numbers before writing code.

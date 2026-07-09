@@ -646,6 +646,72 @@ Imports `lib/common.yaml` for the `parse_tagged_json` fragment used in `parse_en
 
 ---
 
+## `oracles/code-run-gate`
+
+**Category**: oracle sub-loop
+**File**: `scripts/little_loops/loops/oracles/code-run-gate.yaml`
+
+Reusable Tier-1 deterministic oracle (FEAT-2551). Runs the project's `build` / `test` / `typecheck` / `lint` / `service_health` command matrix and emits `GATE_PASS` / `GATE_FAILED` / `GATE_SKIP` via the parent↔sub-loop token channel. Resolves commands from `.ll/ll-config.json` `project.*` with alias support per ARCHITECTURE-123 (`type_cmd`/`typecheck_cmd`, `run_cmd`/`start_cmd`). When ALL six command fields are null/empty, the oracle emits `GATE_SKIP` and routes to `done` (docs-only no-op pass). Each individual null command short-circuits its `run_*` state to a SKIP pass-through.
+
+Used by FEAT-2552's wiring into `rn-implement` / `rn-remediate` (F2b). Safe to call directly via `ll-loop run oracles/code-run-gate` with `parameters.run_dir` pointing at a per-invocation absolute path.
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `run_dir` | yes | — | Per-invocation absolute path for artifact isolation (MR-3) |
+| `issue_id` | yes | — | Token-channel identifier used in `subloop_outcome_<ID>.txt` |
+| `min_pass_rate` | no | `0.95` | Pass-rate threshold for `run_test`'s `output_numeric` evaluator |
+| `health_bound_seconds` | no | `10` | `curl --max-time` budget for `service_health` probe |
+| `build_cmd` | no | (from config) | Optional build command — null skips `run_build` |
+| `test_cmd` | no | (from config) | Optional test command — null skips `run_test` |
+| `typecheck_cmd` | no | (from config) | Optional type-check command — alias of `type_cmd` |
+| `lint_cmd` | no | (from config) | Optional lint command — null skips `run_lint` |
+| `run_cmd` | no | (from config) | Optional run/start command — alias of `start_cmd` |
+| `health_url` | no | (from config) | URL to probe for service readiness — null skips `service_health` |
+
+### Internal state machine
+
+```
+resolve_commands ──(writes commands.json + subloop_outcome_<ID>)──> run_build
+   │                                                                     │
+   └── all null ──> echo GATE_SKIP, exit 0 ───────────────────────────────┤
+                                                                         ▼
+                                              run_build  ─(self-skip if null)─> run_test
+                                                                         ▼
+                                              run_test   ─(self-skip if null)─> run_typecheck
+                                                                         ▼
+                                              run_typecheck ─(self-skip)─> run_lint
+                                                                         ▼
+                                              run_lint   ─(self-skip if null)─> service_health
+                                                                         ▼
+                                              service_health (PID + curl --fail) ─> aggregate
+                                                                         ▼
+                                              aggregate (classify + route:) ─> done | failed
+```
+
+### MR-1 / MR-3 compliance
+
+- **MR-1 (trivial)**: only `exit_code` / `output_numeric` / `classify` evaluators — never `llm_structured` / `comparator` / `contract`. The oracle is not classified as a meta-loop (actions only write under `${context.run_dir}/`, never to harness artifacts), so MR-1 does not fire.
+- **MR-3 (per-run isolation)**: every artifact (`commands.json`, `build.txt`, `test-results.txt`, `pytest.json`, `typecheck.txt`, `lint.txt`, `health.txt`, `service.pid`, `subloop_outcome_<ID>.txt`) lives under `${context.run_dir}/`. No bare `.loops/tmp/` writes.
+
+### Invocation (direct, for testing)
+
+```yaml
+run_code_run_gate:
+  loop: oracles/code-run-gate
+  with:
+    run_dir: "/abs/path/.loops/runs/code-run-gate/<issue-id>/<run-uuid>"
+    issue_id: "FEAT-XXXX"
+    min_pass_rate: "0.95"
+    health_bound_seconds: "10"
+  on_success: done
+  on_failure: failed
+  on_error: failed
+```
+
+---
+
 ## `loop-composer`
 
 **Category**: orchestration  

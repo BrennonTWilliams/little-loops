@@ -254,6 +254,28 @@ class TestConfigSchema:
 
         assert data["properties"]["decisions"].get("additionalProperties") is False
 
+    def test_health_url_in_schema(self) -> None:
+        """FEAT-2551: project.health_url must be declared in config-schema.json.
+
+        The project block has additionalProperties: false (config-schema.json:61),
+        so a config containing project.health_url is rejected unless the
+        property is declared here. The code-run-gate oracle's service_health
+        state reads this URL to probe service readiness.
+        """
+        data = json.loads(_load_schema_text())
+        project_props = data["properties"]["project"]["properties"]
+        assert "health_url" in project_props, (
+            "project.health_url is not declared in config-schema.json; configs "
+            "using it will be rejected by additionalProperties: false on the "
+            "project block (FEAT-2551)"
+        )
+        assert "null" in project_props["health_url"]["type"], (
+            "project.health_url must allow null (type = ['string', 'null'])"
+        )
+        assert project_props["health_url"].get("default") is None, (
+            "project.health_url must default to null"
+        )
+
     def test_design_tokens_in_schema(self) -> None:
         """design_tokens block must be declared in config-schema.json (FEAT-1747).
 

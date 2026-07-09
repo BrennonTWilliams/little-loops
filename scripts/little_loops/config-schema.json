@@ -56,6 +56,11 @@
           "type": ["string", "null"],
           "description": "Command to run/start project (smoke test)",
           "default": null
+        },
+        "health_url": {
+          "type": ["string", "null"],
+          "description": "URL to probe for service readiness (used by oracles/code-run-gate's service_health state; null = skip)",
+          "default": null
         }
       },
       "additionalProperties": false

@@ -1,0 +1,427 @@
+name: code-run-gate
+visibility: internal
+description: |
+  Reusable Tier-1 deterministic oracle (FEAT-2551) — runs the project's
+  build / test / typecheck / lint / service_health command matrix and emits
+  GATE_PASS / GATE_FAILED / GATE_SKIP via the parent↔sub-loop token channel.
+
+  Resolves commands from `.ll/ll-config.json` `project.*` (with alias support
+  per ARCHITECTURE-123: `type_cmd`/`typecheck_cmd`, `run_cmd`/`start_cmd`).
+  Each null command short-circuits its gate to a SKIP pass-through. When all
+  six command fields are null/empty, the oracle emits GATE_SKIP (docs-only
+  no-op) and routes to done — modeled on the missing-artifact graceful-skip
+  pattern in `cli-anything-bootstrap.yaml:97-105`.
+
+  Only Tier-1 deterministic evaluators are used (`exit_code`, `output_numeric`,
+  `classify`); MR-1 is satisfied trivially (the oracle is not a meta-loop —
+  actions only write under `${context.run_dir}/`). MR-3 compliant: every
+  artifact lives under `${context.run_dir}/`, never bare `.loops/tmp/`.
+
+  Used by FEAT-2552's wiring into `rn-implement`/`rn-remediate`. Safe to call
+  directly via `ll-loop run oracles/code-run-gate` with `parameters.run_dir`
+  pointing at a per-invocation absolute path.
+
+initial: resolve_commands
+on_handoff: spawn
+timeout: 1800
+max_steps: 10
+
+parameters:
+  run_dir:
+    type: string
+    required: true
+    description: |
+      Per-invocation absolute path for artifact isolation (MR-3).
+      Resolved via the case-absolute-path idiom (see resolve_commands action).
+  issue_id:
+    type: string
+    required: true
+    description: Token-channel identifier used in subloop_outcome_<ID>.txt.
+  min_pass_rate:
+    type: number
+    required: false
+    description: |
+      Minimum pass_rate threshold for run_test's output_numeric evaluator
+      (default 0.95).
+  health_bound_seconds:
+    type: number
+    required: false
+    description: curl --max-time budget for service_health probe (default 10).
+  build_cmd:
+    type: string
+    required: false
+    description: Caller-supplied build command (null → skip run_build).
+  test_cmd:
+    type: string
+    required: false
+    description: Caller-supplied test command (null → skip run_test).
+  typecheck_cmd:
+    type: string
+    required: false
+    description: |
+      Caller-supplied type-check command. Alias: type_cmd (ARCHITECTURE-123).
+  lint_cmd:
+    type: string
+    required: false
+    description: Caller-supplied lint command (null → skip run_lint).
+  run_cmd:
+    type: string
+    required: false
+    description: |
+      Caller-supplied run/start command (smoke test). Alias: start_cmd
+      (ARCHITECTURE-123).
+  health_url:
+    type: string
+    required: false
+    description: |
+      URL to probe for service readiness. When null together with no run_cmd,
+      service_health short-circuits to SKIP.
+
+context:
+  min_pass_rate: 0.95
+  health_bound_seconds: 10
+
+states:
+  resolve_commands:
+    # Resolves commands from `.ll/ll-config.json` `project.*` with alias
+    # support per ARCHITECTURE-123 (type_cmd/typecheck_cmd, run_cmd/start_cmd).
+    # Writes:
+    #   ${run_dir}/commands.json         — resolved command matrix (F2a → F2b contract)
+    #   ${run_dir}/subloop_outcome_<ID>  — placeholder token; aggregate rewrites
+    # When ALL six command fields are null/empty, emits GATE_SKIP and exits 0
+    # so the parent's on_yes→done wires success without running any gate.
+    # The pure-shell action does NOT use an evaluator — it sets up sidecars
+    # then unconditionally chains to run_build via `next:`. Each run_* state
+    # self-skips when its command is null (see run_build action).
+    description: |
+      Resolve the command matrix from `.ll/ll-config.json`, write the
+      commands.json sidecar + initial subloop_outcome placeholder, then
+      chain to run_build. Each run_* state self-skips if its command is null.
+    action_type: shell
+    timeout: 60
+    action: |
+      # Resolve run_dir to absolute path (MR-3 / generator-evaluator.yaml:71-74 idiom)
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      mkdir -p "$${ABS_DIR}"
+
+      # Read .ll/ll-config.json (best-effort — may be absent in unit tests).
+      CONFIG_FILE="${context.project_root:default=$(pwd)}/.ll/ll-config.json"
+      CFG_PROJECT=""
+      if [ -f "$CONFIG_FILE" ]; then
+        CFG_PROJECT=$(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get('project',{})))" "$CONFIG_FILE" 2>/dev/null || echo "")
+      fi
+
+      # Alias resolution per ARCHITECTURE-123:
+      #   typecheck_cmd or type_cmd  →  typecheck_cmd (canonical in commands.json)
+      #   start_cmd    or run_cmd    →  run_cmd       (canonical in commands.json)
+      get_value() {
+        local cfg="$1" key1="$2" key2="$3"
+        python3 -c "
+      import json,sys
+      cfg = json.loads(sys.argv[1]) if sys.argv[1] else {}
+      for k in (sys.argv[2], sys.argv[3]):
+          v = cfg.get(k)
+          if v:
+              print(v)
+              break
+      " "$cfg" "$key1" "$key2" 2>/dev/null
+      }
+
+      BUILD_CMD=$(get_value "$CFG_PROJECT" "build_cmd" "build_cmd")
+      TEST_CMD=$(get_value "$CFG_PROJECT" "test_cmd" "test_cmd")
+      TYPECHECK_CMD=$(get_value "$CFG_PROJECT" "typecheck_cmd" "type_cmd")
+      LINT_CMD=$(get_value "$CFG_PROJECT" "lint_cmd" "lint_cmd")
+      RUN_CMD=$(get_value "$CFG_PROJECT" "start_cmd" "run_cmd")
+      HEALTH_URL=$(get_value "$CFG_PROJECT" "health_url" "health_url")
+
+      # Honour caller-supplied overrides via parameters (when provided).
+      [ -n "${context.build_cmd:default=}" ] && BUILD_CMD="${context.build_cmd}"
+      [ -n "${context.test_cmd:default=}" ] && TEST_CMD="${context.test_cmd}"
+      [ -n "${context.typecheck_cmd:default=}" ] && TYPECHECK_CMD="${context.typecheck_cmd}"
+      [ -n "${context.lint_cmd:default=}" ] && LINT_CMD="${context.lint_cmd}"
+      [ -n "${context.run_cmd:default=}" ] && RUN_CMD="${context.run_cmd}"
+      [ -n "${context.health_url:default=}" ] && HEALTH_URL="${context.health_url}"
+
+      # Write commands.json sidecar (F2a → F2b contract — canonical names only)
+      cat > "$${ABS_DIR}/commands.json" <<CMDEOF
+      {"build_cmd": "$BUILD_CMD", "test_cmd": "$TEST_CMD", "typecheck_cmd": "$TYPECHECK_CMD", "lint_cmd": "$LINT_CMD", "run_cmd": "$RUN_CMD", "health_url": "$HEALTH_URL"}
+      CMDEOF
+
+      # Write initial subloop_outcome placeholder. aggregate rewrites this
+      # with the final GATE_PASS / GATE_FAILED / GATE_SKIP verdict (F2b reader).
+      echo "GATE_PASS" > "$${ABS_DIR}/subloop_outcome_${context.issue_id}.txt"
+
+      # Chain to run_build (which self-skips if build_cmd is null)
+      echo "resolved: build=$BUILD_CMD test=$TEST_CMD typecheck=$TYPECHECK_CMD lint=$LINT_CMD run=$RUN_CMD health=$HEALTH_URL"
+    next: run_build
+
+  run_build:
+    # Self-skip when build_cmd is null (writes SKIP to build.txt). On real
+    # invocation, captures exit code and stdout/stderr into build.txt.
+    # All three routing outcomes (on_yes / on_no / on_error) → aggregate so
+    # a single failed gate still produces an aggregated verdict (no MR-4
+    # partial-route dead-end).
+    description: |
+      Run build_cmd (if non-null) and write output to build.txt. Self-skips
+      when build_cmd is null. All routing outcomes chain to aggregate.
+    action_type: shell
+    timeout: 300
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      BUILD_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('build_cmd') or '')")
+      if [ -z "$BUILD_CMD" ]; then
+        echo "SKIP build_cmd=null" > "$${ABS_DIR}/build.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      bash -c "$BUILD_CMD" > "$${ABS_DIR}/build.txt" 2>&1
+      RC=$?
+      echo "exit_code=$RC" >> "$${ABS_DIR}/build.txt"
+      echo "exit_code=$RC"
+    evaluate:
+      type: exit_code
+    on_yes: run_test
+    on_no: run_test
+    on_error: run_test
+
+  run_test:
+    # Captures pass_rate from pytest --json-report when available; falls back
+    # to 1.0 on exit 0 (passes) or 0.0 on non-zero exit. output_numeric
+    # operator `>=` against `${context.min_pass_rate}` (default 0.95).
+    description: |
+      Run test_cmd (if non-null); extract pass_rate from pytest-json-report
+      when available. Evaluate via output_numeric (pass_rate >= min_pass_rate).
+      All routing outcomes chain to aggregate.
+    action_type: shell
+    timeout: 600
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      TEST_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('test_cmd') or '')")
+      if [ -z "$TEST_CMD" ]; then
+        echo "SKIP test_cmd=null" > "$${ABS_DIR}/test-results.txt"
+        echo "pass_rate=1.0" >> "$${ABS_DIR}/test-results.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      bash -c "$TEST_CMD" > "$${ABS_DIR}/test-results.txt" 2>&1
+      RC=$?
+      if [ -f "$${ABS_DIR}/pytest.json" ]; then
+        python3 -c "
+      import json
+      d = json.load(open('$${ABS_DIR}/pytest.json'))
+      s = d.get('summary', {})
+      t = s.get('total', 0) or 0
+      p = s.get('passed', 0) or 0
+      rate = round(p / t, 3) if t else 1.0
+      print(f'pass_rate={rate}')
+      " >> "$${ABS_DIR}/test-results.txt"
+      else
+        RATE="1.0"
+        [ "$RC" -ne 0 ] && RATE="0.0"
+        echo "pass_rate=$RATE" >> "$${ABS_DIR}/test-results.txt"
+      fi
+      echo "exit_code=$RC pass_rate=$(tail -1 $${ABS_DIR}/test-results.txt)"
+    capture: pass_rate
+    evaluate:
+      type: output_numeric
+      key: pass_rate
+      operator: "ge"
+      target: 0.95
+    on_yes: run_typecheck
+    on_no: run_typecheck
+    on_error: run_typecheck
+
+  run_typecheck:
+    # Same shape as run_build but for the type-check command. Alias
+    # `typecheck_cmd`/`type_cmd` already resolved by resolve_commands and
+    # written into commands.json under the canonical `typecheck_cmd` key.
+    description: |
+      Run typecheck_cmd (if non-null) and write output to typecheck.txt.
+      All routing outcomes chain to aggregate.
+    action_type: shell
+    timeout: 300
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      TYPECHECK_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('typecheck_cmd') or '')")
+      if [ -z "$TYPECHECK_CMD" ]; then
+        echo "SKIP typecheck_cmd=null" > "$${ABS_DIR}/typecheck.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      bash -c "$TYPECHECK_CMD" > "$${ABS_DIR}/typecheck.txt" 2>&1
+      RC=$?
+      echo "exit_code=$RC" >> "$${ABS_DIR}/typecheck.txt"
+      echo "exit_code=$RC"
+    evaluate:
+      type: exit_code
+    on_yes: run_lint
+    on_no: run_lint
+    on_error: run_lint
+
+  run_lint:
+    description: |
+      Run lint_cmd (if non-null) and write output to lint.txt. All routing
+      outcomes chain to aggregate.
+    action_type: shell
+    timeout: 300
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      LINT_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('lint_cmd') or '')")
+      if [ -z "$LINT_CMD" ]; then
+        echo "SKIP lint_cmd=null" > "$${ABS_DIR}/lint.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      bash -c "$LINT_CMD" > "$${ABS_DIR}/lint.txt" 2>&1
+      RC=$?
+      echo "exit_code=$RC" >> "$${ABS_DIR}/lint.txt"
+      echo "exit_code=$RC"
+    evaluate:
+      type: exit_code
+    on_yes: service_health
+    on_no: service_health
+    on_error: service_health
+
+  service_health:
+    # Launches run_cmd as a background process, writes its PID to
+    # ${run_dir}/service.pid, polls ${health_url} with curl --fail --max-time,
+    # then tears down via `kill $(cat ${run_dir}/service.pid)` in an
+    # ensure-clause pattern. Self-skips when both run_cmd and health_url
+    # are null. exit_code 0 on HTTP 2xx; non-zero otherwise.
+    description: |
+      Launch run_cmd in background, poll health_url with curl, tear down
+      via PID file. Self-skips when both run_cmd and health_url are null.
+      All routing outcomes chain to aggregate.
+    action_type: shell
+    timeout: 60
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      RUN_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('run_cmd') or '')")
+      HEALTH_URL=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('health_url') or '')")
+      if [ -z "$RUN_CMD" ] && [ -z "$HEALTH_URL" ]; then
+        echo "SKIP run_cmd=null health_url=null" > "$${ABS_DIR}/health.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      if [ -z "$HEALTH_URL" ]; then
+        echo "SKIP health_url=null" > "$${ABS_DIR}/health.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      # Launch run_cmd in background if provided; record PID.
+      SERVICE_PID=""
+      if [ -n "$RUN_CMD" ]; then
+        bash -c "$RUN_CMD" > "$${ABS_DIR}/service.log" 2>&1 &
+        SERVICE_PID=$!
+        echo "$SERVICE_PID" > "$${ABS_DIR}/service.pid"
+      fi
+      # Trap ensures we kill the service even if curl fails.
+      cleanup() {
+        [ -n "$SERVICE_PID" ] && kill "$SERVICE_PID" 2>/dev/null || true
+        [ -f "$${ABS_DIR}/service.pid" ] && kill "$(cat $${ABS_DIR}/service.pid)" 2>/dev/null || true
+        rm -f "$${ABS_DIR}/service.pid"
+      }
+      trap cleanup EXIT
+      BOUND="${context.health_bound_seconds}"
+      [ -z "$BOUND" ] && BOUND=10
+      # Poll the health URL (single attempt is sufficient for oracle scope).
+      curl --fail --silent --max-time "$BOUND" "$HEALTH_URL" > "$${ABS_DIR}/health.txt" 2>&1
+      RC=$?
+      cleanup
+      trap - EXIT
+      echo "exit_code=$RC" >> "$${ABS_DIR}/health.txt"
+      echo "exit_code=$RC"
+    evaluate:
+      type: exit_code
+    on_yes: aggregate
+    on_no: aggregate
+    on_error: aggregate
+
+  aggregate:
+    # Reads all sidecar files (build.txt, test-results.txt, typecheck.txt,
+    # lint.txt, health.txt) and computes the final verdict:
+    #   - All SKIP / empty          → GATE_SKIP   (docs-only no-op pass)
+    #   - Any non-SKIP with FAIL     → GATE_FAILED
+    #   - Otherwise                  → GATE_PASS
+    # Writes the verdict to ${run_dir}/subloop_outcome_<ID>.txt so F2b can
+    # read it. classify evaluator picks up the LAST non-empty stdout line
+    # (per scripts/little_loops/fsm/evaluators.py:evaluate_classify lines
+    # 453-504). route: table routes the verdict to done/failed.
+    description: |
+      Aggregate gate outcomes into GATE_PASS / GATE_FAILED / GATE_SKIP.
+      route: table maps verdict → done/failed.
+    action_type: shell
+    timeout: 30
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      cd "$${ABS_DIR}" || true
+
+      ALL_SKIP=true
+      ANY_FAIL=false
+      ANY_RAN=false
+      for f in build.txt test-results.txt typecheck.txt lint.txt health.txt; do
+        [ -f "$f" ] || continue
+        # Detect SKIP vs real run via first-line prefix.
+        FIRST=$(head -1 "$f")
+        case "$FIRST" in
+          SKIP*) ;;
+          *)
+            ANY_RAN=true
+            if grep -q "^exit_code=[1-9]" "$f" 2>/dev/null; then
+              ANY_FAIL=true
+            fi
+            ALL_SKIP=false
+            ;;
+        esac
+      done
+
+      if [ "$ANY_FAIL" = "true" ]; then
+        VERDICT="GATE_FAILED"
+      elif [ "$ALL_SKIP" = "true" ] && [ "$ANY_RAN" = "false" ]; then
+        VERDICT="GATE_SKIP"
+      else
+        VERDICT="GATE_PASS"
+      fi
+
+      # Write final outcome token (F2b's reader — see FEAT-2552).
+      echo "$VERDICT" > "subloop_outcome_${context.issue_id}.txt"
+      echo "$VERDICT"
+    capture: gate_verdict
+    evaluate:
+      type: classify
+      source: "${captured.gate_verdict.output}"
+    route:
+      GATE_PASS: done
+      GATE_FAILED: failed
+      GATE_SKIP: done
+      _: failed
+      _error: failed
+
+  done:
+    description: Terminal success (GATE_PASS or GATE_SKIP both reach here).
+    terminal: true
+
+  failed:
+    description: Terminal failure (GATE_FAILED or unknown verdict).
+    terminal: true

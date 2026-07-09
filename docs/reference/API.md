@@ -372,6 +372,7 @@ class ProjectConfig:
     format_cmd: str | None = "ruff format ."
     build_cmd: str | None = None
     run_cmd: str | None = None
+    health_url: str | None = None
 ```
 
 ### IssuesConfig

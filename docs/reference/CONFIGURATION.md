@@ -284,6 +284,7 @@ Project-level settings for commands:
 | `format_cmd` | `ruff format .` | Command to format code |
 | `build_cmd` | `null` | Optional build command |
 | `run_cmd` | `null` | Optional run/start command (smoke test) |
+| `health_url` | `null` | Optional service health probe URL (FEAT-2551, used by `oracles/code-run-gate` `service_health` state) |
 
 ### `issues`
 

@@ -145,6 +145,7 @@ class ProjectConfig:
     format_cmd: str | None = "ruff format ."
     build_cmd: str | None = None
     run_cmd: str | None = None
+    health_url: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
@@ -159,6 +160,7 @@ class ProjectConfig:
             format_cmd=data.get("format_cmd", "ruff format ."),
             build_cmd=data.get("build_cmd"),
             run_cmd=data.get("run_cmd"),
+            health_url=data.get("health_url"),
         )
 
 
@@ -557,6 +559,7 @@ class BRConfig:
                 "format_cmd": self._project.format_cmd,
                 "build_cmd": self._project.build_cmd,
                 "run_cmd": self._project.run_cmd,
+                "health_url": self._project.health_url,
             },
             "issues": {
                 "base_dir": self._issues.base_dir,

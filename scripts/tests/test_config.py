@@ -104,6 +104,7 @@ class TestProjectConfig:
             "format_cmd": "prettier --write .",
             "build_cmd": "npm run build",
             "run_cmd": "npm start",
+            "health_url": "http://localhost:8080/health",
         }
         config = ProjectConfig.from_dict(data)
 
@@ -116,6 +117,7 @@ class TestProjectConfig:
         assert config.format_cmd == "prettier --write ."
         assert config.build_cmd == "npm run build"
         assert config.run_cmd == "npm start"
+        assert config.health_url == "http://localhost:8080/health"
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating ProjectConfig with default values."""
@@ -130,6 +132,7 @@ class TestProjectConfig:
         assert config.format_cmd == "ruff format ."
         assert config.build_cmd is None
         assert config.run_cmd is None
+        assert config.health_url is None
 
 
 class TestIssuesConfig:

@@ -6982,6 +6982,268 @@ class TestGeneratorEvaluatorCliOracle:
         assert state.get("terminal") is True
 
 
+class TestCodeRunGateOracle:
+    """Structural tests for the code-run-gate oracle sub-loop (FEAT-2551).
+
+    Reusable Tier-1 deterministic oracle: runs the project's build/test/
+    typecheck/lint/service_health command matrix and emits GATE_PASS /
+    GATE_FAILED / GATE_SKIP via the parent↔sub-loop token channel.
+
+    MR-1 trivial: only exit_code / output_numeric / classify evaluators.
+    MR-3 compliant: all artifacts written under ${context.run_dir}/.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles/code-run-gate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    # --- Required top-level fields ---------------------------------------
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """name, initial, states must be present and match FEAT-2551 topology."""
+        assert data.get("name") == "code-run-gate"
+        assert data.get("initial") == "resolve_commands"
+        assert data.get("visibility") == "internal"
+        assert data.get("on_handoff") == "spawn"
+        assert isinstance(data.get("states"), dict)
+
+    # --- Parameters block ------------------------------------------------
+
+    def test_has_parameters_block(self, data: dict) -> None:
+        """parameters must declare run_dir, issue_id + the six command fields."""
+        params = data.get("parameters", {})
+        required = {
+            "run_dir",
+            "issue_id",
+            "min_pass_rate",
+            "health_bound_seconds",
+            "build_cmd",
+            "test_cmd",
+            "typecheck_cmd",
+            "lint_cmd",
+            "run_cmd",
+            "health_url",
+        }
+        missing = required - set(params)
+        assert not missing, f"parameters block missing: {sorted(missing)}"
+        assert params["run_dir"].get("required") is True
+        assert params["issue_id"].get("required") is True
+
+    # --- Required states exist -------------------------------------------
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """All 9 states from FEAT-2551:135-138 topology must be present."""
+        states = data.get("states", {})
+        required = {
+            "resolve_commands",
+            "run_build",
+            "run_test",
+            "run_typecheck",
+            "run_lint",
+            "service_health",
+            "aggregate",
+            "done",
+            "failed",
+        }
+        missing = required - set(states)
+        assert not missing, f"Missing states: {sorted(missing)}"
+
+    # --- MR-1 trivial: no LLM evaluators ---------------------------------
+
+    def test_only_uses_non_llm_evaluators(self, data: dict) -> None:
+        """All evaluators must be Tier-1 (exit_code / output_numeric / classify / etc).
+
+        Per scripts/little_loops/fsm/validation.py:84-88 NON_LLM_EVALUATOR_TYPES,
+        any non-LLM evaluator makes MR-1 trivially satisfied.
+        """
+        non_llm = {
+            "exit_code",
+            "output_numeric",
+            "output_json",
+            "output_contains",
+            "convergence",
+            "diff_stall",
+            "score_stall",
+            "open_question_stall",
+            "action_stall",
+            "mcp_result",
+            "harbor_scorer",
+            "classify",
+        }
+        forbidden = {"llm_structured", "comparator", "contract"}
+        states = data.get("states", {})
+        for state_name, state in states.items():
+            evaluator = state.get("evaluate")
+            if evaluator is None:
+                continue
+            etype = evaluator.get("type")
+            assert etype in non_llm, (
+                f"State {state_name!r} uses evaluator type {etype!r} which is LLM-judged; "
+                f"FEAT-2551 oracle must use only Tier-1 deterministic evaluators."
+            )
+            assert etype not in forbidden, (
+                f"State {state_name!r} uses forbidden evaluator {etype!r}"
+            )
+
+    # --- MR-3: no bare .loops/tmp/ writes -------------------------------
+
+    def test_no_writes_to_bare_loops_tmp(self, data: dict) -> None:
+        """All artifacts must live under ${context.run_dir}/ (MR-3, ENH-2500)."""
+        states = data.get("states", {})
+        for state_name, state in states.items():
+            action = state.get("action", "")
+            if not isinstance(action, str):
+                continue
+            assert ".loops/tmp/" not in action, (
+                f"State {state_name!r} writes to bare .loops/tmp/ — "
+                f"use ${{context.run_dir}}/ instead (MR-3, ENH-2500)"
+            )
+
+    # --- resolve_commands writes commands.json + subloop_outcome --------
+
+    def test_resolve_commands_uses_run_dir(self, data: dict) -> None:
+        """resolve_commands must write commands.json and subloop_outcome under run_dir."""
+        action = data["states"]["resolve_commands"].get("action", "")
+        assert "${context.run_dir}" in action or "run_dir" in action, (
+            "resolve_commands must reference ${context.run_dir} for artifact writes"
+        )
+        assert "commands.json" in action, (
+            "resolve_commands must write commands.json sidecar (F2a → F2b contract)"
+        )
+        assert "subloop_outcome" in action, (
+            "resolve_commands must write subloop_outcome_<ID>.txt for F2b's reader"
+        )
+
+    # --- aggregate: classify + route table with default -----------------
+
+    def test_aggregate_uses_classify_with_default_route(self, data: dict) -> None:
+        """aggregate must use classify evaluator with route: table including _:."""
+        state = data["states"]["aggregate"]
+        evaluator = state.get("evaluate", {})
+        assert evaluator.get("type") == "classify", (
+            f"aggregate must use classify evaluator, got {evaluator.get('type')!r}"
+        )
+        route = state.get("route", {})
+        # _ is the canonical default per scripts/little_loops/fsm/validation.py:1975-2006
+        assert "_" in route, "aggregate route: must include '_' default fallback"
+        assert "_error" in route, "aggregate route: must include '_error' fallback"
+        assert route.get("GATE_PASS") == "done", (
+            "aggregate route: GATE_PASS must map to done"
+        )
+        assert route.get("GATE_FAILED") == "failed", (
+            "aggregate route: GATE_FAILED must map to failed"
+        )
+        assert route.get("GATE_SKIP") == "done", (
+            "aggregate route: GATE_SKIP must map to done (treated like pass by F2b)"
+        )
+
+    # --- All run_* states route forward (chain) --------------------------
+
+    def test_run_states_chain_forward_and_terminate_at_aggregate(self, data: dict) -> None:
+        """Every run_* state must route on_yes / on_no / on_error forward in the chain.
+
+        The chain is: resolve_commands → run_build → run_test → run_typecheck →
+        run_lint → service_health → aggregate. Each state self-skips when its
+        command is null (writing SKIP to its sidecar) so the chain never
+        dead-ends. Pre-empts MR-4 partial-route dead-end (validation.py:1575-1616).
+        """
+        chain = (
+            "run_build",
+            "run_test",
+            "run_typecheck",
+            "run_lint",
+            "service_health",
+            "aggregate",
+        )
+        states = data["states"]
+        # Each state routes all three outcomes to the SAME next state (no fork).
+        for i, state_name in enumerate(chain[:-1]):
+            next_state = chain[i + 1]
+            state = states.get(state_name, {})
+            assert state.get("on_yes") == next_state, (
+                f"{state_name}.on_yes must be '{next_state}', got {state.get('on_yes')!r}"
+            )
+            assert state.get("on_no") == next_state, (
+                f"{state_name}.on_no must be '{next_state}', got {state.get('on_no')!r}"
+            )
+            assert state.get("on_error") == next_state, (
+                f"{state_name}.on_error must be '{next_state}', got {state.get('on_error')!r}"
+            )
+        # service_health must terminate the chain at aggregate
+        sh = states["service_health"]
+        assert sh.get("on_yes") == "aggregate"
+        assert sh.get("on_no") == "aggregate"
+        assert sh.get("on_error") == "aggregate"
+
+    # --- service_health: PID + teardown ---------------------------------
+
+    def test_service_health_writes_pid_and_tears_down(self, data: dict) -> None:
+        """service_health must track the service PID and kill it on teardown."""
+        action = data["states"]["service_health"].get("action", "")
+        assert "service.pid" in action, (
+            "service_health must write ${context.run_dir}/service.pid"
+        )
+        assert "curl" in action or "wget" in action, (
+            "service_health must probe the health URL with curl or wget"
+        )
+        # Teardown: either explicit kill or trap-based cleanup
+        has_kill = "kill" in action and "service.pid" in action
+        has_trap = "trap" in action
+        assert has_kill or has_trap, (
+            "service_health must tear down the service via kill or trap to "
+            "prevent orphaned processes"
+        )
+
+    # --- Alias resolution per ARCHITECTURE-123 ---------------------------
+
+    def test_resolve_commands_alias_resolution(self, data: dict) -> None:
+        """resolve_commands must accept both type_cmd/typecheck_cmd and run_cmd/start_cmd.
+
+        Per ARCHITECTURE-123 (Option A — accept both names; canonical layer
+        stays at type_cmd/run_cmd).
+        """
+        action = data["states"]["resolve_commands"].get("action", "")
+        assert "typecheck_cmd" in action, (
+            "resolve_commands must read typecheck_cmd (alias for type_cmd)"
+        )
+        assert "type_cmd" in action, (
+            "resolve_commands must read type_cmd (canonical key)"
+        )
+        # start_cmd is the alias for run_cmd per ARCHITECTURE-123
+        assert "start_cmd" in action or "run_cmd" in action, (
+            "resolve_commands must read run_cmd and/or start_cmd per ARCHITECTURE-123"
+        )
+
+    # --- meta_self_eval_ok NOT set (MR-1 enforced) -----------------------
+
+    def test_meta_self_eval_ok_is_false(self, data: dict) -> None:
+        """meta_self_eval_ok must be False (MR-1 is enforced; oracle is not meta)."""
+        assert data.get("meta_self_eval_ok", False) is False
+
+    def test_partial_route_ok_is_false(self, data: dict) -> None:
+        """partial_route_ok must be False — aggregate routes full table."""
+        assert data.get("partial_route_ok", False) is False
+
+    def test_shared_state_ok_is_false(self, data: dict) -> None:
+        """shared_state_ok must be False — artifacts are per-run (MR-3)."""
+        assert data.get("shared_state_ok", False) is False
+
+    # --- Terminal states ------------------------------------------------
+
+    def test_done_is_terminal(self, data: dict) -> None:
+        """done state must be terminal."""
+        state = data["states"]["done"]
+        assert state.get("terminal") is True, "done.terminal should be True"
+
+    def test_failed_is_terminal(self, data: dict) -> None:
+        """failed state must be terminal."""
+        state = data["states"]["failed"]
+        assert state.get("terminal") is True, "failed.terminal should be True"
+
+
 class TestEnumerateAndProveOracle:
     """Structural tests for the enumerate-and-prove oracle sub-loop."""
 
