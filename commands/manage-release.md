@@ -198,12 +198,26 @@ Scan completed issues for release notes using frontmatter status fields.
 2. Get the full ISO timestamp of the baseline tag commit:
    PREV_TIMESTAMP=$(git log -1 --format="%aI" "${PREV_TAG}")
 
-3. List issues with status: done whose completed_at falls after the baseline timestamp:
+3. List issues with status: done whose completed_at falls on/after the baseline
+   tag's date. `ll-issues list --json` emits `completed_at` as a day-granularity
+   ISO date (e.g. "2026-07-09") or null; compare on DATE, not raw strings —
+   completed_at day-values and the tag's tz-offset timestamp do not order
+   correctly under lexical `>=`:
+
    ll-issues list --status done --json | python3 -c "
 import sys, json
+from datetime import date, datetime
 data = json.load(sys.stdin)
 prev_ts = '$(echo ${PREV_TIMESTAMP})'
-results = [i for i in data if i.get('completed_at', '') >= prev_ts]
+prev_date = datetime.fromisoformat(prev_ts).date()
+def _cad(v):
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(v[:10])
+    except ValueError:
+        return None
+results = [i for i in data if (_cad(i.get('completed_at')) or date.min) >= prev_date]
 print(json.dumps(results))
 "
 
@@ -259,6 +273,14 @@ After all Wave 1 agents complete:
 2. **Build release notes** by merging:
    - Completed issues (Agent 2) grouped by type
    - Commits without associated issues (Agent 1) grouped by conventional commit type
+
+3. **Empty-result guard** (do not ship a silent empty changelog): if Agent 1
+   returns 0 commits AND Agent 2 returns 0 issues, STOP and warn loudly —
+   report the baseline tag (`PREV_TAG`) and range used, and ask the user to
+   confirm before continuing. A double-zero almost always means a broken
+   baseline or a query regression (see BUG-942), not a genuinely empty release.
+   Also warn (but continue) if Agent 2 returns 0 issues while Agent 1 found
+   commits that reference issue IDs — the completed_at query may be stale.
 
 #### 5b. Execute Actions
 

@@ -115,6 +115,13 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             labels = _parse_labels_from_content(content)
             if want_summary:
                 summary = _parse_summary_from_content(content)
+            if comp_date is None:
+                from little_loops.issue_history.parsing import _parse_completion_date
+
+                # batch_dates={} keeps the fast frontmatter + Resolution-regex
+                # paths but skips the per-file `git log` fallback, so a full
+                # `list --json` never spawns a subprocess per issue.
+                comp_date = _parse_completion_date(content, issue.path, batch_dates={})
         enriched.append((issue, stat, disc_date, comp_date, labels, summary))
 
     if getattr(args, "desc", False):
@@ -153,12 +160,13 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "status": stat,
                     "discovered_date": disc_date.date().isoformat() if disc_date else None,
+                    "completed_at": comp_date.isoformat() if comp_date else None,
                     "parent": issue.parent,
                     "labels": lbls,
                     "milestone": issue.milestone,
                     **({"summary": smry} if want_summary else {}),
                 }
-                for issue, stat, disc_date, _comp_date, lbls, smry in enriched
+                for issue, stat, disc_date, comp_date, lbls, smry in enriched
             ]
         )
         return 0

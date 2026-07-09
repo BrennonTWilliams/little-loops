@@ -4734,3 +4734,27 @@
     len().
   enforcement: advisory
   issue: BUG-2554
+- id: ARCHITECTURE-124
+  type: decision
+  timestamp: '2026-07-09T03:21:37Z'
+  category: architecture
+  labels: []
+  rationale: Add loops.run_defaults.delay mirroring show_diagrams backfill; default
+    null/off
+  rule: 'Captured: Config-defaultable --delay for ll-loop run'
+  scope: issue
+  issue: ENH-2556
+- id: TEST-205
+  type: rule
+  timestamp: '2026-07-09T03:41:24Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: ll-issues list --json silently omitted completed_at even though IssueInfo
+    computed it internally, causing manage-release's date filter to always evaluate
+    false with no error.
+  rule: CLI --json output contracts must include every field that downstream consumers
+    filter/sort on, verified by a contract te
+  enforcement: advisory
+  issue: BUG-2558

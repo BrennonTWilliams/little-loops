@@ -282,6 +282,7 @@ class TestIssuesListJsonContract:
         "path",
         "status",
         "discovered_date",
+        "completed_at",
         "parent",
         "labels",
         "milestone",
@@ -354,6 +355,52 @@ class TestIssuesListJsonContract:
         items = json.loads(capsys.readouterr().out)
         for item in items:
             assert isinstance(item["labels"], list)
+
+    def test_completed_at_populated_and_filterable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Regression for BUG-942 family: `completed_at` must be emitted from
+        frontmatter AND survive the manage-release date filter.
+
+        ll-issues list --json previously omitted completed_at entirely, so
+        /ll:manage-release always reported 0 completed issues since the last
+        release (the `i.get('completed_at','') >= prev_ts` filter was always
+        False). Assert the field is present, populated for a done issue, and
+        that the date-based filter picks it up.
+        """
+        from datetime import date, datetime
+
+        issues_dir = tmp_path / ".issues" / "features"
+        self._write_issue(
+            issues_dir,
+            "P2-FEAT-0002-done-issue.md",
+            "---\nid: FEAT-0002\ntype: FEAT\npriority: P2\nstatus: done\n"
+            "completed_at: '2026-07-09T01:41:36Z'\n---\n\n# Done Issue\n",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-issues", "list", "--status", "done", "--json"]):
+            from little_loops.cli.issues import main_issues
+
+            assert main_issues() == 0
+        items = json.loads(capsys.readouterr().out)
+        done = next(i for i in items if i["id"] == "FEAT-0002")
+        assert done["completed_at"] == "2026-07-09"
+
+        # Reproduce the hardened manage-release filter (date comparison).
+        prev_date = datetime.fromisoformat("2026-07-08T00:14:39-05:00").date()
+
+        def _cad(v: str | None) -> date | None:
+            if not v:
+                return None
+            try:
+                return date.fromisoformat(v[:10])
+            except ValueError:
+                return None
+
+        results = [i for i in items if (_cad(i.get("completed_at")) or date.min) >= prev_date]
+        assert any(i["id"] == "FEAT-0002" for i in results), (
+            "hardened manage-release filter must include an issue completed after the tag"
+        )
 
     def test_status_is_known_value(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

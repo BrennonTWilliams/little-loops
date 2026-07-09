@@ -121,6 +121,7 @@ Returns a JSON array. Each element describes one issue file.
     "path": "/path/to/.issues/enhancements/P2-ENH-2197-ll-loop-run-model-host-action-passthrough.md",
     "status": "open",
     "discovered_date": null,
+    "completed_at": null,
     "parent": "EPIC-2196",
     "labels": [],
     "milestone": null
@@ -139,6 +140,7 @@ Returns a JSON array. Each element describes one issue file.
 | `path` | string | yes | Absolute path to the issue file |
 | `status` | string | yes | Issue status: `"open"`, `"in_progress"`, `"blocked"`, `"deferred"`, `"done"`, `"cancelled"` |
 | `discovered_date` | string or null | yes | `YYYY-MM-DD` date the issue was captured (null if not set) |
+| `completed_at` | string or null | yes | `YYYY-MM-DD` completion date, resolved from the `completed_at` frontmatter or a `**Completed/Fixed/Closed**:` resolution line (null for non-done issues or when no completion date is recorded). Day-granularity; consumed by `/ll:manage-release` to select issues completed since the last tag |
 | `parent` | string or null | yes | Parent epic ID (null if not set) |
 | `labels` | array of strings | yes | Labels from the issue frontmatter |
 | `milestone` | string or null | yes | Milestone tag (null if not set) |

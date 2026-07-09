@@ -32,7 +32,21 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
+    from little_loops.issue_lifecycle import _completed_at_now
     from little_loops.issue_progress import _OPEN_STATUSES, _TERMINAL_STATUSES
+
+    def _status_updates(status: str) -> dict[str, str]:
+        """Frontmatter updates for a status transition.
+
+        Stamps ``completed_at`` when moving to ``done`` so manual CLI
+        completions carry a timestamp — matching the lifecycle/parallel/sync
+        paths. Without it, release notes and history queries that filter on
+        ``completed_at`` silently drop CLI-completed issues (BUG-942 family).
+        """
+        updates = {"status": status}
+        if status == "done":
+            updates["completed_at"] = _completed_at_now()
+        return updates
 
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
@@ -51,7 +65,7 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     content = path.read_text()
     old_status = parse_frontmatter(content).get("status", "unknown")
-    new_content = update_frontmatter(content, {"status": args.status})
+    new_content = update_frontmatter(content, _status_updates(args.status))
     path.write_text(new_content)
     print(f"{args.issue_id}: {old_status} → {args.status}")
 
@@ -105,7 +119,7 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
         for child in active:
             try:
                 child_content = child.path.read_text()
-                child_new = update_frontmatter(child_content, {"status": args.cascade_to})
+                child_new = update_frontmatter(child_content, _status_updates(args.cascade_to))
                 child.path.write_text(child_new)
                 print(f"    {child.issue_id} → {args.cascade_to}")
             except OSError as exc:

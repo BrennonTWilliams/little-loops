@@ -77,6 +77,73 @@ class TestIssuesCLISetStatus:
         assert "open" in captured.out
         assert "done" in captured.out
 
+    def test_set_status_done_stamps_completed_at(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """Transitioning to done stamps completed_at so release notes / history
+        queries that filter on completed_at don't silently drop the issue
+        (BUG-942 family; set_status.py previously wrote only status)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "set-status", "BUG-001", "done", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("status") == "done"
+        completed_at = fm.get("completed_at")
+        assert completed_at, "done transition must stamp completed_at"
+        assert str(completed_at).startswith("20") and "T" in str(completed_at)
+
+    def test_set_status_non_terminal_omits_completed_at(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """Non-terminal transitions (e.g. in_progress) must NOT stamp completed_at."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "in_progress",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("status") == "in_progress"
+        assert "completed_at" not in fm
+
     def test_set_status_preserves_unrelated_fields(
         self,
         temp_project_dir: Path,
