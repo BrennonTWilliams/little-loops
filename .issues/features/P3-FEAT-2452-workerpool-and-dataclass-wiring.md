@@ -358,6 +358,37 @@ context at FEAT-2448 § Codebase Research Findings._
   only (`result["worker_result"]["issue_id"] == "BUG-001"`), not
   strict-shape. Adding `epic_branch` is safe.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` on 2026-07-09 — anchor re-verification against
+current `main` (only the FEAT-2447 foundation commit `32ebdebb` landed since
+2026-07-07 capture):_
+
+- **All function/class anchors confirmed exact**: `_resolve_branch_targets`
+  (`worker_pool.py:1564`), `_get_changed_files` (`:1078`, callers `:534` and
+  `:562`), `_update_branch_base` (`:1100`, single caller `:602`),
+  `_process_issue` (`:326`), `_epic_branches_created` init (`:190`). Test
+  anchors also exact: `test_worker_pool.py` `TestWorkerResult:120`,
+  `TestUpdateBranchBase:1711`,
+  `test_process_issue_uses_feature_branch_name_when_enabled:2191`;
+  `test_parallel_types.py` `TestWorkerResult:162`; `test_subprocess_mocks.py`
+  `test_setup_worktree_with_base_branch_appends_commit_ish:615`.
+- **`epic_branch` field confirmed absent** — `git grep epic_branch
+  scripts/little_loops/parallel/` matches only `EpicBranchesConfig`
+  (FEAT-2447), never `WorkerResult.epic_branch`. Feature is unimplemented as
+  expected.
+- ⚠ **12-return line numbers drifted +2**: the `WorkerResult(...)` returns in
+  `_process_issue` are now at **386, 400, 416, 431, 458, 478, 521, 573, 587,
+  608, 621, 637** (Scope item 2 and AC #2 list 384, 398, 414, 429, 456, 476,
+  519, 571, 585, 606, 619, 635). Count is still exactly **12**. Key off the
+  `_process_issue` function boundary + `git grep -n 'return WorkerResult('`,
+  not the literal line numbers.
+- ⚠ **`types.py` 4-edit anchors drifted +1**: current `interrupted` rows are
+  field `:90`, docstring `:71`, `to_dict` `:111`, `from_dict` `:134` — so the
+  new `epic_branch` rows insert at `:91`, `:72`, `:112`, `:135` respectively
+  (Scope item 1 lists 91/71/111/134). The "insert after the `interrupted`
+  line" instruction remains correct regardless of exact number.
+
 ## Wiring Pass — 2026-07-07
 
 ### Configuration
@@ -460,6 +491,7 @@ FEAT-2453 and achieve HIGH outcome confidence. Aggregate risk is
 similar; per-issue tractability jumps dramatically.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-09T05:14:25 - `bd469245-20a5-4329-84fa-c42291a847a7.jsonl`
 
 - `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl` (decomposition re-validation)
 - `/ll:confidence-check-decomposition` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
