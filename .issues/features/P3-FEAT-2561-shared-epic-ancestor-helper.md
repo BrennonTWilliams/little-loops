@@ -4,8 +4,9 @@ title: "shared EPIC-ancestor helper \u2014 promote find_nearest_epic_ancestor to
   \ scope"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-09T00:00:00Z'
+completed_at: '2026-07-09T22:37:26Z'
 discovered_date: 2026-07-09
 discovered_by: confidence-check-decomposition
 labels:
@@ -273,7 +274,37 @@ _Added by `/ll:refine-issue` — verified against the codebase 2026-07-09:_
 - FEAT-2449 (partial-failure gate uses the shared walk)
 - FEAT-2562 (`_inspect_worktree` maps worktree issue-ID → EPIC via the shared walk)
 
+## Resolution
+
+Implemented 2026-07-09 via `/ll:manage-issue`. Promoted the EPIC-ancestor
+parent-chain walk to two module-level functions in
+`scripts/little_loops/issue_progress.py`:
+
+- `find_nearest_epic_ancestor(issue, parent_map)` — the walk lifted verbatim from
+  `WorkerPool._find_nearest_epic_ancestor` (starts from `issue.parent`,
+  cycle-guarded, returns first `EPIC-*` ancestor). Pure, no filesystem access.
+- `build_parent_map(all_issues)` — in-memory `{issue_id: parent}` builder that
+  **retains** `None`-valued parents (matching the disk-scan builder's shape).
+
+`WorkerPool._find_nearest_epic_ancestor` now delegates to the module walk,
+supplying `self._build_parent_map()` (its disk-scan + `_parent_map_cache`
+retained). `compute_epic_progress` now builds its parent map via
+`build_parent_map` (DRY; the inline `if i.parent` filter is gone). The
+`None`-retention shift is behavior-preserving: `_issue_descends_to` /
+`.get()` treat a `None` value identically to a missing key (its type annotation
+was widened to `dict[str, str | None]`).
+
+**Verification:** 10 new unit tests in `test_issue_progress.py`
+(direct/multi-hop/no-epic/cycle/no-parent + map shape) pass;
+`TestResolveBranchTargets` regression net (incl. `test_nested_epic_flattens_to_nearest`,
+`test_idempotent_creation`) passes unchanged; full suite `14422 passed, 36 skipped`;
+mypy + ruff clean. Doc anchor in `skills/review-epic/SKILL.md` updated (`:87` → `:120`).
+
+Out of scope (per issue): `list_cmd.py::_find_epic_ancestor` delegation and
+consumer wiring (FEAT-2449 / FEAT-2562).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-09T22:36:55 - `d0494f45-9e7a-424d-b1d7-57ca522cf905.jsonl`
 - `/ll:confidence-check` - 2026-07-09T00:00:00 - `bcca02d5-1fc9-4422-a6c5-6879845c5159.jsonl`
 - `/ll:wire-issue` - 2026-07-09T22:00:36 - `de14ada0-187e-4c4d-aee7-ce2c6cdb932a.jsonl`
 - `/ll:refine-issue` - 2026-07-09T21:49:11 - `0f3a1cee-ab11-494d-a96b-0436370c2e78.jsonl`

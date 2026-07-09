@@ -64,7 +64,44 @@ def _issue_age_days(issue: IssueInfo) -> int | None:
     return max(0, delta.days)
 
 
-def _issue_descends_to(issue_id: str, epic_id: str, parent_map: dict[str, str]) -> bool:
+def build_parent_map(all_issues: list[IssueInfo]) -> dict[str, str | None]:
+    """Build ``{issue_id: parent_id}`` from an in-memory issue list.
+
+    The in-memory analog of ``WorkerPool._build_parent_map`` (which scans
+    ``.issues/`` from disk). Retains ``None``-valued parents so the shape matches
+    the disk-scan builder; ``find_nearest_epic_ancestor`` / ``_issue_descends_to``
+    treat a ``None`` value identically to a missing key (``.get()`` returns
+    ``None`` and the ``while current`` guard halts), so retaining them is
+    behavior-preserving.
+    """
+    return {i.issue_id: i.parent for i in all_issues}
+
+
+def find_nearest_epic_ancestor(
+    issue: IssueInfo,
+    parent_map: dict[str, str | None],
+) -> str | None:
+    """Walk ``issue.parent`` chain upward; return nearest ``EPIC-*`` ID or None.
+
+    Cycle-guarded via a ``seen`` set (mirrors the shape of
+    ``cli/issues/list_cmd.py::_find_epic_ancestor``). Stops at the first ancestor
+    whose ID starts with the ``EPIC`` prefix. The caller supplies ``parent_map``
+    (via ``build_parent_map`` for in-memory lists, or a disk-scan builder) — this
+    function performs no filesystem access.
+    """
+    if not issue.parent:
+        return None
+    seen: set[str] = set()
+    current: str | None = issue.parent
+    while current and current not in seen:
+        seen.add(current)
+        if current.split("-", 1)[0] == "EPIC":
+            return current
+        current = parent_map.get(current)
+    return None
+
+
+def _issue_descends_to(issue_id: str, epic_id: str, parent_map: dict[str, str | None]) -> bool:
     """Walk parent chain upward; True iff `issue_id` (transitively) parents to `epic_id`.
 
     Cycle-safe via a `seen` guard matching the pattern in
@@ -103,7 +140,7 @@ def compute_epic_progress(
         return None
     epic_info = epic_matches[0]
 
-    parent_map: dict[str, str] = {i.issue_id: i.parent for i in all_issues if i.parent}
+    parent_map = build_parent_map(all_issues)
     child_ids: set[str] = {
         i.issue_id
         for i in all_issues

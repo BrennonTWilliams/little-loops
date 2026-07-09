@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from little_loops.issue_progress import compute_epic_progress
+from little_loops.issue_progress import (
+    build_parent_map,
+    compute_epic_progress,
+    find_nearest_epic_ancestor,
+)
 
 
 def _make_issue(
@@ -272,3 +276,44 @@ class TestComputeEpicProgress:
         assert result is not None
         child_ids = {c.issue_id for c in result.children}
         assert child_ids == {"FEAT-1", "FEAT-2", "FEAT-3"}
+
+
+class TestFindNearestEpicAncestor:
+    def test_find_nearest_epic_ancestor_direct_parent(self, tmp_path: Path) -> None:
+        feat = _make_issue(tmp_path, "FEAT-1", parent="EPIC-100")
+        parent_map = build_parent_map([feat])
+        assert find_nearest_epic_ancestor(feat, parent_map) == "EPIC-100"
+
+    def test_find_nearest_epic_ancestor_multi_hop(self, tmp_path: Path) -> None:
+        epic = _make_issue(tmp_path, "EPIC-100")
+        mid = _make_issue(tmp_path, "FEAT-2", parent="EPIC-100")
+        leaf = _make_issue(tmp_path, "FEAT-3", parent="FEAT-2")
+        parent_map = build_parent_map([epic, mid, leaf])
+        assert find_nearest_epic_ancestor(leaf, parent_map) == "EPIC-100"
+
+    def test_find_nearest_epic_ancestor_no_epic(self, tmp_path: Path) -> None:
+        top = _make_issue(tmp_path, "FEAT-1")
+        leaf = _make_issue(tmp_path, "FEAT-2", parent="FEAT-1")
+        parent_map = build_parent_map([top, leaf])
+        assert find_nearest_epic_ancestor(leaf, parent_map) is None
+
+    def test_find_nearest_epic_ancestor_cycle_guard(self, tmp_path: Path) -> None:
+        feat_a = _make_issue(tmp_path, "FEAT-1", parent="FEAT-2")
+        feat_b = _make_issue(tmp_path, "FEAT-2", parent="FEAT-1")
+        parent_map = build_parent_map([feat_a, feat_b])
+        # A→B→A with no EPIC: returns None without hanging.
+        assert find_nearest_epic_ancestor(feat_a, parent_map) is None
+
+    def test_find_nearest_epic_ancestor_no_parent(self, tmp_path: Path) -> None:
+        orphan = _make_issue(tmp_path, "FEAT-1")
+        assert find_nearest_epic_ancestor(orphan, build_parent_map([orphan])) is None
+
+
+class TestBuildParentMap:
+    def test_build_parent_map_shape(self, tmp_path: Path) -> None:
+        epic = _make_issue(tmp_path, "EPIC-100")
+        child = _make_issue(tmp_path, "FEAT-1", parent="EPIC-100")
+        orphan = _make_issue(tmp_path, "BUG-9")
+        parent_map = build_parent_map([epic, child, orphan])
+        # None-valued parents are retained (matches the disk-scan builder shape).
+        assert parent_map == {"EPIC-100": None, "FEAT-1": "EPIC-100", "BUG-9": None}

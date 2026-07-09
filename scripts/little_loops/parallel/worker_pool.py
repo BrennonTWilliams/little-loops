@@ -1643,21 +1643,14 @@ class WorkerPool:
     def _find_nearest_epic_ancestor(self, issue: IssueInfo) -> str | None:
         """Walk ``issue.parent`` chain upward; return nearest ``EPIC-*`` ID or None.
 
-        Cycle-guarded via a ``seen`` set (mirrors the shape of
-        ``cli/issues/list_cmd.py::_find_epic_ancestor``). Stops at the first
-        ancestor whose ID starts with the ``EPIC`` prefix.
+        Delegates the walk to the shared module helper
+        ``little_loops.issue_progress.find_nearest_epic_ancestor`` (FEAT-2561),
+        supplying the disk-scanned ``_build_parent_map``. Behavior-preserving:
+        the helper is the walk lifted verbatim from this method.
         """
-        if not issue.parent:
-            return None
-        parent_map = self._build_parent_map()
-        seen: set[str] = set()
-        current: str | None = issue.parent
-        while current and current not in seen:
-            seen.add(current)
-            if current.split("-", 1)[0] == "EPIC":
-                return current
-            current = parent_map.get(current)
-        return None
+        from little_loops.issue_progress import find_nearest_epic_ancestor
+
+        return find_nearest_epic_ancestor(issue, self._build_parent_map())
 
     def _build_parent_map(self) -> dict[str, str | None]:
         """Build ``{issue_id: parent_id}`` by scanning ``.issues/`` markdown files.

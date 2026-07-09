@@ -70,7 +70,7 @@ Parse the JSON list as `all_issues`.
 ### 2c. Resolve children
 
 Use `parent:` backrefs only — mirrors `compute_epic_progress()` in
-`scripts/little_loops/issue_progress.py:87`:
+`scripts/little_loops/issue_progress.py:120`:
 
 ```
 relates_to_ids       = set of IDs from the EPIC's `relates_to` list (recorded in Step 2a)
