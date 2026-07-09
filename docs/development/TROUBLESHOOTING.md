@@ -36,6 +36,24 @@ Common issues and solutions for little-loops.
 ls -la .ll/ll-config.json
 ```
 
+### `ll-init` crashes with FileNotFoundError on `config-schema.json`
+
+**Symptom** (BUG-2547, fixed in v1.139.0):
+
+```
+FileNotFoundError: [Errno 2] No such file or directory:
+  '.../site-packages/little_loops/.../config-schema.json'
+  File ".../init/core.py", line 23, in _load_schema
+    with schema_path.open(encoding="utf-8") as f:
+```
+
+**Cause**: Pre-1.139.0 wheel installs did not ship `config-schema.json`; `init/core.py` opened it via a `Path(__file__).parent` lookup that breaks under `importlib.resources`-style packaging. The crash fires on the canonical install path (`pip install little-loops && ll-init --yes`).
+
+**Solution**:
+1. Upgrade to `little-loops>=1.139.0` — the wheel now ships `config-schema.json` via `importlib.resources` and `ll-init --yes` succeeds.
+2. For a pre-1.139 wheel in an active project: reinstall with `pip install --force-reinstall --no-deps little-loops` after pulling the latest release.
+3. For an editable install (`pip install -e ./scripts[dev]`) this error does not fire — the file resolves through the source tree.
+
 ### Invalid JSON in config
 
 **Symptom**: `JSONDecodeError` on startup

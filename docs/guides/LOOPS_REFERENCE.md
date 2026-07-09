@@ -344,6 +344,7 @@ init on_error → diagnose → failed
 - **Bounded cost**: a single OS process owns one wall-clock budget (no per-level timeout compounding); `max_depth`, `max_node_iters`, and `max_nodes` cap the tree, and per-run artifacts live under `${context.run_dir}` for concurrency safety.
 - **Bottom-up synthesis**: decomposed nodes are reassembled child-first, so the final root plan reflects every refined leaf while preserving each internal node's framing and ordering.
 - **In-place update**: on completion `finalize` overwrites the **original** plan file with the reassembled content. The run directory keeps the working copy plus the full `nodes/` tree and `edges.tsv` for inspection/diffing; the `report` state prints the `diff` command.
+- **Diff-invariant safety guard (ENH-2418)**: `finalize` does not overwrite blindly. Before writing it enforces three checks: (1) **diff-size invariant** — the reassembled content must keep a minimum fraction of the original length, (2) **timestamped backup** — `.loops/<run_dir>/finalize.bak-<timestamp>.md` is written BEFORE the overwrite so a bad synthesis is recoverable, (3) **section-presence check** — required top-level sections (e.g. `## Summary`, `## Acceptance Criteria`) must still be present. If any check fails, the run aborts to a safe terminal — the original file is never clobbered. The `.loops/` working copy remains the second-tier recovery path.
 
 ### `rn-implement` — Queue Orchestrator for Recursive Plan-and-Implement
 
