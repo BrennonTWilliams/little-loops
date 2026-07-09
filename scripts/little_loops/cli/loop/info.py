@@ -21,6 +21,7 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _colorize_diagram_labels,
     _colorize_label,
     _render_fsm_diagram,
+    _truncate_to_width,
 )
 from little_loops.cli.output import (
     ACRONYMS,  # noqa: F401  (re-exported for tests/lint)
@@ -36,6 +37,22 @@ from little_loops.fsm.fragments import resolve_inheritance
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
+
+# Drop redundant filesystem prefixes from loop-name display. These mirror the
+# directory layout (tmp/=examples, generated/=per-host scaffolds,
+# lib/=fragments) that already lives in the category header — showing them
+# again on every row doubles the noise. ``oracles/`` is intentionally
+# PRESERVED because nested oracles are referenced by relative path from
+# parent loops (``ll-loop run`` round-trips through that path).
+import re as _re_path
+
+_PATH_PREFIX_RE = _re_path.compile(r"^(?:tmp|generated|examples|lib)/")
+
+
+def _display_name(name: str) -> str:
+    """Strip the redundant filesystem prefix from a loop name for display."""
+    stripped = _PATH_PREFIX_RE.sub("", name)
+    return stripped or name
 
 
 def _load_loop_meta(path: Path) -> dict[str, Any]:
@@ -340,7 +357,10 @@ def cmd_list(
             # reads identically across every terminal palette (no chromatic
             # ambiguity with category headers or kind labels). The bold weight
             # keeps it the most prominent thing in the row.
-            name_str = colorize(_truncate(lp["name"], _MAX_NAME_COL).ljust(name_col), "1")
+            name_str = colorize(
+                _truncate(_display_name(lp["name"]), _MAX_NAME_COL).ljust(name_col),
+                "1",
+            )
             kind_value = _kind_for(lp)
             kind_str = colorize(
                 kind_value.ljust(kind_col),
@@ -363,31 +383,26 @@ def cmd_list(
                 if prefix:
                     sub_label = _all_caps(prefix)
                     sub_color = f"{cat_color};1"
-                    print(colorize(f"    {sub_label} ({len(members)})", sub_color))
-                    indent = "      "
+                    print(colorize(f"  {sub_label} ({len(members)})", sub_color))
+                    leaf_indent = "    "  # 4-space leaves under a 2-space subhead
                 else:
-                    indent = "  "
+                    leaf_indent = "  "    # 2-space flat tail (matches no-subgroup case)
                 for lp in members:
-                    _emit_row(lp, indent)
+                    _emit_row(lp, leaf_indent)
         else:
             for lp in group:
                 _emit_row(lp, "  ")
 
-    # ENH-2539: closing Total: summary line + hidden-tier hint.
-    print()
-    total_parts = [
-        f"{len(all_loops)} LOOPS",
-        f"{len(buckets)} CATEGORIES",
-        f"{n_project} PROJECT, {n_builtin} BUILT-IN",
-    ]
-    total_str = colorize("TOTAL: " + " · ".join(total_parts), "1")
-    print(total_str)
+    # ENH-2539: closing hidden-tier hint only. The summary header at the top
+    # already carries loop/category totals — a duplicate TOTAL line was
+    # redundant. When nothing is hidden, omit the footer entirely.
     hidden_total = sum(hidden_counts.values())
     if hidden_total:
         hidden_bits = ", ".join(f"{v} {k}" for k, v in hidden_counts.items() if v)
+        print()
         print(
             colorize(
-                f"       {hidden_total} hidden ({hidden_bits}) — pass --all to show",
+                f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show",
                 "2",
             )
         )
@@ -398,20 +413,24 @@ _EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
 
 
 def _truncate(text: str, max_len: int) -> str:
-    """Truncate text to max_len with ellipsis."""
-    if max_len < 1:
-        return ""
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 1] + "\u2026"
+    """Display-width-aware truncation (delegates to layout._truncate_to_width).
+
+    Replaces an earlier character-count helper; keeps wide glyphs whole and
+    sizes the trailing ellipsis in display columns rather than codepoints.
+    """
+    return _truncate_to_width(text, max_len)
 
 
 def _category_rollup(group: list[dict[str, Any]], hidden_counts: dict[str, int]) -> str:
-    """Build the inline header badge: ``"M built-in \u00b7 K project \u00b7 J internal \u00b7 N example"``.
+    """Build the inline header badge \u2014 emits only when the category mixes kinds.
 
-    Consumes each loop's ``visibility`` (public/internal/example) and
-    ``builtin`` flag.  ``hidden_counts`` is unused directly here but is kept
-    in the signature for symmetry with potential future surfaces.
+    The parenthesized ``(N)`` next to the category header already carries the
+    total count, so a homogeneous group (e.g. all 6 built-in) needs no badge.
+    For a mixed group, emit only the minority counts (the dominant count
+    duplicates ``(N)``).
+
+    ``hidden_counts`` is unused directly here but is kept in the signature for
+    symmetry with potential future surfaces.
     """
     del hidden_counts  # currently derived entirely from group; reserved for shape parity
     counts = {"built-in": 0, "project": 0, "internal": 0, "example": 0}
@@ -426,16 +445,20 @@ def _category_rollup(group: list[dict[str, Any]], hidden_counts: dict[str, int])
                 counts["built-in"] += 1
             else:
                 counts["project"] += 1
-    parts: list[str] = []
-    if counts["built-in"]:
-        parts.append(f"{counts['built-in']} built-in")
-    if counts["project"]:
-        parts.append(f"{counts['project']} project")
-    if counts["internal"]:
-        parts.append(f"{counts['internal']} internal")
-    if counts["example"]:
-        parts.append(f"{counts['example']} example")
-    return ", ".join(parts)
+    present = [(k, v) for k, v in counts.items() if v]
+    if len(present) <= 1:
+        # Homogeneous kind \u2014 the (N) header is enough; no badge needed.
+        return ""
+    present.sort(key=lambda kv: -kv[1])
+    max_count = present[0][1]
+    minority = [(k, v) for k, v in present if v != max_count]
+    if minority:
+        # Mixed with a clear dominant \u2014 emit only the minority kinds (the
+        # dominant count duplicates the (N) in the category header).
+        return ", ".join(f"{v} {k}" for k, v in minority)
+    # All kinds tied at the top \u2014 (N) cannot disambiguate, so emit the
+    # full mix to preserve the breakdown the user would otherwise lose.
+    return ", ".join(f"{v} {k}" for k, v in present)
 
 
 def _render_labels(labels: list[str]) -> str:

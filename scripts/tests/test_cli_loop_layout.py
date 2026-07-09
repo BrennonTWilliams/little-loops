@@ -734,7 +734,9 @@ class TestCategoryRollup:
             {"visibility": "public", "builtin": True},
         ]
         hidden = {"internal": 0, "example": 0}
-        assert _category_rollup(group, hidden) == "2 built-in"
+        # Homogeneous kind — the parenthesized (N) in the category header
+        # carries the count, so the rollup badge is empty.
+        assert _category_rollup(group, hidden) == ""
 
     def test_mixed_project_and_built_in(self) -> None:
         from little_loops.cli.loop.info import _category_rollup
@@ -751,7 +753,9 @@ class TestCategoryRollup:
 
         group = [{"visibility": "internal", "builtin": True}]
         hidden = {"internal": 0, "example": 0}
-        assert _category_rollup(group, hidden) == "1 internal"
+        # Homogeneous kind — the parenthesized (N) in the category header
+        # carries the count, so the rollup badge is empty.
+        assert _category_rollup(group, hidden) == ""
 
     def test_empty_group_returns_empty(self) -> None:
         from little_loops.cli.loop.info import _category_rollup

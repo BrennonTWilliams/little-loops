@@ -4609,3 +4609,68 @@
     score 2/3: missing pytest test_pass_rate inline precedent, counter-coupling double-count
     risk, cannot serve FEAT-2414/FEAT-2416)'
   issue: FEAT-2413
+- id: ARCHITECTURE-123
+  type: decision
+  timestamp: '2026-07-08T23:52:18Z'
+  category: architecture
+  labels: []
+  rationale: Option A scores 11/12 vs Option B 5/12. Two existing codebase idioms
+    (fsm/schema.py:696-697 dataclass on_success<->on_yes shim; init/tui.py:284,300
+    or-chain command-field default) and a test naming template (test_fsm_schema.py:3781-3792
+    test_legacy_max_iterations_aliases_to_max_steps) match Option A exactly. The codebase
+    precedent for breakage is alias-and-deprecate (core.py:812-813 CLConfig=BRConfig;
+    features.py:197-198 DEPRECATED comments), not rename-everywhere. Option B's real
+    blast radius is 30+ sites (dataclass + TUI + 9 templates + 9 skill markdowns incl.
+    manage-issue/SKILL.md:355-356 + 4 docs + 7 test files) -- disproportionately invasive
+    for a key-only cosmetic change.
+  rule: Accept both names (alias typecheck_cmd/type_cmd, start_cmd/run_cmd) inside
+    oracles/code-run-gate.yaml resolve_commands shell action; canonical layer (ProjectConfig
+    + config-schema.json) stays at type_cmd/run_cmd
+  scope: issue
+  alternatives_rejected: 'Option B (wide mechanical rename type_cmd->typecheck_cmd,
+    run_cmd->start_cmd across 30+ sites including 9 templates, 9 skill markdowns,
+    4 docs, 7 test files). Rejected: codebase precedent leans toward alias; blast
+    radius disproportionate; risk of missing skill/doc/template sites.'
+  issue: FEAT-2551
+- id: STYL-198
+  type: rule
+  timestamp: '2026-07-09T01:09:06Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: Character-count truncation breaks wide glyphs (CJK, box-drawing, emoji)
+    and mis-sizes ellipses; the codebase already has a wcwidth-based helper and ad-hoc
+    `_truncate` re-implementations drift out of sync with it.
+  rule: Reuse existing `layout._truncate_to_width` (wcwidth-based) for terminal output
+    instead of character-count truncation.
+  enforcement: advisory
+  issue: ENH-2554
+- id: STYL-199
+  type: rule
+  timestamp: '2026-07-09T01:09:06Z'
+  category: style
+  labels:
+  - extracted
+  - global
+  rationale: Redundant counts clutters terminal output and invites divergence when
+    one copy is updated and the other isn't; emit each fact exactly once and let the
+    reader combine.
+  rule: Headers, bodies, and footers must not repeat the same fact (e.g. `(N)` next
+    to `N built-in`).
+  enforcement: advisory
+  issue: ENH-2554
+- id: ARCH-200
+  type: rule
+  timestamp: '2026-07-09T01:09:06Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Display names should be scannable, but machine consumers and round-trip
+    commands (e.g. `ll-loop run oracles/foo`) need the unmodified path; restructuring
+    one breaks both.
+  rule: 'Separate display name from serialization identity: strip filesystem structure
+    from rendered labels but keep the raw iden'
+  enforcement: advisory
+  issue: ENH-2554
