@@ -1,6 +1,6 @@
 ---
 id: FEAT-2453
-title: "per-EPIC integration branch — downstream consumer read-sites"
+title: "per-EPIC integration branch \u2014 downstream consumer read-sites"
 type: FEAT
 priority: P3
 status: open
@@ -28,11 +28,11 @@ unblocks:
 - FEAT-2449
 decision_needed: false
 confidence_score: 100
-outcome_confidence: 86
-score_complexity: 18
+outcome_confidence: 100
+score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 18
+score_change_surface: 25
 ---
 
 # FEAT-2453: per-EPIC integration branch — downstream consumer read-sites
@@ -312,11 +312,111 @@ _Anchor verification (2026-07-07). Full research at FEAT-2448._
   `epic_branch is None` (the default for non-EPIC issues), so
   no behavioral change for the no-op case.
 
-## Wiring Pass — 2026-07-07
+### Post-FEAT-2452 Verification (2026-07-09)
+
+_Added by `/ll:refine-issue --auto` — anchors re-checked against the
+tree after blocker FEAT-2452 landed (`749b8096`)._
+
+- **Blocker cleared.** FEAT-2452 is `done`/Completed. FEAT-2453 is
+  now unblocked; the `result.epic_branch` reads this issue adds have
+  a real field to read.
+- **Precondition present.** `WorkerResult.epic_branch: str | None =
+  None` exists at `types.py:94`, round-trips via `to_dict`
+  (`types.py:116`) and `from_dict` (`types.py:140`). No dataclass
+  work remains for this child.
+- **All anchors stable** despite FEAT-2452's WorkerPool changes —
+  line numbers did not drift: `_process_merge`
+  (`merge_coordinator.py:577`, `result` bind :586, target :624),
+  `_handle_conflict` (:808, `result` bind :816, target :875),
+  `_on_worker_complete` (`orchestrator.py:914`), `if
+  open_pr_for_feature_branches:` (:1005) → `_open_pr_for_branch(`
+  call (:1006), `_open_pr_for_branch` def (:1109), `--base` read
+  (:1142). Note the step-3 mutation goes **immediately before the
+  call at :1006** (the `if` guard is at :1005).
+- **No partial-apply drift.** `git grep epic_branch` returns zero
+  hits in `merge_coordinator.py` and `orchestrator.py` — none of the
+  four read-sites are present yet, so this is a clean start.
+- **Test anchors exact.**
+  `test_on_worker_complete_feature_branch_open_pr` (:2008),
+  `_gh_missing` (:2090), `_pr_url_idempotency` (:2260) all resolve.
+
+## Wiring Pass — 2026-07-09
+
+_Added by `/ll:wire-issue --auto`. Three parallel tracers (caller/importer,
+side-effect surface, test-gap) run against the tree after FEAT-2452 landed.
+Net result: **no missing callers, importers, manifests, config-schema, or CLI
+coupling** — this is a mechanical 4-site read swap. Two test-plan corrections
+and one deferred-doc flag below._
+
+### Tests — new/corrected coverage
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_subprocess_mocks.py` — **not previously listed.**
+  Constructs `MergeRequest` and calls `_process_merge` in
+  `test_process_merge_uses_merge_request` (line 850) and
+  `test_restash_after_pull_with_local_changes` (line 895). Both use a
+  mocked-`subprocess.run` argv-capture (`captured_commands`) and filter with
+  `config.base_branch in c` **containment** (not strict equality), so neither
+  breaks under the `result.epic_branch or self.config.base_branch`
+  substitution (epic_branch is `None` in these fixtures → byte-for-byte
+  identical). `test_restash_after_pull_with_local_changes`'s mock has an
+  implicit `if cmd[:3] == ["git", "checkout", config.base_branch]:` branch
+  (line ~941) that would silently fall through if an epic_branch were set —
+  harmless here, but note it if an epic-enabled variant is added. Action:
+  verify these two pass unchanged (no edit required); optionally add an
+  epic-enabled argv-capture variant here.
+
+- **Fixture-model correction for the 3 new `test_merge_coordinator.py`
+  tests.** Scope §5 / Confidence-Check Notes say to mirror
+  `test_*_untracked_files_error` / `test_*_local_changes_error` at
+  `test_merge_coordinator.py:702, 735, 773, 815`. Those anchors use a
+  **real temp-git-repo** style (`temp_git_repo` fixture, real `subprocess`
+  against the repo, assertions on `test_file.read_text()`,
+  `coordinator._stash_active`, `request.retry_count`) — they do **NOT**
+  capture git argv, so they cannot verify `epic_branch` was substituted into
+  the `checkout`/`rebase` command. The correct template for argv-level epic
+  assertions is:
+  - **mocked-subprocess argv capture** →
+    `test_subprocess_mocks.py::test_process_merge_uses_merge_request`
+    (line 850): `captured_commands`, `mock_run` side_effect,
+    `checkout_cmds = [c for c in captured_commands if "checkout" in c and <target> in c]`.
+  - **epic enabled/skip/fallback triad shape** →
+    `test_worker_pool.py::TestUpdateBranchBase` (lines 1831-1909) already has
+    the FEAT-2452 analog: `test_update_branch_base_rebases_onto_epic_branch`
+    (1831), `_epic_branch_skips_remote_fetch` (1858),
+    `_no_epic_branch_uses_base_branch` (1882). Model the three new
+    merge_coordinator tests on this triad, not the real-repo anchors.
+
+- **No strict `--base == base_branch` equality break sites** exist anywhere
+  in `scripts/tests/`. The three `test_orchestrator.py` sites that set
+  `parallel_config.base_branch = "main"` (2017, 2287, 2520) do **not** assert
+  on the `--base` argv value today — their `fake_subprocess_run` branches on
+  `args[0]=="gh" and args[1]=="pr"` without inspecting `--base`. The planned
+  `captured_args` accumulator is therefore purely **additive** (asserts on a
+  value nothing currently checks), not a fix to a failing assertion.
+
+- `scripts/tests/test_parallel_types.py::TestMergeRequest` (lines 424-482) —
+  constructs `MergeRequest` but never calls `_process_merge`/`_handle_conflict`
+  and never touches `worker_result.epic_branch`. Pure dataclass tests; **no
+  change needed** (recorded so the implementer doesn't chase it).
+
+### Documentation — deferred (out of scope, flagged only)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/CONFIGURATION.md:363` (`epic_branches.enabled` row) states
+  the orchestrator/merge-coordinator path "is not active" until
+  FEAT-2448/2449/2450 ship. Landing this child activates the 4 read-sites,
+  making that sentence partially stale. **Out of scope here** — the issue
+  already defers all doc updates to the paired FEAT-2452/FEAT-2450 pass; noted
+  so whoever closes the FEAT-2448/2449/2450 doc pass updates this row.
 
 ### Configuration
 
-- No `config-schema.json` changes.
+- No `config-schema.json` changes. `epic_branches.enabled` is already a schema
+  key (FEAT-2447/2452 lineage); this issue's read-sites consume runtime
+  `result.epic_branch` / `branch_state["epic_branch"]` values, not config keys.
 - No template changes (already stamped in FEAT-2447).
 
 ### Test files NOT requiring update (verified)
@@ -380,6 +480,9 @@ FEAT-2453 ships with HIGH outcome confidence; FEAT-2452 inherits
 the broad-fanout burden (irreducible without a contract change).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-09T20:00:00 - `88ef04c1-d16c-4a65-873a-b89370dd04c9.jsonl`
+- `/ll:wire-issue` - 2026-07-09T19:23:32 - `25450cda-adbf-415b-afa8-1faf98287221.jsonl`
+- `/ll:refine-issue` - 2026-07-09T19:01:46 - `08294d04-3d82-48ce-b783-c721bf549a4d.jsonl`
 
 - `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl` (decomposition re-validation)
 - `/ll:confidence-check-decomposition` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
