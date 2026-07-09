@@ -175,7 +175,7 @@ Toggle interactively with `/ll:toggle-autoprompt`.
 
 ### Analytics recording
 
-If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (default **false**) and `analytics.capture.corrections` (default **true**).
+If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (default **true**) and `analytics.capture.corrections` (default **true**).
 
 **Never blocks.** Exit 0 always.
 

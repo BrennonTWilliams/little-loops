@@ -207,7 +207,7 @@ class TestConfigSchema:
             "FEAT-1743 requires a boolean master switch"
         )
         assert lt_props["enabled"]["type"] == "boolean"
-        assert lt_props["enabled"].get("default") is False
+        assert lt_props["enabled"].get("default") is True
 
         # ENH-2487: auto_prove gate for config-driven rn-implement auto-prove
         assert "auto_prove" in lt_props, (
@@ -344,7 +344,7 @@ class TestConfigSchema:
         assert "enabled" in analytics["properties"]
         enabled = analytics["properties"]["enabled"]
         assert enabled["type"] == "boolean"
-        assert enabled["default"] is False
+        assert enabled["default"] is True
 
     def test_history_in_schema(self) -> None:
         """history block must be declared in config-schema.json (ENH-1913).

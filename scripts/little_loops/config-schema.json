@@ -985,7 +985,7 @@
         "enabled": {
           "type": "boolean",
           "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via ll-init or /ll:configure.",
-          "default": false
+          "default": true
         },
         "auto_prove": {
           "type": "boolean",
@@ -1564,8 +1564,8 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable per-tool byte tracking and file-event recording in post_tool_use hook. Default off; opt-in until the ctx-stats CLI ships."
+          "default": true,
+          "description": "Enable per-tool byte tracking and file-event recording in post_tool_use hook."
         },
         "capture": {
           "type": "object",
