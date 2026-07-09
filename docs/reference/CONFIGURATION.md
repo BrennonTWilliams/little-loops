@@ -871,8 +871,8 @@ Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corres
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `run_defaults.clear` | `boolean` | `false` | If `true`, inject `--clear` into every `ll-loop run` invocation. |
-| `run_defaults.show_diagrams` | `string\|null` | `null` | Inject `--show-diagrams <value>` into every invocation. Valid values: `layered`, `neighborhood`, `inline`, `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `default`. `null` disables. |
+| `run_defaults.clear` | `boolean` | `true` | If `true`, inject `--clear` into every `ll-loop run` invocation. |
+| `run_defaults.show_diagrams` | `string\|null` | `"clean"` | Inject `--show-diagrams <value>` into every invocation. Valid values: `layered`, `neighborhood`, `inline`, `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `default`. `null` disables. |
 | `run_defaults.mode` | `string\|null` | `null` | Reserved for a future `--mode` flag on `ll-loop run`. No effect until that flag is added. |
 | `run_defaults.include` | `string` | `""` | Default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`. |
 

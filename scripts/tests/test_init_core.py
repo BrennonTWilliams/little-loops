@@ -546,8 +546,8 @@ class TestBuildConfig:
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
         rd = config["loops"]["run_defaults"]
-        assert rd["clear"] is False
-        assert "show_diagrams" not in rd
+        assert rd["clear"] is True
+        assert rd["show_diagrams"] == "clean"
         assert "mode" not in rd
 
     def test_loops_run_defaults_override_via_choices(

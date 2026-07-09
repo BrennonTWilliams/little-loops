@@ -954,13 +954,13 @@
             "clear": {
               "type": "boolean",
               "description": "If true, inject --clear into every ll-loop run invocation.",
-              "default": false
+              "default": true
             },
             "show_diagrams": {
               "type": ["string", "null"],
               "description": "Inject --show-diagrams <value> into every ll-loop run invocation. 'default' maps to bare --show-diagrams (summary preset). Null disables.",
               "enum": ["layered", "neighborhood", "inline", "detailed", "summary", "clean", "local", "slim", "oneline", "default", null],
-              "default": null
+              "default": "clean"
             },
             "mode": {
               "type": ["string", "null"],

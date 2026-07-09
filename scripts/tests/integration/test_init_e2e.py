@@ -64,10 +64,11 @@ class TestInitHeadlessEndToEnd:
         assert config["project"]["name"] == "demo_project"
         # CLAUDE.md guarantees init "always writes loops.run_defaults" — pin the
         # documented defaults exactly, not just existence (audit M1). Values are
-        # schema-sourced (ENH-2434): config-schema.json declares clear=false,
-        # show_diagrams=null (omitted after None-stripping) for a fresh install.
-        assert config["loops"]["run_defaults"]["clear"] is False
-        assert "show_diagrams" not in config["loops"]["run_defaults"]
+        # schema-sourced (ENH-2434): config-schema.json declares clear=true and
+        # show_diagrams="clean" for a fresh install so ll-loop run defaults to
+        # the pinned-diagram display in target projects.
+        assert config["loops"]["run_defaults"]["clear"] is True
+        assert config["loops"]["run_defaults"]["show_diagrams"] == "clean"
         # Issues tree is scaffolded with the canonical category dirs.
         assert (project / ".issues" / "bugs").is_dir()
         assert (project / ".issues" / "features").is_dir()
