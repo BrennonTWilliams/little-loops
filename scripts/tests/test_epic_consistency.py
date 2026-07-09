@@ -144,6 +144,45 @@ class TestEpicConsistencyCategoryA:
         captured = capsys.readouterr()
         assert "FEAT-020" in captured.out
 
+    def test_h3_heading_child_docs_recognized(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Children documented as ### FEAT-NNN — headings count as documented (no (a) drift).
+
+        Mirrors the richer prose-heading style used by EPIC-2451, where each child
+        gets its own heading with per-child scope prose rather than a flat bullet.
+        """
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic(
+            epics_dir,
+            "EPIC-011",
+            children_section=(
+                "### FEAT-021 — first child, prose heading style\n"
+                "- **Status**: open\n"
+                "- **Scope**: does a thing\n\n"
+                "### **FEAT-022** — second child, bold heading style\n"
+                "- **Status**: open\n"
+            ),
+        )
+        _write_child(epic_consistency_dir, "FEAT-021", parent="EPIC-011")
+        _write_child(epic_consistency_dir, "FEAT-022", parent="EPIC-011")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-011", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0  # both children recognized via headings → no (a) drift
+        captured = capsys.readouterr()
+        assert "(a)" not in captured.out
+
     def test_category_a_label_in_output(
         self,
         temp_project_dir: Path,
@@ -661,15 +700,20 @@ class TestEpicConsistencyAll:
 
 
 class TestEpicConsistencyRelatesTo:
-    """Category-(c): relates_to entry that is also a parent: child."""
+    """Category-(c): relates_to entry that is also a parent: child (advisory, non-failing)."""
 
-    def test_relates_to_child_flagged_as_category_c(
+    def test_relates_to_child_is_advisory_not_drift(
         self,
         temp_project_dir: Path,
         epic_consistency_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """An issue in both relates_to: and parent: set is flagged as category-(c)."""
+        """A child also in relates_to: is reported as advisory but does NOT fail (exit 0).
+
+        Listing children in relates_to: is the established maintainer convention, so
+        category-(c) is downgraded to a non-failing advisory (it holds on the large
+        majority of EPICs).
+        """
         epics_dir = epic_consistency_dir / "epics"
         # EPIC-100 has relates_to: [FEAT-130] AND FEAT-130 has parent: EPIC-100
         epic_content = (
@@ -689,9 +733,50 @@ class TestEpicConsistencyRelatesTo:
 
             result = main_issues()
 
-        assert result != 0  # category-(c) drift
+        assert result == 0  # category-(c) is advisory, not failing drift
         captured = capsys.readouterr()
+        # Still surfaced (as advisory) so maintainers can see the membership listing
         assert "FEAT-130" in captured.out
+        assert "advisory" in captured.out.lower()
+
+    def test_relates_to_child_still_in_json(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The relates_to_is_child field is preserved in JSON output (backward-compatible)."""
+        epics_dir = epic_consistency_dir / "epics"
+        epic_content = (
+            "---\nstatus: open\nrelates_to:\n- FEAT-131\n---\n"
+            "# EPIC-101: Test\n\n## Summary\nTest.\n\n"
+            "## Children\n\n- **FEAT-131** — child\n"
+        )
+        (epics_dir / "P2-EPIC-101-test.md").write_text(epic_content)
+        _write_child(epic_consistency_dir, "FEAT-131", parent="EPIC-101")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "epic-consistency",
+                "EPIC-101",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0  # advisory-only → not failing
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        entry = data if "epic" in data else data["results"][0]
+        assert "FEAT-131" in entry["relates_to_is_child"]
 
 
 # ---------------------------------------------------------------------------

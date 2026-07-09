@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,13 @@ _REAL_ISSUE_TYPES = frozenset({"BUG", "FEAT", "ENH"})
 #   - **FEAT-001** — …      →  group(1) = "FEAT-001"
 _BODY_BULLET_RE = re.compile(r"^\s*[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
+# Matches h3–h6 heading child refs with an optional bold wrapper around the ID:
+#   ### FEAT-001 — …        →  group(1) = "FEAT-001"
+#   ### **FEAT-001** — …    →  group(1) = "FEAT-001"
+# Recognizes the richer per-child prose-heading style (e.g. EPIC-2451), where each
+# child is documented under its own heading rather than as a single bullet.
+_BODY_HEADING_RE = re.compile(r"^\s*#{3,6}\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
+
 
 @dataclass
 class EpicDrift:
@@ -45,14 +53,24 @@ class EpicDrift:
 
     @property
     def has_drift(self) -> bool:
-        """True when any actionable drift exists (a/b/c categories or schema violations)."""
+        """True when any *failing* drift exists (categories a/b or schema violations).
+
+        Category (c) — a child that also appears in ``relates_to:`` — is treated as
+        an advisory, not drift: listing children in ``relates_to`` is the established
+        maintainer convention (it holds on the large majority of EPICs), so it is
+        reported but never fails the check.
+        """
         return bool(
             self.missing_from_body
             or self.body_without_parent
-            or self.relates_to_is_child
             or self.type_casing_wrong
             or self.has_children_frontmatter
         )
+
+    @property
+    def has_advisory(self) -> bool:
+        """True when non-failing advisories exist (sub-epic prose or relates_to membership)."""
+        return bool(self.sub_epic_advisory or self.relates_to_is_child)
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-serializable dict for --format json output."""
@@ -85,6 +103,10 @@ def _section_bounds(content: str, heading: str) -> tuple[int, int] | None:
 def _parse_children_body(section_text: str) -> tuple[set[str], set[str]]:
     """Parse a ## Children section body.
 
+    Both bullet-list refs (``- FEAT-001``) and heading refs (``### FEAT-001 —``)
+    count as documentation, so the richer per-child prose-heading style is
+    recognized alongside flat bullet lists.
+
     Returns:
         (real_issue_ids, sub_epic_ids) where real_issue_ids contains only
         BUG/FEAT/ENH tokens and sub_epic_ids contains EPIC-* tokens.
@@ -92,7 +114,10 @@ def _parse_children_body(section_text: str) -> tuple[set[str], set[str]]:
     """
     real_ids: set[str] = set()
     sub_epic_ids: set[str] = set()
-    for m in _BODY_BULLET_RE.finditer(section_text):
+    for m in itertools.chain(
+        _BODY_BULLET_RE.finditer(section_text),
+        _BODY_HEADING_RE.finditer(section_text),
+    ):
         token = m.group(1)
         issue_type = token.split("-")[0]
         if issue_type in _REAL_ISSUE_TYPES:
@@ -310,7 +335,7 @@ def cmd_epic_consistency(config: BRConfig, args: argparse.Namespace) -> int:
 
     # text format
     for drift in results:
-        if not drift.has_drift and not drift.sub_epic_advisory:
+        if not drift.has_drift and not drift.has_advisory:
             print(f"{drift.epic_id}: {drift.epic_title} — OK")
             continue
         print(f"{drift.epic_id}: {drift.epic_title}")
@@ -327,7 +352,7 @@ def cmd_epic_consistency(config: BRConfig, args: argparse.Namespace) -> int:
             for child_id in drift.body_without_parent:
                 print(f"      {child_id}")
         if drift.relates_to_is_child:
-            print("  (c) relates_to: leaking membership:")
+            print("  [advisory] relates_to lists child membership (parent: backref implies it):")
             for child_id in drift.relates_to_is_child:
                 print(f"      {child_id}")
         if drift.sub_epic_advisory:
