@@ -1643,7 +1643,9 @@ class TestLoopListFormatting:
         out_wide = capsys.readouterr().out
         ansi_re = re.compile(r"\033\[[0-9;]*m")
         entry_wide = next(
-            ansi_re.sub("", ln) for ln in out_wide.split("\n") if "wide" in ln and "experimental" in ln
+            ansi_re.sub("", ln)
+            for ln in out_wide.split("\n")
+            if "wide" in ln and "experimental" in ln
         )
         assert "…" in entry_wide, f"desc should be truncated with wide labels: {entry_wide!r}"
         assert long_desc not in entry_wide
@@ -1661,9 +1663,7 @@ class TestLoopListFormatting:
             with patch("little_loops.cli.loop.info.terminal_width", return_value=80):
                 cmd_list(args, loops_dir_bare)
         out_bare = capsys.readouterr().out
-        entry_bare = next(
-            ansi_re.sub("", ln) for ln in out_bare.split("\n") if "bare" in ln
-        )
+        entry_bare = next(ansi_re.sub("", ln) for ln in out_bare.split("\n") if "bare" in ln)
         # Compare visible desc length: with wide labels the desc budget
         # shrinks, so the rendered description must be shorter than without
         # labels. Use the ellipsis boundary as the marker — anything beyond
@@ -1691,9 +1691,9 @@ class TestLoopListFormatting:
         "labels_yaml",
         [
             "",  # no labels
-            'labels:\n  - a\n',
-            'labels:\n  - a\n  - b\n',
-            'labels:\n  - experimental\n  - performance-critical\n  - optimization\n',  # +1 collapse
+            "labels:\n  - a\n",
+            "labels:\n  - a\n  - b\n",
+            "labels:\n  - experimental\n  - performance-critical\n  - optimization\n",  # +1 collapse
         ],
     )
     def test_row_width_invariant_across_label_counts(
@@ -1721,9 +1721,7 @@ class TestLoopListFormatting:
                 cmd_list(args, loops_dir)
         out = capsys.readouterr().out
         ansi_re = re.compile(r"\033\[[0-9;]*m")
-        entry = next(
-            ansi_re.sub("", ln) for ln in out.split("\n") if "myloop" in ln
-        )
+        entry = next(ansi_re.sub("", ln) for ln in out.split("\n") if "myloop" in ln)
         assert len(entry.rstrip()) <= 100, (
             f"row overflows TW=100 (labels_yaml={labels_yaml!r}): "
             f"len={len(entry.rstrip())} {entry!r}"
@@ -1761,9 +1759,7 @@ class TestLoopListFormatting:
                 cmd_list(args, loops_dir)
         out = capsys.readouterr().out
         ansi_re = re.compile(r"\033\[[0-9;]*m")
-        entry = next(
-            ansi_re.sub("", ln) for ln in out.split("\n") if "longloop" in ln
-        )
+        entry = next(ansi_re.sub("", ln) for ln in out.split("\n") if "longloop" in ln)
         # Full description present, no ellipsis
         assert long_desc in entry, f"no-truncate should render full desc: {entry!r}"
         assert "…" not in entry
