@@ -1,6 +1,6 @@
 ---
 id: FEAT-2551
-title: 'F2a — code-run-gate oracle + config schema (build/test/typecheck/lint/health)'
+title: "F2a \u2014 code-run-gate oracle + config schema (build/test/typecheck/lint/health)"
 type: FEAT
 priority: P2
 status: open
@@ -22,10 +22,16 @@ labels:
 - mr1
 - tier-1
 - greenfield
-decision_needed: true
+decision_needed: false
 learning_tests_required:
 - pytest-json-report
 size: Medium
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-2551: F2a — code-run-gate oracle + config schema
@@ -183,6 +189,131 @@ to `GATE_PASS` by F2b's wiring. Modeled on
    The JSON Schema's `null` default and `additionalProperties: false`
    permit omission in the meantime; no immediate template change
    required.
+
+### File Skeleton
+
+_Topological shape of `oracles/code-run-gate.yaml`. The implementer
+fills in each `action:` body — the topology and evaluator types are
+fixed by this skeleton and the state table at lines 128-138. Mirrors
+the `from:`-inheritance pattern from FEAT-2269 (`oracles/generator-evaluator-cli.yaml:1-56`)._
+
+```yaml
+# scripts/little_loops/loops/oracles/code-run-gate.yaml — top-level shape
+name: code-run-gate
+from: oracles/generator-evaluator-cli       # FEAT-2269 `from:`-inheritance precedent
+parameters:
+  - run_dir                # per-invocation absolute path (caller-supplied)
+  - issue_id               # token-channel identifier
+  - min_pass_rate          # threshold for run_test's output_numeric evaluator
+  - health_bound_seconds   # curl --max-time for service_health
+  - build_cmd              # null short-circuits run_build
+  - test_cmd               # null short-circuits run_test
+  - typecheck_cmd          # aliases: typecheck_cmd | type_cmd
+  - lint_cmd               # null short-circuits run_lint
+  - run_cmd                # aliases: run_cmd | start_cmd
+  - health_url             # null short-circuits service_health
+initial: resolve_commands
+states:
+  # resolve_commands emits GATE_SKIP when all six command fields resolve
+  # to null; otherwise writes ${run_dir}/commands.json and dispatches
+  # to the first runnable run_* state. Direct GATE_SKIP path → done.
+  resolve_commands:
+    type: shell
+    on_yes:  <dispatched run_* state | done>     # GATE_SKIP short-circuits to done
+    on_no:   failed
+    on_error: failed
+
+  # All five run_* states share the same evaluator topology: non-LLM
+  # verdict, always route to aggregate so a single failed gate still
+  # produces an aggregated verdict instead of dead-ending. Non-LLM
+  # states are not MR-4-lint targets (per the finding at lines 310-319).
+  run_build:        { evaluate: { type: exit_code },                       on_yes: aggregate, on_no: aggregate, on_error: aggregate }
+  run_test:         { evaluate: { type: output_numeric, key: pass_rate },  on_yes: aggregate, on_no: aggregate, on_error: aggregate }
+  run_typecheck:    { evaluate: { type: exit_code },                       on_yes: aggregate, on_no: aggregate, on_error: aggregate }
+  run_lint:         { evaluate: { type: exit_code },                       on_yes: aggregate, on_no: aggregate, on_error: aggregate }
+  service_health:   { evaluate: { type: exit_code },                       on_yes: aggregate, on_no: aggregate, on_error: aggregate }
+
+  aggregate:
+    evaluate:
+      type: classify
+    route:
+      GATE_PASS:   done
+      GATE_FAILED: failed
+      GATE_SKIP:   done
+      _:           failed
+      _error:      failed
+
+  done:    { type: terminal }
+  failed:  { type: terminal }
+```
+
+### commands.json shape (F2a → F2b contract)
+
+`resolve_commands` writes a `commands.json` sidecar to `${run_dir}` with
+this exact shape. Null fields short-circuit the corresponding `run_*`
+state to a no-op pass-through to `aggregate`:
+
+```json
+{
+  "build_cmd": "python -m build",
+  "test_cmd": "python -m pytest scripts/tests/",
+  "typecheck_cmd": "python -m mypy scripts/little_loops/",
+  "lint_cmd": "ruff check scripts/",
+  "run_cmd": null,
+  "health_url": null
+}
+```
+
+**Contract**: F2b's wiring (`FEAT-2552`) reads this file at `aggregate`
+time to know which sidecar artifacts (`build.txt`, `test-results.txt`,
+`pytest.json`, `typecheck.txt`, `lint.txt`, `health.txt`, `service.pid`)
+to expect. The `typecheck_cmd`/`type_cmd` and `run_cmd`/`start_cmd`
+alias resolution (per Implementation Decision → Option A at lines 496-507) happens
+*before* the file is written — the JSON always uses the canonical
+names (`typecheck_cmd`, `run_cmd`).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by the wiring-research pass and must
+be included in the implementation as part of the F2a commit bundle.
+All were found by Agent 2 (side-effect tracer) and confirmed by Agent 3
+(test-gap finder); they are NOT in the issue's original `## Implementation
+Steps` list above._
+
+8. **Update `docs/reference/API.md:358-375`** — add
+   `health_url: str | None = None` to the documented `ProjectConfig`
+   dataclass block to keep the API reference in sync with
+   `scripts/little_loops/config/core.py:142-148`. This is the
+   strongest enforcement surface (the `add-config-key` archetype
+   coupling rule points at API.md as a `then_check` target).
+9. **Add `## \`oracles/code-run-gate\`` section to
+   `docs/reference/loops.md`** after the `oracles/enumerate-and-prove`
+   section at line 597. Mirror the existing shape: parameters table
+   (six command fields + `run_dir` + `min_pass_rate` +
+   `health_bound_seconds`), invocation block, internal state machine,
+   fragment dependency, MR-1/MR-3 compliance note. The issue's
+   "Codebase Research Findings" section at line 302-310 noted this doc
+   gap but did not include it in `### Files to Modify`.
+10. **Add `oracles/code-run-gate` row to the Oracle Sub-loops table in
+    `scripts/little_loops/loops/README.md:180-185`** alongside the six
+    existing oracle rows.
+11. **Bump `README.md:179`** from `**81 FSM loops**` to `**82 FSM
+    loops**`. Required to keep
+    `scripts/little_loops/doc_counts.py:144-146`'s
+    `verify_documentation()` recursive count consistent with the README
+    claim once the new oracle file lands.
+12. **Extend `scripts/tests/test_config.py:97-132`** —
+    `TestProjectConfig.test_from_dict_with_all_fields` (lines 95-118)
+    and `test_from_dict_with_defaults` (lines 120-132) currently
+    enumerate 9 fields. Add `health_url` to both (data dict entry at
+    line 107, assertion at line 118, defaults assertion at line 131-132).
+    Without this extension the 10th dataclass field has no round-trip
+    test coverage.
+
+_(Verified non-couplings: `.claude/CLAUDE.md`, `CONTRIBUTING.md`,
+`docs/development/TROUBLESHOOTING.md`, all 9 templates,
+`scripts/little_loops/init/validate.py` — none require updates per the
+tracer agents' analysis.)_
 
 ### Codebase Research Findings
 
@@ -364,6 +495,8 @@ lock in the winner via Pattern 1 of its Phase 3 extraction logic
 
 ### Option A (Recommended) — accept both names
 
+> **Selected:** Option A — accept both names — Two existing idiom templates (`fsm/schema.py:696-697` dataclass shim, `init/tui.py:284,300` call-site `or` chain) match this pattern exactly; alias logic is contained in one new oracle's `resolve_commands` shell action.
+
 Inside the new oracle's `resolve_commands` state, read via
 `cfg.get('typecheck_cmd') or cfg.get('type_cmd')` and
 `cfg.get('start_cmd') or cfg.get('run_cmd')`. Existing 14+ consumers
@@ -380,6 +513,25 @@ schema, `ProjectConfig`, and 14+ loops' inline `cfg.get(...)`
 patterns. Achieves cosmetic consistency at the cost of a wider
 mechanical sweep across 14+ consumers and a one-time breakage of any
 in-flight PR that touches those keys.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-08.
+
+**Selected**: Option A — accept both names (alias)
+
+**Reasoning**: Option A scores 11/12 vs Option B 5/12. The codebase ships two direct precedent idioms (`fsm/schema.py:696-697` dataclass `on_success`↔`on_yes` alias shim; `init/tui.py:284,300` `or`-chain default for command fields) and a test naming template (`test_fsm_schema.py:3781-3792`'s `test_legacy_max_iterations_aliases_to_max_steps`); Option A reuses them as-is. The codebase's existing precedent when breaking callers is "alias and deprecate" (`core.py:812-813` `CLConfig = BRConfig`, `features.py:197-198,230,233` `DEPRECATED` comments), not "rename everything" — leaning Option A is consistent with prior practice.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — alias | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B — rename | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+
+**Key evidence**:
+- Option A: `fsm/schema.py:696-697` (`on_success`↔`on_yes` dataclass shim) and `init/tui.py:284,300` (`or`-chain default) are direct, in-codebase idiom templates. Reuse score 2/3.
+- Option B: `CLConfig = BRConfig` alias at `config/core.py:812-813` and `DEPRECATED:` comments at `features.py:197-198,230,233` show the codebase prefers alias-on-breakage. The actual rename blast radius (30+ sites: dataclass, TUI, 9 templates, 9 skill markdowns incl. `manage-issue/SKILL.md:355-356`, 4 docs, 7 test files) makes Option B disproportionately invasive for a key-only cosmetic change.
 
 ## Acceptance Criteria
 
@@ -426,6 +578,32 @@ in-flight PR that touches those keys.
 
 - `scripts/little_loops/init/tui.py:282-308, 560-668, 737-740` — add
   `_ask_command`-style prompt for `health_url`.
+
+### Documentation (Wiring pass added by `/ll:wire-issue`)
+
+- `docs/reference/API.md:358-375` — add `health_url: str | None = None`
+  to the documented `ProjectConfig` dataclass block. This is the
+  `add-config-key` archetype coupling target enforced via
+  `scripts/tests/test_wire_issue_static_layer.py:51-55` — the
+  `if_changed: config-schema.json` → `then_check: [docs/reference/API.md,
+  .claude/CLAUDE.md]` rule from
+  `.issues/features/P3-FEAT-1736-wire-issue-coupling-rules-via-decisions-log.md:95-107`.
+- `docs/reference/loops.md` — add `## \`oracles/code-run-gate\``
+  section alongside the existing `oracles/generator-evaluator` (`:389`),
+  `oracles/generator-evaluator-cli` (`:463`), `oracles/research-coverage`
+  (`:597`), `oracles/enumerate-and-prove` pattern. The new section
+  needs parameters table (six command fields + `run_dir` +
+  `min_pass_rate` + `health_bound_seconds`), invocation block,
+  internal state machine, fragment dependency, and MR compliance note.
+- `scripts/little_loops/loops/README.md:180-185` — add `oracles/code-run-gate`
+  row to the Oracle Sub-loops table (currently lists `oracles/generator-evaluator`,
+  `oracles/generator-evaluator-cli`, `oracles/oracle-capture-issue`,
+  `oracles/enumerate-and-prove`, `oracles/research-coverage`,
+  `oracles/plan-node-refine`).
+- `README.md:179` — bump `**81 FSM loops**` claim to `**82 FSM loops**`
+  once the new oracle file lands. Required to keep
+  `scripts/little_loops/doc_counts.py:144-146`'s `verify_documentation()`
+  recursive `is_runnable_loop` count consistent with the README assertion.
 
 ### Pattern Sources (read-only references)
 
@@ -474,6 +652,23 @@ In `scripts/tests/test_builtin_loops.py:46-54`
 `BUILTIN_LOOPS_DIR.rglob("*.yaml")` will pick up the new oracle and
 assert it validates cleanly (MR-1 trivial; MR-3 compliant).
 
+### Tests to Update (Wiring pass added by `/ll:wire-issue`)
+
+- `scripts/tests/test_config.py:97-132` — `TestProjectConfig.test_from_dict_with_all_fields`
+  (lines 95-118) does not currently include `health_url`. Add
+  `"health_url": "http://localhost:8080/health"` to the data dict
+  (around line 107) and `assert config.health_url == "http://localhost:8080/health"`
+  (around line 118) to cover the 10th field. Also extend
+  `test_from_dict_with_defaults` (lines 120-132) with
+  `assert config.health_url is None` (around line 131-132). The current
+  test enumerates exactly 9 fields today; without this addition, the
+  field is silently untested for round-trip.
+
+_(No other existing tests require updates — verified by codebase-locator
+that no test asserts the *exact* set of `project.*` keys, and no test
+iterates over `ProjectConfig` fields beyond `TestProjectConfig`'s
+explicit enumeration.)_
+
 ## Impact
 
 - **Priority**: P2 — additive asset layer for the greenfield family; directly enforces the MR-1 doctrine (LLM self-grades are 33–55% accurate) on the implement path that lands in FEAT-2552.
@@ -507,12 +702,15 @@ or `implementation_order_risk` flag updates triggered by these risk
 factors (no signal-phrase matches)._
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-08T23:52:22 - `74a262ef-3d77-43bb-b2eb-f135b3e55a92.jsonl`
 - `/ll:decide-issue` - 2026-07-08T23:21:33 - `4159613b-e25e-4c7f-adcb-e3732fbe4519.jsonl`
 - `/ll:format-issue` - 2026-07-08T23:18:49 - `545c6ef1-08b7-43c3-a62f-be48a9a4e635.jsonl`
 - `/ll:refine-issue` - 2026-07-08T23:08:58 - `c647dd35-c503-4486-b782-2dcd71557c9e.jsonl`
 
 - `/ll:confidence-check` - 2026-07-08T23:10:00 - `a081f85a-6f32-4531-b0ca-f9df5eae6f9f.jsonl`
 - `/ll:split-issue` - 2026-07-08T23:10:00 - `a081f85a-6f32-4531-b0ca-f9df5eae6f9f.jsonl`
+- `/ll:wire-issue` - 2026-07-08T00:00:00 - `<auto>`
+- `/ll:confidence-check` - 2026-07-08T19:30:46 - `0ba409de-9bbe-4eb0-9942-6d4cfe14a215.jsonl`
 
 ## Status
 
