@@ -144,6 +144,19 @@ self._restore_state_file_tracking()
 - `git pull --rebase` would fail if state file has uncommitted changes
 - `assume-unchanged` tells git to ignore the modifications temporarily
 
+### 5. EPIC-Aware Merge Path
+
+When `epic_branches.enabled` is true in `.ll/ll-config.json` (FEAT-2449, FEAT-2453), the coordinator switches from per-issue merges to per-EPIC merges. Each `WorkerResult` carries an `epic_branch` field (the integration branch this issue was forked from and should merge back into); when that field is set the coordinator routes the merge to `epic/<EPIC-ID>-<slug>` instead of `parallel.base_branch`. Standalone (parentless) issues follow the historical per-worker merge path unchanged.
+
+**Routing logic:**
+
+1. The orchestrator stamps `WorkerResult.epic_branch` for every child of an EPIC (`scripts/little_loops/parallel/worker_pool.py`). Children of an EPIC all share one branch name; standalone issues get `None`.
+2. The merge coordinator reads that field and chooses the merge target — base branch when `epic_branch is None`, the EPIC integration branch otherwise.
+3. When the last child of an EPIC has been integrated, the orchestrator opens the EPIC-level merge (or PR, if `open_pr_for_epic_branches` is configured) from `epic/<EPIC-ID>-<slug>` back into the base branch.
+4. If any child of the EPIC fails, the EPIC branch is held open — the partial-failure gate prevents the EPIC-level merge from firing until the failing child is rerun or removed.
+
+The shared helper that resolves "the nearest ancestor EPIC that already has an integration branch" lives at `scripts/little_loops/issue_progress.py:find_nearest_epic_ancestor` (FEAT-2561) and is also used by `epic_branches.fork_point: auto` to pick a child's fork point. See [Configuration Reference — Per-EPIC Integration Branch](../reference/CONFIGURATION.md#parallel) and [Sprint Guide — Per-EPIC Integration Branch](../guides/SPRINT_GUIDE.md#per-epic-integration-branch) for the user-facing surface.
+
 ## Sophisticated Error Handling
 
 ### Error Detection Methods

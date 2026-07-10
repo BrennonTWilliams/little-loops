@@ -306,6 +306,47 @@ ll-parallel --prune-merged-branches
 
 **Scope:** only *local* branches are affected. GitHub's "delete branch on merge" setting governs the remote refs.
 
+### Per-EPIC Integration Branch
+
+When a multi-issue wave is dominated by children of a single EPIC, running each child as its own transient worktree and merging straight back to the base branch produces a noisy, hard-to-review PR surface — every child touches overlapping areas and conflicts at the base. The `epic_branches` config group (FEAT-2449, FEAT-2453) solves this by giving all children of an EPIC one shared integration branch that lives above the base branch.
+
+**What changes when per-EPIC branches are enabled:**
+
+- All children of an EPIC share one integration branch (named `epic/<EPIC-ID>-<slug>`, e.g. `epic/EPIC-2451-per-epic-integration-branch-strategy`)
+- Each child forks from that branch (not from `parallel.base_branch`) and merges back into it, so intermediate conflicts surface at the EPIC branch instead of at the base
+- When the last EPIC child completes, the orchestrator opens a single EPIC-level merge/PR from `epic/<EPIC-ID>-<slug>` into the base branch — one PR per EPIC instead of one per child
+- If any child fails the EPIC is **not** merged; the partial-failure gate holds the EPIC branch open until the failing child is rerun or removed
+- Standalone (parentless) issues follow the previous per-worker behavior — `epic_branches` only affects children that share a `parent:` EPIC
+
+**Opt-in:**
+
+| Config key | Default | Effect |
+|---|---|---|
+| `epic_branches.enabled` | `false` | When `true`, route children of the same EPIC to a single shared `epic/<id>-<slug>` branch and merge PR target. See [Configuration Reference](../reference/CONFIGURATION.md#parallel) for the full set. |
+| `epic_branches.base_pattern` | `"epic/{epic_id}-{slug}"` | Template for the integration branch name; placeholders are `{epic_id}` (e.g. `EPIC-2339`) and `{slug}` (kebab-cased EPIC title). |
+| `epic_branches.fork_point` | `"auto"` | Where children branch off from. `"auto"` uses the EPIC's nearest ancestor that already has an integration branch, or `parallel.base_branch` for the first child. Pin to a branch name to force a fixed base. |
+
+`ll-sprint run sprint-name` does not require any new flag — the orchestrator decides per wave whether to use the EPIC integration branch based on `epic_branches.enabled` and each issue's `parent:` field.
+
+**Interaction with `use_feature_branches`:** the two flags are orthogonal. `use_feature_branches` governs *individual-issue* branch behavior (`feature/<id>-<slug>`, no auto-merge, manual PR). `epic_branches` governs *EPIC-level* integration (one shared branch per EPIC, single EPIC-level PR on completion). They are not designed to combine — if you enable both, the per-EPIC branching wins for children of an EPIC (so the per-issue `feature/` branch is skipped inside an EPIC); standalone issues still get per-issue `feature/` branches. Most teams pick one or the other:
+
+- Use `epic_branches` when you plan work as coordinated EPICs and want one review surface per EPIC
+- Use `use_feature_branches` when each issue ships independently and you don't plan work under EPICs
+
+**When to enable `epic_branches`:**
+
+- Multi-issue waves dominated by EPIC children (the common `ll-sprint create` shape when the sprint includes children of an EPIC)
+- You want one PR per EPIC instead of N per EPIC child
+- You're willing to delay the base-branch merge until the entire EPIC completes (no partial merges)
+
+**When *not* to enable `epic_branches`:**
+
+- Sprints composed mostly of standalone (parentless) issues — no benefit, since the per-EPIC routing never fires
+- Sprints where you need each child merge to land independently as soon as it completes — partial-failure semantics will hold back the entire EPIC branch on any single child failure
+- You're already using a git-flow / GitHub-ruleset workflow that branches per-issue to `feature/` and you don't want one-EPIC-one-PR
+
+The EPIC merge path lives in `merge_coordinator`'s EPIC-aware router (see [merge coordinator internals](../../development/MERGE-COORDINATOR.md)); orchestrator wires per-issue results through `WorkerResult.epic_branch` (see [API Reference — WorkerResult](../../reference/API.md#workerresult)).
+
 ### Failed Issues
 
 If an issue fails during a **multi-issue parallel wave**, the runner:
