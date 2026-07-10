@@ -353,7 +353,8 @@ class TestCmdList:
         )
         (loops_dir / "bare-loop.yaml").write_text(_runnable("name: bare\n"))
 
-        args = argparse.Namespace(running=False, status=None)
+        # ENH-2572: descriptions render in the detailed (-l/--long) layout.
+        args = argparse.Namespace(running=False, status=None, long=True)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -526,7 +527,10 @@ class TestCmdList:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "UNCATEGORIZED" in out
+        # ENH-2572: project loops pin under YOUR PROJECT with a dim
+        # home-category tag instead of appearing under category headers.
+        assert "YOUR PROJECT" in out
+        assert "(uncategorized)" in out
         assert "my-loop" in out
 
     # --- BUG-1634: nested-loop enumeration -------------------------------
@@ -699,15 +703,25 @@ class TestLoopListCategoryFilter:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "loop-apo.yaml").write_text(_runnable("name: loop-apo\ncategory: apo\n"))
-        (loops_dir / "loop-meta.yaml").write_text(_runnable("name: loop-meta\ncategory: meta\n"))
-        (loops_dir / "loop-bare.yaml").write_text(_runnable("name: loop-bare\n"))
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        # ENH-2572: category headers apply to built-in loops (project loops
+        # pin under YOUR PROJECT) and categories with <3 members fold into
+        # OTHER. Seed 4 apo + 3 meta built-ins plus one uncategorized loop.
+        for i in range(4):
+            (builtin_dir / f"loop-apo-{i}.yaml").write_text(
+                _runnable(f"name: loop-apo-{i}\ncategory: apo\n")
+            )
+        for i in range(3):
+            (builtin_dir / f"loop-meta-{i}.yaml").write_text(
+                _runnable(f"name: loop-meta-{i}\ncategory: meta\n")
+            )
+        (builtin_dir / "loop-bare.yaml").write_text(_runnable("name: loop-bare\n"))
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
@@ -719,13 +733,17 @@ class TestLoopListCategoryFilter:
         # The bare-old .title() rendering of `apo` would have produced "Apo"; ensure
         # that header form is no longer present.
         assert "Apo\n" not in out
-        assert "UNCATEGORIZED" in out
-        assert "loop-apo" in out
-        assert "loop-meta" in out
+        assert "loop-apo-0" in out
+        assert "loop-meta-0" in out
         assert "loop-bare" in out
-        # APO and META headers should appear before UNCATEGORIZED
-        assert out.index("APO") < out.index("UNCATEGORIZED")
-        assert out.index("META") < out.index("UNCATEGORIZED")
+        # ENH-2572: categories ordered by member count descending — APO (4)
+        # before META (3); the singleton uncategorized loop folds into OTHER
+        # with a dim home-category tag.
+        assert out.index("APO") < out.index("META")
+        assert "UNCATEGORIZED" not in out
+        assert "OTHER" in out
+        assert "(uncategorized)" in out
+        assert out.index("META") < out.index("OTHER")
 
     def test_json_output_includes_category_and_labels(
         self,
@@ -1177,7 +1195,9 @@ class TestLoopListFormatting:
             _runnable("name: a-very-long-name\ncategory: test\ndescription: desc-b\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1219,21 +1239,25 @@ class TestLoopListFormatting:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        # A dominant "spike-*" prefix cluster (>=3 members, >=50% of category)
-        # triggers a subgroup subhead; "other" falls into the flat tail.
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        # A "spike-*" prefix cluster (>=3 members) triggers a subgroup subhead;
+        # "other" falls into the flat tail. ENH-2572: subgroups render inside
+        # built-in category sections (project loops pin under YOUR PROJECT).
         for name in ("spike-alpha", "spike-beta", "spike-gamma"):
-            (loops_dir / f"{name}.yaml").write_text(
+            (builtin_dir / f"{name}.yaml").write_text(
                 _runnable(f"name: {name}\ncategory: test\ndescription: desc-{name}\n")
             )
-        (loops_dir / "other.yaml").write_text(
+        (builtin_dir / "other.yaml").write_text(
             _runnable("name: other\ncategory: test\ndescription: desc-other\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
@@ -1268,7 +1292,9 @@ class TestLoopListFormatting:
             _runnable(f"name: my-loop\ncategory: test\ndescription: {long_desc}\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1295,7 +1321,9 @@ class TestLoopListFormatting:
             _runnable(f"name: my-loop\ncategory: test\ndescription: {short_desc}\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1378,7 +1406,9 @@ class TestLoopListFormatting:
             _runnable("name: many-labels\ncategory: test\nlabels:\n  - a\n  - b\n  - c\n  - d\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1402,7 +1432,8 @@ class TestLoopListFormatting:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """ENH-2539: per-category color drives name styling; the kind column differentiates project vs built-in."""
+        """ENH-2572: per-category color on built-in section headers; project
+        loops pin under YOUR PROJECT (the kind column is gone)."""
         from little_loops.cli import output as output_mod
         from little_loops.cli.loop.info import cmd_list
 
@@ -1414,9 +1445,9 @@ class TestLoopListFormatting:
 
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        (builtin_dir / "builtin-loop.yaml").write_text(
-            _runnable("name: builtin-loop\ncategory: test\n")
-        )
+        # >=3 members so "test" renders as a real category section.
+        for n in ("builtin-a", "builtin-b", "builtin-c"):
+            (builtin_dir / f"{n}.yaml").write_text(_runnable(f"name: {n}\ncategory: test\n"))
 
         # Patch CATEGORY_COLOR to a known code to make the assertion stable.
         with patch.dict(output_mod.CATEGORY_COLOR, {"test": "38;5;201"}, clear=False):
@@ -1432,18 +1463,22 @@ class TestLoopListFormatting:
 
         assert result == 0
         out = capsys.readouterr().out
-        # Both names get the per-category color (no built-in/project dim-vs-bold distinction on name).
+        # The built-in category header carries the per-category color.
         assert "\033[38;5;201m" in out
-        # Kind column carries the project/built-in distinction.
-        assert "project-loop" in out and "builtin-loop" in out
-        assert "project" in out and "built-in" in out
+        # Project loop pins under YOUR PROJECT with its home-category tag.
+        assert "YOUR PROJECT" in out
+        assert "project-loop" in out and "builtin-a" in out
+        assert out.index("YOUR PROJECT") < out.index("TEST")
+        # ENH-2572: the kind column is gone — "built-in" appears nowhere.
+        assert "built-in" not in out
 
     def test_builtin_tag_absent_project_marker_present(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """ENH-2539: trailing ● marker removed; visibility shown via the kind column."""
+        """ENH-2572: no kind column and no ● marker — built-in rows are
+        unlabeled; project loops are distinguished by the pinned section."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
@@ -1467,13 +1502,14 @@ class TestLoopListFormatting:
 
         assert result == 0
         out = capsys.readouterr().out
-        # Legacy trailing ● marker is gone — visibility is a kind-column value.
         lines = out.split("\n")
         project_line = next(line for line in lines if "project-loop" in line)
         builtin_line = next(line for line in lines if "builtin-loop" in line)
-        # Both lines show their kind column value; project-line has "project" and built-in-line has "built-in".
-        assert "project" in project_line
-        assert "built-in" in builtin_line
+        # The built-in row carries no kind word at all (it is the default).
+        assert "built-in" not in builtin_line
+        # The project row lives in the pinned section, above the built-in row.
+        assert out.index("YOUR PROJECT") < out.index("builtin-loop")
+        assert out.index(project_line) < out.index(builtin_line)
         # Old marker removed
         assert "●" not in project_line and "●" not in builtin_line
 
@@ -1486,21 +1522,27 @@ class TestLoopListFormatting:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "loop-a.yaml").write_text(_runnable("name: loop-a\ncategory: alpha\n"))
-        (loops_dir / "loop-b.yaml").write_text(_runnable("name: loop-b\ncategory: beta\n"))
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        # ENH-2572: >=3 members per category so both render as real sections.
+        for i in range(3):
+            (builtin_dir / f"loop-a{i}.yaml").write_text(
+                _runnable(f"name: loop-a{i}\ncategory: alpha\n")
+            )
+            (builtin_dir / f"loop-b{i}.yaml").write_text(
+                _runnable(f"name: loop-b{i}\ncategory: beta\n")
+            )
 
         args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
         assert result == 0
         out = capsys.readouterr().out
         lines = out.split("\n")
-        # Check there's a blank line before the second category header (now title-cased: "Beta")
         beta_header_idx = next(i for i, line in enumerate(lines) if "BETA" in line and "(" in line)
         assert beta_header_idx > 0
         assert lines[beta_header_idx - 1] == ""
@@ -1520,7 +1562,9 @@ class TestLoopListFormatting:
             _runnable(f"name: {long_name}\ncategory: test\ndescription: Some desc here\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1589,7 +1633,9 @@ class TestLoopListFormatting:
             )
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1631,7 +1677,9 @@ class TestLoopListFormatting:
             )
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1681,7 +1729,9 @@ class TestLoopListFormatting:
                 "  - performance-critical\n"
             )
         )
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1718,15 +1768,17 @@ class TestLoopListFormatting:
         # the ellipsis is hidden either way for a 121-char input at TW=80.
         import re as _re
 
+        del _re  # regex anchoring on the desc gap is ambiguous with tags/labels
+
         def _visible_desc(entry: str) -> int:
-            """Length of text between the '  ' desc gap and the ellipsis (or end)."""
-            m = _re.search(r"  (\S.*)", entry)
-            if not m:
+            """Visible length of the description text itself in the row."""
+            anchor = long_desc[:10]
+            if anchor not in entry:
                 return 0
-            seg = m.group(1)
+            seg = entry[entry.index(anchor) :]
             if "…" in seg:
                 return seg.index("…")
-            return len(seg)
+            return len(seg.rstrip())
 
         wide_visible = _visible_desc(entry_wide)
         bare_visible = _visible_desc(entry_bare)
@@ -1760,7 +1812,9 @@ class TestLoopListFormatting:
             _runnable(f"name: myloop\ncategory: test\ndescription: A description\n{labels_yaml}")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -1800,7 +1854,9 @@ class TestLoopListFormatting:
             _runnable(f"name: wideloop\ncategory: test\ndescription: {long_desc}\n")
         )
 
-        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        args = argparse.Namespace(
+            running=False, status=None, json=False, category=None, label=None, long=True
+        )
         for tw in (80, 100, 120, 160):
             with patch(
                 "little_loops.cli.loop.info.get_builtin_loops_dir",
@@ -1811,10 +1867,11 @@ class TestLoopListFormatting:
             out = capsys.readouterr().out
             entry = next(ln for ln in out.split("\n") if "wideloop" in ln)
             width = _display_width(entry.rstrip("\n"))
-            # Fills to exactly TW (never over, never leaving a gap). The engine
-            # allots ``desc_budget = tw - used`` so a long desc lands on TW.
-            assert width == tw, (
-                f"long-desc row should fill to TW={tw}, got width={width}: {entry!r}"
+            # Fills to the terminal edge, minus at most one clipped word:
+            # ENH-2572 truncation cuts at the last word boundary rather than
+            # mid-word, so the row may stop a few columns short of TW.
+            assert tw - 8 <= width <= tw, (
+                f"long-desc row should fill to ~TW={tw}, got width={width}: {entry!r}"
             )
 
     def test_no_truncate_flag_bypasses_truncation(
@@ -1839,6 +1896,7 @@ class TestLoopListFormatting:
             json=False,
             category=None,
             label=None,
+            long=True,
             no_truncate=True,
         )
         with patch(
@@ -1881,6 +1939,7 @@ def _base_args(tmp_path: Path) -> argparse.Namespace:
         running=False,
         status=None,
         json=False,
+        long=False,
         category=None,
         label=None,
         builtin=False,
@@ -1907,9 +1966,13 @@ class TestCmdListENH2539Polished:
         from little_loops.cli import output as output_mod
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "a.yaml").write_text(_runnable("name: a\ncategory: apo\n"))
-        (loops_dir / "b.yaml").write_text(_runnable("name: b\ncategory: gate\n"))
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        # ENH-2572: >=3 members per category so both render as real sections
+        # (category headers apply to built-in loops).
+        for i in range(3):
+            (builtin_dir / f"a{i}.yaml").write_text(_runnable(f"name: a{i}\ncategory: apo\n"))
+            (builtin_dir / f"b{i}.yaml").write_text(_runnable(f"name: b{i}\ncategory: gate\n"))
 
         with patch.dict(
             output_mod.CATEGORY_COLOR,
@@ -1920,7 +1983,7 @@ class TestCmdListENH2539Polished:
             args.label = []  # type: ignore[attr-defined]
             with patch(
                 "little_loops.cli.loop.info.get_builtin_loops_dir",
-                return_value=tmp_path / "nonexistent",
+                return_value=builtin_dir,
             ):
                 with patch("little_loops.cli.output._USE_COLOR", True):
                     from little_loops.cli.loop.info import cmd_list
@@ -1937,19 +2000,25 @@ class TestCmdListENH2539Polished:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Polish #2: category header carries an inline rollup badge."""
+        """Polish #2: category header carries an inline rollup badge.
+
+        ENH-2572: project loops pin under YOUR PROJECT, so category sections
+        only mix kinds via visibility tiers (internal/example with --all).
+        """
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "p1.yaml").write_text(_runnable("name: p1\ncategory: harness\n"))
-        (loops_dir / "p2.yaml").write_text(_runnable("name: p2\ncategory: harness\n"))
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        (builtin_dir / "b1.yaml").write_text(_runnable("name: b1\ncategory: harness\n"))
+        for n in ("b1", "b2", "b3"):
+            (builtin_dir / f"{n}.yaml").write_text(_runnable(f"name: {n}\ncategory: harness\n"))
+        (builtin_dir / "b4.yaml").write_text(
+            _runnable("name: b4\ncategory: harness\nvisibility: internal\n")
+        )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.all = True
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=builtin_dir,
@@ -1958,14 +2027,14 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        # 2 project + 1 built-in → 3 total. Dominant is 2 project (matches
+        # 3 built-in + 1 internal → 4 total. Dominant is built-in (matches
         # the (N) header), so the rollup badge emits only the minority:
-        # "1 built-in".
-        assert "(3)" in out
-        assert "1 built-in" in out
+        # "1 internal".
+        assert "(4)" in out
+        assert "1 internal" in out
         # The dominant count is no longer echoed in the rollup; the (N) in
         # the category header carries it.
-        assert "2 project" not in out
+        assert "3 built-in" not in out
 
     def test_rollup_badge_uses_gray(
         self,
@@ -1982,14 +2051,17 @@ class TestCmdListENH2539Polished:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "p1.yaml").write_text(_runnable("name: p1\ncategory: harness\n"))
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
-        (builtin_dir / "b1.yaml").write_text(_runnable("name: b1\ncategory: harness\n"))
+        for n in ("b1", "b2", "b3"):
+            (builtin_dir / f"{n}.yaml").write_text(_runnable(f"name: {n}\ncategory: harness\n"))
+        (builtin_dir / "b4.yaml").write_text(
+            _runnable("name: b4\ncategory: harness\nvisibility: internal\n")
+        )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.all = True
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=builtin_dir,
@@ -2000,14 +2072,14 @@ class TestCmdListENH2539Polished:
         assert result == 0
         out = capsys.readouterr().out
         # Locate the category-header line carrying the rollup badge.
-        header_line = next(ln for ln in out.split("\n") if "HARNESS" in ln and "built-in" in ln)
+        header_line = next(ln for ln in out.split("\n") if "HARNESS" in ln and "internal" in ln)
         # The badge substring (between the ANSI opener and reset) should be
         # wrapped in ANSI 90 (gray), not ANSI 36 (cyan).
         # Sanity: the badge text is present.
-        assert "1 built-in" in header_line
-        # Find the ANSI opener immediately preceding "1 built-in" — it must
+        assert "1 internal" in header_line
+        # Find the ANSI opener immediately preceding "1 internal" — it must
         # be the gray opener (\033[90m), not a cyan one (\033[36m).
-        badge_idx = header_line.index("1 built-in")
+        badge_idx = header_line.index("1 internal")
         before_badge = header_line[:badge_idx]
         # Strip ANSI codes from `before_badge` to find the last opener
         import re as _re
@@ -2020,23 +2092,26 @@ class TestCmdListENH2539Polished:
             f"\\033[{last_opener_code}m: {header_line!r}"
         )
 
-    def test_kind_column_first_class(
+    def test_kind_column_removed_badge_for_exceptions(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Polish #4: visibility is a kind column, not a trailing dot."""
+        """ENH-2572 item 1: the kind column is gone — "built-in" never renders
+        as a row value; internal/example exceptions carry a ◆ badge."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "pl.yaml").write_text(_runnable("name: pl\ncategory: cat\n"))
         builtin_dir = tmp_path / "builtin"
         builtin_dir.mkdir()
         (builtin_dir / "bl.yaml").write_text(_runnable("name: bl\ncategory: cat\n"))
+        (builtin_dir / "il.yaml").write_text(
+            _runnable("name: il\ncategory: cat\nvisibility: internal\n")
+        )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.all = True
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=builtin_dir,
@@ -2046,11 +2121,11 @@ class TestCmdListENH2539Polished:
         assert result == 0
         out = capsys.readouterr().out
         lines = out.split("\n")
-        proj = next(line for line in lines if "pl" in line and "cat" not in line)
-        blt = next(line for line in lines if "bl" in line and "cat" not in line)
-        # Both lines show their kind string in their row
-        assert "project" in proj
-        assert "built-in" in blt
+        blt = next(line for line in lines if "bl" in line and "▸" not in line)
+        il = next(line for line in lines if "il" in line and "▸" not in line)
+        # Built-in is the unlabeled default; exceptions get a ◆ badge.
+        assert "built-in" not in blt
+        assert "◆ internal" in il
 
     def test_acronym_casing_in_title(
         self,
@@ -2061,15 +2136,22 @@ class TestCmdListENH2539Polished:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "loop1.yaml").write_text(_runnable("name: loop1\ncategory: apo\n"))
-        (loops_dir / "loop2.yaml").write_text(_runnable("name: loop2\ncategory: evaluation\n"))
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        # ENH-2572: >=3 members per category so both render as real sections.
+        for i in range(3):
+            (builtin_dir / f"loop-a{i}.yaml").write_text(
+                _runnable(f"name: loop-a{i}\ncategory: apo\n")
+            )
+            (builtin_dir / f"loop-e{i}.yaml").write_text(
+                _runnable(f"name: loop-e{i}\ncategory: evaluation\n")
+            )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
@@ -2121,20 +2203,22 @@ class TestCmdListENH2539Polished:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "apo-beam.yaml").write_text(_runnable("name: apo-beam\ncategory: harness\n"))
-        (loops_dir / "apo-contrastive.yaml").write_text(
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        (builtin_dir / "apo-beam.yaml").write_text(_runnable("name: apo-beam\ncategory: harness\n"))
+        (builtin_dir / "apo-contrastive.yaml").write_text(
             _runnable("name: apo-contrastive\ncategory: harness\n")
         )
-        (loops_dir / "apo-feedback.yaml").write_text(
+        (builtin_dir / "apo-feedback.yaml").write_text(
             _runnable("name: apo-feedback\ncategory: harness\n")
         )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # subgroup subheads render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
@@ -2161,6 +2245,7 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -2198,6 +2283,7 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -2228,6 +2314,7 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -2286,6 +2373,7 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -2299,11 +2387,15 @@ class TestCmdListENH2539Polished:
         out = capsys.readouterr().out
         # Description text appears verbatim
         assert "This description should not be dim." in out
-        # The dim ANSI code (\033[2m) should not be present in the row containing
-        # the description (subgroup subheads and the hidden-tier hint are the
-        # only remaining dim sites, and neither wraps a per-row description).
+        # The dim ANSI code (\033[2m) may wrap the home-category tag on a
+        # pinned row (ENH-2572), but must not wrap the description text: the
+        # last ANSI opener before the description must not be the dim code.
         desc_row = next(ln for ln in out.split("\n") if "This description" in ln)
-        assert "\033[2m" not in desc_row
+        before_desc = desc_row[: desc_row.index("This description")]
+        import re as _re_dim
+
+        openers = _re_dim.findall(r"\x1b\[([0-9;]*)m", before_desc)
+        assert openers and openers[-1] != "2", f"description wrapped in dim: {desc_row!r}"
 
     def test_default_terminal_width_120(
         self,
@@ -2331,6 +2423,7 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
@@ -2421,16 +2514,20 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # descriptions render in the detailed layout
         # Pin a wide terminal so the full description is rendered without width
         # truncation — otherwise this test would pass only by accident on
         # narrow terminals that clip the second line away, and fail on wide /
         # non-TTY runners (e.g. CI, where width defaults to 120).
-        with patch(
-            "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
-        ), patch(
-            "little_loops.cli.loop.info.terminal_width",
-            return_value=200,
+        with (
+            patch(
+                "little_loops.cli.loop.info.get_builtin_loops_dir",
+                return_value=tmp_path / "nonexistent",
+            ),
+            patch(
+                "little_loops.cli.loop.info.terminal_width",
+                return_value=200,
+            ),
         ):
             result = cmd_list(args, loops_dir)
 
@@ -2498,20 +2595,22 @@ class TestCmdListENH2539Polished:
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "rn-implement.yaml").write_text(
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        (builtin_dir / "rn-implement.yaml").write_text(
             _runnable("name: rn-implement\ncategory: planning\n")
         )
-        (loops_dir / "rn-plan.yaml").write_text(_runnable("name: rn-plan\ncategory: planning\n"))
-        (loops_dir / "rn-refine.yaml").write_text(
+        (builtin_dir / "rn-plan.yaml").write_text(_runnable("name: rn-plan\ncategory: planning\n"))
+        (builtin_dir / "rn-refine.yaml").write_text(
             _runnable("name: rn-refine\ncategory: planning\n")
         )
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        args.long = True  # subgroup subheads render in the detailed layout
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
-            return_value=tmp_path / "nonexistent",
+            return_value=builtin_dir,
         ):
             result = cmd_list(args, loops_dir)
 
@@ -2523,6 +2622,272 @@ class TestCmdListENH2539Polished:
         assert "▸" in out
         # The legacy "  RN (3)" all-caps style is gone.
         assert "  RN (" not in out
+
+
+class TestCmdListENH2572ScanningFirst:
+    """ENH-2572: `ll-loop list` scanning-first layout.
+
+    Covers the pinned YOUR PROJECT section, OTHER folding, compact-grid
+    default vs -l detail, size-ordered categories, · separators, footer
+    hints, smart truncation, and the relaxed subgroup rule.
+    """
+
+    def _seed(self, tmp_path: Path) -> tuple[Path, Path]:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-proj.yaml").write_text(
+            _runnable("name: my-proj\ncategory: harness\ndescription: My project loop.\n")
+        )
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        for i in range(4):
+            (builtin_dir / f"harness-{i}.yaml").write_text(
+                _runnable(f"name: harness-{i}\ncategory: harness\ndescription: Harness loop {i}.\n")
+            )
+        for i in range(3):
+            (builtin_dir / f"gate-{i}.yaml").write_text(
+                _runnable(f"name: gate-{i}\ncategory: gate\ndescription: Gate loop {i}.\n")
+            )
+        (builtin_dir / "solo.yaml").write_text(
+            _runnable("name: solo\ncategory: routing\ndescription: Singleton loop.\n")
+        )
+        return loops_dir, builtin_dir
+
+    def _run(self, loops_dir: Path, builtin_dir: Path, **overrides: object) -> int:
+        from little_loops.cli.loop.info import cmd_list
+
+        args = _base_args(loops_dir.parent)
+        args.label = []  # type: ignore[attr-defined]
+        for k, v in overrides.items():
+            setattr(args, k, v)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=builtin_dir,
+        ):
+            return cmd_list(args, loops_dir)
+
+    def test_project_loops_pinned_first_and_exclusive(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Project loops appear only in the pinned top section, with a dim
+        home-category tag — never duplicated under their category."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert "YOUR PROJECT" in out
+        # Pinned section leads (right after the summary header).
+        assert out.index("YOUR PROJECT") < out.index("HARNESS")
+        # Exactly one occurrence — not duplicated under HARNESS.
+        assert out.count("my-proj") == 1
+        # Home-category tag preserved inline.
+        proj_line = next(ln for ln in out.split("\n") if "my-proj" in ln)
+        assert "(harness)" in proj_line
+        # Category count excludes the pinned copy: HARNESS shows 4 built-ins.
+        assert "HARNESS  (4)" in out
+
+    def test_small_categories_fold_into_other(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Categories with <3 members fold into a trailing OTHER group with
+        the original category as a dim inline tag."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert "ROUTING" not in out
+        assert "OTHER  (1)" in out
+        solo_line = next(ln for ln in out.split("\n") if "solo" in ln)
+        assert "(routing)" in solo_line
+        # OTHER trails the real categories.
+        assert out.index("OTHER") > out.index("GATE")
+
+    def test_categories_ordered_by_size(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Categories are ordered by member count descending, not alphabet
+        (alphabetically GATE < HARNESS, but HARNESS has more members)."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert out.index("HARNESS") < out.index("GATE")
+
+    def test_uncategorized_sorts_last_among_categories(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        for i in range(5):
+            (builtin_dir / f"bare-{i}.yaml").write_text(_runnable(f"name: bare-{i}\n"))
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        # 5 members — bigger than every real category, but still sorted last.
+        assert out.index("UNCATEGORIZED") > out.index("GATE")
+
+    def test_header_uses_middot_separators_throughout(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-2572 item 8: `N PROJECT · N BUILT-IN`, not `N PROJECT, N BUILT-IN`."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        header = next(ln for ln in out.split("\n") if "LOOPS" in ln)
+        assert "1 PROJECT · 8 BUILT-IN" in header
+        assert "," not in header
+
+    def test_footer_next_action_hints(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert "ll-loop show <name> for details" in out
+        assert "--category <cat> to filter" in out
+        # Grid default also advertises the detail flag.
+        assert "-l for descriptions" in out
+
+    def test_grid_default_has_no_descriptions_one_column_when_not_tty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The default layout is a compact name grid: no descriptions, and one
+        loop per line when stdout is not a TTY (capsys pipes stdout)."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert "Harness loop 0." not in out
+        # Non-TTY → one name per line: no line carries two loop names.
+        for ln in out.split("\n"):
+            assert not ("harness-0" in ln and "harness-1" in ln), f"multi-col on non-TTY: {ln!r}"
+
+    def test_grid_multi_column_when_tty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        with patch("little_loops.cli.loop.info._is_tty", return_value=True):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=120):
+                assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert any("harness-0" in ln and "harness-1" in ln for ln in out.split("\n")), (
+            f"expected multi-column grid on TTY: {out!r}"
+        )
+
+    def test_long_flag_shows_descriptions(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir, long=True) == 0
+        out = capsys.readouterr().out
+        assert "Harness loop 0." in out
+        assert "My project loop." in out
+
+    def test_long_flag_round_trip_through_argparse(self) -> None:
+        """-l / --long round-trips through argparse into cmd_list args
+        (mirrors the real `ll-loop list` subparser flags)."""
+        import argparse as _argparse
+
+        parser = _argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command", required=True)
+        list_p = sub.add_parser("list")
+        list_p.add_argument("-l", "--long", action="store_true")
+
+        assert parser.parse_args(["list", "-l"]).long is True
+        assert parser.parse_args(["list", "--long"]).long is True
+        assert parser.parse_args(["list"]).long is False
+
+    def test_no_project_badge_inside_pinned_section(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Rows in YOUR PROJECT don't repeat a `◆ project` badge — the section
+        itself carries that information."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir, long=True) == 0
+        out = capsys.readouterr().out
+        proj_line = next(ln for ln in out.split("\n") if "my-proj" in ln)
+        assert "◆ project" not in proj_line
+
+    def test_json_output_unchanged_by_layout(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--json is unaffected by the scanning-first layout: flat array with
+        the same fields, project loops not reordered into sections."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir, json=True) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 9
+        item = next(d for d in data if d["name"] == "my-proj")
+        assert set(item) >= {"name", "path", "category", "labels", "visibility", "description"}
+        assert "built_in" not in item
+        assert all(d.get("built_in") for d in data if d["name"] != "my-proj")
+
+    def test_smart_truncate_word_boundary(self) -> None:
+        from little_loops.cli.loop.info import _smart_truncate
+
+        text = "Generator evaluator harness for interactive widgets"
+        cut = _smart_truncate(text, 30)
+        assert cut.endswith("…")
+        # No mid-word cut: the fragment before … is a word-boundary prefix.
+        body = cut[:-1]
+        assert text.startswith(body) and (text[len(body)] == " " or body.endswith(" ") is False)
+        assert not body or text[: len(body)].rstrip() == body.rstrip()
+        assert body.rstrip() in text
+        assert text[len(body.rstrip()) : len(body.rstrip()) + 1] == " "
+
+    def test_smart_truncate_prefers_first_sentence(self) -> None:
+        from little_loops.cli.loop.info import _smart_truncate
+
+        text = "Short first sentence. Then a much longer second sentence follows here."
+        assert _smart_truncate(text, 40) == "Short first sentence."
+
+    def test_smart_truncate_short_text_unchanged(self) -> None:
+        from little_loops.cli.loop.info import _smart_truncate
+
+        assert _smart_truncate("hello world", 40) == "hello world"
+
+    def test_shared_desc_prefix_detection(self) -> None:
+        from little_loops.cli.loop.info import _shared_desc_prefix
+
+        descs = [
+            "Generator-evaluator harness for canvas sketches.",
+            "Generator-evaluator harness for p5js sketches.",
+            "Generator-evaluator harness for SVG images.",
+            "Something else entirely.",
+        ]
+        prefix = _shared_desc_prefix(descs)
+        assert prefix == "Generator-evaluator harness for "
+        # Fewer than 3 sharing → no prefix.
+        assert _shared_desc_prefix(descs[:2]) == ""
+
+    def test_shared_prefix_dimmed_in_long_layout(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Repeated leading boilerplate within a category renders dim so the
+        distinguishing tail stands out."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        builtin_dir = tmp_path / "builtin"
+        builtin_dir.mkdir()
+        for n in ("canvas", "p5js", "svg"):
+            (builtin_dir / f"{n}.yaml").write_text(
+                _runnable(
+                    f"name: {n}\ncategory: harness\n"
+                    f"description: Generator-evaluator harness for {n} output.\n"
+                )
+            )
+        with patch("little_loops.cli.output._USE_COLOR", True):
+            with patch("little_loops.cli.loop.info.terminal_width", return_value=120):
+                assert self._run(loops_dir, builtin_dir, long=True) == 0
+        out = capsys.readouterr().out
+        row = next(ln for ln in out.split("\n") if "canvas output" in ln)
+        assert "\033[2mGenerator-evaluator harness for " in row
+
+    def test_subgroup_rule_relaxed_no_dominance_requirement(self) -> None:
+        """ENH-2572 item 10: a ≥3-member prefix cluster subgroups even when it
+        is well under 50% of the category."""
+        from little_loops.cli.loop.info import _detect_subgroups
+
+        group = [{"name": f"rl-{i}"} for i in range(3)] + [
+            {"name": f"loner-{i}x"} for i in range(7)
+        ]
+        subgroups = _detect_subgroups(group)
+        prefixes = [p for p, _ in subgroups]
+        assert "rl" in prefixes, f"expected rl-* subgroup: {subgroups}"
 
 
 class TestCmdHistory:

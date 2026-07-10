@@ -344,6 +344,15 @@ Examples:
             help="Filter running loops by status (e.g., interrupted, awaiting_continuation)",
         )
         list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
+        list_parser.add_argument(
+            "-l",
+            "--long",
+            action="store_true",
+            help=(
+                "Detailed one-row-per-loop layout with descriptions and labels. "
+                "The default is a compact name grid for fast scanning."
+            ),
+        )
         list_parser.add_argument("--builtin", action="store_true", help="Show only built-in loops")
         list_parser.add_argument(
             "--category",

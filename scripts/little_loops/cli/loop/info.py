@@ -288,182 +288,325 @@ def cmd_list(
         print_json(items)
         return 0
 
-    # Human-readable: group by category
-    buckets: dict[str, list[dict[str, Any]]] = {}
-    for lp in all_loops:
-        cat = lp["category"] or "uncategorized"
-        if cat not in buckets:
-            buckets[cat] = []
-        buckets[cat].append(lp)
-
-    # Sort categories; "uncategorized" always last
-    sorted_cats = sorted(c for c in buckets if c != "uncategorized")
-    if "uncategorized" in buckets:
-        sorted_cats.append("uncategorized")
-
-    # ENH-2539: column widths computed once per render; description gets the
-    # remaining space with a 20-char floor mirroring ``_print_state_overview_table``.
-    # The per-row desc_budget is recomputed in _emit_row from the actual
-    # rendered prefix (indent + name + kind + labels + desc-gap) so wide labels
-    # shrink the desc column rather than overflow the terminal.
-    _MAX_NAME_COL = 32
-    _MAX_KIND_COL = 10
-    _MAX_LABEL_COL = 18
-    _DESC_FLOOR = 20
-    name_col = _MAX_NAME_COL + 2
-    kind_col = _MAX_KIND_COL
+    # ------------------------------------------------------------------
+    # Human-readable rendering (ENH-2572: scanning-first layout).
+    #
+    # Sections instead of raw category buckets:
+    #   1. YOUR PROJECT — the user's own loops, pinned first and shown
+    #      *exclusively* here (never duplicated under their category), each
+    #      with a dim home-category tag.
+    #   2. Real categories (≥3 members), ordered by member count descending
+    #      so the big clusters lead; "uncategorized" always last among them.
+    #   3. OTHER — categories with <3 members folded together, each row
+    #      carrying its original category as a dim inline tag.
+    #
+    # Default output is a compact name grid (like ``ls``) sized to the
+    # terminal; ``-l/--long`` gives the detailed one-row-per-loop layout.
+    # ------------------------------------------------------------------
+    long_mode = getattr(args, "long", False)
     tw = terminal_width(default=120)
 
-    # Summary header
+    # Distinct categories across everything shown (for the summary header).
+    all_cats = {lp["category"] or "uncategorized" for lp in all_loops}
+
+    # Summary header — "·" separators throughout (ENH-2572 item 8).
     n_project = sum(1 for lp in all_loops if not lp["builtin"])
     n_builtin = len(all_loops) - n_project
-    summary = f"  {len(all_loops)} LOOPS · {len(buckets)} CATEGORIES"
+    summary = f"  {len(all_loops)} LOOPS · {len(all_cats)} CATEGORIES"
     if n_project:
-        summary += f" · {n_project} PROJECT, {n_builtin} BUILT-IN"
+        summary += f" · {n_project} PROJECT · {n_builtin} BUILT-IN"
     print(colorize(summary, "1"))
     print()
 
-    cats_printed = False
-    for cat in sorted_cats:
-        group = buckets[cat]
-        if cats_printed:
-            print()  # blank line between category groups
-        cats_printed = True
-        # ENH-2539: per-category color + inline rollup badge.
-        cat_color = CATEGORY_COLOR.get(cat, "36;1")
-        cat_title = _all_caps(cat)
-        header_label = f"  ▸ {cat_title}  ({len(group)})"
-        rollup = _category_rollup(group, hidden_counts)
-        if rollup:
-            # ANSI 90 (bright black / "gray") for the rollup badge: a
-            # chromatic de-emphasis that doesn't compete with the bold
-            # category header color. ANSI 36 (cyan) reads greenish on
-            # teal-leaning dark palettes and was visually distracting.
+    # --- Build sections: (title, color, rows) where each row is (lp, tag) ---
+    _FOLD_THRESHOLD = 3  # categories with fewer members fold into OTHER
+    project_loops = [lp for lp in all_loops if not lp["builtin"]]
+    rest = [lp for lp in all_loops if lp["builtin"]]
+
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for lp in rest:
+        buckets.setdefault(lp["category"] or "uncategorized", []).append(lp)
+
+    big_cats = [c for c in buckets if len(buckets[c]) >= _FOLD_THRESHOLD]
+    # Member count descending; alphabetical tiebreak; uncategorized last.
+    big_cats.sort(key=lambda c: (c == "uncategorized", -len(buckets[c]), c))
+    small_cats = sorted(c for c in buckets if len(buckets[c]) < _FOLD_THRESHOLD)
+
+    sections: list[tuple[str, str, list[tuple[dict[str, Any], str]]]] = []
+    if project_loops:
+        prows = [(lp, lp["category"] or "uncategorized") for lp in project_loops]
+        prows.sort(key=lambda r: r[0]["name"])
+        sections.append(("YOUR PROJECT", "36;1", prows))
+    for cat in big_cats:
+        group = sorted(buckets[cat], key=lambda lp: lp["name"])
+        sections.append((cat, CATEGORY_COLOR.get(cat, "36;1"), [(lp, "") for lp in group]))
+    if small_cats:
+        other_rows = [
+            (lp, c) for c in small_cats for lp in sorted(buckets[c], key=lambda lp: lp["name"])
+        ]
+        other_rows.sort(key=lambda r: r[0]["name"])
+        sections.append(("OTHER", "36;1", other_rows))
+
+    for si, (title, color, rows) in enumerate(sections):
+        if si:
+            print()
+        header_label = f"  ▸ {_all_caps(title)}  ({len(rows)})"
+        rollup = _category_rollup([lp for lp, _ in rows], hidden_counts)
+        if title != "YOUR PROJECT" and rollup:
+            # ANSI 90 (gray) rollup badge: chromatic de-emphasis that doesn't
+            # compete with the bold header color.
             header_label += f"  {colorize(rollup, '90')}"
-        print(colorize(header_label, cat_color))
-
-        kind_color_map = {
-            "project": "36;1",
-            "built-in": "0",
-            "internal": "3",
-            "example": "33",
-        }
-
-        def _kind_for(lp: dict[str, Any]) -> str:
-            """Render a single leaf row for ``lp`` (used by flat + subgroup paths)."""
-            if lp.get("visibility") == "internal":
-                return "internal"
-            if lp.get("visibility") == "example":
-                return "example"
-            if lp.get("builtin", True):
-                return "built-in"
-            return "project"
-
-        def _emit_row(
-            lp: dict[str, Any],
-            indent: str,
-            *,
-            _kcm: dict[str, str] = kind_color_map,
-        ) -> None:
-            # Bold white ("1") for loop-name column: weight-based emphasis that
-            # reads identically across every terminal palette (no chromatic
-            # ambiguity with category headers or kind labels). The bold weight
-            # keeps it the most prominent thing in the row.
-            # Leaf rows under a subgroup subhead carry a wider indent
-            # (4 spaces) than flat / no-subgroup rows (2 spaces). The name
-            # field is a fixed-width column, so without compensating, the
-            # extra indent shifts the kind/labels/desc columns right and they
-            # fall out of vertical alignment across subgrouped vs flat rows in
-            # the same listing. Absorb the extra indent into the name field
-            # width (and shrink the truncation cap to match) so the kind
-            # column begins at a constant absolute column for every row.
-            _base_indent = 2
-            _extra_indent = max(0, _display_width(indent) - _base_indent)
-            _name_field = max(1, name_col - _extra_indent)
-            _name_cap = max(1, _MAX_NAME_COL - _extra_indent)
-            name_str = colorize(
-                _truncate(_display_name(lp["name"]), _name_cap).ljust(_name_field),
-                "1",
-            )
-            kind_value = _kind_for(lp)
-            kind_str = colorize(
-                kind_value.ljust(kind_col),
-                _kcm.get(kind_value, "2"),
-            )
-            label_str = _render_labels(lp.get("labels") or [])
-            desc_src = lp["description"] or ""
-            # Per-row prefix budget: shrink the desc column when labels are
-            # wide rather than letting the row overflow the terminal. Mirrors
-            # the ll-issues list pattern of "compute prefix, truncate the rest".
-            # ``_display_width`` strips ANSI via its \x1b fast path so the
-            # colorized segments measure correctly.
-            used = (
-                _display_width(indent)
-                + _display_width(name_str)
-                + _display_width(kind_str)
-                + _display_width(label_str)
-                + 2  # "  " gap before desc_text
-            )
-            desc_budget = max(_DESC_FLOOR, tw - used)
-            if no_truncate:
-                desc_str = f"  {desc_src}" if desc_src else ""
-            elif desc_budget <= 0:
-                desc_str = ""
-            elif desc_src and _display_width(desc_src) > desc_budget:
-                desc_str = "  " + _truncate(desc_src, desc_budget)
-            elif desc_src:
-                desc_str = "  " + desc_src
-            else:
-                desc_str = ""
-            row_str = f"{indent}{name_str}{kind_str}{label_str}{desc_str}"
-            # Defense in depth: ANSI-aware clamp for any edge-case overflow
-            # (e.g. wide-glyph names that defeat the pre-truncation cap).
-            if not no_truncate and _display_width(row_str) > tw:
-                row_str = _truncate_to_width_ansi(row_str, tw - 1)
-            # One row per loop, already truncated to terminal width above —
-            # matching ``ll-issues list``. Multi-line YAML descriptions are
-            # collapsed to a single space-joined string upstream in
-            # ``_load_loop_meta`` and rendered inline. Earlier BUG-2566 work
-            # removed the wrapped continuation block that defeated the
-            # single-line truncation intent of BUG-2554.
-            print(row_str)
-
-        # ENH-2539: subgroup subheads for categories with a dominant prefix
-        # cluster (≥3 members sharing a prefix). When no subgroup qualifies,
-        # fall through to the flat render path.
-        subgroups = _detect_subgroups(group)
-        has_subgroups = any(prefix for prefix, _ in subgroups)
-        if has_subgroups:
-            for prefix, members in subgroups:
-                if prefix:
-                    # Differentiate auto-clustered subgroup headers from real
-                    # category headers: bullet + lowercase prefix + glob, dim
-                    # gray. The "▸ ALL-CAPS (N)" pattern is reserved for
-                    # top-level categories so the eye can tell them apart.
-                    print(colorize(f"  · {prefix}-* ({len(members)})", "2"))
-                    leaf_indent = "    "  # 4-space leaves under a 2-space subhead
-                else:
-                    leaf_indent = "  "  # 2-space flat tail (matches no-subgroup case)
-                for lp in members:
-                    _emit_row(lp, leaf_indent)
+        print(colorize(header_label, color))
+        # Inside the pinned section every row is a project loop — repeating
+        # the "◆ project" badge on each would recreate the noise the kind
+        # column removal was meant to eliminate.
+        suppress = title == "YOUR PROJECT"
+        if long_mode:
+            _emit_long_section(title, rows, tw, no_truncate, suppress_project_badge=suppress)
         else:
-            for lp in group:
-                _emit_row(lp, "  ")
+            _emit_grid_section(rows, tw, suppress_project_badge=suppress)
 
-    # ENH-2539: closing hidden-tier hint only. The summary header at the top
-    # already carries loop/category totals — a duplicate TOTAL line was
-    # redundant. When nothing is hidden, omit the footer entirely.
+    # Footer: hidden-tier hint (when applicable) + next-action affordances.
     hidden_total = sum(hidden_counts.values())
+    print()
     if hidden_total:
         hidden_bits = ", ".join(f"{v} {k}" for k, v in hidden_counts.items() if v)
-        print()
-        print(
-            colorize(
-                f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show",
-                "2",
-            )
-        )
+        print(colorize(f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show", "2"))
+    hints = ["ll-loop show <name> for details", "--category <cat> to filter"]
+    if not long_mode:
+        hints.insert(0, "-l for descriptions")
+    print(colorize("  " + " · ".join(hints), "2"))
     return 0
+
+
+def _badge_for(lp: dict[str, Any]) -> str:
+    """Exception badge — built-in is the (unlabeled) default kind (ENH-2572)."""
+    if lp.get("visibility") == "internal":
+        return "◆ internal"
+    if lp.get("visibility") == "example":
+        return "◆ example"
+    if not lp.get("builtin", True):
+        return "◆ project"
+    return ""
+
+
+_BADGE_COLOR = {"◆ project": "36;1", "◆ internal": "3", "◆ example": "33"}
+
+
+def _is_tty() -> bool:
+    """Whether stdout is a terminal (grid falls back to one column when not)."""
+    import sys
+
+    try:
+        return sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def _emit_grid_section(
+    rows: list[tuple[dict[str, Any], str]],
+    tw: int,
+    *,
+    suppress_project_badge: bool = False,
+) -> None:
+    """Render a section as a compact multi-column name grid (like ``ls``).
+
+    Each cell is the loop name plus, when present, a dim home-category tag
+    (pinned/OTHER rows) or a colored exception badge. Falls back to a single
+    column when stdout is not a TTY so piped/CI output stays line-oriented.
+    """
+    cells: list[tuple[str, int]] = []  # (rendered, display_width)
+    for lp, tag in rows:
+        name = _display_name(lp["name"])
+        rendered = colorize(name, "1")
+        width = _display_width(name)
+        badge = _badge_for(lp)
+        if suppress_project_badge and badge == "◆ project":
+            badge = ""
+        if badge:
+            rendered += "  " + colorize(badge, _BADGE_COLOR.get(badge, "2"))
+            width += 2 + _display_width(badge)
+        if tag:
+            rendered += "  " + colorize(f"({tag})", "2")
+            width += 2 + _display_width(f"({tag})")
+        cells.append((rendered, width))
+    if not cells:
+        return
+    indent = "  "
+    if _is_tty():
+        cell_w = max(w for _, w in cells) + 2
+        ncols = max(1, (tw - len(indent)) // cell_w)
+    else:
+        ncols = 1
+        cell_w = 0
+    for i in range(0, len(cells), ncols):
+        chunk = cells[i : i + ncols]
+        line_parts = []
+        for j, (rendered, width) in enumerate(chunk):
+            pad = " " * (cell_w - width) if (ncols > 1 and j < len(chunk) - 1) else ""
+            line_parts.append(rendered + pad)
+        print(indent + "".join(line_parts))
+
+
+def _emit_long_section(
+    title: str,
+    rows: list[tuple[dict[str, Any], str]],
+    tw: int,
+    no_truncate: bool,
+    *,
+    suppress_project_badge: bool = False,
+) -> None:
+    """Render a section in the detailed one-row-per-loop layout (``-l``).
+
+    ENH-2572: the kind column is gone — built-in is the unlabeled default and
+    only exceptions carry a ``◆`` badge. Pinned/OTHER rows show their home
+    category as a dim inline tag. Descriptions truncate at word boundaries
+    (preferring the first sentence) and shared leading boilerplate within a
+    section is dimmed so the distinguishing words stand out.
+    """
+    _MAX_NAME_COL = 32
+    _DESC_FLOOR = 20
+    name_col = _MAX_NAME_COL + 2
+
+    def _row_badge(lp: dict[str, Any]) -> str:
+        b = _badge_for(lp)
+        return "" if (suppress_project_badge and b == "◆ project") else b
+
+    # Fixed-width badge/tag columns per section keep descriptions aligned.
+    badge_w = max((_display_width(_row_badge(lp)) for lp, _ in rows), default=0)
+    if badge_w:
+        badge_w += 2
+    tag_w = max((_display_width(f"({t})") for _, t in rows if t), default=0)
+    if tag_w:
+        tag_w += 2
+
+    shared_prefix = _shared_desc_prefix([lp["description"] or "" for lp, _ in rows])
+
+    def _emit_row(lp: dict[str, Any], tag: str, indent: str) -> None:
+        # Bold name column: weight-based emphasis, palette-independent. Leaf
+        # rows under a subgroup subhead carry a wider indent; absorb it into
+        # the name field so later columns stay vertically aligned.
+        _base_indent = 2
+        _extra = max(0, _display_width(indent) - _base_indent)
+        _name_field = max(1, name_col - _extra)
+        _name_cap = max(1, _MAX_NAME_COL - _extra)
+        name_str = colorize(_truncate(_display_name(lp["name"]), _name_cap).ljust(_name_field), "1")
+        badge = _row_badge(lp)
+        badge_str = ""
+        if badge_w:
+            pad = " " * (badge_w - 2 - _display_width(badge))
+            badge_str = (
+                (colorize(badge, _BADGE_COLOR.get(badge, "2")) if badge else "") + pad + "  "
+            )
+        tag_str = ""
+        if tag_w:
+            tag_text = f"({tag})" if tag else ""
+            pad = " " * (tag_w - 2 - _display_width(tag_text))
+            tag_str = (colorize(tag_text, "2") if tag_text else "") + pad + "  "
+        label_str = _render_labels(lp.get("labels") or [])
+        desc_src = lp["description"] or ""
+        # Per-row prefix budget: shrink the desc column when labels are wide
+        # rather than letting the row overflow the terminal.
+        used = (
+            _display_width(indent)
+            + _display_width(name_str)
+            + _display_width(badge_str)
+            + _display_width(tag_str)
+            + _display_width(label_str)
+            + 2  # "  " gap before desc text
+        )
+        desc_budget = max(_DESC_FLOOR, tw - used)
+        if no_truncate:
+            desc_text = desc_src
+        elif desc_src:
+            desc_text = _smart_truncate(desc_src, desc_budget)
+        else:
+            desc_text = ""
+        if desc_text and shared_prefix and desc_text.startswith(shared_prefix):
+            # Dim the repeated boilerplate so the distinguishing tail pops.
+            desc_str = "  " + colorize(shared_prefix, "2") + desc_text[len(shared_prefix) :]
+        elif desc_text:
+            desc_str = "  " + desc_text
+        else:
+            desc_str = ""
+        row_str = f"{indent}{name_str}{badge_str}{tag_str}{label_str}{desc_str}"
+        # Defense in depth: ANSI-aware clamp for edge-case overflow.
+        if not no_truncate and _display_width(row_str) > tw:
+            row_str = _truncate_to_width_ansi(row_str, tw - 1)
+        print(row_str)
+
+    # Subgroup subheads (≥3 members sharing a prefix — ENH-2572 relaxed the
+    # old ≥50%-dominance requirement). Skipped for the pinned/OTHER sections,
+    # whose rows already carry per-row tags.
+    group = [lp for lp, _ in rows]
+    tags = {id(lp): tag for lp, tag in rows}
+    if title in ("YOUR PROJECT", "OTHER"):
+        subgroups: list[tuple[str, list[dict[str, Any]]]] = [("", group)]
+    else:
+        subgroups = _detect_subgroups(group)
+    if any(prefix for prefix, _ in subgroups):
+        for prefix, members in subgroups:
+            if prefix:
+                # Bullet + lowercase prefix + glob, dim gray — visually
+                # distinct from the "▸ ALL-CAPS (N)" category headers.
+                print(colorize(f"  · {prefix}-* ({len(members)})", "2"))
+                leaf_indent = "    "
+            else:
+                leaf_indent = "  "
+            for lp in members:
+                _emit_row(lp, tags.get(id(lp), ""), leaf_indent)
+    else:
+        for lp, tag in rows:
+            _emit_row(lp, tag, "  ")
+
+
+def _smart_truncate(text: str, width: int) -> str:
+    """Truncate ``text`` to ``width`` display columns, scanning-friendly.
+
+    Prefers ending at the first sentence when it fits (the first sentence is
+    usually the whole value); otherwise cuts at the last word boundary rather
+    than mid-word. Falls back to plain display-width truncation when no
+    usable boundary exists in the back half of the budget.
+    """
+    if width <= 0:
+        return ""
+    if _display_width(text) <= width:
+        return text
+    m = _re_path.match(r"(.+?[.!?])\s", text)
+    if m and _display_width(m.group(1)) <= width:
+        return m.group(1)
+    cut = _truncate_to_width(text, width)
+    body = cut[:-1] if cut.endswith("…") else cut
+    sp = body.rstrip().rfind(" ")
+    if sp > width // 2:
+        body = body[:sp]
+    return body.rstrip() + "…"
+
+
+def _shared_desc_prefix(descs: list[str], min_share: int = 3, min_len: int = 16) -> str:
+    """Longest leading word-prefix shared by ≥``min_share`` descriptions.
+
+    Detects repeated boilerplate like "Generator-evaluator harness for…" so
+    the caller can de-emphasize it. Returns "" when no prefix of at least
+    ``min_len`` characters is shared widely enough.
+    """
+    candidates = [d for d in descs if d]
+    if len(candidates) < min_share:
+        return ""
+    from collections import Counter
+
+    counter: Counter[str] = Counter()
+    for d in candidates:
+        words = d.split(" ")
+        for k in range(1, min(len(words), 12) + 1):
+            prefix = " ".join(words[:k]) + " "
+            if len(prefix) - 1 >= min_len:
+                counter[prefix] += 1
+    best = ""
+    for prefix, count in counter.items():
+        if count >= min_share and len(prefix) > len(best):
+            best = prefix
+    return best
 
 
 _EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
@@ -540,10 +683,11 @@ def _render_labels(labels: list[str]) -> str:
 def _detect_subgroups(group: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
     """Bucket members by their first-name-prefix sub-bucket.
 
-    Returns a list of ``(prefix, members)`` pairs.  A subgroup is emitted only
-    when at least 3 members share a prefix AND that prefix dominates the
-    category (\u226550 % of members).  Below either threshold the loop is added to
-    the ``("", flat)`` tail-bucket.
+    Returns a list of ``(prefix, members)`` pairs.  A subgroup is emitted
+    when at least 3 members share a prefix (ENH-2572 dropped the old
+    \u226550 %-of-category dominance requirement, which blocked useful clusters
+    inside mixed categories).  Below the threshold the loop is added to the
+    ``("", flat)`` tail-bucket.
     """
     buckets: dict[str, list[dict[str, Any]]] = {}
     flat: list[dict[str, Any]] = []
@@ -556,7 +700,7 @@ def _detect_subgroups(group: list[dict[str, Any]]) -> list[tuple[str, list[dict[
             flat.append(lp)
     subgroups: list[tuple[str, list[dict[str, Any]]]] = []
     for prefix, members in buckets.items():
-        if len(members) >= 3 and len(members) >= max(1, len(group) // 2):
+        if len(members) >= 3:
             subgroups.append((prefix, sorted(members, key=lambda lp: lp["name"])))
         else:
             flat.extend(members)

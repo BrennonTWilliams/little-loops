@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.142.0] - 2026-07-10
+
+### Changed
+
+- **`ll-loop list` scanning-first layout (ENH-2572)** — the default output is now
+  a compact multi-column name grid (one column when stdout is not a TTY);
+  `-l/--long` gives the detailed one-row-per-loop layout. The `kind` column is
+  gone — built-in is the unlabeled default and only exceptions carry a
+  `◆ project` / `◆ internal` / `◆ example` badge. Project loops are pinned
+  exclusively in a `YOUR PROJECT` section at the top with a dim home-category
+  tag; categories with fewer than 3 members fold into a trailing `OTHER` group;
+  remaining categories are ordered by member count (descending) with
+  `uncategorized` last. Long-layout descriptions truncate at word boundaries
+  (preferring the first sentence) and shared leading boilerplate within a
+  section renders dim so the distinguishing words stand out. The summary header
+  uses `·` separators throughout, the footer gains
+  `ll-loop show <name> for details · --category <cat> to filter` hints, and
+  subgroup subheads now require only ≥3 members sharing a prefix (the old
+  ≥50%-dominance rule is dropped). `--json` output is unchanged.
+
 ## [1.141.0] - 2026-07-09
 
 ### Added

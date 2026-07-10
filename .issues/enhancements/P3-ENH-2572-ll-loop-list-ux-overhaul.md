@@ -3,7 +3,8 @@ id: ENH-2572
 title: ll-loop list UX overhaul — scanning-first layout
 type: ENH
 priority: P3
-status: open
+status: closed
+closed_date: 2026-07-10
 captured_at: "2026-07-10T00:00:00Z"
 discovered_date: 2026-07-10
 discovered_by: manual
@@ -108,13 +109,13 @@ excluded from this issue.)*
 
 ## Acceptance criteria
 
-- [ ] Kind column removed; non-built-in rows carry a distinguishing badge/color
-- [ ] Project loops surfaced in a pinned top section exclusively (not duplicated in categories), with dim home-category tag
-- [ ] Categories with <3 members folded into `OTHER` with inline tags
-- [ ] Description truncation is word-boundary aware; shared category prefixes de-emphasized
-- [ ] Compact grid is the default (one column when not a TTY); `-l` gives the detailed layout
-- [ ] Categories ordered by size/relevance, `uncategorized` last
-- [ ] Header uses `·` separators throughout
-- [ ] Footer includes show/filter hints
-- [ ] Subgroup detection relaxed to the ≥3-members rule
-- [ ] `--json` output unchanged; existing tests in `scripts/tests/test_ll_loop_commands.py` updated
+- [x] Kind column removed; non-built-in rows carry a distinguishing badge/color
+- [x] Project loops surfaced in a pinned top section exclusively (not duplicated in categories), with dim home-category tag
+- [x] Categories with <3 members folded into `OTHER` with inline tags
+- [x] Description truncation is word-boundary aware; shared category prefixes de-emphasized
+- [x] Compact grid is the default (one column when not a TTY); `-l` gives the detailed layout
+- [x] Categories ordered by size/relevance, `uncategorized` last
+- [x] Header uses `·` separators throughout
+- [x] Footer includes show/filter hints
+- [x] Subgroup detection relaxed to the ≥3-members rule
+- [x] `--json` output unchanged; existing tests in `scripts/tests/test_ll_loop_commands.py` updated

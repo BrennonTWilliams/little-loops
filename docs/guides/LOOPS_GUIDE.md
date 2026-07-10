@@ -839,7 +839,7 @@ check_stall:
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--resolved` expands sub-loops) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions (`--scenario all-pass\|all-fail\|all-error\|first-fail\|alternating`) |
-| `ll-loop list` | List loops (public tier only by default); `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
+| `ll-loop list` | List loops as a compact name grid (public tier only by default); `-l/--long` for the detailed per-row layout; `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
 | `ll-loop status <name>` | Current state and iteration count (`--json` for paths and PIDs) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
@@ -979,7 +979,7 @@ A loop can also declare a `visibility` tier — the *audience* axis, orthogonal 
 | `internal` | Delegated-only sub-loop, never run directly (e.g. `oracles/*`) | ❌ No — `--internal` or `--all` |
 | `example` | Demo or copy-me template (e.g. the `harness-*` EXAMPLE loops) | ❌ No — `--examples` or `--all` |
 
-`ll-loop list` shows only `public` loops by default; it ends with a `Total:` summary line that surfaces loop/category counts and, when hidden tiers exist, prints an extra hint line (`2 hidden (1 internal, 1 example) — pass --all to show`). The `kind` column (`built-in` / `project` / `internal` / `example`) makes the visibility of each row scannable. Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
+`ll-loop list` shows only `public` loops by default; a bold summary header carries the loop/category/kind counts, and the footer prints next-action hints plus, when hidden tiers exist, an extra hint line (`2 hidden (1 internal, 1 example) — pass --all to show`). The default output is a compact name grid (one column when piped); `-l/--long` switches to the detailed one-row-per-loop layout. Your own project loops are pinned in a `YOUR PROJECT` section at the top (with their home category as a dim inline tag), categories with fewer than 3 members fold into a trailing `OTHER` group, and remaining categories are ordered by size. Built-in is the unlabeled default kind — only exceptions carry a `◆ project` / `◆ internal` / `◆ example` badge. Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
 
 ```yaml
 name: my-sub-loop
