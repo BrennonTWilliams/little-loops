@@ -4334,7 +4334,7 @@
   alternatives_rejected: 'Option B: re-open BUG-2489 as regression — no evidence of
     regression in ENH-2529/ENH-2531/ENH-2532 commits since 2026-07-06 closure; conftest.py
     and session_log.py untouched; no new bypass paths added.'
-  issue: BUG-2530
+  issue: BUG-2586
 - id: ARCHITECTURE-116
   type: decision
   timestamp: '2026-07-07T22:53:09Z'
@@ -4785,7 +4785,7 @@
     ENH-2555, recorded as 'always empty' after BUG-2566 fix 1 (continuation-line
     block removed) and finally deleted in BUG-2566 fix 2 (load-time collapse).
     Verified zero in-tree consumers read the field -- `_emit_row` no longer reads
-    it post-fix-1, and the loader and JSON branch only ever emitted `""` for it.
+    it post-fix-1, and the loader and JSON branch only ever emitted `\"\"` for it.
     Treats additive-but-orphaned fields as eligible for removal when no live
     consumer depends on them, with a grep audit recorded in the rationale."
   rule: Additive-but-orphaned `--json` keys may be removed when an audit (grep

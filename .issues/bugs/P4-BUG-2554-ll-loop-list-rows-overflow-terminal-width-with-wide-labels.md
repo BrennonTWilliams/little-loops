@@ -210,3 +210,4 @@ Add a defense-in-depth ANSI-aware clamp for any edge-case overflow. Wire a
 ## Status
 
 **Closed** | Created: 2026-07-08 | Resolved: 2026-07-09T02:16:40Z | Priority: P4
+> **Historical duplicate ID (normalize-issues 2026-07-10):** number `2554` is a cross-type duplicate shared with **ENH-2554** (`improve-ll-loop-list-layout`). Both issues are `done` and embedded in shipped code/CHANGELOG/git history, so neither was renumbered — the type prefix disambiguates them. (The four resolvable collisions 2519/2520/2521, 2575/2576/2577, and 2530 were renumbered to 2580–2586 the same day.)

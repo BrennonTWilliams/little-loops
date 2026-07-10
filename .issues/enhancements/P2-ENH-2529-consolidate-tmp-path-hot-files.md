@@ -151,4 +151,4 @@ No production code, schema, or interface changes. No new fixtures in
 - No new "lighter" pytest config (config drift risk — explicitly rejected
   by the audit).
 - Orphan-worker sweep (R2, ENH-2531) and fuzz deadlines (R3, ENH-2532)
-  handled separately (done 2026-07-07); event-bus leak tracked as BUG-2530.
+  handled separately (done 2026-07-07); event-bus leak tracked as BUG-2586.

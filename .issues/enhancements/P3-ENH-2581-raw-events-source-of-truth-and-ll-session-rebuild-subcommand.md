@@ -1,5 +1,5 @@
 ---
-id: ENH-2520
+id: ENH-2581
 title: raw_events source of truth and ll-session rebuild subcommand
 type: ENH
 priority: P3
@@ -15,7 +15,7 @@ labels:
   - captured
 ---
 
-# ENH-2520: raw_events source of truth and ll-session rebuild subcommand
+# ENH-2581: raw_events source of truth and ll-session rebuild subcommand
 
 ## Summary
 
@@ -37,8 +37,8 @@ single source of truth for the CLI `--kind` choices (the hardcoded
 argparse lists in `cli/session.py:90-106` and `113-129`, which are
 already missing `"snapshot"`, get replaced).
 
-This is the structural foundation that ENH-2519 (user-root
-backfill) and ENH-2521 (analytics.auto_collect runner) build on,
+This is the structural foundation that ENH-2580 (user-root
+backfill) and ENH-2582 (analytics.auto_collect runner) build on,
 and which makes the pending EPIC-2457 children
 (ENH-2461, 2493, 2494, 2506, 2507, 2511) "write a new event_type
 parser" tasks instead of "add a new `*_events` table per feature"
@@ -143,7 +143,7 @@ lifecycle order `rebuild → compact → prune` is enforced by
 `SessionStart` (calls `backfill` then optionally `rebuild` on
 `SCHEMA_VERSION` change) and `SessionEnd` (calls
 `compact --and-prune` if `analytics.auto_collect.enabled`,
-per ENH-2521).
+per ENH-2582).
 
 ## Proposed Solution
 
@@ -343,7 +343,7 @@ Changes:
   <backfill_path> [--rebuild]`.
 - The hook passes `--rebuild` only when
   `SCHEMA_VERSION > last_rebuild_version` (new meta key).
-- `SessionEnd` hook (NEW, owned by ENH-2521) triggers
+- `SessionEnd` hook (NEW, owned by ENH-2582) triggers
   `compact --and-prune` if `analytics.auto_collect.enabled`
   is true.
 
@@ -484,8 +484,8 @@ Changes:
 
 **Open** | Created: 2026-07-08 | Priority: P3
 
-**Lands first.** ENH-2519 and ENH-2521 both depend on
-`raw_events` (ENH-2519 writes to it; ENH-2521 reads from
+**Lands first.** ENH-2580 and ENH-2582 both depend on
+`raw_events` (ENH-2580 writes to it; ENH-2582 reads from
 it via `compact`).
 
 ## Session Log

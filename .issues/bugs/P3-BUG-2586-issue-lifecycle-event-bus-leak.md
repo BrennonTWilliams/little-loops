@@ -1,5 +1,5 @@
 ---
-id: BUG-2530
+id: BUG-2586
 title: Global event-bus leak in test_complete_issue_lifecycle_emits_event flakes under
   specific xdist shardings
 type: BUG
@@ -28,7 +28,7 @@ relates_to:
 - BUG-2489
 ---
 
-# BUG-2530: Global event-bus leak in test_complete_issue_lifecycle_emits_event flakes under specific xdist shardings
+# BUG-2586: Global event-bus leak in test_complete_issue_lifecycle_emits_event flakes under specific xdist shardings
 
 ## Summary
 
@@ -211,7 +211,7 @@ The flake and its verified root cause are documented at
 in place after ENH-2529's `tmp_path` consolidation and the regression tests
 at `scripts/tests/test_session_log.py:58,82` still pass; if both hold, update
 this issue's status to `cancelled` with a `related:` cross-link to BUG-2489
-and link BUG-2530 from BUG-2489's `related:` back. No code change.
+and link BUG-2586 from BUG-2489's `related:` back. No code change.
 
 **Option B — Re-open BUG-2489 if the flake still reproduces.** If the
 audit's full-suite reproduction (`pytest -n 7` or `-n auto`) still surfaces
@@ -257,7 +257,7 @@ _Added by `/ll:refine-issue` — concrete steps for each disposition option:_
 1. Capture the failing run output and the test-file co-location observed.
 2. Add a comment to BUG-2489 indicating the regression observed on
    `discovered_date: 2026-07-07` (today).
-3. Re-open BUG-2489 via `ll-issues set-status ...`; close BUG-2530 with
+3. Re-open BUG-2489 via `ll-issues set-status ...`; close BUG-2586 with
    `related: [BUG-2489]`.
 
 **Verification (both options):**
@@ -311,7 +311,7 @@ _Added by `/ll:confidence-check` on 2026-07-07_
 **Outcome Confidence**: 94/100 → HIGH CONFIDENCE
 
 ### Concerns
-- **Underlying fix already implemented in BUG-2489** — `_isolate_session_log_dir` autouse fixture at `scripts/tests/conftest.py:612-638` and the `except OSError: continue` TOCTOU guard at `scripts/little_loops/session_log.py:88-93` are verified intact (direct grep confirmed both line numbers). BUG-2489 is `done` (completed 2026-07-06). The hypothesised `LLTestBus.global_subscribers` symbol has zero hits across `scripts/`, and `LLTestBus` itself stores only per-instance `_events`/`_extensions`/`delivered_events` (`testing.py:42-45`); `EventBus` is per-instance (`events.py:77-79`). The right action is closure via `ll-issues set-status BUG-2530 cancelled` + `related: [BUG-2489]` cross-link (and a reciprocal `related: [BUG-2530]` on BUG-2489) per `/ll:decide-issue` Option A (2026-07-07T22:47:06). No production code to write.
+- **Underlying fix already implemented in BUG-2489** — `_isolate_session_log_dir` autouse fixture at `scripts/tests/conftest.py:612-638` and the `except OSError: continue` TOCTOU guard at `scripts/little_loops/session_log.py:88-93` are verified intact (direct grep confirmed both line numbers). BUG-2489 is `done` (completed 2026-07-06). The hypothesised `LLTestBus.global_subscribers` symbol has zero hits across `scripts/`, and `LLTestBus` itself stores only per-instance `_events`/`_extensions`/`delivered_events` (`testing.py:42-45`); `EventBus` is per-instance (`events.py:77-79`). The right action is closure via `ll-issues set-status BUG-2586 cancelled` + `related: [BUG-2489]` cross-link (and a reciprocal `related: [BUG-2586]` on BUG-2489) per `/ll:decide-issue` Option A (2026-07-07T22:47:06). No production code to write.
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-07-07T23:05:00 - `b44c47a7-0f37-498a-b65f-f7df4910edc2.jsonl`

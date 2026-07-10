@@ -1,5 +1,5 @@
 ---
-id: ENH-2519
+id: ENH-2580
 title: ll-session backfill defaults to user-root with project fallback
 type: ENH
 priority: P3
@@ -15,7 +15,7 @@ labels:
   - captured
 ---
 
-# ENH-2519: ll-session backfill defaults to user-root with project fallback
+# ENH-2580: ll-session backfill defaults to user-root with project fallback
 
 ## Summary
 
@@ -116,7 +116,7 @@ list is deduplicated by absolute path.
 4. **`hooks/session_start.py:141-147`** switches from
    "prefer transcript_path, fall back to project folder" to the
    same three-step discovery. The `--rebuild` flag (introduced
-   by ENH-2520) is orthogonal.
+   by ENH-2581) is orthogonal.
 
 5. **EPIC-2369 alignment**: FEAT-2315/2316 and ENH-2317/2318 share
    `cli/logs.py`, so the new helper is reusable across both epics.
@@ -196,7 +196,7 @@ list is deduplicated by absolute path.
 
 | Document | Why Relevant |
 |----------|--------------|
-| `docs/ARCHITECTURE.md` | Session start flow; SessionEnd addition (ENH-2521). |
+| `docs/ARCHITECTURE.md` | Session start flow; SessionEnd addition (ENH-2582). |
 | `docs/reference/API.md` | `host_runner.resolve_host()` reference. |
 | `docs/reference/CLI.md` | `ll-session backfill` and the new `--project-only` flag. |
 | `thoughts/history-db-raw-events-architecture.md` | The parent design doc. |
@@ -205,9 +205,9 @@ list is deduplicated by absolute path.
 
 **Open** | Created: 2026-07-08 | Priority: P3
 
-Depends on **ENH-2520** (raw_events source of truth) — the
+Depends on **ENH-2581** (raw_events source of truth) — the
 `raw_events` table is the destination the user-root JSONL files
-are ingested into. After ENH-2520 lands, this child is a
+are ingested into. After ENH-2581 lands, this child is a
 ~1-day implementation.
 
 ## Session Log

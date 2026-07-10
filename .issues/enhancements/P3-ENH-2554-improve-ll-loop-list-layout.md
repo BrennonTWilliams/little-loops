@@ -151,3 +151,5 @@ existing output was redundant enough to warrant direct review.
 
 ## Session Log
 - `hook:posttooluse-status-done` - 2026-07-09T01:09:01 - `3aa28e19-94d0-4c9e-b047-f21db8e0ecf5.jsonl`
+
+> **Historical duplicate ID (normalize-issues 2026-07-10):** number `2554` is a cross-type duplicate shared with **BUG-2554** (`ll-loop-list-rows-overflow-terminal-width-with-wide-labels`). Both issues are `done` and embedded in shipped code/CHANGELOG/git history, so neither was renumbered — the type prefix disambiguates them. (The four resolvable collisions 2519/2520/2521, 2575/2576/2577, and 2530 were renumbered to 2580–2586 the same day.)

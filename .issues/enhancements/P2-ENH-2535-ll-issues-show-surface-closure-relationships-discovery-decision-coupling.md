@@ -618,7 +618,7 @@ of `--json` output):
   do not need editing; they remain accurate as descriptions of the
   rationale **at the time the plan was written**. Flag only.
 - Historical issue references (NOT requiring edits, listed for context
-  since the issue's existing "Related" section mentions BUG-2530 and
+  since the issue's existing "Related" section mentions BUG-2586 and
   the gain over ENH-2008, ENH-1088, ENH-2443, etc.):
   `.issues/enhancements/P3-ENH-2008`, `P3-ENH-1088`, `P4-ENH-1284`,
   `P3-ENH-2443`, `P4-ENH-1492`, `.issues/features/P3-FEAT-1696`,
@@ -728,7 +728,7 @@ skills/` confirms.
 
 ## Related
 
-- BUG-2530 — example of an issue whose closure context (`## Decision
+- BUG-2586 — example of an issue whose closure context (`## Decision
   Rationale` section with `## Related` cross-links) currently requires
   opening the file to see; this ENH would surface the same data on the
   card.

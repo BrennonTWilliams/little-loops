@@ -155,3 +155,5 @@ Implemented: `max_cumulative_subproc_mb` / `on_budget_exceeded` / `budget_state`
 ## Session Log
 
 - `/ll:capture-issue` - 2026-07-03T02:05:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ff12421-1849-4d8d-abe4-d955b4becd84.jsonl`
+
+> **Historical duplicate ID (normalize-issues 2026-07-10):** number `2453` is a cross-type duplicate shared with **FEAT-2453** (`downstream-consumer-read-sites`). Both issues are `done` and embedded in shipped code/CHANGELOG/git history, so neither was renumbered — the type prefix disambiguates them. (The four resolvable collisions 2519/2520/2521, 2575/2576/2577, and 2530 were renumbered to 2580–2586 the same day.)

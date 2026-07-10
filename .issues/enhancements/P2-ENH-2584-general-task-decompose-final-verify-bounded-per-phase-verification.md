@@ -1,9 +1,9 @@
 ---
-id: ENH-2576
+id: ENH-2584
 title: "general-task \u2014 decompose final_verify into bounded per-batch verification"
 type: ENH
 priority: P2
-status: open
+status: deferred
 discovered_date: '2026-07-10'
 discovered_by: audit-loop-run
 labels:
@@ -14,7 +14,7 @@ labels:
 - audit
 decision_needed: false
 relates_to:
-- ENH-2575
+- ENH-2583
 confidence_score: 100
 outcome_confidence: 74
 score_complexity: 14
@@ -24,7 +24,7 @@ score_change_surface: 10
 size: Very Large
 ---
 
-# ENH-2576: general-task — decompose final_verify into bounded per-batch verification
+# ENH-2584: general-task — decompose final_verify into bounded per-batch verification
 
 ## Summary
 
@@ -34,7 +34,7 @@ re-verify EVERY DoD criterion (38 hard + soft in the audited run, ~56 total
 items) — including full `test:coverage` and `test:e2e` runs — inside one
 1800s timeout. The verification surface scales with the task, but the budget
 doesn't. On any large task the state times out deterministically, and (before
-ENH-2575) forfeited the run.
+ENH-2583) forfeited the run.
 
 ## Current Behavior
 
@@ -42,7 +42,7 @@ ENH-2575) forfeited the run.
 state that independently re-verifies every DoD criterion in one `1800s` timeout,
 including whole-suite `test:coverage`/`test:e2e` runs. The verification workload
 scales with DoD size (~56 items in the audited run) while the timeout is fixed,
-so large tasks time out deterministically; before ENH-2575 that forfeited the
+so large tasks time out deterministically; before ENH-2583 that forfeited the
 run outright.
 
 ## Expected Behavior
@@ -62,7 +62,7 @@ size. Substrate locked to **Option B (flat-file counter cursor)** via
   separate mechanical state (ENH-2225) — and MUST NOT be re-run inside prompt
   verification batches.
 - A batch timeout marks only that batch's criteria unverified and continues,
-  routing to the ENH-2575 partial-credit chain at the end if anything is
+  routing to the ENH-2583 partial-credit chain at the end if anything is
   unverified — one slow batch can no longer forfeit the run.
 
 ## Constraints / gotchas
@@ -117,7 +117,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] No prompt state's verification workload grows unbounded with DoD size;
       per-batch timeout is bounded and documented.
 - [ ] A single batch timeout does not terminate the run; unverified criteria
-      route to the partial-credit chain (ENH-2575) rather than `failed`.
+      route to the partial-credit chain (ENH-2583) rather than `failed`.
 - [ ] Whole-suite gates remain final-only in `run_final_tests` (ENH-2225
       invariant preserved).
 - [ ] `count_final` still gates terminal `done` on zero FAILED criteria.
@@ -139,7 +139,7 @@ findings, and the selected Option B; adjust if intent differs._
 - **Out of scope**: phase-heading partitioning — `dod.md` is a flat list;
   batching is by fixed K only (`ceil(N/10)`).
 - **Out of scope**: new terminal states — unverified criteria route through the
-  existing `count_final.on_no` / ENH-2575 `partial` chain.
+  existing `count_final.on_no` / ENH-2583 `partial` chain.
 - **Out of scope**: rewriting `count_final`'s single-most-recent-`## Final
   Verification`-section awk contract; Option B preserves it (append to one
   section, cursor tracked separately in `batch-cursor.txt`).
@@ -165,7 +165,7 @@ findings, and the selected Option B; adjust if intent differs._
 
 ### States Involved (current line refs)
 - `final_verify` — `general-task.yaml:427-458` (the monolith to decompose);
-  `next: run_final_tests`, `on_error: summarize_partial` (ENH-2575).
+  `next: run_final_tests`, `on_error: summarize_partial` (ENH-2583).
 - `run_final_tests` — `:460-491` (ENH-2225 whole-suite gate; `fragment:
   shell_exit`). **Invariant: keep `${context.test_cmd}` / coverage / e2e here
   only.** `verify_step` is already test-blocked by
@@ -174,7 +174,7 @@ findings, and the selected Option B; adjust if intent differs._
 - `count_final` — `:493-515` (awk over `## Final Verification`;
   `evaluate.path: .failed_finals`, `on_no: continue_work`).
 - `summarize_partial` → `write_partial_summary` → `partial` — `:616-687`
-  (ENH-2575 partial-credit chain; `partial` is a distinct non-`done` terminal).
+  (ENH-2583 partial-credit chain; `partial` is a distinct non-`done` terminal).
 - `check_done` Step 3 — `:323-336` (replace-section prior art for `## Sample
   Verification`).
 
@@ -302,7 +302,7 @@ verified; the three tests above are NOT the full set:_
     route; overlaps `TestENH2225FinalOnlyGate.test_final_verify_routes_to_run_final_tests`
     (`:1261-1262`) already listed above.
   - `test_final_verify_routes_error_to_summarize_partial` (`:1095-1098`) — the
-    ENH-2575 `on_error → summarize_partial` edge; the per-batch timeout handler
+    ENH-2583 `on_error → summarize_partial` edge; the per-batch timeout handler
     (Proposed Solution "mark batch unverified + advance cursor") changes this
     contract, so this assertion needs rethinking, not just retargeting.
   - `test_final_verify_action_references_dod_file` (`:1100-1101`)
@@ -333,7 +333,7 @@ verified; the three tests above are NOT the full set:_
   - `:1261–1262` — `TestENH2225FinalOnlyGate.test_final_verify_routes_to_run_final_tests`
     (retarget).
   - `:1345–1347` — `test_final_verify_has_per_state_timeout` (retarget).
-  - `:1500, :1501, :1536` — ENH-2575 comments (no change).
+  - `:1500, :1501, :1536` — ENH-2583 comments (no change).
 
   Net: **10 live-state test references across 4 classes** (`:63, :186, :219, :1084,
   :1087, :1090, :1095, :1100, :1104, :1261, :1345`) must each be retargeted or
@@ -402,7 +402,7 @@ Two viable substrate patterns for the cursor. **Both** share the same shape:
 `${context.run_dir}` → `verify_batch` (prompt, bounded timeout) re-verifies one
 batch per visit and appends evidence **to a single `## Final Verification`
 section** → loops back on "more batches" / exits to `run_final_tests` on
-"cursor exhausted" → any batch timeout routes to the ENH-2575 chain but marks
+"cursor exhausted" → any batch timeout routes to the ENH-2583 chain but marks
 only that batch's criteria unverified and continues.
 
 ### Option A — Directory batch-queue (goal-cluster pattern)
@@ -440,7 +440,7 @@ requirement (it is not, given `final_verify` runs in the terminal arm).
   cursor" shell state that then loops back — a single batch timeout leaves that
   batch's criteria `[ ]` and continues rather than forfeiting. When the cursor
   exhausts with anything still unverified, `count_final`'s `on_no: continue_work`
-  or the ENH-2575 `partial` terminal handles the shortfall (no new terminal
+  or the ENH-2583 `partial` terminal handles the shortfall (no new terminal
   needed).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -505,7 +505,7 @@ existing shell-state test harness (`_load_state_script`/`_bash`,
 _Inferred by `/ll:format-issue --auto` from frontmatter scores and issue content._
 
 - **Priority**: P2 — reliability fix for deterministic large-task `final_verify`
-  timeouts. ENH-2575 already prevents outright run forfeiture, so this is not
+  timeouts. ENH-2583 already prevents outright run forfeiture, so this is not
   P0/P1, but unverified DoDs on every large task degrade the loop's terminal gate.
 - **Effort**: Medium — one YAML state decompose plus a cursor shell state that
   reuses existing counter idioms (`step-attempts.txt`, `retry_counter`), retarget
@@ -549,7 +549,7 @@ _Added by `/ll:confidence-check` on 2026-07-10_
   Pattern-A dependent count past the "manageable surface" bucket.
 
 ================================================================================
-CONFIDENCE CHECK: ENH-2576
+CONFIDENCE CHECK: ENH-2584
 ================================================================================
 
 ## READINESS SCORES
@@ -560,7 +560,7 @@ CONFIDENCE CHECK: ENH-2576
 | Architecture compliance       | 20/20 | Option B reuses the loop's existing flat-file cursor idioms (`step-attempts.txt`, `retry_counter`); decided via `/ll:decide-issue` with a scored comparison. |
 | Rationale well-understood     | 20/20 | Current/Expected Behavior sections cite exact line numbers and a source audit run; all cited line refs verified against live YAML. |
 | Issue well-specified          | 15/20 | AC, Integration Map, Scope Boundaries, and Wiring Phase are thorough, but the break-on-removal test list misses 2 of 5 actual `final_verify`-referencing tests (see Outcome Risk Factors). |
-| Dependencies satisfied        | 20/20 | `relates_to: ENH-2575` is done (`a6db77c4`, confirmed in git log) — the partial-credit chain this issue routes into already exists. |
+| Dependencies satisfied        | 20/20 | `relates_to: ENH-2583` is done (`a6db77c4`, confirmed in git log) — the partial-credit chain this issue routes into already exists. |
 
 ## OUTCOME CONFIDENCE SCORES
 

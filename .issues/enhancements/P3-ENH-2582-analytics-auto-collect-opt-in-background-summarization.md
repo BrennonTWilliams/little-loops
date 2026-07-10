@@ -1,5 +1,5 @@
 ---
-id: ENH-2521
+id: ENH-2582
 title: analytics.auto_collect opt-in background summarization
 type: ENH
 priority: P3
@@ -15,14 +15,14 @@ labels:
   - captured
 ---
 
-# ENH-2521: analytics.auto_collect opt-in background summarization
+# ENH-2582: analytics.auto_collect opt-in background summarization
 
 ## Summary
 
 Add a new `analytics.auto_collect` config namespace (default
 **off**) that, when enabled, causes a new `SessionEnd` hook to
 invoke `ll-session compact --and-prune` (the subcommand
-introduced by ENH-2520). The runner is best-effort per the
+introduced by ENH-2581). The runner is best-effort per the
 EPIC-1707 graceful-degradation contract
 (`contextlib.suppress(Exception)` around the subprocess
 spawn). **No auto-injection** of observations into prompt
@@ -37,7 +37,7 @@ during the session" via `analytics.capture.*` (per
 summarization of older sessions* — `summary_nodes` are
 regenerated only on explicit `compact_session` calls, not
 automatically as data ages out. The new `compact` subcommand
-from ENH-2520 is the primitive; this child wires it to a
+from ENH-2581 is the primitive; this child wires it to a
 config gate and a `SessionEnd` trigger.
 
 The user's intent: a ClaudeMem-like auto-collect experience,
@@ -77,10 +77,10 @@ When `true`:
   during compaction do not block the session from ending.
 - The schema adds the new key under
   `analytics.auto_collect`; the dataclass gains the field.
-- `SessionStart` orchestration (per ENH-2520) is unchanged
+- `SessionStart` orchestration (per ENH-2581) is unchanged
   — `analytics.auto_collect` does **not** gate the
   `rebuild` decision (that decision is based on
-  `SCHEMA_VERSION`, per ENH-2520's open question §c).
+  `SCHEMA_VERSION`, per ENH-2581's open question §c).
 - **No auto-injection of observations into prompt context.**
   This is explicitly out of scope. The user must opt in
   per-skill (via `analytics.capture.skills` and the
@@ -95,7 +95,7 @@ Add to the `analytics` object (around line 1561):
 ```json
 "auto_collect": {
   "type": "object",
-  "description": "Background summarization runner. When enabled, the SessionEnd hook invokes ll-session compact --and-prune. Default off; no auto-injection (ENH-2521).",
+  "description": "Background summarization runner. When enabled, the SessionEnd hook invokes ll-session compact --and-prune. Default off; no auto-injection (ENH-2582).",
   "properties": {
     "enabled": {
       "type": "boolean",
@@ -119,7 +119,7 @@ Add new dataclass after `AnalyticsCaptureConfig`
 ```python
 @dataclass
 class AutoCollectConfig:
-    """Background summarization runner (ENH-2521).
+    """Background summarization runner (ENH-2582).
     When enabled, SessionEnd invokes ll-session compact --and-prune.
     Default off; no auto-injection.
     """
@@ -143,7 +143,7 @@ Mirror `session_start.py`'s `handle()` pattern (line 75+):
 
 ```python
 def handle(event: dict) -> int:
-    """SessionEnd hook (ENH-2521). Fires ll-session compact --and-prune
+    """SessionEnd hook (ENH-2582). Fires ll-session compact --and-prune
     in a detached subprocess if analytics.auto_collect.enabled is true.
     Best-effort per EPIC-1707 graceful-degradation contract.
     """
@@ -266,7 +266,7 @@ Test cases:
 - **Priority**: P3.
 - **Effort**: Small. New hook file, new config key, one
   new subprocess call, four test functions. The
-  `compact`/`prune` work itself is owned by ENH-2520.
+  `compact`/`prune` work itself is owned by ENH-2581.
 - **Risk**: Low. Default off. When on, the subprocess
   is best-effort; failures are swallowed. The
   `SessionEnd` hook is fire-and-forget; it never
@@ -305,10 +305,10 @@ Test cases:
 
 **Open** | Created: 2026-07-08 | Priority: P3
 
-Depends on **ENH-2520** (raw_events source of truth +
+Depends on **ENH-2581** (raw_events source of truth +
 `compact` subcommand). The `SessionEnd` hook calls
 `ll-session compact --and-prune`; that subcommand is
-introduced by ENH-2520.
+introduced by ENH-2581.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-07-08T00:00:00Z - fourth-pass expansion of EPIC-2457

@@ -1,5 +1,5 @@
 ---
-id: ENH-2575
+id: ENH-2583
 title: general-task — final_verify error/timeout must not forfeit partial progress
 type: ENH
 priority: P2
@@ -9,10 +9,10 @@ discovered_date: "2026-07-10"
 discovered_by: audit-loop-run
 labels: [loops, fsm, general-task, partial-credit, audit]
 relates_to:
-- ENH-2576
+- ENH-2584
 ---
 
-# ENH-2575: general-task — final_verify error/timeout must not forfeit partial progress
+# ENH-2583: general-task — final_verify error/timeout must not forfeit partial progress
 
 ## Summary
 
@@ -66,7 +66,7 @@ chain (`summarize_partial → write_partial_summary → partial`) runs on the
 
 Genuine unrecoverable action failures elsewhere in the loop still route
 `diagnose → failed`. The root cause of the audited run — a verification
-surface too large for one 1800s prompt — is tracked separately as ENH-2576;
+surface too large for one 1800s prompt — is tracked separately as ENH-2584;
 this change only stops the resulting timeout from destroying partial credit.
 Rec 4 from the same audit (cap `do_work` timeout self-retries) was found to be
 already implemented (`max_retries: 2`, `retryable_exit_codes: [124]`,

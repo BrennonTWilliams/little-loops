@@ -489,3 +489,5 @@ the broad-fanout burden (irreducible without a contract change).
 
 - `/ll:confidence-check` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl` (decomposition re-validation)
 - `/ll:confidence-check-decomposition` - 2026-07-07T19:55:00 - `51846f72-c135-4aae-98df-cfb6f2d84afe.jsonl`
+
+> **Historical duplicate ID (normalize-issues 2026-07-10):** number `2453` is a cross-type duplicate shared with **ENH-2453** (`fsm-host-guard-cumulative-subprocess-rss-budget`). Both issues are `done` and embedded in shipped code/CHANGELOG/git history, so neither was renumbered — the type prefix disambiguates them. (The four resolvable collisions 2519/2520/2521, 2575/2576/2577, and 2530 were renumbered to 2580–2586 the same day.)

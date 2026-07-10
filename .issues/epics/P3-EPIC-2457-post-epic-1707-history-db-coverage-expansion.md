@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512, ENH-2519, ENH-2520, ENH-2521]
+relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512, ENH-2580, ENH-2581, ENH-2582]
 labels:
   - epic
   - history-db
@@ -193,27 +193,27 @@ of the prior expansions. Per this EPIC's "may gain additional
 siblings over time" clause, they are added as children rather than a
 new EPIC. They are documented in detail in
 `thoughts/history-db-raw-events-architecture.md`. The three are
-ordered (ENH-2520 first, then ENH-2519 and ENH-2521) because
-ENH-2520's `raw_events` table is the structural foundation the other
+ordered (ENH-2581 first, then ENH-2580 and ENH-2582) because
+ENH-2581's `raw_events` table is the structural foundation the other
 two depend on:
 
-- **ENH-2519** — User-root default + project-root fallback for
+- **ENH-2580** — User-root default + project-root fallback for
   `ll-session backfill` source path; closes the asymmetry with
   `ll-logs` (which already uses `~/.claude/projects/<host>/` via
-  `host_runner.resolve_host()`). *(P3 — depends on ENH-2520's
+  `host_runner.resolve_host()`). *(P3 — depends on ENH-2581's
   `raw_events` as the destination.)*
-- **ENH-2520** — `raw_events` source-of-truth + `rebuild`
+- **ENH-2581** — `raw_events` source-of-truth + `rebuild`
   subcommand + `compact`/`prune` split + `_VALID_KINDS`
   centralization; structural foundation that simplifies the other
   pending children (ENH-2461, 2493, 2494, 2506, 2507, 2511 become
   "add a parser" tasks instead of "add a table" tasks) and fixes
   the silent FTS5 leak in `prune()`. *(P3 — lands first as the
-  prerequisite for ENH-2519 and ENH-2521.)*
-- **ENH-2521** — `analytics.auto_collect` opt-in runner; wires
-  ENH-2520's `compact --and-prune` to a new `SessionEnd` hook.
+  prerequisite for ENH-2580 and ENH-2582.)*
+- **ENH-2582** — `analytics.auto_collect` opt-in runner; wires
+  ENH-2581's `compact --and-prune` to a new `SessionEnd` hook.
   Default off; **no auto-injection** of observations into prompt
   context (defended in the issue body). *(P3 — depends on
-  ENH-2520.)*
+  ENH-2581.)*
 
 ## Children (filled post-write by `/ll:capture-issue`)
 
@@ -244,7 +244,7 @@ There are **no hard dependencies** between children. Recommended implementation 
 
 Children may be implemented in any order; the P2 pair landed first as recommended. Among the 2026-07-05 siblings (ENH-2492…2498), land ENH-2492 (P2, orchestration run outcomes) before the P3s.
 
-Among the 2026-07-08 fourth-pass additions (ENH-2519, ENH-2520, ENH-2521), **ENH-2520 lands first** as the structural prerequisite: its `raw_events` table is the destination ENH-2519 ingests into and the source ENH-2521's `compact` reads from. After ENH-2520 lands, ENH-2519 and ENH-2521 can land in either order.
+Among the 2026-07-08 fourth-pass additions (ENH-2580, ENH-2581, ENH-2582), **ENH-2581 lands first** as the structural prerequisite: its `raw_events` table is the destination ENH-2580 ingests into and the source ENH-2582's `compact` reads from. After ENH-2581 lands, ENH-2580 and ENH-2582 can land in either order.
 
 ## Impact
 
@@ -273,7 +273,7 @@ _Added 2026-07-02 at capture time:_ EPIC is open with all 9 children listed in `
 
 _Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk (all carry `parent: EPIC-2457`). 4 done / 12 open. Done children verified against code: `commit_events` (v17), `test_run_events` (v18), `skill_events` completion columns (v15), `issue_events.session_id` (v16) all present in `session_store.py`; `SCHEMA_VERSION` is 18 and `_VALID_KINDS` includes `commit` and `test_run`. Success-metric kinds `loop_run` and `learning_test` remain pending (ENH-2463, ENH-2466).
 
-_Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2519, ENH-2520, ENH-2521). 4 done / 24 open. ENH-2520 is the structural prerequisite for ENH-2519 and ENH-2521 — recommended sequencing: ENH-2520 → ENH-2519 + ENH-2521 in either order. Architecture is documented in the new `thoughts/history-db-raw-events-architecture.md` design doc.
+_Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-2581, ENH-2582). 4 done / 24 open. ENH-2581 is the structural prerequisite for ENH-2580 and ENH-2582 — recommended sequencing: ENH-2581 → ENH-2580 + ENH-2582 in either order. Architecture is documented in the new `thoughts/history-db-raw-events-architecture.md` design doc.
 
 ## Sources
 
@@ -287,7 +287,7 @@ _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2519, ENH-252
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
-- fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2519, ENH-2520, ENH-2521) following the raw-events architecture discussion. ENH-2520 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
+- fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2580, ENH-2581, ENH-2582) following the raw-events architecture discussion. ENH-2581 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
 - audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).
 - third-pass expansion - 2026-07-06 - Added 9 children (ENH-2504..ENH-2512) following the autodev-bug2501-kill-analysis prompt: `verdict_events` (read-side verifier signals), `subagent_runs` (parent→child session linkage), `hook_events` (per-fire telemetry), `context_pressure_events` (PostToolUse pressure curve), `commit→tag` linkage on `commit_events`, worktree lifecycle widening of `session_lifecycle_events`, `context_query_events` (history-context fetcher cost), MCP tool-call telemetry on `tool_events`, and `review_events` (audit/review verdicts). Item sources: the user-reported gap list (2026-07-06); several fold into existing children (ENH-2495, ENH-2497, ENH-2458) as scope-widening.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

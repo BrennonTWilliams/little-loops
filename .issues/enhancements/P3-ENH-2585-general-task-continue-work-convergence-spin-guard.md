@@ -1,5 +1,5 @@
 ---
-id: ENH-2577
+id: ENH-2585
 title: general-task — guard the continue_work convergence spin after abandoned steps
 type: ENH
 priority: P3
@@ -10,10 +10,10 @@ labels: [loops, fsm, general-task, stall-detection, audit]
 relates_to:
 - FEAT-1637
 - BUG-1674
-- ENH-2575
+- ENH-2583
 ---
 
-# ENH-2577: general-task — guard the continue_work convergence spin after abandoned steps
+# ENH-2585: general-task — guard the continue_work convergence spin after abandoned steps
 
 ## Summary
 
@@ -43,7 +43,7 @@ learn to exclude the loop's own bookkeeping artifacts, mirroring the
    `NO_UNCHECKED_STEPS`; persist a consecutive-occurrence counter in the run
    dir (cleared whenever a step is selected or continue_work appends a new
    step). When the counter reaches N (e.g. 3) with unchecked hard criteria
-   remaining, route to the ENH-2575 partial-credit chain instead of another
+   remaining, route to the ENH-2583 partial-credit chain instead of another
    `continue_work` deliberation.
 2. **Detector enhancement**: extend `StallDetector` progress accounting to
    honor the loop's `circuit.repeated_failure.exclude_paths` (mutations to
@@ -57,7 +57,7 @@ Either way, N no-progress cycles must cost N × ~20ms shell + at most one
 
 - [ ] A `continue_work → select_step(NO_UNCHECKED_STEPS) → … → continue_work`
       cycle that appends no new plan step terminates in ≤N cycles by routing
-      to the partial-credit chain (ENH-2575), not by continue_work
+      to the partial-credit chain (ENH-2583), not by continue_work
       self-assessing WORK_COMPLETE.
 - [ ] Counter/detector resets on genuine progress (a step selected, a new
       remediation step appended, or a criterion flipped).
