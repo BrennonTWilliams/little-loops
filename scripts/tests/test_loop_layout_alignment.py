@@ -493,6 +493,77 @@ def test_pinned_pane_clean_preset_no_overflow(
     _assert_boxes_rectangular(rendered)
 
 
+def test_pinned_header_wide_input_does_not_collapse_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a wide path-like ``input:`` header line must not defeat box
+    rendering.
+
+    ``_artifact_lines`` includes any context string containing ``/`` (e.g. a task
+    ``"…in design/ …"``) as a header line. Emitted untruncated, that one over-wide
+    line poisoned ``_variant_width`` for *every* pinned rung, so
+    ``_choose_pinned_layout``'s width filter rejected all box variants and the pane
+    collapsed to the single-line ``fsm:`` floor — no box drawn, at any terminal
+    height. The header lines are now width-clamped in ``_build_pinned_pane``.
+    """
+    from pathlib import Path
+
+    from little_loops.cli.loop._helpers import (
+        _build_fallback_ladder,
+        _build_pinned_pane,
+        _choose_pinned_layout,
+        _variant_width,
+    )
+
+    cols, rows = 111, 40
+    monkeypatch.setattr("little_loops.cli.loop.layout.terminal_width", lambda **_kw: cols)
+    facets = _clean_facets()
+    fsm = _make_back_edge_heavy_fsm(n=12)
+    # A >cols task string containing "/" so _artifact_lines classifies it as a
+    # path-like value and emits it as an `input:` header line.
+    fsm.context = {  # type: ignore[attr-defined]
+        "input": (
+            "Audit our codebase for full alignment with the specs in design/ and "
+            "identify and fix any gaps or misalignments across the whole board"
+        ),
+    }
+    loop_path = Path("back-edge-heavy.yaml")
+
+    def _build(detail: str) -> str | None:
+        return _build_pinned_pane(
+            detail,
+            fsm,
+            "s0",
+            {},
+            {0: "s0"},
+            "[1/50] s0",
+            cols,
+            facets=facets,
+            highlight_color="32",
+            edge_label_colors=None,
+            badges=None,
+            loop_path=loop_path,
+            model="sonnet",
+            rows=rows,
+            min_action_rows=3,
+        )
+
+    full = _build("full")
+    ladder = _build_fallback_ladder(facets, fsm, full, cols)
+    variants = [v for v in (full if rung == "full" else _build(rung) for rung in ladder) if v]
+    chosen, _h = _choose_pinned_layout(rows, variants, min_action_rows=3, cols=cols)
+
+    # A box rung must be chosen — not the single-line `fsm:` floor.
+    assert "┌" in chosen, (
+        "wide input header collapsed the pinned pane to the single-line floor; "
+        f"chosen pane:\n{strip_ansi(chosen)}"
+    )
+    # The header clamp holds: no line (diagram or header) exceeds the terminal width.
+    assert _variant_width(chosen) <= cols, (
+        f"header clamp failed: widest line is {_variant_width(chosen)} cols (> {cols})"
+    )
+
+
 def test_render_layered_diagram_output_clamped_to_tw(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -477,6 +477,7 @@ def _build_pinned_pane(
         _render_fsm_diagram,
         _render_neighborhood_diagram,
         _render_windowed_diagram,
+        _truncate_to_width_ansi,
     )
 
     verbose = facets.scope == "full" and facets.state_detail == "full"
@@ -574,10 +575,15 @@ def _build_pinned_pane(
     else:
         header_text = f"== loop: {fsm.name} "
     lines.append(header_text + "=" * max(0, cols - len(header_text)))
+    # Clamp header artifact/model lines to `cols` display columns (the separator
+    # above is already width-clamped). Otherwise a long path-like value — e.g. a
+    # task `input:` that happens to contain "/" — poisons `_variant_width` for
+    # every pinned rung, so `_choose_pinned_layout`'s width filter rejects all box
+    # variants and collapses to the single-line `fsm:` floor (BUG: general-task).
     for key, value in _artifact_lines(fsm, loop_path):
-        lines.append(f"  {key}: {colorize(value, '2')}")
+        lines.append(_truncate_to_width_ansi(f"  {key}: {colorize(value, '2')}", cols))
     if model is not None:
-        lines.append(f"  model: {colorize(model, '2')}")
+        lines.append(_truncate_to_width_ansi(f"  model: {colorize(model, '2')}", cols))
 
     # Vertical budget for the windowed variant: total rows minus the header /
     # artifact / model lines already accumulated, the iteration + separator
