@@ -79,6 +79,7 @@ from little_loops.cli.sprint import (
     main_sprint,
 )
 from little_loops.cli.sync import main_sync
+from little_loops.cli.verify_decisions import main_verify_decisions
 from little_loops.cli.verify_des_audit import main_verify_des_audit
 from little_loops.cli.verify_design_tokens import main_verify_design_tokens
 from little_loops.cli.verify_package_data import main_verify_package_data
@@ -119,6 +120,7 @@ __all__ = [
     "main_sync",
     "main_verify_docs",
     "main_verify_design_tokens",
+    "main_verify_decisions",
     "main_verify_des_audit",
     "main_verify_package_data",
     "main_verify_skill_budget",

@@ -132,6 +132,26 @@ is detected. Run it manually against the whole repo with:
 pre-commit run gitleaks --all-files
 ```
 
+### Decisions YAML Validation (ll-verify-decisions)
+
+Every `git commit` also runs the `ll-verify-decisions` repo-local hook
+against staged changes to `.ll/decisions.yaml` (ENH-2590). The hook loads
+the file through [`load_decisions()`](docs/reference/API.md) and blocks the
+commit on any `yaml.YAMLError`, missing required field, or unknown entry
+discriminator. The same `pre-commit install` activation above wires this
+hook in alongside gitleaks — no extra setup is needed.
+
+The validator is installed alongside the package via
+`pip install -e "./scripts[dev]"`. To smoke-test the hook manually:
+
+```bash
+pre-commit run ll-verify-decisions --files .ll/decisions.yaml
+```
+
+> **Note**: `git commit --no-verify` and non-hook edit paths bypass this
+> gate. Those are covered by the pytest CI belt [ENH-2591] and the Claude
+> Code `PreToolUse` hook [ENH-2592].
+
 ## Project Structure
 
 ```

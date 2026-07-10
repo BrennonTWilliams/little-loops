@@ -482,6 +482,35 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`:
 
 ---
 
+## Load-Time Validation
+
+`.ll/decisions.yaml` is gated by `ll-verify-decisions` (ENH-2589) at three
+transport layers, listed in order of when they fire:
+
+1. **Git pre-commit hook** (ENH-2590) — `repo: local` block in
+   `.pre-commit-config.yaml` invokes `ll-verify-decisions` on staged changes
+   to `.ll/decisions.yaml`. Blocks `git commit` on any `yaml.YAMLError`,
+   missing required field, or unknown entry-type discriminator. Active after
+   `pre-commit install`.
+2. **Pytest CI belt** (ENH-2591) — wraps the same validator as a
+   subprocess-asserting gate in `python -m pytest scripts/tests/`, so
+   `git commit --no-verify` and non-hook edit paths still cannot land a
+   corruption on `main`.
+3. **Claude Code `PreToolUse` hook** (ENH-2592) — blocks the corruption in
+   the editor session, before the file is even written.
+
+All three layers share the validator's exit-code contract: `0` on a clean
+file, `1` with a single-line `ERROR:` message on stderr pointing at the
+file path for any caught corruption class. Manually re-run the validator
+against an arbitrary config root with:
+
+```bash
+ll-verify-decisions --config-root /path/to/repo
+```
+
+See [`scripts/tests/test_decisions_yaml_pre_commit_gate.py`](../../scripts/tests/test_decisions_yaml_pre_commit_gate.py)
+for the end-to-end pre-commit fixture pattern.
+
 ## See Also
 
 - [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) — `decision_needed` in the full refinement pipeline

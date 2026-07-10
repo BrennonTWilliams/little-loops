@@ -3,3 +3,11 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
+  - repo: local
+    hooks:
+      - id: ll-verify-decisions
+        name: Validate .ll/decisions.yaml
+        language: system
+        entry: ll-verify-decisions
+        files: ^\.ll/decisions\.yaml$
+        pass_filenames: false
