@@ -4758,3 +4758,39 @@
     filter/sort on, verified by a contract te
   enforcement: advisory
   issue: BUG-2558
+- id: ARCHITECTURE-125
+  type: decision
+  timestamp: '2026-07-10T00:22:00Z'
+  category: architecture
+  labels: []
+  rationale: Loop-level resume is the only option that reconciles the popped-but-not-integrated
+    race; engine-primitive parallel (FEAT-1072) was already deferred 'Won't Do — superseded
+    by multi-loop approach'. Both keep the change inside rn-refine.yaml per Scope
+    Boundaries.
+  rule: 'rn-refine: loop-level context.resume knob + in-loop shell-dispatch parallel
+    integration (no engine change)'
+  scope: issue
+  alternatives_rejected: 'Resume Option A (engine-level timed_out resumable, 4/12);
+    Parallel Option A (new FSM parallel: state type, 2/12)'
+  issue: ENH-2565
+- id: OTHE-203
+  type: rule
+  timestamp: '2026-07-09T20:25:00Z'
+  category: other
+  labels:
+  - extracted
+  - global
+  rationale: "OTHE-201 (advisory) forbids removing or renaming required `--json`
+    keys without coordination. `description_line2` was an additive key added by
+    ENH-2555, recorded as 'always empty' after BUG-2566 fix 1 (continuation-line
+    block removed) and finally deleted in BUG-2566 fix 2 (load-time collapse).
+    Verified zero in-tree consumers read the field -- `_emit_row` no longer reads
+    it post-fix-1, and the loader and JSON branch only ever emitted `""` for it.
+    Treats additive-but-orphaned fields as eligible for removal when no live
+    consumer depends on them, with a grep audit recorded in the rationale."
+  rule: Additive-but-orphaned `--json` keys may be removed when an audit (grep
+    under `scripts/`) shows no live reader and the field has carried only its
+    default value for at least one release cycle. Document the removal as a new
+    decisions.yaml entry cross-referencing the originating rule.
+  enforcement: advisory
+  issue: BUG-2566
