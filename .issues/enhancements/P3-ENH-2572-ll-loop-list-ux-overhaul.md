@@ -38,17 +38,24 @@ for descriptions and removes the largest visual-noise source.
 The user's own project loops (currently 4) are the most likely run targets
 but are scattered across categories (`distill-decisions` is buried under
 KNOWLEDGE MANAGEMENT between built-ins). Pin a `▸ YOUR PROJECT (N)` section
-at the top; loops may still also appear in their category, or move there
-exclusively.
+at the top. Project loops move there **exclusively** — they do not also
+appear under their category (duplication would inflate row counts and make
+category totals disagree with the header). Each row in the pinned section
+shows its home category as a dim inline tag, e.g.
+`distill-decisions  (knowledge management)  …`, so category context isn't
+lost.
 
 ### 3. Collapse singleton/tiny categories (high impact)
 
 21 categories for 81 loops is over-fragmented — seven categories have a
 single member, so a third of the headers "manage" one row each. Fold
-categories below a member threshold (<2 or <3) into a trailing
+categories with **fewer than 3 members** (i.e., 1–2 loops) into a trailing
 `▸ OTHER (N)` group with the original category shown as a dim inline tag,
 e.g. `inkscape-task  (generated)  …`. Cuts header overhead by ~1/3 and lets
-real clusters (HARNESS 19, ISSUE MANAGEMENT 12) stand out.
+real clusters (HARNESS 19, ISSUE MANAGEMENT 12) stand out. The <3
+threshold (rather than <2) is deliberate: two-member categories are as
+marginal as singletons for scanning purposes, and folding both keeps the
+rule from needing revisiting as the catalog grows.
 
 ### 4. Smarter description truncation (high impact)
 
@@ -63,10 +70,14 @@ real clusters (HARNESS 19, ISSUE MANAGEMENT 12) stand out.
 
 ### 5. Compact default, detail on demand (medium impact)
 
-For discovery, a two/three-column grid of names grouped by category (like
-`ls`) fits 81 loops on one screen; `ll-loop list -l` gives the current
-description layout. Alternatively keep descriptions but pipe to `$PAGER`
-when output exceeds terminal height (git-style).
+**Decision: compact grid default, `-l` for detail.** The default output
+becomes a multi-column grid of names grouped by category (like `ls`),
+sized to terminal width (fall back to one column when stdout is not a
+TTY), fitting all loops on roughly one screen. `ll-loop list -l` (long)
+gives the current one-row-per-loop description layout, with items 1–4
+applied to it. The `$PAGER` alternative was rejected: paging keeps the
+per-row noise and merely hides it behind scrolling, which contradicts the
+scanning-first goal, and paged output surprises scripts and CI logs.
 
 ### 6. Order categories by relevance, not alphabet (medium impact)
 
@@ -98,10 +109,10 @@ excluded from this issue.)*
 ## Acceptance criteria
 
 - [ ] Kind column removed; non-built-in rows carry a distinguishing badge/color
-- [ ] Project loops surfaced in a pinned top section
-- [ ] Categories under the member threshold folded into `OTHER` with inline tags
+- [ ] Project loops surfaced in a pinned top section exclusively (not duplicated in categories), with dim home-category tag
+- [ ] Categories with <3 members folded into `OTHER` with inline tags
 - [ ] Description truncation is word-boundary aware; shared category prefixes de-emphasized
-- [ ] Compact grid default (or pager) with `-l` for the detailed layout
+- [ ] Compact grid is the default (one column when not a TTY); `-l` gives the detailed layout
 - [ ] Categories ordered by size/relevance, `uncategorized` last
 - [ ] Header uses `·` separators throughout
 - [ ] Footer includes show/filter hints
