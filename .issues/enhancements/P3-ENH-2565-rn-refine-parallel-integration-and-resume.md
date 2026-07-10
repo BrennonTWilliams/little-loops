@@ -2,8 +2,9 @@
 id: ENH-2565
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-09
+completed_at: '2026-07-10T02:43:13Z'
 discovered_by: manual
 decision_needed: false
 confidence_score: 98
@@ -423,21 +424,46 @@ execution tests (AC #2), not an LLM self-report. Write intermediates under
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop validate rn-refine` passes with the new states/routing.
-- [ ] A synthetic tree with ≥2 same-depth internal nodes integrates them
+- [x] `ll-loop validate rn-refine` passes with the new states/routing.
+- [x] A synthetic tree with ≥2 same-depth internal nodes integrates them
       concurrently (verified via timing or explicit concurrent-execution
       markers, not just an LLM self-report).
-- [ ] A run resumed after an integration-phase interruption reuses existing
+- [x] A run resumed after an integration-phase interruption reuses existing
       `nodes/*/final.md` and does not re-run refinement for already-refined
       nodes.
-- [ ] The readiness-gated pop never dequeues a node before **all** its children
+- [x] The readiness-gated pop never dequeues a node before **all** its children
       have a `final.md` (assert in a `_render()`+`bash` test with a synthetic
       `edges.tsv` where a parent precedes an unfinished child in `synth_queue.txt`);
       a worker facing a non-empty queue with no ready node waits rather than exits.
-- [ ] Resume re-passes `plan_file` (so `scope`/write-lock and `required_inputs`
+- [x] Resume re-passes `plan_file` (so `scope`/write-lock and `required_inputs`
       stay satisfied) and rebuilds `synth_queue.txt` from internal nodes lacking a
       `final.md` — covering the popped-but-not-integrated node whose `synth_pop`
       removed it from the queue but whose `integrate_node` never completed.
+
+## Resolution
+
+Implemented per the Decision Rationale (both axes → in-loop / loop-level, Option B).
+
+- **Concurrency core** promoted to the shippable package as
+  `little_loops.rn_synth_queue` (`try_pop_ready` / `mark_complete` /
+  `queue_is_empty` + a `python -m` CLI) so it is importable at loop runtime in
+  any install mode — an `flock`-guarded (`file_utils.acquire_lock`),
+  readiness-gated pop over `synth_queue.txt`.
+- **New worker sub-loop** `oracles/integrate-node.yaml`: pop deepest READY node →
+  integrate children → mark complete + snapshot to `.loops/diagnostics/`, looping
+  until DRAIN, sleeping on WAIT. Takes no source scope-lock so N run concurrently.
+- **`rn-refine.yaml`**: replaced serial `synth_pop`/`integrate_node`/`snapshot_node`
+  with `synth_dispatch` (background-spawn ≤`synth_workers` `ll-loop run
+  oracles/integrate-node` workers over the shared queue, `wait` = barrier). Added
+  `context.resume` + `init` short-circuit (no re-seed) → `check_resume` →
+  `resume_build_synth` (rebuild queue from on-disk `final.md` absence, covering the
+  popped-but-not-integrated node).
+- **Tests**: `TestSynthPopReadinessGate` (8-worker contention / readiness / WAIT),
+  `TestResumeRouting` / `TestInitResumeShortCircuit` / `TestResumeBuildSynth`, and a
+  real-subprocess `synth_dispatch` concurrency-overlap test; reconciled
+  `test_builtin_loops.py::TestRnRefineRecursiveDecomposition`.
+- **Docs**: `LOOPS_REFERENCE.md` (resume/`synth_workers` rows, FSM flow, Notes,
+  catalog + artifacts), `RECURSIVE_LOOPS_GUIDE.md` prose, `CHANGELOG.md` [1.141.0].
 
 ## Confidence Check Notes
 
@@ -456,6 +482,7 @@ _Added by `/ll:confidence-check` on 2026-07-09_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-10T02:42:26 - `8bb8d374-2963-402c-b7d8-b422e4a4ae35.jsonl`
 - `/ll:ready-issue` - 2026-07-10T02:17:59 - `037d4ae5-b67e-4463-a5bf-9a1c03596b53.jsonl`
 - `/ll:confidence-check` - 2026-07-09T00:00:00 - `b668b0f3-a45c-4815-91f8-a1d71d08236d.jsonl`
 - `/ll:wire-issue` - 2026-07-10T00:37:19 - `3269a790-eef3-4c84-8afd-7b51d3cecfac.jsonl`

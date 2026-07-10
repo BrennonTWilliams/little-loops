@@ -42,6 +42,14 @@ context:
   max_depth: 3         # safety cap on recursion depth (adaptive depth never exceeds this)
   max_node_iters: 2    # per-node refinement budget (research→synthesize→score passes)
   max_nodes: 40        # global cap on total tree nodes (decomposition stops when reached)
+  # ENH-2565: parallel bottom-up integration. synth_dispatch background-spawns up
+  # to this many `oracles/integrate-node` workers over the shared synth_queue.
+  synth_workers: 4
+  # ENH-2565: resume support. Re-enter the (already-refined) tree straight into
+  # bottom-up synthesis after an interrupted integration phase — reusing existing
+  # nodes/*/final.md and skipping the hours-long refinement, e.g.:
+  #   ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior>
+  resume: ""           # non-empty + an existing nodes/ dir => resume into synthesis
 
 states:
   init:
@@ -56,32 +64,66 @@ states:
         exit 1
       fi
       DIR="${context.run_dir}"
-      mkdir -p "$DIR/nodes/n0"
-      # Canonical working copy of the (eventually reassembled) plan + final rubric.
-      cp "${context.plan_file}" "$DIR/plan.md"
-      : > "$DIR/plan-rubric.md"
-      realpath "${context.plan_file}" > "$DIR/.source-path"
-      # Root node working dir: a self-contained mini-plan seeded from the source.
-      cp "${context.plan_file}" "$DIR/nodes/n0/plan.md"
-      : > "$DIR/nodes/n0/plan-rubric.md"
-      : > "$DIR/nodes/n0/research.md"
-      # Work-tree bookkeeping (shared across all node sub-loops).
-      echo "n0" > "$DIR/queue.txt"        # FIFO/depth-first queue of node ids to process
-      echo "n0 0" > "$DIR/depth_map.txt"  # "<node_id> <depth>" per line
-      echo "1" > "$DIR/node_counter.txt"  # next free node-id index (n1, n2, …)
-      : > "$DIR/edges.tsv"                 # "<parent>\t<child>\t<title>" per decomposition
-      : > "$DIR/visited.txt"
-      : > "$DIR/leaves.txt"
-      : > "$DIR/capped.txt"
-      : > "$DIR/failed_nodes.txt"
-      echo "0" > "$DIR/dequeue_count.txt"
-      case "$DIR" in
-        /*) echo "$DIR" ;;
-        *) echo "$(pwd)/$DIR" ;;
-      esac
+      RESUME="${context.resume}"
+      # ENH-2565: resume path. When --context resume is set AND a prior tree
+      # exists under $DIR/nodes, do NOT re-seed — re-seeding would clobber the
+      # in-flight decomposition tree. Ensure the source-path record is present
+      # (the original run wrote it) and just echo the absolute run dir; check_resume
+      # routes straight into bottom-up synthesis.
+      if [ -n "$RESUME" ] && [ -d "$DIR/nodes" ]; then
+        [ -s "$DIR/.source-path" ] || realpath "${context.plan_file}" > "$DIR/.source-path"
+        case "$DIR" in
+          /*) echo "$DIR" ;;
+          *) echo "$(pwd)/$DIR" ;;
+        esac
+      else
+        mkdir -p "$DIR/nodes/n0"
+        # Canonical working copy of the (eventually reassembled) plan + final rubric.
+        cp "${context.plan_file}" "$DIR/plan.md"
+        : > "$DIR/plan-rubric.md"
+        realpath "${context.plan_file}" > "$DIR/.source-path"
+        # Root node working dir: a self-contained mini-plan seeded from the source.
+        cp "${context.plan_file}" "$DIR/nodes/n0/plan.md"
+        : > "$DIR/nodes/n0/plan-rubric.md"
+        : > "$DIR/nodes/n0/research.md"
+        # Work-tree bookkeeping (shared across all node sub-loops).
+        echo "n0" > "$DIR/queue.txt"        # FIFO/depth-first queue of node ids to process
+        echo "n0 0" > "$DIR/depth_map.txt"  # "<node_id> <depth>" per line
+        echo "1" > "$DIR/node_counter.txt"  # next free node-id index (n1, n2, …)
+        : > "$DIR/edges.tsv"                 # "<parent>\t<child>\t<title>" per decomposition
+        : > "$DIR/visited.txt"
+        : > "$DIR/leaves.txt"
+        : > "$DIR/capped.txt"
+        : > "$DIR/failed_nodes.txt"
+        echo "0" > "$DIR/dequeue_count.txt"
+        case "$DIR" in
+          /*) echo "$DIR" ;;
+          *) echo "$(pwd)/$DIR" ;;
+        esac
+      fi
     capture: run_dir
     on_error: diagnose
-    next: dequeue_next
+    next: check_resume
+
+  check_resume:
+    # ENH-2565: route a resume invocation straight into bottom-up synthesis,
+    # skipping the (already-complete) refinement phase. Deterministic, non-LLM.
+    # A fresh run falls through to dequeue_next exactly as before.
+    action_type: shell
+    action: |
+      RESUME="${context.resume}"
+      RUN_DIR="${captured.run_dir.output}"
+      if [ -n "$RESUME" ] && [ -d "$RUN_DIR/nodes" ]; then
+        echo "RESUME_MODE"
+      else
+        echo "FRESH"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "RESUME_MODE"
+    on_yes: resume_build_synth
+    on_no: dequeue_next
+    on_error: dequeue_next
 
   dequeue_next:
     # Pop the head of the work-tree queue (depth-first: children are prepended by a
@@ -258,78 +300,112 @@ states:
       print(f"SYNTH_QUEUE {len(ordered)}")
       PYEOF
     capture: synth_setup
-    next: synth_pop
+    next: synth_dispatch
     on_error: assemble
 
-  synth_pop:
-    # Pop the next internal node to integrate; empty queue → final assembly.
+  resume_build_synth:
+    # ENH-2565 resume: rebuild synth_queue from the ON-DISK completion state after
+    # an interrupted integration phase, instead of build_synth's one-time toposort.
+    # Re-queue only internal nodes that still LACK a nodes/<id>/final.md — this
+    # reconciles the queue against completion markers and covers the
+    # popped-but-not-integrated node (whose old synth_pop removed it from the queue
+    # but whose integration never wrote final.md before the kill). Leaf backfill is
+    # re-run (idempotent) so any missing leaf final.md is restored first.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      export LL_RUN_DIR="$RUN_DIR"
+      python3 << 'PYEOF'
+      import os
+      from pathlib import Path
+
+      run_dir = os.environ["LL_RUN_DIR"]
+      edges_p = Path(run_dir) / "edges.tsv"
+      depth_p = Path(run_dir) / "depth_map.txt"
+      nodes_dir = Path(run_dir) / "nodes"
+
+      children = {}
+      if edges_p.exists():
+          for line in edges_p.read_text().splitlines():
+              parts = line.split("\t")
+              if len(parts) >= 2:
+                  children.setdefault(parts[0], []).append(parts[1])
+
+      depth = {}
+      if depth_p.exists():
+          for line in depth_p.read_text().splitlines():
+              p = line.split()
+              if len(p) >= 2:
+                  try:
+                      depth[p[0]] = int(p[1])
+                  except ValueError:
+                      pass
+
+      # Idempotent leaf backfill (same as build_synth): a non-internal node always
+      # needs a final.md so integration and assembly find their inputs.
+      all_nodes = [d.name for d in nodes_dir.iterdir() if d.is_dir()] if nodes_dir.exists() else []
+      internal = set(children.keys())
+      for nid in all_nodes:
+          if nid in internal:
+              continue
+          fp = nodes_dir / nid / "final.md"
+          pp = nodes_dir / nid / "plan.md"
+          if not fp.exists() and pp.exists():
+              fp.write_text(pp.read_text())
+
+      # Re-queue ONLY internal nodes still lacking a final.md, deepest-first.
+      ordered = sorted(internal, key=lambda n: depth.get(n, 0), reverse=True)
+      pending = [n for n in ordered if not (nodes_dir / n / "final.md").exists()]
+      (Path(run_dir) / "synth_queue.txt").write_text("".join(f"{n}\n" for n in pending))
+      print(f"RESUME_SYNTH_QUEUE {len(pending)} pending of {len(ordered)} internal")
+      PYEOF
+    capture: resume_synth_setup
+    next: synth_dispatch
+    on_error: assemble
+
+  synth_dispatch:
+    # ENH-2565: parallel bottom-up integration. Background-spawn up to
+    # ${context.synth_workers} `oracles/integrate-node` workers over the SHARED
+    # synth_queue, then `wait` on every worker PID — that wait IS the barrier
+    # before assemble. Each worker pops the deepest READY node (all children have a
+    # final.md) under an flock-guarded pop, integrates it, marks it complete, and
+    # loops until the queue drains. Independent same-depth internal nodes therefore
+    # integrate concurrently; children-before-parent ordering is enforced by the
+    # readiness gate, not by serial dequeue. `ll-loop run` blocks in the foreground,
+    # so the &/wait barrier is exact. An empty queue (no internal nodes) skips
+    # straight to assemble.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
       SQ="$RUN_DIR/synth_queue.txt"
-      if [ ! -s "$SQ" ]; then
-        echo "SYNTH_DONE"
+      WORKERS="${context.synth_workers}"
+      # grep -c prints the count AND exits 1 when zero, so guard with || true and
+      # normalize an empty (missing-file) result rather than relying on exit code.
+      QN=$(grep -c '[^[:space:]]' "$SQ" 2>/dev/null || true)
+      [ -z "$QN" ] && QN=0
+      if [ "$QN" -eq 0 ]; then
+        echo "NO_INTERNAL_NODES"
         exit 0
       fi
-      NODE=$(head -1 "$SQ")
-      tail -n +2 "$SQ" > "$SQ.tmp" && mv "$SQ.tmp" "$SQ"
-      echo "$NODE"
-    evaluate:
-      type: output_contains
-      pattern: "SYNTH_DONE"
-    capture: synth_node
-    on_yes: assemble
-    on_no: integrate_node
+      if [ "$WORKERS" -gt "$QN" ]; then WORKERS="$QN"; fi
+      mkdir -p "$RUN_DIR/worker-logs"
+      pids=""
+      i=0
+      while [ "$i" -lt "$WORKERS" ]; do
+        ll-loop run oracles/integrate-node --context run_dir="$RUN_DIR" \
+          > "$RUN_DIR/worker-logs/worker-$i.log" 2>&1 &
+        pids="$pids $!"
+        i=$((i + 1))
+      done
+      # Barrier: block until every integration worker has exited.
+      FAIL=0
+      for p in $pids; do
+        wait "$p" || FAIL=1
+      done
+      echo "SYNTH_WORKERS_DONE workers=$WORKERS fail=$FAIL"
+    capture: synth_dispatch
+    next: assemble
     on_error: assemble
-
-  integrate_node:
-    # Roll a decomposed node back up: integrate its refined children into one
-    # coherent section. Children are already assembled (deepest-first ordering),
-    # so this reads each child's final.md and the node's own index plan.md.
-    action_type: prompt
-    action: |
-      You are reassembling one node of a refined plan tree, bottom-up.
-
-      Node id: ${captured.synth_node.output}
-      Run dir: ${captured.run_dir.output}
-
-      Step 1: Read ${captured.run_dir.output}/edges.tsv and select the lines whose
-      FIRST tab-separated column equals "${captured.synth_node.output}". Those rows
-      give this node's children (second column = child id, third = title), in order.
-
-      Step 2: Read this node's index/overview at
-      ${captured.run_dir.output}/nodes/${captured.synth_node.output}/plan.md, and read
-      each child's fully-refined content at
-      ${captured.run_dir.output}/nodes/<child_id>/final.md (one per child row).
-
-      Step 3: Write an integrated section to
-      ${captured.run_dir.output}/nodes/${captured.synth_node.output}/final.md that:
-        - keeps this node's framing, goal, and any cross-cutting concerns from its index,
-        - inlines each child's refined content in order under clear sub-headings,
-        - removes duplication and resolves any contradictions between children,
-        - ensures the ordering and dependencies across children are explicit and sound.
-
-      The result must read as one continuous, self-contained section — not a list of
-      links. Do not lose any concrete detail from the children's final.md files.
-    next: snapshot_node
-    on_error: synth_pop
-
-  snapshot_node:
-    # Diagnostics: copy the just-integrated node's final.md to a durable location
-    # outside the (potentially interrupted) run dir, so a mid-integration timeout
-    # never loses completed integration work. Best-effort only — never blocks the
-    # main synth loop on a copy failure.
-    action_type: shell
-    action: |
-      RUN_DIR="${captured.run_dir.output}"
-      NODE="${captured.synth_node.output}"
-      RUN_ID=$(basename "$RUN_DIR")
-      mkdir -p .loops/diagnostics
-      if [ -f "$RUN_DIR/nodes/$NODE/final.md" ]; then
-        cp "$RUN_DIR/nodes/$NODE/final.md" ".loops/diagnostics/${RUN_ID}-${NODE}.md"
-      fi
-    next: synth_pop
-    on_error: synth_pop
 
   assemble:
     # Final assembly: the root's reassembled content becomes the working plan.md.

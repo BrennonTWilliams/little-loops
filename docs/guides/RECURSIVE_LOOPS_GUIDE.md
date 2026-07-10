@@ -113,14 +113,29 @@ tree** and refines it recursively to adaptive depth: it refines each node, then
 decides whether the node is atomic (a leaf) or bundles independent sub-goals worth
 splitting into their own focused sub-plans (ADaPT-style — depth grows only where
 complexity warrants, bounded by `max_depth`/`max_nodes`). Children are refined
-depth-first, then rolled **bottom-up** into a reassembled plan. Per-node work is
-delegated to the `oracles/plan-node-refine` sub-loop, which itself reuses the same
-research/synthesize chain as `rn-plan`. On completion it **overwrites the original
-file in place** — no manual copy out of `.loops/` needed.
+depth-first, then rolled **bottom-up** into a reassembled plan — the integration
+phase runs **in parallel**: `synth_dispatch` background-spawns up to `synth_workers`
+(default 4) `oracles/integrate-node` workers that pop from a shared queue under a
+readiness gate (a node integrates only once all its children have, so same-depth
+nodes fold up concurrently). Per-node work is delegated to the
+`oracles/plan-node-refine` sub-loop, which itself reuses the same research/synthesize
+chain as `rn-plan`. On completion it **overwrites the original file in place** — no
+manual copy out of `.loops/` needed.
 
 ```bash
 ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 ```
+
+If a long run is interrupted during integration (e.g. a wall-clock timeout on a
+large tree), resume it straight into synthesis without redoing refinement — re-pass
+the same plan and run dir:
+
+```bash
+ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior-run-dir>
+```
+
+Resume rebuilds the integration queue from which nodes still lack a `final.md`, so
+already-refined and already-integrated work is reused (ENH-2565).
 
 > **Tip**: Pick `rn-plan` when you're starting cold; pick `rn-refine` when you
 > already have a draft and want it deepened without losing existing structure.

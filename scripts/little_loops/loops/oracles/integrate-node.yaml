@@ -1,0 +1,157 @@
+name: integrate-node
+visibility: internal
+category: planning
+description: |
+  Bottom-up integration worker for the recursive rn-refine planner (ENH-2565).
+  rn-refine's `synth_dispatch` state background-spawns N of these workers, each
+  invoked as a fresh `ll-loop run oracles/integrate-node --context run_dir=<rd>`
+  sharing the SAME run directory. Each worker loops:
+
+      try-pop a READY internal node  ->  integrate its children  ->  mark complete
+
+  until the shared synth_queue drains (DRAIN). A node is *ready* only once every
+  one of its children already has a nodes/<child>/final.md, so the deepest-first
+  readiness gate serializes each parent strictly after its children WITHOUT any
+  worker blocking on a barrier. The atomic pop is
+  `python -m little_loops.rn_synth_queue` (flock-guarded read-select-rewrite of
+  synth_queue.txt), so N workers never pop the same node twice and never lose a
+  ready node.
+
+  Pop outcomes (single stdout token from the CLI):
+    <node_id>  — this worker owns integrating <node_id> next
+    WAIT       — queue non-empty but nothing ready yet (a child is still
+                 integrating in a sibling worker) -> sleep and retry
+    DRAIN      — queue empty -> this worker is done
+
+  Unlike the per-node refinement oracle, this worker takes NO scope lock on the
+  source plan: it only reads/writes files under the shared run_dir, so the N
+  workers run concurrently without inter-run mutual exclusion.
+
+  Invoked (background-spawned) by rn-refine via:
+    ll-loop run oracles/integrate-node --context run_dir="$RUN_DIR"
+
+initial: pop
+max_steps: 400
+timeout: 21600
+meta_self_eval_ok: false
+shared_state_ok: false
+partial_route_ok: true
+
+parameters:
+  run_dir:
+    type: path
+    required: true
+    description: "Shared run directory holding synth_queue.txt, edges.tsv, nodes/"
+
+context:
+  run_dir: ""
+
+states:
+  pop:
+    # Atomically pop the deepest READY internal node from the shared queue. The
+    # CLI is flock-guarded, so concurrent workers coordinate through this call
+    # alone. Output is a single token: a node id, WAIT, or DRAIN.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      python3 -m little_loops.rn_synth_queue try-pop "$RUN_DIR"
+    capture: popped
+    evaluate:
+      type: output_contains
+      pattern: "DRAIN"
+    on_yes: done
+    on_no: route_wait
+    on_error: done
+
+  route_wait:
+    # Disambiguate the non-DRAIN pop: WAIT (nothing ready, sleep+retry) vs a real
+    # node id (integrate it). Deterministic, non-LLM — this is the MR-1 evaluator
+    # in the routing chain that pairs with the LLM integrate prompt.
+    evaluate:
+      type: output_contains
+      source: "${captured.popped.output}"
+      pattern: "WAIT"
+    on_yes: wait_sleep
+    on_no: integrate
+    on_error: integrate
+
+  wait_sleep:
+    # The queue is non-empty but no node is ready: a child is still integrating in
+    # a sibling worker. Sleep briefly, then re-poll. Termination is guaranteed —
+    # every pop by any worker eventually writes a child's final.md, unblocking a
+    # parent, and an empty queue routes to DRAIN.
+    action_type: shell
+    action: |
+      sleep 2
+      echo "WAIT_RETRY"
+    next: pop
+    on_error: pop
+
+  integrate:
+    # Roll a decomposed node back up: integrate its refined children into one
+    # coherent section. Every child is guaranteed already integrated (final.md
+    # exists) because try-pop only returns a node whose children are all complete.
+    action_type: prompt
+    action: |
+      You are reassembling one node of a refined plan tree, bottom-up.
+
+      Node id: ${captured.popped.output}
+      Run dir: ${context.run_dir}
+
+      Step 1: Read ${context.run_dir}/edges.tsv and select the lines whose
+      FIRST tab-separated column equals "${captured.popped.output}". Those rows
+      give this node's children (second column = child id, third = title), in order.
+
+      Step 2: Read this node's index/overview at
+      ${context.run_dir}/nodes/${captured.popped.output}/plan.md, and read
+      each child's fully-refined content at
+      ${context.run_dir}/nodes/<child_id>/final.md (one per child row).
+
+      Step 3: Write an integrated section to
+      ${context.run_dir}/nodes/${captured.popped.output}/final.md that:
+        - keeps this node's framing, goal, and any cross-cutting concerns from its index,
+        - inlines each child's refined content in order under clear sub-headings,
+        - removes duplication and resolves any contradictions between children,
+        - ensures the ordering and dependencies across children are explicit and sound.
+
+      The result must read as one continuous, self-contained section — not a list of
+      links. Do not lose any concrete detail from the children's final.md files.
+    next: mark_done
+    on_error: integrate_error
+
+  mark_done:
+    # Publish this node's completion: touch the done-sentinel (which unblocks any
+    # sibling worker WAITing on this node as a child) and snapshot the integrated
+    # final.md to a durable diagnostics location outside the run dir, so a
+    # mid-integration timeout never loses completed integration work. Both are
+    # best-effort and never block the pop loop.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      NODE="${captured.popped.output}"
+      python3 -m little_loops.rn_synth_queue mark-complete "$RUN_DIR" "$NODE" || true
+      RUN_ID=$(basename "$RUN_DIR")
+      mkdir -p .loops/diagnostics
+      if [ -f "$RUN_DIR/nodes/$NODE/final.md" ]; then
+        cp "$RUN_DIR/nodes/$NODE/final.md" ".loops/diagnostics/$${RUN_ID}-$${NODE}.md"
+      fi
+    next: pop
+    on_error: pop
+
+  integrate_error:
+    # The integrate prompt failed for a node that try-pop already removed from the
+    # queue. Leave it without a final.md (rn-refine's assemble RECOVERY_NEEDED
+    # fallback and the resume queue-rebuild both cover a popped-but-not-integrated
+    # node) and continue popping the rest of the queue.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      NODE="${captured.popped.output}"
+      mkdir -p "$RUN_DIR/failed_integrations"
+      echo "$NODE" >> "$RUN_DIR/failed_integrations/log.txt"
+      echo "[INTEGRATE_FAILED] $NODE"
+    next: pop
+    on_error: pop
+
+  done:
+    terminal: true

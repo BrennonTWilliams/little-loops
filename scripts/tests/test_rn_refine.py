@@ -18,27 +18,18 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import little_loops.rn_synth_queue as rn_synth_queue
 from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.validation import load_and_validate
+from little_loops.rn_synth_queue import mark_complete, queue_is_empty, try_pop_ready
 
-# ENH-2565 spike package lives at scripts/tests/spike/rn_refine_synth_pop. It is
-# imported via its full ``scripts.tests.spike...`` dotted path so the same import
-# works both here (under pytest) and from the subprocess CLI test. ``scripts`` is
-# an implicit namespace package, so the repo root must be on sys.path.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from scripts.tests.spike.rn_refine_synth_pop import (  # noqa: E402
-    mark_complete,
-    queue_is_empty,
-    try_pop_ready,
-)
 
 LOOPS = Path(__file__).parent.parent / "little_loops" / "loops"
 RN_REFINE = LOOPS / "rn-refine.yaml"
 NODE_ORACLE = LOOPS / "oracles" / "plan-node-refine.yaml"
-SPIKE_DIR = Path(__file__).parent / "spike" / "rn_refine_synth_pop"
+INTEGRATE_ORACLE = LOOPS / "oracles" / "integrate-node.yaml"
+QUEUE_MODULE = Path(rn_synth_queue.__file__)
 
 
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -76,6 +67,13 @@ class TestLoadsClean:
         ]
         assert hard == [], f"plan-node-refine has validation errors: {hard}"
 
+    def test_integrate_node_oracle_validates_without_errors(self) -> None:
+        _, errors = load_and_validate(INTEGRATE_ORACLE)
+        hard = [
+            e for e in errors if str(getattr(e.severity, "value", e.severity)).lower() == "error"
+        ]
+        assert hard == [], f"integrate-node has validation errors: {hard}"
+
 
 # ---------------------------------------------------------------------------
 # Structural state graph (recursive work-tree shape)
@@ -99,20 +97,84 @@ class TestRecursiveStructure:
         assert fsm.states["dequeue_next"].on_yes == "build_synth"
 
     def test_synthesis_chain_present(self) -> None:
-        """Bottom-up synthesis states exist and chain into assembly."""
+        """Bottom-up synthesis fans out to workers then chains into assembly (ENH-2565)."""
         fsm = _load_rn_refine()
         for s in (
             "build_synth",
-            "synth_pop",
-            "integrate_node",
+            "synth_dispatch",
             "assemble",
             "final_score",
             "finalize",
         ):
             assert s in fsm.states, f"missing synthesis state: {s}"
-        assert fsm.states["synth_pop"].on_no == "integrate_node"
-        assert fsm.states["synth_pop"].on_yes == "assemble"
-        assert fsm.states["integrate_node"].next == "synth_pop"
+        assert fsm.states["build_synth"].next == "synth_dispatch"
+        assert fsm.states["synth_dispatch"].next == "assemble"
+        assert fsm.states["synth_dispatch"].on_error == "assemble"
+        # The serial pop/integrate/snapshot trio is replaced by the fan-out worker.
+        for s in ("synth_pop", "integrate_node", "snapshot_node"):
+            assert s not in fsm.states, f"serial synthesis state {s} should be removed"
+
+    def test_synth_dispatch_background_spawns_integrate_worker(self) -> None:
+        """The fan-out state background-spawns the integrate-node worker and barriers."""
+        action = _load_rn_refine().states["synth_dispatch"].action
+        assert "ll-loop run oracles/integrate-node" in action
+        assert "--context run_dir=" in action
+        assert "&" in action and "wait" in action  # background-spawn + barrier
+        assert "${context.synth_workers}" in action
+
+    def _dispatch_action(self) -> str:
+        return _load_rn_refine().states["synth_dispatch"].action
+
+    def test_synth_dispatch_empty_queue_short_circuits(self, tmp_path: Path) -> None:
+        """No internal nodes → skip spawning workers, route straight to assemble."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("")  # drained / no internal nodes
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "4"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "NO_INTERNAL_NODES" in result.stdout
+        assert not (rd / "worker-logs").exists()  # never spawned a worker
+
+    def test_synth_dispatch_spawns_clamped_workers_concurrently(self, tmp_path: Path) -> None:
+        """K queued nodes with a fake ll-loop worker: workers run concurrently, clamped."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("p0\np1\n")  # 2 internal nodes
+        # Fake `ll-loop`: record start, sleep so overlap is observable, record end.
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        fake = bindir / "ll-loop"
+        fake.write_text(
+            "#!/usr/bin/env bash\n"
+            f'echo "start $$ $(date +%s%N)" >> "{rd}/spawn-trace.txt"\n'
+            "sleep 0.5\n"
+            f'echo "end $$ $(date +%s%N)" >> "{rd}/spawn-trace.txt"\n'
+        )
+        fake.chmod(0o755)
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "8"},  # clamps down to the 2 queued nodes
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "SYNTH_WORKERS_DONE workers=2" in result.stdout  # clamped to queue length
+        # Two workers spawned, and their [start,end] intervals overlap (concurrent).
+        lines = [ln.split() for ln in (rd / "spawn-trace.txt").read_text().splitlines()]
+        starts = sorted(int(t) for tag, _pid, t in lines if tag == "start")
+        ends = sorted(int(t) for tag, _pid, t in lines if tag == "end")
+        assert len(starts) == 2 and len(ends) == 2
+        # Concurrency: the second worker started before the first finished.
+        assert starts[1] < ends[0], "workers did not overlap — dispatch ran serially"
 
     def test_node_oracle_refines_then_decides(self) -> None:
         """The oracle scores a node then routes to the adaptive decompose decision."""
@@ -159,7 +221,7 @@ class TestInitPlumbing:
         run_dir = ".loops/runs/rn-refine-T"
         rendered = _render(
             self._init_action(),
-            context={"plan_file": "nonexistent/plan.md", "run_dir": run_dir},
+            context={"plan_file": "nonexistent/plan.md", "run_dir": run_dir, "resume": ""},
         )
         result = _bash(rendered, tmp_path)
         assert result.returncode != 0
@@ -173,7 +235,7 @@ class TestInitPlumbing:
         run_dir_rel = ".loops/runs/rn-refine-T"
         rendered = _render(
             self._init_action(),
-            context={"plan_file": str(plan), "run_dir": run_dir_rel},
+            context={"plan_file": str(plan), "run_dir": run_dir_rel, "resume": ""},
         )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0
@@ -206,7 +268,7 @@ class TestInitPlumbing:
         run_dir_abs = tmp_path / ".loops" / "runs" / "rn-refine-T"
         rendered = _render(
             self._init_action(),
-            context={"plan_file": str(plan), "run_dir": str(run_dir_abs)},
+            context={"plan_file": str(plan), "run_dir": str(run_dir_abs), "resume": ""},
         )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0
@@ -387,6 +449,140 @@ class TestBuildSynthOrder:
         assert (nodes / "n0" / "final.md").exists()
 
 
+# ---------------------------------------------------------------------------
+# ENH-2565: resume from an interrupted integration phase
+# ---------------------------------------------------------------------------
+
+
+class TestResumeRouting:
+    """init -> check_resume -> resume_build_synth skips refinement on resume."""
+
+    def test_init_routes_to_check_resume(self) -> None:
+        assert _load_rn_refine().states["init"].next == "check_resume"
+
+    def test_check_resume_routes_resume_and_fresh(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["check_resume"].on_yes == "resume_build_synth"
+        assert fsm.states["check_resume"].on_no == "dequeue_next"
+        assert fsm.states["check_resume"].on_error == "dequeue_next"
+
+    def test_resume_context_knob_declared(self) -> None:
+        assert "resume" in _load_rn_refine().context
+
+    def test_resume_build_synth_routes_to_dispatch(self) -> None:
+        assert _load_rn_refine().states["resume_build_synth"].next == "synth_dispatch"
+
+    def test_check_resume_emits_fresh_without_knob(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action, context={"resume": ""}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert "FRESH" in result.stdout and "RESUME_MODE" not in result.stdout
+
+    def test_check_resume_emits_resume_mode_with_knob_and_tree(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action, context={"resume": "1"}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert "RESUME_MODE" in result.stdout
+
+
+class TestInitResumeShortCircuit:
+    """init must NOT re-seed (clobber) an existing tree when resuming."""
+
+    def _init_action(self) -> str:
+        return _load_rn_refine().states["init"].action
+
+    def test_resume_preserves_existing_tree(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n\n## A\n- x\n")
+        rd = tmp_path / "run"
+        # Simulate a prior run's tree with a hand-marked queue we must not clobber.
+        (rd / "nodes" / "n0").mkdir(parents=True)
+        (rd / "nodes" / "n0" / "plan.md").write_text("# INDEX (do not clobber)\n")
+        (rd / "queue.txt").write_text("nSHOULD_SURVIVE\n")
+        (rd / "node_counter.txt").write_text("7")
+        rendered = _render(
+            self._init_action(),
+            context={"plan_file": str(plan), "run_dir": str(rd), "resume": "1"},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0
+        # Existing bookkeeping untouched (no re-seed).
+        assert (rd / "queue.txt").read_text().strip() == "nSHOULD_SURVIVE"
+        assert (rd / "node_counter.txt").read_text().strip() == "7"
+        assert (rd / "nodes" / "n0" / "plan.md").read_text() == "# INDEX (do not clobber)\n"
+        # source-path is (re)recorded so scope/write-lock stay satisfied on resume.
+        assert (rd / ".source-path").read_text().strip() == str(plan.resolve())
+
+    def test_fresh_run_still_seeds(self, tmp_path: Path) -> None:
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n\n## A\n- x\n")
+        rd = tmp_path / "run"
+        rendered = _render(
+            self._init_action(),
+            context={"plan_file": str(plan), "run_dir": str(rd), "resume": ""},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0
+        assert (rd / "queue.txt").read_text().strip() == "n0"
+        assert (rd / "node_counter.txt").read_text().strip() == "1"
+
+
+class TestResumeBuildSynth:
+    """resume_build_synth rebuilds synth_queue from on-disk final.md absence (AC #5)."""
+
+    def _action(self) -> str:
+        return _load_rn_refine().states["resume_build_synth"].action
+
+    def test_requeues_only_internal_nodes_lacking_final(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        nodes = rd / "nodes"
+        # Tree: n0 -> {n1(leaf), n2}; n2 -> {n3(leaf), n4(leaf)}. Internals: n0, n2.
+        for nid in ("n0", "n1", "n2", "n3", "n4"):
+            (nodes / nid).mkdir(parents=True)
+            (nodes / nid / "plan.md").write_text(f"# {nid}\n")
+        (rd / "edges.tsv").write_text("n0\tn1\tone\nn0\tn2\ttwo\nn2\tn3\tthree\nn2\tn4\tfour\n")
+        (rd / "depth_map.txt").write_text("n0 0\nn1 1\nn2 1\nn3 2\nn4 2\n")
+        # n2 already integrated (has final.md); n0 does not. Leaves n3/n4 done; n1 not.
+        (nodes / "n2" / "final.md").write_text("# n2 integrated\n")
+        for leaf in ("n3", "n4"):
+            (nodes / leaf / "final.md").write_text(f"# {leaf}\n")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        # Only n0 (internal, still lacking final.md) is re-queued; n2 is skipped.
+        order = [ln for ln in (rd / "synth_queue.txt").read_text().splitlines() if ln.strip()]
+        assert order == ["n0"]
+        # Idempotent leaf backfill restored n1's missing final.md.
+        assert (nodes / "n1" / "final.md").exists()
+
+    def test_covers_popped_but_not_integrated_node(self, tmp_path: Path) -> None:
+        """A node dropped from the OLD queue but never integrated is re-queued."""
+        rd = tmp_path / "run"
+        nodes = rd / "nodes"
+        # n0 -> {n1(leaf)}; n1 leaf has final.md, n0 was popped pre-kill (never integrated).
+        for nid in ("n0", "n1"):
+            (nodes / nid).mkdir(parents=True)
+            (nodes / nid / "plan.md").write_text(f"# {nid}\n")
+        (nodes / "n1" / "final.md").write_text("# n1\n")
+        (rd / "edges.tsv").write_text("n0\tn1\tonly\n")
+        (rd / "depth_map.txt").write_text("n0 0\nn1 1\n")
+        # Stale old queue is empty (n0 was popped) — resume must ignore it and rebuild.
+        (rd / "synth_queue.txt").write_text("")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0
+        order = [ln for ln in (rd / "synth_queue.txt").read_text().splitlines() if ln.strip()]
+        assert order == ["n0"]
+
+
 class TestAssembleAndFinalize:
     def test_assemble_prefers_root_final(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
@@ -527,18 +723,18 @@ class TestFinalizeSafety:
 
 
 # ---------------------------------------------------------------------------
-# ENH-2565 spike: readiness-gated pop + concurrency core
+# ENH-2565: readiness-gated pop + concurrency core
 #
-# The bottom-up-synthesis concurrency core is proved out as a standalone library
-# (scripts/tests/spike/rn_refine_synth_pop/queue.py) BEFORE rn-refine.yaml's
-# synth_pop action is rewritten to import it. Each method below retires one
-# acceptance criterion from the ENH-2565 spike plan; the eventual synth_pop
-# PYEOF becomes a thin shim around try_pop_ready / mark_complete / queue_is_empty.
+# The bottom-up-synthesis concurrency core (little_loops.rn_synth_queue) is the
+# shippable module the oracles/integrate-node worker sub-loop invokes (both as a
+# library and via `python -m little_loops.rn_synth_queue`). Each method below
+# retires one acceptance criterion: the worker's pop is a thin shim around
+# try_pop_ready / mark_complete / queue_is_empty.
 # ---------------------------------------------------------------------------
 
 
 class TestSynthPopReadinessGate:
-    """Retire the ENH-2565 acceptance criteria against the spike queue library."""
+    """Retire the ENH-2565 acceptance criteria against the rn_synth_queue module."""
 
     # -- fixture helpers ----------------------------------------------------
 
@@ -714,8 +910,8 @@ class TestSynthPopReadinessGate:
     # -- regression guard: correct locking primitive -----------------------
 
     def test_no_import_of_fsm_concurrency_lockmanager(self) -> None:
-        """queue.py must use acquire_lock, never little_loops.fsm.concurrency."""
-        source = (SPIKE_DIR / "queue.py").read_text()
+        """rn_synth_queue must use acquire_lock, never little_loops.fsm.concurrency."""
+        source = QUEUE_MODULE.read_text()
         tree = ast.parse(source)
         offenders = [
             node.module
@@ -735,15 +931,15 @@ class TestSynthPopReadinessGate:
         rd = tmp_path / "run"
         rd.mkdir()
         env = dict(os.environ)
-        # scripts.* resolves from the repo root; little_loops from scripts/.
+        # little_loops resolves from scripts/ (the package root).
         env["PYTHONPATH"] = os.pathsep.join(
-            p for p in (str(_REPO_ROOT), str(_REPO_ROOT / "scripts"), env.get("PYTHONPATH", "")) if p
+            p for p in (str(_REPO_ROOT / "scripts"), env.get("PYTHONPATH", "")) if p
         )
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
-                "scripts.tests.spike.rn_refine_synth_pop",
+                "little_loops.rn_synth_queue",
                 "try-pop",
                 str(rd),
             ],

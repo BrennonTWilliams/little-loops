@@ -194,9 +194,10 @@ ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming
 | `deep-research-arxiv` | Arxiv-only variant of `deep-research` (`from: deep-research` stub, ENH-2161) — overrides `source_filter=site:arxiv.org` and `academic_mode=true`; inherits the full research FSM. Scores sources on relevance + recency (derived from arxiv submission date) instead of credibility, and emits an arxiv-ID-keyed sources table plus a `## BibTeX` section ready to drop into a `.bib` file. |
 | `apply-research` | Document ingestion pipeline — reads local `.txt`, `.md`, or `.pdf` files; scores each extracted idea by relevance to the project (0–1); filters below threshold; synthesizes actionable issue descriptions; and captures Issues via `/ll:capture-issue`. Use when you have research papers, RFCs, or design docs and want them translated into project issues automatically. |
 | `rn-plan` | Recursive task planning with self-scoring rubric — accepts a natural language task description, generates a 8-dimension rubric (breadth, depth, complexity, clarity, consistency, logic_strategy, feasibility, testability, risk_mitigation), then iteratively researches and refines the plan until all dimensions reach VERY-HIGH; delegates the per-iteration research chain to `oracles/plan-research-iteration` |
-| `rn-refine` | Recursive refinement loop for an existing plan document — treats the plan as the root of a decomposition tree and refines it recursively to adaptive depth ("n" = as-needed, capped by `max_depth`/`max_nodes`): refine each node to rubric convergence, decide leaf-vs-decompose (ADaPT-style), split coarse nodes into child sub-plans enqueued depth-first, then synthesize the refined leaves bottom-up into a reassembled plan that overwrites the source in place. Per-node refinement + the decompose decision are delegated to `oracles/plan-node-refine` |
+| `rn-refine` | Recursive refinement loop for an existing plan document — treats the plan as the root of a decomposition tree and refines it recursively to adaptive depth ("n" = as-needed, capped by `max_depth`/`max_nodes`): refine each node to rubric convergence, decide leaf-vs-decompose (ADaPT-style), split coarse nodes into child sub-plans enqueued depth-first, then synthesize the refined leaves bottom-up (in parallel — `synth_workers` background-spawned `oracles/integrate-node` workers over a readiness-gated shared queue) into a reassembled plan that overwrites the source in place. Resumable mid-integration via `--context resume=1`. Per-node refinement + the decompose decision are delegated to `oracles/plan-node-refine` |
 | `oracles/plan-research-iteration` | Reusable research-and-synthesize oracle shared by `rn-plan` and (via `oracles/plan-node-refine`) `rn-refine` — runs one iteration: classify what research is needed (NEEDS_FILES or NEEDS_WEB) → route to file or web research (both with `timeout: 600`) → `check_research` guard (exits gracefully if `research.md` is empty/missing, preventing phantom no-op rewrites) → synthesize findings into `plan.md`; the `overwrite_source` parameter gates in-place source-file overwrite; invoked via `loop: oracles/plan-research-iteration` with `with:` context passthrough |
 | `oracles/plan-node-refine` | Per-node refinement oracle for `rn-refine`'s recursive tree — refines ONE node (a self-contained mini-plan under `nodes/<id>/`) to rubric convergence by reusing `oracles/plan-research-iteration` + `plan_rubric_score` scoped to the node, then makes the adaptive-depth decision: LEAF (atomic, coherent) vs DECOMPOSE (split 2–5 child sub-goals, write child sub-plans, allocate child node ids, enqueue depth-first). Depth/node caps suppress decomposition at `max_depth`/`max_nodes`. Emits `REFINED_LEAF` / `DECOMPOSED` / `REFINED_CAPPED` / `REFINE_FAILED` for the parent orchestrator |
+| `oracles/integrate-node` | Parallel bottom-up integration worker for `rn-refine` (ENH-2565) — background-spawned N-wide by `synth_dispatch`, sharing one `run_dir`. Loops: atomically pop the deepest READY internal node (all children have `final.md`) via `little_loops.rn_synth_queue` (an `flock`-guarded, readiness-gated pop over `synth_queue.txt`) → integrate its refined children into one coherent `nodes/<id>/final.md` → mark complete + snapshot to `.loops/diagnostics/` → repeat until the queue DRAINs. Sleeps on WAIT (queue non-empty but nothing ready). Takes NO source scope-lock, so the N workers run concurrently |
 | `rn-implement` | Queue orchestrator for recursive plan-and-implement — manages a depth-bounded issue queue, delegating per-issue remediation to `rn-remediate` and decomposition to `rn-decompose` |
 | `rn-decompose` | Sub-loop for issue decomposition (size review → child detection → enqueue with cycle detection), extracted from `rn-implement` Phase 5 |
 | `rn-remediate` | Sub-loop for iterative deepening remediation cycle (diagnose → remediate → converge), extracted from `rn-implement`. After FEAT-2552, `implement.on_yes` → `run_code_gate` (code-run-gate oracle, FEAT-2551) → `emit_implemented` so a broken build/test/typecheck/lint can no longer earn `IMPLEMENTED` (writes `GATE_FAILED` to sidecar, increments `remediation_count_<ID>.txt` for budget enforcement) |
@@ -297,7 +298,9 @@ ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 | `max_depth` | `3` | Safety cap on recursion depth. Adaptive depth never exceeds this; nodes that want to decompose past it are finalized as leaves (`REFINED_CAPPED`). |
 | `max_node_iters` | `2` | Per-node refinement budget (research→synthesize→score passes) before the decompose decision is made with the best version produced. |
 | `max_nodes` | `40` | Global cap on total tree nodes; decomposition is suppressed once reached, bounding worst-case cost. |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
+| `synth_workers` | `4` | ENH-2565: fan-out width for the parallel bottom-up integration phase. `synth_dispatch` background-spawns up to this many `oracles/integrate-node` workers over the shared synth queue (clamped to the number of internal nodes). |
+| `resume` | `""` | **Resume only.** When non-empty **and** a prior `nodes/` tree exists under the (re-passed) `run_dir`, `init` skips re-seeding and `check_resume` routes straight into bottom-up synthesis — reusing existing `nodes/*/final.md` and skipping the (hours-long) refinement phase. Re-pass the same `plan_file` and `run_dir`: `ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior>`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location (**required on resume** — re-pass the prior run's dir). |
 
 **Output artifacts** (written to `${context.run_dir}`):
 
@@ -308,30 +311,41 @@ ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 | `nodes/<id>/` | Per-node working dirs for the whole tree — each holds the node's `plan.md` (sub-plan / index), `plan-rubric.md`, `research.md`, and `final.md` (its bottom-up assembled output) |
 | `edges.tsv` | The decomposition tree as `<parent>\t<child>\t<title>` rows |
 | `queue.txt` / `depth_map.txt` | Work-tree bookkeeping: the depth-first node queue and per-node depth |
+| `synth_queue.txt` | Bottom-up integration queue: internal nodes deepest-first; workers pop from it under an `flock` (ENH-2565) |
+| `done/<id>.done`, `in_flight/<id>.pending`, `worker-logs/` | Parallel-integration coordination markers + per-worker stdout logs (ENH-2565) |
 
 **FSM flow:**
 
 ```
-init              (shell: validate plan_file; seed root node n0 + work-tree files)
-  → dequeue_next  (shell: pop a node id; empty queue → build_synth)
-    → read_depth  (shell: surface this node's depth for the sub-loop binding)
-      → refine_node            (loop: oracles/plan-node-refine — refine to convergence,
-       │                        then decide LEAF vs DECOMPOSE; on DECOMPOSE it writes
-       │                        child sub-plans + enqueues them depth-first itself)
-       → classify_node         (shell: read node_outcome token)
-         route_decomposed → dequeue_next        (children already enqueued)
-         route_leaf       → record_leaf  → dequeue_next
-         route_capped     → record_capped → dequeue_next
-         (else)           → record_failure → dequeue_next
+init              (shell: validate plan_file; seed root node n0 + work-tree files,
+  │                UNLESS resuming — then skip seeding, preserve the prior tree)
+  → check_resume  (shell: resume knob + existing nodes/ → resume_build_synth;
+     │             else → dequeue_next)
+     → dequeue_next  (shell: pop a node id; empty queue → build_synth)
+       → read_depth  (shell: surface this node's depth for the sub-loop binding)
+         → refine_node          (loop: oracles/plan-node-refine — refine to convergence,
+          │                       then decide LEAF vs DECOMPOSE; on DECOMPOSE it writes
+          │                       child sub-plans + enqueues them depth-first itself)
+          → classify_node       (shell: read node_outcome token)
+            route_decomposed → dequeue_next        (children already enqueued)
+            route_leaf       → record_leaf  → dequeue_next
+            route_capped     → record_capped → dequeue_next
+            (else)           → record_failure → dequeue_next
 
   (queue drained) → build_synth   (shell+python: order internal nodes deepest-first;
                   │                 backfill leaf final.md)
-    → synth_pop   (shell: pop next internal node; empty → assemble)
-      → integrate_node          (prompt: fold this node's refined children into one
-       │                         coherent section → nodes/<id>/final.md) → synth_pop
+     (resume path) resume_build_synth  (shell+python: rebuild synth_queue from on-disk
+                  │                      final.md ABSENCE — only internal nodes still
+                  │                      lacking final.md, deepest-first)
+    → synth_dispatch  (shell: background-spawn up to ${synth_workers}
+       │               `ll-loop run oracles/integrate-node` workers over the SHARED
+       │               synth_queue, then `wait` on all PIDs = the barrier. Each worker
+       │               pops the deepest READY node (all children have final.md) under an
+       │               flock-guarded pop, integrates it → nodes/<id>/final.md, marks it
+       │               complete, loops until DRAIN. Same-depth nodes integrate in parallel.)
       → assemble  (shell: root final.md → run_dir/plan.md)
         → final_score (plan_rubric_score on the reassembled plan)
-          → finalize  (shell: overwrite the source file in place)
+          → preflight_check → finalize  (shell: overwrite the source file in place)
             → report  (prompt: tree + scores + diff hint) → done
 
 init on_error → diagnose → failed
@@ -343,6 +357,8 @@ init on_error → diagnose → failed
 - **Reuse, not duplication**: each node is a mini-plan under `nodes/<id>/`, so the existing `oracles/plan-research-iteration` chain and the `plan_rubric_score` fragment are reused verbatim, scoped to the node. `rn-plan` is unaffected.
 - **Bounded cost**: a single OS process owns one wall-clock budget (no per-level timeout compounding); `max_depth`, `max_node_iters`, and `max_nodes` cap the tree, and per-run artifacts live under `${context.run_dir}` for concurrency safety.
 - **Bottom-up synthesis**: decomposed nodes are reassembled child-first, so the final root plan reflects every refined leaf while preserving each internal node's framing and ordering.
+- **Parallel integration (ENH-2565)**: the integration phase is **not** serial. `synth_dispatch` background-spawns up to `${synth_workers}` `oracles/integrate-node` workers that pop from the shared `synth_queue.txt` under an `flock`-guarded, readiness-gated pop (`little_loops.rn_synth_queue`). A node is *ready* only once **all** its children have a `final.md`, so children-before-parent ordering is enforced by the readiness gate — independent same-depth internal nodes integrate concurrently. The parent `wait`s on every worker PID (the barrier) before `assemble`. This replaced the previous one-node-per-cycle serial `synth_pop`/`integrate_node` loop, whose serial root-integration was the ENH-2565 timeout failure mode.
+- **Resume (ENH-2565)**: a run interrupted mid-integration (e.g. a wall-clock timeout) is resumable without redoing refinement. Re-invoke with `--context resume=1 --context run_dir=<prior>` (re-passing the same `plan_file` so the `scope` write-lock and `required_inputs` stay satisfied). `init` skips re-seeding, and `resume_build_synth` rebuilds `synth_queue.txt` from **on-disk `final.md` absence** — re-queuing only internal nodes still lacking integration, including a *popped-but-not-integrated* node that the old queue had already dropped.
 - **In-place update**: on completion `finalize` overwrites the **original** plan file with the reassembled content. The run directory keeps the working copy plus the full `nodes/` tree and `edges.tsv` for inspection/diffing; the `report` state prints the `diff` command.
 - **Diff-invariant safety guard (ENH-2418)**: `finalize` does not overwrite blindly. Before writing it enforces three checks: (1) **diff-size invariant** — the reassembled content must keep a minimum fraction of the original length, (2) **timestamped backup** — `.loops/<run_dir>/finalize.bak-<timestamp>.md` is written BEFORE the overwrite so a bad synthesis is recoverable, (3) **section-presence check** — required top-level sections (e.g. `## Summary`, `## Acceptance Criteria`) must still be present. If any check fails, the run aborts to a safe terminal — the original file is never clobbered. The `.loops/` working copy remains the second-tier recovery path.
 

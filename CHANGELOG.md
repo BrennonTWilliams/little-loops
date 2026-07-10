@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.141.0] - 2026-07-09
+
+### Added
+
+- **`rn-refine` parallel bottom-up integration + resume** — the integration phase
+  is no longer serial (one internal node per cycle). A new `synth_dispatch` state
+  background-spawns up to `synth_workers` (default 4) `oracles/integrate-node`
+  workers that pop from a shared queue under an `flock`-guarded, readiness-gated
+  pop (`little_loops.rn_synth_queue`): a node integrates only once all its children
+  have a `final.md`, so independent same-depth nodes fold up concurrently while
+  children-before-parent ordering holds. A run interrupted mid-integration (e.g. a
+  wall-clock timeout) is now resumable via `--context resume=1 --context
+  run_dir=<prior>` — `resume_build_synth` rebuilds the queue from on-disk `final.md`
+  absence, reusing already-refined/integrated work and covering the
+  popped-but-not-integrated node the old queue had dropped (ENH-2565).
+
 ## [1.140.0] - 2026-07-08
 
 ### Added

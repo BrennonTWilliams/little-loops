@@ -7878,9 +7878,26 @@ class TestRnRefineRecursiveDecomposition:
         assert data.get("states", {}).get("dequeue_next", {}).get("on_yes") == "build_synth"
 
     def test_has_bottom_up_synthesis_chain(self, data: dict) -> None:
+        # ENH-2565: the serial synth_pop/integrate_node/snapshot_node trio was
+        # replaced by a fan-out dispatch that background-spawns the
+        # oracles/integrate-node worker sub-loop over the shared queue.
         states = data.get("states", {})
-        for s in ("build_synth", "synth_pop", "integrate_node", "assemble", "final_score"):
+        for s in ("build_synth", "synth_dispatch", "assemble", "final_score"):
             assert s in states, f"missing synthesis state: {s}"
+        assert data.get("states", {}).get("build_synth", {}).get("next") == "synth_dispatch"
+        assert data.get("states", {}).get("synth_dispatch", {}).get("next") == "assemble"
+        # The serial states must be gone — the worker owns pop/integrate/snapshot now.
+        for s in ("synth_pop", "integrate_node", "snapshot_node"):
+            assert s not in states, f"serial synthesis state {s} should be removed (ENH-2565)"
+
+    def test_resume_routes_into_synthesis(self, data: dict) -> None:
+        # ENH-2565: init -> check_resume; a resume invocation skips refinement and
+        # rebuilds the synth queue from on-disk final.md completion markers.
+        states = data.get("states", {})
+        assert states.get("init", {}).get("next") == "check_resume"
+        assert states.get("check_resume", {}).get("on_yes") == "resume_build_synth"
+        assert states.get("check_resume", {}).get("on_no") == "dequeue_next"
+        assert states.get("resume_build_synth", {}).get("next") == "synth_dispatch"
 
     def test_finalize_overwrites_source_in_place(self, data: dict) -> None:
         """The reassembled plan is written back over the user's source file."""
