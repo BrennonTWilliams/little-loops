@@ -817,6 +817,17 @@ Show loop details and FSM structure. The header line displays active [per-loop c
 
 The **Commands** section at the bottom of the output can be overridden by adding a top-level `commands:` list to the loop YAML. Each entry is a `{cmd, comment}` pair; when present, this list replaces the five generic default commands so that loops requiring `--param` or `--context` flags can surface copy-paste-ready examples. See `docs/generalized-fsm-loop.md` for the full `commands:` schema.
 
+**State overview table columns.** When `--show-diagrams` is not in `--json` mode, the main body of `ll-loop show` prints a compact state overview table with four columns:
+
+| Column | Meaning |
+|---|---|
+| `State` | State name; the `initial` state is prefixed with `→`. |
+| `Type` | Action shape: `sub-loop` (state with a `loop:` field — renders magenta), `shell`, `agent`, `llm_structured`, `check_semantic`, etc.; `(terminal)` states show `—`. Lets you read at a glance which states delegate to another loop vs run inline logic. |
+| `Action Preview` | First non-blank line of the state's `action:` source (or `[sub-loop: <name>]` for delegating states), truncated to fit terminal width. |
+| `Transitions` | Compact routing summary: each `on_yes` / `on_no` / `on_error` / `on_partial` / `next` / `route.<verdict>` label grouped by target (e.g., `yes→done`, `no→retry`); emits `—` when the state has no explicit routing. |
+
+This state-overview table is separate from the `--show-diagrams` ASCII diagram — the table is always rendered in `--clean` / `--summary` / default output as a quick reference; the diagram shows the graph topology when `--show-diagrams` is enabled.
+
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--json` | `-j` | Output FSM config as JSON |
