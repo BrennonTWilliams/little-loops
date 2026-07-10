@@ -2740,16 +2740,16 @@ class TestCmdListENH2572ScanningFirst:
         out = capsys.readouterr().out
         assert "ll-loop show <name> for details" in out
         assert "--category <cat> to filter" in out
-        # Grid default also advertises the detail flag.
-        assert "-l for descriptions" in out
+        # Table default advertises the compact-grid flag.
+        assert "--grid for a compact name grid" in out
 
-    def test_grid_default_has_no_descriptions_one_column_when_not_tty(
+    def test_grid_flag_has_no_descriptions_one_column_when_not_tty(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The default layout is a compact name grid: no descriptions, and one
-        loop per line when stdout is not a TTY (capsys pipes stdout)."""
+        """--grid selects the compact name grid: no descriptions, and one loop
+        per line when stdout is not a TTY (capsys pipes stdout)."""
         loops_dir, builtin_dir = self._seed(tmp_path)
-        assert self._run(loops_dir, builtin_dir) == 0
+        assert self._run(loops_dir, builtin_dir, grid=True) == 0
         out = capsys.readouterr().out
         assert "Harness loop 0." not in out
         # Non-TTY → one name per line: no line carries two loop names.
@@ -2762,15 +2762,28 @@ class TestCmdListENH2572ScanningFirst:
         loops_dir, builtin_dir = self._seed(tmp_path)
         with patch("little_loops.cli.loop.info._is_tty", return_value=True):
             with patch("little_loops.cli.loop.info.terminal_width", return_value=120):
-                assert self._run(loops_dir, builtin_dir) == 0
+                assert self._run(loops_dir, builtin_dir, grid=True) == 0
         out = capsys.readouterr().out
         assert any("harness-0" in ln and "harness-1" in ln for ln in out.split("\n")), (
             f"expected multi-column grid on TTY: {out!r}"
         )
 
-    def test_long_flag_shows_descriptions(
+    def test_table_is_default_shows_descriptions(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        """The default layout is the detailed one-row-per-loop table, so
+        descriptions render without any flag."""
+        loops_dir, builtin_dir = self._seed(tmp_path)
+        assert self._run(loops_dir, builtin_dir) == 0
+        out = capsys.readouterr().out
+        assert "Harness loop 0." in out
+        assert "My project loop." in out
+
+    def test_long_flag_is_noop_alias_for_default(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """`-l/--long` is retained as a no-op alias now that the table is the
+        default: it still yields the detailed table."""
         loops_dir, builtin_dir = self._seed(tmp_path)
         assert self._run(loops_dir, builtin_dir, long=True) == 0
         out = capsys.readouterr().out

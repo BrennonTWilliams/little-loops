@@ -300,10 +300,14 @@ def cmd_list(
     #   3. OTHER — categories with <3 members folded together, each row
     #      carrying its original category as a dim inline tag.
     #
-    # Default output is a compact name grid (like ``ls``) sized to the
-    # terminal; ``-l/--long`` gives the detailed one-row-per-loop layout.
+    # Default output is the detailed one-row-per-loop table sized to the
+    # terminal; ``--grid`` gives a compact name grid (like ``ls``).
     # ------------------------------------------------------------------
-    long_mode = getattr(args, "long", False)
+    # ENH-2572 shipped a compact grid as the default; users preferred the
+    # detailed one-row-per-loop table, so the table is the default again and
+    # the grid is opt-in via ``--grid``. ``--long``/``-l`` is kept as a no-op
+    # alias for backwards compatibility.
+    grid_mode = getattr(args, "grid", False)
     tw = terminal_width(default=120)
 
     # Distinct categories across everything shown (for the summary header).
@@ -361,10 +365,10 @@ def cmd_list(
         # the "◆ project" badge on each would recreate the noise the kind
         # column removal was meant to eliminate.
         suppress = title == "YOUR PROJECT"
-        if long_mode:
-            _emit_long_section(title, rows, tw, no_truncate, suppress_project_badge=suppress)
-        else:
+        if grid_mode:
             _emit_grid_section(rows, tw, suppress_project_badge=suppress)
+        else:
+            _emit_long_section(title, rows, tw, no_truncate, suppress_project_badge=suppress)
 
     # Footer: hidden-tier hint (when applicable) + next-action affordances.
     hidden_total = sum(hidden_counts.values())
@@ -373,8 +377,8 @@ def cmd_list(
         hidden_bits = ", ".join(f"{v} {k}" for k, v in hidden_counts.items() if v)
         print(colorize(f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show", "2"))
     hints = ["ll-loop show <name> for details", "--category <cat> to filter"]
-    if not long_mode:
-        hints.insert(0, "-l for descriptions")
+    if not grid_mode:
+        hints.insert(0, "--grid for a compact name grid")
     print(colorize("  " + " · ".join(hints), "2"))
     return 0
 

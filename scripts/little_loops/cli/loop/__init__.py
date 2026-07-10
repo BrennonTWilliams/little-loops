@@ -345,13 +345,18 @@ Examples:
         )
         list_parser.add_argument("-j", "--json", action="store_true", help="Output as JSON array")
         list_parser.add_argument(
+            "--grid",
+            action="store_true",
+            help=(
+                "Compact multi-column name grid for fast scanning. "
+                "The default is a detailed one-row-per-loop table."
+            ),
+        )
+        list_parser.add_argument(
             "-l",
             "--long",
             action="store_true",
-            help=(
-                "Detailed one-row-per-loop layout with descriptions and labels. "
-                "The default is a compact name grid for fast scanning."
-            ),
+            help=argparse.SUPPRESS,  # legacy no-op: the table is now the default
         )
         list_parser.add_argument("--builtin", action="store_true", help="Show only built-in loops")
         list_parser.add_argument(
