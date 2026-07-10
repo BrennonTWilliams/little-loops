@@ -1092,8 +1092,10 @@ class TestChange8FinalVerifyGate:
         # between final_verify and count_final.
         assert raw_data["states"]["final_verify"]["next"] == "run_final_tests"
 
-    def test_final_verify_routes_error_to_diagnose(self, raw_data: dict) -> None:
-        assert raw_data["states"]["final_verify"]["on_error"] == "diagnose"
+    def test_final_verify_routes_error_to_summarize_partial(self, raw_data: dict) -> None:
+        # ENH-2575: a verify error/timeout must preserve partial credit rather
+        # than collapse to the failed terminal via diagnose.
+        assert raw_data["states"]["final_verify"]["on_error"] == "summarize_partial"
 
     def test_final_verify_action_references_dod_file(self, raw_data: dict) -> None:
         action = raw_data["states"]["final_verify"]["action"]
@@ -1321,9 +1323,12 @@ class TestENH1631SummarizePartial:
         action = raw_data["states"]["summarize_partial"].get("action", "")
         assert "summary.md" in action
 
-    def test_summarize_partial_routes_to_done(self, raw_data: dict) -> None:
+    def test_summarize_partial_routes_to_write_partial_summary(self, raw_data: dict) -> None:
+        # ENH-2575: summarize_partial no longer routes to the `done` success
+        # terminal — it chains to the mechanical summary.json emitter and then
+        # the distinct `partial` terminal.
         state = raw_data["states"]["summarize_partial"]
-        assert state.get("next") == "done"
+        assert state.get("next") == "write_partial_summary"
 
 
 class TestBUG1724TimeoutProtection:
@@ -1489,3 +1494,91 @@ class TestENH2365SummarizeSuccess:
 
     def test_summarize_success_on_error_routes_to_done(self, raw_data: dict) -> None:
         assert raw_data["states"]["summarize_success"]["on_error"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# ENH-2575: final_verify timeout must not forfeit partial progress
+# (from general-task loop audit 2026-07-09T232714: a single 1800s final_verify
+# timeout routed on_error → diagnose → failed, discarding 26/38 verified hard
+# criteria and writing no summary.json)
+# ---------------------------------------------------------------------------
+
+
+class TestENH2575PartialCredit:
+    """ENH-2575: verify error routes to partial-credit chain, not failed."""
+
+    def test_partial_terminal_exists_and_is_terminal(self, raw_data: dict) -> None:
+        states = raw_data.get("states", {})
+        assert "partial" in states, "distinct partial terminal must exist"
+        assert states["partial"].get("terminal") is True
+
+    def test_partial_terminal_is_not_done(self, raw_data: dict) -> None:
+        # Sub-loop routing treats a child ending at `done` as success (on_yes).
+        # The partial-credit chain must NOT end at `done`, or a verify timeout
+        # would be laundered into success for parent loops.
+        assert raw_data["states"]["write_partial_summary"]["next"] == "partial"
+
+    def test_write_partial_summary_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["write_partial_summary"]["action_type"] == "shell"
+
+    def test_write_partial_summary_emits_partial_verdict_json(self, raw_data: dict) -> None:
+        action = raw_data["states"]["write_partial_summary"]["action"]
+        assert "summary.json" in action
+        assert '"verdict":"partial"' in action
+
+    def test_write_partial_summary_on_error_still_reaches_partial(
+        self, raw_data: dict
+    ) -> None:
+        assert raw_data["states"]["write_partial_summary"]["on_error"] == "partial"
+
+    def test_summarize_partial_wording_covers_verify_failure(self, raw_data: dict) -> None:
+        # The prompt used to claim the iteration limit was reached — wrong for
+        # arrivals from final_verify.on_error.
+        action = raw_data["states"]["summarize_partial"]["action"]
+        assert "reached its iteration limit" not in action
+        assert "verification" in action.lower()
+
+    # --- shell execution: summary.json contents ----------------------------
+
+    @staticmethod
+    def _load_script(run_dir: Path) -> str:
+        with open(LOOP_FILE) as f:
+            data = yaml.safe_load(f)
+        script = data["states"]["write_partial_summary"]["action"]
+        ctx = data.get("context", {})
+        for key, val in ctx.items():
+            script = script.replace(f"${{context.{key}}}", str(val))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return script
+
+    def test_counts_partial_progress_from_dod(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n"
+            "## Verification Criteria\n"
+            "- [x] Tests pass [hard]\n"
+            "- [x] File exists [hard]\n"
+            "- [ ] Coverage met [hard]\n"
+            "- [ ] Tree clean\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "partial"
+        assert data["checked"] == 2
+        assert data["total"] == 4
+        assert data["hard_unchecked"] == 1
+        assert data["soft_unchecked"] == 1
+        assert "verdict=partial checked=2/4" in result.stdout
+
+    def test_missing_dod_still_writes_summary_json(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "partial"
+        assert data["total"] == 0

@@ -450,7 +450,12 @@ states:
       Print the full DoD file to stdout.
     action_type: prompt
     next: run_final_tests
-    on_error: diagnose
+    # ENH-2575: a final_verify error (canonically a timeout — re-verifying every
+    # criterion can exceed the 1800s budget on large DoDs) must NOT forfeit the
+    # run's partial progress by collapsing to the failed terminal. Route to
+    # summarize_partial so the run ends at the `partial` terminal with an
+    # accurate summary.md + machine-readable summary.json instead.
+    on_error: summarize_partial
 
   run_final_tests:
     # ENH-2225: final-only whole-suite gate. Whole-artifact criteria (full test
@@ -609,10 +614,18 @@ states:
     on_retry_exhausted: diagnose
 
   summarize_partial:
+    # ENH-2575: reached from two places — the on_max_steps cap handler, and
+    # final_verify.on_error (verify failed or timed out). On the on_max_steps
+    # path the executor terminates right after this state runs (terminated_by:
+    # max_steps), so downstream states never execute there; on the
+    # final_verify.on_error path the chain continues to write_partial_summary
+    # → partial.
     action_type: prompt
     action: |
-      The general-task loop has reached its iteration limit before all
-      Definition of Done criteria were satisfied.
+      The general-task loop has stopped before all Definition of Done criteria
+      were verified — either the step budget was exhausted, or final
+      verification failed or timed out. The work done so far is real; do not
+      discard it.
 
       Read ${context.run_dir}/dod.md and
       ${context.run_dir}/plan.md (if they exist).
@@ -621,7 +634,57 @@ states:
       (1) what was accomplished (list completed DoD criteria),
       (2) which DoD criteria remain unmet,
       (3) recommended next actions for a human operator.
-    next: done
+    next: write_partial_summary
+
+  write_partial_summary:
+    # ENH-2575: mechanical partial-credit emitter. Counts checked/unchecked
+    # criteria from dod.md (same awk section-scoping as count_done) and writes
+    # summary.json with verdict "partial" so audit tooling and parent loops can
+    # see how much of the DoD was satisfied — previously the failed path wrote
+    # no summary.json at all and a verify timeout discarded all partial credit.
+    action: |
+      DOD="${context.run_dir}/dod.md"
+      TAG="${context.hard_criteria_tags}"
+      HARD_UNCHECKED=0; SOFT_UNCHECKED=0; TOTAL=0
+      if [ -f "$DOD" ]; then
+        HARD_UNCHECKED=$(awk -v tag="$TAG" '
+          /^## Verification Criteria/ { in_section=1; next }
+          /^## / { in_section=0 }
+          in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ {
+            if (index($0, "[" tag "]") > 0) count++
+          }
+          END { print count+0 }
+        ' "$DOD")
+        SOFT_UNCHECKED=$(awk -v tag="$TAG" '
+          /^## Verification Criteria/ { in_section=1; next }
+          /^## / { in_section=0 }
+          in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ {
+            if (index($0, "[" tag "]") == 0) count++
+          }
+          END { print count+0 }
+        ' "$DOD")
+        TOTAL=$(awk '
+          /^## Verification Criteria/ { in_section=1; next }
+          /^## / { in_section=0 }
+          in_section && /^[[:space:]]*-[[:space:]]*\[/ { count++ }
+          END { print count+0 }
+        ' "$DOD")
+      fi
+      CHECKED=$(($TOTAL - $HARD_UNCHECKED - $SOFT_UNCHECKED))
+      printf '{"verdict":"partial","checked":%d,"total":%d,"hard_unchecked":%d,"soft_unchecked":%d}\n' \
+        "$CHECKED" "$TOTAL" "$HARD_UNCHECKED" "$SOFT_UNCHECKED" > "${context.run_dir}/summary.json"
+      printf 'general-task: verdict=partial checked=%d/%d hard_unchecked=%d\n' \
+        "$CHECKED" "$TOTAL" "$HARD_UNCHECKED"
+    action_type: shell
+    next: partial
+    on_error: partial
+
+  partial:
+    # ENH-2575: distinct terminal for partial credit. Deliberately NOT `done` —
+    # sub-loop routing treats a child ending at `done` as on_yes (success), so
+    # reusing `done` would launder a verify timeout into success for any parent
+    # loop; and NOT `failed`, which discards the run's verified progress.
+    terminal: true
 
   done:
     terminal: true
