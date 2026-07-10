@@ -1258,22 +1258,24 @@ class TestLoopListFormatting:
         out = capsys.readouterr().out
         assert "…" not in out
 
-    def test_multiline_description_gets_ellipsis(
+    def test_multiline_description_collapsed_to_single_line(
         self,
         tmp_path: Path,
     ) -> None:
-        """_load_loop_meta() splits multi-line descriptions: line 1 stays as
-        ``description`` and remaining lines are joined into
-        ``description_line2`` (no trailing … — line 2 is rendered as a
-        wrapped continuation below the row instead)."""
+        """_load_loop_meta() collapses multi-line descriptions into a single
+        space-joined ``description`` string so ``ll-loop list`` rows can fill
+        the full terminal width regardless of YAML block-scalar wrapping
+        (BUG-2566 follow-up). ``description_line2`` is retained as ``""`` for
+        ``--json`` shape stability."""
         from little_loops.cli.loop.info import _load_loop_meta
 
         loop_file = tmp_path / "multi.yaml"
         loop_file.write_text("name: multi\ndescription: |\n  First line.\n  Second line.\n")
         meta = _load_loop_meta(loop_file)
 
-        assert meta["description"] == "First line."
-        assert meta["description_line2"] == "Second line."
+        assert meta["description"] == "First line. Second line."
+        assert meta["description_line2"] == ""
+        assert "\n" not in meta["description"]
         assert "…" not in meta["description"]
 
     def test_singleline_description_no_ellipsis(
@@ -1726,6 +1728,48 @@ class TestLoopListFormatting:
             f"row overflows TW=100 (labels_yaml={labels_yaml!r}): "
             f"len={len(entry.rstrip())} {entry!r}"
         )
+
+    def test_long_description_row_fills_to_terminal_width(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A long-description row consumes the FULL available width up to TW,
+        not merely ``<= TW``.
+
+        BUG-2566 follow-up: after collapsing multi-line descriptions to a single
+        truncated row, a row whose description exceeds the desc budget must fill
+        to the terminal edge (matching ``ll-issues list``), leaving no unused
+        horizontal space. Measured with ``_display_width`` (ANSI-aware) so the
+        3-byte ``…`` glyph doesn't inflate the byte count into a false pass.
+        """
+        from little_loops.cli.loop.info import cmd_list
+        from little_loops.cli.loop.layout import _display_width
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Description far longer than any width under test guarantees truncation.
+        long_desc = "word " * 60
+        (loops_dir / "wideloop.yaml").write_text(
+            _runnable(f"name: wideloop\ncategory: test\ndescription: {long_desc}\n")
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        for tw in (80, 100, 120, 160):
+            with patch(
+                "little_loops.cli.loop.info.get_builtin_loops_dir",
+                return_value=tmp_path / "nonexistent",
+            ):
+                with patch("little_loops.cli.loop.info.terminal_width", return_value=tw):
+                    cmd_list(args, loops_dir)
+            out = capsys.readouterr().out
+            entry = next(ln for ln in out.split("\n") if "wideloop" in ln)
+            width = _display_width(entry.rstrip("\n"))
+            # Fills to exactly TW (never over, never leaving a gap). The engine
+            # allots ``desc_budget = tw - used`` so a long desc lands on TW.
+            assert width == tw, (
+                f"long-desc row should fill to TW={tw}, got width={width}: {entry!r}"
+            )
 
     def test_no_truncate_flag_bypasses_truncation(
         self,
@@ -2303,13 +2347,15 @@ class TestCmdListENH2539Polished:
             f"(\\033[1m), got \\033[{last_opener!r}: {row!r}"
         )
 
-    def test_description_line2_wraps_below_row(
+    def test_multiline_description_no_continuation_row(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Multi-line YAML descriptions render line 2 as a wrapped
-        continuation below the row, indented to clearly subordinate it.
+        """Multi-line YAML descriptions do NOT spill onto wrapped continuation
+        lines below the row. Each loop is a single truncated line, matching
+        ``ll-issues list`` (BUG-2554 single-line invariant). Only the first
+        description line is rendered; the remainder lives in ``--json`` only.
         """
         from little_loops.cli.loop.info import cmd_list
 
@@ -2320,7 +2366,7 @@ class TestCmdListENH2539Polished:
                 "name: alpha\ncategory: cat\n"
                 "description: |\n"
                 "  First line summary.\n"
-                "  Second line continues here and gets wrapped below the row.\n"
+                "  Second line continues here and would previously wrap below.\n"
             )
         )
 
@@ -2334,18 +2380,18 @@ class TestCmdListENH2539Polished:
 
         assert result == 0
         out = capsys.readouterr().out
-        # Line 1 stays on the row as before.
+        # Line 1 stays on the row.
         assert "First line summary." in out
-        # Line 2 appears below the row, wrapped and indented.
-        assert "Second line continues here" in out
-        # The continuation is indented to sit subordinate to the loop row.
-        continuation_line = next(
-            ln for ln in out.splitlines() if "Second line continues here" in ln
-        )
-        # 2-space leaf indent + 4-space line-2 indent = "      " (6 spaces).
-        assert continuation_line.startswith("      "), (
-            f"line-2 continuation must be indented past the row, got: {continuation_line!r}"
-        )
+        # Line 2 is NOT surfaced as a continuation line.
+        assert "Second line continues here" not in out
+        # No 4-space-indented continuation row is emitted (strip ANSI first so
+        # pure-whitespace indents are detectable).
+        import re as _re_ansi
+
+        stripped = _re_ansi.sub(r"\033\[[0-9;]*m", "", out)
+        for ln in stripped.splitlines():
+            if ln.startswith("    ") and ln[4:].strip():
+                pytest.fail(f"Unexpected continuation row: {ln!r}")
 
     def test_single_line_description_no_extra_row(
         self,

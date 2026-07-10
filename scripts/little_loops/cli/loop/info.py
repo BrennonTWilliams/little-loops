@@ -32,7 +32,6 @@ from little_loops.cli.loop.layout import (  # noqa: F401
     _render_fsm_diagram,
     _truncate_to_width,
     _truncate_to_width_ansi,
-    _wrap_to_width,
 )
 from little_loops.cli.output import (
     ACRONYMS,  # noqa: F401  (re-exported for tests/lint)
@@ -71,17 +70,18 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             pass
         desc_raw = spec.get("description", "") or ""
         if desc_raw.strip():
-            raw_lines = desc_raw.splitlines()
-            desc = raw_lines[0].rstrip() if raw_lines else ""
-            # ENH: surface remaining description as a wrapped continuation
-            # line below the row. Empty when the description is single-line.
-            description_line2 = ""
-            if len(raw_lines) > 1:
-                tail = [ln.strip() for ln in raw_lines[1:] if ln.strip()]
-                description_line2 = " ".join(tail).rstrip()
+            # Collapse newlines so ``ll-loop list`` renders the full description
+            # on a single line (truncated to width by _emit_row), independent of
+            # how the YAML block scalar was wrapped. Matches ``ll-issues list``
+            # single-line rows. BUG-2566 follow-up: rows for multi-line
+            # descriptions used to be cut short because only the first line
+            # was kept, leaving horizontal space unused.
+            desc = " ".join(ln.strip() for ln in desc_raw.splitlines() if ln.strip())
         else:
             desc = ""
-            description_line2 = ""
+        # Retained (always empty) for ``--json`` shape stability; the whole
+        # description now lives in ``description``.
+        description_line2 = ""
         category = spec.get("category", "") or ""
         labels: list[str] = spec.get("labels", []) or []
         visibility = spec.get("visibility", "public") or "public"
@@ -414,16 +414,13 @@ def cmd_list(
             # (e.g. wide-glyph names that defeat the pre-truncation cap).
             if not no_truncate and _display_width(row_str) > tw:
                 row_str = _truncate_to_width_ansi(row_str, tw - 1)
+            # One row per loop, already truncated to terminal width above —
+            # matching ``ll-issues list``. Multi-line YAML descriptions are NOT
+            # spilled onto wrapped continuation lines below the row (that
+            # defeated the single-line truncation intent of BUG-2554). The
+            # remaining text is still exposed as ``description_line2`` in the
+            # ``--json`` output for programmatic consumers.
             print(row_str)
-            # Surface the rest of the description as a wrapped continuation
-            # line below the row. Plain text — the dim attribute is reserved
-            # for category headers and rollup badges (test_description_text_not_dim).
-            line2 = lp.get("description_line2") or ""
-            tw_now = terminal_width(default=120)
-            if line2 and tw_now >= 50:
-                wrap_w = max(20, tw_now - 4)
-                for cont in _wrap_to_width(line2, wrap_w):
-                    print(f"{indent}    {cont}")
 
         # ENH-2539: subgroup subheads for categories with a dominant prefix
         # cluster (≥3 members sharing a prefix). When no subgroup qualifies,
