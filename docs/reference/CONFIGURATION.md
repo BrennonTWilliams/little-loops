@@ -781,6 +781,17 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
 | `auto_generate` | `list[str]` | `[]` | Issue type prefixes that filter which issue types are processed when running `ll-issues decisions generate`. Empty list processes all types. Example: `["FEAT", "ENH"]` skips BUG entries. |
 
+**Integrity gate (ENH-2591).** The local test suite
+(`python -m pytest scripts/tests/`) is this project's CI per `.claude/CLAUDE.md`.
+A pytest belt at [`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py)
+shells out to `ll-verify-decisions` against the live `.ll/decisions.yaml`
+(positive case) and an OTHE-203 corrupted `tmp_path` fixture (negative
+case), so any YAML parse error, missing required field, or unknown
+entry-type discriminator fails the local suite — closing the
+`git commit --no-verify` and non-hook edit paths that the pre-commit
+hook (ENH-2590) alone cannot cover. The gate skips gracefully when
+`ll-verify-decisions` is absent from `PATH`.
+
 ### `learning_tests`
 
 Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.

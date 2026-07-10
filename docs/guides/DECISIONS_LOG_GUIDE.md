@@ -509,7 +509,10 @@ ll-verify-decisions --config-root /path/to/repo
 ```
 
 See [`scripts/tests/test_decisions_yaml_pre_commit_gate.py`](../../scripts/tests/test_decisions_yaml_pre_commit_gate.py)
-for the end-to-end pre-commit fixture pattern.
+for the end-to-end pre-commit fixture pattern and
+[`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py)
+for the pytest CI belt (positive live-file case + negative OTHE-203
+fixture case against `ll-verify-decisions`).
 
 ## See Also
 
