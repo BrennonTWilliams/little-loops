@@ -54,7 +54,7 @@ In `scripts/little_loops/cli/issues/show.py`:
   `Norm: ✓ │ Fmt: ✗`, and `Captured at: 2026-07-10T00:00:00Z` duplicating
   `Discovered: 2026-07-10` on the same day.
 
-## Proposed Behavior
+## Proposed Solution
 
 1. **Reflow paragraphs before wrapping.** Split the summary on blank lines,
    join each paragraph's words, then `textwrap.wrap(..., break_long_words=False)`
@@ -130,6 +130,31 @@ In `scripts/little_loops/cli/issues/show.py`:
       is truncated rather than bleeding past the right border.
 - [ ] Tests cover the reflow fix and truncation guard.
 
+## Scope Boundaries
+
+- **In scope**: Rendering of `_render_card` only — summary reflow, card width,
+  color/weight hierarchy, intra-row separator, low-signal row pruning/collapse,
+  and metadata column alignment.
+- **Out of scope**: New content or fields on the card (surfacing closure
+  context, relationships, discovery, decision coupling) — that is ENH-2535.
+- **Out of scope**: Changes to the issue data model, frontmatter schema, or the
+  `ll-issues show` command surface (flags, arguments).
+- **Out of scope**: Other CLI renderers — `ll-loop list` scanning-first work is
+  tracked separately under ENH-2572.
+
+## Impact
+
+- **Priority**: P3 - Quality-of-life UX polish on a frequently-hit surface
+  (`ll-issues show`); no functional blocker, so below feature/bug work.
+- **Effort**: Small - Self-contained in a single renderer function
+  (`_render_card`); reuses existing `_ljust`/`textwrap` primitives, no new
+  dependencies or data plumbing.
+- **Risk**: Low - Pure presentation change with no data-model impact; primary
+  hazards (ANSI-aware padding, unbreakable-token overflow) are enumerated in
+  Correctness Notes and covered by the acceptance criteria's test requirement.
+- **Breaking Change**: No - Output formatting only; no API, flag, or schema
+  changes.
+
 ## Related Issues
 
 - **ENH-2572** — `ll-loop list` UX overhaul (the scanning-first sibling this
@@ -148,4 +173,5 @@ _None identified._
 - **Priority**: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-07-10T20:13:04 - `2b14d541-25a4-44a2-b564-12e3bfaf1c45.jsonl`
 - `/ll:capture-issue` - 2026-07-10T03:10:36Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35fe1048-04fc-45c5-b8aa-3c931ebbd1d9.jsonl`
