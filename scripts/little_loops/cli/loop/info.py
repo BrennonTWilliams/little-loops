@@ -79,9 +79,6 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             desc = " ".join(ln.strip() for ln in desc_raw.splitlines() if ln.strip())
         else:
             desc = ""
-        # Retained (always empty) for ``--json`` shape stability; the whole
-        # description now lives in ``description``.
-        description_line2 = ""
         category = spec.get("category", "") or ""
         labels: list[str] = spec.get("labels", []) or []
         visibility = spec.get("visibility", "public") or "public"
@@ -89,7 +86,6 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
             visibility = "public"
         return {
             "description": desc,
-            "description_line2": description_line2,
             "category": category,
             "labels": labels,
             "visibility": visibility,
@@ -97,7 +93,6 @@ def _load_loop_meta(path: Path) -> dict[str, Any]:
     except Exception:
         return {
             "description": "",
-            "description_line2": "",
             "category": "",
             "labels": [],
             "visibility": "public",
@@ -286,7 +281,6 @@ def cmd_list(
                 "labels": lp["labels"],
                 "visibility": lp.get("visibility", "public"),
                 "description": lp["description"],
-                "description_line2": lp.get("description_line2", ""),
             }
             if lp["builtin"]:
                 item["built_in"] = True
@@ -375,8 +369,20 @@ def cmd_list(
             # reads identically across every terminal palette (no chromatic
             # ambiguity with category headers or kind labels). The bold weight
             # keeps it the most prominent thing in the row.
+            # Leaf rows under a subgroup subhead carry a wider indent
+            # (4 spaces) than flat / no-subgroup rows (2 spaces). The name
+            # field is a fixed-width column, so without compensating, the
+            # extra indent shifts the kind/labels/desc columns right and they
+            # fall out of vertical alignment across subgrouped vs flat rows in
+            # the same listing. Absorb the extra indent into the name field
+            # width (and shrink the truncation cap to match) so the kind
+            # column begins at a constant absolute column for every row.
+            _base_indent = 2
+            _extra_indent = max(0, _display_width(indent) - _base_indent)
+            _name_field = max(1, name_col - _extra_indent)
+            _name_cap = max(1, _MAX_NAME_COL - _extra_indent)
             name_str = colorize(
-                _truncate(_display_name(lp["name"]), _MAX_NAME_COL).ljust(name_col),
+                _truncate(_display_name(lp["name"]), _name_cap).ljust(_name_field),
                 "1",
             )
             kind_value = _kind_for(lp)
@@ -415,11 +421,11 @@ def cmd_list(
             if not no_truncate and _display_width(row_str) > tw:
                 row_str = _truncate_to_width_ansi(row_str, tw - 1)
             # One row per loop, already truncated to terminal width above —
-            # matching ``ll-issues list``. Multi-line YAML descriptions are NOT
-            # spilled onto wrapped continuation lines below the row (that
-            # defeated the single-line truncation intent of BUG-2554). The
-            # remaining text is still exposed as ``description_line2`` in the
-            # ``--json`` output for programmatic consumers.
+            # matching ``ll-issues list``. Multi-line YAML descriptions are
+            # collapsed to a single space-joined string upstream in
+            # ``_load_loop_meta`` and rendered inline. Earlier BUG-2566 work
+            # removed the wrapped continuation block that defeated the
+            # single-line truncation intent of BUG-2554.
             print(row_str)
 
         # ENH-2539: subgroup subheads for categories with a dominant prefix

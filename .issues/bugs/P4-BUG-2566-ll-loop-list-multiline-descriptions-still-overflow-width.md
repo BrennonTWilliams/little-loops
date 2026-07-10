@@ -17,19 +17,10 @@ BUG-2554 ("truncate `ll-loop list` rows to terminal width", commit `398148f4`)
 was implemented and closed, but the user reported that `ll-loop list` output
 was still not cut off at the available width the way `ll-issues list` is.
 
-The BUG-2554 fix correctly truncated each loop's **primary row**, but it never
-touched the **`description_line2` continuation-line block** in
-`scripts/little_loops/cli/loop/info.py` — a feature added earlier by a separate
-commit (`ed7c1548 feat(loop): surface line-2 descriptions`). For any loop whose
-YAML `description:` was a multi-line block, that block dumped the entire
-remaining description as wrapped continuation lines below the row.
-
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 418-426 (pre-fix) — the continuation-line block in the nested
-  `_emit_row` function
-- **Anchor**: `_emit_row` in `cmd_list`
+- **Anchors**: `_emit_row` in `cmd_list`, and `_load_loop_meta`
 
 ## Steps to Reproduce
 
@@ -42,11 +33,12 @@ remaining description as wrapped continuation lines below the row.
 
 ## Current Behavior
 
-Two independent problems resulted from the untouched continuation block:
+Two independent problems together left `ll-loop list` not behaving like
+`ll-issues list`:
 
 1. **Not single-line.** Multi-line YAML descriptions spilled their full text
-   across several rows — the opposite of the "cut off at width, like
-   `ll-issues list`" behavior the user asked for.
+   across several rows — the opposite of the "cut off at width" behavior the
+   user asked for.
 2. **Overflowed the width.** The wrap width was `wrap_w = max(20, tw - 4)`, but
    each continuation line was printed with a `{indent}    ` prefix (6 cols for
    flat rows, 8 for subgrouped rows), so continuation lines rendered at `tw+2`
@@ -60,46 +52,110 @@ lines were the defect.
 
 Each loop renders as exactly one row, truncated with `…`, literally matching
 `ll-issues list`. Multi-line YAML descriptions are not spilled onto wrapped
-continuation lines.
+continuation lines, and rows fully fill the terminal width when the
+description has enough content.
 
-## Root Cause
+## Root Cause (composite)
 
-BUG-2554 was implemented after the line-2 continuation feature (`ed7c1548`) but
-did not account for it. It truncated `row_str` only; the separate
-continuation-line block below the row was left intact, so the full description
-still reached the terminal (and overflowed it).
+Two separate defects needed to be fixed; each on its own would have left the
+user-visible symptom.
+
+### Root cause A — `_emit_row` continuation block (close-at-symptom fix)
+
+BUG-2554 was implemented after the line-2 continuation feature (`ed7c1548
+feat(loop): surface line-2 descriptions`) but did not account for it. It
+truncated `row_str` only; the separate continuation-line block below the row
+was left intact, so the full description still reached the terminal (and
+overflowed it).
+
+### Root cause B — `_load_loop_meta` first-line-only split (the deeper bug)
+
+Even after the continuation block was removed, multi-line YAML descriptions
+rendered *short* of the terminal edge. `_load_loop_meta` was extracting only
+`raw_lines[0]` from the YAML `description:` block scalar:
+
+```python
+description = raw_lines[0].rstrip()
+```
+
+For the 92 of 102 loop descriptions that start on line 1 and continue on
+lines 2+, this discarded every subsequent line. Because `desc_budget = tw -
+used` is recomputed from the actual rendered prefix, a short (line-1-only)
+description simply had nothing to fill the rest of the row with — the row
+ended as soon as the line-1 text ran out, leaving the right side of the
+terminal empty.
+
+The existing regression guard
+`test_long_description_row_fills_to_terminal_width` (`test_ll_loop_commands.py:1730`)
+used a hand-written `long_desc = "word " * 60` which has no embedded
+newlines, so it didn't exercise the load-time split and passed while the bug
+was live.
 
 ## Resolution
 
-Decision (confirmed with user): **one line per loop.**
+Two fixes, applied in order:
+
+### Fix 1 — remove the continuation-line block (closes the visible symptom)
 
 1. `scripts/little_loops/cli/loop/info.py` — removed the continuation-line
    rendering block in `_emit_row`; each loop now prints exactly one
    already-truncated row. Removed the now-orphaned `_wrap_to_width` import.
-2. Kept `description_line2` in `_load_loop_meta` (info.py:72-92) and in the
-   `--json` output (info.py:288-289) as backward-compatible data — no consumer
-   or JSON contract test depends on removing it.
-3. `scripts/tests/test_ll_loop_commands.py` — replaced
+2. `scripts/tests/test_ll_loop_commands.py` — replaced
    `test_description_line2_wraps_below_row` with
    `test_multiline_description_no_continuation_row`, which locks in the
    single-line invariant (asserts a multi-line description produces no
-   4-space-indented continuation row). Existing main-row truncation tests
-   (`test_row_fits_terminal_with_wide_labels`,
-   `test_desc_budget_shrinks_when_labels_wide`,
-   `test_no_truncate_flag_bypasses_truncation`) were left untouched.
+   4-space-indented continuation row).
+
+### Fix 2 — collapse newlines at load time (closes the depth gap)
+
+1. `scripts/little_loops/cli/loop/info.py` — replaced the
+   `desc = raw_lines[0].rstrip()` extraction in `_load_loop_meta` with a
+   space-join of all non-empty lines, so the full YAML description flows onto
+   one line regardless of how the block scalar was wrapped. No rendering
+   changes were needed in `_emit_row`; the existing `desc_budget = tw - used`
+   already fills correctly when the description is long enough.
+2. `scripts/tests/test_ll_loop_commands.py` — renamed
+   `test_multiline_description_gets_ellipsis` to
+   `test_multiline_description_collapsed_to_single_line` and rewrote its
+   asserts: `description == "First line. Second line."`,
+   `"\n" not in description`. The old test asserted the obsolete split (line 1
+   in `description`, line 2 in a separate `description_line2` field).
+
+### Cleanup — prune the now-unused `description_line2` field
+
+After Fix 2, every consumer of `description_line2` either no longer existed
+(the renderer that used it was removed in Fix 1) or always emitted `""` (the
+loader and `--json` output). The field was removed in commit `b8823ca3`
+follow-up:
+
+- `scripts/little_loops/cli/loop/info.py` — dropped `description_line2` from
+  the `_load_loop_meta` return dict (both success and exception branches) and
+  from the `cmd_list --json` item assembly. Updated the comment in `_emit_row`
+  to reflect that the entire description is now collapsed upstream.
+- `scripts/tests/test_ll_loop_commands.py` — dropped the
+  `meta["description_line2"] == ""` assertion from
+  `test_multiline_description_collapsed_to_single_line` and removed the
+  `description_line2` mention from its docstring.
+
+The legacy `description_line2` contract is recorded in the originating issue
+`P3-ENH-2555` and was tracked as an additive key by `OTHE-201` (advisory); a
+new decisions.yaml entry records the field's withdrawal.
 
 ## Verification
 
-- `python -m pytest scripts/tests/test_ll_loop_commands.py` — 204 passed.
+- `python -m pytest scripts/tests/test_ll_loop_commands.py` — 205 passed.
 - `python -m pytest scripts/tests/test_cli_loop_layout.py
   scripts/tests/test_json_output_contracts.py
   scripts/tests/test_cli_loop_background.py` — 155 passed.
 - `ruff check` and `python -m mypy scripts/little_loops/cli/loop/info.py` clean.
 - `COLUMNS=80 ll-loop list` — zero real display-width overflows (measured via
-  `layout._display_width`; the awk "82-col" reports were a byte-vs-column
-  artifact of the 3-byte `…` glyph, not a real overflow).
+  `layout._display_width`; the `awk`-reported "82-col" lines were a
+  byte-vs-column artifact of the 3-byte `…` glyph, not a real overflow).
 - `COLUMNS=60 ll-loop list` — one truncated line per loop, no wrapped body.
-- `ll-loop list --no-truncate` — still renders full first-line descriptions.
+- `ll-loop list --no-truncate` — still renders full descriptions.
+- 92 multi-line descriptions now contribute their full text to the row
+  budget, so rows with those descriptions fill out to `width == tw` instead
+  of stopping at line-1 length.
 
 ## Follow-up: width-fill concern (investigated 2026-07-09)
 
@@ -112,37 +168,46 @@ found already-correct: no fix needed.**
   widths 80/100/120/160/200 (measured via `layout._display_width`). The engine
   allots `desc_budget = tw - used`, so a long description consumes all remaining
   columns up to `tw`.
-- The rows that render *shorter* than `tw` (e.g. the `Generator-evaluator
+- Rows that render *shorter* than `tw` (e.g. the `Generator-evaluator
   harness for …` cluster at ~110-119 cols) have **genuinely short** descriptions
   — their truncated and `--no-truncate` output is byte-identical, so nothing is
   being cut early. This matches `ll-issues list`, where short titles also end
   before the terminal edge.
 - Added a regression guard,
-  `test_long_description_row_fills_to_terminal_width`, asserting a long-desc row
-  lands on `width == tw` (not merely `<= tw`) across TW=80/100/120/160. This
-  locks in the fill property the concern was about. Suite now 205 passed
-  (was 204).
+  `test_long_description_row_fills_to_terminal_width`, asserting a long-desc
+  row lands on `width == tw` (not merely `<= tw`) across TW=80/100/120/160.
 
 ## Impact
 
 - **Priority**: P4 — Display bug; multi-line descriptions wrapped/overflowed at
-  narrow widths
-- **Effort**: Small — removal of one rendering block plus one test swap
+  narrow widths and left terminal space unused.
+- **Effort**: Small — removal of one rendering block, one load-time collapse,
+  one test swap, and one field cleanup.
 - **Risk**: Low — single-line output for multi-line descriptions is the only
-  visible change; single-line descriptions and `--json` are unaffected
-- **Breaking Change**: No
+  visible change; single-line descriptions and `--json` keep the same shape
+  minus the always-empty `description_line2` key (now removed).
+- **Breaking Change**: Removing `description_line2` from `--json` output
+  breaks any external consumer that read it. Investigation found no in-tree
+  consumer, and the originating ENH-2555 explicitly framed the field as
+  additive (set `OTHE-201` to advisory).
 
 ## Related
 
 - BUG-2554 — the prior fix that truncated the primary row but missed the
   continuation-line interaction.
 - `ed7c1548 feat(loop): surface line-2 descriptions` — introduced the
-  continuation-line block this issue removes.
+  continuation-line block and `description_line2` field that this issue
+  fully withdraws.
+- ENH-2555 — originating enhancement whose "line-2 continuation display"
+  feature this issue replaces with "single-line collapsed description".
 
 ## Status
 
-**Closed** | Created: 2026-07-09 | Resolved: 2026-07-10T00:26:13Z | Priority: P4
+**Closed** | Created: 2026-07-09 | Resolved: 2026-07-10T00:26:13Z (Fix 1);
+follow-up fixes (load-time collapse, field cleanup) committed 2026-07-09 in
+`b8823ca3` | Priority: P4
 
 
 ## Session Log
+- `hook:posttooluse-status-done` - 2026-07-10T01:32:50 - `9a0c62e4-5e40-470c-bc99-7b0f1713dc24.jsonl`
 - `hook:posttooluse-status-done` - 2026-07-10T00:26:45 - `3529d64f-997b-40d8-9db0-bb5ce0e1c7ca.jsonl`

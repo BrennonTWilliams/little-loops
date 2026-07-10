@@ -1205,6 +1205,54 @@ class TestLoopListFormatting:
         positions = list(desc_positions.values())
         assert positions[0] == positions[1]
 
+    def test_column_alignment_across_subgroups_and_flat_tail(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Rows under an auto-clustered subgroup subhead (4-space indent) must
+        keep their kind/description columns aligned with the category's flat
+        tail rows (2-space indent). Regression: the fixed-width name field did
+        not compensate for the extra subgroup indent, shifting every column to
+        the right for subgrouped rows only.
+        """
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # A dominant "spike-*" prefix cluster (>=3 members, >=50% of category)
+        # triggers a subgroup subhead; "other" falls into the flat tail.
+        for name in ("spike-alpha", "spike-beta", "spike-gamma"):
+            (loops_dir / f"{name}.yaml").write_text(
+                _runnable(f"name: {name}\ncategory: test\ndescription: desc-{name}\n")
+            )
+        (loops_dir / "other.yaml").write_text(
+            _runnable("name: other\ncategory: test\ndescription: desc-other\n")
+        )
+
+        args = argparse.Namespace(running=False, status=None, json=False, category=None, label=None)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        ansi_re = re.compile(r"\033\[[0-9;]*m")
+        # Description column must start at the same absolute position for a
+        # subgrouped row and a flat-tail row.
+        positions = {}
+        for line in out.split("\n"):
+            clean = ansi_re.sub("", line)
+            for name in ("desc-spike-alpha", "desc-other"):
+                if name in clean:
+                    positions[name] = clean.index(name)
+        assert set(positions) == {"desc-spike-alpha", "desc-other"}
+        assert positions["desc-spike-alpha"] == positions["desc-other"], (
+            f"columns misaligned: {positions}"
+        )
+
     def test_description_truncation_at_narrow_width(
         self,
         tmp_path: Path,
@@ -1265,8 +1313,7 @@ class TestLoopListFormatting:
         """_load_loop_meta() collapses multi-line descriptions into a single
         space-joined ``description`` string so ``ll-loop list`` rows can fill
         the full terminal width regardless of YAML block-scalar wrapping
-        (BUG-2566 follow-up). ``description_line2`` is retained as ``""`` for
-        ``--json`` shape stability."""
+        (BUG-2566 follow-up)."""
         from little_loops.cli.loop.info import _load_loop_meta
 
         loop_file = tmp_path / "multi.yaml"
@@ -1274,7 +1321,6 @@ class TestLoopListFormatting:
         meta = _load_loop_meta(loop_file)
 
         assert meta["description"] == "First line. Second line."
-        assert meta["description_line2"] == ""
         assert "\n" not in meta["description"]
         assert "…" not in meta["description"]
 
@@ -2352,10 +2398,13 @@ class TestCmdListENH2539Polished:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Multi-line YAML descriptions do NOT spill onto wrapped continuation
-        lines below the row. Each loop is a single truncated line, matching
-        ``ll-issues list`` (BUG-2554 single-line invariant). Only the first
-        description line is rendered; the remainder lives in ``--json`` only.
+        """Multi-line YAML descriptions are collapsed into a single
+        space-joined line and do NOT spill onto wrapped continuation lines
+        below the row (BUG-2554 single-line invariant, extended by the
+        BUG-2566 follow-up that keeps the *full* description rather than only
+        the first line). The terminal width is pinned wide so the assertion
+        tests the single-line collapse itself, not incidental width
+        truncation.
         """
         from little_loops.cli.loop.info import cmd_list
 
@@ -2372,23 +2421,31 @@ class TestCmdListENH2539Polished:
 
         args = _base_args(tmp_path)
         args.label = []  # type: ignore[attr-defined]
+        # Pin a wide terminal so the full description is rendered without width
+        # truncation — otherwise this test would pass only by accident on
+        # narrow terminals that clip the second line away, and fail on wide /
+        # non-TTY runners (e.g. CI, where width defaults to 120).
         with patch(
             "little_loops.cli.loop.info.get_builtin_loops_dir",
             return_value=tmp_path / "nonexistent",
+        ), patch(
+            "little_loops.cli.loop.info.terminal_width",
+            return_value=200,
         ):
             result = cmd_list(args, loops_dir)
 
         assert result == 0
         out = capsys.readouterr().out
-        # Line 1 stays on the row.
-        assert "First line summary." in out
-        # Line 2 is NOT surfaced as a continuation line.
-        assert "Second line continues here" not in out
-        # No 4-space-indented continuation row is emitted (strip ANSI first so
-        # pure-whitespace indents are detectable).
         import re as _re_ansi
 
         stripped = _re_ansi.sub(r"\033\[[0-9;]*m", "", out)
+        # Both description lines are collapsed onto a single space-joined row —
+        # the full text lives inline, not just the first line.
+        row_lines = [ln for ln in stripped.splitlines() if "First line summary." in ln]
+        assert len(row_lines) == 1, f"expected exactly one description row, got {row_lines!r}"
+        row = row_lines[0]
+        assert "First line summary. Second line continues here" in row
+        # No 4-space-indented continuation row is emitted below the loop row.
         for ln in stripped.splitlines():
             if ln.startswith("    ") and ln[4:].strip():
                 pytest.fail(f"Unexpected continuation row: {ln!r}")
