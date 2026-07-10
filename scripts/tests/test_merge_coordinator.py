@@ -2491,7 +2491,8 @@ class TestEpicBranchMergeTarget:
                 coordinator._process_merge(merge_request)
 
             checkout_cmds = [
-                c for c in captured_commands
+                c
+                for c in captured_commands
                 if "checkout" in c and "epic/EPIC-2451-integration" in c
             ]
             assert len(checkout_cmds) >= 1
@@ -2564,15 +2565,11 @@ class TestEpicBranchMergeTarget:
 
             # The fetch target carries the substituted base (the epic branch).
             fetch_cmds = [
-                c for c in captured_commands
-                if "fetch" in c and "epic/EPIC-2451-integration" in c
+                c for c in captured_commands if "fetch" in c and "epic/EPIC-2451-integration" in c
             ]
             assert len(fetch_cmds) >= 1
             # Fetch failed (local-only), so rebase falls back to the local epic branch.
-            rebase_cmds = [
-                c for c in captured_commands
-                if "rebase" in c and "--abort" not in c
-            ]
+            rebase_cmds = [c for c in captured_commands if "rebase" in c and "--abort" not in c]
             assert rebase_cmds
             assert rebase_cmds[0] == ["git", "rebase", "epic/EPIC-2451-integration"]
 
@@ -2604,8 +2601,5 @@ class TestEpicBranchMergeTarget:
             with patch("subprocess.run", side_effect=mock_run):
                 coordinator._handle_conflict(merge_request)
 
-            fetch_cmds = [
-                c for c in captured_commands
-                if "fetch" in c and config.base_branch in c
-            ]
+            fetch_cmds = [c for c in captured_commands if "fetch" in c and config.base_branch in c]
             assert len(fetch_cmds) >= 1

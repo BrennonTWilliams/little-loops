@@ -762,9 +762,7 @@ class TestSynthPopReadinessGate:
         for nid in ("n0", "n1", "n2", "n3", "n4"):
             self._node_dir(rd, nid)
             (rd / "nodes" / nid / "plan.md").write_text(f"# {nid}\n")
-        (rd / "edges.tsv").write_text(
-            "n0\tn1\tone\nn0\tn2\ttwo\nn2\tn3\tthree\nn2\tn4\tfour\n"
-        )
+        (rd / "edges.tsv").write_text("n0\tn1\tone\nn0\tn2\ttwo\nn2\tn3\tthree\nn2\tn4\tfour\n")
         (rd / "depth_map.txt").write_text("n0 0\nn1 1\nn2 1\nn3 2\nn4 2\n")
         for leaf in ("n1", "n3", "n4"):
             self._seed_final(rd, leaf)
@@ -831,9 +829,7 @@ class TestSynthPopReadinessGate:
 
     # -- test 4: no double-pop under N-worker contention --------------------
 
-    def test_pop_never_returns_same_node_twice_under_contention(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pop_never_returns_same_node_twice_under_contention(self, tmp_path: Path) -> None:
         rd, ids = self._seed_flat_ready(tmp_path, k=4)
 
         def drain() -> list[str]:
@@ -855,9 +851,7 @@ class TestSynthPopReadinessGate:
 
     # -- test 5: no lost node with simultaneous callers ---------------------
 
-    def test_pop_with_all_children_ready_handles_simultaneous_callers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pop_with_all_children_ready_handles_simultaneous_callers(self, tmp_path: Path) -> None:
         k = 8
         rd, ids = self._seed_flat_ready(tmp_path, k=k)
 
@@ -878,9 +872,7 @@ class TestSynthPopReadinessGate:
 
     # -- test 6: WAIT-vs-DRAIN disambiguation -------------------------------
 
-    def test_pop_returns_none_when_nonempty_but_nothing_ready(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pop_returns_none_when_nonempty_but_nothing_ready(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
         self._node_dir(rd, "n0")
         self._node_dir(rd, "n1")  # child, not yet integrated
@@ -893,9 +885,7 @@ class TestSynthPopReadinessGate:
 
     # -- test 7: mark_complete observable + idempotent ----------------------
 
-    def test_mark_complete_touches_done_sentinel_and_is_idempotent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_mark_complete_touches_done_sentinel_and_is_idempotent(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
         rd.mkdir()
         sentinel = rd / "done" / "n0.done"

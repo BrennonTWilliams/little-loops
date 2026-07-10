@@ -52,6 +52,8 @@ def test_shell_row_unaffected() -> None:
     )
 
     out = _render(fsm)
-    row = next(ln for ln in out.splitlines() if ln.strip().startswith(("→ run", "run")) or "run" in ln)
+    row = next(
+        ln for ln in out.splitlines() if ln.strip().startswith(("→ run", "run")) or "run" in ln
+    )
     assert "echo hello" in out
     assert "sub-loop" not in row
