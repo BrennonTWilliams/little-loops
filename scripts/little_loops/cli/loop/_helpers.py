@@ -1176,17 +1176,58 @@ def get_builtin_loops_dir() -> Path:
     return Path(__file__).parent.parent.parent / "loops"
 
 
+def _relativize_to_cwd(value: str) -> str:
+    """Shorten an absolute path that lives under the current working directory.
+
+    Absolute paths nested under ``cwd`` are rendered relative to it (e.g.
+    ``/home/user/proj/.loops/runs/x/`` -> ``.loops/runs/x/``). Any trailing
+    slash on *value* is preserved. Values that are already relative, or that
+    point outside ``cwd``, are returned unchanged.
+    """
+    try:
+        path = Path(value)
+        if not path.is_absolute():
+            return value
+        rel = path.relative_to(Path.cwd())
+    except (ValueError, OSError):
+        return value
+    result = str(rel)
+    if value.endswith("/") and not result.endswith("/"):
+        result += "/"
+    return result
+
+
+def _display_loop_path(loop_path: Path) -> str:
+    """Render *loop_path* compactly for artifact headers.
+
+    Built-in FSM loops (bundled under :func:`get_builtin_loops_dir`) are shown
+    by filename only. Project-level loops (typically under ``.loops/``) and any
+    other paths under the current working directory are shown relative to it.
+    Paths that resolve outside both locations are returned unchanged.
+    """
+    try:
+        resolved = loop_path.resolve()
+        builtin_dir = get_builtin_loops_dir().resolve()
+        resolved.relative_to(builtin_dir)
+        return loop_path.name
+    except (ValueError, OSError):
+        return _relativize_to_cwd(str(loop_path))
+
+
 def _artifact_lines(fsm: FSMLoop, loop_path: Path | None) -> list[tuple[str, str]]:
     """Extract path-like context values from *fsm* for display in artifact headers.
 
     Returns a list of ``(key, value)`` pairs where *value* is a non-empty string
     that starts with ``.``, ``/``, or ``~``, or contains ``/``, and does not
     contain ``${`` (unresolved template expression). When *loop_path* is not
-    ``None``, the first entry is always ``("loop", str(loop_path))``.
+    ``None``, the first entry is always ``("loop", ...)`` where the value is the
+    filename for built-in loops or a cwd-relative path for project-level loops.
+    Other path-like values (e.g. ``run_dir``) are relativized to the current
+    working directory when they live under it.
     """
     pairs: list[tuple[str, str]] = []
     if loop_path is not None:
-        pairs.append(("loop", str(loop_path)))
+        pairs.append(("loop", _display_loop_path(loop_path)))
     context: dict[str, Any] = getattr(fsm, "context", None) or {}
     for key, value in context.items():
         if not isinstance(value, str) or not value:
@@ -1194,7 +1235,7 @@ def _artifact_lines(fsm: FSMLoop, loop_path: Path | None) -> list[tuple[str, str
         if "${" in value:
             continue
         if value.startswith(".") or value.startswith("/") or value.startswith("~") or "/" in value:
-            pairs.append((key, value))
+            pairs.append((key, _relativize_to_cwd(value)))
     return pairs
 
 

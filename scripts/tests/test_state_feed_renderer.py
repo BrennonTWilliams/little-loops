@@ -433,3 +433,69 @@ class TestArtifactLines:
         keys = {k for k, v in result}
         assert "tmp_dir" in keys
         assert "home_dir" in keys
+
+    def test_builtin_loop_shows_filename_only(self) -> None:
+        """A built-in FSM loop path is displayed by filename only."""
+        from little_loops.cli.loop._helpers import (
+            _artifact_lines,
+            get_builtin_loops_dir,
+        )
+
+        fsm = _make_test_fsm()
+        loop_path = get_builtin_loops_dir() / "general-task.yaml"
+        result = _artifact_lines(fsm, loop_path)
+        assert result[0] == ("loop", "general-task.yaml")
+
+    def test_project_loop_shows_cwd_relative_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A project-level loop under cwd is displayed relative to cwd."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_path = loops_dir / "general-task.yaml"
+        loop_path.write_text("")
+
+        fsm = _make_test_fsm()
+        result = _artifact_lines(fsm, loop_path)
+        assert result[0] == ("loop", ".loops/general-task.yaml")
+
+    def test_context_path_under_cwd_is_relativized(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An absolute context path under cwd is shown relative, keeping trailing slash."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        monkeypatch.chdir(tmp_path)
+        run_dir = str(tmp_path / ".loops" / "runs" / "general-task-20260709T182714") + "/"
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": run_dir},
+        )
+        result = _artifact_lines(fsm, None)
+        pairs = dict(result)
+        assert pairs["run_dir"] == ".loops/runs/general-task-20260709T182714/"
+
+    def test_context_path_outside_cwd_is_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An absolute context path outside cwd is left unchanged."""
+        from little_loops.cli.loop._helpers import _artifact_lines
+
+        monkeypatch.chdir(tmp_path)
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"tmp_dir": "/tmp/scratch"},
+        )
+        result = _artifact_lines(fsm, None)
+        pairs = dict(result)
+        assert pairs["tmp_dir"] == "/tmp/scratch"
