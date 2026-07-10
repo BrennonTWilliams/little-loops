@@ -875,6 +875,7 @@ Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corres
 | `run_defaults.show_diagrams` | `string\|null` | `"clean"` | Inject `--show-diagrams <value>` into every invocation. Valid values: `layered`, `neighborhood`, `inline`, `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `default`. `null` disables. |
 | `run_defaults.mode` | `string\|null` | `null` | Reserved for a future `--mode` flag on `ll-loop run`. No effect until that flag is added. |
 | `run_defaults.include` | `string` | `""` | Default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`. |
+| `run_defaults.delay` | `number\|null` | `null` | Inject `--delay <seconds>` into every `ll-loop run` invocation (inter-iteration pause). Must be a non-negative number. Explicit `--delay` overrides. `null` disables (no pause injected). |
 
 ### `scratch_pad`
 

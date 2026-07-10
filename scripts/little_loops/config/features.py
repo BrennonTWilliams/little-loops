@@ -618,21 +618,35 @@ class LoopRunDefaults:
     show_diagrams: str | None = None
     mode: str | None = None
     include: str = ""
+    delay: float | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopRunDefaults:
-        """Create LoopRunDefaults from dictionary, validating show_diagrams."""
+        """Create LoopRunDefaults from dictionary, validating show_diagrams and delay."""
         show_diagrams = data.get("show_diagrams", None)
         if show_diagrams is not None and show_diagrams not in _VALID_SHOW_DIAGRAMS:
             raise ValueError(
                 f"loops.run_defaults.show_diagrams: {show_diagrams!r} is not valid. "
                 f"Valid values: {sorted(_VALID_SHOW_DIAGRAMS)}"
             )
+        delay = data.get("delay", None)
+        if delay is not None:
+            if not isinstance(delay, (int, float)) or isinstance(delay, bool):
+                raise ValueError(
+                    f"loops.run_defaults.delay: {delay!r} is not valid. "
+                    f"Expected a non-negative number of seconds."
+                )
+            if delay < 0:
+                raise ValueError(
+                    f"loops.run_defaults.delay: {delay!r} is not valid. "
+                    f"Must be a non-negative number of seconds."
+                )
         return cls(
             clear=data.get("clear", False),
             show_diagrams=show_diagrams,
             mode=data.get("mode", None),
             include=data.get("include", ""),
+            delay=delay,
         )
 
 

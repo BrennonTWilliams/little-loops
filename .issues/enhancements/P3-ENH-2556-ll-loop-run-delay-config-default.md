@@ -3,8 +3,9 @@ id: ENH-2556
 title: Config-defaultable --delay for ll-loop run via loops.run_defaults
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-09T03:17:41Z'
+completed_at: '2026-07-10T00:17:12Z'
 discovered_date: 2026-07-09
 discovered_by: capture-issue
 relates_to:
@@ -325,15 +326,50 @@ No new init wiring is in scope. [Agent 3 finding]
 
 ## Acceptance Criteria
 
-- [ ] `loops.run_defaults.delay` accepted in config and `config-schema.json`,
+- [x] `loops.run_defaults.delay` accepted in config and `config-schema.json`,
       default `null`, validated as non-negative number.
-- [ ] With `delay: N` set and no `--delay` flag, `ll-loop run` pauses N seconds
+- [x] With `delay: N` set and no `--delay` flag, `ll-loop run` pauses N seconds
       between iterations.
-- [ ] Explicit `--delay M` overrides the configured `N`.
-- [ ] Absent/`null` config key produces identical behavior to today.
-- [ ] `python -m pytest scripts/tests/` passes (new tests included).
+- [x] Explicit `--delay M` overrides the configured `N`.
+- [x] Absent/`null` config key produces identical behavior to today.
+- [x] `python -m pytest scripts/tests/` passes (new tests included). *(3 pre-existing
+      `rn-refine.yaml` failures are unrelated to this change and pre-date it — see
+      Resolution.)*
+
+## Resolution
+
+Implemented `loops.run_defaults.delay` following the `show_diagrams` structural
+precedent exactly:
+
+- **Dataclass** (`config/features.py`) — added `delay: float | None = None` to
+  `LoopRunDefaults` with non-negative-number validation in `from_dict` (rejects
+  `bool`, non-numeric, and negative values with a `ValueError`).
+- **Schema** (`config-schema.json`) — added `delay` (`["number","null"]`,
+  `default null`, `minimum 0`) under `loops.run_defaults`.
+- **Backfill** (`cli/loop/__init__.py`) — `if args.delay is None and rd.delay is
+  not None: args.delay = rd.delay`, gated on `args.command == "run"`. `resume`
+  intentionally left untouched per the issue's stated scope. Explicit `--delay`
+  always wins (populated by argparse before backfill runs).
+- **Tests** — extended `test_loop_cli_defaults.py` (CLI-level + dataclass-level:
+  default injection, explicit override, no-injection-when-absent, negative/
+  non-numeric ValueError) and added `test_loops_run_defaults_in_schema` to
+  `test_config_schema.py`.
+- **Docs/skill wiring** — `CONFIGURATION.md`, `API.md`, `CLI.md`, `LOOPS_GUIDE.md`,
+  and the `/ll:configure` skill (`areas.md`, `show-output.md`, `SKILL.md`).
+
+No `init/core.py` change (an absent key reads as `null`/disabled, matching `mode`
+and `include`).
+
+**Test status:** all new tests pass; the full suite has 14445 passing. Three
+pre-existing failures (`test_rn_refine.py::…test_synthesis_chain_present`,
+`test_builtin_loops.py::…test_no_bare_bash_variable_in_shell_actions`,
+`test_builtin_loop_interpolation.py[rn-refine.yaml]`) concern `rn-refine.yaml`
+(under active separate work, ENH-2565) and were confirmed to fail on a clean
+checkout without this change — they are out of scope for ENH-2556.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-10T00:16:30Z - `cd9248df-cb6b-4a02-ab4e-6a0ce1569d84.jsonl`
+- `/ll:ready-issue` - 2026-07-10T00:07:55 - `c0d62f64-6612-4398-a221-482107328da4.jsonl`
 - `/ll:confidence-check` - 2026-07-09T23:45:00 - `3900346d-dd47-4b19-b25f-58b0143712e9.jsonl`
 - `/ll:wire-issue` - 2026-07-09T23:34:17 - `c7eb1b8c-0172-49ad-b14a-4a7ee79cd87b.jsonl`
 - `/ll:refine-issue` - 2026-07-09T23:24:37 - `c8cd61c2-73e4-42dd-b1c2-a08f953c8a46.jsonl`

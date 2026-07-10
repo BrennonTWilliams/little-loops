@@ -116,7 +116,7 @@ Map argument names to config sections:
 | `decisions` | `decisions` | Decisions log: enabled, log_path, auto_generate |
 | `analytics` | `analytics` | Analytics capture: enabled, skills, corrections, file_events |
 | `history` | `history` | History.db consumer tuning |
-| `loops.run_defaults` | `loops.run_defaults` | Persistent defaults for `ll-loop run` (clear, show_diagrams, mode) |
+| `loops.run_defaults` | `loops.run_defaults` | Persistent defaults for `ll-loop run` (clear, show_diagrams, mode, delay) |
 
 ---
 
@@ -149,7 +149,7 @@ Configuration Areas
   decisions      [DEFAULT]    Decisions log: enabled, log_path, auto_generate
   analytics      [DEFAULT]     Analytics capture: enabled, skills, corrections, file_events
   history              [DEFAULT]     History.db consumer tuning
-  loops.run_defaults   [DEFAULT]     Persistent defaults for ll-loop run: clear, show_diagrams, mode
+  loops.run_defaults   [DEFAULT]     Persistent defaults for ll-loop run: clear, show_diagrams, mode, delay
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show

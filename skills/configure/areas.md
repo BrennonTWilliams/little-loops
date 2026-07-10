@@ -1390,6 +1390,7 @@ Current Loop Run Defaults
   clear:         {{config.loops.run_defaults.clear}}
   show_diagrams: {{config.loops.run_defaults.show_diagrams}}
   mode:          {{config.loops.run_defaults.mode}}
+  delay:         {{config.loops.run_defaults.delay}}
 ```
 
 ### About
@@ -1402,6 +1403,7 @@ Current Loop Run Defaults
   - Presets: `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`
   - Bare flag sentinel: `default` (enables diagrams with the runner's built-in default style)
 - **`mode`** (`string | null`, default `null`) — default execution mode flag passed to `ll-loop run`, e.g. `--dry-run` or `--interactive`
+- **`delay`** (`number | null`, default `null` = disabled) — inject `--delay <seconds>` (a non-negative inter-iteration pause) into every `ll-loop run`. Relieves host memory pressure between iterations or sets a consistent screen-recording cadence. Explicit `--delay` overrides
 
 Example config block:
 
@@ -1411,13 +1413,14 @@ Example config block:
     "run_defaults": {
       "clear": true,
       "show_diagrams": "summary",
-      "mode": "--dry-run"
+      "mode": "--dry-run",
+      "delay": 2
     }
   }
 }
 ```
 
-### Round 1 (3 questions)
+### Round 1 (4 questions)
 
 ```yaml
 questions:
@@ -1457,6 +1460,19 @@ questions:
       - label: "--interactive"
         description: "Pause at each state for manual confirmation"
     multiSelect: false
+
+  - header: "Delay"
+    question: "Inter-iteration pause (seconds) injected as --delay? (current: {{config.loops.run_defaults.delay}})"
+    options:
+      - label: "{{current delay}} (keep)"
+        description: "Keep current setting"
+      - label: "null (disabled)"
+        description: "No pause — run iterations back-to-back (default)"
+      - label: "2"
+        description: "Pause 2s between iterations (memory-pressure relief / recording cadence)"
+      - label: "custom"
+        description: "Enter a specific non-negative number of seconds"
+    multiSelect: false
 ```
 
 ### Configuration Result
@@ -1466,4 +1482,5 @@ Based on selections, update `.ll/ll-config.json`:
 - Map "Clear" choice to `loops.run_defaults.clear` (omit if default `false`)
 - Map "Diagrams" choice to `loops.run_defaults.show_diagrams`; use `null` to remove the key
 - Map "Mode" choice to `loops.run_defaults.mode`; use `null` to remove the key
+- Map "Delay" choice to `loops.run_defaults.delay` (non-negative number); use `null` to remove the key
 - Write the `loops.run_defaults` sub-object only when at least one field differs from its default

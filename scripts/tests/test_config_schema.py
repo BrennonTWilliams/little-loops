@@ -768,3 +768,27 @@ class TestConfigSchema:
         assert eb_props["merge_to_base_on_complete"]["default"] is True
         assert eb_props["open_pr"]["type"] == "boolean"
         assert eb_props["open_pr"]["default"] is False
+
+    def test_loops_run_defaults_in_schema(self) -> None:
+        """loops.run_defaults.delay must be declared as a nullable number (ENH-2556).
+
+        The run_defaults block has additionalProperties: false, so delay must be
+        explicitly declared or any config setting it will be rejected by JSON
+        Schema validation.
+        """
+        data = json.loads(_load_schema_text())
+        run_defaults = data["properties"]["loops"]["properties"]["run_defaults"]
+        assert run_defaults.get("additionalProperties") is False, (
+            "run_defaults block is expected to have additionalProperties: false"
+        )
+        rd_props = run_defaults["properties"]
+        assert "delay" in rd_props, (
+            "loops.run_defaults.delay is not declared in config-schema.json; configs "
+            "using it will be rejected by additionalProperties: false (ENH-2556)"
+        )
+        delay = rd_props["delay"]
+        assert delay["type"] == ["number", "null"], (
+            "loops.run_defaults.delay must allow null (type = ['number', 'null'])"
+        )
+        assert delay.get("default") is None, "loops.run_defaults.delay must default to null"
+        assert delay.get("minimum") == 0, "loops.run_defaults.delay must have minimum: 0"

@@ -126,6 +126,73 @@ class TestLoopRunDefaults:
             with pytest.raises(ValueError, match="show_diagrams"):
                 main_loop()
 
+    def test_delay_default_applied_from_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Config delay:2.5 backfills args.delay when --delay not passed on CLI."""
+        self._write_config(tmp_path, {"delay": 2.5})
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        args = mock_run.call_args[0][1]
+        assert args.delay == 2.5
+
+    def test_explicit_delay_overrides_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit --delay on CLI is not replaced by config delay."""
+        self._write_config(tmp_path, {"delay": 2.5})
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop", "--delay", "7"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        args = mock_run.call_args[0][1]
+        assert args.delay == 7.0
+
+    def test_no_delay_in_config_leaves_args_delay_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absent delay config key leaves args.delay at its None default (no injection)."""
+        self._write_config(tmp_path, {"clear": True})
+        monkeypatch.chdir(tmp_path)
+
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        args = mock_run.call_args[0][1]
+        assert args.delay is None
+
+    def test_invalid_delay_in_config_raises_value_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Negative delay value in config raises ValueError at config load."""
+        self._write_config(tmp_path, {"delay": -1})
+        monkeypatch.chdir(tmp_path)
+
+        with patch.object(sys, "argv", ["ll-loop", "run", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            with pytest.raises(ValueError, match="delay"):
+                main_loop()
+
 
 class TestLoopRunDefaultsDataclass:
     """Tests for LoopRunDefaults dataclass parsing."""
@@ -139,6 +206,7 @@ class TestLoopRunDefaultsDataclass:
         assert result.show_diagrams is None
         assert result.mode is None
         assert result.include == ""
+        assert result.delay is None
 
     def test_from_dict_include_set(self) -> None:
         """include:'project:*' is parsed and round-trips correctly."""
@@ -194,16 +262,47 @@ class TestLoopRunDefaultsDataclass:
         with pytest.raises(ValueError, match="show_diagrams"):
             LoopRunDefaults.from_dict({"show_diagrams": "bad-value"})
 
+    def test_from_dict_delay_valid(self) -> None:
+        """Non-negative delay values (int, float, zero) are accepted."""
+        from little_loops.config.features import LoopRunDefaults
+
+        for value in (0, 0.0, 1, 2.5, 30):
+            result = LoopRunDefaults.from_dict({"delay": value})
+            assert result.delay == value
+
+    def test_from_dict_delay_negative_raises(self) -> None:
+        """Negative delay values raise ValueError."""
+        from little_loops.config.features import LoopRunDefaults
+
+        with pytest.raises(ValueError, match="delay"):
+            LoopRunDefaults.from_dict({"delay": -1})
+
+    def test_from_dict_delay_non_numeric_raises(self) -> None:
+        """Non-numeric delay values (including bool) raise ValueError."""
+        from little_loops.config.features import LoopRunDefaults
+
+        for bad in ("5", True, [1]):
+            with pytest.raises(ValueError, match="delay"):
+                LoopRunDefaults.from_dict({"delay": bad})
+
     def test_loops_config_includes_run_defaults(self) -> None:
         """LoopsConfig.from_dict parses run_defaults block including include field."""
         from little_loops.config.features import LoopsConfig
 
         result = LoopsConfig.from_dict(
-            {"run_defaults": {"clear": True, "show_diagrams": "clean", "include": "project:*"}}
+            {
+                "run_defaults": {
+                    "clear": True,
+                    "show_diagrams": "clean",
+                    "include": "project:*",
+                    "delay": 3,
+                }
+            }
         )
         assert result.run_defaults.clear is True
         assert result.run_defaults.show_diagrams == "clean"
         assert result.run_defaults.include == "project:*"
+        assert result.run_defaults.delay == 3
 
 
 _MINIMAL_LOOP_YAML = """\

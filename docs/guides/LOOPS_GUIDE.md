@@ -617,7 +617,8 @@ The `loops.run_defaults` block in `.ll/ll-config.json` lets you declare persiste
   "loops": {
     "run_defaults": {
       "clear": true,
-      "show_diagrams": "clean"
+      "show_diagrams": "clean",
+      "delay": 2
     }
   }
 }
@@ -630,6 +631,7 @@ After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop r
 - `show_diagrams` (`string | null`, default `null`) — inject `--show-diagrams <value>`. Valid values: topologies (`layered`, `neighborhood`, `inline`, `window`), presets (`detailed`, `summary`, `clean`, `local`, `slim`, `oneline`), or `"default"` for bare `--show-diagrams` (summary preset). The `window` topology crops the real layered diagram to ±K layers around the active state (K sized to the viewport) with `▲ N layers above`/`▼ M layers below` overflow banners — it is also one rung in the pinned-pane auto-degrade ladder (ENH-2410). When a layered preset/default diagram is too big for the pinned pane, the auto-degrade ladder is **topology-aware** (ENH-2411): it branches on the FSM's classified shape (`linear`/`tree`/`general`, via `TopologyDetector`) and the failing viewport dimension. Linear and tree loops (tall but narrow) first shed box detail — title-only, then title-only with edge labels dropped — so every state stays visible before falling to the windowed crop or the synthetic neighborhood; wide fan-outs likewise prefer narrower title-only boxes before the window; hub-heavy general graphs prefer the windowed crop first. Every ladder still terminates in the single-line `fsm:` floor, and an **explicit** topology (`--show-diagrams neighborhood|window|inline|layered`) renders exactly once with no auto-degradation.
 - `mode` (`string | null`, default `null`) — reserved for a future `--mode` flag; no effect currently
 - `include` (`string`, default `""`) — default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`
+- `delay` (`number | null`, default `null`) — inject `--delay <seconds>` (a non-negative inter-iteration pause) into every `ll-loop run`. Useful for relieving host memory pressure between iterations or for consistent screen-recording cadence. Explicit `--delay` overrides; `null` disables
 
 Only `ll-loop run` reads `run_defaults`. Other subcommands (`validate`, `list`, etc.) are unaffected.
 

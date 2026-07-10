@@ -263,6 +263,7 @@ Loop Run Defaults
   clear:         {{config.loops.run_defaults.clear}}         (default: false)
   show_diagrams: {{config.loops.run_defaults.show_diagrams}} (default: null)
   mode:          {{config.loops.run_defaults.mode}}          (default: null)
+  delay:         {{config.loops.run_defaults.delay}}         (default: null)
 
 Valid show_diagrams values:
   Topologies: layered, neighborhood, inline

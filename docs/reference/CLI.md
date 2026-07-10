@@ -524,7 +524,7 @@ Run a loop.
 | `input` | | (Optional positional) If valid JSON object with keys matching defined context variables, unpacks into those keys; otherwise stored as a string in `context[input_key]` |
 | `--max-steps` | `-n` | Override step cap (individual state transitions) |
 | `--max-iterations` | | Override full-pass cap (complete loop cycles) |
-| `--delay` | | Sleep N seconds between iterations (useful for recording and to relieve host memory pressure between subprocess spawns) |
+| `--delay` | | Sleep N seconds between iterations (useful for recording and to relieve host memory pressure between subprocess spawns). Config-defaultable via `loops.run_defaults.delay` (ENH-2556); an explicit `--delay` always overrides the configured default. |
 | `--no-llm` | | Disable LLM evaluation |
 | `--no-host-guard` | | Disable the adaptive host memory-pressure guard (`host_guard:` block, ENH-2452). By default the guard samples host memory before each prompt-mode state and adds an extra cooldown / routes / aborts per the loop's `host_guard:` config. |
 | `--host-guard-budget-mb N` | | Override `host_guard.max_cumulative_subproc_mb`: cap on summed peak subprocess RSS (MB) across the run (ENH-2453). `0` disables the budget. |

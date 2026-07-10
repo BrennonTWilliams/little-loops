@@ -539,9 +539,12 @@ class LoopRunDefaults:
     show_diagrams: str | None = None  # Inject --show-diagrams <value>; 'default' = bare flag; None = disabled
     mode: str | None = None       # Reserved for a future --mode flag
     include: str = ""             # Default loop allowlist injected into fsm.context; empty = all loops visible
+    delay: float | None = None    # Inject --delay <seconds> inter-iteration pause; None = disabled
 ```
 
 `include` accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Set in `ll-config.json` as `loops.run_defaults.include`; override per-invocation with `--context include=VALUE`.
+
+`delay` injects `--delay <seconds>` (a non-negative inter-iteration pause) when `--delay` is absent on the CLI; an explicit `--delay` always wins, and `null` disables injection.
 
 ### GitHubSyncConfig
 

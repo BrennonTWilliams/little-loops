@@ -971,6 +971,12 @@
               "type": "string",
               "default": "",
               "description": "Default loop allowlist injected into FSM context for loop-router/loop-composer. Comma-separated selectors: loop-name, builtin:*, project:*, category:<label>. Empty = all loops visible."
+            },
+            "delay": {
+              "type": ["number", "null"],
+              "description": "Inject --delay <seconds> into every ll-loop run invocation (inter-iteration pause). Explicit --delay overrides. Null disables.",
+              "default": null,
+              "minimum": 0
             }
           },
           "additionalProperties": false

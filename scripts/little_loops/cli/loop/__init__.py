@@ -873,6 +873,8 @@ Examples:
                 args.clear = True
             if args.show_diagrams is None and rd.show_diagrams is not None:
                 args.show_diagrams = True if rd.show_diagrams == "default" else rd.show_diagrams
+            if args.delay is None and rd.delay is not None:
+                args.delay = rd.delay
 
         logger = Logger(verbose=not getattr(args, "quiet", False))
 
