@@ -5,7 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.142.0] - 2026-07-10
+## [1.141.0] - 2026-07-09
+
+### Added
+
+- **Per-EPIC integration branch** — parallel workers now merge each EPIC's child
+  issues onto a dedicated per-EPIC integration branch instead of a shared target.
+  `WorkerResult` carries `epic_branch`, the `WorkerPool` threads it through, and
+  merge/PR routing plus EPIC-completion detection fire against that branch behind
+  a partial-failure gate (FEAT-2448, FEAT-2449, FEAT-2452, FEAT-2453). A shared
+  `find_nearest_epic_ancestor` helper was promoted to module scope for reuse
+  across the merge-routing consumers (FEAT-2561).
+- **`rn-refine` parallel bottom-up integration + resume** — the integration phase
+  is no longer serial (one internal node per cycle). A new `synth_dispatch` state
+  background-spawns up to `synth_workers` (default 4) `oracles/integrate-node`
+  workers that pop from a shared queue under an `flock`-guarded, readiness-gated
+  pop (`little_loops.rn_synth_queue`): a node integrates only once all its children
+  have a `final.md`, so independent same-depth nodes fold up concurrently while
+  children-before-parent ordering holds. A run interrupted mid-integration (e.g. a
+  wall-clock timeout) is now resumable via `--context resume=1 --context
+  run_dir=<prior>` — `resume_build_synth` rebuilds the queue from on-disk `final.md`
+  absence, reusing already-refined/integrated work and covering the
+  popped-but-not-integrated node the old queue had dropped (ENH-2565).
+- **Config-defaultable `ll-loop run` behavior** — `--delay` can now be defaulted
+  via `loops.run_defaults` (ENH-2556), and `--clear` + `--show-diagrams clean`
+  default on for target projects (ENH-2557). Generated configs enable
+  `learning_tests` and `analytics` by default (ENH-2560).
+- **`rn-remediate` / `rn-implement` reporting** — `rn-remediate` writes a
+  `manual_review_handoff_<id>.md` with decision context on handoff (ENH-2530);
+  `rn-implement` records per-issue outcomes and learning followups in
+  `summary.json` (ENH-2533) and emits `UNRESOLVED` / `PARSE_ERROR` tokens from
+  `check_blocked_by` (ENH-2534).
+- **Streaming-vs-blocking cache-accounting parity trace set** — locks a trace set
+  proving cache-accounting parity between streaming and blocking host calls
+  (ENH-2479).
+
+### Fixed
+
+- **`ll-loop list` terminal-width overflow** — wide labels no longer overflow the
+  terminal (BUG-2554), multi-line YAML descriptions collapse to fill the available
+  width (BUG-2566), and columns align correctly under subgroup subheads (BUG-2571).
+- **FSM diagram + color rendering** — box diagrams no longer lose color styling
+  partway down deep FSMs (BUG-2546), and the shell kind-color no longer renders
+  cyan as bright green on the warm-paper dark palette (BUG-2537).
+- **`rn-refine` context refs + timeouts** — `ll-loop run rn-refine <plan.md>` no
+  longer falsely reports `:default=` context refs as missing required variables
+  (BUG-2553), and root-integration timeouts are handled more robustly.
+- **`general-task.yaml`** — `check_done` / `continue_work` no longer read a
+  `current-step.txt` that was already deleted (BUG-2538).
+- **Orphan pytest-xdist worker sweep** — now registered locally rather than
+  shipped as a built-in hook (BUG-2540).
+- **`manage-release` 0-completed-issues regression** — `ll-issues list --json`
+  now emits `completed_at` (stamped on `set-status done`), fixing the release
+  changelog scan that reported zero completed issues (BUG-2558, BUG-2559).
+- Sub-loop states now appear in the `ll-loop show` info overview table.
 
 ### Changed
 
@@ -24,22 +77,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ll-loop show <name> for details · --category <cat> to filter` hints, and
   subgroup subheads now require only ≥3 members sharing a prefix (the old
   ≥50%-dominance rule is dropped). `--json` output is unchanged.
-
-## [1.141.0] - 2026-07-09
-
-### Added
-
-- **`rn-refine` parallel bottom-up integration + resume** — the integration phase
-  is no longer serial (one internal node per cycle). A new `synth_dispatch` state
-  background-spawns up to `synth_workers` (default 4) `oracles/integrate-node`
-  workers that pop from a shared queue under an `flock`-guarded, readiness-gated
-  pop (`little_loops.rn_synth_queue`): a node integrates only once all its children
-  have a `final.md`, so independent same-depth nodes fold up concurrently while
-  children-before-parent ordering holds. A run interrupted mid-integration (e.g. a
-  wall-clock timeout) is now resumable via `--context resume=1 --context
-  run_dir=<prior>` — `resume_build_synth` rebuilds the queue from on-disk `final.md`
-  absence, reusing already-refined/integrated work and covering the
-  popped-but-not-integrated node the old queue had dropped (ENH-2565).
+- **`ll-loop list` layout polish (precursors to ENH-2572)** — incremental work
+  leading up to the scanning-first redesign: match `ll-issues list --group-by
+  epic` styling (ENH-2539), all-caps section markers and palette fixes (ENH-2541),
+  line-2 continuation display with subgroup glyph differentiation (ENH-2555), five
+  additional high-impact fixes (ENH-2554), a steel-blue loop-name column in place
+  of cyan (ENH-2542), and relative loop filename / `run_dir` paths instead of
+  absolute ones (ENH-2573).
+- **`epic-consistency`** — recognizes `### FEAT-NNN` prose headings and downgrades
+  `relates_to` membership to advisory (ENH-2564).
+- **Documentation** — documents the event-schema error-handling contract for JSON
+  callers (ENH-2543) and the full `OUTPUT_STYLING.md` public-API rendering-helper
+  surface (ENH-2545).
 
 ## [1.140.0] - 2026-07-08
 
@@ -3910,6 +3959,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.141.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.140.0...v1.141.0
 [1.140.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.139.0...v1.140.0
 [1.139.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.138.0...v1.139.0
 [1.138.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.137.0...v1.138.0
