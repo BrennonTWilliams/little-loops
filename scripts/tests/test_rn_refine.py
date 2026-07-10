@@ -11,15 +11,34 @@ real action bodies rendered through the engine's interpolator.
 
 from __future__ import annotations
 
+import ast
+import os
 import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.validation import load_and_validate
 
+# ENH-2565 spike package lives at scripts/tests/spike/rn_refine_synth_pop. It is
+# imported via its full ``scripts.tests.spike...`` dotted path so the same import
+# works both here (under pytest) and from the subprocess CLI test. ``scripts`` is
+# an implicit namespace package, so the repo root must be on sys.path.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.tests.spike.rn_refine_synth_pop import (  # noqa: E402
+    mark_complete,
+    queue_is_empty,
+    try_pop_ready,
+)
+
 LOOPS = Path(__file__).parent.parent / "little_loops" / "loops"
 RN_REFINE = LOOPS / "rn-refine.yaml"
 NODE_ORACLE = LOOPS / "oracles" / "plan-node-refine.yaml"
+SPIKE_DIR = Path(__file__).parent / "spike" / "rn_refine_synth_pop"
 
 
 def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -505,3 +524,233 @@ class TestFinalizeSafety:
         fsm = _load_rn_refine()
         assert fsm.states["final_score"].on_yes == "preflight_check"
         assert fsm.states["final_score"].on_no == "preflight_check"
+
+
+# ---------------------------------------------------------------------------
+# ENH-2565 spike: readiness-gated pop + concurrency core
+#
+# The bottom-up-synthesis concurrency core is proved out as a standalone library
+# (scripts/tests/spike/rn_refine_synth_pop/queue.py) BEFORE rn-refine.yaml's
+# synth_pop action is rewritten to import it. Each method below retires one
+# acceptance criterion from the ENH-2565 spike plan; the eventual synth_pop
+# PYEOF becomes a thin shim around try_pop_ready / mark_complete / queue_is_empty.
+# ---------------------------------------------------------------------------
+
+
+class TestSynthPopReadinessGate:
+    """Retire the ENH-2565 acceptance criteria against the spike queue library."""
+
+    # -- fixture helpers ----------------------------------------------------
+
+    @staticmethod
+    def _node_dir(rd: Path, nid: str) -> Path:
+        d = rd / "nodes" / nid
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _seed_final(self, rd: Path, nid: str) -> None:
+        """Give a node a final.md — a backfilled leaf or an integrated internal node."""
+        (self._node_dir(rd, nid) / "final.md").write_text(f"# {nid} final\n")
+
+    def _write_queue(self, rd: Path, order: list[str]) -> None:
+        rd.mkdir(parents=True, exist_ok=True)
+        (rd / "synth_queue.txt").write_text("".join(f"{n}\n" for n in order))
+
+    def _seed_build_synth_tree(self, tmp_path: Path) -> Path:
+        """Mirror TestBuildSynthOrder's tree: n0 -> {n1(leaf), n2}; n2 -> {n3, n4}.
+
+        Internal nodes are n0 and n2; leaves n1, n3, n4 already carry final.md.
+        The deepest-first synth queue that build_synth would emit is [n2, n0].
+        """
+        rd = tmp_path / "run"
+        for nid in ("n0", "n1", "n2", "n3", "n4"):
+            self._node_dir(rd, nid)
+            (rd / "nodes" / nid / "plan.md").write_text(f"# {nid}\n")
+        (rd / "edges.tsv").write_text(
+            "n0\tn1\tone\nn0\tn2\ttwo\nn2\tn3\tthree\nn2\tn4\tfour\n"
+        )
+        (rd / "depth_map.txt").write_text("n0 0\nn1 1\nn2 1\nn3 2\nn4 2\n")
+        for leaf in ("n1", "n3", "n4"):
+            self._seed_final(rd, leaf)
+        self._write_queue(rd, ["n2", "n0"])  # deepest-first, internal-only
+        return rd
+
+    def _seed_flat_ready(self, tmp_path: Path, k: int) -> tuple[Path, list[str]]:
+        """K independent internal nodes, each with one already-integrated leaf child.
+
+        Every queued node is ready from the start, so pops are gated only by the
+        lock — this isolates the no-double-pop / no-lost-node contention behavior.
+        """
+        rd = tmp_path / "run"
+        ids = [f"p{i}" for i in range(k)]
+        edges = []
+        for pid in ids:
+            self._node_dir(rd, pid)
+            child = f"{pid}c"
+            self._seed_final(rd, child)  # leaf child already integrated
+            edges.append(f"{pid}\t{child}\tchild-of-{pid}")
+        (rd / "edges.tsv").write_text("\n".join(edges) + "\n")
+        self._write_queue(rd, ids)
+        return rd, ids
+
+    # -- test 1: DRAIN contract ---------------------------------------------
+
+    def test_pop_returns_none_when_queue_empty(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        # No synth_queue.txt at all -> empty -> None on every call.
+        assert try_pop_ready(rd) is None
+        assert queue_is_empty(rd) is True
+        # A queue file with only blank lines is likewise empty.
+        (rd / "synth_queue.txt").write_text("\n   \n\n")
+        assert try_pop_ready(rd) is None
+        assert queue_is_empty(rd) is True
+
+    # -- test 2: deepest-first invariant under locking ----------------------
+
+    def test_pop_returns_deepest_first_in_serial(self, tmp_path: Path) -> None:
+        rd = self._seed_build_synth_tree(tmp_path)
+        # n2 (depth 1) is the deepest ready internal node; n0 (depth 0) is not
+        # ready until n2 integrates, because n2 is one of n0's children.
+        assert try_pop_ready(rd) == "n2"
+        self._seed_final(rd, "n2")  # simulate integrate_node writing n2/final.md
+        assert try_pop_ready(rd) == "n0"
+        assert try_pop_ready(rd) is None
+        assert queue_is_empty(rd) is True
+
+    # -- test 3: readiness gating -------------------------------------------
+
+    def test_pop_skips_node_with_unfinished_child(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        self._node_dir(rd, "n0")
+        self._node_dir(rd, "n1")
+        (rd / "edges.tsv").write_text("n0\tn1\tonly-child\n")
+        self._write_queue(rd, ["n0"])
+        # n1 lacks final.md -> n0 not ready -> None, but queue is NOT empty (WAIT).
+        assert try_pop_ready(rd) is None
+        assert queue_is_empty(rd) is False
+        # After n1 integrates, n0 becomes ready and pops.
+        self._seed_final(rd, "n1")
+        assert try_pop_ready(rd) == "n0"
+
+    # -- test 4: no double-pop under N-worker contention --------------------
+
+    def test_pop_never_returns_same_node_twice_under_contention(
+        self, tmp_path: Path
+    ) -> None:
+        rd, ids = self._seed_flat_ready(tmp_path, k=4)
+
+        def drain() -> list[str]:
+            out: list[str] = []
+            while True:
+                node = try_pop_ready(rd, lock_timeout=5.0)
+                if node is None:
+                    return out
+                out.append(node)
+
+        popped: list[str] = []
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for f in as_completed([pool.submit(drain) for _ in range(8)]):
+                popped.extend(f.result(timeout=10.0))
+
+        assert sorted(popped) == sorted(ids)  # every queued node popped exactly once
+        assert len(popped) == len(set(popped))  # no duplicates
+        assert queue_is_empty(rd) is True
+
+    # -- test 5: no lost node with simultaneous callers ---------------------
+
+    def test_pop_with_all_children_ready_handles_simultaneous_callers(
+        self, tmp_path: Path
+    ) -> None:
+        k = 8
+        rd, ids = self._seed_flat_ready(tmp_path, k=k)
+
+        def pop_once() -> str | None:
+            return try_pop_ready(rd, lock_timeout=5.0)
+
+        results: list[str | None] = []
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(pop_once) for _ in range(k)]
+            for f in as_completed(futures):
+                # A raised acquire_lock TimeoutError would surface here and fail.
+                results.append(f.result(timeout=10.0))
+
+        got = [r for r in results if r is not None]
+        assert len(got) == k  # no lost node
+        assert sorted(got) == sorted(ids)  # exactly the queued set, all distinct
+        assert queue_is_empty(rd) is True
+
+    # -- test 6: WAIT-vs-DRAIN disambiguation -------------------------------
+
+    def test_pop_returns_none_when_nonempty_but_nothing_ready(
+        self, tmp_path: Path
+    ) -> None:
+        rd = tmp_path / "run"
+        self._node_dir(rd, "n0")
+        self._node_dir(rd, "n1")  # child, not yet integrated
+        (rd / "edges.tsv").write_text("n0\tn1\tchild\n")
+        self._write_queue(rd, ["n0"])
+        # Non-empty queue, nothing ready -> None, and queue_is_empty is False so
+        # the worker knows to sleep and retry rather than route to assemble.
+        assert try_pop_ready(rd) is None
+        assert queue_is_empty(rd) is False
+
+    # -- test 7: mark_complete observable + idempotent ----------------------
+
+    def test_mark_complete_touches_done_sentinel_and_is_idempotent(
+        self, tmp_path: Path
+    ) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        sentinel = rd / "done" / "n0.done"
+        assert not sentinel.exists()
+        mark_complete(rd, "n0")
+        assert sentinel.exists()
+        before = sorted(p.name for p in (rd / "done").iterdir())
+        mark_complete(rd, "n0")  # second call must not raise
+        after = sorted(p.name for p in (rd / "done").iterdir())
+        assert before == after == ["n0.done"]
+
+    # -- regression guard: correct locking primitive -----------------------
+
+    def test_no_import_of_fsm_concurrency_lockmanager(self) -> None:
+        """queue.py must use acquire_lock, never little_loops.fsm.concurrency."""
+        source = (SPIKE_DIR / "queue.py").read_text()
+        tree = ast.parse(source)
+        offenders = [
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").startswith("little_loops.fsm.concurrency")
+        ]
+        assert offenders == [], (
+            f"spike queue.py must not import fsm.concurrency; found: {offenders}"
+        )
+        # Positive assertion: it depends on the intended primitive.
+        assert "from little_loops.file_utils import acquire_lock" in source
+
+    # -- driver CLI subprocess ----------------------------------------------
+
+    def test_driver_cli_returns_drain_when_empty(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        env = dict(os.environ)
+        # scripts.* resolves from the repo root; little_loops from scripts/.
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in (str(_REPO_ROOT), str(_REPO_ROOT / "scripts"), env.get("PYTHONPATH", "")) if p
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "scripts.tests.spike.rn_refine_synth_pop",
+                "try-pop",
+                str(rd),
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == "DRAIN\n"
