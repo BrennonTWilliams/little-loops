@@ -365,7 +365,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `epic_branches.prefix` | `"epic/"` | Prefix for the per-EPIC integration branch name; the branch composes as `f"{prefix}{epic_id.lower()}-{slug}"` (e.g. `epic/epic-2339-foo`). `{slug}` is the kebab-cased EPIC title. |
 | `epic_branches.merge_to_base_on_complete` | `true` | When `true`, the EPIC integration branch is itself merged back to `base_branch` after the EPIC's last child completes. Set `false` to leave the integration branch un-merged (e.g. for manual PR review). |
 | `epic_branches.open_pr` | `false` | When `true`, open a PR for the EPIC integration branch via the `gh` CLI on completion. Requires `gh` installed and authenticated. |
-| `epic_branches.verify_before_merge` | `false` | **ENH-2602, prerequisite plumbing for ENH-2603.** When `true`, run `test_cmd`/`lint_cmd` against the EPIC branch before merge-to-base or PR-open. Config plumbing only — no behavior yet; the actual verify gate lands in ENH-2603. |
+| `epic_branches.verify_before_merge` | `false` | When `true`, before merging an EPIC integration branch to `base_branch` (or opening its PR), check it out in a scratch worktree and run `test_cmd`/`lint_cmd` against it. On failure the merge/PR-open is blocked, the branch is left as-is (retried on the next completion event), and the failure is surfaced in the run summary rather than silently logged (ENH-2603). |
 
 ### `product`
 

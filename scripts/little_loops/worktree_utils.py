@@ -68,8 +68,9 @@ def setup_worktree(
     logger: Logger,
     git_lock: GitLock,
     base_branch: str | None = None,
+    checkout_existing: bool = False,
 ) -> None:
-    """Create a git worktree on a new branch and copy essential files.
+    """Create a git worktree and copy essential files.
 
     Copies the .claude/ directory (for project root detection by Claude Code)
     and any additional files listed in copy_files. Writes a session marker so
@@ -78,19 +79,32 @@ def setup_worktree(
     Args:
         repo_path: Path to the main repository.
         worktree_path: Destination path for the new worktree.
-        branch_name: Name of the new branch to create.
+        branch_name: Name of the branch. By default this is a *new* branch
+            created via ``git worktree add -b``. When ``checkout_existing`` is
+            True, it names an *already-existing* branch checked out in place
+            instead (no new branch is created, and no branch is deleted when
+            this worktree is later torn down for it).
         copy_files: File paths (relative to repo_path) to copy into the worktree.
         logger: Logger instance.
         git_lock: Thread-safe git lock for serializing repo operations.
         base_branch: Optional commit-ish to fork the new branch from. When None,
             the branch forks from the current HEAD of repo_path (existing behavior).
             When provided, validated before use; fails fast if unresolvable.
+            Mutually exclusive with ``checkout_existing``.
+        checkout_existing: When True, check out ``branch_name`` (which must
+            already exist) instead of creating a new branch.
 
     Raises:
+        ValueError: If both ``base_branch`` and ``checkout_existing`` are given.
         RuntimeError: If git worktree creation fails or base_branch does not resolve.
     """
+    if checkout_existing and base_branch is not None:
+        raise ValueError("base_branch and checkout_existing are mutually exclusive")
+
     if worktree_path.exists():
-        cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=True)
+        cleanup_worktree(
+            worktree_path, repo_path, logger, git_lock, delete_branch=not checkout_existing
+        )
 
     if base_branch is not None:
         verify_result = git_lock.run(
@@ -101,9 +115,12 @@ def setup_worktree(
         if verify_result.returncode != 0:
             raise RuntimeError(f"Branch '{base_branch}' does not resolve: {verify_result.stderr}")
 
-    worktree_args = ["worktree", "add", "-b", branch_name, str(worktree_path)]
-    if base_branch is not None:
-        worktree_args.append(base_branch)
+    if checkout_existing:
+        worktree_args = ["worktree", "add", str(worktree_path), branch_name]
+    else:
+        worktree_args = ["worktree", "add", "-b", branch_name, str(worktree_path)]
+        if base_branch is not None:
+            worktree_args.append(base_branch)
 
     result = git_lock.run(
         worktree_args,

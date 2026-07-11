@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -35,7 +36,12 @@ from little_loops.parallel.types import (
 )
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry
-from little_loops.worktree_utils import _is_ll_branch, _is_ll_worktree
+from little_loops.worktree_utils import (
+    _is_ll_branch,
+    _is_ll_worktree,
+    cleanup_worktree,
+    setup_worktree,
+)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -135,6 +141,8 @@ class ParallelOrchestrator:
         # Track EPIC integration branches already merged/PR'd on completion so the
         # completion trigger is idempotent across worker callbacks (FEAT-2449).
         self._merged_epic_branches: set[str] = set()
+        # Verify-gate failure messages, keyed by EPIC ID (ENH-2603).
+        self._epic_branch_verify_failures: dict[str, str] = {}
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
@@ -154,6 +162,17 @@ class ParallelOrchestrator:
     def execution_duration(self) -> float:
         """Return the total execution duration in seconds."""
         return self._execution_duration
+
+    @property
+    def epic_branch_verify_failures(self) -> dict[str, str]:
+        """Mapping of EPIC IDs to verify-gate failure messages (ENH-2603).
+
+        Populated when ``epic_branches.verify_before_merge`` is True and the
+        test_cmd/lint_cmd gate fails against an EPIC branch tip, blocking its
+        merge/PR-open.
+        """
+        with self._state_lock:
+            return dict(self._epic_branch_verify_failures)
 
     def run(self) -> int:
         """Run the parallel issue processor.
@@ -1284,6 +1303,13 @@ class ParallelOrchestrator:
             )
             return
 
+        # Verify gate (ENH-2603): run test_cmd/lint_cmd against the branch tip
+        # before merge/PR-open. Deliberately runs BEFORE the idempotency-set
+        # add below so a failure leaves the branch retryable on the next
+        # completion event instead of being silenced for the rest of the run.
+        if not self._verify_epic_branch_before_merge(epic_id, epic_branch):
+            return
+
         # Idempotency: merge/PR each epic branch at most once.
         if epic_branch in self._merged_epic_branches:
             return
@@ -1293,6 +1319,71 @@ class ParallelOrchestrator:
             self._open_pr_for_epic_branch(epic_id, epic_branch)
         else:
             self._merge_epic_branch_to_base(epic_id, epic_branch)
+
+    def _verify_epic_branch_before_merge(self, epic_id: str, epic_branch: str) -> bool:
+        """Run test_cmd/lint_cmd against the EPIC branch tip before merge/PR (ENH-2603).
+
+        Gated by ``epic_branches.verify_before_merge`` (default False, added
+        in ENH-2602) — returns True immediately when disabled. Otherwise,
+        checks out ``epic_branch`` in a scratch worktree, runs the project's
+        configured ``test_cmd`` and (if set) ``lint_cmd`` against it, and
+        always tears the worktree down regardless of outcome. On failure,
+        records a message in ``self._epic_branch_verify_failures`` for
+        ``_report_results()`` to surface and returns False so the caller
+        blocks the merge/PR-open.
+        """
+        cfg = self.parallel_config.epic_branches
+        if not cfg.verify_before_merge:
+            return True
+
+        project = self.br_config.project
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        worktree_path = (
+            self.repo_path
+            / self.parallel_config.worktree_base
+            / f"verify-{epic_id.lower()}-{timestamp}"
+        )
+
+        try:
+            setup_worktree(
+                repo_path=self.repo_path,
+                worktree_path=worktree_path,
+                branch_name=epic_branch,
+                copy_files=[],
+                logger=self.logger,
+                git_lock=self._git_lock,
+                checkout_existing=True,
+            )
+        except RuntimeError as e:
+            message = f"verify-gate worktree setup failed: {e}"
+            self.logger.warning(f"EPIC {epic_id}: {message}")
+            with self._state_lock:
+                self._epic_branch_verify_failures[epic_id] = message
+            return False
+
+        try:
+            for label, cmd in (("test", project.test_cmd), ("lint", project.lint_cmd)):
+                if not cmd:
+                    continue
+                self.logger.info(f"EPIC {epic_id}: running {label}_cmd against {epic_branch}")
+                result = subprocess.run(
+                    shlex.split(cmd),
+                    capture_output=True,
+                    text=True,
+                    cwd=worktree_path,
+                )
+                if result.returncode != 0:
+                    detail = (result.stderr or result.stdout or "").strip()[:500]
+                    message = f"{label}_cmd failed (exit {result.returncode}): {detail}"
+                    self.logger.warning(f"EPIC {epic_id}: {message}")
+                    with self._state_lock:
+                        self._epic_branch_verify_failures[epic_id] = message
+                    return False
+            return True
+        finally:
+            cleanup_worktree(
+                worktree_path, self.repo_path, self.logger, self._git_lock, delete_branch=False
+            )
 
     def _merge_epic_branch_to_base(self, epic_id: str, epic_branch: str) -> None:
         """Merge ``epic_branch`` into ``base_branch`` then delete it (FEAT-2449).
@@ -1573,6 +1664,14 @@ class ParallelOrchestrator:
                 "To recover: Run 'git stash list' to find your changes, "
                 "then 'git stash pop' or 'git stash apply stash@{N}'"
             )
+
+        # Report EPIC-branch verify-gate failures (blocked merge/PR-open, ENH-2603)
+        verify_failures = self.epic_branch_verify_failures
+        if verify_failures:
+            self.logger.info("")
+            self.logger.warning("EPIC branch verify-gate failures (merge/PR-open blocked):")
+            for epic_id, message in verify_failures.items():
+                self.logger.warning(f"  - {epic_id}: {message}")
 
     def _stage_and_commit_issue_scoped(
         self, issue_id: str, issue_path: Path, commit_msg: str

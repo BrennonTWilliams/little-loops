@@ -468,7 +468,10 @@ integration branch — both as fork point and merge target — via
 to the base branch once the EPIC's last child completes
 (`epic_branches.merge_to_base_on_complete`), optionally opening a PR
 (`epic_branches.open_pr`). Standalone (parentless) issues keep the per-worker
-branch behavior unchanged.
+branch behavior unchanged. When `epic_branches.verify_before_merge` is `true`,
+that merge/PR-open is gated on a scratch-worktree run of `test_cmd`/`lint_cmd`
+against the EPIC branch tip; a failure blocks it, leaves the branch open for
+retry, and is surfaced in the run summary (ENH-2603).
 
 ```mermaid
 flowchart TB

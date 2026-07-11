@@ -3312,12 +3312,20 @@ class EpicBranchesConfig:
     prefix: str = "epic/"              # branch = f"{prefix}{epic_id.lower()}-{slug}"
     merge_to_base_on_complete: bool = True  # merge EPIC branch to base after last child
     open_pr: bool = False              # open a PR for the EPIC branch via gh on completion
-    verify_before_merge: bool = False  # run test_cmd/lint_cmd before merge/PR-open (inert until ENH-2603)
+    verify_before_merge: bool = False  # run test_cmd/lint_cmd against the branch tip before merge/PR-open (ENH-2603)
 ```
 
 When `enabled`, `WorkerPool` routes every child of a shared `parent:` EPIC onto
 one `epic/<EPIC-ID>-<slug>` branch (fork point and merge target), recorded on
 `WorkerResult.epic_branch`. See [Configuration reference](CONFIGURATION.md#parallel).
+
+When `verify_before_merge` is `True`, `ParallelOrchestrator._verify_epic_branch_before_merge`
+checks out the EPIC branch tip in a scratch worktree (via `worktree_utils.setup_worktree(...,
+checkout_existing=True)`), runs `project.test_cmd`/`project.lint_cmd` against it, and always
+tears the worktree down. On failure the merge/PR-open is blocked (the branch is NOT added to
+`_merged_epic_branches`, so it is retried on the next completion event), and the failure is
+recorded in `ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which
+`_report_results()` surfaces in the run summary (ENH-2603).
 
 ### WorkerResult
 

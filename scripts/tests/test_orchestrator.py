@@ -167,6 +167,7 @@ def make_epic_orchestrator(
         enabled: bool = True,
         merge_to_base: bool = True,
         open_pr: bool = False,
+        verify_before_merge: bool = False,
     ) -> tuple[ParallelOrchestrator, Path]:
         config = {
             "project": {"name": "test", "src_dir": "src/"},
@@ -210,6 +211,7 @@ def make_epic_orchestrator(
                 enabled=enabled,
                 merge_to_base_on_complete=merge_to_base,
                 open_pr=open_pr,
+                verify_before_merge=verify_before_merge,
             ),
         )
         br = BRConfig(repo_path)
@@ -1544,6 +1546,155 @@ class TestEpicCompletionMerge:
         assert not [c for c in calls if c[0] == "merge"]
 
 
+class TestEpicBranchVerifyGate:
+    """Tests for the pre-merge test/lint verify gate (ENH-2603).
+
+    Patches ``setup_worktree``/``cleanup_worktree`` (imported into the
+    orchestrator module) to avoid real worktree creation, and
+    ``subprocess.run`` (the same patch target ``test_opens_pr_when_open_pr_true``
+    uses) to control test_cmd/lint_cmd outcomes.
+    """
+
+    _EPIC_BRANCH = "epic/epic-2451-integration"
+
+    @staticmethod
+    def _capture_git(orch: ParallelOrchestrator) -> list[list[str]]:
+        calls: list[list[str]] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            calls.append(args)
+            return result
+
+        orch._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+        return calls
+
+    def test_disabled_by_default_skips_subprocess_and_merges(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """verify_before_merge defaults False — no worktree/subprocess calls, merge proceeds."""
+        orch, _ = make_epic_orchestrator({"FEAT-010": "done", "FEAT-020": "done"})
+        calls = self._capture_git(orch)
+
+        with (
+            patch("little_loops.parallel.orchestrator.setup_worktree") as mock_setup,
+            patch("little_loops.parallel.orchestrator.subprocess.run") as mock_run,
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        mock_setup.assert_not_called()
+        mock_run.assert_not_called()
+        assert [c for c in calls if c[0] == "merge"]
+
+    def test_blocks_merge_on_test_cmd_failure(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"}, verify_before_merge=True
+        )
+        calls = self._capture_git(orch)
+
+        with (
+            patch("little_loops.parallel.orchestrator.setup_worktree"),
+            patch("little_loops.parallel.orchestrator.cleanup_worktree") as mock_cleanup,
+            patch(
+                "little_loops.parallel.orchestrator.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout="", stderr="2 failed"),
+            ),
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+        assert "FEAT-020" not in orch.epic_branch_verify_failures  # not a merge-blocking child
+        assert "test_cmd failed" in orch.epic_branch_verify_failures["EPIC-2451"]
+        mock_cleanup.assert_called_once()
+        assert mock_cleanup.call_args.kwargs.get("delete_branch") is False
+
+    def test_allows_merge_on_success(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"}, verify_before_merge=True
+        )
+        calls = self._capture_git(orch)
+
+        with (
+            patch("little_loops.parallel.orchestrator.setup_worktree"),
+            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch(
+                "little_loops.parallel.orchestrator.subprocess.run",
+                return_value=MagicMock(returncode=0, stdout="", stderr=""),
+            ),
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert [c for c in calls if c[0] == "merge"]
+        assert not orch.epic_branch_verify_failures
+
+    def test_worktree_setup_failure_blocks_and_records(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"}, verify_before_merge=True
+        )
+        calls = self._capture_git(orch)
+
+        with (
+            patch(
+                "little_loops.parallel.orchestrator.setup_worktree",
+                side_effect=RuntimeError("worktree add failed"),
+            ),
+            patch("little_loops.parallel.orchestrator.subprocess.run") as mock_run,
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+        mock_run.assert_not_called()
+        assert "worktree setup failed" in orch.epic_branch_verify_failures["EPIC-2451"]
+
+    def test_failure_leaves_branch_retryable(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """A verify failure must NOT add the branch to _merged_epic_branches (retry next call)."""
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"}, verify_before_merge=True
+        )
+        calls = self._capture_git(orch)
+
+        with (
+            patch("little_loops.parallel.orchestrator.setup_worktree"),
+            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch(
+                "little_loops.parallel.orchestrator.subprocess.run",
+                return_value=MagicMock(returncode=1, stdout="", stderr="boom"),
+            ),
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert self._EPIC_BRANCH not in orch._merged_epic_branches
+        assert not [c for c in calls if c[0] == "merge"]
+
+        with (
+            patch("little_loops.parallel.orchestrator.setup_worktree"),
+            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch(
+                "little_loops.parallel.orchestrator.subprocess.run",
+                return_value=MagicMock(returncode=0, stdout="", stderr=""),
+            ),
+        ):
+            orch._maybe_complete_epic("FEAT-020", self._EPIC_BRANCH)
+
+        assert [c for c in calls if c[0] == "merge"]
+
+
 class TestStateManagement:
     """Tests for state load/save/cleanup."""
 
@@ -2674,6 +2825,28 @@ class TestOnWorkerComplete:
 
         combined = "\n".join(log_messages)
         assert "pushed (PR skipped)" in combined
+
+    def test_report_results_surfaces_epic_verify_gate_failures(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_report_results surfaces blocked EPIC-branch verify-gate failures (ENH-2603)."""
+        orchestrator._epic_branch_verify_failures = {
+            "EPIC-2451": "test_cmd failed (exit 1): 2 failed"
+        }
+        orchestrator.queue.completed_count = 1
+        orchestrator.queue.failed_count = 0
+        orchestrator.queue.failed_ids = []
+
+        log_messages: list[str] = []
+        orchestrator.logger.info = lambda msg: log_messages.append(str(msg))  # type: ignore[method-assign]
+        orchestrator.logger.warning = lambda msg: log_messages.append(str(msg))  # type: ignore[method-assign]
+
+        orchestrator._report_results(time.time() - 1.0)
+
+        combined = "\n".join(log_messages)
+        assert "EPIC-2451" in combined
+        assert "test_cmd failed" in combined
 
     def test_report_results_feature_branch_pr_opened(
         self,

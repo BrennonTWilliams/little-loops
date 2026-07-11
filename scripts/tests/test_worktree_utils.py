@@ -10,7 +10,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from little_loops.worktree_utils import detect_default_branch
+import pytest
+
+from little_loops.logger import Logger
+from little_loops.parallel.git_lock import GitLock
+from little_loops.worktree_utils import cleanup_worktree, detect_default_branch, setup_worktree
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -115,3 +119,72 @@ class TestDetectDefaultBranchGitLock:
 
         assert result == "trunk"
         assert lock.calls == [["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]]
+
+
+class TestSetupWorktreeCheckoutExisting:
+    """setup_worktree(checkout_existing=True) checks out an existing branch (ENH-2603)."""
+
+    def test_checks_out_existing_branch_without_creating_new_one(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/existing")
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="epic/existing",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+            checkout_existing=True,
+        )
+
+        current = _git(worktree_path, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        assert current == "epic/existing"
+
+    def test_base_branch_and_checkout_existing_are_mutually_exclusive(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/existing")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            setup_worktree(
+                repo_path=repo,
+                worktree_path=tmp_path / "wt",
+                branch_name="epic/existing",
+                copy_files=[],
+                logger=logger,
+                git_lock=git_lock,
+                base_branch="main",
+                checkout_existing=True,
+            )
+
+    def test_cleanup_after_checkout_existing_does_not_delete_the_branch(
+        self, tmp_path: Path
+    ) -> None:
+        """The checked-out branch is not disposable — cleanup must not delete it."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/existing")
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="epic/existing",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+            checkout_existing=True,
+        )
+        cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=False)
+
+        branches = _git(repo, "branch", "--list", "epic/existing").stdout
+        assert "epic/existing" in branches
+        assert not worktree_path.exists()
