@@ -4850,3 +4850,24 @@
   alternatives_rejected: 'Option B: raw source-dict overlay on save_decisions via
     deep_merge (couples save to a file read, switches entry alignment to keyed-by-id)'
   issue: BUG-2588
+- id: ARCHITECTURE-130
+  type: decision
+  timestamp: '2026-07-11T13:32:10Z'
+  category: architecture
+  labels: []
+  rationale: Instant eviction + background 6-section summarization; extends existing
+    LCM compaction surface
+  rule: 'Captured: F3 — Session-memory compaction: StreamingLLM eviction + 6-section
+    schema'
+  scope: issue
+  issue: FEAT-2598
+- id: ARCHITECTURE-131
+  type: decision
+  timestamp: '2026-07-11T13:32:10Z'
+  category: architecture
+  labels: []
+  rationale: Zero-dep heuristic compressor for prompts >=8K tokens; real LLMLingua
+    stays opt-in behind a benchmark gate
+  rule: 'Captured: F4-gated — Heuristic prompt compressor (LLMLingua-gated fallback)'
+  scope: issue
+  issue: FEAT-2599

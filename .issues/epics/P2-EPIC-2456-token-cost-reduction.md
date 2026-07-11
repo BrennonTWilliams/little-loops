@@ -8,7 +8,7 @@ captured_at: "2026-07-02T00:00:00Z"
 discovered_date: "2026-07-02"
 discovered_by: deep-research / manual synthesis
 labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479, ENH-2486, ENH-2490, ENH-2499]
+relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479, ENH-2486, ENH-2490, ENH-2499, FEAT-2598, FEAT-2599]
 source_artifacts:
   - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
   - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -168,8 +168,8 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 
 ### Tier 3 — compaction and compression
 
-- **[TBD-12]** F3 — Session-memory compaction (StreamingLLM eviction instant pass + 6-section semantic summarization): new `compaction/instant.py` + `compaction/result.py` (`CompactResult` typed wrapper over existing `summary_nodes`); soft threshold 7,500 tokens fires background summarizer; new `skills/ll-compact-session/SKILL.md` for manual trigger. Builds on existing LCM compaction surface (`session_store._compact_session_conn`, ENH-1954 cross-session condensation).
-- **[TBD-13]** F4-gated — Heuristic prompt compressor: new `compression/heuristic.py` invoked from `fsm/runners.py` for prompts ≥8K tokens; drops repeated tool results older than 5 turns, dedupes stable system blocks, tail-truncates assistant turns beyond N. **LLMLingua pip dep only enabled when `compression.heuristic_underperforms == true`** in `.ll/ll-config.json`.
+- **FEAT-2598** — F3 — Session-memory compaction (StreamingLLM eviction instant pass + 6-section semantic summarization): new `compaction/instant.py` + `compaction/result.py` (`CompactResult` typed wrapper over existing `summary_nodes`); soft threshold 7,500 tokens fires background summarizer; new `skills/ll-compact-session/SKILL.md` for manual trigger. Builds on existing LCM compaction surface (`session_store._compact_session_conn`, ENH-1954 cross-session condensation). *(filed 2026-07-11, P2; was [TBD-12])*
+- **FEAT-2599** — F4-gated — Heuristic prompt compressor: new `compression/heuristic.py` invoked from `fsm/runners.py` for prompts ≥8K tokens; drops repeated tool results older than 5 turns, dedupes stable system blocks, tail-truncates assistant turns beyond N. **LLMLingua pip dep only enabled when `compression.heuristic_underperforms == true`** in `.ll/ll-config.json`. *(filed 2026-07-11, P2; was [TBD-13])*
 - **[TBD-14]** F8 — Subagent handoff compaction + parent-prefix hoisting: import `compaction/instant.py` from `subagents/handoff.py` (new); at subagent spawn, summarize parent's context using the 6-section schema and inject as the child's `system` block. **Parent-prefix hoisting (~30 LOC, greenfield, no upstream impl):** hash the parent's static prefix and emit one shared `cache_control` breakpoint; per-child delta is the second breakpoint.
 - **[TBD-15]** F8 — Handoff trace set (locked 5 `ll-parallel` handoff traces) — gates the 50–70% handoff shrink metric.
 
@@ -301,6 +301,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:capture-issue` - 2026-07-11 - Filed **FEAT-2598** (F3, was [TBD-12]) and **FEAT-2599** (F4-gated, was [TBD-13]) from the Tier 3 section of both plan docs. Replaced the two TBD placeholder bullets in Children with real child references; added both to `relates_to`.
 - epic-review - 2026-07-10 - **F7-lite budget re-scoping resolved**: chose option (a) — F7-lite owns a minimal, file-local per-worker spend accumulator (not a shared `fsm/` module) — over dropping the guard and relying on `ll-parallel --workers`. Researched first: `fsm/cost_graph.py` (F6) confirmed purely post-hoc (reads completed run artifacts only, no live accumulation, and its own scope explicitly excludes "cost ceiling guard"); F5 emits per-invocation OTel telemetry only; `ll-parallel --workers` is a pure concurrency cap with no dollar/token tracking, so it can't catch a single runaway worker. Updated Integration Map, Implementation Order diagram, Tests list, and Success Metrics to reflect the local-accumulator plan; renamed the planned test file `test_fsm_budget.py` → `test_routing_budget.py`.
 - epic-review - 2026-07-10 - **F2 cut** (per user request, not deferred): FEAT-2476 and its three grandchildren (FEAT-2548/2549/2550) cancelled — a spend cap/circuit-breaker is cost *governance*, not *reduction* (it halts a run at a $ ceiling; it doesn't lower tokens/$ spent per unit of work, unlike F1/F3/F4/F7-lite). Removed F2 from Goal, Scope table, Boundary section, Children, Integration Map, Implementation Order, Success Metrics, and effort totals (~1,550 → ~1,390 LOC, 9 → 8 F-feature children). Flagged one follow-up: F7-lite's per-worker spend tracking was slated to reuse `fsm/budget.py`; that dependency needs re-scoping (either a minimal local accumulator or drop the per-worker guard) before F7-lite body work starts.
 
