@@ -2297,13 +2297,10 @@ class TestAutoRefineAndImplementLoop:
         with no trace (same failure mode ENH-2404 fixed for gate_blocked)."""
         action = data["states"].get("finalize", {}).get("action", "")
         assert "autodev-decision-unresolved.txt" in action, (
-            "finalize must source autodev-decision-unresolved.txt to surface "
-            "decision_unresolved"
+            "finalize must source autodev-decision-unresolved.txt to surface decision_unresolved"
         )
 
-    def test_finalize_decision_unresolved_count_surfaces(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_decision_unresolved_count_surfaces(self, data: dict, tmp_path: Path) -> None:
         """A run with decision-unresolved issues must report decision_unresolved
         >= 1, not drop them."""
         run_dir = tmp_path / "run"
@@ -2311,9 +2308,7 @@ class TestAutoRefineAndImplementLoop:
         summary = self._run_finalize(
             data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), decision_unresolved=2
         )
-        assert summary["decision_unresolved"] == 2, (
-            f"expected decision_unresolved=2, got {summary}"
-        )
+        assert summary["decision_unresolved"] == 2, f"expected decision_unresolved=2, got {summary}"
 
     def test_finalize_decision_unresolved_zero_when_no_ledger_entries(
         self, data: dict, tmp_path: Path
@@ -2323,9 +2318,7 @@ class TestAutoRefineAndImplementLoop:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
-        assert summary["decision_unresolved"] == 0, (
-            f"expected decision_unresolved=0, got {summary}"
-        )
+        assert summary["decision_unresolved"] == 0, f"expected decision_unresolved=0, got {summary}"
 
     def test_finalize_skipped_breakdown_aggregates_by_reason(
         self, data: dict, tmp_path: Path

@@ -1583,9 +1583,7 @@ class TestENH2575PartialCredit:
         assert "summary.json" in action
         assert '"verdict":"partial"' in action
 
-    def test_write_partial_summary_on_error_still_reaches_partial(
-        self, raw_data: dict
-    ) -> None:
+    def test_write_partial_summary_on_error_still_reaches_partial(self, raw_data: dict) -> None:
         assert raw_data["states"]["write_partial_summary"]["on_error"] == "partial"
 
     def test_summarize_partial_wording_covers_verify_failure(self, raw_data: dict) -> None:

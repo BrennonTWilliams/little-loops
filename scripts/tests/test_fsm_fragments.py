@@ -2550,12 +2550,12 @@ class TestLlAutoFragmentsAdversarialOutput:
         (run_dir / "ll_auto_last.txt").write_text(output)
         action = fragments[name]["action"]
         script = action.replace("${context.run_dir}", str(run_dir))
-        return subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        return subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
 
     def test_auth_check_survives_adversarial_output(self, fragments: dict, tmp_path: Path) -> None:
-        result = self._run_fragment(fragments, "ll_auto_auth_check", tmp_path, self.ADVERSARIAL_OUTPUT)
+        result = self._run_fragment(
+            fragments, "ll_auto_auth_check", tmp_path, self.ADVERSARIAL_OUTPUT
+        )
         assert result.returncode == 0, (
             f"ll_auto_auth_check must not fail to parse on adversarial output: {result.stderr!r}"
         )
@@ -2577,8 +2577,6 @@ class TestLlAutoFragmentsAdversarialOutput:
         self, fragments: dict, tmp_path: Path
     ) -> None:
         output = self.ADVERSARIAL_OUTPUT + "\nLEARNING_GATE_BLOCKED\n"
-        result = self._run_fragment(
-            fragments, "ll_auto_learning_gate_check", tmp_path, output
-        )
+        result = self._run_fragment(fragments, "ll_auto_learning_gate_check", tmp_path, output)
         assert result.returncode == 0
         assert result.stdout.strip() == "GATE_BLOCKED"

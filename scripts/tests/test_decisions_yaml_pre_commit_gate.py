@@ -33,19 +33,9 @@ from pathlib import Path
 
 import pytest
 
-OTHE_203_PAYLOAD = (
-    "entries:\n"
-    "  - id: OTHE-203\n"
-    "    type: decision\n"
-    '    rationale: "abc "" def"\n'
-)
+OTHE_203_PAYLOAD = 'entries:\n  - id: OTHE-203\n    type: decision\n    rationale: "abc "" def"\n'
 
-CLEAN_PAYLOAD = (
-    "entries:\n"
-    "  - id: R-001\n"
-    "    type: rule\n"
-    "    rule: Use atomic writes\n"
-)
+CLEAN_PAYLOAD = "entries:\n  - id: R-001\n    type: rule\n    rule: Use atomic writes\n"
 
 
 def _init_git_repo(path: Path) -> None:
@@ -54,12 +44,14 @@ def _init_git_repo(path: Path) -> None:
     Mirrors ``scripts/tests/test_hooks_integration.py:2994-3007`` shape.
     """
     subprocess.run(["git", "init"], cwd=str(path), check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        cwd=str(path),
-        check=True,
-        capture_output=True,
-    ),
+    (
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=str(path),
+            check=True,
+            capture_output=True,
+        ),
+    )
     subprocess.run(
         ["git", "config", "user.name", "Test"],
         cwd=str(path),
@@ -130,9 +122,7 @@ def test_pre_commit_config_has_ll_verify_decisions_hook() -> None:
     assert "entry: ll-verify-decisions" in text, (
         ".pre-commit-config.yaml hook must invoke ll-verify-decisions"
     )
-    assert "language: system" in text, (
-        ".pre-commit-config.yaml hook must use language: system"
-    )
+    assert "language: system" in text, ".pre-commit-config.yaml hook must use language: system"
     assert "pass_filenames: false" in text, (
         ".pre-commit-config.yaml hook must set pass_filenames: false "
         "(main_verify_decisions resolves the path itself via --config-root)"
@@ -154,13 +144,9 @@ def test_pre_commit_blocks_othe_203_corruption(tmp_path: Path) -> None:
     """
     pre_commit = _pre_commit_available()
     if pre_commit is None:
-        pytest.skip(
-            "pre-commit not installed; pre-commit gate runs wherever it is available"
-        )
+        pytest.skip("pre-commit not installed; pre-commit gate runs wherever it is available")
     if _validator_available() is None:
-        pytest.skip(
-            "ll-verify-decisions not installed; run pip install -e \"./scripts[dev]\""
-        )
+        pytest.skip('ll-verify-decisions not installed; run pip install -e "./scripts[dev]"')
 
     _init_git_repo(tmp_path)
     _write_config(tmp_path)
@@ -193,13 +179,9 @@ def test_pre_commit_passes_clean_file(tmp_path: Path) -> None:
     """
     pre_commit = _pre_commit_available()
     if pre_commit is None:
-        pytest.skip(
-            "pre-commit not installed; pre-commit gate runs wherever it is available"
-        )
+        pytest.skip("pre-commit not installed; pre-commit gate runs wherever it is available")
     if _validator_available() is None:
-        pytest.skip(
-            "ll-verify-decisions not installed; run pip install -e \"./scripts[dev]\""
-        )
+        pytest.skip('ll-verify-decisions not installed; run pip install -e "./scripts[dev]"')
 
     _init_git_repo(tmp_path)
     _write_config(tmp_path)

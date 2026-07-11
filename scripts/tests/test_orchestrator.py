@@ -1185,9 +1185,7 @@ class TestInspectWorktree:
             result = orch._inspect_worktree(worktree_path)
 
         assert result is not None
-        assert rev_list_bases == [
-            "epic/epic-2451-integration..parallel/bug-001-20260117-150000"
-        ]
+        assert rev_list_bases == ["epic/epic-2451-integration..parallel/bug-001-20260117-150000"]
 
     def test_returns_none_when_rev_parse_fails(
         self,

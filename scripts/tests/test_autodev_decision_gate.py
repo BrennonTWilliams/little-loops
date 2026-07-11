@@ -467,9 +467,7 @@ class TestAssertDecisionClearedStructural:
             "assert_decision_cleared state missing from autodev.yaml — BUG-2595"
         )
 
-    def test_assert_decision_cleared_uses_check_flag_predicate(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_assert_decision_cleared_uses_check_flag_predicate(self, data: dict[str, Any]) -> None:
         state = data["states"]["assert_decision_cleared"]
         action = state.get("action", "")
         assert "ll-issues check-flag" in action, (
@@ -479,9 +477,7 @@ class TestAssertDecisionClearedStructural:
             f"assert_decision_cleared.action must check decision_needed, got {action!r}"
         )
 
-    def test_assert_decision_cleared_uses_shell_exit_fragment(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_assert_decision_cleared_uses_shell_exit_fragment(self, data: dict[str, Any]) -> None:
         state = data["states"]["assert_decision_cleared"]
         assert state.get("fragment") == "shell_exit", (
             f"assert_decision_cleared.fragment should be 'shell_exit', got {state.get('fragment')!r}"
@@ -529,8 +525,7 @@ class TestAssertDecisionClearedStructural:
         state = data["states"].get("record_decision_unresolved", {})
         action = state.get("action", "")
         assert "autodev-decision-unresolved.txt" in action, (
-            "record_decision_unresolved should record the issue to "
-            "autodev-decision-unresolved.txt"
+            "record_decision_unresolved should record the issue to autodev-decision-unresolved.txt"
         )
         assert "/ll:decide-issue" in action, (
             "record_decision_unresolved should point the operator at /ll:decide-issue"
@@ -597,9 +592,7 @@ class TestAssertDecisionClearedRouting:
             f"true (BUG-2595: guaranteed-halt path); visited={visited!r}"
         )
 
-    def test_decision_cleared_routes_to_implement_current(
-        self, post_decide_chain_fsm: Any
-    ) -> None:
+    def test_decision_cleared_routes_to_implement_current(self, post_decide_chain_fsm: Any) -> None:
         """decision_needed cleared (check-flag exit 1) — the happy path — must
         still reach implement_current unchanged."""
         runner = _StubRunner(

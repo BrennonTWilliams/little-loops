@@ -51,10 +51,7 @@ class TestLoadDecisionsMalformedInput:
         decisions_path = tmp_path / ".ll" / "decisions.yaml"
         _write_yaml(
             decisions_path,
-            "entries:\n"
-            "  - id: OTHE-203\n"
-            "    type: decision\n"
-            '    rationale: "abc "" def"\n',
+            'entries:\n  - id: OTHE-203\n    type: decision\n    rationale: "abc "" def"\n',
         )
         import yaml as _yaml
 
@@ -80,10 +77,7 @@ class TestLoadDecisionsMalformedInput:
         decisions_path = tmp_path / ".ll" / "decisions.yaml"
         _write_yaml(
             decisions_path,
-            "entries:\n"
-            "  - id: BAD-001\n"
-            "    type: foo\n"
-            "    rationale: bad discriminator\n",
+            "entries:\n  - id: BAD-001\n    type: foo\n    rationale: bad discriminator\n",
         )
         from little_loops.decisions import load_decisions
 
@@ -124,10 +118,7 @@ class TestMainVerifyDecisions:
         decisions_path = tmp_path / ".ll" / "decisions.yaml"
         _write_yaml(
             decisions_path,
-            "entries:\n"
-            "  - id: OTHE-203\n"
-            "    type: decision\n"
-            '    rationale: "abc "" def"\n',
+            'entries:\n  - id: OTHE-203\n    type: decision\n    rationale: "abc "" def"\n',
         )
         with patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]):
             ret = main_verify_decisions()
@@ -160,10 +151,7 @@ class TestMainVerifyDecisions:
         decisions_path = tmp_path / ".ll" / "decisions.yaml"
         _write_yaml(
             decisions_path,
-            "entries:\n"
-            "  - id: BAD-001\n"
-            "    type: foo\n"
-            "    rationale: bad discriminator\n",
+            "entries:\n  - id: BAD-001\n    type: foo\n    rationale: bad discriminator\n",
         )
         with patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]):
             ret = main_verify_decisions()

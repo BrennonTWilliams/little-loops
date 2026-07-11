@@ -48,19 +48,9 @@ CLI = "ll-verify-decisions"
 # OTHE-203 — unterminated-quote payload (mirrors test_decisions_yaml_gate.py:45).
 # Inline per the codebase convention documented at
 # test_decisions.py:127-132 and test_verify_decisions.py:49-58.
-OTHE_203_PAYLOAD = (
-    "entries:\n"
-    "  - id: OTHE-203\n"
-    "    type: decision\n"
-    '    rationale: "abc "" def"\n'
-)
+OTHE_203_PAYLOAD = 'entries:\n  - id: OTHE-203\n    type: decision\n    rationale: "abc "" def"\n'
 
-CLEAN_PAYLOAD = (
-    "entries:\n"
-    "  - id: R-001\n"
-    "    type: rule\n"
-    "    rule: Use atomic writes\n"
-)
+CLEAN_PAYLOAD = "entries:\n  - id: R-001\n    type: rule\n    rule: Use atomic writes\n"
 
 INVOKE_TIMEOUT = 10
 
@@ -153,9 +143,7 @@ def test_hooks_json_registers_check_decisions_yaml_hook() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_hook_blocks_othe_203_write(
-    tmp_path: Path, validator: str | None
-) -> None:
+def test_hook_blocks_othe_203_write(tmp_path: Path, validator: str | None) -> None:
     """Write with OTHE-203 corruption must block (exit 2) and reference decisions.yaml.
 
     The Claude Code PreToolUse contract (``hooks/adapters/claude-code/pre-tool-use.sh:7-13``)
@@ -183,8 +171,7 @@ def test_hook_blocks_othe_203_write(
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
     )
     assert "decisions.yaml" in result.stderr.lower(), (
-        f"Hook stderr should reference decisions.yaml on block; "
-        f"got {result.stderr!r}"
+        f"Hook stderr should reference decisions.yaml on block; got {result.stderr!r}"
     )
     # Sanity-check: PreToolUse runs before mutation — on-disk file unchanged
     assert target.read_text(encoding="utf-8") == CLEAN_PAYLOAD, (
@@ -219,9 +206,7 @@ def test_hook_allows_valid_write(tmp_path: Path, validator: str | None) -> None:
     )
 
 
-def test_hook_blocks_othe_203_edit(
-    tmp_path: Path, validator: str | None
-) -> None:
+def test_hook_blocks_othe_203_edit(tmp_path: Path, validator: str | None) -> None:
     """Edit whose reconstructed result is OTHE-203 corrupt must block (exit 2).
 
     The hook must reconstruct the post-Edit candidate by applying
@@ -367,9 +352,7 @@ def test_hook_skips_when_validator_missing(tmp_path: Path) -> None:
 
     bin_dir = _make_isolated_bin(tmp_path, with_python=True)
     # Sanity: ensure the isolated bin has no validator binary
-    assert not (bin_dir / CLI).exists(), (
-        f"Isolated bin unexpectedly contains {CLI!r}"
-    )
+    assert not (bin_dir / CLI).exists(), f"Isolated bin unexpectedly contains {CLI!r}"
 
     _stage_clean_decisions(tmp_path)
     payload = {

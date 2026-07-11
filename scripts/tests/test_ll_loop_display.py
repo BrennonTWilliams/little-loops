@@ -4698,9 +4698,7 @@ class TestWindowedDiagramStubTerminators:
         # The diagram body sits between the "▲" and "▼" banners, so the
         # bottommost diagram row is the line just before the "layers below"
         # banner.
-        bot_banner_idx = next(
-            i for i, ln in enumerate(lines) if "layers below" in ln
-        )
+        bot_banner_idx = next(i for i, ln in enumerate(lines) if "layers below" in ln)
         bot_row = lines[bot_banner_idx - 1]
 
         assert "◡" in bot_row, f"expected ◡ in bottom row, got:\n{bot_row!r}"
@@ -4722,9 +4720,7 @@ class TestWindowedDiagramStubTerminators:
         lines = _strip(out)
 
         diagram_lines = [ln for ln in lines if "layers" not in ln]
-        assert "◠" not in "\n".join(diagram_lines), (
-            "full-span pipe must not get a top terminator"
-        )
+        assert "◠" not in "\n".join(diagram_lines), "full-span pipe must not get a top terminator"
         assert "◡" not in "\n".join(diagram_lines), (
             "full-span pipe must not get a bottom terminator"
         )
