@@ -4907,3 +4907,15 @@
     Behavior #1): simpler for delegate but breaks the main-tree-never-checks-out invariant
     with no restore mechanism.'
   issue: ENH-2601
+- id: ARCHITECTURE-135
+  type: decision
+  timestamp: '2026-07-11T18:09:09Z'
+  category: architecture
+  labels: []
+  rationale: self.wave_label is already a formatted string (f"Wave {n}/{m}"); persisting
+    it verbatim avoids a parse step, and no acceptance criterion needs numeric wave
+    aggregation yet — split columns deferred to a follow-on
+  rule: orchestration_runs.wave column is TEXT, not INTEGER
+  scope: issue
+  alternatives_rejected: split into wave_num INTEGER, total_waves INTEGER
+  issue: ENH-2492

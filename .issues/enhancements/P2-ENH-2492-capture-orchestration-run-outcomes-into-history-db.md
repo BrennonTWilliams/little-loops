@@ -5,15 +5,21 @@ type: ENH
 priority: P2
 status: open
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - orchestration
-  - captured
+- enhancement
+- history-db
+- orchestration
+- captured
+confidence_score: 96
+outcome_confidence: 77
+score_complexity: 18
+score_test_coverage: 23
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-2492: Capture orchestration run outcomes (ll-auto/ll-parallel/ll-sprint) into history.db
@@ -266,6 +272,70 @@ corrections and additional file inventory:_
   add to **all four** locations in the same commit (`_VALID_KINDS`,
   `_KIND_TABLE`, and **both** `cli/session.py --kind choices` literals).
 
+### Codebase Research Findings (Anchor Drift Verification — 2026-07-11)
+
+_Added by `/ll:refine-issue --auto` (4th pass) — line-number drift check against
+current HEAD. No structural drift anywhere: every cited function/class/table
+still exists with the same name, signature, and behavior. `SCHEMA_VERSION` is
+still `18` — the proposed v19 slot remains open and uncontested. Numeric drift
+by file:_
+
+- **`parallel/orchestrator.py` — significant drift (~53–66 lines), re-locate
+  by name before citing lines in a commit**:
+
+  | Cited element | Issue's line(s) | Actual line(s) | Drift |
+  |---|---|---|---|
+  | `_on_worker_complete()` | 914-1087 | **967-1152** | +53 / +65 |
+  | `interrupted` early-return | 927-931 | **980-984** | +53 |
+  | `self._pr_ready_branches[...] = branch_state` | 1044-1045 | **1102** | +57 |
+  | Timing write (`self.state.timing[...] = {...}`) | 1066-1070 | **1132-1135** | +65 |
+  | `_open_pr_for_branch` signature | 1109-1114 | **1174-1179** | +65 |
+  | `_open_pr_for_branch` docstring | 1117 | **1182** | +65 |
+  | `pr_result.returncode == 0` mutation | 1153/1160 | **1217** | +57/+64 |
+  | `self.wave_label = wave_label` | 103 | **109** | +6 |
+
+  Control flow is unchanged (overlap unregister → interrupted early-return →
+  close-issue branch → success branch → failure branch → EPIC-completion
+  check → timing write → cleanup → event emission), and `_open_pr_for_branch`
+  still mutates `branch_state["pr_url"]` in place exactly as documented — only
+  the absolute line numbers moved, consistent with unrelated code (an
+  EPIC-completion merge block) having been inserted above line 967 since the
+  last pass. **This means the concrete code blocks in Implementation Steps 15
+  and 18 (which say "after the timing write at lines 1066-1070" and "at
+  `parallel/orchestrator.py:927-931`") should be inserted at the current
+  locations (1132-1135 and 980-984 respectively), not the cited ones.**
+
+- **`cli/sprint/run.py` — moderate drift (~14–22 lines)**: `wave_label=f"Wave
+  {wave_num}/{total_waves}"` composition now at **line 629** (issue cited 607).
+  Multi-issue wave-average timing overwrite now at **lines 643-645** (issue
+  cited 621-623) — still confirmed true. Constant failure-reason string
+  `"Issue failed during wave execution"` now at **line 648** (issue cited
+  625-626) — still confirmed true. `state.skipped_blocked_issues[...]` now at
+  lines 565, 680, 718-719 (issue cited 551, 658-659). Implementation Step 16's
+  code block ("after `_save_sprint_state(state, logger)` at line 680") should
+  anchor on the current line 680+ location, not 680 from the prior pass
+  (coincidentally close but re-verify before committing).
+
+- **Everything else — 0–25 lines of drift, within normal noise**:
+  `session_store.py` (`SCHEMA_VERSION`, `_MIGRATIONS`, `record_commit_event`,
+  `_EXPORT_TABLE_MAP`, `_apply_migrations`), `state.py`, `issue_manager.py`
+  (`AutoManager.run()` finally block, `_process_issue`), `cli/auto.py`,
+  `cli/parallel.py`, `cli/sprint/__init__.py`, and `history_reader.py` all
+  match within a few lines of the issue's citations — no re-verification
+  needed beyond normal implementation-time sanity checks.
+
+- **NEW — `scripts/tests/test_orchestrator.py` exists** as a dedicated
+  orchestrator unit-test file, not listed in the issue's Test Files section
+  (which only names `test_parallel_cli.py::TestParallelNormalRun` for
+  orchestrator-level coverage). Since the primary flush site
+  (`_on_worker_complete`) lives in `parallel/orchestrator.py`, a direct unit
+  test in `test_orchestrator.py` (mocking `record_orchestration_run` and
+  asserting it's called with the right `status`/`wave`/`pr_url` on a
+  synthetic `WorkerResult`) would be a faster, more targeted test than driving
+  it through the CLI-level `test_parallel_cli.py` test proposed in step 9.
+  Consider adding both, or substituting the unit test for the CLI test if the
+  CLI-level one proves slow/flaky.
+
 ## Proposed Solution
 
 ### Schema migration
@@ -279,7 +349,7 @@ CREATE TABLE IF NOT EXISTS orchestration_runs (
     status TEXT,                      -- "completed" | "failed" | "skipped"
     failure_reason TEXT,
     duration_s REAL,
-    wave INTEGER,                     -- parallel only; NULL otherwise
+    wave TEXT,                        -- e.g. "Wave 1/3"; parallel/sprint only, NULL for ll-auto
     pr_url TEXT,                      -- when a worktree PR was opened
     started_at TEXT,
     ended_at TEXT,
@@ -358,9 +428,10 @@ _Added by `/ll:refine-issue --auto` — based on codebase analysis:_
   `f"Wave {wave_num}/{total_waves}"` at `cli/sprint/run.py:607` and passed
   into `ParallelOrchestrator(wave_label=…)`. Persist the label verbatim;
   the issue's `wave INTEGER` proposal is more SQL-friendly but breaks the
-  existing wave-format. Recommend either changing the SQL to `wave TEXT`
-  (matches reality) or pre-parsing to an int. **Open design choice** — see
-  the open question in `Sources`/Implementation Steps below.
+  existing wave-format.
+
+  > **Selected:** `wave TEXT` — persist `self.wave_label` verbatim; see
+  > Decision Rationale below.
 
 - **EPIC-1707 best-effort wrapping**: `record_*_event` functions do NOT
   internally catch exceptions. The `contextlib.suppress(Exception)` wrapper
@@ -530,6 +601,41 @@ to the proposed solution:_
   pool thread, and (b) `_cmd_sprint_run`'s post-wave-loop flush happens in a
   long-lived loop where each iteration must be independently guarded.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-11.
+
+**Selected**: `wave TEXT` (option (a) from Implementation Step 13), over splitting
+into `wave_num INTEGER, total_waves INTEGER` (option (b)).
+
+**Reasoning**: `ParallelOrchestrator.wave_label` is declared `str | None`
+(`parallel/orchestrator.py:90`) and is always constructed as the pre-formatted
+string `f"Wave {wave_num}/{total_waves}"` (`cli/sprint/run.py:629`); persisting
+it verbatim needs no parse/format step at either write or read time. No caller
+in this issue's scope needs numeric wave aggregation ("median issues per
+wave"), so the extra schema/query complexity of a split-column design buys
+nothing yet — it can be added as a follow-on if that query pressure
+materializes. `TEXT` also keeps the v19 migration minimal alongside the
+already-nontrivial `_VALID_KINDS`/`_KIND_TABLE` four-location wiring (see
+Codebase Research Findings above).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| (a) `wave TEXT` | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| (b) split `wave_num`/`total_waves` INTEGER | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+
+**Key evidence**:
+- (a) `wave TEXT`: matches `wave_label`'s existing string type and format
+  exactly (`orchestrator.py:90`, `run.py:629`); no parsing needed anywhere in
+  the producer wiring (Steps 15–17 already pass `self.wave_label` /
+  `wave_label` straight through as a string).
+- (b) split columns: would require parsing `"Wave N/M"` back into two ints at
+  every flush site (or restructuring `wave_label` itself, a wider blast
+  radius), and no acceptance criterion or query in this issue needs the
+  numeric form.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `orchestration_runs` exists; `SCHEMA_VERSION` bumped.
@@ -687,15 +793,13 @@ _Added by `/ll:refine-issue --auto` — based on codebase analysis:_
     `contextlib.suppress(Exception)` so a DB failure doesn't abort the retry
     loop.
 
-13. **`wave` column type decision** (open design choice): the proposed
-    schema has `wave INTEGER` but `self.wave_label` is built as
-    `f"Wave {wave_num}/{total_waves}"` (string). Two viable resolutions:
-    (a) change schema column to `wave TEXT` — preserves human-readable label
-    without parsing; or (b) split into two columns `wave_num INTEGER,
-    total_waves INTEGER` — more SQL-friendly for aggregations like
-    "median issues per wave". Recommendation: `wave TEXT` for v1
-    (lower-risk, matches existing display format); defer the split to a
-    follow-on if aggregations need it.
+13. **`wave` column type — decided (see Decision Rationale in Proposed
+    Solution)**: `wave TEXT`, not `wave INTEGER`. `self.wave_label` is built
+    as `f"Wave {wave_num}/{total_waves}"` (string); persist it verbatim — no
+    parse step at any flush site. The split-column alternative
+    (`wave_num INTEGER, total_waves INTEGER`) is deferred to a follow-on if
+    numeric wave aggregation ever needs it; nothing in this issue's
+    acceptance criteria requires it.
 
 ### Codebase Research Findings (Implementation Steps — verification pass)
 
@@ -878,6 +982,8 @@ flush blocks, additional flush sites, and `_EXPORT_TABLE_MAP` wiring:_
 **Open** | Created: 2026-07-05 | Priority: P2
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-11T18:09:15 - `37898a30-ea4e-4972-91db-a694a29a9e31.jsonl`
+- `/ll:refine-issue` - 2026-07-11T18:00:48 - `626e1d2e-171d-437d-99d2-c692ad2d4a44.jsonl`
 - `/ll:refine-issue` - 2026-07-07T06:46:32 - `42c45b6b-5e64-42fb-a77f-fff3dfa85679.jsonl`
 - `/ll:refine-issue` - 2026-07-06T23:47:05 - `8b0fb94d-2a13-40c0-a03a-0886bca177ac.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:14:36 - `29927953-330a-400d-9d73-7c6c5c33aac1.jsonl`
