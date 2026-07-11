@@ -432,6 +432,11 @@
               "type": "boolean",
               "description": "When true, open a PR for the EPIC branch via the gh CLI on completion. Requires gh to be installed and authenticated.",
               "default": false
+            },
+            "verify_before_merge": {
+              "type": "boolean",
+              "description": "When true, run test_cmd/lint_cmd against the EPIC branch before merge-to-base or PR-open. Inert until ENH-2603 reads it.",
+              "default": false
             }
           },
           "additionalProperties": false

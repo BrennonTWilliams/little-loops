@@ -531,6 +531,7 @@ class BRConfig:
             prefix=src.prefix,
             merge_to_base_on_complete=src.merge_to_base_on_complete,
             open_pr=src.open_pr,
+            verify_before_merge=src.verify_before_merge,
         )
 
     @property
@@ -606,6 +607,7 @@ class BRConfig:
                     "prefix": self._parallel.epic_branches.prefix,
                     "merge_to_base_on_complete": self._parallel.epic_branches.merge_to_base_on_complete,
                     "open_pr": self._parallel.epic_branches.open_pr,
+                    "verify_before_merge": self._parallel.epic_branches.verify_before_merge,
                 },
             },
             "commands": {

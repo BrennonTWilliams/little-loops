@@ -326,12 +326,16 @@ class EpicBranchesConfig:
             last child completes.
         open_pr: When True, open a PR for the EPIC branch via the gh CLI on
             completion. Requires ``gh`` to be installed and authenticated.
+        verify_before_merge: When True, run test_cmd/lint_cmd against the EPIC
+            branch before merge-to-base or PR-open (default False — inert
+            until ENH-2603 reads it).
     """
 
     enabled: bool = False
     prefix: str = "epic/"
     merge_to_base_on_complete: bool = True
     open_pr: bool = False
+    verify_before_merge: bool = False
 
 
 @dataclass
@@ -512,6 +516,7 @@ class ParallelConfig:
                 "prefix": self.epic_branches.prefix,
                 "merge_to_base_on_complete": self.epic_branches.merge_to_base_on_complete,
                 "open_pr": self.epic_branches.open_pr,
+                "verify_before_merge": self.epic_branches.verify_before_merge,
             },
         }
 

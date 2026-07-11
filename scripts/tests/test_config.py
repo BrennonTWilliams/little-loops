@@ -423,15 +423,17 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.prefix == "epic/"
         assert config.epic_branches.merge_to_base_on_complete is True
         assert config.epic_branches.open_pr is False
+        assert config.epic_branches.verify_before_merge is False
 
     def test_epic_branches_from_dict(self) -> None:
-        """EpicBranchesConfig parses all 4 sub-keys from data."""
+        """EpicBranchesConfig parses all 5 sub-keys from data."""
         data = {
             "epic_branches": {
                 "enabled": True,
                 "prefix": "epic-/",
                 "merge_to_base_on_complete": False,
                 "open_pr": True,
+                "verify_before_merge": True,
             }
         }
         config = ParallelAutomationConfig.from_dict(data)
@@ -439,6 +441,7 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.prefix == "epic-/"
         assert config.epic_branches.merge_to_base_on_complete is False
         assert config.epic_branches.open_pr is True
+        assert config.epic_branches.verify_before_merge is True
 
     def test_epic_branches_partial_dict_uses_defaults(self) -> None:
         """Partial EpicBranchesConfig dict fills missing keys with defaults."""
@@ -447,6 +450,7 @@ class TestParallelAutomationConfig:
         assert config.epic_branches.prefix == "epic/"
         assert config.epic_branches.merge_to_base_on_complete is True
         assert config.epic_branches.open_pr is False
+        assert config.epic_branches.verify_before_merge is False
 
 
 class TestConfidenceGateConfig:
@@ -813,6 +817,7 @@ class TestBRConfig:
         assert parallel["epic_branches"]["prefix"] == "epic/"
         assert parallel["epic_branches"]["merge_to_base_on_complete"] is True
         assert parallel["epic_branches"]["open_pr"] is False
+        assert parallel["epic_branches"]["verify_before_merge"] is False
 
     def test_to_dict_confidence_gate_schema_aligned_keys(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -1009,6 +1014,7 @@ class TestBRConfig:
                 "prefix": "fe/",
                 "merge_to_base_on_complete": False,
                 "open_pr": True,
+                "verify_before_merge": True,
             },
         )
         config_path = temp_project_dir / ".ll" / "ll-config.json"
@@ -1019,6 +1025,7 @@ class TestBRConfig:
         assert result.epic_branches.prefix == "fe/"
         assert result.epic_branches.merge_to_base_on_complete is False
         assert result.epic_branches.open_pr is True
+        assert result.epic_branches.verify_before_merge is True
 
     def test_to_dict_excludes_deprecated_dirs(
         self, temp_project_dir: Path, sample_config: dict[str, Any]

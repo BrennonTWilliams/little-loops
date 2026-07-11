@@ -3312,6 +3312,7 @@ class EpicBranchesConfig:
     prefix: str = "epic/"              # branch = f"{prefix}{epic_id.lower()}-{slug}"
     merge_to_base_on_complete: bool = True  # merge EPIC branch to base after last child
     open_pr: bool = False              # open a PR for the EPIC branch via gh on completion
+    verify_before_merge: bool = False  # run test_cmd/lint_cmd before merge/PR-open (inert until ENH-2603)
 ```
 
 When `enabled`, `WorkerPool` routes every child of a shared `parent:` EPIC onto

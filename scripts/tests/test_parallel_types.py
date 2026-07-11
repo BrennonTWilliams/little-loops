@@ -768,6 +768,7 @@ class TestParallelConfig:
         assert config.epic_branches.prefix == "epic/"
         assert config.epic_branches.merge_to_base_on_complete is True
         assert config.epic_branches.open_pr is False
+        assert config.epic_branches.verify_before_merge is False
 
     def test_creation_with_custom_values(self) -> None:
         """ParallelConfig can be created with custom values."""
@@ -1045,6 +1046,7 @@ class TestParallelConfig:
                 prefix="epic-/",
                 merge_to_base_on_complete=False,
                 open_pr=True,
+                verify_before_merge=True,
             ),
         )
 
@@ -1058,6 +1060,10 @@ class TestParallelConfig:
             == original.epic_branches.merge_to_base_on_complete
         )
         assert restored.epic_branches.open_pr == original.epic_branches.open_pr
+        assert (
+            restored.epic_branches.verify_before_merge
+            == original.epic_branches.verify_before_merge
+        )
 
         assert restored.max_workers == original.max_workers
         assert restored.p0_sequential == original.p0_sequential
