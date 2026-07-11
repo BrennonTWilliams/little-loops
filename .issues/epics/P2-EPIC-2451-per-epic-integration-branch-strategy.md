@@ -3,7 +3,7 @@ id: EPIC-2451
 title: Per-EPIC integration branch strategy (decomposed from FEAT-2339)
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-02T22:30:00Z'
 discovered_date: 2026-07-02
 discovered_by: issue-size-review
@@ -33,6 +33,7 @@ score_complexity: 9
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 0
+completed_at: '2026-07-11T14:15:19Z'
 ---
 
 # EPIC-2451: Per-EPIC integration branch strategy (decomposed from FEAT-2339)
