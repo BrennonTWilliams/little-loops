@@ -623,3 +623,74 @@ class TestRenderArtifactHeaderLines:
         run_dir_line = next(ln for ln in lines if "run_dir:" in ln)
         assert "input: " in loop_line and "my input" in loop_line
         assert "model: " in run_dir_line and "claude-opus-4-8" in run_dir_line
+
+    def test_all_four_merge_onto_one_line_when_width_allows(self) -> None:
+        """loop/input/run_dir/model all fit on one line at a wide enough width."""
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.output import strip_ansi
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": ".loops/runs/test-loop/2026-07-11"},
+        )
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, "claude-opus-4-8", "my input", 200)
+        assert len(lines) == 1
+        visible = strip_ansi(lines[0])
+        assert not visible.endswith("…")
+        for fragment in (
+            "loop:",
+            "input: ",
+            "my input",
+            "run_dir:",
+            "model: ",
+            "claude-opus-4-8",
+        ):
+            assert fragment in visible
+
+    def test_pairs_spill_to_second_line_untruncated_when_they_dont_fit_together(
+        self,
+    ) -> None:
+        """When both pairs don't fit on one line, each stays whole (no truncation) on its own line."""
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.output import strip_ansi
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": ".loops/runs/test-loop/2026-07-11"},
+        )
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, "claude-opus-4-8", "my input", 70)
+        assert len(lines) == 2
+        loop_line, run_dir_line = strip_ansi(lines[0]), strip_ansi(lines[1])
+        assert not loop_line.endswith("…")
+        assert not run_dir_line.endswith("…")
+        assert "loop:" in loop_line and "input: " in loop_line and "my input" in loop_line
+        assert "run_dir:" in run_dir_line
+        assert "model: " in run_dir_line and "claude-opus-4-8" in run_dir_line
+
+    def test_both_pairs_truncated_independently_when_neither_fits_alone(self) -> None:
+        """Very narrow width still truncates each row independently, same as before."""
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.output import strip_ansi
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": ".loops/runs/test-loop/2026-07-11"},
+        )
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, "claude-opus-4-8", "my input", 30)
+        assert len(lines) == 2
+        for line in lines:
+            visible = strip_ansi(line)
+            assert len(visible) <= 30
+            assert visible.endswith("…")

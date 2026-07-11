@@ -1285,25 +1285,42 @@ def _render_artifact_header_lines(
 
     Packs ``input:`` onto the ``loop:`` row and ``model:`` onto the
     ``run_dir:`` row (falling back to a standalone ``model:`` line when no
-    ``run_dir`` context value is present). Each composed line is clamped to
-    ``cols`` display columns via ``_truncate_to_width_ansi`` so a long
-    input/path value never wraps or overflows.
+    ``run_dir`` context value is present) — ``input`` never separates from
+    ``loop`` and ``model`` never separates from ``run_dir``. Adjacent rows
+    are then greedily merged onto a single line, front to back, as long as
+    the combined row still fits within ``cols`` display columns — so all
+    rows collapse to one line when there's room, and only the row(s) that
+    don't fit spill onto subsequent lines. Each resulting line is clamped to
+    ``cols`` via ``_truncate_to_width_ansi`` as a safety net for a single
+    value too long to fit even alone.
     """
-    from little_loops.cli.loop.layout import _truncate_to_width_ansi
+    from little_loops.cli.loop.layout import _display_width, _truncate_to_width_ansi
 
     artifact_pairs = _artifact_lines(fsm, loop_path)
     run_dir_present = any(key == "run_dir" for key, _ in artifact_pairs)
-    lines: list[str] = []
+    rows: list[str] = []
     for key, value in artifact_pairs:
         line = f"  {key}: {colorize(value, '2')}"
         if key == "loop" and input_value:
             line += f"  input: {colorize(input_value, '2')}"
         elif key == "run_dir" and model is not None:
             line += f"  model: {colorize(model, '2')}"
-        lines.append(_truncate_to_width_ansi(line, cols))
+        rows.append(line)
     if model is not None and not run_dir_present:
-        lines.append(_truncate_to_width_ansi(f"  model: {colorize(model, '2')}", cols))
-    return lines
+        rows.append(f"  model: {colorize(model, '2')}")
+
+    if not rows:
+        return []
+
+    merged: list[str] = [rows[0]]
+    for row in rows[1:]:
+        candidate = f"{merged[-1]}  {row.strip()}"
+        if _display_width(candidate) <= cols:
+            merged[-1] = candidate
+        else:
+            merged.append(row)
+
+    return [_truncate_to_width_ansi(line, cols) for line in merged]
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
