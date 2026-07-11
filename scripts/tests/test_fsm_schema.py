@@ -2125,6 +2125,28 @@ class TestSubLoopStateConfig:
         assert state.loop is None
         assert state.context_passthrough is False
 
+    def test_worktree_defaults_to_none(self) -> None:
+        """StateConfig.worktree defaults to None (ENH-2609)."""
+        state = StateConfig(loop="child", on_yes="done")
+        assert state.worktree is None
+
+    def test_worktree_round_trip(self) -> None:
+        """worktree survives from_dict -> to_dict (ENH-2609)."""
+        data = {
+            "loop": "autodev",
+            "worktree": "${captured.epic_branch.output}",
+            "on_success": "done",
+        }
+        state = StateConfig.from_dict(data)
+        assert state.worktree == "${captured.epic_branch.output}"
+        d = state.to_dict()
+        assert d["worktree"] == "${captured.epic_branch.output}"
+
+    def test_to_dict_excludes_worktree_when_none(self) -> None:
+        """to_dict omits worktree when unset (ENH-2609)."""
+        state = StateConfig(loop="child", on_yes="done")
+        assert "worktree" not in state.to_dict()
+
     def test_loop_and_action_mutual_exclusion(self) -> None:
         """Validation rejects state with both loop and action."""
         fsm = FSMLoop(

@@ -494,6 +494,10 @@
           "description": "Explicit parameter bindings for sub-loop calls or fragment parameter binding. Maps declared parameter names to expressions (supports ${variable} interpolation). Valid when 'loop' is set (sub-loop binding) or 'fragment' is set (fragment parameter binding). Mutually exclusive with 'context_passthrough'.",
           "additionalProperties": true
         },
+        "worktree": {
+          "type": "string",
+          "description": "Branch-name template (supports ${variable} interpolation) for per-state worktree delegation (ENH-2609). When it resolves to a non-empty existing branch, the child loop's subprocesses run inside a scratch git worktree attached to that branch; the worktree is removed afterwards with the branch preserved. Empty after interpolation is a strict no-op. Only valid when 'loop' is set."
+        },
         "fragment": {
           "type": "string",
           "description": "Name of a fragment to inherit fields from. Fragment fields are deep-merged into the state; state-level keys override fragment keys at every nesting level. Consumed at parse time — the engine never sees this key."

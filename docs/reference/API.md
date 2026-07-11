@@ -4796,6 +4796,7 @@ class StateConfig:
     loop: str | None = None            # Sub-loop to invoke (name from .loops/<name>.yaml)
     context_passthrough: bool = False  # Pass parent context vars to child; merge child captures back
     with_: dict[str, Any] = field(default_factory=dict)  # Explicit parameter bindings for sub-loop calls
+    worktree: str | None = None        # Branch-name template; child runs in a scratch worktree on that branch (sub-loop states only, ENH-2609)
     fragment_name: str | None = None   # Original fragment name (populated by resolve_fragments)
     fragment_bindings: dict[str, Any] = field(default_factory=dict)  # Parameter bindings for fragment references
     fragment_parameters: dict[str, Any] = field(default_factory=dict)  # Parsed ParameterSpec declarations

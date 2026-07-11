@@ -204,6 +204,27 @@ class PromptSizeWarnVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class SubLoopWorktreeAttachedVariant(DESVariant):
+    """FSMExecutor._emit('sub_loop_worktree_attached') — scratch worktree attached for a worktree: sub-loop state (ENH-2609)."""
+
+    type: Literal["sub_loop_worktree_attached"] = "sub_loop_worktree_attached"
+
+
+@dataclass(frozen=True)
+class SubLoopWorktreeDetachedVariant(DESVariant):
+    """FSMExecutor._emit('sub_loop_worktree_detached') — scratch worktree removed after sub-loop completion (branch preserved)."""
+
+    type: Literal["sub_loop_worktree_detached"] = "sub_loop_worktree_detached"
+
+
+@dataclass(frozen=True)
+class SubLoopWorktreeErrorVariant(DESVariant):
+    """FSMExecutor._emit('sub_loop_worktree_error') — worktree attach failed; state routed to on_error/on_no."""
+
+    type: Literal["sub_loop_worktree_error"] = "sub_loop_worktree_error"
+
+
+@dataclass(frozen=True)
 class ActionStartVariant(DESVariant):
     """FSMExecutor._emit('action_start') — action invocation started."""
 
@@ -562,6 +583,9 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     ThrottleStopVariant,
     StallDetectedVariant,
     PromptSizeWarnVariant,
+    SubLoopWorktreeAttachedVariant,
+    SubLoopWorktreeDetachedVariant,
+    SubLoopWorktreeErrorVariant,
     ActionStartVariant,
     ActionOutputVariant,
     ActionCompleteVariant,

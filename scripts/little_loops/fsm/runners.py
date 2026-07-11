@@ -14,6 +14,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol
 
 from little_loops.fsm.host_guard import RssSampler
@@ -46,6 +47,7 @@ class ActionRunner(Protocol):
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
+        working_dir: Path | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -58,6 +60,8 @@ class ActionRunner(Protocol):
             tools: Optional list of tool names to pass as --tools CSV to Claude CLI (prompt-mode only)
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
+            working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
+                inherits the parent process's cwd (existing behavior).
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -95,6 +99,7 @@ class DefaultActionRunner:
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
+        working_dir: Path | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -108,6 +113,8 @@ class DefaultActionRunner:
             on_usage: Optional callback invoked with (input_tokens, output_tokens) on completion
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
             model: Optional model override to pass as --model to Claude CLI (prompt-mode only)
+            working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
+                inherits the parent process's cwd.
 
         Returns:
             ActionResult with execution details
@@ -157,6 +164,7 @@ class DefaultActionRunner:
                     on_usage=on_usage,
                     on_usage_detailed=_collect_usage,
                     model=model,
+                    working_dir=working_dir,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -193,6 +201,7 @@ class DefaultActionRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            cwd=working_dir,
         )
         self._current_process = process
         deadline = time.time() + timeout
@@ -298,6 +307,7 @@ class SimulationActionRunner:
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
+        working_dir: Path | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -311,11 +321,13 @@ class SimulationActionRunner:
             on_usage: Ignored in simulation
             on_usage_detailed: Ignored in simulation
             model: Ignored in simulation
+            working_dir: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
-        del timeout, on_output_line, agent, tools, on_usage, model  # unused in simulation
+        # unused in simulation
+        del timeout, on_output_line, agent, tools, on_usage, model, working_dir
         self.calls.append(action)
         self.call_count += 1
 

@@ -680,6 +680,16 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             )
         )
 
+    # worktree: requires loop: to be set (ENH-2609)
+    if state.worktree is not None and state.loop is None:
+        errors.append(
+            ValidationError(
+                message="'worktree' is only valid when 'loop' is set — "
+                "per-state worktree attach applies to sub-loop delegation only",
+                path=f"{path}.worktree",
+            )
+        )
+
     # FEAT-1283: type=learning requires a populated LearningConfig
     if state.type == "learning" and state.learning is not None:
         if not state.learning.targets and not state.learning.targets_csv:

@@ -166,6 +166,7 @@ class FSMExecutor:
         loops_dir: Path | None = None,
         circuit: RateLimitCircuit | None = None,
         run_model: str | None = None,
+        working_dir: Path | None = None,
     ):
         """Initialize the executor.
 
@@ -179,6 +180,11 @@ class FSMExecutor:
             circuit: Optional shared rate-limit circuit breaker for 429 coordination
             run_model: Run-level default model for host-CLI action states. Per-state
                 StateConfig.model overrides this value.
+            working_dir: Optional cwd override for this loop's subprocesses
+                (ENH-2609). The Python process itself never chdirs; only spawned
+                shell/prompt/mcp subprocesses run with this cwd. Inherited by
+                nested sub-loop executors, and set to the scratch worktree path
+                when a `worktree:` sub-loop state attaches one.
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -188,6 +194,7 @@ class FSMExecutor:
         self.loops_dir = loops_dir
         self._circuit = circuit
         self.run_model = run_model
+        self.working_dir = working_dir
 
         # Runtime state
         self.current_state = fsm.initial
@@ -813,6 +820,81 @@ class FSMExecutor:
             }
             child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
 
+        # ENH-2609: per-state worktree attach. state.worktree is a branch-name
+        # template; empty after interpolation is a strict no-op so loop YAMLs can
+        # gate it on a captured value (e.g. checkout_epic_branch's output). The
+        # Python process never chdirs — the child executor's subprocesses get the
+        # worktree as their cwd, mirroring _verify_epic_branch_before_merge's
+        # explicit-cwd idiom (parallel/orchestrator.py).
+        child_working_dir = self.working_dir
+        detach_worktree: Callable[[], None] | None = None
+        worktree_branch = interpolate(state.worktree, ctx).strip() if state.worktree else ""
+        if worktree_branch:
+            import re as _re
+
+            from little_loops import worktree_utils
+            from little_loops.config import BRConfig
+            from little_loops.logger import Logger
+            from little_loops.parallel.git_lock import GitLock
+
+            repo_path = Path.cwd()
+            cfg = BRConfig(repo_path)
+            safe_branch = _re.sub(r"[^a-zA-Z0-9-]", "-", worktree_branch)
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            # Timestamp prefix keeps the dir recognizable to _is_ll_worktree
+            # orphan cleanup; the attached branch itself is never auto-deleted.
+            worktree_path = cfg.get_worktree_base() / f"{timestamp}-subloop-{safe_branch}"
+            wt_logger = Logger(verbose=False)
+            wt_git_lock = GitLock(wt_logger)
+            try:
+                worktree_utils.setup_worktree(
+                    repo_path=repo_path,
+                    worktree_path=worktree_path,
+                    branch_name=worktree_branch,
+                    copy_files=cfg.parallel.worktree_copy_files,
+                    logger=wt_logger,
+                    git_lock=wt_git_lock,
+                    checkout_existing=True,
+                )
+            except RuntimeError as exc:
+                self.captured.setdefault(self.current_state, {})["error"] = str(exc)
+                self._emit(
+                    "sub_loop_worktree_error",
+                    {"branch": worktree_branch, "error": str(exc)},
+                )
+                if state.on_error:
+                    return interpolate(state.on_error, ctx)
+                return interpolate(state.on_no, ctx) if state.on_no else None
+
+            child_working_dir = worktree_path
+            # The child's shell states run with cwd=worktree, so a relative
+            # run_dir would resolve inside the (soon torn down) worktree and the
+            # shared ledgers the parent reads back would vanish. Anchor it to the
+            # parent's real run directory.
+            if "run_dir" in child_fsm.context:
+                child_fsm.context["run_dir"] = str(
+                    Path(str(child_fsm.context["run_dir"])).resolve()
+                )
+            self._emit(
+                "sub_loop_worktree_attached",
+                {"branch": worktree_branch, "path": str(worktree_path)},
+            )
+
+            def _detach() -> None:
+                worktree_utils.cleanup_worktree(
+                    worktree_path=worktree_path,
+                    repo_path=repo_path,
+                    logger=wt_logger,
+                    git_lock=wt_git_lock,
+                    delete_branch=False,
+                )
+                self._emit(
+                    "sub_loop_worktree_detached",
+                    {"branch": worktree_branch, "path": str(worktree_path)},
+                )
+
+            detach_worktree = _detach
+
         depth = self._depth + 1
         child_events: list[dict] = []
 
@@ -830,6 +912,7 @@ class FSMExecutor:
             loops_dir=self.loops_dir,
             event_callback=_sub_event_callback,
             circuit=self._circuit,
+            working_dir=child_working_dir,
         )
         child_executor._depth = depth  # propagate depth for further nesting
 
@@ -841,7 +924,11 @@ class FSMExecutor:
             if child_fsm.timeout is None or child_fsm.timeout > remaining_s:
                 child_fsm.timeout = remaining_s
 
-        child_result = child_executor.run()
+        try:
+            child_result = child_executor.run()
+        finally:
+            if detach_worktree is not None:
+                detach_worktree()
 
         # Capture child event stream as a JSON-lines string if the state declares a capture key
         if state.capture and child_events:
@@ -1434,6 +1521,12 @@ class FSMExecutor:
                 on_usage=on_usage,
             )
         else:
+            # working_dir is kwarg-gated (only passed when set) so ActionRunner
+            # implementations predating ENH-2609 — including third-party
+            # extension runners — keep working unless a cwd override is active.
+            extra_kwargs: dict[str, Any] = {}
+            if self.working_dir is not None:
+                extra_kwargs["working_dir"] = self.working_dir
             result = self.action_runner.run(
                 action,
                 timeout=state.timeout or self.fsm.default_timeout or 3600,
@@ -1443,6 +1536,7 @@ class FSMExecutor:
                 tools=state.tools if action_mode == "prompt" else None,
                 on_usage=on_usage,
                 model=(state.model or self.run_model) if action_mode == "prompt" else None,
+                **extra_kwargs,
             )
 
         preview = result.output[-2000:].strip() if result.output else None
@@ -1543,6 +1637,7 @@ class FSMExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            cwd=self.working_dir,
         )
         self._current_process = process
         deadline = time.time() + timeout

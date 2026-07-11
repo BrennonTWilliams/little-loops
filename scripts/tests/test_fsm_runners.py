@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 from io import StringIO
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from little_loops.fsm.executor import ActionResult, DefaultActionRunner, SimulationActionRunner
@@ -488,3 +489,34 @@ class TestDefaultActionRunnerSlashPath:
             runner.run("/ll:skill", 60, True, model="claude-haiku-4-5-20251001")
 
         assert captured_kwargs.get("model") == "claude-haiku-4-5-20251001"
+
+    def test_working_dir_kwarg_forwarded(self, tmp_path: Path) -> None:
+        """working_dir threads through to run_claude_command (ENH-2609)."""
+        runner = DefaultActionRunner()
+        completed = self._make_completed_process()
+        captured_kwargs: dict = {}
+
+        def capture(**kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured_kwargs.update(kwargs)
+            return completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=capture):
+            runner.run("/ll:skill", 60, True, working_dir=tmp_path)
+
+        assert captured_kwargs.get("working_dir") == tmp_path
+
+
+class TestDefaultActionRunnerWorkingDir:
+    """ENH-2609: shell actions honor the working_dir override."""
+
+    def test_shell_runs_in_working_dir(self, tmp_path: Path) -> None:
+        runner = DefaultActionRunner()
+        result = runner.run("pwd", 10, False, working_dir=tmp_path)
+        assert result.exit_code == 0
+        assert Path(result.output.strip()).resolve() == tmp_path.resolve()
+
+    def test_shell_defaults_to_inherited_cwd(self) -> None:
+        runner = DefaultActionRunner()
+        result = runner.run("pwd", 10, False)
+        assert result.exit_code == 0
+        assert Path(result.output.strip()).resolve() == Path.cwd().resolve()

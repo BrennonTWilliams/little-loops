@@ -924,6 +924,8 @@ states:
 
 (`on_success` / `on_failure` are aliases for `on_yes` / `on_no`, accepted on all states.)
 
+**Worktree isolation** (ENH-2609) — a sub-loop state may declare `worktree: <branch-template>`. When the template interpolates to a non-empty branch name, the child loop's subprocesses run inside a scratch git worktree attached to that *already-existing* branch (`checkout_existing`); the worktree is removed when the child finishes and the branch is preserved. An empty result is a strict no-op, so the field can be gated on a captured value (e.g. `worktree: "${captured.epic_branch.output}"` in `auto-refine-and-implement`). Only valid alongside `loop:`; the parent process's cwd never changes, and the child's `run_dir` is anchored to the parent's real run directory so shared ledgers survive the worktree teardown.
+
 **Sharing context** — two options:
 
 - `context_passthrough: true` on the sub-loop state shares the parent's full `context` and `captured` variables with the child, and merges the child's captures back on completion. Simple, but couples the child to parent variable names.

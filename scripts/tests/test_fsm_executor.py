@@ -40,6 +40,7 @@ class MockActionRunner:
     default_result: dict[str, Any] = field(
         default_factory=lambda: {"output": "", "stderr": "", "exit_code": 0}
     )
+    working_dirs: list[Any] = field(default_factory=list)
 
     use_indexed_order: bool = False
 
@@ -54,6 +55,7 @@ class MockActionRunner:
         on_usage: Any = None,
         on_usage_detailed: Any = None,
         model: str | None = None,
+        working_dir: Any = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
@@ -67,6 +69,7 @@ class MockActionRunner:
             on_usage_detailed,
             model,
         )
+        self.working_dirs.append(working_dir)
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -4864,6 +4867,178 @@ class TestDefaultTimeout:
         runner = self.TimeoutCapturingRunner()
         FSMExecutor(fsm, action_runner=runner).run()
         assert runner.captured_timeouts == [3600]
+
+
+class TestSubLoopWorktree:
+    """ENH-2609: per-state worktree attach for loop: sub-loop delegation.
+
+    Patch target is little_loops.worktree_utils.* (the source module) because
+    the executor imports setup_worktree/cleanup_worktree lazily at call time.
+    """
+
+    def _parent(self, states_extra: dict[str, Any] | None = None, **ctx: Any) -> FSMLoop:
+        states: dict[str, StateConfig] = {
+            "run_child": StateConfig(
+                loop="child",
+                worktree="${context.branch}",
+                context_passthrough=True,
+                on_yes="ok",
+                on_no="fail",
+                on_error="err",
+            ),
+            "ok": StateConfig(terminal=True),
+            "fail": StateConfig(terminal=True),
+            "err": StateConfig(terminal=True),
+        }
+        if states_extra:
+            states.update(states_extra)
+        return FSMLoop(name="parent", initial="run_child", context=ctx, states=states)
+
+    def test_empty_worktree_template_skips_attach(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty branch template is a strict no-op — no worktree calls."""
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true"
+        )
+        parent = self._parent(branch="", run_dir=str(tmp_path / "run"))
+        with (
+            patch("little_loops.worktree_utils.setup_worktree") as mock_setup,
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
+        ):
+            result = FSMExecutor(parent, loops_dir=loops_dir).run()
+        assert result.final_state == "ok"
+        mock_setup.assert_not_called()
+        mock_cleanup.assert_not_called()
+
+    def test_worktree_attach_runs_child_inside_and_detaches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-empty branch: setup(checkout_existing=True), child shell actions run
+        with cwd=worktree, child run_dir is absolutized, cleanup(delete_branch=False)."""
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        out_file = tmp_path / "child-out.txt"
+        (loops_dir / "child.yaml").write_text(
+            "name: child\n"
+            "initial: start\n"
+            "states:\n"
+            "  start:\n"
+            f"    action: 'pwd > {out_file}; echo \"${{context.run_dir}}\" >> {out_file}'\n"
+            "    action_type: shell\n"
+            "    next: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        created: dict[str, Any] = {}
+
+        def fake_setup(**kwargs: Any) -> None:
+            created.update(kwargs)
+            Path(kwargs["worktree_path"]).mkdir(parents=True, exist_ok=True)
+
+        parent = self._parent(branch="epic/test-branch", run_dir="rel-run-dir")
+        with (
+            patch("little_loops.worktree_utils.setup_worktree", side_effect=fake_setup),
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
+        ):
+            result = FSMExecutor(parent, loops_dir=loops_dir).run()
+
+        assert result.final_state == "ok"
+        assert created["branch_name"] == "epic/test-branch"
+        assert created["checkout_existing"] is True
+        mock_cleanup.assert_called_once()
+        assert mock_cleanup.call_args.kwargs["delete_branch"] is False
+
+        wt_path = Path(created["worktree_path"])
+        lines = out_file.read_text().splitlines()
+        assert Path(lines[0]).resolve() == wt_path.resolve(), (
+            "child shell action must run with cwd=worktree"
+        )
+        assert lines[1] == str((tmp_path / "rel-run-dir").resolve()), (
+            "child run_dir must be absolutized so ledgers land in the parent run_dir"
+        )
+
+    def test_worktree_cleanup_runs_even_when_child_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: failed\nstates:\n"
+            "  failed:\n    terminal: true\n"
+            "  done:\n    terminal: true\n"
+        )
+
+        def fake_setup(**kwargs: Any) -> None:
+            Path(kwargs["worktree_path"]).mkdir(parents=True, exist_ok=True)
+
+        parent = self._parent(branch="epic/test-branch", run_dir=str(tmp_path / "run"))
+        with (
+            patch("little_loops.worktree_utils.setup_worktree", side_effect=fake_setup),
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
+        ):
+            result = FSMExecutor(parent, loops_dir=loops_dir).run()
+        assert result.final_state == "fail"
+        mock_cleanup.assert_called_once()
+
+    def test_worktree_setup_failure_routes_on_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """setup_worktree RuntimeError routes to on_error; no cleanup attempted."""
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true"
+        )
+        parent = self._parent(branch="epic/test-branch", run_dir=str(tmp_path / "run"))
+        with (
+            patch(
+                "little_loops.worktree_utils.setup_worktree",
+                side_effect=RuntimeError("worktree add failed"),
+            ),
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
+        ):
+            result = FSMExecutor(parent, loops_dir=loops_dir).run()
+        assert result.final_state == "err"
+        mock_cleanup.assert_not_called()
+
+
+class TestExecutorWorkingDir:
+    """ENH-2609: FSMExecutor(working_dir=...) threads cwd to shell actions."""
+
+    def test_shell_action_runs_in_working_dir(self, tmp_path: Path) -> None:
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="pwd", action_type="shell", capture="out", on_yes="d", on_no="d"
+                ),
+                "d": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, working_dir=tmp_path)
+        executor.run()
+        assert Path(executor.captured["out"]["output"].strip()).resolve() == tmp_path.resolve()
+
+    def test_working_dir_passed_to_action_runner(self, tmp_path: Path) -> None:
+        runner = MockActionRunner()
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(action="echo hi", on_yes="d", on_no="d"),
+                "d": StateConfig(terminal=True),
+            },
+        )
+        FSMExecutor(fsm, action_runner=runner, working_dir=tmp_path).run()
+        assert runner.working_dirs == [tmp_path]
 
 
 class TestSubLoopExecution:

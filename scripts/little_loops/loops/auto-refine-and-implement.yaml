@@ -23,10 +23,19 @@ description: |
   true, checkout_epic_branch ensures epic/<EPIC-ID>-<slug> exists off
   base_branch before delegate runs (create-without-switch, mirrors
   WorkerPool._ensure_epic_branch — the main working tree is NOT switched to
-  it). After delegate, a verify state runs project.test_cmd/lint_cmd in place
-  and folds the pass/fail/skipped verdict into summary.json as an additive
+  it). After delegate, a verify state runs project.test_cmd/lint_cmd and folds
+  the pass/fail/skipped verdict into summary.json as an additive
   verify_verdict field (advisory only — it does not gate finalize's own
   ledger-based closure verdict).
+
+  ENH-2609: delegate declares `worktree: ${captured.epic_branch.output}` so the
+  autodev sub-loop actually runs inside a scratch worktree attached to the epic
+  branch — its refine+implement commits land on epic/<EPIC-ID>-<slug> without
+  the main tree's checkout changing. When the capture is empty (non-EPIC scope
+  or epic_branches disabled) the field is a strict no-op. verify and finalize
+  are epic-branch aware for the same reason: the main tree never has the
+  branch's commits, so verify attaches its own scratch worktree and finalize
+  snapshots completed/ and status:done from the branch via git.
 initial: init
 max_steps: 50
 timeout: 28800
@@ -143,6 +152,7 @@ states:
       python3 << 'PYEOF'
       import re
       import subprocess
+      import sys
       from pathlib import Path
 
       from little_loops.config import BRConfig
@@ -152,14 +162,21 @@ states:
       scope = """${context.scope}""".strip()
       run_dir = Path("""${context.run_dir}""")
 
+      # ENH-2609: stdout is reserved for the branch name (captured as
+      # epic_branch, referenced by delegate's worktree: template); all log
+      # lines go to stderr. Skip paths print nothing to stdout, which
+      # disables delegate's worktree attach.
       if not re.fullmatch(r"EPIC-\d+", scope):
-          print("checkout_epic_branch: scope is not an EPIC id — skipping")
+          print("checkout_epic_branch: scope is not an EPIC id — skipping", file=sys.stderr)
           raise SystemExit(0)
 
       cfg = BRConfig(Path.cwd())
       epic_cfg = cfg.parallel.epic_branches
       if not epic_cfg.enabled:
-          print("checkout_epic_branch: parallel.epic_branches.enabled is false — skipping")
+          print(
+              "checkout_epic_branch: parallel.epic_branches.enabled is false — skipping",
+              file=sys.stderr,
+          )
           raise SystemExit(0)
 
       epic_id = scope
@@ -191,14 +208,16 @@ states:
           exists = bool(remote.stdout and remote.stdout.strip())
       if not exists:
           _git(["branch", branch, base])
-          print(f"checkout_epic_branch: created {branch} off {base}")
+          print(f"checkout_epic_branch: created {branch} off {base}", file=sys.stderr)
       else:
-          print(f"checkout_epic_branch: {branch} already exists")
+          print(f"checkout_epic_branch: {branch} already exists", file=sys.stderr)
 
       run_dir.mkdir(parents=True, exist_ok=True)
       (run_dir / "epic-branch-name.txt").write_text(branch + "\n")
+      print(branch)
       PYEOF
     action_type: shell
+    capture: epic_branch
     next: delegate
     on_error: delegate
 
@@ -213,7 +232,13 @@ states:
     # authoritative closure verdict). on_error routes to a DISTINCT crash state
     # so an infrastructure failure is not laundered into a clean completion
     # (ENH-2005 / ENH-2376).
+    # ENH-2609: worktree attaches a scratch worktree to the epic branch that
+    # checkout_epic_branch created (checkout_existing, branch preserved on
+    # detach), so autodev's commits land on epic/<EPIC-ID>-<slug> without the
+    # main tree's checkout changing. Empty capture (non-EPIC scope or
+    # epic_branches disabled) → strict no-op, delegate runs in place as before.
     loop: autodev
+    worktree: "${captured.epic_branch.output}"
     with:
       input: "${captured.issue_set.output}"
       skip_learning_gate: "${context.skip_learning_gate}"
@@ -226,16 +251,22 @@ states:
     # summary.json as an ADDITIVE verify_verdict field — advisory only, does
     # not gate finalize's own ledger-based closure verdict (a failing verify
     # does not turn a successful closure into a failure). Runs
-    # project.test_cmd and, if configured, project.lint_cmd against whatever
-    # is currently checked out. Skips (verdict "skipped") when test_cmd is
-    # unconfigured, matching the SKIP-status convention used elsewhere for
-    # unconfigured verification commands.
+    # project.test_cmd and, if configured, project.lint_cmd. Skips (verdict
+    # "skipped") when test_cmd is unconfigured, matching the SKIP-status
+    # convention used elsewhere for unconfigured verification commands.
+    # ENH-2609: when epic-branch-name.txt exists, the commits under test live
+    # on the epic branch, NOT in the main tree — so verify attaches its own
+    # scratch worktree (checkout_existing=True, delete_branch=False on
+    # cleanup, mirroring orchestrator._verify_epic_branch_before_merge) and
+    # runs the checks with cwd=worktree. Non-epic runs verify in place.
     action: |
       RUN_DIR="${context.run_dir}"
-      VERIFY_VERDICT=$(python3 -c "
+      VERIFY_VERDICT=$(python3 << 'PYEOF'
+      import datetime
       import json
       import shlex
       import subprocess
+      import sys
       from pathlib import Path
 
       p = Path('.ll/ll-config.json')
@@ -248,15 +279,56 @@ states:
           print('skipped')
           raise SystemExit(0)
 
-      for cmd in (test_cmd, lint_cmd):
-          if not cmd:
-              continue
-          result = subprocess.run(shlex.split(cmd), capture_output=True, text=True)
-          if result.returncode != 0:
-              print('failed')
-              raise SystemExit(0)
-      print('passed')
-      ")
+      def run_checks(cwd):
+          for cmd in (test_cmd, lint_cmd):
+              if not cmd:
+                  continue
+              result = subprocess.run(
+                  shlex.split(cmd), capture_output=True, text=True, cwd=cwd
+              )
+              if result.returncode != 0:
+                  return 'failed'
+          return 'passed'
+
+      run_dir = Path("""${context.run_dir}""")
+      branch_file = run_dir / 'epic-branch-name.txt'
+      epic_branch = branch_file.read_text().strip() if branch_file.exists() else ''
+
+      if not epic_branch:
+          print(run_checks(None))
+          raise SystemExit(0)
+
+      from little_loops.config import BRConfig
+      from little_loops.logger import Logger
+      from little_loops.parallel.git_lock import GitLock
+      from little_loops.worktree_utils import cleanup_worktree, setup_worktree
+
+      repo = Path.cwd()
+      ll_cfg = BRConfig(repo)
+      ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+      wt = ll_cfg.get_worktree_base() / f'{ts}-verify-epic'
+      logger = Logger(verbose=False)
+      lock = GitLock(logger)
+      try:
+          setup_worktree(
+              repo_path=repo,
+              worktree_path=wt,
+              branch_name=epic_branch,
+              copy_files=ll_cfg.parallel.worktree_copy_files,
+              logger=logger,
+              git_lock=lock,
+              checkout_existing=True,
+          )
+      except RuntimeError as e:
+          print(f'verify: worktree attach failed: {e}', file=sys.stderr)
+          print('failed')
+          raise SystemExit(0)
+      try:
+          print(run_checks(wt))
+      finally:
+          cleanup_worktree(wt, repo, logger, lock, delete_branch=False)
+      PYEOF
+      )
       echo "$VERIFY_VERDICT" > "$RUN_DIR/verify-verdict.txt"
       echo "verify: verdict=$VERIFY_VERDICT"
     action_type: shell
@@ -290,27 +362,56 @@ states:
       P=auto-refine-and-implement
       count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
 
+      # ENH-2609: on an epic-branch run, closures live on the epic branch —
+      # delegate committed inside a worktree, so the main tree's .issues never
+      # changed. Snapshot the NOW sets from the branch via git instead of the
+      # working tree, or a fully successful epic run would report 'phantom'.
+      EPIC_BRANCH=$(cat "$RUN_DIR/epic-branch-name.txt" 2>/dev/null || true)
+      export LL_EPIC_BRANCH="$EPIC_BRANCH"
+
       # ENH-2385: decomposed-parent closures — issues that reached
       # .issues/completed/ during this run (autodev git-mv on decomposition).
-      ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
-        | sort -u > "$RUN_DIR/$P-completed-now.txt"
+      if [ -n "$EPIC_BRANCH" ]; then
+        git ls-tree -r --name-only "$EPIC_BRANCH" -- .issues/completed/ 2>/dev/null \
+          | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
+          | sort -u > "$RUN_DIR/$P-completed-now.txt"
+      else
+        ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
+          | sort -u > "$RUN_DIR/$P-completed-now.txt"
+      fi
       comm -13 "$RUN_DIR/$P-completed-baseline.txt" "$RUN_DIR/$P-completed-now.txt" \
         2>/dev/null > "$RUN_DIR/$P-completed-new.txt"
 
       # BUG-2403: leaf closures — issues that reached status: done IN PLACE
-      # during this run (ENH-1418; leaves never enter completed/).
+      # during this run (ENH-1418; leaves never enter completed/). On an epic
+      # run the snapshot comes from the branch (git grep on frontmatter);
+      # otherwise from the working tree via ll-issues (ENH-2609).
       python3 << 'PYEOF' > "$RUN_DIR/$P-done-now.txt"
       import json
+      import os
+      import re
       import subprocess
 
       done_ids = set()
+      branch = os.environ.get("LL_EPIC_BRANCH", "").strip()
       try:
-          r = subprocess.run(
-              ["ll-issues", "list", "--json", "--status", "done"],
-              capture_output=True, text=True, timeout=30,
-          )
-          if r.returncode == 0:
-              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+          if branch:
+              r = subprocess.run(
+                  ["git", "grep", "-lE", r"^status: *done", branch, "--", ".issues"],
+                  capture_output=True, text=True, timeout=30,
+              )
+              if r.returncode in (0, 1):
+                  for line in r.stdout.splitlines():
+                      m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
+                      if m:
+                          done_ids.add(m.group(0))
+          else:
+              r = subprocess.run(
+                  ["ll-issues", "list", "--json", "--status", "done"],
+                  capture_output=True, text=True, timeout=30,
+              )
+              if r.returncode == 0:
+                  done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
       except Exception:
           pass
       for issue_id in sorted(done_ids):

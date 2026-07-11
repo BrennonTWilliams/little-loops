@@ -2045,6 +2045,41 @@ class TestAutoRefineAndImplementLoop:
         assert "lint_cmd" in action
         assert "'skipped'" in action
 
+    # --- ENH-2609: worktree-per-delegate so commits land on the epic branch --
+
+    def test_checkout_epic_branch_captures_branch_name(self, data: dict) -> None:
+        """checkout_epic_branch must capture the branch name (stdout) as
+        'epic_branch' so delegate's worktree: template can reference it; log
+        lines are diverted to stderr so stdout is the branch name only."""
+        state = data["states"].get("checkout_epic_branch", {})
+        assert state.get("capture") == "epic_branch"
+        assert "sys.stderr" in state.get("action", ""), (
+            "log lines must go to stderr; stdout is reserved for the branch name"
+        )
+
+    def test_delegate_declares_worktree(self, data: dict) -> None:
+        """delegate must attach a scratch worktree to the captured epic branch
+        (empty capture → no-op) so autodev's commits land on the epic branch."""
+        state = data["states"].get("delegate", {})
+        assert state.get("worktree") == "${captured.epic_branch.output}"
+
+    def test_verify_attaches_epic_worktree(self, data: dict) -> None:
+        """verify must run test/lint against the epic branch's actual state via a
+        scratch worktree (checkout_existing=True, delete_branch=False) when
+        epic-branch-name.txt exists — the main tree never has the commits."""
+        action = data["states"].get("verify", {}).get("action", "")
+        assert "epic-branch-name.txt" in action
+        assert "checkout_existing=True" in action
+        assert "delete_branch=False" in action
+
+    def test_finalize_computes_closures_from_epic_branch(self, data: dict) -> None:
+        """finalize must source completed/ and status:done snapshots from the epic
+        branch when epic-branch-name.txt exists — closures live on the branch,
+        not the main tree, so a successful epic run must not report phantom."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "epic-branch-name.txt" in action
+        assert "ls-tree" in action
+
     # --- ENH-2376: partial-with-errors verdict -------------------------------
 
     def test_finalize_has_partial_with_errors_verdict(self, data: dict) -> None:
@@ -2593,9 +2628,7 @@ class TestCheckoutEpicBranchConfigReadShell:
         run_dir = tmp_path / "run"
         run_dir.mkdir(exist_ok=True)
 
-        loop = yaml.safe_load(
-            (BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text()
-        )
+        loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["checkout_epic_branch"]["action"]
         action = action.replace("${context.scope}", scope).replace(
             "${context.run_dir}", str(run_dir)
@@ -2651,9 +2684,7 @@ class TestVerifyStateConfigReadShell:
     read against a stubbed command (mirrors
     test_general_task_loop.py::test_falls_back_to_config_test_cmd)."""
 
-    def _run(
-        self, tmp_path: Path, *, test_cmd: str | None, lint_cmd: str | None = None
-    ) -> str:
+    def _run(self, tmp_path: Path, *, test_cmd: str | None, lint_cmd: str | None = None) -> str:
         (tmp_path / ".ll").mkdir()
         project: dict = {}
         if test_cmd is not None:
@@ -2665,12 +2696,8 @@ class TestVerifyStateConfigReadShell:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
 
-        loop = yaml.safe_load(
-            (BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text()
-        )
-        action = loop["states"]["verify"]["action"].replace(
-            "${context.run_dir}", str(run_dir)
-        )
+        loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
+        action = loop["states"]["verify"]["action"].replace("${context.run_dir}", str(run_dir))
         result = subprocess.run(
             ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
         )

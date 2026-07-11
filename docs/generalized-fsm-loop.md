@@ -213,6 +213,7 @@ states:
 **Key fields:**
 - `loop: <name>` — resolves to `.loops/<name>.yaml` (project) or the built-in catalog.
 - `context_passthrough: true` — passes all parent `context` and `captured` variables into the child loop; the child's captured values are merged back into the parent's `captured` namespace on completion.
+- `worktree: <branch-template>` — when it interpolates to a non-empty branch name, the child's subprocesses run inside a scratch git worktree attached to that existing branch (removed afterwards, branch preserved); empty is a no-op (ENH-2609).
 - `on_success` / `on_failure` — aliases for `on_yes` / `on_no` accepted in all states (not just sub-loop states).
 
 **Without `context_passthrough`** the child loop runs with its own isolated context and its captured values are not available to the parent after it completes.

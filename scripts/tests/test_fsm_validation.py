@@ -563,6 +563,41 @@ class TestWithBindingValidation:
         errors = validate_fsm(fsm)
         assert any("'with' is only valid when 'loop' is set" in e.message for e in errors)
 
+    def test_worktree_without_loop_rejected(self) -> None:
+        """worktree: without loop: produces an error (ENH-2609)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="bad",
+            states={
+                "bad": StateConfig(
+                    action="echo hi",
+                    worktree="some-branch",
+                    on_yes="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert any("'worktree' is only valid when 'loop' is set" in e.message for e in errors)
+
+    def test_worktree_with_loop_accepted(self) -> None:
+        """worktree: on a loop: state is valid (ENH-2609)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="ok",
+            states={
+                "ok": StateConfig(
+                    loop="child",
+                    worktree="${context.branch}",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+        assert not any("'worktree'" in e.message for e in errors)
+
     def test_with_and_context_passthrough_mutually_exclusive(self) -> None:
         """with: + context_passthrough on the same state is an error."""
         fsm = FSMLoop(

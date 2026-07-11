@@ -514,6 +514,12 @@ class StateConfig:
         with_: Explicit parameter bindings for sub-loop calls (YAML key: 'with'). Maps
             declared child parameter names to parent expressions. Only valid when 'loop'
             is set. Mutually exclusive with context_passthrough.
+        worktree: Branch-name template for per-state worktree delegation (ENH-2609).
+            Only valid when 'loop' is set. When it interpolates to a non-empty string,
+            the child FSM's subprocesses run inside a scratch git worktree attached to
+            that already-existing branch (checkout_existing=True); the worktree is
+            removed afterwards with the branch preserved. Empty after interpolation
+            is a strict no-op, so the field can be gated on a captured value.
         fragment_name: Original fragment name from the 'fragment:' YAML key. Populated by
             resolve_fragments; None for non-fragment states. Used for validation and debugging.
         fragment_bindings: Parameter bindings for fragment references (YAML key 'with' on a
@@ -551,6 +557,7 @@ class StateConfig:
     loop: str | None = None
     context_passthrough: bool = False
     with_: dict[str, Any] = field(default_factory=dict)
+    worktree: str | None = None
     fragment_name: str | None = None
     fragment_bindings: dict[str, Any] = field(default_factory=dict)
     fragment_parameters: dict[str, ParameterSpec] = field(default_factory=dict)
@@ -622,6 +629,8 @@ class StateConfig:
             result["context_passthrough"] = self.context_passthrough
         if self.with_:
             result["with"] = self.with_
+        if self.worktree is not None:
+            result["worktree"] = self.worktree
         if self.fragment_bindings:
             result["fragment_bindings"] = self.fragment_bindings
         if self.agent is not None:
@@ -715,6 +724,7 @@ class StateConfig:
             loop=data.get("loop"),
             context_passthrough=data.get("context_passthrough", False),
             with_=data.get("with", {}),
+            worktree=data.get("worktree"),
             agent=data.get("agent"),
             tools=data.get("tools"),
             model=data.get("model"),
