@@ -115,13 +115,14 @@ Do not score, do not spawn agents, do not write to the issue file in this phase.
   - If `VALIDATE_ONLY`: emit `OPTIONS_MISSING` (see token shape below) and exit 1.
   - If not `VALIDATE_ONLY` and `AUTO_MODE = true` and `DEPOSIT_ATTEMPTED = false`: invoke
     `/ll:refine-issue ${ISSUE_ID} --auto` once, set `DEPOSIT_ATTEMPTED = true`, then re-run
-    the Phase 2.5 extraction against the (possibly changed) issue content:
-    - If the re-scan now finds `OPTIONS >= 1`: continue to Phase 3 as above.
-    - If the re-scan still finds `OPTIONS == 0`: leave `decision_needed: true` unchanged,
-      emit `MANUAL_REVIEW_RECOMMENDED` on stdout (distinct from `MANUAL_REVIEW_NEEDED` so
-      callers can tell "the skill had nothing to score, even after one auto-recovery
-      attempt" apart from other manual-review causes), exit non-zero. Proceed to Phase 8
-      (Append Session Log) only — skip Phases 3–7 and Phase 9's normal report.
+    the Phase 2.5 extraction against the (possibly changed) issue content. Whether the
+    re-scan now finds `OPTIONS >= 1` or still `OPTIONS == 0`, `DEPOSIT_ATTEMPTED` is now
+    `true`, so the next bullet's condition applies — fall through to Phase 3, which falls
+    through to Phase 3b's inline provisional-language scan when `AUTO_MODE = true` and
+    `OPTIONS == 0` (Pattern D can lock in a clear winner even when no formal
+    `### Option A/B` blocks exist). `MANUAL_REVIEW_RECOMMENDED` is no longer emitted from
+    this phase: an exhausted retry now reaches Phase 3b before any manual-review
+    disposition is considered, rather than short-circuiting to one.
   - If not `VALIDATE_ONLY` and (`AUTO_MODE = false` or `DEPOSIT_ATTEMPTED = true`): fall
     through to Phase 3 unchanged — Phase 3's own `OPTIONS` empty-handling (interactive
     "nothing to decide" message, or Phase 3b's inline scan in auto mode) already covers
@@ -273,6 +274,7 @@ Classify each match as:
 1. Log: `✗ Phase 3b: no resolvable provisional decision found — leaving decision_needed unchanged`
 2. Leave `decision_needed: true` unchanged.
 3. Exit cleanly — do not prompt the user, do not ask interactive questions.
+4. Proceed to Phase 8 (Append Session Log) only — skip Phases 4–7 and Phase 9's normal report.
 
 ---
 

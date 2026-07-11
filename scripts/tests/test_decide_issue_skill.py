@@ -416,6 +416,19 @@ class TestPhase2_5Detection:
             "MANUAL_REVIEW_NEEDED"
         )
 
+    def test_exhausted_retry_falls_through_to_phase_3(self) -> None:
+        """BUG-2606: an exhausted auto-recovery retry must fall through to Phase 3
+        (so Phase 3b's provisional-language scan gets a chance) instead of
+        short-circuiting to MANUAL_REVIEW_RECOMMENDED before Phase 3 ever runs."""
+        text = self._phase_text().lower()
+        assert "fall through" in text and "phase 3" in text, (
+            "Phase 2.5's exhausted-retry branch must document falling through to "
+            "Phase 3 rather than exiting to Phase 8"
+        )
+        assert "skip phases 3" not in text, (
+            "Phase 2.5 must no longer document skipping Phases 3-7 on exhausted retry"
+        )
+
     def test_no_scoring_no_writes_documented(self) -> None:
         text = self._phase_text()
         assert "no writes" in text.lower() or "do not write" in text.lower(), (
