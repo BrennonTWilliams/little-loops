@@ -1,7 +1,7 @@
 ---
 id: ENH-2603
 type: enhancement
-status: open
+status: done
 priority: P3
 parent: ENH-2600
 relates_to:
@@ -9,6 +9,7 @@ relates_to:
 - ENH-2602
 confidence_score: 100
 outcome_confidence: 79
+completed_at: '2026-07-11T15:43:04Z'
 score_complexity: 17
 score_test_coverage: 22
 score_ambiguity: 20
@@ -326,15 +327,57 @@ _Wiring pass added by `/ll:wire-issue`:_
 | docs/development/MERGE-COORDINATOR.md | Epic completion / merge-to-base flow this gate slots into |
 | docs/guides/SPRINT_GUIDE.md | Per-EPIC integration branch user-facing docs |
 
+## Resolution
+
+Implemented `ParallelOrchestrator._verify_epic_branch_before_merge(epic_id,
+epic_branch)` in `scripts/little_loops/parallel/orchestrator.py`, wired into
+`_maybe_complete_epic` between the partial-failure gate's `return` and the
+idempotency-set add (the corrected insertion point from the Codebase Research
+Findings above — a verify failure leaves the branch retryable on the next
+completion event instead of being permanently silenced).
+
+- Short-circuits `return True` when `epic_branches.verify_before_merge` is
+  `False` (default).
+- Otherwise checks out the EPIC branch tip in a scratch worktree via
+  `worktree_utils.setup_worktree(..., checkout_existing=True)` — a new flag
+  added alongside `checkout_existing`-aware `cleanup_worktree` teardown
+  (`delete_branch=False`, since the EPIC branch is not disposable).
+- Runs `project.test_cmd` / `project.lint_cmd` (`shlex.split`, plain
+  `subprocess.run`, no shell) against the worktree; a non-zero exit records a
+  message in `self._epic_branch_verify_failures[epic_id]` and returns
+  `False`, blocking the merge/PR-open dispatch.
+- Always tears the scratch worktree down via a `finally` block regardless of
+  outcome.
+- Added the read-only `ParallelOrchestrator.epic_branch_verify_failures`
+  property and a new `_report_results()` block (modeled on the
+  `stash_pop_failures` pattern) so blocked EPIC branches are visibly reported
+  in the run summary rather than only `logger.warning`-logged.
+
+Tests: `scripts/tests/test_worktree_utils.py::TestSetupWorktreeCheckoutExisting`
+(new, real-git), `scripts/tests/test_orchestrator.py::TestEpicBranchVerifyGate`
+(new — disabled-by-default, blocks-on-test-failure, allows-on-success,
+worktree-setup-failure, retry-after-failure), plus a
+`test_report_results_surfaces_epic_verify_gate_failures` case and the
+`make_epic_orchestrator` fixture's new `verify_before_merge` kwarg. Full
+suite: `python -m pytest scripts/tests/` — 14617 passed, 36 skipped. `ruff
+check scripts/` and `python -m mypy scripts/little_loops/parallel/
+orchestrator.py scripts/little_loops/worktree_utils.py` clean.
+
+Docs updated: `docs/development/MERGE-COORDINATOR.md`,
+`docs/guides/SPRINT_GUIDE.md`, `docs/ARCHITECTURE.md`,
+`docs/reference/CONFIGURATION.md`, `docs/reference/API.md`,
+`docs/reference/CLI.md` — all remove the "inert until ENH-2603" language.
+
 ## Session Log
 - `/ll:ready-issue` - 2026-07-11T15:28:27 - `8b5d1710-736b-4893-91d3-68a6de917d42.jsonl`
 - `/ll:confidence-check` - 2026-07-11T00:00:00 - `9f42b1ff-96aa-4d2d-93f2-f2080ae556a4.jsonl`
 - `/ll:wire-issue` - 2026-07-11T15:24:01 - `fe6c7bbd-c486-4fcd-9471-7f6c7355a636.jsonl`
 - `/ll:refine-issue` - 2026-07-11T15:17:30 - `706d6654-db64-40df-b677-8a48bde3af79.jsonl`
 - `/ll:issue-size-review` - 2026-07-11 - `2385c5ce-bdf9-4918-95d8-8118da444ec1.jsonl`
+- `/ll:manage-issue` - 2026-07-11T15:42:07 - `a9ba0748-bc8c-4087-8f47-2ec3d3701d19.jsonl`
 
 ---
 
 ## Status
 
-- [ ] Not started
+- [x] Implemented, tested, documented
