@@ -155,8 +155,11 @@ states:
   select_step:
     action: |
       PLAN="${context.run_dir}/plan.md"
+      SPIN_COUNTER="${context.run_dir}/continue-work-spin-counter.txt"
       STEP=$(grep -m1 '^- \[ \]' "$PLAN" || echo "")
       if [ -z "$STEP" ]; then
+        SPIN=$(cat "$SPIN_COUNTER" 2>/dev/null || echo 0)
+        SPIN=$((SPIN + 1)); printf '%s' "$SPIN" > "$SPIN_COUNTER"
         echo "NO_UNCHECKED_STEPS"
         exit 0
       fi
@@ -179,6 +182,7 @@ states:
         exit 0
       fi
       echo "$STEP" >> "$ATTEMPTS"
+      rm -f "$SPIN_COUNTER"
       echo "$STEP" > "${context.run_dir}/current-step.txt"
       CHECKPOINT="${context.run_dir}/checkpoint.json"
       printf '{"in_flight_step":"%s","timestamp":"%s","task_hash":"%s"}\n' \
@@ -191,8 +195,29 @@ states:
       source: "${captured.selected_step.output}"
       pattern: "SELECTED_STEP:"
     on_yes: do_work
-    on_no: check_done
+    on_no: spin_gate
     on_error: diagnose
+
+  # Guards the NO_UNCHECKED_STEPS spin (ENH-2585): once every remaining plan
+  # step has been abandoned (max_step_attempts exhausted), select_step returns
+  # NO_UNCHECKED_STEPS on every subsequent pass in ~20ms, but continue_work
+  # still burns 50-210s of LLM re-deliberation each cycle without producing a
+  # new actionable step. This counter (reset only on a genuine SELECTED_STEP:)
+  # caps consecutive no-progress cycles before diverting to the ENH-2583
+  # partial-credit chain instead of looping back through check_done/count_done/
+  # continue_work indefinitely.
+  spin_gate:
+    action: |
+      SPIN_COUNTER="${context.run_dir}/continue-work-spin-counter.txt"
+      cat "$SPIN_COUNTER" 2>/dev/null || echo 0
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 3
+    on_yes: check_done
+    on_no: summarize_partial
+    on_error: check_done
 
   do_work:
     action: |

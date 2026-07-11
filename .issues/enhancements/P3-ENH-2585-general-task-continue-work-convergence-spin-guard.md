@@ -1,17 +1,30 @@
 ---
 id: ENH-2585
-title: general-task — guard the continue_work convergence spin after abandoned steps
+title: "general-task \u2014 guard the continue_work convergence spin after abandoned\
+  \ steps"
 type: ENH
 priority: P3
-status: open
-discovered_date: "2026-07-10"
+status: done
+completed_at: '2026-07-11T03:56:56Z'
+discovered_date: '2026-07-10'
 discovered_by: audit-loop-run
-labels: [loops, fsm, general-task, stall-detection, audit]
+labels:
+- loops
+- fsm
+- general-task
+- stall-detection
+- audit
 relates_to:
 - FEAT-1637
 - BUG-1674
 - ENH-2583
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-2585: general-task — guard the continue_work convergence spin after abandoned steps
@@ -26,6 +39,22 @@ continue_work` ~6 consecutive times with **zero `do_work`** in between.
 `continue_work` burned 50–210s of LLM time re-deliberating without producing a
 new actionable `- [ ]` step, until it finally self-assessed `WORK_COMPLETE`
 with 12 hard criteria still open and handed off to `final_verify`.
+
+## Current Behavior
+
+In `general-task.yaml`, once all remaining plan steps have been abandoned
+(hit `max_step_attempts: 3`), `select_step` returns `NO_UNCHECKED_STEPS` on
+every subsequent pass in ~20ms, but the loop still routes back through
+`continue_work` each cycle. `continue_work` burns 50–210s of LLM
+re-deliberation without producing a new actionable `- [ ]` step, and this
+repeats indefinitely (observed 6 consecutive cycles, ~15 minutes) until
+`continue_work` eventually self-assesses `WORK_COMPLETE` — even with hard
+acceptance criteria still open — rather than being routed to the
+partial-credit chain. The existing `StallDetector` does not catch this
+because `check_done`'s bookkeeping rewrite of `dod.md`'s
+`## Sample Verification` section each cycle looks like real progress at the
+executor layer (see "Why the existing stall detector doesn't catch this"
+below).
 
 ## Why the existing stall detector doesn't catch this
 
@@ -43,27 +72,27 @@ learn to exclude the loop's own bookkeeping artifacts, mirroring the
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **StallDetector class** lives at `scripts/little_loops/fsm/stall_detector.py:27-77`. Tracks consecutive `(state, exit_code, verdict)` triples in a `deque(maxlen=window)`; `check()` returns `Stall(triple, count)` when the deque is full and every entry identical. Fingerprint-driven reset was added by BUG-1674 at lines 42-61.
-- **The exact gap that lets this spin pass** is in `scripts/little_loops/fsm/executor.py:996-1035` (`_compute_progress_fingerprint`). When `circuit.repeated_failure.progress_paths` is empty, the function returns `None` early at line 1011 — before `exclude_paths` is consulted at lines 1014-1019. Net: `exclude_paths` alone is inert. This loop declares only `exclude_paths` (`scripts/little_loops/loops/general-task.yaml:24-30`: `window: 7`, `on_repeated_failure: diagnose`, `exclude_paths: [plan.md, dod.md]`), so the fingerprint is always `None` and the deque never resets.
-- **Why `count_done` is the eval-bearing state** here, not `continue_work`: `count_done` (`general-task.yaml:344-425`) is the state whose verdict (`output_json` on `.total`) repeats as `no` across the spin. The detector deque would fill at `window: 7` per `general-task.yaml:26`, but with `None` fingerprint, `StallDetector.record` (`stall_detector.py:56-60`) takes the no-op path.
+- **The exact gap that lets this spin pass** is in `scripts/little_loops/fsm/executor.py:996-1035` (`_compute_progress_fingerprint`). When `circuit.repeated_failure.progress_paths` is empty, the function returns `None` early at line 1011 — before `exclude_paths` is consulted at lines 1014-1019. Net: `exclude_paths` alone is inert. This loop declares only `exclude_paths` (`scripts/little_loops/loops/general-task.yaml:24-30`: `window: 3`, `on_repeated_failure: diagnose`, `exclude_paths: [plan.md, dod.md]`), so the fingerprint is always `None` and the deque never resets.
+- **Why `count_done` is the eval-bearing state** here, not `continue_work`: `count_done` (`general-task.yaml:344-425`) is the state whose verdict (`output_json` on `.total`) repeats as `no` across the spin. The detector deque would fill at `window: 3` per `general-task.yaml:26`, but with `None` fingerprint, `StallDetector.record` (`stall_detector.py:56-60`) takes the no-op path.
 - **`check_done`'s bookkeeping write** that defeats the detector: `general-task.yaml:287-342`, Step 3 ("Sample re-verification", lines 323-337) rewrites the `## Sample Verification` section of `dod.md` every cycle (`general-task.yaml:326-328`).
 - **Earlier precedent** — BUG-1767 (`scripts/little_loops/fsm/validation.py:2370-2400`) introduced `_validate_progress_paths_isolation`, which already warns when a state action writes to a file in `progress_paths` but not `exclude_paths`. The validation rule is a strong signal that the schema authors considered "exclude-only" ambiguous; Option 2 below should resolve that ambiguity explicitly.
 - **`diagnose` is currently the stall target** (`general-task.yaml:692-703`, terminal: `failed`). For this spin, the right target is **not** `diagnose` (which discards verified progress); it is the **ENH-2583 partial-credit chain** — see "Proposed Solution" below.
 
-## Expected Behavior (design open — two candidate shapes)
+## Expected Behavior
 
-1. **Loop-local stall counter**: `select_step` already emits
-   `NO_UNCHECKED_STEPS`; persist a consecutive-occurrence counter in the run
-   dir (cleared whenever a step is selected or continue_work appends a new
-   step). When the counter reaches N (e.g. 3) with unchecked hard criteria
-   remaining, route to the ENH-2583 partial-credit chain instead of another
-   `continue_work` deliberation.
-2. **Detector enhancement**: extend `StallDetector` progress accounting to
-   honor the loop's `circuit.repeated_failure.exclude_paths` (mutations to
-   excluded bookkeeping files don't count as progress), letting the generic
-   window fire on this cycle.
+A `NO_UNCHECKED_STEPS` spin — `select_step` finding no unchecked steps
+because every remaining step is abandoned — must terminate in at most N (3)
+consecutive no-progress cycles by routing to the ENH-2583 partial-credit
+chain (`summarize_partial`), rather than continuing to invoke
+`continue_work` for full LLM re-deliberation on every pass. N no-progress
+cycles should cost N × ~20ms shell plus at most one `continue_work`
+deliberation — not ~15 minutes of repeated LLM re-planning.
 
-Either way, N no-progress cycles must cost N × ~20ms shell + at most one
-`continue_work` deliberation — not ~15 minutes of repeated LLM re-planning.
+(Design note: two candidate shapes — a loop-local stall counter in
+`select_step`, or a `StallDetector` enhancement honoring
+`circuit.repeated_failure.exclude_paths` — were evaluated; Option 1
+(loop-local counter) was selected. See "Proposed Solution" and "Decision
+Rationale" below.)
 
 ### Codebase Research Findings
 
@@ -116,6 +145,13 @@ _Wiring pass added by `/ll:wire-issue` (Option 1 — selected):_
 _Wiring pass added by `/ll:wire-issue` (Option 1 — selected):_
 - `scripts/little_loops/loops/loop-composer-adaptive.yaml:432-456` (`check_replan_budget` + `increment_replan_count`) — two-state counter-budget precedent with an `output_numeric operator: lt, target: ${context.max_replans}` gate; direct model for the spin-gate numeric evaluator if a dedicated gate state is used. Its structural test class `TestReplanBudget` (`scripts/tests/test_loop_composer_adaptive.py:167-206`) is the model for the new spin-gate routing assertions. [Agent 3 finding]
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Closer precedent than the two above**: `scripts/little_loops/loops/rn-remediate.yaml:882-897` (`check_remediation_budget`) is the tightest structural match for the proposed `spin_gate` shape — a shell-read counter file (`remediation_count_${ID}.txt`, incremented by the calling state, lines 563-566) feeding an `output_numeric operator: lt, target: ${context.max_remediation_passes}` evaluator with `on_yes: diagnose` / `on_no: emit_stalled_needs_decompose`. Like ENH-2585's proposal, budget exhaustion here routes to a stall-adjacent terminal path rather than the normal continuation state (BUG-2006 comment at lines 893-896). This is a stronger template than `goal-cluster.yaml`/`loop-composer-adaptive.yaml` because it specifically gates on *no-progress cycles before a stall-adjacent route*, matching the spin_gate → `summarize_partial` shape exactly.
+- Confirmed via `scripts/little_loops/fsm/executor.py:80,1237,1268` (`STALL_DETECTED_EVENT`, `_emit` at line 2029) that event emission is engine-level only — no shell-state channel exists to emit a custom event from within a loop YAML action, corroborating the Decision Rationale's note that the optional `spin_guard_triggered` event can be dropped without a workaround.
+
 ### Tests
 - `scripts/tests/test_general_task_loop.py:444-449` (`test_empty_plan_emits_no_unchecked_steps`) — model for the new Option 1 shell-action test.
 - `scripts/tests/test_general_task_loop.py:34-75` (`TestGeneralTaskLoopFile`) — model for structural assertions on the new routing.
@@ -139,6 +175,19 @@ _Wiring pass added by `/ll:wire-issue` (Option 1 — selected):_
 
 ### Configuration
 - No new config in `.ll/ll-config.json` is needed. Loop-local counter lives entirely inside `${context.run_dir}` (per-run filesystem state).
+
+## Scope Boundaries
+
+- **In scope**: `general-task.yaml`'s `select_step` state — adding a
+  per-run-dir spin counter, a routing gate on `select_step.on_no`, and
+  reset semantics on genuine progress (real step selection). Updating the
+  tests in `test_general_task_loop.py` that assert the current
+  `select_step.on_no` / `continue_work.on_no` routing.
+- **Out of scope**: Any change to `StallDetector`,
+  `_compute_progress_fingerprint`, `RepeatedFailureConfig`, or
+  `fsm-loop-schema.json` (Option 2, not selected — see "Decision
+  Rationale"). Other loops' `exclude_paths`-alone configurations are
+  unaffected.
 
 ## Proposed Solution
 
@@ -202,17 +251,27 @@ Decided by `/ll:decide-issue` on 2026-07-10.
 - Option 1: Verbatim counter precedent (`goal-cluster.yaml:515-528`, `general-task.yaml:171-181`), 30+ `${context.run_dir}` counter call sites, `summarize_partial` terminal already wired from two routes, matching shell-action test scaffolding (`test_general_task_loop.py:415-465`). Reuse score 3. Only novel piece is cross-state counter reset; the optional `spin_guard_triggered` event has no shell-state channel and can be dropped.
 - Option 2: Fits the BUG-1767/ENH-2245 additive opt-in `RepeatedFailureConfig` precedent (`schema.py:991-1022`), but requires a net-new directory-walk in `_compute_progress_fingerprint` and shifts detector semantics for all `exclude_paths` loops behind an opt-in flag. Reuse score 2; higher blast radius (5 files + JSON-schema lockstep) than this issue's scope justifies.
 
+## Impact
+
+- **Priority**: P3 — no correctness bug, but a real cost/latency waste in
+  `general-task` runs that hit the abandoned-step spin (~15 minutes of
+  redundant LLM re-deliberation per occurrence, observed in
+  `general-task-audit-2026-07-09T232714.md`).
+- **Effort**: Small — Option 1 is ~30 lines of shell + ~10 lines of YAML
+  routing in `general-task.yaml`, contained to one loop file with zero
+  FSM-internal changes; one new shell-action test class.
+
 ## Acceptance Criteria
 
-- [ ] A `continue_work → select_step(NO_UNCHECKED_STEPS) → … → continue_work`
+- [x] A `continue_work → select_step(NO_UNCHECKED_STEPS) → … → continue_work`
       cycle that appends no new plan step terminates in ≤N cycles by routing
       to the partial-credit chain (ENH-2583), not by continue_work
       self-assessing WORK_COMPLETE.
-- [ ] Counter/detector resets on genuine progress (a step selected, a new
+- [x] Counter/detector resets on genuine progress (a step selected, a new
       remediation step appended, or a criterion flipped).
-- [ ] Abandoned-step interaction covered: steps at `max_step_attempts` do not
+- [x] Abandoned-step interaction covered: steps at `max_step_attempts` do not
       re-arm the spin.
-- [ ] Shell-execution tests for the counter logic in
+- [x] Shell-execution tests for the counter logic in
       `scripts/tests/test_general_task_loop.py`.
 
 ### Codebase Research Findings
@@ -233,7 +292,31 @@ Distinct from the abandoned-step cap itself (already implemented in
 been abandoned.
 
 
+## Status
+
+Implemented. `select_step` in `general-task.yaml` now increments
+`${context.run_dir}/continue-work-spin-counter.txt` on every
+`NO_UNCHECKED_STEPS` pass and clears it on a genuine `SELECTED_STEP:`
+selection (the abandoned-step branch does not reset it). A new `spin_gate`
+shell state sits on `select_step.on_no`: while the counter is below 3 it
+routes to `check_done` as before; at 3 it routes directly to
+`summarize_partial` (the ENH-2583 partial-credit chain) instead of paying
+for another `continue_work` re-deliberation. Added shell-execution tests
+(`TestSelectStepShellAction`, `TestSpinGateShellAction`) and updated the
+routing assertions in `test_general_task_loop.py`; updated
+`docs/guides/LOOPS_REFERENCE.md`.
+
+## Resolution
+
+Option 1 (loop-local stall counter) implemented as designed and selected by
+`/ll:decide-issue`. Full test suite passes (14578 passed, pre-existing
+unrelated failures in `test_check_decisions_yaml_hook.py` confirmed present
+on a clean stash of these changes).
+
 ## Session Log
+- `/ll:manage-issue fix` - 2026-07-11T03:56:26Z - `007685c3-b511-4551-9755-f172798db285.jsonl`
+- `/ll:ready-issue` - 2026-07-11T03:39:08 - `c6b8268e-4922-4226-8bbd-7893754bf36e.jsonl`
+- `/ll:refine-issue` - 2026-07-11T03:33:08 - `9b64767d-d7ac-4f00-aec0-2efcc526e883.jsonl`
 - `/ll:wire-issue` - 2026-07-11T00:07:06 - `9c5cc73a-20e5-4fa5-8515-01177f26a4d8.jsonl`
 - `/ll:decide-issue` - 2026-07-10T23:41:26 - `3e5921d8-498f-4333-bab4-0762112d1daf.jsonl`
 - `/ll:refine-issue` - 2026-07-10T23:37:01 - `c1630b0e-e5ca-4441-abf2-969719ea948d.jsonl`

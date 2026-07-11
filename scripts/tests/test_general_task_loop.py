@@ -347,8 +347,19 @@ class TestENH1732StateSplit:
     def test_select_step_routes_yes_to_do_work(self, raw_data: dict) -> None:
         assert raw_data["states"]["select_step"]["on_yes"] == "do_work"
 
-    def test_select_step_routes_no_to_check_done(self, raw_data: dict) -> None:
-        assert raw_data["states"]["select_step"]["on_no"] == "check_done"
+    def test_select_step_routes_no_to_spin_gate(self, raw_data: dict) -> None:
+        assert raw_data["states"]["select_step"]["on_no"] == "spin_gate"
+
+    def test_spin_gate_routes_yes_to_check_done_no_to_summarize_partial(
+        self, raw_data: dict
+    ) -> None:
+        spin_gate = raw_data["states"]["spin_gate"]
+        assert spin_gate["on_yes"] == "check_done"
+        assert spin_gate["on_no"] == "summarize_partial"
+        assert spin_gate["on_error"] == "check_done"
+        assert spin_gate["evaluate"]["type"] == "output_numeric"
+        assert spin_gate["evaluate"]["operator"] == "lt"
+        assert spin_gate["evaluate"]["target"] == 3
 
     def test_select_step_routes_error_to_diagnose(self, raw_data: dict) -> None:
         assert raw_data["states"]["select_step"]["on_error"] == "diagnose"
@@ -463,6 +474,52 @@ class TestSelectStepShellAction:
         step_file = run_dir / "current-step.txt"
         assert step_file.exists(), "select_step must write the step to current-step.txt"
         assert "Step 1: write code" in step_file.read_text()
+
+    def test_no_unchecked_steps_increments_spin_counter(self, tmp_path: Path) -> None:
+        # ENH-2585: an empty plan (all steps checked/abandoned) must increment
+        # the spin-guard counter each pass so spin_gate can cap the no-progress cycle.
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
+        self._run(tmp_path)
+        counter_file = run_dir / "continue-work-spin-counter.txt"
+        assert counter_file.exists(), "select_step must create the spin counter file"
+        assert counter_file.read_text().strip() == "1"
+        self._run(tmp_path)
+        assert counter_file.read_text().strip() == "2"
+
+    def test_selected_step_resets_spin_counter(self, tmp_path: Path) -> None:
+        # ENH-2585: a genuine step selection must reset the spin counter — a real
+        # step selected is the progress signal that re-arms the no-progress budget.
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "continue-work-spin-counter.txt").write_text("2")
+        (run_dir / "plan.md").write_text("# Task Plan\n- [ ] Step 1: write code\n")
+        self._run(tmp_path)
+        counter_file = run_dir / "continue-work-spin-counter.txt"
+        assert not counter_file.exists(), (
+            "select_step must clear the spin counter on a real SELECTED_STEP:"
+        )
+
+
+class TestSpinGateShellAction:
+    """Shell execution tests for the spin_gate action (ENH-2585)."""
+
+    def _run(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("spin_gate")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return _bash(script, cwd=tmp_path)
+
+    def test_missing_counter_emits_zero(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert result.stdout.strip() == "0"
+
+    def test_reports_existing_counter_value(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "continue-work-spin-counter.txt").write_text("2")
+        result = self._run(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert result.stdout.strip() == "2"
 
 
 class TestVerifyStepShellAction:
