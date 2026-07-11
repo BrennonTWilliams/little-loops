@@ -1,0 +1,8 @@
+[PASS] claude --version reports Claude Code (CLI installed)
+[PASS] pre-tool-use.sh documents exit 0=allow and exit 2=block
+[PASS] sibling hook parses tool_name and tool_input.file_path from stdin via jq
+[PASS] sibling hook returns the documented allow JSON response shape
+[PASS] hooks.json registers check-duplicate-issue-id.sh under PreToolUse Write|Edit with timeout 5
+[PASS] sibling hook early-exits (allow_response) when tool_name is neither Write nor Edit
+
+SUMMARY: 6/6 claims passed

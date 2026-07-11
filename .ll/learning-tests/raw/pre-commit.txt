@@ -1,0 +1,31 @@
+=== pre-commit 4.5.1 learning test for ENH-2590 ===
+=== Date: 2026-07-10 ===
+
+=== Claim 1: valid file → pre-commit exit 0 ===
+Hook: language=system, entry=hooks/check.sh (echoes OK), files=^\.ll/decisions\.yaml$, pass_filenames=false
+Result: pre-commit exit=0  (PASSED)
+
+=== Claim 2: corrupted file → pre-commit exit non-zero ===
+Wrote 'CORRUPT' to .ll/decisions.yaml; check.sh returns 1
+Result: pre-commit exit=1  (FAILED, as expected)
+
+=== Claim 3: regex anchor ^\.ll/decisions\.yaml$ matches only that file ===
+Ran pre-commit run --files other.yaml (no .ll/decisions.yaml)
+Result: 'Skipped' (no files to check), pre-commit exit=0
+
+=== Claim 4: pass_filenames:false → argv count = 0 ===
+Hook with pass_filenames:false; output via --verbose:
+  ARGV_COUNT=0
+
+=== Claim 5: pass_filenames:true (default) → argv count = 1 ===
+Hook without pass_filenames (defaults true); output via --verbose:
+  ARGV_COUNT=1
+    arg: .ll/decisions.yaml
+
+=== Claim 6: language:system with non-PATH binary fails clearly ===
+entry: this-binary-does-not-exist-12345
+Result: 'Executable `this-binary-does-not-exist-12345` not found', pre-commit exit=1
+
+=== Claim 7: hook config requires 'name:' field ===
+Hook without name:
+Result: '=====> Missing required key: name', pre-commit exit=1

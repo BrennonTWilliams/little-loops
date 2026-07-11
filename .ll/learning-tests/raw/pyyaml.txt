@@ -1,0 +1,7 @@
+PASS [malformed-raises-YAMLError] -> ParserError: while parsing a block mapping
+PASS [parser-error-subclass] isinstance=True type=ParserError
+PASS [empty-input-None] value=None truthy=False
+PASS [valid-entries-dict] keys=['entries'] entries_count=1
+PASS [safe-load-returns-mapping] type=dict
+
+Summary: 5/5 claims passed
