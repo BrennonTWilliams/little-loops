@@ -132,14 +132,17 @@ class TestCheckDecisionAtDequeueStructural:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_at_dequeue_on_yes_routes_to_run_decide(
+    def test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=true must route directly to run_decide."""
+        """decision_needed=true must route through check_decision_decidable so the
+        deposit_options detour gets one bounded attempt before run_decide fires
+        (BUG-2605: the fast path previously skipped the detour entirely)."""
         state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_yes") == "run_decide", (
-            f"check_decision_at_dequeue.on_yes should be 'run_decide' "
-            f"(BUG-2513: bypass-loop fix), got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"check_decision_at_dequeue.on_yes should be 'check_decision_decidable' "
+            f"(BUG-2605: route through the deposit-options detour), "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_check_decision_at_dequeue_on_no_routes_to_refine_current(
@@ -331,13 +334,15 @@ class TestCheckDecisionBeforeSizeReviewStructural:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_before_size_review_on_yes_routes_to_run_decide(
+    def test_check_decision_before_size_review_on_yes_routes_to_check_decision_decidable(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=true must route to run_decide."""
+        """decision_needed=true must route through check_decision_decidable so the
+        deposit_options detour gets one bounded attempt before run_decide fires
+        (BUG-2605)."""
         state = data["states"]["check_decision_before_size_review"]
-        assert state.get("on_yes") == "run_decide", (
-            f"check_decision_before_size_review.on_yes should be 'run_decide', "
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"check_decision_before_size_review.on_yes should be 'check_decision_decidable', "
             f"got {state.get('on_yes')!r}"
         )
 

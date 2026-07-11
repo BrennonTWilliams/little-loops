@@ -2583,6 +2583,18 @@ class TestAutodevLoop:
         state = data["states"].get("dequeue_next", {})
         assert state.get("on_yes") == "check_decision_at_dequeue"
 
+    def test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable(
+        self, data: dict
+    ) -> None:
+        """BUG-2605: check_decision_at_dequeue.on_yes (decision_needed=true) must route to
+        check_decision_decidable, not directly to run_decide, so a fresh dequeue gets the
+        deposit_options detour before decide-issue is asked to choose an option."""
+        state = data["states"].get("check_decision_at_dequeue", {})
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"check_decision_at_dequeue.on_yes should be 'check_decision_decidable', "
+            f"got {state.get('on_yes')!r}"
+        )
+
     def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
         """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
         state = data["states"].get("refine_current", {})
@@ -2759,10 +2771,12 @@ class TestAutodevLoop:
         )
 
     def test_check_decision_after_refine_routes_correctly(self, data: dict) -> None:
-        """check_decision_after_refine must route to run_decide (on_yes) and check_passed (on_no/on_error)."""
+        """check_decision_after_refine must route to check_decision_decidable (on_yes, BUG-2605)
+        and check_passed (on_no/on_error)."""
         state = data["states"].get("check_decision_after_refine", {})
-        assert state.get("on_yes") == "run_decide", (
-            f"check_decision_after_refine.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"check_decision_after_refine.on_yes should be 'check_decision_decidable', "
+            f"got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_passed", (
             f"check_decision_after_refine.on_no should be 'check_passed', got {state.get('on_no')!r}"
@@ -3025,13 +3039,15 @@ class TestAutodevLoop:
             f"check_decision_before_size_review.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_before_size_review_on_yes_routes_to_run_decide(
+    def test_check_decision_before_size_review_on_yes_routes_to_check_decision_decidable(
         self, data: dict
     ) -> None:
-        """check_decision_before_size_review.on_yes (decision_needed=true) must route to run_decide."""
+        """check_decision_before_size_review.on_yes (decision_needed=true) must route to
+        check_decision_decidable (BUG-2605), not straight to run_decide."""
         state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("on_yes") == "run_decide", (
-            f"check_decision_before_size_review.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_decidable", (
+            f"check_decision_before_size_review.on_yes should be 'check_decision_decidable', "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_check_decision_before_size_review_on_no_routes_to_run_size_review(

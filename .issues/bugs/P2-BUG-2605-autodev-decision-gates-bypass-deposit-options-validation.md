@@ -1,11 +1,13 @@
 ---
 id: BUG-2605
-title: autodev's fast-path decision gates bypass check_decision_decidable/deposit_options validation
+title: autodev's fast-path decision gates bypass check_decision_decidable/deposit_options
+  validation
 type: BUG
-status: open
+status: done
 priority: P2
-captured_at: "2026-07-11T18:07:11Z"
-discovered_date: "2026-07-11"
+captured_at: '2026-07-11T18:07:11Z'
+completed_at: '2026-07-11T18:55:33Z'
+discovered_date: '2026-07-11'
 discovered_by: capture-issue
 relates_to:
 - BUG-2513
@@ -176,6 +178,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (the ENH-2443 assertion for `decide_current`, which already asserts the
   target state this bug retargets the other three toward).
 
+## Steps to Reproduce
+
+1. Have an issue with `decision_needed: true` set but no enumerable
+   `### Option A/B` blocks in its `## Proposed Solution` (e.g. ENH-2492 on
+   2026-07-11).
+2. Run `ll-loop run autodev <ISSUE-ID> -q`.
+3. Observe the issue dequeue through `check_decision_at_dequeue`
+   (`autodev.yaml:107-119`) and route `on_yes` straight to `run_decide`,
+   skipping `check_decision_decidable` / `deposit_options` entirely.
+4. `/ll:decide-issue <ISSUE-ID> --auto` no-ops (no enumerable options to
+   choose between), leaving `decision_needed: true` unchanged.
+5. Observe: `assert_decision_cleared` correctly detects the flag is still
+   `true` and routes to `record_decision_unresolved`, draining the issue to
+   `autodev-decision-unresolved.txt` — despite the issue passing confidence
+   (96) and outcome (77) thresholds. Confirmed live in run dir
+   `.loops/runs/autodev-20260711T104104/`.
+
 ## Impact
 
 - **Priority**: P2 - Blocks forward progress on a large fraction of the
@@ -195,10 +214,41 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 |----------|--------------|
 | `.claude/CLAUDE.md` | Loop Authoring section — FSM validation rules (`ll-loop validate`) |
 
+## Resolution
+
+Retargeted the `on_yes:` of the three bypass states in `autodev.yaml` from
+`run_decide` to `check_decision_decidable`, exactly as proposed:
+
+- `check_decision_at_dequeue.on_yes` (line 117)
+- `check_decision_after_refine.on_yes` (line 176)
+- `check_decision_before_size_review.on_yes` (line 649)
+
+No new states or downstream wiring changes were needed — `check_decision_decidable`
+already reads `captured.input.output` generically and already routes to
+`run_decide` on both `on_yes` and `on_error`.
+
+Updated routing assertions in both `test_builtin_loops.py` and
+`test_autodev_decision_gate.py` (the two files pin the same wiring in
+lockstep) to expect `check_decision_decidable`, and added the previously-missing
+`check_decision_at_dequeue.on_yes` routing test to both files, modeled on the
+existing `decide_current.on_yes` precedent. Updated the stale "unaffected"
+claim in `docs/guides/LOOPS_REFERENCE.md`'s decidability-gate-parity note,
+which predated this fix and no longer described all four entry points
+correctly.
+
+`ll-loop validate autodev` passes and the full suite
+(`python -m pytest scripts/tests/`) passes: 14621 passed, 36 skipped.
+`ENH-2492` (the original live repro) already has `decision_needed: false` from
+a prior session, so it's no longer a live repro case; re-running the full
+autodev loop against a real backlog issue was skipped to avoid side effects on
+other issues — the new/updated routing tests cover the fix directly.
+
 ## Status
 
-**Open** | Created: 2026-07-11 | Priority: P2
+**Done** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T18:55:06 - `df5a86d2-dd50-4da7-a78e-7d0d5af87c71.jsonl`
+- `/ll:ready-issue` - 2026-07-11T18:46:31 - `eac96e39-da73-4cd4-b04b-8de4afd726d0.jsonl`
 - `/ll:refine-issue` - 2026-07-11T18:40:42 - `4566a976-60c6-45f6-b2d7-8afae702a6fd.jsonl`
 - `/ll:capture-issue` - 2026-07-11T18:07:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37898a30-ea4e-4972-91db-a694a29a9e31.jsonl`

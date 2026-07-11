@@ -114,7 +114,7 @@ states:
     # (defense in depth) on the post-refine path.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: run_decide
+    on_yes: check_decision_decidable
     on_no: refine_current
     on_error: refine_current
 
@@ -173,7 +173,7 @@ states:
     # so an unresolved design decision is resolved on the direct post-refine path.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: run_decide
+    on_yes: check_decision_decidable
     on_no: check_passed
     on_error: check_passed
 
@@ -646,7 +646,7 @@ states:
     # added by BUG-1277; on_error closes the latent dead-end BUG-2519.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: run_decide
+    on_yes: check_decision_decidable
     on_no: run_size_review
     on_error: run_size_review
 
