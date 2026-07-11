@@ -177,7 +177,7 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 
 - **[TBD-16]** F7-lite prerequisite — `list_models()` on the `HostRunner` protocol (return `{model, input_cost_per_mtok, output_cost_per_mtok, context_window}` per row); land **before** body work.
 - **[TBD-17]** `routing.precedence` config-schema entry — explicit `--model` flag > loop YAML `model:` > per-state ceiling-overshoot downshift. Add to `config-schema.json` + `.ll/ll-config.json` `orchestration.routing.precedence` enum **before** body work.
-- **[TBD-18]** F7-lite — In-process model router + FrugalGPT cascade skeleton + RouteLLM quantile-calibration helper (new `routing/calibrate.py` ported verbatim). Per-worker budget in `fsm/budget.py`. **Latency/score ring buffer keyed by `(provider, model)`, not global** — required for correctness with omp's 40+ providers.
+- **[TBD-18]** F7-lite — In-process model router + FrugalGPT cascade skeleton + RouteLLM quantile-calibration helper (new `routing/calibrate.py` ported verbatim). Per-worker spend tracked via a minimal, file-local accumulator owned by F7-lite (not a shared `fsm/` module — that scope was cancelled with F2; see Integration Map). **Latency/score ring buffer keyed by `(provider, model)`, not global** — required for correctness with omp's 40+ providers.
 
 ### Cross-tier verification
 
@@ -200,7 +200,7 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 - **F8**: new `scripts/little_loops/subagents/handoff.py` (~100 LOC incl. ~30 LOC parent-prefix hoisting) — imports F3; optional shared `scripts/little_loops/lib/hashing.py` with `fragment_store`.
 - **F4-gated**: new `scripts/little_loops/compression/heuristic.py` (~150 LOC) + extend `scripts/little_loops/fsm/runners.py` (≥8K threshold hook).
 - **F10**: new `scripts/little_loops/skills/speculative.py` (~80 LOC, incl. `max_tokens=0` alt) + extend `hooks/hooks.json` (SkillStart hook entry).
-- **F7-lite**: extend `scripts/little_loops/host_runner.py` (routing table + `HostRunner.list_models()` + FrugalGPT cascade skeleton) + new `scripts/little_loops/routing/calibrate.py` (~30 LOC) + new per-worker spend tracking (⚠️ was slated for `fsm/budget.py`, now cancelled — F7-lite must either own a minimal local accumulator or this bullet needs re-scoping before body work) + extend `config-schema.json` + `.ll/ll-config.json`.
+- **F7-lite**: extend `scripts/little_loops/host_runner.py` (routing table + `HostRunner.list_models()` + FrugalGPT cascade skeleton) + new `scripts/little_loops/routing/calibrate.py` (~30 LOC) + new file-local per-worker spend accumulator inside the F7-lite module (decided 2026-07-10: not a shared `fsm/` module — that scope belonged to the now-cancelled F2/`fsm/budget.py`; `fsm/cost_graph.py` (F6) is confirmed post-hoc/static with no live accumulation to build on) + extend `config-schema.json` + `.ll/ll-config.json`.
 
 ### Dependent Files (callers / importers to update)
 
@@ -211,7 +211,7 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 
 - `scripts/tests/test_edit_batch_hook.py` (new) — Tier 0 P1 edit-batch nudge regression.
 - `scripts/tests/test_json_output_parse.py` (new) — Tier 0 `output/parse.py` extract/prefill helpers.
-- `scripts/tests/test_fsm_budget.py` (new, if F7-lite still needs a per-worker accumulator post-F2-cut) — guard + forecast error ≤15%.
+- `scripts/tests/test_routing_budget.py` (new) — F7-lite's local per-worker spend accumulator: guard + forecast error ≤15%.
 - `scripts/tests/test_cli_cost_table.py` (new) — F6 schema + per-state warnings.
 - `scripts/tests/test_otel_attributes.py` (new) — F5 attribute emission + DES schema accepts 100% of current events.
 - `scripts/tests/test_streaming_cache_parity.py` (new) — F5 streaming-vs-blocking `cache_read_input_tokens` match within 0.1%.
@@ -227,7 +227,7 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — add "Token cost layer" section after "History DB as context layer"; document `routing.precedence` rule (`--model` > loop YAML `model:` > per-state ceiling downshift).
-- `docs/reference/API.md` — document `fsm/budget.py`, `compaction/instant.py`, `observability/tracing.py`, `observability/schema.py` (DES), `prompts/fragment_store.py`, `tools/deferred.py`, `routing/calibrate.py`, `output/parse.py`, `host_runner.build_anthropic_request()` + `HostRunner.list_models()`.
+- `docs/reference/API.md` — document `compaction/instant.py`, `observability/tracing.py`, `observability/schema.py` (DES), `prompts/fragment_store.py`, `tools/deferred.py`, `routing/calibrate.py`, F7-lite's local per-worker spend accumulator, `output/parse.py`, `host_runner.build_anthropic_request()` + `HostRunner.list_models()`.
 - `config-schema.json` — add `orchestration.routing.precedence` enum + default (config-schema-level, before F7-lite body work).
 - `.ll/ll-config.json` — add `cost_limits.*`, `compression.*`, `orchestration.routing.*` (incl. `precedence`), `cache.*` namespaces.
 
@@ -247,7 +247,7 @@ F5  (OTel/DES emission + streaming parity)   [no deps; wraps existing UsageEvent
        └─ F8  (subagent handoff + parent-prefix hoisting)  [imports F3's compaction/instant.py]
   └─ F4-gated  (heuristic compressor)  [no deps; LLMLingua is opt-in via config flag]
 list_models() on HostRunner → routing.precedence config → calibrate.py
-  └─ F7-lite  (in-process routing + FrugalGPT cascade)  [F2 dependency cut 2026-07-10 — needs its own per-worker budget scoping; orthogonal to caching + compression]
+  └─ F7-lite  (in-process routing + FrugalGPT cascade)  [F2 cut 2026-07-10 — per-worker budget now a local accumulator owned by F7-lite; orthogonal to caching + compression]
 ```
 
 **Parallel-execution caveat:** Tiers 2 and 3 are work-stream-independent once foundation lands, but both touch `host_runner.py` and `fsm/` — parallel work is only safe in separate worktrees with a careful integration merge; default to sequential unless two reviewers are available.
@@ -266,7 +266,7 @@ list_models() on HostRunner → routing.precedence config → calibrate.py
 - **F3**: Compaction triggers at the configured soft threshold (default 7,500 tokens); eviction preserves system/CLAUDE.md blocks (regression test); eviction+heuristic combo reduces context size to the **50–70% range** on the locked trace set (the 88% cookbook figure is the semantic-summarization upper bound, reserved for a future upgrade) without measurable quality regression on a held-out eval set.
 - **F6**: Cost table in `ll-loop run` output breaks out `cache_read` / `cache_creation` and is stable across versions (lock the JSON schema in tests).
 - **F5**: `gen_ai.usage.*` attributes parse cleanly under `phoenix serve` (verify in CI via a fixture run; Phoenix install is optional); DES schema accepts 100% of currently-emitted events (F5.1 audit gate). Per-CLI-invocation `gen_ai.invocation.id` UUID unique across all FSM iterations; `GROUP BY gen_ai.invocation.id` rollup returns one row per invocation with token sums matching raw `result`-event `usage` totals. Streaming parity: `cache_read_input_tokens` matches between `client.messages.create()` and `client.messages.stream()` within 0.1%.
-- **F7-lite**: On a locked 5-loop trace set, the cascade dispatches the same model the baseline does on ≥80% of states (no quality regression) while shifting ≥30% of remaining states to a cheaper model; per-worker budget guard halts at 80% (warning) and 100% (hard stop) on `ll-parallel` runs of ≥2 workers; `list_models()` returns the expected inventory on every host adapter.
+- **F7-lite**: On a locked 5-loop trace set, the cascade dispatches the same model the baseline does on ≥80% of states (no quality regression) while shifting ≥30% of remaining states to a cheaper model; F7-lite's own local per-worker accumulator (not F2, which was cancelled) halts at 80% (warning) and 100% (hard stop) on `ll-parallel` runs of ≥2 workers; `list_models()` returns the expected inventory on every host adapter.
 - **F8**: Subagent handoff context shrinks to the **50–70% range** on the locked 5-trace `ll-parallel` handoff set (gate flips below 30%; the earlier ≥70% point estimate was unverified) with the cache breakpoint preserved (parent-prefix hoisting regression test).
 - **F10**: Cache hit rate on warmed long-running skills >80% (vs. ~0% without warming) on prompts >50K tokens.
 - **F4-gated**: Heuristic compressor hits the **3–6× range** on the locked 10-trace `general-task` set; gate flips to LLMLingua below 0.5× LLMLingua's measured ratio.
@@ -290,7 +290,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 | Document | Relevance | Notes |
 |---|---|---|
 | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | **High** — will be updated with the new "Token cost layer" section; documents the `routing.precedence` rule | Integration Map calls for "Token cost layer" section after "History DB as context layer". |
-| [docs/reference/API.md](../../../docs/reference/API.md) | **High** — will document new modules: `fsm/budget.py`, `compaction/instant.py`, `observability/tracing.py`, `observability/schema.py`, `prompts/fragment_store.py`, `tools/deferred.py`, `routing/calibrate.py`, `output/parse.py`, `host_runner.build_anthropic_request()` + `HostRunner.list_models()`. | Per Integration Map documentation list. |
+| [docs/reference/API.md](../../../docs/reference/API.md) | **High** — will document new modules: `compaction/instant.py`, `observability/tracing.py`, `observability/schema.py`, `prompts/fragment_store.py`, `tools/deferred.py`, `routing/calibrate.py`, F7-lite's local per-worker spend accumulator, `output/parse.py`, `host_runner.build_anthropic_request()` + `HostRunner.list_models()`. | Per Integration Map documentation list. |
 
 ## Labels
 
@@ -301,6 +301,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- epic-review - 2026-07-10 - **F7-lite budget re-scoping resolved**: chose option (a) — F7-lite owns a minimal, file-local per-worker spend accumulator (not a shared `fsm/` module) — over dropping the guard and relying on `ll-parallel --workers`. Researched first: `fsm/cost_graph.py` (F6) confirmed purely post-hoc (reads completed run artifacts only, no live accumulation, and its own scope explicitly excludes "cost ceiling guard"); F5 emits per-invocation OTel telemetry only; `ll-parallel --workers` is a pure concurrency cap with no dollar/token tracking, so it can't catch a single runaway worker. Updated Integration Map, Implementation Order diagram, Tests list, and Success Metrics to reflect the local-accumulator plan; renamed the planned test file `test_fsm_budget.py` → `test_routing_budget.py`.
 - epic-review - 2026-07-10 - **F2 cut** (per user request, not deferred): FEAT-2476 and its three grandchildren (FEAT-2548/2549/2550) cancelled — a spend cap/circuit-breaker is cost *governance*, not *reduction* (it halts a run at a $ ceiling; it doesn't lower tokens/$ spent per unit of work, unlike F1/F3/F4/F7-lite). Removed F2 from Goal, Scope table, Boundary section, Children, Integration Map, Implementation Order, Success Metrics, and effort totals (~1,550 → ~1,390 LOC, 9 → 8 F-feature children). Flagged one follow-up: F7-lite's per-worker spend tracking was slated to reuse `fsm/budget.py`; that dependency needs re-scoping (either a minimal local accumulator or drop the per-worker guard) before F7-lite body work starts.
 
 - epic-audit - 2026-07-06 (second pass) - Child cross-check: fixed FEAT-2478's mislabel of the `anthropic`-SDK prerequisite as "F1 (FEAT-2476)" (F1 is unfiled [TBD-10]; FEAT-2476 is F2, no pip deps); corrected FEAT-2476's stale "`.ll/ll-config.json` already documents `cost_limits.*`" Integration-Map line + stale executor anchor in Files to Modify; added reciprocal `relates_to` links (ENH-2461 ↔ FEAT-2476/ENH-2477/FEAT-2478); struck two stale ENH-2471 research notes (exit-code-0 nudge contract — shipped behavior is `exit_code=2` threshold-gated; haiku pin attributed to FEAT-2470 — moved to ENH-2490). Verified on disk: FEAT-2470/ENH-2499 artifacts all present; ENH-2471's `tier0_traces/` fixtures + `docs/observability/` not yet created (consistent with its open status). Statuses, parents, and blocks/depends_on pairs (ENH-2475→FEAT-2478, ENH-2479→FEAT-2478) all consistent.
