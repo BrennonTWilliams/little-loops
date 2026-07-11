@@ -484,6 +484,7 @@ def _cmd_sprint_run(
         total_duration = 0.0
         total_waves = len(waves)
         _fb_warning_emitted = False  # deduplicate: fire once per sprint run (ENH-2176)
+        _eb_warning_emitted = False  # deduplicate: fire once per sprint run (FEAT-2563)
 
         for wave_num, wave in enumerate(waves, 1):
             # Check for shutdown request (ENH-183)
@@ -527,6 +528,18 @@ def _cmd_sprint_run(
                         f" sub-waves; these issues run in-place on '{_current_branch}'"
                     )
                     _fb_warning_emitted = True
+                _epic_branches_arg = getattr(args, "epic_branches", None)
+                effective_epic_branches = (
+                    _epic_branches_arg
+                    if _epic_branches_arg is not None
+                    else config.parallel.epic_branches.enabled
+                )
+                if effective_epic_branches and not _eb_warning_emitted:
+                    logger.warning(
+                        "epic-branch mode does not apply to single-issue / contention"
+                        f" sub-waves; these issues run in-place on '{_current_branch}'"
+                    )
+                    _eb_warning_emitted = True
                 for issue in wave:
                     # TODO(ENH-1686): sprint sequential path not yet live-written
                     issue_result = _run_issue_with_wall_clock_timeout(

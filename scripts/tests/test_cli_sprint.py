@@ -732,7 +732,7 @@ class TestIssueWallClockTimeout:
 class TestFeatureBranchInPlaceWarning:
     """One-time warning when use_feature_branches is set and a wave runs in-place."""
 
-    def _make_args(self, feature_branches=None) -> MagicMock:
+    def _make_args(self, feature_branches=None, epic_branches=None) -> MagicMock:
         args = MagicMock()
         args.sprint = "test-sprint"
         args.quiet = False
@@ -748,11 +748,15 @@ class TestFeatureBranchInPlaceWarning:
         args.context_limit = None
         args.save = False
         args.feature_branches = feature_branches
+        args.epic_branches = epic_branches
         return args
 
-    def _make_config(self, *, use_feature_branches: bool) -> MagicMock:
+    def _make_config(
+        self, *, use_feature_branches: bool, epic_branches_enabled: bool = False
+    ) -> MagicMock:
         config = MagicMock()
         config.parallel.use_feature_branches = use_feature_branches
+        config.parallel.epic_branches.enabled = epic_branches_enabled
         config.sprints.max_issue_wall_clock_time = 60
         config.issues.base_dir = ".issues"
         config.project_root = Path(".")
@@ -877,6 +881,66 @@ class TestFeatureBranchInPlaceWarning:
         assert exit_code == 0
         matching = [w for w in warnings if "feature-branch mode does not apply" in w]
         assert len(matching) == 1
+
+    def test_epic_warning_emitted_when_config_flag_set_and_wave_in_place(self) -> None:
+        """Epic-branch caveat fires when epic_branches.enabled=True and wave runs in-place."""
+        args = self._make_args(epic_branches=None)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=True)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert len(matching) == 1
+        assert "main" in matching[0]
+        # Existing feature-branch substring assertions must still pass unchanged.
+        fb_matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        assert fb_matching == []
+
+    def test_epic_warning_emitted_when_cli_flag_true_and_wave_in_place(self) -> None:
+        """Epic-branch caveat fires when --epic-branches CLI flag is True."""
+        args = self._make_args(epic_branches=True)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=False)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert len(matching) == 1
+
+    def test_no_epic_warning_when_flag_unset(self) -> None:
+        """No epic-branch caveat when epic_branches.enabled is False and CLI flag is absent."""
+        args = self._make_args(epic_branches=None)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=False)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert matching == []
+
+    def test_no_epic_warning_when_cli_flag_explicitly_false(self) -> None:
+        """No epic-branch caveat when --no-epic-branches overrides a True config value."""
+        args = self._make_args(epic_branches=False)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=True)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert matching == []
+
+    def test_epic_warning_emitted_only_once_for_multiple_in_place_waves(self) -> None:
+        """Epic-branch caveat fires exactly once across multiple single-issue in-place waves."""
+        args = self._make_args(epic_branches=None)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=True)
+        exit_code, warnings = self._run(args, config, num_waves=3)
+        assert exit_code == 0
+        matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert len(matching) == 1
+
+    def test_both_warnings_emitted_when_both_modes_effective(self) -> None:
+        """Both caveats fire independently, preserving both substrings, when both modes are on."""
+        args = self._make_args(feature_branches=True, epic_branches=True)
+        config = self._make_config(use_feature_branches=False, epic_branches_enabled=False)
+        exit_code, warnings = self._run(args, config)
+        assert exit_code == 0
+        fb_matching = [w for w in warnings if "feature-branch mode does not apply" in w]
+        eb_matching = [w for w in warnings if "epic-branch mode does not apply" in w]
+        assert len(fb_matching) == 1
+        assert len(eb_matching) == 1
 
 
 class TestSprintParallelBaseBranchDetection:
