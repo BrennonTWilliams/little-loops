@@ -231,6 +231,13 @@ states:
       # vanished from summary.json with no trace.
       GATE_BLOCKED=$(count autodev-gate-blocked.txt)
 
+      # BUG-2595: DECISION_UNRESOLVED — issues where run_decide's decide-issue
+      # call left decision_needed still armed (silent no-op) are a distinct
+      # ledger from skips; mirrors GATE_BLOCKED so a decision-unresolved issue
+      # doesn't vanish from summary.json the same way ENH-2404 fixed for
+      # gate-blocked issues.
+      DECISION_UNRESOLVED=$(count autodev-decision-unresolved.txt)
+
       # ENH-2404: SKIPPED_BREAKDOWN aggregates the "ID  REASON" skip ledger by
       # reason (decomposed / refine_failed / low_readiness / ...), so a
       # reviewer can tell a healthy decomposition-heavy run from a failing
@@ -260,7 +267,7 @@ states:
       INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
         | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
       if [ "$INPUT_SIZE" -gt 0 ]; then
-        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
+        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
       else
         PARKED_RATE=0.0
       fi
@@ -281,14 +288,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"parked_rate":%s}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$PARKED_RATE" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s parked_rate=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$PARKED_RATE"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE"
     action_type: shell
     next: done
 

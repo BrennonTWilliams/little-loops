@@ -434,3 +434,188 @@ class TestCheckDecisionBeforeSizeReviewRouting:
             f"run_decide must NOT be reached when decision_needed is unknown due "
             f"to check-flag error; visited={visited!r}"
         )
+
+
+class TestAssertDecisionClearedStructural:
+    """BUG-2595: structural assertions on the post-decide decision-gate re-check.
+
+    Mirrors ``TestCheckDecisionAtDequeueStructural`` for the new
+    ``assert_decision_cleared`` state, which sits between ``recheck_after_decide``
+    (score-only gate) and ``implement_current`` so a silent ``decide-issue``
+    no-op (BUG-1416) cannot leak a still-gated issue into implementation.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_recheck_after_decide_on_yes_routes_to_assert_decision_cleared(
+        self, data: dict[str, Any]
+    ) -> None:
+        """BUG-2595: recheck_after_decide.on_yes must no longer go straight to
+        implement_current — it must be re-verified by assert_decision_cleared first."""
+        state = data["states"]["recheck_after_decide"]
+        assert state.get("on_yes") == "assert_decision_cleared", (
+            f"recheck_after_decide.on_yes should be 'assert_decision_cleared' "
+            f"(BUG-2595: score pass alone does not prove decision_needed was "
+            f"cleared), got {state.get('on_yes')!r}"
+        )
+
+    def test_assert_decision_cleared_state_exists(self, data: dict[str, Any]) -> None:
+        states = data.get("states", {})
+        assert "assert_decision_cleared" in states, (
+            "assert_decision_cleared state missing from autodev.yaml — BUG-2595"
+        )
+
+    def test_assert_decision_cleared_uses_check_flag_predicate(
+        self, data: dict[str, Any]
+    ) -> None:
+        state = data["states"]["assert_decision_cleared"]
+        action = state.get("action", "")
+        assert "ll-issues check-flag" in action, (
+            f"assert_decision_cleared.action must call 'll-issues check-flag', got {action!r}"
+        )
+        assert "decision_needed" in action, (
+            f"assert_decision_cleared.action must check decision_needed, got {action!r}"
+        )
+
+    def test_assert_decision_cleared_uses_shell_exit_fragment(
+        self, data: dict[str, Any]
+    ) -> None:
+        state = data["states"]["assert_decision_cleared"]
+        assert state.get("fragment") == "shell_exit", (
+            f"assert_decision_cleared.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_assert_decision_cleared_on_yes_routes_to_record_decision_unresolved(
+        self, data: dict[str, Any]
+    ) -> None:
+        """decision_needed still true (check-flag exit 0) means decide-issue no-op'd
+        → must NOT proceed to implement_current."""
+        state = data["states"]["assert_decision_cleared"]
+        assert state.get("on_yes") == "record_decision_unresolved", (
+            f"assert_decision_cleared.on_yes should be 'record_decision_unresolved', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_assert_decision_cleared_on_no_routes_to_implement_current(
+        self, data: dict[str, Any]
+    ) -> None:
+        """decision_needed cleared (check-flag exit 1) → safe to implement."""
+        state = data["states"]["assert_decision_cleared"]
+        assert state.get("on_no") == "implement_current", (
+            f"assert_decision_cleared.on_no should be 'implement_current', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_assert_decision_cleared_on_error_fails_open_to_implement_current(
+        self, data: dict[str, Any]
+    ) -> None:
+        """A check-flag error (e.g. transient issue-lookup failure) must not
+        strand the issue — fail open to implement_current like the sibling
+        pre-decide gates do for their downstream target."""
+        state = data["states"]["assert_decision_cleared"]
+        assert state.get("on_error") == "implement_current", (
+            f"assert_decision_cleared.on_error should be 'implement_current', "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_record_decision_unresolved_advances_queue_without_failing(
+        self, data: dict[str, Any]
+    ) -> None:
+        """record_decision_unresolved records the issue distinctly (mirrors
+        mark_gate_blocked) and returns to dequeue_next so the queue keeps
+        draining rather than crashing the run."""
+        state = data["states"].get("record_decision_unresolved", {})
+        action = state.get("action", "")
+        assert "autodev-decision-unresolved.txt" in action, (
+            "record_decision_unresolved should record the issue to "
+            "autodev-decision-unresolved.txt"
+        )
+        assert "/ll:decide-issue" in action, (
+            "record_decision_unresolved should point the operator at /ll:decide-issue"
+        )
+        assert state.get("next") == "dequeue_next"
+
+
+class TestAssertDecisionClearedRouting:
+    """BUG-2595: FSMExecutor-driven assertions on the new gate's routing."""
+
+    @pytest.fixture
+    def post_decide_chain_fsm(self) -> Any:
+        """Minimal autodev-shaped FSM: recheck_after_decide → assert_decision_cleared
+        → record_decision_unresolved (on_yes) | implement_current (on_no/on_error)."""
+        return _loop(
+            name="autodev-post-decide-gate-mini",
+            initial="recheck_after_decide",
+            states={
+                "recheck_after_decide": _state(
+                    action="ll-issues check-readiness BUG-2588 --readiness 90 --outcome 75",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="assert_decision_cleared",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "assert_decision_cleared": _state(
+                    action="ll-issues check-flag BUG-2588 decision_needed",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="record_decision_unresolved",
+                    on_no="implement_current",
+                    on_error="implement_current",
+                ),
+                "record_decision_unresolved": _state(
+                    action="echo BUG-2588 >> decision-unresolved.txt", next="done"
+                ),
+                "implement_current": _state(action="true", action_type="shell", next="done"),
+                "done": _state(terminal=True),
+            },
+        )
+
+    def test_decision_still_armed_routes_to_record_decision_unresolved_not_implement(
+        self, post_decide_chain_fsm: Any
+    ) -> None:
+        """BUG-2595: scores pass but decision_needed is still true (silent
+        decide-issue no-op) — must route to record_decision_unresolved, never
+        implement_current."""
+        runner = _StubRunner(
+            results=[
+                ("ll-issues check-readiness", {"exit_code": 0}),
+                ("ll-issues check-flag", {"exit_code": 0}),
+            ]
+        )
+
+        result, visited = _run_decision_chain(post_decide_chain_fsm, runner)
+
+        assert "record_decision_unresolved" in visited, (
+            f"record_decision_unresolved must be entered when decision_needed is "
+            f"still true; visited={visited!r}"
+        )
+        assert "implement_current" not in visited, (
+            f"implement_current must NOT be entered when decision_needed is still "
+            f"true (BUG-2595: guaranteed-halt path); visited={visited!r}"
+        )
+
+    def test_decision_cleared_routes_to_implement_current(
+        self, post_decide_chain_fsm: Any
+    ) -> None:
+        """decision_needed cleared (check-flag exit 1) — the happy path — must
+        still reach implement_current unchanged."""
+        runner = _StubRunner(
+            results=[
+                ("ll-issues check-readiness", {"exit_code": 0}),
+                ("ll-issues check-flag", {"exit_code": 1}),
+            ]
+        )
+
+        result, visited = _run_decision_chain(post_decide_chain_fsm, runner)
+
+        assert "implement_current" in visited, (
+            f"implement_current must be entered when decision_needed is cleared; "
+            f"visited={visited!r}"
+        )
+        assert "record_decision_unresolved" not in visited, (
+            f"record_decision_unresolved must NOT be entered when decision_needed "
+            f"is cleared; visited={visited!r}"
+        )

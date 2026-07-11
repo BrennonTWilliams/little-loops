@@ -2033,6 +2033,7 @@ class TestAutoRefineAndImplementLoop:
         done_in_place: tuple[str, ...] = (),
         done_baseline: tuple[str, ...] = (),
         gate_blocked: int = 0,
+        decision_unresolved: int = 0,
         skipped_reasons: tuple[str, ...] = (),
         issue_set: tuple[str, ...] = (),
     ) -> dict:
@@ -2077,6 +2078,9 @@ class TestAutoRefineAndImplementLoop:
         (run_dir / "autodev-skipped.txt").write_text(skipped_text)
         (run_dir / "autodev-gate-blocked.txt").write_text(
             "".join(f"GB-{i}\n" for i in range(gate_blocked))
+        )
+        (run_dir / "autodev-decision-unresolved.txt").write_text(
+            "".join(f"DU-{i}\n" for i in range(decision_unresolved))
         )
         (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
         action = data["states"]["finalize"].get("action", "")
@@ -2284,6 +2288,44 @@ class TestAutoRefineAndImplementLoop:
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         assert summary["gate_blocked"] == 0, f"expected gate_blocked=0, got {summary}"
+
+    # --- BUG-2595: decision-unresolved surfacing (mirrors ENH-2404 gate_blocked) --
+
+    def test_finalize_sources_decision_unresolved_ledger(self, data: dict) -> None:
+        """finalize must read autodev-decision-unresolved.txt — previously never
+        referenced, so a decision-unresolved issue vanished from summary.json
+        with no trace (same failure mode ENH-2404 fixed for gate_blocked)."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "autodev-decision-unresolved.txt" in action, (
+            "finalize must source autodev-decision-unresolved.txt to surface "
+            "decision_unresolved"
+        )
+
+    def test_finalize_decision_unresolved_count_surfaces(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A run with decision-unresolved issues must report decision_unresolved
+        >= 1, not drop them."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), decision_unresolved=2
+        )
+        assert summary["decision_unresolved"] == 2, (
+            f"expected decision_unresolved=2, got {summary}"
+        )
+
+    def test_finalize_decision_unresolved_zero_when_no_ledger_entries(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A run with no decision-unresolved issues must report
+        decision_unresolved=0, not omit the key."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        assert summary["decision_unresolved"] == 0, (
+            f"expected decision_unresolved=0, got {summary}"
+        )
 
     def test_finalize_skipped_breakdown_aggregates_by_reason(
         self, data: dict, tmp_path: Path

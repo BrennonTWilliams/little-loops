@@ -51,6 +51,7 @@ states:
       printf '' > ${context.run_dir}/autodev-passed.txt
       printf '' > ${context.run_dir}/autodev-skipped.txt
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
+      printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
       rm -f ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-inflight
       echo "${context.input}" | tr ',' '\n' \
@@ -338,9 +339,37 @@ states:
         --outcome ${context.outcome_threshold} \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
     fragment: shell_exit
-    on_yes: implement_current
+    on_yes: assert_decision_cleared
     on_no: snap_and_size_review
     on_error: snap_and_size_review
+
+  assert_decision_cleared:
+    # BUG-2595: scores passing after run_decide does not prove decide-issue
+    # actually cleared decision_needed — a silent no-op (BUG-1416) leaves the
+    # flag armed while stale-but-passing scores let recheck_after_decide
+    # through. Re-verify the flag directly before handing off to
+    # implement_current, which would otherwise halt at manage-issue's Phase
+    # 2.3 Decision Gate and have its failure misclassified by
+    # check_learning_gate as a generic implementation failure.
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    fragment: shell_exit
+    on_yes: record_decision_unresolved
+    on_no: implement_current
+    on_error: implement_current
+
+  record_decision_unresolved:
+    # Record the still-gated issue distinctly (mirrors mark_gate_blocked) and
+    # advance the queue rather than entering implement_current, where ll-auto
+    # is guaranteed to halt at the decision gate. The issue is left in place
+    # (not skipped-as-failed) so it re-surfaces once /ll:decide-issue actually
+    # resolves it.
+    action: |
+      echo "${captured.input.output}" >> ${context.run_dir}/autodev-decision-unresolved.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[DECISION_UNRESOLVED] ${captured.input.output} — decide-issue produced no actionable decision; resolve with /ll:decide-issue then re-run"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   snap_and_size_review:
     # ENH-1415: snapshot current issue IDs as the new pre-ids baseline before
@@ -751,14 +780,18 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       GATE_BLOCKED_IDS=$(cat ${context.run_dir}/autodev-gate-blocked.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
+      DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
 
@@ -767,6 +800,9 @@ states:
       printf 'Skipped      (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       if [ "$GATE_BLOCKED_COUNT" -gt 0 ]; then
         printf 'Gate-blocked (%d): %s  (prove deps with /ll:explore-api, then re-run)\n' "$GATE_BLOCKED_COUNT" "$GATE_BLOCKED_LIST"
+      fi
+      if [ "$DECISION_UNRESOLVED_COUNT" -gt 0 ]; then
+        printf 'Decision-unresolved (%d): %s  (resolve with /ll:decide-issue, then re-run)\n' "$DECISION_UNRESOLVED_COUNT" "$DECISION_UNRESOLVED_LIST"
       fi
       if [ -n "$INFLIGHT" ]; then
         printf 'WARNING: in-flight issue not resolved: %s (re-queue to retry)\n' "$INFLIGHT"
