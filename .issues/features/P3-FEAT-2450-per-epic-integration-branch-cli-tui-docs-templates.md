@@ -1,6 +1,7 @@
 ---
 id: FEAT-2450
-title: per-EPIC integration branch — CLI flags, TUI surface, docs, templates parity
+title: "per-EPIC integration branch \u2014 CLI flags, TUI surface, docs, templates\
+  \ parity"
 type: FEAT
 priority: P3
 status: open
@@ -30,12 +31,12 @@ blocked_by:
 - FEAT-2562
 - FEAT-2563
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 70
-score_complexity: 4
+confidence_score: 100
+outcome_confidence: 65
+score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 3
-score_change_surface: 0
+score_ambiguity: 22
+score_change_surface: 15
 ---
 
 # FEAT-2450: per-EPIC integration branch — CLI flags, TUI surface, docs, templates parity
@@ -191,6 +192,8 @@ implemented end-to-end.
 - `docs/guides/SPRINT_GUIDE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/reference/API.md`
+- `docs/development/MERGE-COORDINATOR.md` (added by `/ll:wire-issue`
+  second pass — stale `epic_branches.*` field names)
 
 **Tests:**
 - `scripts/tests/test_init_tui.py`
@@ -198,7 +201,7 @@ implemented end-to-end.
 - `scripts/tests/test_sprint.py`
 - `scripts/tests/test_wiring_init_and_configure.py`
 
-**Estimated file count:** 17 implementation + 4 test = **21 files**.
+**Estimated file count:** 18 implementation + 4 test = **22 files**.
 
 ## Codebase Research Findings
 
@@ -553,7 +556,130 @@ false` at line 407. **FEAT-2447 (not FEAT-2450) owns adding the
 close. Without this prerequisite, the 9 template stamps (Scope item 6)
 will fail JSON-Schema validation once FEAT-2447 enables strict mode.
 
+## Second Wiring Pass (2026-07-11)
+
+_Added by `/ll:wire-issue --auto`. All blockers (FEAT-2449, FEAT-2562,
+FEAT-2563) plus FEAT-2447/FEAT-2448 are now `status: done` — the backend
+surface that the first wiring pass (2026-07-06) found missing now exists.
+Re-ran the 3-agent wiring research against current `main` to find what
+changed and what's genuinely still open. Backend confirmation: `EpicBranchesConfig`
+dataclass (`scripts/little_loops/parallel/types.py:311-334`, fields `enabled`,
+`prefix`, `merge_to_base_on_complete`, `open_pr`), `config-schema.json:412-447`,
+orchestrator/worker_pool runtime wiring, and all 9 template stamps are complete
+and test-covered. `--epic-branches` CLI flags, the TUI prompt, and
+`/ll:configure` skill docs are still entirely unimplemented — that part of the
+Scope is unchanged. What's new below._
+
+### New Implementation Gap: second `create_parallel_config()` call site
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/sprint/run.py:598-607` — the **multi-issue wave**
+  path's `create_parallel_config()` call does not pass `epic_branches=`
+  (only `use_feature_branches=getattr(args, "feature_branches", None)` at
+  line 606). This is a *different* call site than the single-issue/contention
+  in-place-warning logic at lines 519-542 (which FEAT-2563 already wired with
+  `getattr(args, "epic_branches", None)`). Both call sites need the kwarg;
+  today only the warning-logic getattr exists, and it always resolves to
+  `None` because no `--epic-branches` argparse flag is registered anywhere
+  in `scripts/little_loops/cli/sprint/`. Add
+  `epic_branches=getattr(args, "epic_branches", None)` to the line 598-607
+  call, mirroring the `use_feature_branches` kwarg on the same line.
+  **Supersedes the "Wiring Phase Implementation Steps" item 9 anchor**
+  (`run.py:585-594` — stale by ~13 lines after intervening changes).
+
+### New Documentation Gap: stale `epic_branches.*` field names (3 files)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Docs added by sibling issues (FEAT-2449/2453) describe an `epic_branches`
+config shape that was never implemented — `base_pattern` (template string)
+and `fork_point` (`"auto"` vs. pinned branch) do not exist anywhere in
+`EpicBranchesConfig`. The real fields are `enabled`, `prefix`,
+`merge_to_base_on_complete`, `open_pr`. Two of the four real fields
+(`merge_to_base_on_complete`, `open_pr`) are undocumented everywhere.
+
+- `docs/reference/CONFIGURATION.md:364-365` — replace
+  `epic_branches.base_pattern` and `epic_branches.fork_point` rows with
+  correct `epic_branches.prefix` (default `"epic/"`, composes as
+  `f"{prefix}{epic_id.lower()}-{slug}"`), `epic_branches.merge_to_base_on_complete`
+  (default `true`), and `epic_branches.open_pr` (default `false`) rows.
+- `docs/guides/SPRINT_GUIDE.md:326-327` — same fix; the opt-in table (lines
+  322-327) needs `prefix` / `merge_to_base_on_complete` / `open_pr` rows in
+  place of `base_pattern` / `fork_point`. The narrative at line 317 already
+  describes `merge_to_base_on_complete` behavior without naming the key.
+- `docs/development/MERGE-COORDINATOR.md:155,158` — **not previously in this
+  issue's Files Touched or Documentation list.** Line 155 says
+  `open_pr_for_epic_branches` (stale — no such flag exists; real field is
+  `epic_branches.open_pr`, nested, not a flat top-level name like the
+  `feature_branches` trio). Line 158 repeats the stale `epic_branches.fork_point`
+  reference. Line 149 in the same file already correctly says
+  `epic_branches.enabled`, so the file is internally inconsistent.
+  **Add this file to Files Touched.**
+
+### New Documentation Gap: `docs/reference/CLI.md` has zero `epic_branches` coverage
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Confirmed zero hits for `epic_branches`/`epic-branches` in `CLI.md` — entirely
+additive, not a correction. Mirror the existing `--feature-branches` coupling:
+
+- Flag-table row in the `ll-parallel` section (near line 357) and the
+  `ll-sprint run` section (near line 424): `--epic-branches` /
+  `--no-epic-branches`, overrides `parallel.epic_branches.enabled`.
+- A "Config tip" narrative block mirroring the one at line 378 (which
+  documents the `use_feature_branches` / `push_feature_branches` /
+  `open_pr_for_feature_branches` trio with cross-links) — document
+  `epic_branches.enabled` / `prefix` / `merge_to_base_on_complete` / `open_pr`
+  with cross-links to `CONFIGURATION.md#parallel` and
+  `SPRINT_GUIDE.md#per-epic-integration-branch`.
+
+### Correction: recommended test from the 2026-07-06 pass already exists
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+`scripts/tests/test_init_core.py:2629-2660` already has
+`TestProjectTypeTemplatesEpicBranchesStamp` (added by FEAT-2447), asserting
+`"epic_branches" in data["parallel"]` and `enabled is False` for all 9
+templates. **Drop this from FEAT-2450's remaining test-gap list** — it's
+done, not a gap.
+
+### Confirmed still-open test gaps (unchanged from first pass, now verified against current `main`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_parallel_cli.py` — no `--epic-branches` end-to-end
+  test exists (zero hits). Mirror
+  `test_configured_base_branch_overrides_detection` (lines 256-289).
+- `scripts/tests/test_sprint.py` — zero hits for `feature_branches` or
+  `epic_branches`; `test_wave_parallel_config_passes_epic_branches` (Scope
+  item 8) is still needed, and should assert the new
+  `epic_branches=getattr(...)` kwarg from the `run.py:598-607` gap above,
+  not just the existing single-issue-wave warning path.
+- `scripts/tests/test_init_tui.py` — `_wire_q()` (lines 50-73) still has no
+  `use_epic_branches` param; `confirm_returns` (lines 118-125) still has no
+  epic-branches slot. Confirms the first pass's finding is still accurate.
+- `scripts/tests/test_wiring_init_and_configure.py` — `DOC_STRINGS_PRESENT`
+  (lines 174-176) still has zero `epic_branches` rows.
+
+### Wiring Phase Implementation Steps — continued (added by `/ll:wire-issue`, second pass)
+
+14. Add `epic_branches=getattr(args, "epic_branches", None)` to
+    `scripts/little_loops/cli/sprint/run.py:598-607` (the multi-issue wave
+    `create_parallel_config()` call — distinct from the already-wired
+    single-issue-wave warning logic at lines 519-542).
+15. Fix `docs/reference/CONFIGURATION.md:364-365` and
+    `docs/guides/SPRINT_GUIDE.md:326-327` — replace stale `base_pattern` /
+    `fork_point` field names with the real `prefix` /
+    `merge_to_base_on_complete` / `open_pr` fields.
+16. Fix `docs/development/MERGE-COORDINATOR.md:155,158` — replace
+    `open_pr_for_epic_branches` with `epic_branches.open_pr`; replace stale
+    `epic_branches.fork_point` reference. Add this file to Files Touched.
+17. Add `--epic-branches` flag-table rows and a config-tip block to
+    `docs/reference/CLI.md` (near lines 357, 378, 424).
+
 ## Session Log
+- `/ll:wire-issue` - 2026-07-11T13:27:53 - `53a25bae-eb67-44ca-abfb-0dff432a7a14.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:39:26 - `1dad1670-580d-493a-becb-164b981e5505.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:28:39 - `2a131898-32dd-4a20-b05a-4c40cefc922b.jsonl`
 - `/ll:issue-size-review` - 2026-07-02T22:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6e2b9d4e-1bf7-4b43-940f-7c8cc95fcaf4.jsonl`
