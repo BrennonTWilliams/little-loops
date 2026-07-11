@@ -1,13 +1,23 @@
 ---
 id: ENH-2596
-title: "Show input value in ll-loop run diagram header; pack model onto run_dir row"
+title: Show input value in ll-loop run diagram header; pack model onto run_dir row
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-07-11T02:25:55Z"
-discovered_date: "2026-07-11"
+status: done
+captured_at: '2026-07-11T02:25:55Z'
+discovered_date: '2026-07-11'
 discovered_by: capture-issue
-labels: [cli, fsm-loops, display]
+labels:
+- cli
+- fsm-loops
+- display
+completed_at: '2026-07-11T03:02:52Z'
+confidence_score: 95
+outcome_confidence: 88
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2596: Show input value in ll-loop run diagram header; pack model onto run_dir row
@@ -29,6 +39,14 @@ Enhance the header so that:
 This compresses a 4-line header (`loop`, `run_dir`, `model`, plus separator) into
 2 content lines and surfaces the run's input — currently invisible unless it
 happens to look like a path.
+
+3. **New config toggle** — add `loops.run_defaults.show_input` (boolean,
+   default `true`) to `scripts/little_loops/config-schema.json` and read it at
+   render time to gate the `input:` segment. When `false` (opt-out, e.g. the
+   input contains sensitive data an operator doesn't want pinned on screen),
+   suppress the `input:` segment in both render paths even when `--input` was
+   passed — same as the "absent" case. `model:` packing is unaffected by this
+   flag (it always packs onto `run_dir:`).
 
 ## Motivation
 
@@ -134,7 +152,10 @@ _Added by `/ll:refine-issue` — anchors verified against current tree:_
 
 1. **Retrieve the input string** at render time from
    `fsm.context.get(fsm.input_key)` (fall back to `"input"` key). Guard on
-   non-empty; omit the segment when absent/empty.
+   non-empty; omit the segment when absent/empty. Also read
+   `loops.run_defaults.show_input` from the resolved project config (default
+   `true` when unset); when `false`, treat the input as absent for rendering
+   purposes regardless of whether a value is present.
 2. **Non-pinned path (`_helpers.py:988-1009`)**: after printing the `loop:` line,
    append ` input: <val>` to that same line, computing remaining width as
    `terminal_width() - len(rendered_loop_segment)` and truncating the input with an
@@ -162,6 +183,9 @@ _Added by `/ll:refine-issue` — anchors verified against current tree:_
 - [ ] `model:` appears to the right of `run_dir:` on the same line; no standalone
       `model:` line remains.
 - [ ] When `--input` is omitted, no `input:` segment (and no empty label) is shown.
+- [ ] `loops.run_defaults.show_input: false` in `.ll/ll-config.json` suppresses
+      the `input:` segment even when `--input` was passed; default (unset, or
+      `true`) shows it. Schema entry added to `config-schema.json`.
 - [ ] Both the non-pinned (`_helpers.py:988-1009`) and pinned
       (`_helpers.py:568-586`) rendering paths produce the new layout consistently.
 - [ ] Narrow-terminal safety: at small `COLUMNS` (e.g. 40), the header lines are
@@ -170,15 +194,49 @@ _Added by `/ll:refine-issue` — anchors verified against current tree:_
 - [ ] `python -m pytest scripts/tests/` passes, with coverage for: input present +
       truncation, input absent, and `model` packed onto the `run_dir` row.
 
+## Impact
+
+- **Priority**: P3 - Quality-of-life display fix; no functional/execution behavior
+  changes, purely a rendering enhancement for operators watching pinned diagrams.
+- **Effort**: Small - reuses existing `_artifact_lines()`, `_truncate_to_width_ansi`,
+  and `terminal_width()` helpers; both render sites and their exact line ranges are
+  already anchored above.
+- **Risk**: Low - internal CLI rendering only; no FSM execution or state-machine
+  logic touched. The new `show_input` config defaults to `true`, and the packed
+  layout is the only externally visible change.
+- **Breaking Change**: No - additive display change with an opt-out config flag;
+  existing loops and configs continue to work unchanged.
+
+## Scope Boundaries
+
+- The unconditional startup banner in `run_foreground()`
+  (`_helpers.py:1596-1599`, printed once via `"Running loop: ..."` regardless of
+  `--show-diagrams`) also calls `_artifact_lines()` and prints a standalone
+  `model:` line. It is **out of scope** for this issue — it's a distinct banner
+  from the "FSM Box Diagram header" targeted here, not one of the two paths in
+  Acceptance Criteria. Leaving it as a standalone `model:` line (temporarily
+  inconsistent with the new packed diagram header) is acceptable; reconciling it
+  is a candidate follow-up enhancement, not a blocker here.
+- `_artifact_lines()`'s generic path-like filtering behavior for other context
+  keys is unchanged; only the `loop`+`input` and `run_dir`+`model` pairings are
+  special-cased at the two render call sites.
+- No new CLI flag is introduced — the opt-out is config-only
+  (`loops.run_defaults.show_input` in `.ll/ll-config.json`), consistent with the
+  other `run_defaults` toggles (`clear`, `show_diagrams`, `delay`).
+
 ## Related
 
 - `scripts/little_loops/cli/loop/_helpers.py` — both header render paths
 - `scripts/little_loops/cli/loop/run.py:142-156` — input injection into context
 - `scripts/little_loops/cli/output.py:17-29` — terminal width helpers
+- `scripts/little_loops/config-schema.json` — `loops.run_defaults.show_input` (new)
 - ENH-2410 (windowed scroll to active FSM diagram) — same diagram subsystem
 - ENH-732 (unicode state-box badges) — same renderer
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T03:02:04Z - `05e79e73-2ad8-456d-aa33-0340552ffab0.jsonl`
+- `/ll:confidence-check` - 2026-07-11T03:02:04Z - `05e79e73-2ad8-456d-aa33-0340552ffab0.jsonl`
+- `/ll:ready-issue` - 2026-07-11T02:49:08 - `38000e2c-5d0e-48d2-8280-d5989d3b2d59.jsonl`
 - `/ll:refine-issue` - 2026-07-11T02:29:26 - `9859904b-114d-493f-9aa2-ecb165d0f2a6.jsonl`
 - `/ll:capture-issue` - 2026-07-11T02:25:55Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11ed0446-f871-4a32-8bcc-af7cd8af2d67.jsonl`
 

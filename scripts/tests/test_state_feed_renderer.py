@@ -499,3 +499,127 @@ class TestArtifactLines:
         result = _artifact_lines(fsm, None)
         pairs = dict(result)
         assert pairs["tmp_dir"] == "/tmp/scratch"
+
+
+class TestResolveInputValue:
+    """Tests for _resolve_input_value (ENH-2596)."""
+
+    def test_returns_value_from_input_key(self) -> None:
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        fsm.context["input"] = "some task string"
+        assert _resolve_input_value(fsm, show_input=True) == "some task string"
+
+    def test_returns_none_when_show_input_false(self) -> None:
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        fsm.context["input"] = "some task string"
+        assert _resolve_input_value(fsm, show_input=False) is None
+
+    def test_returns_none_when_absent(self) -> None:
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        assert _resolve_input_value(fsm, show_input=True) is None
+
+    def test_returns_none_when_empty_string(self) -> None:
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        fsm.context["input"] = ""
+        assert _resolve_input_value(fsm, show_input=True) is None
+
+    def test_returns_none_for_dict_spread_case(self) -> None:
+        """When --input's dict keys matched existing context, no scalar was stored."""
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        fsm.context["foo"] = "bar"
+        assert _resolve_input_value(fsm, show_input=True) is None
+
+    def test_custom_input_key(self) -> None:
+        from little_loops.cli.loop._helpers import _resolve_input_value
+
+        fsm = _make_test_fsm()
+        fsm.input_key = "task"
+        fsm.context["task"] = "custom key value"
+        assert _resolve_input_value(fsm, show_input=True) == "custom key value"
+
+
+class TestRenderArtifactHeaderLines:
+    """Tests for _render_artifact_header_lines (ENH-2596)."""
+
+    def test_input_packed_onto_loop_line(self) -> None:
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+
+        fsm = _make_test_fsm()
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, None, "hello world", 200)
+        assert len(lines) == 1
+        assert "loop:" in lines[0]
+        assert "input: " in lines[0]
+        assert "hello world" in lines[0]
+
+    def test_no_input_segment_when_absent(self) -> None:
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+
+        fsm = _make_test_fsm()
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, None, None, 200)
+        assert len(lines) == 1
+        assert "input:" not in lines[0]
+
+    def test_model_packed_onto_run_dir_line(self) -> None:
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": ".loops/runs/test-loop/2026-07-11"},
+        )
+        lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200)
+        run_dir_line = next(ln for ln in lines if "run_dir:" in ln)
+        assert "model: " in run_dir_line
+        assert "claude-opus-4-8" in run_dir_line
+        assert not any(ln.strip().startswith("model:") for ln in lines)
+
+    def test_model_standalone_line_when_no_run_dir(self) -> None:
+        """No run_dir context value → model: falls back to its own line."""
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+
+        fsm = _make_test_fsm()
+        lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200)
+        assert any(ln.strip().startswith("model:") for ln in lines)
+
+    def test_long_input_truncated_to_width(self) -> None:
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+        from little_loops.cli.output import strip_ansi
+
+        fsm = _make_test_fsm()
+        loop_path = Path("loops/test.yaml")
+        long_input = "x" * 500
+        lines = _render_artifact_header_lines(fsm, loop_path, None, long_input, 60)
+        visible = strip_ansi(lines[0])
+        assert len(visible) <= 60
+        assert visible.endswith("…")
+
+    def test_both_input_and_model_packed(self) -> None:
+        from little_loops.cli.loop._helpers import _render_artifact_header_lines
+
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="start",
+            states={"start": StateConfig(action="echo start")},
+            max_iterations=10,
+            context={"run_dir": ".loops/runs/test-loop/2026-07-11"},
+        )
+        loop_path = Path("loops/test.yaml")
+        lines = _render_artifact_header_lines(fsm, loop_path, "claude-opus-4-8", "my input", 200)
+        loop_line = next(ln for ln in lines if ln.strip().startswith("loop:"))
+        run_dir_line = next(ln for ln in lines if "run_dir:" in ln)
+        assert "input: " in loop_line and "my input" in loop_line
+        assert "model: " in run_dir_line and "claude-opus-4-8" in run_dir_line

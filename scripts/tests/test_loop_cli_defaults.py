@@ -304,6 +304,20 @@ class TestLoopRunDefaultsDataclass:
         assert result.run_defaults.include == "project:*"
         assert result.run_defaults.delay == 3
 
+    def test_show_input_defaults_true(self) -> None:
+        """show_input defaults to True when unset."""
+        from little_loops.config.features import LoopRunDefaults
+
+        result = LoopRunDefaults.from_dict({})
+        assert result.show_input is True
+
+    def test_show_input_false_opt_out(self) -> None:
+        """show_input: false is parsed through from config."""
+        from little_loops.config.features import LoopRunDefaults
+
+        result = LoopRunDefaults.from_dict({"show_input": False})
+        assert result.show_input is False
+
 
 _MINIMAL_LOOP_YAML = """\
 name: test-loop

@@ -530,6 +530,7 @@ def cmd_run(
             loop_path=path,
             running_dir=running_dir,
             model=fsm.llm.model,
+            show_input=_config.loops.run_defaults.show_input,
             cost_output_json=getattr(args, "cost_output_json", None),
         )
     finally:

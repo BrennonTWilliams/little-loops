@@ -676,9 +676,16 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         _install_sigwinch_handler,
         _restore_sigwinch_handler,
     )
+    from little_loops.config import BRConfig
 
+    _config = BRConfig(Path.cwd())
     renderer = StateFeedRenderer(
-        fsm, args, loops_dir=loops_dir, loop_path=loop_path, model=fsm.llm.model
+        fsm,
+        args,
+        loops_dir=loops_dir,
+        loop_path=loop_path,
+        model=fsm.llm.model,
+        show_input=_config.loops.run_defaults.show_input,
     )
 
     events_file = running_dir / f"{stem}.events.jsonl"

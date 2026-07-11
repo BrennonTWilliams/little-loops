@@ -619,6 +619,7 @@ class LoopRunDefaults:
     mode: str | None = None
     include: str = ""
     delay: float | None = None
+    show_input: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopRunDefaults:
@@ -647,6 +648,7 @@ class LoopRunDefaults:
             mode=data.get("mode", None),
             include=data.get("include", ""),
             delay=delay,
+            show_input=data.get("show_input", True),
         )
 
 

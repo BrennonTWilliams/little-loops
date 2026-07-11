@@ -977,6 +977,11 @@
               "description": "Inject --delay <seconds> into every ll-loop run invocation (inter-iteration pause). Explicit --delay overrides. Null disables.",
               "default": null,
               "minimum": 0
+            },
+            "show_input": {
+              "type": "boolean",
+              "description": "Show the input: field/value (packed onto the loop: line) in the ll-loop run diagram header, both pinned and non-pinned paths. Set false to hide it (e.g. when input contains sensitive data).",
+              "default": true
             }
           },
           "additionalProperties": false

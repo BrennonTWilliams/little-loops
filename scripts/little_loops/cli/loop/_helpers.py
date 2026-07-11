@@ -451,6 +451,7 @@ def _build_pinned_pane(
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    show_input: bool = True,
     rows: int | None = None,
     min_action_rows: int = MIN_ACTION_ROWS,
 ) -> str | None:
@@ -477,7 +478,6 @@ def _build_pinned_pane(
         _render_fsm_diagram,
         _render_neighborhood_diagram,
         _render_windowed_diagram,
-        _truncate_to_width_ansi,
     )
 
     verbose = facets.scope == "full" and facets.state_detail == "full"
@@ -580,10 +580,11 @@ def _build_pinned_pane(
     # task `input:` that happens to contain "/" — poisons `_variant_width` for
     # every pinned rung, so `_choose_pinned_layout`'s width filter rejects all box
     # variants and collapses to the single-line `fsm:` floor (BUG: general-task).
-    for key, value in _artifact_lines(fsm, loop_path):
-        lines.append(_truncate_to_width_ansi(f"  {key}: {colorize(value, '2')}", cols))
-    if model is not None:
-        lines.append(_truncate_to_width_ansi(f"  model: {colorize(model, '2')}", cols))
+    lines.extend(
+        _render_artifact_header_lines(
+            fsm, loop_path, model, _resolve_input_value(fsm, show_input), cols
+        )
+    )
 
     # Vertical budget for the windowed variant: total rows minus the header /
     # artifact / model lines already accumulated, the iteration + separator
@@ -619,6 +620,7 @@ def _render_pinned_pane(
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    show_input: bool = True,
 ) -> int:
     """Render the pinned pane to stdout and set the scroll region beneath it.
 
@@ -658,6 +660,7 @@ def _render_pinned_pane(
             prev_state_at_depth=prev_map,
             loop_path=loop_path,
             model=model,
+            show_input=show_input,
             rows=rows,
             min_action_rows=effective_min_action_rows,
         )
@@ -827,6 +830,7 @@ class StateFeedRenderer:
         loops_dir: Path | None = None,
         loop_path: Path | None = None,
         model: str | None = None,
+        show_input: bool = True,
     ) -> None:
         self.fsm = fsm
         self.args = args
@@ -836,6 +840,7 @@ class StateFeedRenderer:
         self.loops_dir = loops_dir or Path(".")
         self.loop_path = loop_path
         self.model = model
+        self.show_input = show_input
 
         # Derived from args
         self.quiet: bool = getattr(args, "quiet", False)
@@ -879,6 +884,7 @@ class StateFeedRenderer:
             prev_state_at_depth=self.prev_state_at_depth,
             loop_path=self.loop_path,
             model=self.model,
+            show_input=self.show_input,
         )
 
     def handle_event(self, event: dict) -> None:
@@ -1002,10 +1008,14 @@ class StateFeedRenderer:
                 print(header, flush=True)
                 if fallback_note is not None:
                     print(fallback_note, flush=True)
-                for key, value in _artifact_lines(self.fsm, self.loop_path):
-                    print(f"  {key}: {colorize(value, '2')}", flush=True)
-                if self.model is not None:
-                    print(f"  model: {colorize(self.model, '2')}", flush=True)
+                for line in _render_artifact_header_lines(
+                    self.fsm,
+                    self.loop_path,
+                    self.model,
+                    _resolve_input_value(self.fsm, self.show_input),
+                    tw,
+                ):
+                    print(line, flush=True)
                 print(diagram, flush=True)
             # In pinned mode the iteration line is part of the pinned pane;
             # only print it inline for non-pinned paths.
@@ -1243,6 +1253,57 @@ def _artifact_lines(fsm: FSMLoop, loop_path: Path | None) -> list[tuple[str, str
         if value.startswith(".") or value.startswith("/") or value.startswith("~") or "/" in value:
             pairs.append((key, _relativize_to_cwd(value)))
     return pairs
+
+
+def _resolve_input_value(fsm: FSMLoop, show_input: bool) -> str | None:
+    """Return the run's ``--input`` string for header display, or ``None``.
+
+    Reads ``fsm.context[fsm.input_key]`` (falling back to the literal
+    ``"input"`` key), and returns ``None`` when ``show_input`` is false, the
+    value is absent, empty, or not a plain string (e.g. the dict-spread case
+    in ``cmd_run`` where no single scalar exists to show).
+    """
+    if not show_input:
+        return None
+    context: dict[str, Any] = getattr(fsm, "context", None) or {}
+    value = context.get(fsm.input_key)
+    if value is None:
+        value = context.get("input")
+    if not isinstance(value, str) or not value:
+        return None
+    return value
+
+
+def _render_artifact_header_lines(
+    fsm: FSMLoop,
+    loop_path: Path | None,
+    model: str | None,
+    input_value: str | None,
+    cols: int,
+) -> list[str]:
+    """Compose the diagram-header artifact lines.
+
+    Packs ``input:`` onto the ``loop:`` row and ``model:`` onto the
+    ``run_dir:`` row (falling back to a standalone ``model:`` line when no
+    ``run_dir`` context value is present). Each composed line is clamped to
+    ``cols`` display columns via ``_truncate_to_width_ansi`` so a long
+    input/path value never wraps or overflows.
+    """
+    from little_loops.cli.loop.layout import _truncate_to_width_ansi
+
+    artifact_pairs = _artifact_lines(fsm, loop_path)
+    run_dir_present = any(key == "run_dir" for key, _ in artifact_pairs)
+    lines: list[str] = []
+    for key, value in artifact_pairs:
+        line = f"  {key}: {colorize(value, '2')}"
+        if key == "loop" and input_value:
+            line += f"  input: {colorize(input_value, '2')}"
+        elif key == "run_dir" and model is not None:
+            line += f"  model: {colorize(model, '2')}"
+        lines.append(_truncate_to_width_ansi(line, cols))
+    if model is not None and not run_dir_present:
+        lines.append(_truncate_to_width_ansi(f"  model: {colorize(model, '2')}", cols))
+    return lines
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
@@ -1543,6 +1604,7 @@ def run_foreground(
     running_dir: Path | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    show_input: bool = True,
     cost_output_json: Path | None = None,
 ) -> int:
     """Run loop with progress display.
@@ -1590,6 +1652,7 @@ def run_foreground(
             loops_dir=getattr(executor, "loops_dir", Path(".")),
             loop_path=loop_path,
             model=model,
+            show_input=show_input,
         )
         if not renderer.quiet:
             print(f"Running loop: {colorize(fsm.name, '1')}")
