@@ -4663,18 +4663,18 @@ class TestWindowedDiagramPassThroughPipes:
 
 class TestWindowedDiagramStubTerminators:
     """Stub pipes that cross only one windowed-diagram cut boundary terminate
-    in a filled semicircle — ◓ (curve up, flat down) at the top cut, ◒ (curve
-    down, flat up) at the bottom cut — so the "this edge leaves the windowed
-    view" signal is in-band rather than requiring cross-checking the overflow
-    banner. Full-span pipes (both endpoints cropped) stay blanked because they
-    do not terminate; they pass through."""
+    in an open half-circle arc — ◠ (curve up, flat down) at the top cut, ◡
+    (curve down, flat up) at the bottom cut — so the "this edge leaves the
+    windowed view" signal is in-band rather than requiring cross-checking the
+    overflow banner. Full-span pipes (both endpoints cropped) stay blanked
+    because they do not terminate; they pass through."""
 
     def test_top_stub_back_edge_gets_dome_terminator(self) -> None:
         from little_loops.cli.loop.layout import _render_windowed_diagram
 
         # Back-edge from s15 (layer 15, inside the window when active=s14) UP
         # to s2 (layer 2, cropped above). The pipe enters the window from
-        # above → ◓ at the top of the visible diagram.
+        # above → ◠ at the top of the visible diagram.
         fsm = _long_back_edge_fsm(20, back_src="s15", back_dst="s2")
         out = _render_windowed_diagram(fsm, "s14", budget=14, mode="full")
         lines = _strip(out)
@@ -4683,14 +4683,14 @@ class TestWindowedDiagramStubTerminators:
         banner_idx = next(i for i, ln in enumerate(lines) if "layers above" in ln)
         top_row = lines[banner_idx + 1]
 
-        assert "◓" in top_row, f"expected ◓ in top row, got:\n{top_row!r}"
+        assert "◠" in top_row, f"expected ◠ in top row, got:\n{top_row!r}"
 
     def test_bottom_stub_back_edge_gets_inverted_dome_terminator(self) -> None:
         from little_loops.cli.loop.layout import _render_windowed_diagram
 
         # Back-edge from s15 (layer 15, cropped below when active=s2) UP to
         # s2 (layer 2, inside the window). The pipe exits the window below
-        # → ◒ at the bottom of the visible diagram.
+        # → ◡ at the bottom of the visible diagram.
         fsm = _long_back_edge_fsm(20, back_src="s15", back_dst="s2")
         out = _render_windowed_diagram(fsm, "s2", budget=14, mode="full")
         lines = _strip(out)
@@ -4703,7 +4703,7 @@ class TestWindowedDiagramStubTerminators:
         )
         bot_row = lines[bot_banner_idx - 1]
 
-        assert "◒" in bot_row, f"expected ◒ in bottom row, got:\n{bot_row!r}"
+        assert "◡" in bot_row, f"expected ◡ in bottom row, got:\n{bot_row!r}"
         # The pipe still has │ cells above its bottom terminator (between
         # s2's corner and window_bot - 1), so the partial-stub-survives
         # invariant from TestWindowedDiagramPassThroughPipes still holds.
@@ -4722,10 +4722,10 @@ class TestWindowedDiagramStubTerminators:
         lines = _strip(out)
 
         diagram_lines = [ln for ln in lines if "layers" not in ln]
-        assert "◓" not in "\n".join(diagram_lines), (
+        assert "◠" not in "\n".join(diagram_lines), (
             "full-span pipe must not get a top terminator"
         )
-        assert "◒" not in "\n".join(diagram_lines), (
+        assert "◡" not in "\n".join(diagram_lines), (
             "full-span pipe must not get a bottom terminator"
         )
 

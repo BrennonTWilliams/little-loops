@@ -27,14 +27,14 @@ as bare `│` characters whose only visible end is the in-window side. They
 read as ordinary inter-state connectors that abruptly stop, with no
 in-band hint that the connection continues off-screen.
 
-Replace those bare `│` stubs at the cut rows with filled semicircle
+Replace those bare `│` stubs at the cut rows with open half-circle arc
 terminators:
 
-- **Top cut** (pipe enters the window from above): `◓` — U+25D3
-  CIRCLE WITH UPPER HALF BLACK. Curve up, flat down (against visible
+- **Top cut** (pipe enters the window from above): `◠` — U+25E0
+  UPPER HALF CIRCLE. Curve up, flat down (against visible
   content).
-- **Bottom cut** (pipe exits the window below): `◒` — U+25D2
-  CIRCLE WITH LOWER HALF BLACK. Curve down, flat up (against visible
+- **Bottom cut** (pipe exits the window below): `◡` — U+25E1
+  LOWER HALF CIRCLE. Curve down, flat up (against visible
   content).
 
 `cell.replace("│", glyph)` preserves the surrounding SGR color so the
@@ -66,11 +66,11 @@ visible end is the in-window side.
 After this change:
 
 - Pipes whose top endpoint is above the window (Case 1, top stub):
-  the topmost visible cell at `grid[window_top]` becomes `◓` instead
+  the topmost visible cell at `grid[window_top]` becomes `◠` instead
   of `│`.
 - Pipes whose bottom endpoint is at or below the window (Case 2,
   bottom stub): the bottommost visible cell at `grid[window_bot - 1]`
-  becomes `◒` instead of `│`.
+  becomes `◡` instead of `│`.
 - Full-span pipes (Case 3 — both endpoints cropped) remain blanked.
   They do not terminate; they pass through. Adding terminators there
   would conflict with the existing `test_pass_through_back_edge_pipe_is_blanked`
@@ -91,16 +91,16 @@ if lo > 0:
     top_row_cells = grid[window_top]
     for c in range(total_width):
         if strip_ansi(top_row_cells[c]) == "│":
-            top_row_cells[c] = top_row_cells[c].replace("│", "◓")
+            top_row_cells[c] = top_row_cells[c].replace("│", "◠")
 if hi < n_layers - 1:
     bot_row_cells = grid[window_bot - 1]
     for c in range(total_width):
         if strip_ansi(bot_row_cells[c]) == "│":
-            bot_row_cells[c] = bot_row_cells[c].replace("│", "◒")
+            bot_row_cells[c] = bot_row_cells[c].replace("│", "◡")
 ```
 
 The `cell.replace("│", glyph)` form preserves the surrounding SGR color
-codes — `"\x1b[3Xm│\x1b[0m"` becomes `"\x1b[3Xm◓\x1b[0m"` — so the
+codes — `"\x1b[3Xm│\x1b[0m"` becomes `"\x1b[3Xm◠\x1b[0m"` — so the
 terminator visually continues the pipe's color. `strip_ansi` is the
 same helper the existing blanking block uses
 (`layout.py:1909`).
@@ -115,11 +115,11 @@ where the visual problem manifests.
 
 ## Acceptance Criteria
 
-- [x] Stub pipe at the top cut boundary shows `◓` (filled upper-half
+- [x] Stub pipe at the top cut boundary shows `◠` (upper half
       circle) at `grid[window_top]` instead of bare `│`.
-- [x] Stub pipe at the bottom cut boundary shows `◒` (filled lower-half
+- [x] Stub pipe at the bottom cut boundary shows `◡` (lower half
       circle) at `grid[window_bot - 1]` instead of bare `│`.
-- [x] Full-span pipes (Case 3) remain blanked — no `◓`, no `◒`, no `│`
+- [x] Full-span pipes (Case 3) remain blanked — no `◠`, no `◡`, no `│`
       in the middle of the window for a passing-through pipe.
 - [x] ANSI color of the stub pipe is preserved on the terminator
       (the surrounding SGR sequence is unchanged; only `│` → glyph).
@@ -147,18 +147,18 @@ where the visual problem manifests.
    `TestWindowedDiagramPassThroughPipes` at line 4628):
    - `test_top_stub_back_edge_gets_dome_terminator` — back-edge from
      s15 (in-window when active=s14) UP to s2 (cropped above).
-     Asserts `◓` appears in the row immediately after the
+     Asserts `◠` appears in the row immediately after the
      "layers above" banner.
    - `test_bottom_stub_back_edge_gets_inverted_dome_terminator` —
      back-edge from s15 (cropped below when active=s2) UP to s2
-     (in-window). Asserts `◒` appears in the row immediately before
+     (in-window). Asserts `◡` appears in the row immediately before
      the "layers below" banner. Also asserts `│` still appears
      (the partial-stub-survives invariant from
      `TestWindowedDiagramPassThroughPipes` still holds — only the
      bottommost cell is replaced).
    - `test_full_span_pipe_still_blanked_no_terminator` — back-edge
-     with both endpoints cropped (active=s8). Asserts neither `◓`
-     nor `◒` appears in the diagram rows.
+     with both endpoints cropped (active=s8). Asserts neither `◠`
+     nor `◡` appears in the diagram rows.
 
 ## Visual confirmation
 
@@ -167,7 +167,7 @@ active=s8, budget=24:
 
 ```
   ▲ 7 layers above  (s0 → s1 → s2 → s3 → s4 → s5 → s6)
-                                 ◓      ┌── ❯_ ┐
+                                 ◠      ┌── ❯_ ┐
                                  │      │ s7   │
                                  │      │ step │
                                  │      └──────┘
@@ -188,7 +188,7 @@ active=s8, budget=24:
   ▼ 2 layers below  (… → s10 → s11 ◉)
 ```
 
-The `◓` at the top of the left-margin pipe (s10 → s2 with destination
+The `◠` at the top of the left-margin pipe (s10 → s2 with destination
 cropped above) terminates the stub that enters from above.
 
 Active=s3, budget=14 (bottom-stub variant):
@@ -205,11 +205,11 @@ Active=s3, budget=14 (bottom-stub variant):
                                  │      ┌── ❯_ ┐
                                  │      │ s4   │
                                  │      │ step │
-                                 ◒      └──────┘
+                                 ◡      └──────┘
   ▼ 7 layers below  (… → s5 → s6 → s7 → s8 → s9 → s10 → s11 ◉)
 ```
 
-The `◒` at the bottom-left terminates the s8 → s3 back-edge whose
+The `◡` at the bottom-left terminates the s8 → s3 back-edge whose
 source (s8) is cropped below. The full-span s10 → s2 pipe is
 correctly blanked in the middle of the window.
 

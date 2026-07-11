@@ -1917,8 +1917,8 @@ def _render_layered_diagram(
         # Stub-pipe terminators at the cut boundaries: pipes that enter the
         # window from above (top cut) or exit below (bottom cut) leave a bare
         # "│" at the cut row that reads as an ordinary inter-state connector
-        # that just stops. Replace those cells with filled semicircles — ◓
-        # (curve up, flat down) for top cuts, ◒ (curve down, flat up) for
+        # that just stops. Replace those cells with open half-circle arcs — ◠
+        # (curve up, flat down) for top cuts, ◡ (curve down, flat up) for
         # bottom cuts — so the "this edge leaves the windowed view" signal
         # is in-band rather than requiring the reader to cross-check the
         # banner. cell.replace preserves the surrounding SGR color so the
@@ -1928,12 +1928,12 @@ def _render_layered_diagram(
             top_row_cells = grid[window_top]
             for c in range(total_width):
                 if strip_ansi(top_row_cells[c]) == "│":
-                    top_row_cells[c] = top_row_cells[c].replace("│", "◓")
+                    top_row_cells[c] = top_row_cells[c].replace("│", "◠")
         if hi < n_layers - 1:
             bot_row_cells = grid[window_bot - 1]
             for c in range(total_width):
                 if strip_ansi(bot_row_cells[c]) == "│":
-                    bot_row_cells[c] = bot_row_cells[c].replace("│", "◒")
+                    bot_row_cells[c] = bot_row_cells[c].replace("│", "◡")
 
         grid = grid[window_top:window_bot]
 
