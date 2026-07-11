@@ -4,8 +4,8 @@ title: refine-issue should emit enumerable options when depositing a decision re
 type: ENH
 status: open
 priority: P2
-captured_at: "2026-07-11T18:07:11Z"
-discovered_date: "2026-07-11"
+captured_at: '2026-07-11T18:07:11Z'
+discovered_date: '2026-07-11'
 discovered_by: capture-issue
 relates_to:
 - BUG-2605
@@ -15,6 +15,12 @@ labels:
 - refine-issue
 - decision-gate
 - skills
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-2607: refine-issue should emit enumerable options when depositing a decision recommendation
@@ -93,11 +99,86 @@ This is scoped to refine-issue's *own* freshly-written research content —
 it does not retroactively rewrite pre-existing human-authored prose it
 didn't write, consistent with the Preservation Rule.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Format confirmed against the actual regex**: Pattern 2 in
+  `scripts/little_loops/issue_parser.py:274`
+  (`^\*\*Option\s+[A-Za-z0-9]+.*?\*\*`, `re.MULTILINE`) matches the proposed
+  `**Option A**: [text]` shape without modification — the lazy `.*?` closes
+  the bold span immediately after the letter (`**Option A**`), so the colon
+  falling outside the bold span is irrelevant to the match. Verified against
+  the existing fixture shape in
+  `scripts/tests/test_issue_parser_unresolved.py:84-97`
+  (`test_bold_option_label_format`, using `**Option A: Inline rewriting.**`)
+  — both the fixture's inline-colon style and this issue's outside-colon
+  style match Pattern 2 identically.
+- **Placement plan confirmed against the fallback-widening logic**:
+  `count_enumerable_options()` (`scripts/little_loops/issue_parser.py:294-307`)
+  first scans `## Proposed Solution`; if that yields 0, it widens to
+  `_OPTION_FALLBACK_SECTIONS = ("Codebase Research Findings",
+  "Implementation Status")` (line 282). This confirms the plan to place the
+  `**Option A/B**` block under a `### Codebase Research Findings` addendum
+  (rather than editing `## Proposed Solution` directly) will be picked up by
+  the same detector without needing a widened section list.
+- **Related but out-of-scope drift**: `commands/refine-issue.md`'s own
+  "Option-Count Detection" section (lines 286-289) documents only 3 pattern
+  families (numbered items, `### Option` headers, `**Option**` bold labels).
+  `issue_parser.py`'s actual `_OPTION_PATTERNS` (lines 273-280) has a 4th
+  tier — bullet-list `- (a) ...` / `- **Option A**` (Pattern 4,
+  `issue_parser.py:277-279`) — that the command's own instructions never
+  mention. Not a blocker for this fix (which targets bold-label Pattern 2
+  specifically), but the two artifacts have drifted; worth a follow-on issue
+  if the command's documented pattern list should stay in sync with the
+  parser's.
+- **Consumption-side limitation confirmed**: `skills/decide-issue/SKILL.md`
+  Phase 3b's "Provisional Pattern D" (lines 242-249) only *resolves* a
+  decision when the referenced options already exist as formal Pattern-4
+  bullets elsewhere in the document — its own "Requirement" line states the
+  referent must already be a bullet option in `## Proposed Solution` or
+  `## Codebase Research Findings`. It does not extract options from
+  unstructured prose itself. This confirms the issue's own Motivation
+  section: BUG-2605/BUG-2606 fixed the consumption side (giving Pattern D
+  more chances to run), but only a production-side fix like this one closes
+  the gap for prose that never becomes a Pattern-4 bullet in the first
+  place.
+
 ## Integration Map
 
 ### Files to Modify
 - `commands/refine-issue.md` — extend the Option-Count Detection section
   (lines 284-296) with the bold-label formatting rule described above.
+- `scripts/tests/test_refine_issue_command.py` — add a new test method to the
+  existing `TestOptionCountDetectionInCommand` class asserting the new
+  bold-label rule text (`**Option A**`, `**Recommended**` markers) is present
+  within the Step 5a span, mirroring BUG-2606's
+  `test_exhausted_retry_falls_through_to_phase_3` precedent
+  (`scripts/tests/test_decide_issue_skill.py:419-430`) — a structural
+  presence-assertion that locks in the prompt edit without invoking the LLM.
+  _Wiring pass added by `/ll:wire-issue`._
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml:240` — `deposit_options` state runs
+  `/ll:refine-issue ${captured.input.output} --auto` when
+  `check_decision_decidable` reports not-decidable (already noted in prose in
+  Codebase Research Findings below; now listed structurally).
+- `scripts/little_loops/loops/rn-remediate.yaml:306,672,686` — three call
+  sites for `/ll:refine-issue ${context.issue_id} --auto` in the remediation
+  retry chain (already noted in prose; now listed structurally with line
+  numbers).
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:86` — calls
+  `/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis`, then
+  its `check_decision_mid_refine` state (~line 100-105) gates mid-chain on
+  `ll-issues check-flag ... decision_needed`, routing back to autodev's
+  `check_decision_after_refine` (`autodev.yaml:165`) → `run_decide` on a hit.
+  This is a third production consumer of refine-issue's decision-formatting
+  output not previously mentioned anywhere in this issue.
+- `scripts/little_loops/loops/harness-multi-item.yaml` — checked and
+  excluded: `visibility: example`, a documentation demo loop, not a
+  production caller.
 
 ### Similar Patterns
 - `commands/refine-issue.md:246-269` (Integration Map / Root Cause enrichment
@@ -114,6 +195,55 @@ didn't write, consistent with the Preservation Rule.
   copy of ENH-2492's decision text) and confirm
   `ll-issues check-decidable` reports `Decidable` afterward instead of
   `OPTIONS_MISSING`.
+- `scripts/tests/test_issue_parser_unresolved.py:84-97`
+  (`TestCountUnresolvedOptions.test_bold_option_label_format`) shows the
+  exact fixture shape Pattern 2 matches — useful as a manual-verification
+  template when checking refine-issue's output by hand.
+
+### Tests (correction — wiring pass added by `/ll:wire-issue`)
+
+_The "No existing automated test targets refine-issue's markdown-generation
+prose" claim above is inaccurate: a structural test file already exists for
+this exact section._
+
+- `scripts/tests/test_refine_issue_command.py::TestOptionCountDetectionInCommand`
+  (lines 18-82, **existing, must be updated**) — already structurally tests
+  Step 5a's Option-Count Detection block for the 3 current patterns, by
+  slicing `content` between the `### 5a. Fill Gaps with Research Findings`
+  and `### 5b. Interactive Refinement` headings and asserting substrings
+  (e.g. `test_two_or_more_threshold_documented`, `test_idempotency_guard_mentioned`).
+  This is the direct precedent BUG-2606 followed
+  (`test_exhausted_retry_falls_through_to_phase_3`,
+  `scripts/tests/test_decide_issue_skill.py:419-430`) for prompt-prose
+  changes: add a structural presence-assertion test even when full
+  LLM-behavior verification stays manual-only. A new test method here
+  asserting the bold-label rule's marker text is present within the Step 5a
+  span is both consistent with repo convention and directly regression-proofs
+  this issue's prompt edit.
+- `scripts/tests/test_decide_issue_skill.py::TestOptionsMissingExitCodes`
+  (lines 519-542, existing, no change needed) — already unit-tests
+  `count_enumerable_options()` end-to-end via the same exit-code contract
+  `ll-issues check-decidable` uses; useful reference for confirming Pattern 2
+  recognition without needing a new fixture.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Concrete call site**: `scripts/little_loops/loops/autodev.yaml` state
+  `deposit_options` (~line 233) runs `/ll:refine-issue
+  ${captured.input.output} --auto` when the `check_decision_decidable`
+  state (~line 212) reports the issue is not decidable via
+  `scripts/little_loops/cli/issues/check_decidable.py:cmd_check_decidable()`
+  (line 19). This is the concrete production call site whose output quality
+  this fix improves — `rn-remediate.yaml` wires the same
+  `check_decision_decidable` → `deposit_options` pattern.
+- **Marker-convention precedent beyond decide-issue**: the append-only
+  `_Added by ... :_` italic marker used by the Preservation Rule is applied
+  identically in `skills/format-issue/templates.md:162-172` and
+  `skills/wire-issue/SKILL.md:385-391` — confirming this is an established,
+  repo-wide convention for machine-appended content, not a one-off pattern
+  specific to refine-issue.
 
 ## Implementation Steps
 
@@ -125,6 +255,23 @@ didn't write, consistent with the Preservation Rule.
 3. Consider (follow-on, not in scope here) a one-time bulk remediation pass
    over the ~40 already-stuck issues once BUG-2605/BUG-2606/this land, since
    existing prose won't retroactively reformat itself.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation:_
+
+4. Update `scripts/tests/test_refine_issue_command.py`'s
+   `TestOptionCountDetectionInCommand` class with a new test method asserting
+   the bold-label formatting rule's marker text (`**Option A**`,
+   `**Recommended**`) is present within the Step 5a span — corrects the
+   issue's own inaccurate "no automated test exists" claim and follows
+   BUG-2606's precedent.
+5. When validating manually (Implementation Step 2), also exercise
+   `scripts/little_loops/loops/refine-to-ready-issue.yaml`'s
+   `check_decision_mid_refine` gate (~line 100-105) — a third production
+   consumer of refine-issue's decision-formatting output not previously
+   covered by this issue, alongside `autodev.yaml` and `rn-remediate.yaml`.
 
 ## Impact
 
@@ -151,4 +298,6 @@ didn't write, consistent with the Preservation Rule.
 **Open** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-11T20:37:34 - `37df9e19-5b6b-496d-b642-9c4e836e3f06.jsonl`
+- `/ll:refine-issue` - 2026-07-11T20:31:14 - `d3119631-9721-46b9-a9af-0d7109440153.jsonl`
 - `/ll:capture-issue` - 2026-07-11T18:07:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37898a30-ea4e-4972-91db-a694a29a9e31.jsonl`

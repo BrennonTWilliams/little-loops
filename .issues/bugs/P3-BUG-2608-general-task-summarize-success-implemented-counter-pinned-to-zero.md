@@ -2,10 +2,10 @@
 id: BUG-2608
 title: general-task summarize_success reports implemented:0 on every successful run
 type: BUG
-status: open
+status: done
 priority: P3
-captured_at: "2026-07-11T00:00:00Z"
-discovered_date: "2026-07-11"
+captured_at: '2026-07-11T00:00:00Z'
+discovered_date: '2026-07-11'
 discovered_by: audit-loop-run
 relates_to:
 - BUG-2170
@@ -16,6 +16,12 @@ labels:
 - general-task
 - loops
 - reporting-correctness
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2608: general-task summarize_success reports implemented:0 on every successful run
@@ -91,7 +97,27 @@ Criteria`, mirroring `count_done` / `write_partial_summary`), instead of from
 
 ## Status
 
-**Open** | Created: 2026-07-11 | Priority: P3
+**Done** | Created: 2026-07-11 | Priority: P3
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Already fixed by commit `fa364119` ("fix(loops): report checked-criteria
+  count in general-task summarize_success (BUG-2608)"), which landed in the
+  same commit that added this issue file. `summarize_success` in
+  `scripts/little_loops/loops/general-task.yaml:542-584` now computes
+  `IMPLEMENTED=$(($TOTAL_DOD - $UNCHECKED_DOD))` (section-scoped to
+  `## Verification Criteria`), replacing the prior `done_counts.total` source.
+- Regression coverage added in the same commit:
+  `scripts/tests/test_general_task_loop.py:1529` `TestENH2365SummarizeSuccess`,
+  specifically `test_implemented_counts_checked_criteria_not_leftover` and
+  `test_implemented_is_section_scoped` (lines ~1555-1635). Verified passing:
+  `python -m pytest scripts/tests/test_general_task_loop.py::TestENH2365SummarizeSuccess -v`
+  — 10/10 passed.
+- No further implementation work remains. Marking `status: done`.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-11T20:37:58 - `37df9e19-5b6b-496d-b642-9c4e836e3f06.jsonl`
 - `/ll:audit-loop-run` (consumer project) - 2026-07-11 - surfaced via general-task-audit-2026-07-11T153651.md
+- `/ll:confidence-check` - 2026-07-11T20:41:00Z - `d8f60841-044f-46c6-ba32-0bfa3724b66c.jsonl`
