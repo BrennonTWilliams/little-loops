@@ -2,17 +2,18 @@
 id: BUG-2588
 title: save_decisions() silently drops entry keys not declared on the dataclass
 type: BUG
-status: open
+status: done
 priority: P3
 discovered_date: '2026-07-10'
 discovered_by: user-report
 captured_at: '2026-07-10T21:08:10Z'
+completed_at: '2026-07-11T03:33:50Z'
 labels:
 - decisions
 - data-integrity
 - serialization
 - latent
-decision_needed: true
+decision_needed: false
 confidence_score: 97
 outcome_confidence: 86
 score_complexity: 20
@@ -160,6 +161,33 @@ Rewrite `save_decisions` to `yaml.safe_load()` the existing file, align raw entr
 - ENH-2587 (`validate-decisions-yaml-schema-on-commit`) is the schema-validation sister. Pairing: once the round-trip preserves unknown keys, ENH-2587 governs *which* keys are valid; this fix is the substrate ENH-2587 was missing.
 - ENH-2589 (`ll-verify-decisions`), ENH-2590 (pre-commit), ENH-2591 (pytest CI gate), ENH-2592 (PreToolUse) all rely on `ll-verify-decisions`, which does not currently catch unknown keys — they will continue to pass with no out-of-schema detection until ENH-2587 lands.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-10.
+
+**Selected**: Option A — `extra: dict` catch-all field on the entry dataclasses
+
+**Reasoning**: Direct codebase precedent in `LLEvent.payload` (`events.py:43,51,62`) already
+implements this exact lossless round-trip pattern. Option A keeps `save_decisions` itself
+unchanged and symmetric — no read-before-write coupling, no list-alignment-by-`id` logic, no
+concurrent-write exposure that Option B's raw-file-overlay approach would introduce. The
+touch surface (four `from_dict`/`to_dict` pairs) is well-contained and testable in isolation.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — `extra: dict` catch-all | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+| Option B — raw source-dict overlay | 2/3 | 2/3 | 1/3 | 1/3 | 6/12 |
+
+**Key evidence**:
+- Option A: matches `LLEvent.payload` precedent exactly; symmetric load/save; each entry's
+  `from_dict`/`to_dict` becomes uniform (see Pros/Cons above).
+- Option B: reuses `deep_merge`/`merge_with_existing` (BUG-2310 precedent) but couples
+  `save_decisions` to a file read on the write path and switches entry alignment from
+  list-order to keyed-by-`id`, raising drift risk if the file is hand-edited between load
+  and save.
+
 ## Acceptance Criteria
 
 - A round-trip test adds an out-of-schema key to each entry type, runs
@@ -174,15 +202,34 @@ Rewrite `save_decisions` to `yaml.safe_load()` the existing file, align raw entr
   2026-07-10 and discussing prevention (routing writes through the serializer vs. a
   validation hook). Sibling: ENH-2587.
 
+## Resolution
+
+Implemented Option A: added `extra: dict[str, Any] = field(default_factory=dict)` to
+`RuleEntry`, `DecisionEntry`, `ExceptionEntry`, and `CouplingEntry`
+(`scripts/little_loops/decisions.py`). Each `from_dict` now pops known fields off a
+copy of the input dict via `dict.pop()` (mirroring `DecisionOutcome`'s nested pop for
+`outcome`) and stashes the remainder in `extra`; each `to_dict` spreads modeled fields
+first and `self.extra` last, so unmodeled keys survive `load_decisions()` ->
+`save_decisions()` round-trips without reordering the existing `id`-first YAML output
+for entries with no extra keys.
+
+Added `test_save_decisions_preserves_unmodeled_keys` (parametrized across all four
+entry types) and `test_save_decisions_does_not_strip_unrelated_entry_extras` to
+`scripts/tests/test_decisions.py`. `test_promote_drops_decision_only_fields`
+(`test_cli_decisions.py:1078`) stays green unmodified — it exercises modeled
+`DecisionEntry` fields (`scope`, `alternatives_rejected`), not unmodeled keys, so it is
+orthogonal to this fix.
+
+Full suite: `python -m pytest scripts/tests/` — 14576 passed, 36 skipped.
+`ruff check` and `mypy` clean on `decisions.py`.
+
 ## Status
 
-**Open** | Created: 2026-07-10 | Priority: P3
-
-Latent bug — no live data loss detected (audit on 2026-07-10 found zero out-of-schema
-keys across all 331 entries). Tracked as a silent-data-loss trap awaiting the first
-hand-authored out-of-schema field.
+**Done** | Created: 2026-07-10 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T03:33:50 - `434cf2b6-044e-4387-8733-74bdfcea3c12.jsonl`
+- `/ll:decide-issue` - 2026-07-11T03:28:29 - `434cf2b6-044e-4387-8733-74bdfcea3c12.jsonl`
 - `/ll:ready-issue` - 2026-07-11T03:26:15 - `3b6e9e1b-5dc3-4179-9a10-b6c5df251651.jsonl`
 - `/ll:ready-issue` - 2026-07-11T01:37:59 - `284186ed-08f8-480b-bda6-e04b21c2a17d.jsonl`
 - `/ll:ready-issue` - 2026-07-11T01:27:46 - `240f9a39-2745-445e-96f4-a82a79433877.jsonl`

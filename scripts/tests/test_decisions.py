@@ -187,6 +187,55 @@ class TestSaveDecisions:
         assert loaded[0].enforcement == sample_rule.enforcement
         assert loaded[0].labels == sample_rule.labels
 
+    @pytest.mark.parametrize(
+        ("entry_type", "raw"),
+        [
+            (
+                RuleEntry,
+                {"id": "NAMING-002", "rule": "Test rule", "owner": "alice"},
+            ),
+            (
+                DecisionEntry,
+                {"id": "WORKFLOW-002", "rule": "Test decision", "owner": "alice"},
+            ),
+            (
+                ExceptionEntry,
+                {"id": "EXC-001", "rule_ref": "NAMING-001", "owner": "alice"},
+            ),
+            (
+                CouplingEntry,
+                {"id": "COUP-001", "if_changed": "foo.py", "owner": "alice"},
+            ),
+        ],
+    )
+    def test_save_decisions_preserves_unmodeled_keys(
+        self, decisions_path: Path, entry_type: type, raw: dict
+    ) -> None:
+        entry = entry_type.from_dict(raw)
+        assert entry.extra == {"owner": "alice"}
+
+        save_decisions([entry], decisions_path)
+        loaded = load_decisions(decisions_path)
+
+        assert loaded[0].extra == {"owner": "alice"}
+        raw_yaml = decisions_path.read_text(encoding="utf-8")
+        assert "owner: alice" in raw_yaml
+
+    def test_save_decisions_does_not_strip_unrelated_entry_extras(
+        self, decisions_path: Path, sample_rule: RuleEntry
+    ) -> None:
+        entry_with_extra = RuleEntry.from_dict(
+            {"id": "NAMING-003", "rule": "Another rule", "owner": "alice"}
+        )
+        save_decisions([entry_with_extra], decisions_path)
+
+        add_entry(sample_rule, decisions_path)
+
+        loaded = load_decisions(decisions_path)
+        by_id = {e.id: e for e in loaded}
+        assert by_id["NAMING-003"].extra == {"owner": "alice"}
+        assert by_id["NAMING-001"].extra == {}
+
 
 class TestAddEntry:
     """Tests for add_entry()."""

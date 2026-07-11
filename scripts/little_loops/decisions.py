@@ -61,20 +61,23 @@ class RuleEntry:
     enforcement: str = "advisory"
     supersedes: str | None = None
     issue: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RuleEntry:
+        copy = dict(data)
         return cls(
-            id=data["id"],
-            type=data.get("type", "rule"),
-            timestamp=data.get("timestamp", ""),
-            category=data.get("category", ""),
-            labels=data.get("labels", []),
-            rationale=data.get("rationale", ""),
-            rule=data.get("rule", ""),
-            enforcement=data.get("enforcement", "advisory"),
-            supersedes=data.get("supersedes"),
-            issue=data.get("issue"),
+            id=copy.pop("id"),
+            type=copy.pop("type", "rule"),
+            timestamp=copy.pop("timestamp", ""),
+            category=copy.pop("category", ""),
+            labels=copy.pop("labels", []),
+            rationale=copy.pop("rationale", ""),
+            rule=copy.pop("rule", ""),
+            enforcement=copy.pop("enforcement", "advisory"),
+            supersedes=copy.pop("supersedes", None),
+            issue=copy.pop("issue", None),
+            extra=copy,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -92,7 +95,7 @@ class RuleEntry:
             d["supersedes"] = self.supersedes
         if self.issue is not None:
             d["issue"] = self.issue
-        return d
+        return {**d, **self.extra}
 
 
 @dataclass
@@ -110,22 +113,25 @@ class DecisionEntry:
     issue: str | None = None
     scope: str = "issue"
     outcome: DecisionOutcome | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DecisionEntry:
-        outcome_data = data.get("outcome")
+        copy = dict(data)
+        outcome_data = copy.pop("outcome", None)
         return cls(
-            id=data["id"],
-            type=data.get("type", "decision"),
-            timestamp=data.get("timestamp", ""),
-            category=data.get("category", ""),
-            labels=data.get("labels", []),
-            rationale=data.get("rationale", ""),
-            rule=data.get("rule", ""),
-            alternatives_rejected=data.get("alternatives_rejected"),
-            issue=data.get("issue"),
-            scope=data.get("scope", "issue"),
+            id=copy.pop("id"),
+            type=copy.pop("type", "decision"),
+            timestamp=copy.pop("timestamp", ""),
+            category=copy.pop("category", ""),
+            labels=copy.pop("labels", []),
+            rationale=copy.pop("rationale", ""),
+            rule=copy.pop("rule", ""),
+            alternatives_rejected=copy.pop("alternatives_rejected", None),
+            issue=copy.pop("issue", None),
+            scope=copy.pop("scope", "issue"),
             outcome=DecisionOutcome.from_dict(outcome_data) if outcome_data else None,
+            extra=copy,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -145,7 +151,7 @@ class DecisionEntry:
             d["issue"] = self.issue
         if self.outcome is not None:
             d["outcome"] = self.outcome.to_dict()
-        return d
+        return {**d, **self.extra}
 
 
 @dataclass
@@ -161,19 +167,22 @@ class ExceptionEntry:
     rule_ref: str = ""
     issue: str = ""
     alternatives_rejected: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExceptionEntry:
+        copy = dict(data)
         return cls(
-            id=data["id"],
-            type=data.get("type", "exception"),
-            timestamp=data.get("timestamp", ""),
-            category=data.get("category", ""),
-            labels=data.get("labels", []),
-            rationale=data.get("rationale", ""),
-            rule_ref=data.get("rule_ref", ""),
-            issue=data.get("issue", ""),
-            alternatives_rejected=data.get("alternatives_rejected"),
+            id=copy.pop("id"),
+            type=copy.pop("type", "exception"),
+            timestamp=copy.pop("timestamp", ""),
+            category=copy.pop("category", ""),
+            labels=copy.pop("labels", []),
+            rationale=copy.pop("rationale", ""),
+            rule_ref=copy.pop("rule_ref", ""),
+            issue=copy.pop("issue", ""),
+            alternatives_rejected=copy.pop("alternatives_rejected", None),
+            extra=copy,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -189,7 +198,7 @@ class ExceptionEntry:
         }
         if self.alternatives_rejected is not None:
             d["alternatives_rejected"] = self.alternatives_rejected
-        return d
+        return {**d, **self.extra}
 
 
 @dataclass
@@ -209,23 +218,26 @@ class CouplingEntry:
     enforcement: str = "advisory"
     supersedes: str | None = None
     issue: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CouplingEntry:
+        copy = dict(data)
         return cls(
-            id=data["id"],
-            type=data.get("type", "coupling"),
-            timestamp=data.get("timestamp", ""),
-            category=data.get("category", ""),
-            labels=data.get("labels", []),
-            rationale=data.get("rationale", ""),
-            if_changed=data.get("if_changed", ""),
-            then_check=data.get("then_check", []),
-            tier=data.get("tier", "soft"),
-            archetype=data.get("archetype"),
-            enforcement=data.get("enforcement", "advisory"),
-            supersedes=data.get("supersedes"),
-            issue=data.get("issue"),
+            id=copy.pop("id"),
+            type=copy.pop("type", "coupling"),
+            timestamp=copy.pop("timestamp", ""),
+            category=copy.pop("category", ""),
+            labels=copy.pop("labels", []),
+            rationale=copy.pop("rationale", ""),
+            if_changed=copy.pop("if_changed", ""),
+            then_check=copy.pop("then_check", []),
+            tier=copy.pop("tier", "soft"),
+            archetype=copy.pop("archetype", None),
+            enforcement=copy.pop("enforcement", "advisory"),
+            supersedes=copy.pop("supersedes", None),
+            issue=copy.pop("issue", None),
+            extra=copy,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -247,7 +259,7 @@ class CouplingEntry:
             d["supersedes"] = self.supersedes
         if self.issue is not None:
             d["issue"] = self.issue
-        return d
+        return {**d, **self.extra}
 
 
 # Open dispatch registry — add new entry types here without modifying CRUD functions

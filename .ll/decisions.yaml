@@ -4837,3 +4837,16 @@
     row'
   scope: issue
   issue: ENH-2596
+- id: ARCHITECTURE-129
+  type: decision
+  timestamp: '2026-07-11T03:28:23Z'
+  category: architecture
+  labels: []
+  rationale: Direct precedent in LLEvent.payload (events.py:43,51,62); symmetric load/save
+    with no read-before-write coupling, no list-alignment-by-id logic, no concurrent-write
+    exposure. 11/12 vs Option B's 6/12.
+  rule: 'extra: dict catch-all field on entry dataclasses'
+  scope: issue
+  alternatives_rejected: 'Option B: raw source-dict overlay on save_decisions via
+    deep_merge (couples save to a file read, switches entry alignment to keyed-by-id)'
+  issue: BUG-2588
