@@ -114,6 +114,19 @@ state.
 - `scripts/little_loops/loops/rn-remediate.yaml:264-296` — the sibling loop's
   correctly-wired single entry point.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `rn-remediate.yaml` is not uniformly clean — it has a **second** decision-check
+  entry point, `check_decision_needed_post` (`rn-remediate.yaml:725-735`,
+  reached from `mark_refined`/`mark_wired`), which routes `on_yes` **directly to
+  `decide`**, bypassing `check_decision_decidable` exactly like the three buggy
+  autodev states this issue fixes. Only `check_decision_needed`
+  (`rn-remediate.yaml:264-269` → `check_decision_decidable` at 271-296) is the
+  correct pattern to model after; `check_decision_needed_post` shares this bug's
+  defect and is out of scope here, but may warrant its own follow-up issue.
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — add/extend routing assertions that
   `check_decision_at_dequeue`, `check_decision_after_refine`, and
@@ -132,6 +145,36 @@ state.
 4. Re-run `ll-loop run autodev ENH-2492 -q` (or another currently-stuck
    `OPTIONS_MISSING` issue) to confirm it now attempts `deposit_options`
    instead of draining straight to `decision-unresolved`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Step 3 touches **two** test files, not one: `scripts/tests/test_builtin_loops.py`'s
+  routing assertions for these states are duplicated in
+  `scripts/tests/test_autodev_decision_gate.py` (the dedicated BUG-2513/BUG-2519
+  structural-test suite). Both files must be updated in lockstep.
+- Two **existing** assertions currently pin the pre-fix (buggy) routing and will
+  fail once the `on_yes:` retarget lands — these must be *updated*, not merely
+  extended:
+  - `test_builtin_loops.py:2761-2772` `test_check_decision_after_refine_routes_correctly`
+    — the `on_yes == "run_decide"` assertion (lines 2764-2766) must become
+    `on_yes == "check_decision_decidable"`.
+  - `test_builtin_loops.py:3028-3035` `test_check_decision_before_size_review_on_yes_routes_to_run_decide`
+    — asserts `on_yes == "run_decide"`; retarget to `check_decision_decidable`
+    (and rename to match).
+  - `test_autodev_decision_gate.py:135-143` `test_check_decision_at_dequeue_on_yes_routes_to_run_decide`
+    — same assertion, separate file.
+  - `test_autodev_decision_gate.py:334-342` `test_check_decision_before_size_review_on_yes_routes_to_run_decide`
+    — same assertion, separate file.
+- `check_decision_at_dequeue` has **no existing on_yes-routing test** in either
+  file today — only the `dequeue_next → check_decision_at_dequeue` linkage is
+  tested (`test_builtin_loops.py:2578-2584`,
+  `test_autodev_decision_gate.py:167-174`). This needs a **net-new** test in
+  both files. Model it on the existing correct precedent:
+  `test_builtin_loops.py:3152-3160` `test_decide_current_on_yes_routes_to_check_decision_decidable`
+  (the ENH-2443 assertion for `decide_current`, which already asserts the
+  target state this bug retargets the other three toward).
 
 ## Impact
 
@@ -157,4 +200,5 @@ state.
 **Open** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-11T18:40:42 - `4566a976-60c6-45f6-b2d7-8afae702a6fd.jsonl`
 - `/ll:capture-issue` - 2026-07-11T18:07:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37898a30-ea4e-4972-91db-a694a29a9e31.jsonl`
