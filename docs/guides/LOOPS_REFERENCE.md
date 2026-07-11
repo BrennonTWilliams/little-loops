@@ -756,7 +756,7 @@ Pass `--context max_eval_retries=0` to skip the `eval_gate` retry cycle and redu
 | `evaluation-quality` | Multi-dimensional quality health check across issue quality, code quality, and backlog health; routes to remediation loops when thresholds are breached |
 | `issue-discovery-triage` | Automated issue discovery and triage cycle |
 | `scan-and-implement` | Full discovery → triage → implement pipeline. Snapshots active issue IDs, runs `issue-discovery-triage` as a sub-loop, then delegates to `autodev` scoped to **only** the net-new IDs that survived triage (issues that were created during scan but closed by tradeoff-review are excluded automatically via the pre/post snapshot diff) |
-| `auto-refine-and-implement` | For each backlog issue in priority order: delegates to `autodev` which interleaves refinement and implementation per issue — each leaf is implemented immediately after passing refinement rather than batch-implementing at the end; issues that fail the go/no-go gate are skipped; loops until backlog is exhausted |
+| `auto-refine-and-implement` | For each backlog issue in priority order: delegates to `autodev` which interleaves refinement and implementation per issue — each leaf is implemented immediately after passing refinement rather than batch-implementing at the end; issues that fail the go/no-go gate are skipped; loops until backlog is exhausted. For an EPIC-scoped run with `parallel.epic_branches.enabled`, ensures the integration branch exists and runs a post-implementation test/lint verify pass (ENH-2601) |
 | `issue-refinement` | Alias for `recursive-refine` with `order=next-action`, `commit_every=5`, `no_recursion=true` — progressively refines the whole active backlog in value-ranked order with periodic commits |
 | `recursive-refine` | Refine one or more issues to readiness; optional `order=next-action` drives the whole backlog in value-ranked order; `no_recursion=true` keeps flat one-pass mode; `commit_every=N` adds periodic commits; default mode accepts a seeded ID list and enqueues children depth-first when size-review decomposes an issue |
 | `autodev` | Targeted refine-and-implement for a specific set of issues; accepts a single ID or comma-separated list and interleaves refinement and implementation — as soon as a leaf passes refinement it is implemented via `ll-auto --only` before the next leaf is refined; decomposed children are prepended depth-first; terminates when the input queue drains |
@@ -871,7 +871,7 @@ delegate (sub-loop: auto-refine-and-implement, scope=<sprint_name>)
 → done
 ```
 
-**Notes**: This loop is a verdict-recovering wrapper (ENH-2005); the per-issue refine+implement work, depth-first child handling, and ground-truth closure accounting all live in `auto-refine-and-implement` → `autodev`. The child shares this loop's `run_dir`, so its `summary.json` / `subloop_outcome` token land where `read_outcome` reads them. The loop uses `on_handoff: spawn` so it can survive session boundaries for long sprints.
+**Notes**: This loop is a verdict-recovering wrapper (ENH-2005); the per-issue refine+implement work, depth-first child handling, epic-branch checkout, post-implementation verify, and ground-truth closure accounting all live in `auto-refine-and-implement` → `autodev` (ENH-2601). The child shares this loop's `run_dir`, so its `summary.json` (including `verify_verdict`) / `subloop_outcome` token land where `read_outcome` reads them, with no wrapper-side changes needed. The loop uses `on_handoff: spawn` so it can survive session boundaries for long sprints.
 
 ### `auto-refine-and-implement` — Full-Backlog Refine-and-Implement Loop
 
@@ -898,18 +898,26 @@ ll-loop run auto-refine-and-implement --context max_issues=10
 ```
 init (snapshot .issues/completed/ baseline)
   → resolve_set (scope → SprintManager; else ll-issues next-issues, capped at max_issues)
-      ├─ set non-empty → delegate (sub-loop: autodev, input=<resolved IDs>)
-      │                    ├─ on_success / on_failure → finalize
-      │                    └─ on_error → record_error → finalize
+      ├─ set non-empty → checkout_epic_branch (ENH-2601: if scope is an EPIC-NNN
+      │       id AND parallel.epic_branches.enabled, ensure epic/<EPIC-ID>-<slug>
+      │       exists off base_branch — create-without-switch, no-op otherwise)
+      │     → delegate (sub-loop: autodev, input=<resolved IDs>)
+      │         ├─ on_success / on_failure → verify (ENH-2601: runs
+      │         │     project.test_cmd/lint_cmd in place; pass/fail/skipped is
+      │         │     advisory, folded into summary.json, never gates finalize)
+      │         │     → finalize
+      │         └─ on_error → record_error → finalize
       └─ set empty → finalize (no-op verdict)
   → finalize (ground-truth completed/ diff → summary.json + subloop_outcome) → done
 ```
 
 **Dependency filter note** (ENH-2436): `ll-issues next-issues` returns only unblocked active issues by default. To preserve legacy behavior (include blocked issues in the resolved set), override the resolve_set action with `action: "ll-issues next-issues --include-blocked"`.
 
-**Closure accounting**: `init` snapshots the `.issues/completed/` set; `finalize` diffs it against the post-run set to count real closures (both `ll-auto` leaf closures and decomposed parents that `autodev` git-mv's into `completed/`). `NOT_CLOSED` / `SKIPPED` are read from `autodev`'s `autodev-passed.txt` / `autodev-skipped.txt` under the shared `run_dir`; `ERRORED` is recorded by `record_error` on an `autodev` infrastructure crash. The verdict (`success` / `partial` / `partial-with-errors` / `phantom` / `no-op`) reflects real terminal state, not an exit-code proxy.
+**Closure accounting**: `init` snapshots the `.issues/completed/` set; `finalize` diffs it against the post-run set to count real closures (both `ll-auto` leaf closures and decomposed parents that `autodev` git-mv's into `completed/`). `NOT_CLOSED` / `SKIPPED` are read from `autodev`'s `autodev-passed.txt` / `autodev-skipped.txt` under the shared `run_dir`; `ERRORED` is recorded by `record_error` on an `autodev` infrastructure crash. The verdict (`success` / `partial` / `partial-with-errors` / `phantom` / `no-op`) reflects real terminal state, not an exit-code proxy. `summary.json` additionally reports `verify_verdict` (`passed` / `failed` / `skipped` / `not_run`, ENH-2601) — advisory only, not folded into `verdict`.
 
 **Notes**: The backlog set is resolved once upfront (not re-polled per issue); decomposition children created mid-run are still processed depth-first by `autodev`, but brand-new unrelated issues created during the run are not picked up — a deliberate, deterministic semantic. The loop uses `on_handoff: spawn` and an 8-hour timeout to continue across session boundaries. Auth failures during implementation fast-fail to `ENV_NOT_READY` (inherited from `autodev`'s `check_impl_auth` guard, ENH-2353). Use `ll-loop install auto-refine-and-implement` to copy the YAML to `.loops/` and customize.
+
+**Epic-branch awareness** (ENH-2601): `checkout_epic_branch` only *creates* the integration branch (mirroring `WorkerPool._ensure_epic_branch`) — it does not check it out, and `delegate`'s `autodev` sub-loop still runs against whatever branch/worktree the main tree already has checked out. Making `delegate` itself land its commits on the created epic branch is tracked as follow-on work, not part of this change. See [SPRINT_GUIDE.md § Per-EPIC Integration Branch](SPRINT_GUIDE.md#per-epic-integration-branch) for the distinction from `ll-parallel --epic-branches`/`ll-sprint --epic-branches`, which is a separate, already-wired code path.
 
 ### `autodev` — Targeted Refine-and-Implement for Specific Issues
 

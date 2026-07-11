@@ -1900,7 +1900,9 @@ class TestAutoRefineAndImplementLoop:
         required = {
             "init",
             "resolve_set",
+            "checkout_epic_branch",
             "delegate",
+            "verify",
             "record_error",
             "finalize",
             "done",
@@ -1939,9 +1941,10 @@ class TestAutoRefineAndImplementLoop:
         assert state.get("capture") == "issue_set"
 
     def test_resolve_set_routes(self, data: dict) -> None:
-        """resolve_set routes a non-empty set to delegate, an empty set to finalize."""
+        """resolve_set routes a non-empty set to checkout_epic_branch (ENH-2601),
+        an empty set to finalize."""
         state = data["states"].get("resolve_set", {})
-        assert state.get("on_yes") == "delegate"
+        assert state.get("on_yes") == "checkout_epic_branch"
         assert state.get("on_no") == "finalize"
 
     def test_resolve_set_supports_scope_branching(self, data: dict) -> None:
@@ -1970,11 +1973,13 @@ class TestAutoRefineAndImplementLoop:
         )
 
     def test_delegate_crash_routes_to_record_error(self, data: dict) -> None:
-        """on_error must route to a DISTINCT crash state (not finalize directly) so an
-        infrastructure crash is recorded, not laundered into a clean no-op (ENH-2005)."""
+        """on_error must route to a DISTINCT crash state (not finalize/verify directly)
+        so an infrastructure crash is recorded, not laundered into a clean no-op
+        (ENH-2005). on_success/on_failure route through verify (ENH-2601) rather than
+        straight to finalize."""
         state = data["states"].get("delegate", {})
-        assert state.get("on_success") == "finalize"
-        assert state.get("on_failure") == "finalize"
+        assert state.get("on_success") == "verify"
+        assert state.get("on_failure") == "verify"
         assert state.get("on_error") == "record_error"
         assert state.get("on_error") != state.get("on_success")
 
@@ -1992,6 +1997,53 @@ class TestAutoRefineAndImplementLoop:
         assert ctx["scope"] == "", (
             "context.scope must default to empty string (backlog rank when unset)"
         )
+
+    # --- ENH-2601: epic-branch checkout + post-implementation verify --------
+
+    def test_checkout_epic_branch_routes_to_delegate(self, data: dict) -> None:
+        """checkout_epic_branch is a best-effort gate that always continues to
+        delegate, even on an unexpected error (never blocks the run)."""
+        state = data["states"].get("checkout_epic_branch", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("next") == "delegate"
+        assert state.get("on_error") == "delegate"
+
+    def test_checkout_epic_branch_gated_on_epic_scope_and_config(self, data: dict) -> None:
+        """checkout_epic_branch must gate on scope being an EPIC id AND
+        parallel.epic_branches.enabled, and must not switch the working tree
+        (Option A — create-without-switch, no `git checkout`)."""
+        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
+        assert "EPIC-" in action
+        assert "epic_cfg.enabled" in action
+        assert '"branch", branch, base' in action, (
+            "must create via `git branch <name> <base>`, not `git checkout -b`"
+        )
+        assert "checkout" not in action.lower().replace("checkout_epic_branch", ""), (
+            "Option A must not literally `git checkout` the epic branch"
+        )
+
+    def test_checkout_epic_branch_reuses_ensure_epic_branch_shape(self, data: dict) -> None:
+        """Must mirror WorkerPool._ensure_epic_branch's idempotency checks (local
+        rev-parse, then remote ls-remote) before creating the branch."""
+        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
+        assert "rev-parse" in action
+        assert "ls-remote" in action
+
+    def test_verify_state_exists_and_routes_to_finalize(self, data: dict) -> None:
+        """verify runs unconditionally after delegate and always continues to
+        finalize (pass/fail is advisory, folded into summary.json, not gating)."""
+        state = data["states"].get("verify", {})
+        assert state.get("action_type") == "shell"
+        assert state.get("next") == "finalize"
+        assert state.get("on_error") == "finalize"
+
+    def test_verify_reads_project_test_and_lint_cmd(self, data: dict) -> None:
+        """verify must source project.test_cmd/lint_cmd from ll-config.json (no
+        ${config.*} FSM namespace exists) and skip when test_cmd is unconfigured."""
+        action = data["states"].get("verify", {}).get("action", "")
+        assert "test_cmd" in action
+        assert "lint_cmd" in action
+        assert "'skipped'" in action
 
     # --- ENH-2376: partial-with-errors verdict -------------------------------
 
@@ -2036,6 +2088,7 @@ class TestAutoRefineAndImplementLoop:
         decision_unresolved: int = 0,
         skipped_reasons: tuple[str, ...] = (),
         issue_set: tuple[str, ...] = (),
+        verify_verdict: str | None = None,
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -2051,8 +2104,15 @@ class TestAutoRefineAndImplementLoop:
         autodev-skipped.txt (REASON-suffixed, overrides the bare-ID `skipped`
         write when non-empty) — used to exercise skipped_breakdown. `issue_set`
         substitutes ${captured.issue_set.output} so parked_rate has a denominator.
+
+        ENH-2601: `verify_verdict`, when given, seeds verify-verdict.txt (the
+        artifact the new verify state writes) so summary.json's verify_verdict
+        key can be exercised; when omitted, the file is absent and finalize
+        must default to "not_run".
         """
         p = "auto-refine-and-implement"
+        if verify_verdict is not None:
+            (run_dir / "verify-verdict.txt").write_text(verify_verdict + "\n")
         (run_dir / f"{p}-completed-baseline.txt").write_text(
             "".join(f"{i}\n" for i in sorted(baseline))
         )
@@ -2262,6 +2322,33 @@ class TestAutoRefineAndImplementLoop:
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         for key in ("skipped_breakdown", "gate_blocked", "parked_rate"):
             assert key in summary, f"summary.json missing {key!r}: {summary}"
+
+    # --- ENH-2601: verify_verdict additive key -------------------------------
+
+    def test_finalize_sources_verify_verdict_artifact(self, data: dict) -> None:
+        """finalize must read verify-verdict.txt — the artifact the new verify
+        state writes."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "verify-verdict.txt" in action
+
+    def test_finalize_surfaces_verify_verdict(self, data: dict, tmp_path: Path) -> None:
+        """A run where verify passed/failed must surface that verdict verbatim."""
+        for verdict in ("passed", "failed", "skipped"):
+            run_dir = tmp_path / f"run-{verdict}"
+            run_dir.mkdir()
+            summary = self._run_finalize(
+                data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), verify_verdict=verdict
+            )
+            assert summary["verify_verdict"] == verdict, f"expected {verdict!r}, got {summary}"
+
+    def test_finalize_verify_verdict_defaults_to_not_run(self, data: dict, tmp_path: Path) -> None:
+        """When verify never ran (e.g. resolve_set's on_no/on_error path skipped
+        straight to finalize), verify_verdict must default to 'not_run', not omit
+        the key or crash."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir)
+        assert summary["verify_verdict"] == "not_run", f"got {summary}"
 
     def test_finalize_sources_gate_blocked_ledger(self, data: dict) -> None:
         """finalize must read autodev-gate-blocked.txt — previously never referenced,
@@ -2473,6 +2560,137 @@ class TestSprintRefineAndImplementLoop:
             "the delegate success/failure target must recover the child verdict "
             "from a subloop_outcome_ artifact (ENH-2005 sidecar)"
         )
+
+
+class TestCheckoutEpicBranchConfigReadShell:
+    """ENH-2601 end-to-end: exercise checkout_epic_branch's config-gated branch
+    creation against a real git repo (mirrors
+    test_rn_implement.py::TestCheckLearningReadyConfigReadShell)."""
+
+    def _run(
+        self, tmp_path: Path, *, scope: str, epic_branches_enabled: bool
+    ) -> subprocess.CompletedProcess:
+        if not (tmp_path / ".git").exists():
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True
+            )
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+            (tmp_path / "README.md").write_text("x\n")
+            subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"parallel": {"epic_branches": {"enabled": epic_branches_enabled}}})
+        )
+        issues_dir = tmp_path / ".issues" / "epics"
+        issues_dir.mkdir(parents=True, exist_ok=True)
+        (issues_dir / "P3-EPIC-42-my-epic.md").write_text(
+            "---\nid: EPIC-42\ntitle: My Epic Title\n---\n# EPIC-42: My Epic Title\n"
+        )
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(exist_ok=True)
+
+        loop = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text()
+        )
+        action = loop["states"]["checkout_epic_branch"]["action"]
+        action = action.replace("${context.scope}", scope).replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        return subprocess.run(
+            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+
+    def _branches(self, tmp_path: Path) -> str:
+        return subprocess.run(
+            ["git", "branch", "--list"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout
+
+    def test_creates_branch_when_epic_scope_and_enabled(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, scope="EPIC-42", epic_branches_enabled=True)
+        assert result.returncode == 0, result.stderr
+        assert "epic/epic-42-my-epic-title" in self._branches(tmp_path), result.stdout
+
+    def test_no_branch_when_config_disabled(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, scope="EPIC-42", epic_branches_enabled=False)
+        assert result.returncode == 0, result.stderr
+        assert "epic/" not in self._branches(tmp_path), result.stdout
+
+    def test_no_branch_when_scope_is_not_an_epic(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, scope="my-sprint", epic_branches_enabled=True)
+        assert result.returncode == 0, result.stderr
+        assert "epic/" not in self._branches(tmp_path), result.stdout
+
+    def test_does_not_switch_working_tree(self, tmp_path: Path) -> None:
+        """Option A: creates the branch but never checks it out — the main tree
+        must stay on whatever branch was already active."""
+        result = self._run(tmp_path, scope="EPIC-42", epic_branches_enabled=True)
+        assert result.returncode == 0, result.stderr
+        current = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert current == "main", f"main tree must stay on main, got {current!r}"
+
+    def test_idempotent_on_second_run(self, tmp_path: Path) -> None:
+        """Running twice must not error (mirrors _ensure_epic_branch's local
+        rev-parse idempotency check)."""
+        first = self._run(tmp_path, scope="EPIC-42", epic_branches_enabled=True)
+        assert first.returncode == 0, first.stderr
+        second = self._run(tmp_path, scope="EPIC-42", epic_branches_enabled=True)
+        assert second.returncode == 0, second.stderr
+
+
+class TestVerifyStateConfigReadShell:
+    """ENH-2601 end-to-end: exercise verify's project.test_cmd/lint_cmd config
+    read against a stubbed command (mirrors
+    test_general_task_loop.py::test_falls_back_to_config_test_cmd)."""
+
+    def _run(
+        self, tmp_path: Path, *, test_cmd: str | None, lint_cmd: str | None = None
+    ) -> str:
+        (tmp_path / ".ll").mkdir()
+        project: dict = {}
+        if test_cmd is not None:
+            project["test_cmd"] = test_cmd
+        if lint_cmd is not None:
+            project["lint_cmd"] = lint_cmd
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({"project": project}))
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        loop = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text()
+        )
+        action = loop["states"]["verify"]["action"].replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        result = subprocess.run(
+            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        return (run_dir / "verify-verdict.txt").read_text().strip()
+
+    def test_skipped_when_test_cmd_unconfigured(self, tmp_path: Path) -> None:
+        assert self._run(tmp_path, test_cmd=None) == "skipped"
+
+    def test_passed_when_test_cmd_succeeds(self, tmp_path: Path) -> None:
+        assert self._run(tmp_path, test_cmd="true") == "passed"
+
+    def test_failed_when_test_cmd_fails(self, tmp_path: Path) -> None:
+        assert self._run(tmp_path, test_cmd="false") == "failed"
+
+    def test_failed_when_lint_cmd_fails(self, tmp_path: Path) -> None:
+        assert self._run(tmp_path, test_cmd="true", lint_cmd="false") == "failed"
+
+    def test_lint_cmd_optional(self, tmp_path: Path) -> None:
+        assert self._run(tmp_path, test_cmd="true", lint_cmd=None) == "passed"
 
 
 class TestAutodevLoop:

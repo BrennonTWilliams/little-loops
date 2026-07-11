@@ -1,19 +1,20 @@
 ---
 id: ENH-2601
 type: enhancement
-status: open
+status: done
 priority: P3
 captured_at: '2026-07-11T14:29:14Z'
+completed_at: '2026-07-11T22:03:04Z'
 discovered_date: 2026-07-11
 discovered_by: capture-issue
 relates_to:
 - ENH-2600
-confidence_score: 96
-outcome_confidence: 80
+confidence_score: 98
+outcome_confidence: 82
 score_complexity: 14
-score_test_coverage: 22
-score_ambiguity: 22
-score_change_surface: 22
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 decision_needed: false
 ---
 
@@ -293,6 +294,114 @@ branch-aware):_
 > worktree/branch-scoped would be separate follow-on work if that's ever
 > desired.
 
+### Codebase Research Findings (verify-state precedent + signature corrections)
+
+_Added by `/ll:refine-issue --auto` on 2026-07-11 — re-verified prior research
+against the current codebase; found one major new precedent and two stale
+details:_
+
+> **Major finding: a complete, tested precedent for the `verify` state
+> already exists and should be the model to follow, not
+> `fix-quality-and-tests.yaml`/`dead-code-cleanup.yaml` alone.**
+> [[ENH-2600]]'s sibling issues **ENH-2602** and **ENH-2603** (both
+> `status: done`) added `_verify_epic_branch_before_merge(self, epic_id,
+> epic_branch)` to `scripts/little_loops/parallel/orchestrator.py:1323-1386`.
+> It does exactly what this issue's FSM `verify` state needs to do, already
+> working and already covered by tests:
+> ```python
+> def _verify_epic_branch_before_merge(self, epic_id: str, epic_branch: str) -> bool:
+>     cfg = self.parallel_config.epic_branches
+>     if not cfg.verify_before_merge:
+>         return True
+>     ...
+>     setup_worktree(
+>         repo_path=self.repo_path, worktree_path=worktree_path,
+>         branch_name=epic_branch, copy_files=[], logger=self.logger,
+>         git_lock=self._git_lock, checkout_existing=True,
+>     )
+>     ...
+>     for label, cmd in (("test", project.test_cmd), ("lint", project.lint_cmd)):
+>         if not cmd:
+>             continue
+>         result = subprocess.run(shlex.split(cmd), capture_output=True, text=True, cwd=worktree_path)
+>         if result.returncode != 0:
+>             self._epic_branch_verify_failures[epic_id] = message
+>             return False
+>     ...
+>     finally:
+>         cleanup_worktree(worktree_path, self.repo_path, self.logger, self._git_lock, delete_branch=False)
+> ```
+> Key mechanics worth reusing directly in the new FSM `verify` state: (1)
+> `setup_worktree(..., checkout_existing=True)` to attach a scratch worktree
+> to the **already-created** epic branch rather than making a new one — this
+> is precisely the mechanism `checkout_epic_branch` needs downstream, since
+> it creates the branch via `git branch <name> <base>` without switching; (2)
+> runs both `project.test_cmd` **and** `project.lint_cmd` (if set), not just
+> `test_cmd`; (3) always tears the worktree down in a `finally` with
+> `delete_branch=False` (the branch persists, only the scratch worktree is
+> removed); (4) gated by its own config flag,
+> `EpicBranchesConfig.verify_before_merge` (`automation.py:52`, default
+> `False`) — a **separate** flag from `epic_branches.enabled`. Consider
+> whether this issue's `verify` state should reuse `verify_before_merge` for
+> its own gate (consistent naming/semantics with the already-shipped
+> parallel-path gate) rather than just riding on `epic_branches.enabled`
+> alone as Expected Behavior #1 currently implies.
+> Full test coverage to mirror: `scripts/tests/test_orchestrator.py:1520-1682`
+> (`test_no_merge_when_epic_branches_disabled`,
+> `test_verify_failure_blocks_merge`, `test_verify_success_merges`,
+> `test_verify_error_blocks_merge`,
+> `test_verify_failure_does_not_add_to_merged`).
+>
+> **Correction — `setup_worktree()` signature**: the design note above
+> understated it. Actual signature
+> (`scripts/little_loops/worktree_utils.py:63-72`):
+> ```python
+> def setup_worktree(
+>     repo_path: Path, worktree_path: Path, branch_name: str,
+>     copy_files: list[str], logger: Logger, git_lock: GitLock,
+>     base_branch: str | None = None, checkout_existing: bool = False,
+> ) -> None
+> ```
+> Two required params (`copy_files`, `logger`) sit between `branch_name` and
+> `git_lock` that weren't mentioned before. `checkout_existing` (mutually
+> exclusive with `base_branch`) is the exact flag `_verify_epic_branch_before_merge`
+> uses and the one the new delegate-worktree state needs.
+>
+> **Correction — `cli/loop/run.py` worktree hook point**: it's at **line
+> 409** (`if getattr(args, "worktree", False):`), not ~303 — line 303 is only
+> a `--worktree`/`--background` mutual-exclusion guard. The line-409 block
+> always forks a **new** timestamp-named branch off current `HEAD` via
+> `setup_worktree()` (no `base_branch`/`checkout_existing` passed) and then
+> `os.chdir()`s the whole process into the worktree for the rest of the run —
+> a whole-run CLI mechanism, not a per-state helper. Reusing it for the
+> delegate-into-worktree design means calling `setup_worktree()` directly
+> from a shell/action state with `checkout_existing=True`, not routing
+> through the `--worktree` CLI flag.
+>
+> **Confirmed: no FSM-YAML precedent exists** for combining a `loop:`
+> delegation state with worktree setup — grep for `worktree_utils`/
+> `setup_worktree`/`git worktree add` across
+> `scripts/little_loops/loops/*.yaml` returns zero matches (`worktree-health.yaml`
+> only lists/prunes via `git worktree list`/`prune`). The new
+> `checkout_epic_branch`/delegate-worktree states will be the first FSM-level
+> use of `setup_worktree` — `_verify_epic_branch_before_merge` above is a
+> Python sibling to adapt, not a YAML template to copy.
+>
+> Re-verified as still accurate and unchanged: `auto-refine-and-implement.yaml`'s
+> state chain (`resolve_set` on_yes→`delegate`, `delegate` on_success/on_failure→`finalize`,
+> on_error→`record_error`); `TestAutoRefineAndImplementLoop` (1877-2421) and
+> `TestSprintRefineAndImplementLoop` (2423-2476) in
+> `scripts/tests/test_builtin_loops.py`; `test_delegate_crash_routes_to_record_error`
+> (1972-1979) still asserts `delegate.on_success == "finalize"` and
+> `on_failure == "finalize"`, confirming the Wiring Phase note about updating
+> it is still correct and still needed. Also worth noting as an additional
+> `fragment: shell_exit` reference beyond the two already cited:
+> `general-task.yaml`'s `run_final_tests` state (lines 489-516) additionally
+> compares against a captured baseline exit code (ENH-2244) so pre-existing
+> failures aren't flagged as new regressions — relevant if the new `verify`
+> state should avoid failing an epic run over already-broken tests unrelated
+> to the epic's children.
+
 ## Implementation Steps
 
 1. Identify the shared branch-naming helper used by `epic_branches`
@@ -384,6 +493,22 @@ the implementation:_
    step.
 10. Add a CHANGELOG.md entry under the next dated release section (not
     `[Unreleased]`, per project convention).
+11. Verify `checkout_epic_branch`/`verify`'s inline shell/python actions pass
+    the generic ERROR-only FSM validation sweeps
+    (`test_builtin_loops.py::TestBuiltinLoopFiles.test_all_validate_as_valid_fsm`,
+    `test_fsm_fragments.py::TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`)
+    and the interpolation namespace gate (`test_builtin_loop_interpolation.py`)
+    — escape bash variables as `$${...}`, no bare `${VAR}` inside inline
+    `python3 -c "..."` blocks.
+12. Add a config-gate test for `checkout_epic_branch` modeled on
+    `test_rn_implement.py::TestCheckLearningReadyConfigReadShell`'s `_run()`
+    helper pattern (write `.ll/ll-config.json` to `tmp_path`, extract the
+    action string, execute via `subprocess.run(["bash", "-c", action], ...)`).
+13. Add a brief cross-reference to `docs/ARCHITECTURE.md`'s `epic_branches`
+    prose noting FSM-loop awareness, and a disambiguating note in
+    `docs/guides/SPRINT_GUIDE.md#per-epic-integration-branch` distinguishing
+    this from the existing `ll-parallel --epic-branches`/`ll-sprint
+    --epic-branches` CLI flag documented in `docs/reference/CLI.md`.
 
 ## Integration Map
 
@@ -398,6 +523,18 @@ the implementation:_
 - `_maybe_complete_epic` epic-branch resolution used by the worker pool
   (`scripts/little_loops/parallel/worker_pool.py`) — reuse its branch-naming
   logic rather than duplicating it.
+
+_Added by `/ll:refine-issue --auto`:_
+- `_verify_epic_branch_before_merge` (`scripts/little_loops/parallel/orchestrator.py:1323-1386`,
+  shipped by [[ENH-2602]]/[[ENH-2603]], both `done`) — direct precedent for
+  the new `verify` state: `setup_worktree(..., checkout_existing=True)` on
+  the already-created epic branch, runs `test_cmd`+`lint_cmd`, records
+  failures, always `cleanup_worktree(..., delete_branch=False)`. Model the
+  FSM `verify` state's semantics after this rather than reconstructing from
+  the generic `fix-quality-and-tests.yaml`/`dead-code-cleanup.yaml` patterns
+  alone. See "Codebase Research Findings (verify-state precedent + signature
+  corrections)" above for the full comparison and test references
+  (`test_orchestrator.py:1520-1682`).
 
 ### Tests
 - `scripts/tests/` — loop validation coverage
@@ -443,6 +580,45 @@ _Wiring pass added by `/ll:wire-issue`:_
   `on_failure`/`on_error` routing-assertion pattern to mirror when asserting
   `delegate`'s new routing to `verify`. [Agent 3 finding]
 
+_Second wiring pass added by `/ll:wire-issue --auto` on 2026-07-11:_
+- `scripts/tests/test_builtin_loops.py:46-54` —
+  `TestBuiltinLoopFiles.test_all_validate_as_valid_fsm` sweeps **every**
+  builtin loop (including both target files) through `load_and_validate` +
+  `validate_fsm`, asserting zero ERROR-severity violations. The new
+  `checkout_epic_branch`/`verify` states must not trip MR-1/MR-7/MR-9/static
+  `loop:`-ref ERROR rules or this test breaks. [Agent 3 finding]
+- `scripts/tests/test_fsm_fragments.py:993-1032` —
+  `TestBuiltinLoopMigration.test_builtin_loops_load_after_migration`
+  explicitly lists both `auto-refine-and-implement.yaml` and
+  `sprint-refine-and-implement.yaml` in its `migration_targets` and calls
+  `load_and_validate(raise_on_error=True)` — a second, stricter ERROR-severity
+  gate (raises `ValueError` rather than just collecting) exercising the same
+  risk as above. [Agent 3 finding]
+- `scripts/tests/test_builtin_loop_interpolation.py` (`KNOWN_NAMESPACES`,
+  lines 41-51) — confirms no `config` interpolation namespace exists (matches
+  the already-noted absence of `${config.*}`); this is the actual regression
+  gate that will catch any unescaped bare `${VAR}` bash variable inside the
+  new states' inline `python3 -c "..."` blocks — escape as `$${...}` per the
+  project's bash-brace-escape convention. [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_rn_implement.py:1278-1364` —
+  `TestCheckLearningReadyConfigReadShell` is a better test-writing template
+  than the generic `fix-quality-and-tests.yaml`/`dead-code-cleanup.yaml`
+  patterns already cited: its `_run()` helper writes `.ll/ll-config.json` to
+  `tmp_path`, extracts the actual `action` string from the loaded YAML state,
+  unescapes `$$` → `$`, and executes via `subprocess.run(["bash", "-c",
+  action], ...)`. Use this end-to-end pattern to test `checkout_epic_branch`'s
+  config gate (`epic_branches.enabled` on/off, `verify_before_merge` on/off).
+  Simpler sibling: `test_general_task_loop.py::test_falls_back_to_config_test_cmd`
+  (~1352-1359) for the `project.test_cmd` fallback shape. [Agent 3 finding]
+- `scripts/tests/test_config.py` (`test_epic_branches_defaults`/
+  `test_epic_branches_from_dict`/`test_epic_branches_partial_dict_uses_defaults`,
+  ~419-453; `test_create_parallel_config_epic_branches_explicit_*`, ~975-1028)
+  and `scripts/tests/test_config_schema.py::test_parallel_epic_branches_in_schema`
+  (~744) — existing coverage for `EpicBranchesConfig`/schema parsing; relevant
+  only if the new inline action reconstructs config parsing manually rather
+  than importing `EpicBranchesConfig.from_dict` directly (prefer the import —
+  it's already tested here). [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/SPRINT_GUIDE.md#per-epic-integration-branch`
 
@@ -474,6 +650,30 @@ _Wiring pass added by `/ll:wire-issue`:_
   `epic_branches` object is already fully defined (`enabled`, `prefix`,
   `merge_to_base_on_complete`, `open_pr`) — no schema changes needed since the
   new states only read existing config fields. [Agent 2 finding]
+
+_Second wiring pass added by `/ll:wire-issue --auto` on 2026-07-11:_
+- `docs/ARCHITECTURE.md` (~459-474, "Orchestration Layers" § parallel mode) —
+  documents `epic_branches.*` exclusively in terms of `WorkerPool`/
+  `MergeCoordinator` (the `ll-parallel` path). Once this issue ships, the
+  section reads as `ll-parallel`-only and should note that
+  `auto-refine-and-implement`/`sprint-refine-and-implement` are now also
+  `epic_branches`-aware. [Agent 2 finding]
+- `docs/reference/CLI.md` (~355-361 `ll-parallel --epic-branches`, ~425-431
+  `ll-sprint --epic-branches`) — documents a pre-existing, **unrelated**
+  `--epic-branches` CLI flag on a different code path (`WorkerPool`). No edit
+  strictly required, but flagging the adjacency risk: a reader could conflate
+  "`ll-sprint --epic-branches`" with this issue's new FSM-loop config-driven
+  behavior. Consider a one-line disambiguating cross-reference in
+  `SPRINT_GUIDE.md#per-epic-integration-branch`. [Agent 2 finding]
+- Confirmed (not a gap): no other loop YAML delegates to
+  `auto-refine-and-implement` or `sprint-refine-and-implement` via `loop:`
+  (grep across `scripts/little_loops/loops/*.yaml` returns exactly one hit —
+  `sprint-refine-and-implement.yaml`'s own `delegate` state) — the
+  `delegate.on_success`/`on_failure` routing rewire's blast radius is exactly
+  as narrow as already documented; `ll-loop diagnose-evaluators`/
+  `calibrate-budget`/`edit-routes` all render FSM state graphs generically
+  from parsed YAML with no hardcoded state-name literals, so they need no
+  changes either. [Agent 1 + Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -519,12 +719,39 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Risk**: Low-medium — new states are additive and gated behind existing
   config; default (`epic_branches.enabled: false`) behavior is unchanged.
 
+## Scope Boundaries
+
+- **Out of scope**: making `autodev.yaml`'s `singleton: true` gate
+  worktree/branch-scoped. `LockManager.find_conflict()`
+  (`scripts/little_loops/fsm/concurrency.py:268-285`) enforces the gate purely
+  by loop name; a worktree-per-delegate design (this issue) still blocks a
+  second, independent `autodev` run system-wide even if it targets a
+  different epic's worktree. Concurrent multi-epic `autodev` runs remain
+  unsupported after this change — that's separate follow-on work.
+- **Out of scope**: the pre-existing `ll-parallel --epic-branches` /
+  `ll-sprint --epic-branches` CLI flag (`docs/reference/CLI.md`). That flag
+  drives an unrelated code path (`WorkerPool`); this issue only makes the FSM
+  `auto-refine-and-implement`/`sprint-refine-and-implement` loops
+  `epic_branches`-config-aware, it does not add or change any CLI flag.
+- **Out of scope**: schema changes to `epic_branches`. The
+  `EpicBranchesConfig` object (`enabled`, `prefix`, `merge_to_base_on_complete`,
+  `open_pr`, `verify_before_merge`) is already fully defined in
+  `config-schema.json` — the new FSM states only read existing fields.
+- **Out of scope**: `docs/development/MERGE-COORDINATOR.md` and
+  `docs/reference/CONFIGURATION.md` — confirmed read-only prior art documenting
+  the `ll-parallel`/`WorkerPool` consumer of `epic_branches`; not edited by
+  this issue.
+- **In scope**: `auto-refine-and-implement.yaml` (new `checkout_epic_branch`
+  and `verify` states, rewired `delegate` routing) and
+  `sprint-refine-and-implement.yaml` (inherits the behavior via its existing
+  thin-delegation pass-through, no logic changes of its own).
+
 ## Related Key Documentation
 
 | Document | Relevance |
 |----------|-----------|
 | docs/guides/SPRINT_GUIDE.md | Per-EPIC integration branch user-facing docs |
-| docs/reference/API.md | `_build_parallel_epic_branches` branch-naming helper |
+| docs/reference/API.md | `_build_parallel_epic_branches` branch-naming helper — ⚠ stale symbol name, see "Codebase Research Findings" under Proposed Solution: actual logic is `worker_pool.py`'s `_resolve_branch_targets`/`_find_nearest_epic_ancestor`/`_load_epic_slug`/`_ensure_epic_branch` |
 
 ## Confidence Check Notes
 
@@ -561,6 +788,11 @@ current codebase and confirmed accurate.
   assertions elsewhere in the same test module.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T22:02:18Z - `ea53e766-bfc1-49ed-93fb-f17801a11508.jsonl`
+- `/ll:ready-issue` - 2026-07-11T21:35:44 - `9b278357-cb32-4f06-9cf8-8292e78bffc7.jsonl`
+- `/ll:confidence-check` - 2026-07-11T00:00:00 - `2b761452-14a4-4fad-85e4-e85c7e44397a.jsonl`
+- `/ll:wire-issue` - 2026-07-11T21:29:44 - `b0a3f2cb-d206-462c-acc4-cd573e933ba4.jsonl`
+- `/ll:refine-issue` - 2026-07-11T21:22:02 - `c244db6b-542d-4bf9-bbd7-bc2bfb65af3a.jsonl`
 - `/ll:confidence-check` - 2026-07-11T00:00:00 - `a9ba0748-bc8c-4087-8f47-2ec3d3701d19.jsonl`
 - `/ll:refine-issue` - 2026-07-11T15:29:35 - `bfcd3543-700a-432c-862f-c761278d305f.jsonl`
 - `/ll:confidence-check` - 2026-07-11T00:00:00 - `23b4bb5a-ecba-4362-88e9-909c549f5c36.jsonl`
@@ -573,6 +805,29 @@ current codebase and confirmed accurate.
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: added `checkout_epic_branch` (Option A create-without-switch, gated on `scope` matching `EPIC-NNN` + `parallel.epic_branches.enabled`) between `resolve_set` and `delegate`; rewired `delegate.on_success`/`on_failure` to a new `verify` state (runs `project.test_cmd`/`lint_cmd` in place, advisory-only); `finalize` now reads `verify-verdict.txt` and adds an additive `verify_verdict` key to `summary.json`.
+- `scripts/tests/test_builtin_loops.py`: updated `test_required_states_exist`, `test_resolve_set_routes`, `test_delegate_crash_routes_to_record_error` for the new/rewired states; added `TestCheckoutEpicBranchConfigReadShell` and `TestVerifyStateConfigReadShell` (real git-repo / config-gated subprocess execution of the new states' actions) plus structural + `summary.json` additive-key tests.
+- Docs: `docs/guides/LOOPS_REFERENCE.md` (FSM flow diagrams + notes for both loops), `docs/guides/SPRINT_GUIDE.md` (disambiguation vs. `ll-parallel`/`ll-sprint --epic-branches`), `docs/ARCHITECTURE.md` (epic_branches FSM-loop consumer cross-reference), `skills/audit-loop-run/SKILL.md` (Step 6a `verify_verdict` key), `scripts/little_loops/loops/README.md` (catalog line), `CHANGELOG.md` (dated entry under 1.142.0).
+
+### Scope note
+`checkout_epic_branch` only *creates* the epic integration branch (mirrors `WorkerPool._ensure_epic_branch` — no `git checkout`, preserving the main-tree-never-switches invariant). Making `delegate`'s `autodev` sub-loop actually land its commits on that branch (the "delegate branch-awareness" mechanism explored in this issue's own research) requires either an FSM-executor change (per-state cwd/worktree support for `loop:` sub-loop delegation) or converting `delegate` from a `loop:` field into a subprocess-based shell state — both out of scope for this change and not covered by the issue's Implementation Steps/Scope Boundaries or by the pre-existing `test_delegate_uses_autodev_engine` assertion (kept passing unchanged). Tracked as explicit follow-on work, consistent with the singleton-gate residual gap already noted as out of scope in this issue.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 14641 passed, 36 skipped)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — 1 pre-existing unrelated error in `cli/loop/layout.py`, not touched by this change)
+- Run: PASS (`ll-loop validate auto-refine-and-implement` / `sprint-refine-and-implement`)
+- Integration: PASS
+
+---
+
 ## Status
 
-- [ ] Not started
+- [x] Completed

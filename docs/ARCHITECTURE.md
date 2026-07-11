@@ -473,6 +473,13 @@ that merge/PR-open is gated on a scratch-worktree run of `test_cmd`/`lint_cmd`
 against the EPIC branch tip; a failure blocks it, leaves the branch open for
 retry, and is surfaced in the run summary (ENH-2603).
 
+`epic_branches` also has an FSM-loop-side consumer outside this `WorkerPool`
+path (ENH-2601): `auto-refine-and-implement`/`sprint-refine-and-implement`
+read `parallel.epic_branches.enabled`/`.prefix` to create (not check out) the
+`epic/<EPIC-ID>-<slug>` branch when `scope` resolves to an EPIC-NNN id, then
+run a post-implementation `test_cmd`/`lint_cmd` verify pass folded into
+`summary.json`. See [LOOPS_REFERENCE.md § auto-refine-and-implement](guides/LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
+
 ```mermaid
 flowchart TB
     subgraph Orchestrator["ParallelOrchestrator"]

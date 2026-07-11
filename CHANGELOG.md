@@ -12,7 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-EPIC integration branch surface, continued** — `--epic-branches` CLI
   flag, TUI surface, docs, and templates (FEAT-2450); `_inspect_worktree()` and
   the in-place sprint/CLI warning are now epic-branch aware (FEAT-2562,
-  FEAT-2563, ENH-2557).
+  FEAT-2563, ENH-2557); `auto-refine-and-implement`/`sprint-refine-and-implement`
+  are now `epic_branches`-aware too — a new `checkout_epic_branch` state
+  creates (without switching) the EPIC integration branch when `scope` is an
+  EPIC-NNN id, and a new `verify` state runs `test_cmd`/`lint_cmd` after
+  `delegate`, folding the pass/fail/skip verdict into `summary.json` as an
+  additive `verify_verdict` key (ENH-2601).
 - **`code-run-gate` oracle wiring** — the config schema for build/test/
   typecheck/lint/health checks (FEAT-2551) is now wired into `rn-remediate` and
   `rn-implement` as a real code-run gate (FEAT-2413, FEAT-2552).

@@ -18,6 +18,15 @@ description: |
   summary.json verdict (success / partial / partial-with-errors / phantom /
   no-op) plus a subloop_outcome token that reflects real terminal state, not an
   exit-code proxy (ENH-2005).
+
+  ENH-2601: when scope is an EPIC-NNN id and parallel.epic_branches.enabled is
+  true, checkout_epic_branch ensures epic/<EPIC-ID>-<slug> exists off
+  base_branch before delegate runs (create-without-switch, mirrors
+  WorkerPool._ensure_epic_branch — the main working tree is NOT switched to
+  it). After delegate, a verify state runs project.test_cmd/lint_cmd in place
+  and folds the pass/fail/skipped verdict into summary.json as an additive
+  verify_verdict field (advisory only — it does not gate finalize's own
+  ledger-based closure verdict).
 initial: init
 max_steps: 50
 timeout: 28800
@@ -117,26 +126,142 @@ states:
       printf '%s\n' "$LIST"
     fragment: shell_exit
     capture: issue_set
-    on_yes: delegate
+    on_yes: checkout_epic_branch
     on_no: finalize
     on_error: finalize
+
+  checkout_epic_branch:
+    # ENH-2601 Option A (create-without-switching — mirrors
+    # WorkerPool._ensure_epic_branch, worker_pool.py:1707-1743): when scope is
+    # an EPIC-NNN id and parallel.epic_branches.enabled is true, ensure
+    # epic/<EPIC-ID>-<slug> exists off base_branch. Deliberately does NOT `git
+    # checkout` it — the main working tree stays on whatever branch was
+    # already active, preserving the invariant documented in orchestrator.py's
+    # _merge_epic_branch_to_base docstring. No-op (writes nothing, always
+    # continues) when scope isn't an EPIC id or the config flag is off.
+    action: |
+      python3 << 'PYEOF'
+      import re
+      import subprocess
+      from pathlib import Path
+
+      from little_loops.config import BRConfig
+      from little_loops.issue_parser import IssueParser, slugify
+      from little_loops.worktree_utils import detect_default_branch
+
+      scope = """${context.scope}""".strip()
+      run_dir = Path("""${context.run_dir}""")
+
+      if not re.fullmatch(r"EPIC-\d+", scope):
+          print("checkout_epic_branch: scope is not an EPIC id — skipping")
+          raise SystemExit(0)
+
+      cfg = BRConfig(Path.cwd())
+      epic_cfg = cfg.parallel.epic_branches
+      if not epic_cfg.enabled:
+          print("checkout_epic_branch: parallel.epic_branches.enabled is false — skipping")
+          raise SystemExit(0)
+
+      epic_id = scope
+      slug = epic_id.lower()
+      issues_base = Path(".issues")
+      if issues_base.is_dir():
+          parser = IssueParser(cfg)
+          for category_dir in sorted(issues_base.iterdir()):
+              if not category_dir.is_dir():
+                  continue
+              for issue_file in sorted(category_dir.glob(f"P?-{epic_id}-*.md")):
+                  try:
+                      info = parser.parse_file(issue_file)
+                  except Exception:
+                      continue
+                  if info.title:
+                      slug = slugify(info.title)
+                  break
+
+      branch = f"{epic_cfg.prefix}{epic_id.lower()}-{slug}"
+      base = cfg.parallel.base_branch or detect_default_branch(Path.cwd())
+
+      def _git(args: list[str]) -> subprocess.CompletedProcess:
+          return subprocess.run(["git", *args], capture_output=True, text=True)
+
+      exists = _git(["rev-parse", "--verify", branch]).returncode == 0
+      if not exists:
+          remote = _git(["ls-remote", "--heads", cfg.parallel.remote_name, branch])
+          exists = bool(remote.stdout and remote.stdout.strip())
+      if not exists:
+          _git(["branch", branch, base])
+          print(f"checkout_epic_branch: created {branch} off {base}")
+      else:
+          print(f"checkout_epic_branch: {branch} already exists")
+
+      run_dir.mkdir(parents=True, exist_ok=True)
+      (run_dir / "epic-branch-name.txt").write_text(branch + "\n")
+      PYEOF
+    action_type: shell
+    next: delegate
+    on_error: delegate
 
   delegate:
     # Delegate the entire refine+implement to the autodev engine. autodev shares
     # this loop's run_dir (executor injects it via setdefault), so its
     # autodev-passed.txt / autodev-skipped.txt land under ${context.run_dir}
-    # where finalize reads them. on_success/on_failure both route to finalize
-    # (the ground-truth completed/ diff is the authoritative verdict regardless
-    # of autodev's collapsed terminal verdict). on_error routes to a DISTINCT
-    # crash state so an infrastructure failure is not laundered into a clean
-    # completion (ENH-2005 / ENH-2376).
+    # where finalize reads them. on_success/on_failure both route to verify
+    # (ENH-2601) rather than finalize directly, so the post-implementation
+    # test/lint check runs regardless of autodev's collapsed terminal verdict
+    # (the ground-truth completed/ diff computed in finalize remains the
+    # authoritative closure verdict). on_error routes to a DISTINCT crash state
+    # so an infrastructure failure is not laundered into a clean completion
+    # (ENH-2005 / ENH-2376).
     loop: autodev
     with:
       input: "${captured.issue_set.output}"
       skip_learning_gate: "${context.skip_learning_gate}"
-    on_success: finalize
-    on_failure: finalize
+    on_success: verify
+    on_failure: verify
     on_error: record_error
+
+  verify:
+    # ENH-2601: post-implementation correctness check, folded into
+    # summary.json as an ADDITIVE verify_verdict field — advisory only, does
+    # not gate finalize's own ledger-based closure verdict (a failing verify
+    # does not turn a successful closure into a failure). Runs
+    # project.test_cmd and, if configured, project.lint_cmd against whatever
+    # is currently checked out. Skips (verdict "skipped") when test_cmd is
+    # unconfigured, matching the SKIP-status convention used elsewhere for
+    # unconfigured verification commands.
+    action: |
+      RUN_DIR="${context.run_dir}"
+      VERIFY_VERDICT=$(python3 -c "
+      import json
+      import shlex
+      import subprocess
+      from pathlib import Path
+
+      p = Path('.ll/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      project = cfg.get('project', {})
+      test_cmd = project.get('test_cmd')
+      lint_cmd = project.get('lint_cmd')
+
+      if not test_cmd:
+          print('skipped')
+          raise SystemExit(0)
+
+      for cmd in (test_cmd, lint_cmd):
+          if not cmd:
+              continue
+          result = subprocess.run(shlex.split(cmd), capture_output=True, text=True)
+          if result.returncode != 0:
+              print('failed')
+              raise SystemExit(0)
+      print('passed')
+      ")
+      echo "$VERIFY_VERDICT" > "$RUN_DIR/verify-verdict.txt"
+      echo "verify: verdict=$VERIFY_VERDICT"
+    action_type: shell
+    next: finalize
+    on_error: finalize
 
   record_error:
     # autodev crashed at the infrastructure level before it could drain the set.
@@ -272,6 +397,12 @@ states:
         PARKED_RATE=0.0
       fi
 
+      # ENH-2601: VERIFY_VERDICT is sourced from the verify state's artifact
+      # (passed/failed/skipped) — "not_run" when verify never ran (e.g. the
+      # resolve_set on_no/on_error path skipped straight to finalize with no
+      # delegate/verify pass at all).
+      VERIFY_VERDICT=$(cat "$RUN_DIR/verify-verdict.txt" 2>/dev/null || echo "not_run")
+
       # Verdict reflects real closure. A run is only 'success' when it closed
       # something and left nothing parked (no skips, no not-closed, no crash).
       if [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
@@ -288,14 +419,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s verify_verdict=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT"
     action_type: shell
     next: done
 
