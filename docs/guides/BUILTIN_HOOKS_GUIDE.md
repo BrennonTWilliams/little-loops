@@ -52,6 +52,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
+| **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` from Claude-side Write/Edit | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
 | **PreToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
 | **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash output to a scratch file | **yes** | off |
@@ -194,6 +195,16 @@ On `Write`/`Edit` of a **new** `.md` file under `issues.base_dir` (default `.iss
 > `[little-loops] Duplicate ID detected: … conflicts with … Use the next available ID.`
 
 It allows edits to existing files and anything outside `.issues/`. Always on; uses an advisory lock that fails open.
+
+### Decisions YAML guard (blocks)
+
+**Hook:** `check-decisions-yaml.sh` (bash + Python)
+
+On `Write`/`Edit` of `.ll/decisions.yaml`, stages the candidate content in a temporary config root and runs `ll-verify-decisions` (ENH-2589) against it. For `Write`, the candidate is `tool_input.content`; for `Edit`, it is the post-edit result reconstructed from `old_string` → `new_string` (with optional `replace_all`). Validating the **candidate** — not the current on-disk file — is what makes this belt effective: a `Write` that's about to corrupt the file passes against the still-valid existing file and slips past the validator otherwise.
+
+Corruption (any `yaml.YAMLError`/`KeyError`/`ValueError` caught by `ll-verify-decisions`) emits the validator's single-line `ERROR:` on stderr and exits 2 (host-level block). Clean candidates exit 0 and let the host write through. Non-target paths and non-`Write`/`Edit` tools early-exit 0.
+
+It complements the pre-commit hook (ENH-2590) and pytest CI gate (ENH-2591); only this host-layer belt fires for Claude-driven writes inside the session. Skips gracefully when `python3` or `ll-verify-decisions` is missing.
 
 ### Learning-tests discoverability gate (warn or block)
 

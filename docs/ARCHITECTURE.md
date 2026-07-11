@@ -728,6 +728,23 @@ flowchart TB
 
 **Opt-in**: Absent `.ll/decisions.yaml` is never an error — all integrations gracefully skip when the file is missing. Enable the feature by adding a `decisions:` block to `.ll/ll-config.json`.
 
+**Integrity transports**: the YAML schema and load semantics are gated by
+`ll-verify-decisions` (ENH-2589) at three transport-layer integrations,
+listed in firing order:
+
+1. **Claude Code `PreToolUse` hook** (ENH-2592,
+   [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh))
+   — innermost belt; stages `Write`/`Edit` candidate content in a temp
+   config root and runs the validator against it. Block (exit 2) fires
+   before the host writes the file.
+2. **Git pre-commit hook** (ENH-2590, `.pre-commit-config.yaml`
+   `repo: local` block) — runs the validator on staged changes; fails the
+   `git commit` on any caught exception.
+3. **Pytest CI belt** (ENH-2591,
+   [`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py))
+   — wide-net belt covering `git commit --no-verify` and non-hook edit
+   paths; runs as part of `python -m pytest scripts/tests/`.
+
 **Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync), `/ll:wire-issue` Phase 3.5 (coupling entries → `MUST_AUDIT` injection into agent prompts).
 
 ### Correction Detection Heuristic

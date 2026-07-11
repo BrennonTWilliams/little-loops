@@ -496,8 +496,21 @@ transport layers, listed in order of when they fire:
    subprocess-asserting gate in `python -m pytest scripts/tests/`, so
    `git commit --no-verify` and non-hook edit paths still cannot land a
    corruption on `main`.
-3. **Claude Code `PreToolUse` hook** (ENH-2592) — blocks the corruption in
-   the editor session, before the file is even written.
+3. **Claude Code `PreToolUse` hook** (ENH-2592,
+   [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh))
+   — blocks the corruption in the editor session, before the file is even
+   written. Fires on `Write`/`Edit` of `.ll/decisions.yaml` with
+   `timeout: 5`. The hook stages the **candidate content**
+   (`tool_input.content` for Write, or the post-Edit result reconstructed
+   from `old_string` → `new_string`) in a temporary `<tmp>/.ll/decisions.yaml`
+   and runs `ll-verify-decisions --config-root <tmp>` against it —
+   validating the candidate before mutation, not the on-disk file.
+   Corruption (any `yaml.YAMLError`/`KeyError`/`ValueError`) bubbles up
+   as host-level exit 2 with the validator's single-line `ERROR:` on
+   stderr; clean candidates exit 0 and let Claude write through. Skips
+   gracefully when `python3` or `ll-verify-decisions` is missing — the
+   pre-commit and pytest belts remain authoritative. Gated by
+   [`scripts/tests/test_check_decisions_yaml_hook.py`](../../scripts/tests/test_check_decisions_yaml_hook.py).
 
 All three layers share the validator's exit-code contract: `0` on a clean
 file, `1` with a single-line `ERROR:` message on stderr pointing at the

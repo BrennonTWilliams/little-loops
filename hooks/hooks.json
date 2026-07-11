@@ -55,6 +55,17 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-decisions-yaml.sh",
+            "timeout": 5,
+            "statusMessage": "Validating .ll/decisions.yaml..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/pre-tool-use.sh",
             "timeout": 5,
             "statusMessage": "Checking learning-test coverage..."

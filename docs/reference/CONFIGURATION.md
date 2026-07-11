@@ -792,6 +792,18 @@ entry-type discriminator fails the local suite — closing the
 hook (ENH-2590) alone cannot cover. The gate skips gracefully when
 `ll-verify-decisions` is absent from `PATH`.
 
+**Claude-side host belt (ENH-2592).** A sibling belt at
+[`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh)
+runs as a Claude Code `PreToolUse` hook on every `Write`/`Edit` of
+`.ll/decisions.yaml`, blocking (host-level exit 2) corruption before the
+file is even written. It validates the *candidate* content
+(`tool_input.content` for Write, `old_string → new_string` reconstruction
+for Edit), staged in a temp config root, against the same `ll-verify-decisions`
+binary. Only this host-layer belt fires for Claude-driven writes inside the
+session — direct editor edits bypass it; the pre-commit hook + pytest gate
+remain the authoritative backstops. The hook skips gracefully when
+`ll-verify-decisions` or `python3` is missing.
+
 ### `learning_tests`
 
 Master switch for the learning test registry feature. When enabled, skills and loops can query `.ll/learning-tests/` via `ll-learning-tests` to check whether a target API or pattern is already proven before re-doing the work. Records are stored as YAML-frontmatter markdown files under `.ll/learning-tests/<slug>.md`.
