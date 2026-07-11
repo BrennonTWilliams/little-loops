@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.142.0] - 2026-07-11
+
+### Added
+
+- **Per-EPIC integration branch surface, continued** — `--epic-branches` CLI
+  flag, TUI surface, docs, and templates (FEAT-2450); `_inspect_worktree()` and
+  the in-place sprint/CLI warning are now epic-branch aware (FEAT-2562,
+  FEAT-2563, ENH-2557).
+- **`code-run-gate` oracle wiring** — the config schema for build/test/
+  typecheck/lint/health checks (FEAT-2551) is now wired into `rn-remediate` and
+  `rn-implement` as a real code-run gate (FEAT-2413, FEAT-2552).
+- **`.ll/decisions.yaml` integrity belt** — a Claude Code `PreToolUse` hook
+  (ENH-2592), a repo-local pre-commit hook (ENH-2590), a pytest CI gate for
+  corruption (ENH-2591), and a standalone `ll-verify-decisions` validator CLI
+  with malformed-input coverage (ENH-2589).
+- **`ll-loop run` diagram/config polish** — the run diagram header now shows
+  the input value and packs the model onto the `run_dir` row (ENH-2596); stub
+  terminator glyphs at cut boundaries render with open half-circle arcs at
+  decision points instead of the pre-decision filled-semicircle glyphs
+  (ENH-2593, BUG-2597); `--delay` is config-defaultable via
+  `loops.run_defaults` (ENH-2556).
+- **`ll-loop list` default reverted to detailed table** — `--grid` is now
+  opt-in (ENH-2572).
+- **`ll-issues show` card rendering overhaul** — summary reflow and visual
+  hierarchy tuned for scanning-first UX (ENH-2574).
+- **`epic-consistency`** — recognizes `### FEAT-NNN` prose headings and
+  downgrades `relates_to` membership to advisory (ENH-2564).
+- **`find_nearest_epic_ancestor`** — promoted to a shared module-level helper
+  for reuse across merge-routing consumers (FEAT-2561).
+
+### Fixed
+
+- **`save_decisions()` dropped unmodeled keys** — entries with keys not
+  declared on the dataclass now round-trip intact (BUG-2588).
+- **`autodev` skipped decision verification** — `implement_current` no longer
+  advances after `run_decide` without re-verifying `decision_needed` is
+  cleared (BUG-2595).
+- **`ll_auto_learning_gate_check` crashed on untrusted `ll-auto` output** — the
+  fragment now greps the run-dir file instead of interpolating raw output
+  (BUG-2594).
+- **Pinned FSM box diagram header overflow** — header lines are now clamped to
+  terminal width in the pinned pane (BUG-2579).
+- **`general-task` convergence spin** — `continue_work` is now guarded against
+  spinning after abandoned steps (ENH-2585).
+- **`general-task` `final_verify`** — errors/timeouts route to a partial-credit
+  chain instead of forfeiting progress (ENH-2575).
+
+### Changed
+
+- **`ll-loop list` config defaults** — `--clear` and `--show-diagrams clean`
+  default on for target projects, and generated configs enable
+  `learning_tests` and `analytics` by default (ENH-2557, ENH-2560).
+
 ## [1.141.0] - 2026-07-09
 
 ### Added
@@ -3959,6 +4012,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.142.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.141.0...v1.142.0
 [1.141.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.140.0...v1.141.0
 [1.140.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.139.0...v1.140.0
 [1.139.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.138.0...v1.139.0
