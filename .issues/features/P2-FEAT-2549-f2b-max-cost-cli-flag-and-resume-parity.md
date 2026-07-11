@@ -1,19 +1,28 @@
 ---
 id: FEAT-2549
-title: "F2b — --max-cost CLI flag + EXIT_CODES['cost_budget_exceeded'] + run_background re-exec forwarding + resume subparser + run.py override application"
+title: "F2b \u2014 --max-cost CLI flag + EXIT_CODES['cost_budget_exceeded'] + run_background\
+  \ re-exec forwarding + resume subparser + run.py override application"
 type: FEAT
 priority: P2
-status: open
-captured_at: "2026-07-08T00:00:00Z"
+status: cancelled
+captured_at: '2026-07-08T00:00:00Z'
 discovered_date: 2026-07-08
 discovered_by: split-from-FEAT-2476
 parent: FEAT-2476
-relates_to: [EPIC-2456, FEAT-2548, FEAT-2550, ENH-2475, ENH-2477, FEAT-2478, ENH-2461, FEAT-2123]
+relates_to:
+- EPIC-2456
+- FEAT-2548
+- FEAT-2550
+- ENH-2475
+- ENH-2477
+- FEAT-2478
+- ENH-2461
+- FEAT-2123
 labels:
-  - token-cost
-  - budget
-  - cli
-  - tier-1
+- token-cost
+- budget
+- cli
+- tier-1
 decision_needed: false
 ---
 

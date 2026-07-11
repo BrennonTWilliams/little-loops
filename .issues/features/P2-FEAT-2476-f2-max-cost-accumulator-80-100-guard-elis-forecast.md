@@ -1,21 +1,30 @@
 ---
 id: FEAT-2476
-title: "F2 — --max-cost accumulator + 80%/100% guard + ELIS one-line forecast (umbrella coordination tracker)"
+title: "F2 \u2014 --max-cost accumulator + 80%/100% guard + ELIS one-line forecast\
+  \ (umbrella coordination tracker)"
 type: FEAT
 priority: P2
-status: open
-captured_at: "2026-07-04T20:05:34Z"
+status: cancelled
+captured_at: '2026-07-04T20:05:34Z'
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [FEAT-2548, FEAT-2549, FEAT-2550, ENH-2475, ENH-2477, FEAT-2478, ENH-2461, FEAT-2123]
+relates_to:
+- FEAT-2548
+- FEAT-2549
+- FEAT-2550
+- ENH-2475
+- ENH-2477
+- FEAT-2478
+- ENH-2461
+- FEAT-2123
 labels:
-  - token-cost
-  - budget
-  - fsm
-  - cli
-  - tier-1
-  - umbrella
+- token-cost
+- budget
+- fsm
+- cli
+- tier-1
+- umbrella
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 62
@@ -246,9 +255,10 @@ moved to its owning child.
 
 ## Status
 
-**Open** | Created: 2026-07-04 | Priority: P2 | Split 2026-07-08 → FEAT-2548 / FEAT-2549 / FEAT-2550
+**Cancelled** | Created: 2026-07-04 | Priority: P2 | Split 2026-07-08 → FEAT-2548 / FEAT-2549 / FEAT-2550 | Cancelled 2026-07-10 (all children cascaded)
 
 ## Session Log
+- epic-review - 2026-07-10 - Cancelled (cascaded to FEAT-2548/2549/2550). F2 is a spend-cap circuit-breaker, not a token-reduction technique — it halts a run at a $ ceiling but does not lower the tokens/$ spent per unit of work, unlike F1 (caching), F3 (compaction), F4 (compression), F7-lite (routing). Conflating governance with reduction was a framing error in EPIC-2456; cutting F2 rather than relabeling since no runaway-cost incident has actually motivated it. See EPIC-2456 Scope for the corresponding removal.
 - `/ll:confidence-check` (split) - 2026-07-08T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6d276935-0474-4bff-85e3-154d56cf1226.jsonl`
 - `/ll:refine-issue` - 2026-07-05T05:28:38 - `0dd2f4a0-5634-48f9-b6d1-6c46f2d01c58.jsonl`
 - `/ll:decide-issue` - 2026-07-05T05:19:14 - `24fd5b80-284c-4979-a68e-8175dca88a5f.jsonl`

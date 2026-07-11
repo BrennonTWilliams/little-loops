@@ -4,7 +4,7 @@ title: "F2a \u2014 fsm/budget.py primitive (BudgetAccumulator + BudgetGuard + EL
   \ + BudgetAccumulatorConfig schema + validation + JSON schema"
 type: FEAT
 priority: P2
-status: open
+status: cancelled
 captured_at: '2026-07-08T00:00:00Z'
 discovered_date: 2026-07-08
 discovered_by: split-from-FEAT-2476

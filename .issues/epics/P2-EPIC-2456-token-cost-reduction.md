@@ -22,13 +22,13 @@ score_complexity: 9
 score_test_coverage: 15
 ---
 
-# EPIC-2456: Token-Cost Reduction (Tier 0 + F1/F2/F3/F4-gated/F5/F6/F7-lite/F8/F10)
+# EPIC-2456: Token-Cost Reduction (Tier 0 + F1/F3/F4-gated/F5/F6/F7-lite/F8/F10)
 
 ## Summary
 
 Convert the deep-research catalog (13 repos, 4 adjacent plugins, 10 backlog features) into a single EPIC that **replicates** five features in-process (F3, F5, F7-lite, F8, F10), **integrates** one server-side primitive (F1, via the `anthropic` SDK), and gates one external library behind an in-house heuristic (F4-gated: LLMLingua stays opt-in behind a benchmark). The architecture is deliberate: little-loops already owns the call boundary (`resolve_host`), the iteration loop (`fsm/executor`), the prompt-assembly path (`fsm/runners`), and the prompt budget (`history.compaction`) — that surface is exactly where the open-source catalog's value lands, and most of it can be captured without new pip deps or sidecars.
 
-Posture is **"finish what's started, then layer on top"**. Three of the ten F-features (F2, F5, F6) are already partially built — `pricing.py` prices Opus/Sonnet/Haiku with cache fields, `cli/loop/_helpers.py:1676` prints a per-state cost table, `fsm/executor.py:1295–1305` already aggregates `cache_read`/`cache_creation` per state. The EPIC treats those as foundation, not as duplicates. Aggregate footprint: **~1,550 LOC, 1 pip dep (`anthropic`), 0 sidecars**.
+Posture is **"finish what's started, then layer on top"**. Two of the nine remaining F-features (F5, F6) are already partially built — `pricing.py` prices Opus/Sonnet/Haiku with cache fields, `cli/loop/_helpers.py:1676` prints a per-state cost table, `fsm/executor.py:1295–1305` already aggregates `cache_read`/`cache_creation` per state. The EPIC treats those as foundation, not as duplicates. Aggregate footprint: **~1,390 LOC, 1 pip dep (`anthropic`), 0 sidecars** (F2's ~160 LOC cut 2026-07-10; was ~1,550).
 
 **Prioritization layer** lives in `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md` — five execution tiers (Tier 0 behavioral → Tier 1 measurement → Tier 2 caching → Tier 3 compaction/compression → Tier 4 routing). The 9 F-features below map onto those tiers; Tier 0 (wozcode P6/P2/P1 + LogCleaner + stop-sequence/prefill JSON helpers, ~180 LOC) ships first because it is strictly dominant (no measurement infra needed, immediate savings).
 
@@ -36,7 +36,7 @@ Posture is **"finish what's started, then layer on top"**. Three of the ten F-fe
 
 When this EPIC is done, every `ll-loop run` invocation:
 
-1. **Caps its own spend** at a configured USD ceiling (`--max-cost` flag + `cost_limits.max_cost_per_run` config) with an 80% soft-warning and 100% hard-stop (F2).
+1. ~~**Caps its own spend** at a configured USD ceiling (F2)~~ — **cut 2026-07-10**: a spend cap is governance/circuit-breaking, not token-cost reduction (it halts a run, it doesn't lower $/token spent); see FEAT-2476 Session Log.
 2. **Reports per-state spend** in `ll-ctx-stats` and the loop CLI's existing cost table, with `cache_read`/`cache_creation` broken out (already 80% done; F6 finishes it).
 3. **Sets Anthropic `cache_control: ephemeral`** on system + skill/tool blocks in every host invocation (F1).
 4. **Compacts long session memory** via the cookbook's 6-section schema (User Intent / Completed Work / Errors & Corrections / Active Work / Pending Tasks / Key References) at the existing 4096-token cross-session budget boundary (F3).
@@ -73,7 +73,7 @@ Two features are non-replicable:
 
 - **Compounds across every loop run.** Per-run savings multiply across `ll-auto`, `ll-sprint`, `ll-parallel`, and ad-hoc `ll-loop` invocations — the spend surface is large, and the optimization surface is already partly built.
 - **Moghadasi/Ghaderi audit finding.** Zero of eight surveyed agent benchmarks disclose inference cost — making cost telemetry first-class (F5) is a competitive differentiator for any consumer of `.ll/history.db`.
-- **Specific gaps the plans make actionable.** Three report features (F2, F5, F6) finish in-flight work; six pass-2 ports slot inside existing F-features without new dependencies; one behavioral tier ships at near-zero LOC ahead of any measurement infrastructure.
+- **Specific gaps the plans make actionable.** Two report features (F5, F6) finish in-flight work; six pass-2 ports slot inside existing F-features without new dependencies; one behavioral tier ships at near-zero LOC ahead of any measurement infrastructure.
 
 ## Scope
 
@@ -89,14 +89,14 @@ Two features are non-replicable:
 | LogCleaner [25] | Anti-event regex + duplicate-window pre-filter on tool/log output | new filter module |
 | pass-2 #7 | Stop-sequence + prefill JSON output helpers (`extract_between_tags()`, `parse_prefilled_json()`, `rfind('{')` recipe) | new `scripts/little_loops/output/parse.py` |
 
-**F-feature layer (~9 children; ordered by tier)**
+**F-feature layer (~8 children; ordered by tier — F2 cut 2026-07-10)**
 
 | ID | F-feature | Module family | Lines of code (est.) | Pip deps |
 |---|---|---|---|---|
 | F1 | `cache_control: ephemeral` integration + cache-marking cost oracle | `host_runner.py` (new SDK call site) + oracle | ~130 (80 + ~50 oracle) | `anthropic` |
 | F1-prereq (a) | Content-hash fragment store | new `prompts/fragment_store.py` | ~40 | 0 |
 | F1-prereq (b) | Deferred tool loading | new `tools/deferred.py` | ~90 | 0 |
-| F2 | `--max-cost` accumulator + 80/100% guard + ELIS forecast | new `fsm/budget.py` | ~160 (120 + ~40 ELIS) | 0 |
+| ~~F2~~ | ~~`--max-cost` accumulator + 80/100% guard + ELIS forecast~~ — **cut 2026-07-10** (governance, not reduction; see FEAT-2476) | ~~new `fsm/budget.py`~~ | ~~~160~~ | — |
 | F3 | Session-memory compaction (StreamingLLM eviction + 6-section schema) | new `compaction/instant.py` + `compaction/result.py` | ~320 | 0 |
 | F4-gated | Heuristic prompt compressor (≥8K tokens) | new `compression/heuristic.py` | ~150 | 0 |
 | F5 | OTel `gen_ai.usage.*` emission (DES canonical schema) + streaming cache-accounting parity | new `observability/tracing.py` | ~150 (110 + ~30 parity) | 0 |
@@ -133,7 +133,7 @@ Two features are non-replicable:
 
 Children must extend the in-flight partials rather than duplicate them:
 
-- **F2 partial**: `scripts/little_loops/pricing.py` has `MODEL_PRICING` for Opus/Sonnet/Haiku (lines 10–55) and `estimate_cost_usd()` (lines 58–78). `cli/loop/_helpers.py:1676` calls it per row in the cost table. **Missing**: `--max-cost` CLI flag, an accumulator over iterations, a soft/hard guard.
+- ~~**F2 partial**~~ — **cut 2026-07-10**, see FEAT-2476 Session Log. `pricing.py`'s `MODEL_PRICING`/`estimate_cost_usd()` and `cli/loop/_helpers.py:1676`'s cost table remain as-is (F6's foundation); no `--max-cost` accumulator/guard will be built on top of them.
 - **F5 partial**: `fsm/executor.py` lines 1295–1305 aggregate `cache_read_tokens` / `cache_creation_tokens` per state. `subprocess_utils.py:50–51, 462–465` capture the same fields into a `UsageEvent`. **Missing**: emission under OTel `gen_ai.usage.*` attribute names.
 - **F6 partial**: same `cli/loop/_helpers.py:1665–1690` prints a cost table by state. **Missing**: a stable JSON schema for downstream consumers and per-state budget warnings (`cost_ceiling_per_state`).
 - **F7-lite prerequisite**: `list_models()` on the `HostRunner` protocol must land before F7-lite body work — every adapter (`ClaudeRunner`, `CodexRunner`, `OpenCodeRunner`, `PiRunner`, future `GeminiRunner`) needs the method for the cascade to have a model inventory to dispatch over.
@@ -154,7 +154,7 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 ### Tier 1 — measurement foundation
 
 - **ENH-2475** — F5.1 existing-event audit (DES adoption prerequisite): classify every currently-emitted `history.db` event into a DES variant; port non-conforming shapes. *(filed 2026-07-04, P2; was [TBD-3])*
-- **FEAT-2476** — F2 `--max-cost` accumulator + 80%/100% guard + ELIS one-line forecast: extends the executor's per-action usage aggregation (see Boundary note on anchors), new `fsm/budget.py`, `--max-cost` flag on `ll-loop run`. *(filed 2026-07-04, P2; was [TBD-4])* — **split 2026-07-08** into three grandchildren (FEAT-2548 / FEAT-2549 / FEAT-2550); see FEAT-2476's `## Children` for the data-flow split (primitive → CLI → integration).
+- ~~**FEAT-2476** — F2 `--max-cost` accumulator + 80%/100% guard + ELIS one-line forecast~~ *(filed 2026-07-04, P2; was [TBD-4]; split 2026-07-08 into FEAT-2548/2549/2550)* — **cancelled 2026-07-10** (cascaded to all three grandchildren): a spend cap is governance, not token-cost reduction — see FEAT-2476 Session Log.
 - **ENH-2477** — F6 per-state cost attribution (finishes): stable JSON output with `cache_read`/`cache_creation` broken out, `cost_ceiling_per_state` / `cost_warn_at` loop-YAML schema, new `fsm/cost_graph.py`. *(filed 2026-07-04, P2; was [TBD-5])*
 - **FEAT-2478** — F5 OTel `gen_ai.usage.*` emission: new `observability/tracing.py`, `gen_ai.invocation.id` UUID stamping, `gen_ai.provider.vendor` addendum, streaming-vs-blocking parity check. Depends on ENH-2475 (DES audit). *(filed 2026-07-04, P2; was [TBD-6])*
 - **ENH-2479** — F5 streaming-vs-blocking cache-accounting parity trace set: 3 locked fixtures (static-prefix-stable turn 2+, cache-write-then-read across tool result, tool-result-only cache hit); gates 0.1% parity threshold in `test_streaming_cache_parity.py`. *(filed 2026-07-04, P2; was [TBD-7])*
@@ -192,7 +192,6 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 ### Primary Files (per tier)
 
 - **Tier 0**: ~6 `skills/*/SKILL.md` bodies (P6) + ~4 `agents/*.md` frontmatter (P2) + `hooks/hooks.json` + hook module (P1) + new anti-event filter module (~60 LOC) + new `scripts/little_loops/output/parse.py` (~30 LOC).
-- **F2**: new `scripts/little_loops/fsm/budget.py` (~120 LOC incl. ELIS) + extend `scripts/little_loops/fsm/executor.py:1295` + add `--max-cost` to `scripts/little_loops/cli/loop/__main__.py`.
 - **F6**: extend `scripts/little_loops/cli/loop/_helpers.py:1676` + new `scripts/little_loops/fsm/cost_graph.py` (~50 LOC) + extend `scripts/little_loops/fsm/schema.py` (`cost_ceiling_per_state`).
 - **F5**: new `scripts/little_loops/observability/tracing.py` (~110 LOC + ~30 LOC streaming parity) + extend `scripts/little_loops/subprocess_utils.py:462` (UsageEvent UUID stamping) + extend `scripts/little_loops/history_reader.py` (`cost_attribution()` query, `GROUP BY gen_ai.invocation.id`).
 - **F5.1**: new `scripts/little_loops/observability/schema.py` (DES discriminated-union payload + audit script).
@@ -201,19 +200,18 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 - **F8**: new `scripts/little_loops/subagents/handoff.py` (~100 LOC incl. ~30 LOC parent-prefix hoisting) — imports F3; optional shared `scripts/little_loops/lib/hashing.py` with `fragment_store`.
 - **F4-gated**: new `scripts/little_loops/compression/heuristic.py` (~150 LOC) + extend `scripts/little_loops/fsm/runners.py` (≥8K threshold hook).
 - **F10**: new `scripts/little_loops/skills/speculative.py` (~80 LOC, incl. `max_tokens=0` alt) + extend `hooks/hooks.json` (SkillStart hook entry).
-- **F7-lite**: extend `scripts/little_loops/host_runner.py` (routing table + `HostRunner.list_models()` + FrugalGPT cascade skeleton) + new `scripts/little_loops/routing/calibrate.py` (~30 LOC) + extend `scripts/little_loops/fsm/budget.py` (per-worker spend table) + extend `config-schema.json` + `.ll/ll-config.json`.
+- **F7-lite**: extend `scripts/little_loops/host_runner.py` (routing table + `HostRunner.list_models()` + FrugalGPT cascade skeleton) + new `scripts/little_loops/routing/calibrate.py` (~30 LOC) + new per-worker spend tracking (⚠️ was slated for `fsm/budget.py`, now cancelled — F7-lite must either own a minimal local accumulator or this bullet needs re-scoping before body work) + extend `config-schema.json` + `.ll/ll-config.json`.
 
 ### Dependent Files (callers / importers to update)
 
 - `scripts/little_loops/cli/ctx_stats.py` — read cost attribution via `history_reader.cost_attribution()`.
 - `scripts/little_loops/cli/loop/_helpers.py` — surface per-state budget warnings.
-- `scripts/little_loops/loops/general-task.yaml` + `deep-research.yaml` + others — opt into `--max-cost` defaults.
 
 ### Tests
 
 - `scripts/tests/test_edit_batch_hook.py` (new) — Tier 0 P1 edit-batch nudge regression.
 - `scripts/tests/test_json_output_parse.py` (new) — Tier 0 `output/parse.py` extract/prefill helpers.
-- `scripts/tests/test_fsm_budget.py` (new) — F2 / F7-lite accumulator + guard + ELIS forecast error ≤15%.
+- `scripts/tests/test_fsm_budget.py` (new, if F7-lite still needs a per-worker accumulator post-F2-cut) — guard + forecast error ≤15%.
 - `scripts/tests/test_cli_cost_table.py` (new) — F6 schema + per-state warnings.
 - `scripts/tests/test_otel_attributes.py` (new) — F5 attribute emission + DES schema accepts 100% of current events.
 - `scripts/tests/test_streaming_cache_parity.py` (new) — F5 streaming-vs-blocking `cache_read_input_tokens` match within 0.1%.
@@ -240,7 +238,6 @@ The dependency spine:
 ```
 Tier 0  P6 → P2 → P1 → LogCleaner → JSON helpers (output/parse.py)   [independent; ship first]
 F5.1 (existing-event audit)          [must precede F5's DES adoption]
-F2  (--max-cost + ELIS forecast)     [no deps; reads existing executor usage]
 F6  (per-state cost attribution)     [no deps; finishes existing cost table]
 F5  (OTel/DES emission + streaming parity)   [no deps; wraps existing UsageEvent]
   └─ fragment_store + defer_loading  [F1 cache-stability prerequisites; must precede F1 enable]
@@ -250,7 +247,7 @@ F5  (OTel/DES emission + streaming parity)   [no deps; wraps existing UsageEvent
        └─ F8  (subagent handoff + parent-prefix hoisting)  [imports F3's compaction/instant.py]
   └─ F4-gated  (heuristic compressor)  [no deps; LLMLingua is opt-in via config flag]
 list_models() on HostRunner → routing.precedence config → calibrate.py
-  └─ F7-lite  (in-process routing + FrugalGPT cascade)  [depends on F2; orthogonal to caching + compression]
+  └─ F7-lite  (in-process routing + FrugalGPT cascade)  [F2 dependency cut 2026-07-10 — needs its own per-worker budget scoping; orthogonal to caching + compression]
 ```
 
 **Parallel-execution caveat:** Tiers 2 and 3 are work-stream-independent once foundation lands, but both touch `host_runner.py` and `fsm/` — parallel work is only safe in separate worktrees with a careful integration merge; default to sequential unless two reviewers are available.
@@ -258,7 +255,7 @@ list_models() on HostRunner → routing.precedence config → calibrate.py
 ## Impact
 
 - **Priority**: **P2** — high-leverage but not blocking; savings compound across every loop run, but no current production user is blocked on absence.
-- **Effort**: Medium per child (~100 LOC + tests each), Large aggregate (**~1,550 LOC** — Tier 0 ~180 + F-layer ~1,370 — plus ~700 LOC tests). Distributed across ~9 children + Tier 0.
+- **Effort**: Medium per child (~100 LOC + tests each), Large aggregate (**~1,390 LOC** — Tier 0 ~180 + F-layer ~1,210 — plus tests). Distributed across ~8 children + Tier 0 (F2 cut 2026-07-10).
 - **Risk**: **Low** for replication features (heuristic compressor + 6-section compaction are well-trodden patterns); **Medium** for F1 (first SDK integration; introduces a new network code path alongside the CLI shell path); **Low** for F7-lite (extends an already-typed Protocol); parent-prefix hoisting is greenfield (no upstream) but small and gated behind the F5 parity test.
 - **Breaking Change**: **No** — every feature is additive; default behaviors unchanged. Existing loops run exactly as before unless they opt in via new config keys.
 
@@ -266,7 +263,6 @@ list_models() on HostRunner → routing.precedence config → calibrate.py
 
 - **Tier 0**: before/after cost delta on a locked 3–5 trace set (measured via host CLI `usage` block, since Tier 1 telemetry isn't online yet) plus a P1-hook regression test; JSON output helpers deliver 20–40% output-token reduction on FSM verdict strings.
 - **F1**: `cache_read_input_tokens` populated for >50% of FSM iterations in `general-task` runs; cache-marking oracle **never logs a 1.25× write on a block that wasn't reused within K subsequent calls**; fragment_store hit rate ≥80% across the locked Tier 0 trace set; deferred tool loading preserves the cache breakpoint across a 5-skill catalog churn (regression test).
-- **F2**: `ll-loop run --max-cost=1.00` reliably halts at $1.00 ± 5% on representative workloads; never exceeds the configured ceiling; ELIS forecast error ≤ 15% on a held-out trace set.
 - **F3**: Compaction triggers at the configured soft threshold (default 7,500 tokens); eviction preserves system/CLAUDE.md blocks (regression test); eviction+heuristic combo reduces context size to the **50–70% range** on the locked trace set (the 88% cookbook figure is the semantic-summarization upper bound, reserved for a future upgrade) without measurable quality regression on a held-out eval set.
 - **F6**: Cost table in `ll-loop run` output breaks out `cache_read` / `cache_creation` and is stable across versions (lock the JSON schema in tests).
 - **F5**: `gen_ai.usage.*` attributes parse cleanly under `phoenix serve` (verify in CI via a fixture run; Phoenix install is optional); DES schema accepts 100% of currently-emitted events (F5.1 audit gate). Per-CLI-invocation `gen_ai.invocation.id` UUID unique across all FSM iterations; `GROUP BY gen_ai.invocation.id` rollup returns one row per invocation with token sums matching raw `result`-event `usage` totals. Streaming parity: `cache_read_input_tokens` matches between `client.messages.create()` and `client.messages.stream()` within 0.1%.
@@ -305,6 +301,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- epic-review - 2026-07-10 - **F2 cut** (per user request, not deferred): FEAT-2476 and its three grandchildren (FEAT-2548/2549/2550) cancelled — a spend cap/circuit-breaker is cost *governance*, not *reduction* (it halts a run at a $ ceiling; it doesn't lower tokens/$ spent per unit of work, unlike F1/F3/F4/F7-lite). Removed F2 from Goal, Scope table, Boundary section, Children, Integration Map, Implementation Order, Success Metrics, and effort totals (~1,550 → ~1,390 LOC, 9 → 8 F-feature children). Flagged one follow-up: F7-lite's per-worker spend tracking was slated to reuse `fsm/budget.py`; that dependency needs re-scoping (either a minimal local accumulator or drop the per-worker guard) before F7-lite body work starts.
 
 - epic-audit - 2026-07-06 (second pass) - Child cross-check: fixed FEAT-2478's mislabel of the `anthropic`-SDK prerequisite as "F1 (FEAT-2476)" (F1 is unfiled [TBD-10]; FEAT-2476 is F2, no pip deps); corrected FEAT-2476's stale "`.ll/ll-config.json` already documents `cost_limits.*`" Integration-Map line + stale executor anchor in Files to Modify; added reciprocal `relates_to` links (ENH-2461 ↔ FEAT-2476/ENH-2477/FEAT-2478); struck two stale ENH-2471 research notes (exit-code-0 nudge contract — shipped behavior is `exit_code=2` threshold-gated; haiku pin attributed to FEAT-2470 — moved to ENH-2490). Verified on disk: FEAT-2470/ENH-2499 artifacts all present; ENH-2471's `tier0_traces/` fixtures + `docs/observability/` not yet created (consistent with its open status). Statuses, parents, and blocks/depends_on pairs (ENH-2475→FEAT-2478, ENH-2479→FEAT-2478) all consistent.
 - epic-audit - 2026-07-06 - Audit pass: added ENH-2486/ENH-2490/ENH-2499 to `relates_to`; recorded FEAT-2470 + ENH-2499 as done in Children; added ENH-2499 entry (stateful edit-batch nudge follow-on) and "Related non-child work" note for ENH-2486; noted ENH-2471 trace-count relaxation (3–5 → ≥2, decided 2026-07-05) and that its hook-regression-test half shipped with FEAT-2470; updated Children intro (Tier 0–1 filed, Tier 2–4 TBD).
