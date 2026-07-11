@@ -8,13 +8,13 @@ discovered_date: 2026-07-11
 discovered_by: capture-issue
 relates_to:
 - ENH-2600
-confidence_score: 94
-outcome_confidence: 70
-score_complexity: 16
+confidence_score: 96
+outcome_confidence: 80
+score_complexity: 14
 score_test_coverage: 22
-score_ambiguity: 12
-score_change_surface: 20
-decision_needed: true
+score_ambiguity: 22
+score_change_surface: 22
+decision_needed: false
 ---
 
 # ENH-2601: FSM refine/implement loops are unaware of epic_branches and lack a post-implement verify state
@@ -67,6 +67,32 @@ lighter worker-pool flow.
 
 ## Proposed Solution
 
+### Option A — Create-without-switching (mirrors worker-pool precedent)
+
+> **Selected:** Option A — preserves the documented main-tree invariant and reuses the proven `_ensure_epic_branch` git mechanic; Option B directly contradicts that invariant with no existing rollback precedent.
+
+`checkout_epic_branch` uses `git branch <name> <base>` only — creates the
+branch without switching the working-directory checkout, matching
+`_ensure_epic_branch` (`scripts/little_loops/parallel/worker_pool.py:1707-1743`).
+Since `auto-refine-and-implement.yaml` has no worktree isolation, the
+`delegate` (autodev) step must then be made branch-aware itself — e.g. by
+passing the branch name through to `ll-auto`/`ll-parallel` so per-issue work
+lands there, or by adding a worktree at the epic branch for the duration of
+`delegate`. Preserves the existing invariant (documented in
+`orchestrator.py`'s `_merge_epic_branch_to_base` docstring) that the main
+working tree stays on `base_branch` throughout automated runs.
+
+### Option B — Checkout-and-switch (literal reading of Expected Behavior #1)
+
+`checkout_epic_branch` runs `git checkout -b <name> <base>` (or
+`git checkout <name>` if it already exists), switching the actual
+working-directory branch before `delegate` runs. Simpler: `autodev`/`ll-auto`
+need no branch-awareness — they operate on whatever's checked out. But this
+is a more intrusive operation than any existing epic-branch code path (no
+other FSM loop or `WorkerPool` code switches the main repo's branch — grep
+confirms) and temporarily changes the user's active git branch for the
+duration of the loop run, with no automatic restore if the loop errors mid-run.
+
 - Add a `checkout_epic_branch` (or similarly named) state at the start of
   `auto-refine-and-implement.yaml`, gated on `scope` resolving to an EPIC ID
   and `parallel.epic_branches.enabled`. Reuse the existing branch-naming
@@ -79,6 +105,45 @@ lighter worker-pool flow.
   `summary.json`.
 - Propagate through `sprint-refine-and-implement.yaml` since it's a thin
   delegator.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-11.
+
+**Selected**: Option A — Create-without-switching (mirrors worker-pool precedent)
+
+**Reasoning**: Option A reuses the proven `_ensure_epic_branch` git mechanic
+(`git branch <name> <base>`, no checkout — `worker_pool.py:1707-1743`) and
+preserves the invariant documented in `orchestrator.py`'s
+`_merge_epic_branch_to_base` docstring that the main repo never checks out an
+epic branch. Option B has zero existing precedent anywhere in the codebase
+for switching the main working tree's branch, no rollback/restore-on-error
+mechanism to recover a stranded checkout, and directly contradicts that
+documented invariant. Option A's remaining gap — making `delegate` itself
+branch-aware, since `ll-auto`/`autodev.yaml` currently has no branch/worktree
+parameter — is new plumbing either way, but it's additive rather than
+invariant-breaking.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| A — Create-without-switching | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| B — Checkout-and-switch | 0/3 | 2/3 | 1/3 | 0/3 | 3/12 |
+
+**Key evidence**:
+- Option A: `_ensure_epic_branch` (`worker_pool.py:1707-1743`) is a direct,
+  provable precedent for the create-without-switch git mechanic; the
+  downstream "make `delegate` branch-aware" half has no existing free-function
+  or CLI-flag precedent and must be built new, and `autodev.yaml`'s
+  `singleton: true` gate is explicitly justified by a single shared main-tree
+  checkout assumption a worktree-per-delegate approach would need to reconcile
+  with.
+- Option B: no FSM loop or `WorkerPool` code anywhere switches the main
+  repo's branch (`git checkout -b`/`git checkout <branch>` returns zero
+  matches across `scripts/little_loops/loops/**/*.yaml`); it directly
+  contradicts the `_merge_epic_branch_to_base` docstring invariant and has no
+  uncommitted-changes guard or error-triggered restore pattern to build on.
 
 ### Codebase Research Findings
 
@@ -158,6 +223,75 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 > variant of the same pattern. Both use `fragment: shell_exit` to turn the
 > shell exit code into yes/no/error routing — the new `verify` state should
 > follow the same fragment.
+
+### Codebase Research Findings (delegate branch-awareness mechanism)
+
+_Added by `/ll:refine-issue --auto` — resolves the Confidence Check's open risk
+factor ("no single mechanism is chosen yet" for making `delegate`
+branch-aware):_
+
+> **Mechanism selected by research: worktree-per-delegate, not a branch flag
+> on `ll-auto`.**
+>
+> `ll-auto`'s CLI surface (`add_common_auto_args`,
+> `scripts/little_loops/cli_args.py:432-450`) has no `--branch`/`--worktree`/
+> `--cwd` flag today, and `--config` only repoints `BRConfig`'s project root
+> (`scripts/little_loops/cli/auto.py`'s `main_auto()`) — it does not
+> `os.chdir()` or affect git checkout. `AutoManager`
+> (`scripts/little_loops/issue_manager.py:1103`, `run()` at line 1282) calls
+> `check_git_status()` and all per-issue git operations against the ambient
+> working directory with no branch/cwd override parameter anywhere in its
+> constructor or call chain.
+>
+> Two candidate mechanisms were compared:
+> - **(a) New `--branch` flag on `ll-auto`, operating in the current tree** —
+>   would require new branch/cwd plumbing built from scratch inside
+>   `AutoManager`/`issue_manager.py` (no existing hook point), and to actually
+>   land commits on the right branch `ll-auto` would need to `git checkout
+>   <branch>` internally — which mutates the shared main tree's checkout for
+>   the run's duration. That is exactly the rejected **Option B** pattern
+>   (checkout-and-switch) this issue's own decision record already ruled out
+>   for having "no rollback/restore-on-error mechanism" and contradicting the
+>   `_merge_epic_branch_to_base` main-tree-never-checks-out-epic-branch
+>   invariant.
+> - **(b) Dedicated worktree for the epic branch, running `loop: autodev`
+>   there** — reuses `worktree_utils.setup_worktree()`
+>   (`scripts/little_loops/worktree_utils.py:63`), a plain-argument free
+>   function (`repo_path`, `worktree_path`, `branch_name`, `git_lock`,
+>   `base_branch`) already pool-independent and already used standalone by
+>   three separate callers (`ll-parallel`, `ll-sprint`, and `ll-loop` per its
+>   own module docstring). `scripts/little_loops/cli/loop/run.py` (~line 303)
+>   already has a `getattr(args, "worktree", False)` hook point, meaning the
+>   FSM runner already has *some* notion of running a loop against an
+>   alternate working directory — an existing extension point option (a) has
+>   no equivalent for.
+>
+> **Selected: (b).** It reuses two already-standalone, already
+> multiply-proven code paths (`worktree_utils.setup_worktree`/
+> `cleanup_worktree`, and the branch-naming/creation methods on `WorkerPool`
+> — `_resolve_branch_targets`, `_find_nearest_epic_ancestor`,
+> `_load_epic_slug`, `_ensure_epic_branch`, all confirmed instance-state-free
+> and reconstructable without a live `WorkerPool`), and it preserves the
+> main-tree-never-checks-out-epic-branch invariant exactly the way
+> `_ensure_epic_branch` does today: the worktree is what checks out the
+> branch, not the main repo. Option (a) would either repeat the rejected
+> checkout-switch pattern or require inventing new branch/cwd-aware code
+> throughout `AutoManager` with no existing precedent.
+>
+> **Residual gap, out of scope for this issue**: `autodev.yaml`'s
+> `singleton: true` gate (`scripts/little_loops/loops/autodev.yaml` ~line 26,
+> justified by BUG-2526 to prevent two concurrent `ll-auto --only` runs from
+> corrupting shared `.auto-manage-state.json`/git state) is enforced purely
+> by loop name in `LockManager.find_conflict()`
+> (`scripts/little_loops/fsm/concurrency.py:268-285`), not scoped by
+> worktree/branch. A worktree-per-delegate design does not remove this gate —
+> it still blocks a second, independent `autodev` run system-wide, even one
+> targeting a different epic's worktree. That's fine for this issue (only one
+> `checkout_epic_branch` → `delegate` sequence runs per
+> `auto-refine-and-implement` invocation), but means this change does **not**
+> unlock concurrent multi-epic `autodev` runs; making the singleton gate
+> worktree/branch-scoped would be separate follow-on work if that's ever
+> desired.
 
 ## Implementation Steps
 
@@ -394,22 +528,32 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-11_
+_Updated by `/ll:confidence-check` on 2026-07-11_
 
-**Readiness Score**: 94/100 → PROCEED
-**Outcome Confidence**: 70/100 → MEDIUM
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 76/100 → MODERATE
+
+The previously flagged open decision (Option A vs. Option B) was resolved by
+`/ll:decide-issue` on 2026-07-11 in favor of Option A — this re-check reflects
+that resolution. State-chain claims (`resolve_set`/`delegate`/`finalize` line
+ranges, `on_yes: delegate` at line 120, `on_success`/`on_failure: finalize` at
+137–138) and test-class claims (`TestAutoRefineAndImplementLoop` at line 1877,
+`test_delegate_crash_routes_to_record_error` at line 1972,
+`TestSprintRefineAndImplementLoop` at line 2423) were spot-checked against the
+current codebase and confirmed accurate.
 
 ### Outcome Risk Factors
-- Open decision: the Proposed Solution's "checks out (creating if necessary)"
-  wording diverges from the worker-pool precedent, where the main repo never
-  switches onto the epic branch (`_ensure_epic_branch` creates without
-  checkout; only isolated worktrees switch). This loop has no worktree
-  isolation, so implementing it literally means switching the user's actual
-  working-directory branch — a more intrusive operation than any existing
-  epic-branch code path. The issue itself flags this and asks to "confirm
-  this is the intended behavior before implementing," so this should be
-  resolved (checkout-and-switch vs. create-without-switching) before coding
-  the `checkout_epic_branch` state.
+- ~~Option A's own scoring notes that the "make `delegate` branch-aware" half
+  is still described as alternatives ("passing the branch name through to
+  `ll-auto`/`ll-parallel`" **or** "adding a worktree at the epic branch") —
+  no single mechanism is chosen yet. Pick one before implementing
+  `checkout_epic_branch`/`delegate`'s branch-aware wiring.~~ **Resolved by
+  `/ll:refine-issue --auto` research (2026-07-11)**: worktree-per-delegate
+  selected over a branch flag on `ll-auto` — see "Codebase Research Findings
+  (delegate branch-awareness mechanism)" above. `ll-auto` has no cwd/branch
+  override surface to build on, whereas `worktree_utils.setup_worktree()` is
+  already a standalone, thrice-proven free function and `ll-loop run.py`
+  already has a `worktree` arg hook point.
 - Moderate depth on the routing rewire: `delegate`'s `on_success`/
   `on_failure` targets change from `finalize` to `verify`, and
   `test_delegate_crash_routes_to_record_error` must be updated in lockstep —
@@ -417,6 +561,11 @@ _Added by `/ll:confidence-check` on 2026-07-11_
   assertions elsewhere in the same test module.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-11T00:00:00 - `a9ba0748-bc8c-4087-8f47-2ec3d3701d19.jsonl`
+- `/ll:refine-issue` - 2026-07-11T15:29:35 - `bfcd3543-700a-432c-862f-c761278d305f.jsonl`
+- `/ll:confidence-check` - 2026-07-11T00:00:00 - `23b4bb5a-ecba-4362-88e9-909c549f5c36.jsonl`
+- `/ll:decide-issue` - 2026-07-11T15:16:48 - `706d6654-db64-40df-b677-8a48bde3af79.jsonl`
+- `/ll:refine-issue` - 2026-07-11T15:12:47 - `706d6654-db64-40df-b677-8a48bde3af79.jsonl`
 - `/ll:confidence-check` - 2026-07-11T00:00:00 - `a037043a-980c-469e-a388-346e3be56fb4.jsonl`
 - `/ll:wire-issue` - 2026-07-11T15:03:19 - `e0bf89ca-4b80-4a16-b3ef-934e7b0d1d70.jsonl`
 - `/ll:refine-issue` - 2026-07-11T14:57:39 - `25c52cc1-8aa6-4aae-a372-86bac559283c.jsonl`

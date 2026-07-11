@@ -4871,3 +4871,39 @@
   rule: 'Captured: F4-gated — Heuristic prompt compressor (LLMLingua-gated fallback)'
   scope: issue
   issue: FEAT-2599
+- id: ARCHITECTURE-132
+  type: decision
+  timestamp: '2026-07-11T14:30:30Z'
+  category: architecture
+  labels: []
+  rationale: epic_branches auto-merge is gated only by a changed-files check, no test/lint
+    run
+  rule: 'Captured: Verify epic-branch tests/lint before merge-to-base or PR-open'
+  scope: issue
+  issue: ENH-2600
+- id: ARCHITECTURE-133
+  type: decision
+  timestamp: '2026-07-11T14:30:31Z'
+  category: architecture
+  labels: []
+  rationale: auto-refine-and-implement/autodev never checkout the epic branch or verify
+    after implementing
+  rule: 'Captured: FSM refine/implement loops are unaware of epic_branches and lack
+    a post-implement verify state'
+  scope: issue
+  issue: ENH-2601
+- id: ARCHITECTURE-134
+  type: decision
+  timestamp: '2026-07-11T15:16:42Z'
+  category: architecture
+  labels: []
+  rationale: 'Preserves the documented main-tree invariant (orchestrator.py _merge_epic_branch_to_base:
+    main repo never checks out an epic branch) and reuses the proven _ensure_epic_branch
+    git mechanic. Option B (checkout-and-switch) has no existing precedent, no rollback-on-error,
+    and directly contradicts the invariant.'
+  rule: Create-without-switching epic branch (Option A)
+  scope: issue
+  alternatives_rejected: 'Option B — Checkout-and-switch (literal reading of Expected
+    Behavior #1): simpler for delegate but breaks the main-tree-never-checks-out invariant
+    with no restore mechanism.'
+  issue: ENH-2601
