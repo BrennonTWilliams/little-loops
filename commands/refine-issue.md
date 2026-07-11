@@ -281,6 +281,27 @@ For each **FILLABLE** gap, update the issue with research findings.
 - If a Proposed Solution section exists but is vague, add a subsection with concrete implementation guidance based on similar patterns found
 - If no Proposed Solution exists, add one based on how similar changes were made elsewhere
 
+**Decision-Point Formatting (Auto Mode only)** — when the research pass is
+about to deposit a decision point naming 2+ concrete alternatives with a
+recommendation (e.g. prose like "Two viable resolutions: (a) ... or (b) ...
+Recommendation: X for v1"), format the alternatives as bold-label blocks
+instead of leaving them as unstructured prose, so Option-Count Detection
+below can recognize them:
+
+```markdown
+**Option A**: [first alternative, verbatim from the research/existing text]
+
+**Option B**: [second alternative, verbatim from the research/existing text]
+
+**Recommended**: Option [X] — [existing rationale, preserved verbatim]
+```
+
+Place this block under a `### Codebase Research Findings` addendum near the
+original prose (per the Preservation Rule below) — additive, not a rewrite
+of existing text. This applies only to refine-issue's own freshly-written
+research findings; it does not rewrite pre-existing human-authored prose it
+didn't write.
+
 **Option-Count Detection (Auto Mode only)** — after writing to Proposed Solution:
 
 Count distinct implementation options deposited. Detect by any of these patterns in the deposited content:

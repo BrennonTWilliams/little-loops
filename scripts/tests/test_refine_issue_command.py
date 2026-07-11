@@ -81,6 +81,20 @@ class TestOptionCountDetectionInCommand:
             "Step 8 FILE STATUS section must surface the decision_needed flag value"
         )
 
+    def test_decision_point_formatting_rule_documented(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_5a_start = content.index("### 5a. Fill Gaps with Research Findings")
+        step_5b_start = content.index("### 5b. Interactive Refinement")
+        step_5a_text = content[step_5a_start:step_5b_start]
+        assert "Decision-Point Formatting" in step_5a_text, (
+            "Step 5a must document the Decision-Point Formatting rule that converts "
+            "prose recommendations into bold-label option blocks"
+        )
+        assert "**Option A**" in step_5a_text and "**Recommended**" in step_5a_text, (
+            "Step 5a must show the **Option A**/**Recommended** bold-label template "
+            "for formatting decision recommendations"
+        )
+
 
 class TestDecisionNeededDocWiring:
     """`decision_needed` must be documented in the issue template reference."""

@@ -2,9 +2,10 @@
 id: ENH-2607
 title: refine-issue should emit enumerable options when depositing a decision recommendation
 type: ENH
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-11T18:07:11Z'
+completed_at: '2026-07-11T21:01:09Z'
 discovered_date: '2026-07-11'
 discovered_by: capture-issue
 relates_to:
@@ -71,6 +72,27 @@ fallback becomes a safety net instead of the primary mechanism, and future
 issues don't join the backlog of ~40 stuck ones. Root-causing this prevents
 the failure class from recurring as new issues get refined, rather than only
 treating issues already in the backlog.
+
+## Scope Boundaries
+
+- **In scope**: extending refine-issue's Option-Count Detection enrichment
+  rule (`commands/refine-issue.md:284-296`) so it formats named alternatives
+  it is about to deposit as `**Option A/B**` bold-label blocks, plus the
+  accompanying structural test in `test_refine_issue_command.py`.
+- **Out of scope**: retroactively reformatting the ~40 issues already stuck
+  with prose-only recommendations — a one-time bulk remediation pass is a
+  follow-on (Implementation Step 3), not part of this fix.
+- **Out of scope**: rewriting pre-existing human-authored prose refine-issue
+  didn't write itself — the Preservation Rule (`refine-issue.md:307-323`)
+  still applies; this fix only changes how refine-issue formats its own
+  freshly-written research findings.
+- **Out of scope**: parser changes to `count_enumerable_options()` /
+  `_OPTION_PATTERNS` in `issue_parser.py` — the proposed `**Option A**`
+  format already matches Pattern 2 without modification.
+- **Out of scope**: syncing `commands/refine-issue.md`'s documented pattern
+  list with `issue_parser.py`'s 4th bullet-list tier (noted as a
+  documentation drift in Codebase Research Findings) — worth a follow-on
+  issue, not bundled here.
 
 ## Proposed Solution
 
@@ -173,7 +195,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   `/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis`, then
   its `check_decision_mid_refine` state (~line 100-105) gates mid-chain on
   `ll-issues check-flag ... decision_needed`, routing back to autodev's
-  `check_decision_after_refine` (`autodev.yaml:165`) → `run_decide` on a hit.
+  `check_decision_after_refine` (`autodev.yaml:170`) → `run_decide` on a hit.
   This is a third production consumer of refine-issue's decision-formatting
   output not previously mentioned anywhere in this issue.
 - `scripts/little_loops/loops/harness-multi-item.yaml` — checked and
@@ -297,7 +319,41 @@ the implementation:_
 
 **Open** | Created: 2026-07-11 | Priority: P2
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-11
+- **Status**: Completed
+
+### Changes Made
+- `commands/refine-issue.md`: added the "Decision-Point Formatting (Auto Mode
+  only)" enrichment rule immediately before Option-Count Detection in Step
+  5a, instructing refine-issue to format a prose decision recommendation
+  (named alternatives + a recommendation) as `**Option A**`/`**Option B**`/
+  `**Recommended**` bold-label blocks under a `### Codebase Research
+  Findings` addendum, rather than depositing it as unstructured prose.
+- `scripts/tests/test_refine_issue_command.py`: added
+  `test_decision_point_formatting_rule_documented` to
+  `TestOptionCountDetectionInCommand`, asserting the new rule's marker text
+  (`Decision-Point Formatting`, `**Option A**`, `**Recommended**`) is present
+  within the Step 5a span (TDD Red confirmed against the pre-edit file,
+  Green after the edit).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 14623 passed, 36 skipped)
+- Lint: PASS (`ruff check scripts/`)
+- Types: SKIP (not configured for markdown-only change)
+- Run: N/A (prompt-instruction change, no runnable smoke test configured)
+- Integration: PASS (no duplication; extends the existing Enrichment Rules
+  pattern in Step 5a; no parser changes needed since `**Option A**` already
+  matches Pattern 2 in `issue_parser.py`)
+- Manual verification against real prose-only decision issues (Implementation
+  Step 2 in this issue) is explicitly out of scope for this automated pass —
+  the issue documents it as a follow-on manual check, not a blocking gate.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T21:00:41Z - `498629b1-741e-4e79-b87a-4eec53f358b5.jsonl`
+- `/ll:ready-issue` - 2026-07-11T20:56:13 - `478fc97e-b80e-4c20-b8b0-0197da010998.jsonl`
 - `/ll:confidence-check` - 2026-07-11T20:41:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8f60841-044f-46c6-ba32-0bfa3724b66c.jsonl`
 - `/ll:wire-issue` - 2026-07-11T20:37:34 - `37df9e19-5b6b-496d-b642-9c4e836e3f06.jsonl`
 - `/ll:refine-issue` - 2026-07-11T20:31:14 - `d3119631-9721-46b9-a9af-0d7109440153.jsonl`
