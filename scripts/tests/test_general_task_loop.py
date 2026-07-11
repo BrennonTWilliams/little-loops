@@ -1552,6 +1552,78 @@ class TestENH2365SummarizeSuccess:
     def test_summarize_success_on_error_routes_to_done(self, raw_data: dict) -> None:
         assert raw_data["states"]["summarize_success"]["on_error"] == "done"
 
+    # --- BUG-2608: shell execution — implemented reflects CHECKED count -------
+
+    @staticmethod
+    def _load_script(run_dir: Path) -> str:
+        with open(LOOP_FILE) as f:
+            data = yaml.safe_load(f)
+        script = data["states"]["summarize_success"]["action"]
+        ctx = data.get("context", {})
+        for key, val in ctx.items():
+            script = script.replace(f"${{context.{key}}}", str(val))
+        script = script.replace("${context.run_dir}", str(run_dir))
+        # No captured final_counts in a unit context → fall back to the default.
+        script = script.replace(
+            "${captured.final_counts.output:default={}}", "{}"
+        )
+        return script
+
+    def test_implemented_counts_checked_criteria_not_leftover(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-2608: implemented must be the CHECKED count. On the success path
+        every criterion is [x] (count_done routes here only when unchecked==0),
+        so a dod.md with N checked criteria must yield implemented==N — never 0,
+        the value the old done_counts.total-based code always produced."""
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n"
+            "## Verification Criteria\n"
+            "- [x] Tests pass [hard]\n"
+            "- [x] File exists [hard]\n"
+            "- [x] Coverage met [hard]\n"
+            "- [x] Tree clean\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "success"
+        assert data["implemented"] == 4, "must report checked count, not 0"
+        assert data["failed_finals"] == 0
+        assert "verdict=success implemented=4" in result.stdout
+
+    def test_implemented_is_section_scoped(self, tmp_path: Path) -> None:
+        """Only criteria under ## Verification Criteria count — checked lines in
+        other sections (e.g. a Sample Verification block) must not inflate it."""
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n"
+            "## Verification Criteria\n"
+            "- [x] A [hard]\n"
+            "- [x] B [hard]\n"
+            "## Sample Verification\n"
+            "- [x] noise that must not be counted\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["implemented"] == 2
+
+    def test_missing_dod_still_writes_success_summary(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "success"
+        assert data["implemented"] == 0
+
 
 # ---------------------------------------------------------------------------
 # ENH-2575: final_verify timeout must not forfeit partial progress

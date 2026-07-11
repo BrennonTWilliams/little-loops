@@ -542,14 +542,31 @@ states:
   summarize_success:
     action: |
       RUN_DIR="${context.run_dir}"
-      DONE_TOTAL=$(python3 -c "
-      import json, sys
-      try:
-          data = json.loads('${captured.done_counts.output:default={}}')
-          print(data.get('total', 0))
-      except Exception:
-          print(0)
-      " 2>/dev/null || echo 0)
+      DOD="$RUN_DIR/dod.md"
+      # BUG-2608: report the count of CHECKED Verification Criteria, not the
+      # leftover-unchecked count. done_counts.total is ALWAYS 0 on the success
+      # path (count_done routes here only when total==0), so sourcing
+      # `implemented` from it pinned every successful run to implemented:0 —
+      # a value indistinguishable from total failure to aggregators
+      # (audit-loop-run Step 6a keys honest-failure on implemented==0). Count
+      # checked criteria as TOTAL - UNCHECKED, section-scoped to
+      # `## Verification Criteria`, matching count_done / write_partial_summary.
+      IMPLEMENTED=0
+      if [ -f "$DOD" ]; then
+        TOTAL_DOD=$(awk '
+          /^## Verification Criteria/ { in_section=1; next }
+          /^## / { in_section=0 }
+          in_section && /^[[:space:]]*-[[:space:]]*\[/ { count++ }
+          END { print count+0 }
+        ' "$DOD")
+        UNCHECKED_DOD=$(awk '
+          /^## Verification Criteria/ { in_section=1; next }
+          /^## / { in_section=0 }
+          in_section && /^[[:space:]]*-[[:space:]]*\[[[:space:]]\]/ { count++ }
+          END { print count+0 }
+        ' "$DOD")
+        IMPLEMENTED=$(($TOTAL_DOD - $UNCHECKED_DOD))
+      fi
       FAILED_FINALS=$(python3 -c "
       import json, sys
       try:
@@ -559,9 +576,9 @@ states:
           print(0)
       " 2>/dev/null || echo 0)
       printf '{"verdict":"success","implemented":%s,"failed_finals":%s}\n' \
-        "$DONE_TOTAL" "$FAILED_FINALS" > "$RUN_DIR/summary.json"
+        "$IMPLEMENTED" "$FAILED_FINALS" > "$RUN_DIR/summary.json"
       printf 'general-task: verdict=success implemented=%s failed_finals=%s\n' \
-        "$DONE_TOTAL" "$FAILED_FINALS"
+        "$IMPLEMENTED" "$FAILED_FINALS"
     action_type: shell
     next: done
     on_error: done
