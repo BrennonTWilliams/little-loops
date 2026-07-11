@@ -4826,3 +4826,14 @@
   scope: issue
   alternatives_rejected: Option 2 (detector enhancement / watch_all_when_empty)
   issue: ENH-2585
+- id: CLI-DISPLAY-128
+  type: decision
+  timestamp: '2026-07-11T02:26:54Z'
+  category: cli-display
+  labels: []
+  rationale: Surface --input value in FSM Box Diagram header and compress model onto
+    run_dir line
+  rule: 'Captured: Show input in loop-run diagram header; pack model onto run_dir
+    row'
+  scope: issue
+  issue: ENH-2596

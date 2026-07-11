@@ -13,6 +13,12 @@ labels:
 - serialization
 - latent
 decision_needed: true
+confidence_score: 97
+outcome_confidence: 86
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # BUG-2588: `save_decisions()` silently drops entry keys not declared on the dataclass
@@ -30,14 +36,20 @@ the matching dataclass is read into nothing by `from_dict` and never re-emitted 
 Because `add_entry()` calls `save_decisions()`, adding one entry can quietly strip
 extra fields from *unrelated* entries elsewhere in the file.
 
-## Severity / Status
+## Impact
 
-Latent, not currently firing. An audit on 2026-07-10 found **zero** out-of-schema
-keys across all 331 entries (125 `decision`, 206 `rule`), so no data is being lost
-today. The risk activates the moment anyone hand-adds a field the dataclass does not
-know about (a common pattern, given entries are sometimes authored by hand) — the
-field will vanish on the next `add_entry`/`save_decisions` with no error or warning.
-Priority P3 reflects "no live loss yet, but a silent-data-loss trap."
+- **Priority**: P3 — no live data loss today (audit found zero out-of-schema keys
+  across all 331 entries on 2026-07-10), but the bug is a silent-data-loss trap that
+  fires the moment anyone hand-adds a field the dataclass does not know about. Common
+  pattern given entries are sometimes authored by hand.
+- **Effort**: Small-Medium — Option A adds a single `extra: dict` field to four entry
+  dataclasses plus uniform `from_dict`/`to_dict` updates; Option B modifies one function
+  (`save_decisions`) and reuses the existing `deep_merge` utility.
+- **Risk**: Low — round-trip change is additive (preserves previously-discarded data);
+  the lossy `test_promote_drops_decision_only_fields` test (`scripts/tests/test_cli_decisions.py:1078`)
+  must stay green (promote flow is intentionally lossy on its target field set).
+- **Breaking Change**: No — `save_decisions` continues to emit modeled fields; new
+  behavior is the additional preservation of unmodeled keys.
 
 ## Root Cause
 
@@ -58,9 +70,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/decisions.py` — extend each entry's `from_dict`/`to_dict` to preserve unmodeled keys **or** rewrite `save_decisions` to merge raw dicts with modeled fields (see `## Codebase Research Findings` below for the two competing approaches)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/decisions.py:497` — `_cmd_add` calls `add_entry`, the lossy rewrite entry point
-- `scripts/little_loops/cli/issues/decisions.py:875` — `_cmd_extract_from_completed` calls `add_entry` in a loop (LLM extraction flow)
-- `scripts/little_loops/decisions.py:430` — `generate_from_completed` calls `add_entry` per completed issue
+- `scripts/little_loops/cli/issues/decisions.py:408` — `_cmd_add` calls `add_entry`, the lossy rewrite entry point
+- `scripts/little_loops/cli/issues/decisions.py:694` — `_cmd_extract_from_completed` calls `add_entry` in a loop (LLM extraction flow)
+- `scripts/little_loops/decisions.py:382` (`generate_from_completed`, calls `add_entry` per completed issue at line 430)
 - `scripts/little_loops/decisions.py:334` — `set_outcome` calls `save_decisions` after in-place mutation
 - `scripts/little_loops/decisions_sync.py` — reads via `list_entries` only; no change needed
 - `scripts/little_loops/cli/verify_decisions.py` — consumes `load_decisions()`; no change needed (will not catch unknown keys until ENH-2587 lands)
@@ -100,11 +112,11 @@ Round-tripping an entry through `load_decisions()`/`save_decisions()` preserves 
 of its data, or fails loudly if a key cannot be represented — it should never
 silently discard fields.
 
-## Actual Behavior
+## Current Behavior
 
 Unmodeled keys are dropped on the first rewrite, silently and globally.
 
-## Proposed Fix
+## Proposed Solution
 
 Preserve unknown keys through the round-trip. Options:
 
@@ -120,7 +132,7 @@ surfaced rather than tolerated.
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-**Behavior summary.** `save_decisions` (`scripts/little_loops/decisions.py:285`) writes via `yaml.dump([e.to_dict() for e in entries], ...)`, after `load_decisions` (`scripts/little_loops/decisions.py:272`) has already discarded unknown keys via `_entry_from_dict` → `<EntryCls>.from_dict`. The four entry dataclasses (`RuleEntry` line 50, `DecisionEntry` line 98, `ExceptionEntry` line 151, `CouplingEntry` line 195) hard-code their field lists in `from_dict`/`to_dict`, so any unmodeled key is read into nothing and re-emitted as nothing. No test today asserts preservation of unmodeled keys; `test_promote_drops_decision_only_fields` (`scripts/tests/test_cli_decisions.py:1078-1116`) actually codifies loss as desired behavior for the promote flow.
+**Behavior summary.** `save_decisions` (`scripts/little_loops/decisions.py:285`) writes via `yaml.dump([e.to_dict() for e in entries], ...)`, after `load_decisions` (`scripts/little_loops/decisions.py:272`) has already discarded unknown keys via `_entry_from_dict` → `<EntryCls>.from_dict`. The four entry dataclasses (`RuleEntry` line 51, `DecisionEntry` line 99, `ExceptionEntry` line 152, `CouplingEntry` line 196) hard-code their field lists in `from_dict`/`to_dict`, so any unmodeled key is read into nothing and re-emitted as nothing. No test today asserts preservation of unmodeled keys; `test_promote_drops_decision_only_fields` (`scripts/tests/test_cli_decisions.py:1078-1116`) actually codifies loss as desired behavior for the promote flow.
 
 **Codebase precedents.**
 - `LLEvent` (`scripts/little_loops/events.py:31-62`) — lossless round-trip via `payload: dict` catch-all → direct precedent for Option A.
@@ -128,6 +140,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `update_frontmatter` (`scripts/little_loops/frontmatter.py:191-214`) — established raw-YAML-edit primitive, 20+ call sites.
 
 ### Option A — `extra: dict` catch-all field on the entry dataclasses
+
+> **Selected:** Option A — `extra: dict` catch-all field on the entry dataclasses — direct precedent in `LLEvent.payload` (`events.py:43,51,62`); symmetric load/save with no read-before-write coupling, no list-alignment logic, no concurrent-write exposure.
 
 Add `extra: dict[str, Any] = field(default_factory=dict)` to each entry dataclass. `from_dict(cls, data)` does `copy = dict(data); known = {k: copy.pop(k, None) for k in _KNOWN_FIELDS}; known["extra"] = copy; return cls(**known)`. `to_dict` returns `{**self.extra, ...modeled_fields}` so unmodeled keys re-emit at the top level (not nested). Mirrors `LLEvent.payload`.
 
@@ -160,6 +174,16 @@ Rewrite `save_decisions` to `yaml.safe_load()` the existing file, align raw entr
   2026-07-10 and discussing prevention (routing writes through the serializer vs. a
   validation hook). Sibling: ENH-2587.
 
+## Status
+
+**Open** | Created: 2026-07-10 | Priority: P3
+
+Latent bug — no live data loss detected (audit on 2026-07-10 found zero out-of-schema
+keys across all 331 entries). Tracked as a silent-data-loss trap awaiting the first
+hand-authored out-of-schema field.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-11T01:37:59 - `284186ed-08f8-480b-bda6-e04b21c2a17d.jsonl`
+- `/ll:ready-issue` - 2026-07-11T01:27:46 - `240f9a39-2745-445e-96f4-a82a79433877.jsonl`
 - `/ll:refine-issue` - 2026-07-11T00:59:47 - `a936518a-a1c2-4329-9921-cc37c9c2e2c2.jsonl`
 - manual session - 2026-07-10T21:08:10Z - captured from decisions.yaml corruption investigation
