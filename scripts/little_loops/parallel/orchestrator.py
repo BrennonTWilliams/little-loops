@@ -413,9 +413,40 @@ class ParallelOrchestrator:
             match = re.match(r"worker-([a-z]+-\d+)-\d{8}-\d{6}", worktree_path.name)
             issue_id = match.group(1).upper() if match else worktree_path.name
 
-            # Check commits ahead of main
+            # EPIC-aware comparison base (FEAT-2562): an EPIC child's commits
+            # diverge from the EPIC integration branch, not base_branch — compare
+            # against that instead when the worktree belongs to an EPIC child.
+            base = self.parallel_config.base_branch
+            if self.parallel_config.epic_branches.enabled:
+                issue_info = self._issue_info_by_id.get(issue_id)
+                if issue_info is not None:
+                    from little_loops.issue_parser import find_issues
+                    from little_loops.issue_progress import (
+                        build_parent_map,
+                        find_nearest_epic_ancestor,
+                    )
+
+                    all_issues = find_issues(
+                        self.br_config,
+                        status_filter={
+                            "open",
+                            "in_progress",
+                            "blocked",
+                            "done",
+                            "cancelled",
+                            "deferred",
+                        },
+                    )
+                    parent_map = build_parent_map(all_issues)
+                    epic_id = find_nearest_epic_ancestor(issue_info, parent_map)
+                    if epic_id is not None:
+                        slug = self.worker_pool._load_epic_slug(epic_id)
+                        prefix = self.parallel_config.epic_branches.prefix
+                        base = f"{prefix}{epic_id.lower()}-{slug}"
+
+            # Check commits ahead of base (epic branch for EPIC children, base_branch otherwise)
             result = self._git_lock.run(
-                ["rev-list", "--count", f"{self.parallel_config.base_branch}..{branch_name}"],
+                ["rev-list", "--count", f"{base}..{branch_name}"],
                 cwd=self.repo_path,
                 timeout=10,
             )

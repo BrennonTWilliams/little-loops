@@ -612,6 +612,39 @@ class TestOrphanedWorktreeCleanup:
 
         assert deleted_branches == ["parallel/bug-001-20260101-120000"]
 
+    def test_does_not_delete_epic_branch(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """EPIC integration branches are never deleted by orphan cleanup (FEAT-2339 Rationale #3)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        orphan = worktree_base / "worker-bug-001-20260101-120000"
+        orphan.mkdir()
+
+        deleted_branches: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["branch", "-D"]:
+                deleted_branches.append(args[2])
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+                return result
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "epic/epic-2451-integration\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        assert deleted_branches == []
+
     def test_skips_branch_deletion_when_rev_parse_fails(
         self,
         orchestrator: ParallelOrchestrator,
@@ -1119,6 +1152,42 @@ class TestInspectWorktree:
             result = orchestrator._inspect_worktree(worktree_path)
         assert result is not None
         assert result.branch_name == "feature/enh-042-my-issue"
+
+    def test_uses_epic_branch_as_base_for_epic_child(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """FEAT-2562: EPIC-child worktrees compare against epic/<id>-<slug>, not base_branch."""
+        orch, repo_path = make_epic_orchestrator({"BUG-001": "open"}, enabled=True)
+        orch.worker_pool._load_epic_slug = MagicMock(return_value="integration")
+
+        worktree_base = repo_path / ".worktrees"
+        worktree_path = worktree_base / "worker-bug-001-20260117-150000"
+        worktree_path.mkdir()
+
+        rev_list_bases: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:2] == ["rev-list", "--count"]:
+                rev_list_bases.append(args[2])
+                result.stdout = "0\n"
+            return result
+
+        orch._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        rev_parse_result = MagicMock()
+        rev_parse_result.returncode = 0
+        rev_parse_result.stdout = "parallel/bug-001-20260117-150000\n"
+
+        with patch("subprocess.run", return_value=rev_parse_result):
+            result = orch._inspect_worktree(worktree_path)
+
+        assert result is not None
+        assert rev_list_bases == [
+            "epic/epic-2451-integration..parallel/bug-001-20260117-150000"
+        ]
 
     def test_returns_none_when_rev_parse_fails(
         self,
