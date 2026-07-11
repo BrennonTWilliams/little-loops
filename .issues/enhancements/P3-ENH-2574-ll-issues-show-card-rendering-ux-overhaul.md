@@ -91,6 +91,105 @@ In `scripts/little_loops/cli/issues/show.py`:
 6. **Align the metadata block into columns.** Right-pad keys once the detail
    block has 4+ `Key: value` lines so the eye tracks one vertical edge.
 
+## Integration Map
+
+_Added by `/ll:refine-issue` — codebase-driven research findings:_
+
+### Files to Modify
+- `scripts/little_loops/cli/issues/show.py:520` (`_render_card`) — primary
+  target; all 6 implementation steps land here
+- `scripts/little_loops/cli/issues/show.py:636-643` — summary reflow loop
+  (item 1, the `splitlines()` + per-line `textwrap.wrap` bug)
+- `scripts/little_loops/cli/issues/show.py:645-650` — width computation:
+  `wrap_width = max(len(longest structural line), 60)` followed by
+  `width = min(width, terminal_width() - 4)` (item 2)
+- `scripts/little_loops/cli/issues/show.py:666-668` — status colorization
+  site (currently only `Completed` is colored green) (item 3)
+- `scripts/little_loops/cli/issues/show.py:683-700` — line assembly where
+  `_ljust` (colored) and `f"{line:<{width-1}}"` (uncolored) mix; per item 3
+  + AC #7 every site must switch to `_ljust` (item 3 correctness)
+- `scripts/little_loops/cli/issues/show.py:558, 566, 578, 593, 602, 674` —
+  literal `"  │  "` separator sites (item 4)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/issues/show.py:728` — `cmd_show` is the sole
+  caller of `_render_card(fields)`. No other internal callers; no external
+  import surface (`_render_card` is module-private).
+
+### Similar Patterns
+- `scripts/little_loops/cli/issues/show.py:466-470` (`_render_discovery_block`)
+  — short-SHA truncation guard (`sha[:7] if len(sha) > 7 else sha`). Same
+  shape as the proposed unbreakable-token guard in item 2; zero-dependency,
+  in-file.
+- `scripts/little_loops/cli/loop/info.py:567` — `_smart_truncate` (word-
+  boundary + sentence-preferring). More capable than needed for AC #7 but
+  available if shared.
+- `scripts/little_loops/cli/loop/layout.py:219` — `_truncate_to_width_ansi`
+  (wcwidth-aware, preserves SGR sequences, emits `\x1b[0m` reset before `…`).
+  Canonical truncation helper; used by `info.py:539`. Cross-module dep if
+  imported from `show.py`.
+- `scripts/little_loops/cli/loop/info.py:124-131` — local `_STATUS_COLORS`
+  for loop state (running/interrupted/stopped/etc.). Reference palette shape
+  for item 3.
+- `scripts/little_loops/cli/sprint/show.py:110` — `_STATUS_COLOR =
+  {"OK": "32", "REVIEW": "33", "WARNING": "38;5;208", "BLOCKED": "31"}`.
+  Reference palette shape; matches the proposal's "In Progress yellow,
+  Blocked red" intent (RENH-style sprint status vs issue status mapping).
+- `scripts/little_loops/cli/loop/info.py:316-322, 382, 1514, 1519` —
+  `·` (U+00B7, middle dot) is the established separator throughout
+  `ll-loop list` (item 4).
+- `scripts/little_loops/cli/loop/info.py:497` — `colorize(name, "1")` for
+  bold title (item 3).
+- `scripts/little_loops/cli/loop/info.py:434, 531` — `colorize(tag, "2")`
+  for dim chrome (item 3).
+- `scripts/little_loops/cli/output.py:333-345` — `status_block(items)`
+  right-pads keys via `max(len(k) for k in items)`. Models item 6's column-
+  pad intent (plain-text only — must be replaced by an ANSI-aware variant
+  once labels get dim-colored).
+
+### Tests
+- `scripts/tests/test_show.py:419-575` (`TestRenderCard`) — existing card-
+  renderer tests; substring-style assertions under the `stable_snapshot_env`
+  fixture.
+  - **Gap to add**: summary reflow / no-orphan-lines (no current test
+    asserts the AC #1 behavior).
+  - **Gap to add**: status coloring for non-`Completed` statuses
+    (`In Progress`, `Blocked`, `Deferred`, `Cancelled`) — only `Completed`
+    is currently asserted.
+  - **Gap to add**: width scaling on wide terminals — `stable_snapshot_env`
+    (`scripts/tests/conftest.py:109-123`) pins `terminal_width = 80`, so
+    the AC #2 wide-terminal behavior is untested.
+  - **Conflict to resolve**: `test_long_unbreakable_word_extends_box`
+    (`test_show.py:447`) asserts a 120-char token IS in the card
+    (`assert long_word in card`). AC #7 flips this — the token must be
+    **truncated** (and absent from the card). Replace this test in the
+    same commit that lands the truncation guard.
+  - **Pattern to copy**: `test_discovered_commit_shortened`
+    (`test_show.py:528`) asserts both substring presence and absence
+    (`"abc1234" in card` and `"abc1234567890def" not in card`). Direct
+    shape for the AC #7 truncation test.
+- `scripts/tests/test_show.py:387-411` (`TestLjust`) — already covers
+  ANSI-coded input, plain text, exact-width, and over-width cases; extend
+  with a card-level assertion once item 3 colors labels.
+
+### Documentation
+- `docs/reference/OUTPUT_STYLING.md:211-269` — dedicated "Issue Card:
+  `scripts/little_loops/cli/issues/show.py`" section. Line 269 documents
+  the current width formula ("max of all content line lengths plus 2
+  padding, with a minimum of 60 characters. The summary section is
+  wrapped with `textwrap.wrap()` to fit the structural width.") that
+  ENH-2574 replaces. Requires an update pass once implementation lands.
+- `docs/reference/OUTPUT_STYLING.md:283+` — "FSM Diagram:
+  `scripts/little_loops/cli/loop/layout.py`" section documents the shared
+  width/truncation helpers (`_display_width`, `_truncate_to_width`,
+  `_truncate_to_width_ansi`, `_wrap_to_width`) — reference if item 2's
+  truncation guard is implemented via the shared layout module.
+
+### Configuration
+- None — this is a pure renderer change. No new CLI flags, no schema, no
+  `ll-config.json` keys. Reuses existing `terminal_width()`, `colorize()`,
+  `strip_ansi()`, `_ljust()` primitives.
+
 ## Implementation Steps
 
 1. Fix the summary reflow in `_render_card` (`show.py:639`) — paragraph-first
