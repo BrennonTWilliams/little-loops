@@ -4780,17 +4780,49 @@
   labels:
   - extracted
   - global
-  rationale: "OTHE-201 (advisory) forbids removing or renaming required `--json`
-    keys without coordination. `description_line2` was an additive key added by
-    ENH-2555, recorded as 'always empty' after BUG-2566 fix 1 (continuation-line
-    block removed) and finally deleted in BUG-2566 fix 2 (load-time collapse).
-    Verified zero in-tree consumers read the field -- `_emit_row` no longer reads
-    it post-fix-1, and the loader and JSON branch only ever emitted `\"\"` for it.
-    Treats additive-but-orphaned fields as eligible for removal when no live
-    consumer depends on them, with a grep audit recorded in the rationale."
-  rule: Additive-but-orphaned `--json` keys may be removed when an audit (grep
-    under `scripts/`) shows no live reader and the field has carried only its
-    default value for at least one release cycle. Document the removal as a new
-    decisions.yaml entry cross-referencing the originating rule.
+  rationale: OTHE-201 (advisory) forbids removing or renaming required `--json` keys
+    without coordination. `description_line2` was an additive key added by ENH-2555,
+    recorded as 'always empty' after BUG-2566 fix 1 (continuation-line block removed)
+    and finally deleted in BUG-2566 fix 2 (load-time collapse). Verified zero in-tree
+    consumers read the field -- `_emit_row` no longer reads it post-fix-1, and the
+    loader and JSON branch only ever emitted `""` for it. Treats additive-but-orphaned
+    fields as eligible for removal when no live consumer depends on them, with a grep
+    audit recorded in the rationale.
+  rule: Additive-but-orphaned `--json` keys may be removed when an audit (grep under
+    `scripts/`) shows no live reader and the field has carried only its default value
+    for at least one release cycle. Document the removal as a new decisions.yaml entry
+    cross-referencing the originating rule.
   enforcement: advisory
   issue: BUG-2566
+- id: ARCHITECTURE-126
+  type: decision
+  timestamp: '2026-07-10T22:01:01Z'
+  category: architecture
+  labels: []
+  rationale: 'Option A mirrors the established main_verify_* signature used by 7 sibling
+    CLIs (scripts/little_loops/cli/verify_package_data.py:235-316 is the canonical
+    template), slots alphabetically into the console-script registration cluster at
+    scripts/pyproject.toml:86-89, joins the sibling permission allowlist at scripts/little_loops/init/writers.py:38-40,
+    and the single-binary form (ll-verify-decisions) works natively as a .pre-commit-config.yaml
+    repo: local entry: line. Option B contradicted the project convention that repo-boundary
+    file validation lives in the ll-verify-* family and was incompatible with pre-commit
+    repo: local entry: without a wrapper shell script.'
+  rule: 'Validator home for .ll/decisions.yaml gate: new ll-verify-decisions entry
+    in the ll-verify-* family'
+  scope: issue
+  alternatives_rejected: 'Option B: New validate subcommand under ll-issues decisions
+    — fits the local parser shape (add_decisions_parser:14, _cmd_sync:528) but contradicts
+    the ll-verify-* family convention and requires a wrapper shim for pre-commit.'
+  issue: ENH-2587
+- id: ARCHITECTURE-127
+  type: decision
+  timestamp: '2026-07-10T23:41:26Z'
+  category: architecture
+  labels: []
+  rationale: Surgical loop-local change with verbatim in-tree counter precedent; both
+    options route to summarize_partial but the convergence spin is unique to general-task,
+    so Option 2's generic detector change isn't warranted.
+  rule: Option 1 (loop-local stall counter)
+  scope: issue
+  alternatives_rejected: Option 2 (detector enhancement / watch_all_when_empty)
+  issue: ENH-2585
