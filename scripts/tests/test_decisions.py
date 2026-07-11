@@ -116,6 +116,51 @@ class TestLoadDecisions:
         loaded = load_decisions(decisions_path)
         assert len(loaded) == 3
 
+    def test_raises_yaml_error_on_othe_203_corruption(
+        self, decisions_path: Path
+    ) -> None:
+        """OTHE-203: ``rationale: \"abc \"\" def\"`` is invalid YAML (unterminated quote).
+
+        Verifies that the malformed-input surface that ENH-2589's validator gates
+        raises ``yaml.YAMLError`` (specifically a parser error).
+        """
+        decisions_path.write_text(
+            "entries:\n"
+            "  - id: OTHE-203\n"
+            "    type: decision\n"
+            '    rationale: "abc "" def"\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(yaml.YAMLError, match="parsing"):
+            load_decisions(decisions_path)
+
+    def test_raises_key_error_for_missing_required_field(
+        self, decisions_path: Path
+    ) -> None:
+        """Entry missing the ``id`` field raises ``KeyError`` at from_dict()."""
+        decisions_path.write_text(
+            "entries:\n"
+            "  - type: rule\n"
+            "    rationale: no id here\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(KeyError):
+            load_decisions(decisions_path)
+
+    def test_raises_value_error_for_unknown_entry_type(
+        self, decisions_path: Path
+    ) -> None:
+        """Entry with an unregistered ``type`` raises ``ValueError`` from _entry_from_dict()."""
+        decisions_path.write_text(
+            "entries:\n"
+            "  - id: BAD-001\n"
+            "    type: foo\n"
+            "    rationale: bad discriminator\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="Unknown entry type"):
+            load_decisions(decisions_path)
+
 
 class TestSaveDecisions:
     """Tests for save_decisions()."""
