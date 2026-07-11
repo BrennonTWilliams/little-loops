@@ -20,7 +20,13 @@ states:
 
   # Implement viable issues in priority order via ll-auto.
   implement:
-    action: ll-auto --priority P1,P2 --quiet
+    # BUG-2594: tee to a run-dir file rather than relying solely on the
+    # `capture:` value, so check_impl_auth can grep a file instead of
+    # interpolating untrusted Markdown into a shell string.
+    # `set -o pipefail` preserves ll-auto's exit code through the `tee` pipe.
+    action: |
+      set -o pipefail
+      ll-auto --priority P1,P2 --quiet 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
     action_type: shell
     capture: ll_auto_output
     evaluate:
@@ -33,9 +39,12 @@ states:
     # ENH-2353: detect auth failures before proceeding to commit.
     # Auth failures abort the loop; genuine ll-auto failures still commit
     # (partial implementation) and continue to harness evaluation.
+    # on_error (BUG-2594): a residual shell fault must not crash the loop —
+    # degrade to commit_impl, same as on_no.
     fragment: ll_auto_auth_check
     on_yes: abort_env_not_ready
     on_no: commit_impl
+    on_error: commit_impl
 
   abort_env_not_ready:
     # ENH-2353: abort on auth misconfiguration.

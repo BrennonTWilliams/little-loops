@@ -2678,6 +2678,22 @@ class TestAutodevLoop:
             f"got {state.get('on_no')!r}"
         )
 
+    def test_check_learning_gate_on_error_does_not_crash_loop(self, data: dict) -> None:
+        """BUG-2594: a residual shell fault in the gate check must degrade to the
+        next check (check_impl_auth), not terminate the loop with 'No valid transition'."""
+        state = data["states"].get("check_learning_gate", {})
+        assert state.get("on_error") == "check_impl_auth", (
+            f"check_learning_gate.on_error should be 'check_impl_auth', got {state.get('on_error')!r}"
+        )
+
+    def test_check_impl_auth_on_error_does_not_crash_loop(self, data: dict) -> None:
+        """BUG-2594: a residual shell fault in the auth check must degrade to the
+        queue-drain path, not terminate the loop with 'No valid transition'."""
+        state = data["states"].get("check_impl_auth", {})
+        assert state.get("on_error") == "dequeue_next", (
+            f"check_impl_auth.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
+        )
+
     def test_mark_gate_blocked_advances_queue_without_failing(self, data: dict) -> None:
         """mark_gate_blocked records the issue distinctly and returns to dequeue_next so the
         queue keeps draining (the issue re-surfaces once its deps are proven)."""
@@ -9525,6 +9541,20 @@ class TestLearningGateConsistency:
         assert gate["fragment"] == "ll_auto_learning_gate_check"
         assert gate["on_yes"] == "emit_learning_gate_blocked"
         assert gate["on_no"] == "check_impl_auth"
+
+    def test_rn_remediate_check_learning_gate_on_error_does_not_crash_loop(
+        self, rn_remediate: dict
+    ) -> None:
+        """BUG-2594: a residual shell fault must degrade to check_impl_auth, not crash."""
+        gate = rn_remediate["states"]["check_learning_gate"]
+        assert gate.get("on_error") == "check_impl_auth"
+
+    def test_rn_remediate_check_impl_auth_on_error_does_not_crash_loop(
+        self, rn_remediate: dict
+    ) -> None:
+        """BUG-2594: a residual shell fault must degrade to emit_implement_failed, not crash."""
+        auth = rn_remediate["states"]["check_impl_auth"]
+        assert auth.get("on_error") == "emit_implement_failed"
 
     def test_rn_remediate_emits_distinct_token(self, rn_remediate: dict) -> None:
         emit = rn_remediate["states"]["emit_learning_gate_blocked"]

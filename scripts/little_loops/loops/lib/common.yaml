@@ -303,16 +303,19 @@ fragments:
 
   ll_auto_auth_check:
     description: |
-      Shell state that greps captured ll-auto output for host-auth failure signatures
+      Shell state that greps a run-dir file for host-auth failure signatures
       (HTTP 401/403 and the ll-auto fatal credential string) and emits AUTH_FAILED or OK.
-      Designed to follow any ll-auto call site that sets capture: ll_auto_output.
-      State must supply: on_yes (auth detected → abort route), on_no (no auth failure → continue).
-      Callers MUST set capture: ll_auto_output on their ll-auto state so this fragment can
-      read ${captured.ll_auto_output.output}. Detection is host-agnostic: output signatures
-      only; no ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env probes (ENH-2353).
+      Designed to follow any ll-auto call site that tees its output to
+      ${context.run_dir}/ll_auto_last.txt (BUG-2594: reading from a file, rather than
+      interpolating captured output into a shell string, avoids untrusted Markdown
+      breaking the fragment's own shell parsing).
+      State must supply: on_yes (auth detected → abort route), on_no (no auth failure →
+      continue), on_error (residual shell fault → degrade to the next check rather than
+      crashing the loop). Detection is host-agnostic: output signatures only; no
+      ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env probes (ENH-2353).
     action_type: shell
     action: |
-      if echo "${captured.ll_auto_output.output}" | grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authentication method'; then
+      if grep -qiE '401|403|unauthorized|forbidden|could not resolve authentication|authentication method' "${context.run_dir}/ll_auto_last.txt" 2>/dev/null; then
         echo "AUTH_FAILED"
       else
         echo "OK"
@@ -323,20 +326,22 @@ fragments:
 
   ll_auto_learning_gate_check:
     description: |
-      Shell state that greps captured ll-auto output for the learning-gate block
-      marker (LEARNING_GATE_BLOCKED, emitted by process_issue_inplace when the
-      ENH-2319 gate blocks an issue on unproven external-API deps) and emits
-      GATE_BLOCKED or OK. Designed to follow any `ll-auto --only` call site that
-      sets capture: ll_auto_output. State must supply: on_yes (gate block detected
-      → distinct routing), on_no (no gate block → continue to the next check).
-      Callers MUST set capture: ll_auto_output on their ll-auto state so this
-      fragment can read ${captured.ll_auto_output.output}. Pair this BEFORE
-      ll_auto_auth_check so a gate block is not misattributed as an auth failure
-      or a generic implementation failure (consistency across rn-remediate /
-      autodev, see HARNESS_OPTIMIZATION_GUIDE learning-gate section).
+      Shell state that greps a run-dir file for the learning-gate block marker
+      (LEARNING_GATE_BLOCKED, emitted by process_issue_inplace when the ENH-2319 gate
+      blocks an issue on unproven external-API deps) and emits GATE_BLOCKED or OK.
+      Designed to follow any `ll-auto --only` call site that tees its output to
+      ${context.run_dir}/ll_auto_last.txt (BUG-2594: reading from a file, rather than
+      interpolating captured output into a shell string, avoids untrusted Markdown
+      breaking the fragment's own shell parsing). State must supply: on_yes (gate block
+      detected → distinct routing), on_no (no gate block → continue to the next check),
+      on_error (residual shell fault → degrade to the next check rather than crashing
+      the loop). Pair this BEFORE ll_auto_auth_check so a gate block is not
+      misattributed as an auth failure or a generic implementation failure
+      (consistency across rn-remediate / autodev, see HARNESS_OPTIMIZATION_GUIDE
+      learning-gate section).
     action_type: shell
     action: |
-      if echo "${captured.ll_auto_output.output}" | grep -qF 'LEARNING_GATE_BLOCKED'; then
+      if grep -qF 'LEARNING_GATE_BLOCKED' "${context.run_dir}/ll_auto_last.txt" 2>/dev/null; then
         echo "GATE_BLOCKED"
       else
         echo "OK"

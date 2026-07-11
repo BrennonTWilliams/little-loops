@@ -2501,11 +2501,84 @@ class TestLlAutoAuthCheckFragment:
             "'Could not resolve authentication' — the existing 401/403 pattern alone misses it"
         )
 
-    def test_fragment_action_references_ll_auto_output_capture(self, fragments: dict) -> None:
-        """Fragment action must reference the standardized ll_auto_output capture variable."""
+    def test_fragment_action_reads_run_dir_file_not_captured_output(self, fragments: dict) -> None:
+        """BUG-2594: fragment must grep a run-dir file, not interpolate captured output
+        into a shell string — untrusted Markdown in ll-auto's output can otherwise
+        break the fragment's own shell parsing."""
         frag = fragments["ll_auto_auth_check"]
         action = frag.get("action", "")
-        assert "captured.ll_auto_output.output" in action, (
-            "ll_auto_auth_check action must reference ${captured.ll_auto_output.output} — "
-            "callers must set capture: ll_auto_output on their ll-auto state"
+        assert "context.run_dir" in action and "ll_auto_last.txt" in action, (
+            "ll_auto_auth_check action must grep ${context.run_dir}/ll_auto_last.txt"
         )
+        assert "captured.ll_auto_output.output" not in action, (
+            "ll_auto_auth_check must not interpolate ${captured.ll_auto_output.output} "
+            "into a shell string (BUG-2594)"
+        )
+
+
+class TestLlAutoFragmentsAdversarialOutput:
+    """BUG-2594 regression: run the fragments' actual shell bodies against
+    ll-auto output full of backticks/`$`/quotes/fenced code — the interpolation
+    hazard broke shell parsing before the file-based rewrite; this executes the
+    real action string rather than asserting on its YAML shape."""
+
+    LIB_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "common.yaml"
+
+    ADVERSARIAL_OUTPUT = textwrap.dedent(
+        """\
+        Decision gate halted on BUG-9999.
+
+        To clear the gate, run:
+        ```bash
+        echo "$(rm -rf /tmp/should-not-run)" && `echo pwned`
+        ```
+
+        Unbalanced quote: it's "broken here
+        """
+    )
+
+    @pytest.fixture
+    def fragments(self) -> dict:
+        import yaml
+
+        data = yaml.safe_load(self.LIB_PATH.read_text())
+        return data.get("fragments", {})
+
+    def _run_fragment(self, fragments: dict, name: str, run_dir: Path, output: str):
+        import subprocess
+
+        (run_dir / "ll_auto_last.txt").write_text(output)
+        action = fragments[name]["action"]
+        script = action.replace("${context.run_dir}", str(run_dir))
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+
+    def test_auth_check_survives_adversarial_output(self, fragments: dict, tmp_path: Path) -> None:
+        result = self._run_fragment(fragments, "ll_auto_auth_check", tmp_path, self.ADVERSARIAL_OUTPUT)
+        assert result.returncode == 0, (
+            f"ll_auto_auth_check must not fail to parse on adversarial output: {result.stderr!r}"
+        )
+        assert result.stdout.strip() == "OK"
+
+    def test_learning_gate_check_survives_adversarial_output(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
+        result = self._run_fragment(
+            fragments, "ll_auto_learning_gate_check", tmp_path, self.ADVERSARIAL_OUTPUT
+        )
+        assert result.returncode == 0, (
+            f"ll_auto_learning_gate_check must not fail to parse on adversarial output: "
+            f"{result.stderr!r}"
+        )
+        assert result.stdout.strip() == "OK"
+
+    def test_learning_gate_check_still_detects_marker_amid_adversarial_output(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
+        output = self.ADVERSARIAL_OUTPUT + "\nLEARNING_GATE_BLOCKED\n"
+        result = self._run_fragment(
+            fragments, "ll_auto_learning_gate_check", tmp_path, output
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "GATE_BLOCKED"

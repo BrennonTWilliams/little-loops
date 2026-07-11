@@ -499,7 +499,12 @@ states:
       if [ -n "${context.skip_learning_gate}" ]; then
         SKIP_FLAG="--skip-learning-gate"
       fi
-      ll-auto --only "$ID" $SKIP_FLAG 2>&1
+      # BUG-2594: tee to a run-dir file rather than relying solely on the
+      # `capture:` value, so the learning-gate/auth-check fragments can grep a
+      # file instead of interpolating untrusted Markdown into a shell string.
+      # `set -o pipefail` preserves ll-auto's exit code through the `tee` pipe.
+      set -o pipefail
+      ll-auto --only "$ID" $SKIP_FLAG 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
       # Failure recording is owned by the parent's record_failure state
       # (driven by the IMPLEMENT_FAILED outcome token) to avoid double-counting.
       exit $?
@@ -603,15 +608,19 @@ states:
     fragment: ll_auto_learning_gate_check
     on_yes: emit_learning_gate_blocked
     on_no: check_impl_auth
+    on_error: check_impl_auth
 
   check_impl_auth:
     # ENH-2353: gate between implement failure and emit_implement_failed.
-    # Greps captured ll-auto output for auth signatures; routes auth failures
-    # to emit_env_not_ready (ENV_NOT_READY → parent aborts queue) rather than
-    # mislabeling them as IMPLEMENT_FAILED.
+    # Greps the run-dir ll-auto output file for auth signatures; routes auth
+    # failures to emit_env_not_ready (ENV_NOT_READY → parent aborts queue)
+    # rather than mislabeling them as IMPLEMENT_FAILED.
+    # on_error (BUG-2594): a residual shell fault must not crash the loop —
+    # degrade to the generic implement-failed path.
     fragment: ll_auto_auth_check
     on_yes: emit_env_not_ready
     on_no: emit_implement_failed
+    on_error: emit_implement_failed
 
   decide:
     fragment: with_rate_limit_handling

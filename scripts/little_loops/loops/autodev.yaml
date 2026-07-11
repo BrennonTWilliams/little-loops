@@ -432,7 +432,12 @@ states:
       if [ -n "${context.skip_learning_gate}" ]; then
         SKIP_FLAG="--skip-learning-gate"
       fi
-      ll-auto --only "$CURRENT" $SKIP_FLAG
+      # BUG-2594: tee to a run-dir file rather than relying solely on the
+      # `capture:` value, so the learning-gate/auth-check fragments can grep a
+      # file instead of interpolating untrusted Markdown into a shell string.
+      # `set -o pipefail` preserves ll-auto's exit code through the `tee` pipe.
+      set -o pipefail
+      ll-auto --only "$CURRENT" $SKIP_FLAG 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
     action_type: shell
     on_yes: dequeue_next
     on_no: check_learning_gate
@@ -445,9 +450,12 @@ states:
     # Detect it FIRST and record it distinctly so the run summary can tell a
     # gate block (remedy: /ll:explore-api) from a real failure. on_no falls through
     # to the auth check (mirrors rn-remediate's ordering for cross-loop parity).
+    # on_error (BUG-2594): a residual shell fault reading the run-dir file (e.g.
+    # permission error) must not crash the loop — degrade to the auth check.
     fragment: ll_auto_learning_gate_check
     on_yes: mark_gate_blocked
     on_no: check_impl_auth
+    on_error: check_impl_auth
 
   mark_gate_blocked:
     # Record the gate-blocked issue distinctly and advance the queue. The issue is
@@ -469,6 +477,7 @@ states:
     fragment: ll_auto_auth_check
     on_yes: abort_env_not_ready
     on_no: dequeue_next
+    on_error: dequeue_next
 
   abort_env_not_ready:
     # ENH-2353: abort the autodev queue on auth misconfiguration.
