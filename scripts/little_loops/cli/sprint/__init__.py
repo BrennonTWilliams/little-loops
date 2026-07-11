@@ -146,6 +146,13 @@ Examples:
             help="Enable/disable feature-branch mode for this run (overrides config)",
         )
         run_parser.add_argument(
+            "--epic-branches",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Enable/disable per-EPIC integration-branch mode for this run "
+            "(overrides parallel.epic_branches.enabled)",
+        )
+        run_parser.add_argument(
             "--save",
             action="store_true",
             help="Write resolved sprint YAML to .ll/sprints/ before executing (useful for EPIC IDs)",

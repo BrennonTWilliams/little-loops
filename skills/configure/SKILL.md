@@ -100,7 +100,7 @@ Map argument names to config sections:
 |----------|----------------|-------------|
 | `project` | `project` | Test, lint, format, type-check, build, run commands |
 | `issues` | `issues` | Base dir, categories, templates, capture style |
-| `parallel` | `parallel` | ll-parallel: workers, timeouts, worktree files, feature branches, feature branches |
+| `parallel` | `parallel` | ll-parallel: workers, timeouts, worktree files, feature branches, epic branches |
 | `automation` | `automation` | ll-auto: workers, timeouts, streaming |
 | `documents` | `documents` | Key document categories for issue alignment |
 | `continuation` | `continuation` | Session handoff: auto-detect, includes, expiry |
@@ -133,7 +133,7 @@ Configuration Areas
 -------------------
   project       [CONFIGURED]  Test, lint, format, type-check, build commands
   issues        [CONFIGURED]  Base dir, categories, templates, capture style
-  parallel      [DEFAULT]     ll-parallel: workers, timeouts, worktree files, feature branches, feature branches
+  parallel      [DEFAULT]     ll-parallel: workers, timeouts, worktree files, feature branches, epic branches
   automation    [DEFAULT]     ll-auto: workers, timeouts, streaming
   commands      [DEFAULT]     Command hooks, confidence gate
   documents     [CONFIGURED]  Key document categories for issue alignment
@@ -232,7 +232,7 @@ questions:
       - label: "commands"
         description: "Command hooks, confidence gate"
       - label: "parallel"
-        description: "ll-parallel: workers, timeouts, worktree files, feature branches"
+        description: "ll-parallel: workers, timeouts, worktree files, feature branches, epic branches"
       - label: "automation"
         description: "ll-auto: workers, timeouts, streaming"
       - label: "More areas..."
@@ -377,7 +377,7 @@ $ARGUMENTS
   - `project` - Test, lint, format, type-check, build commands
   - `issues` - Base dir, categories, templates, capture style
   - `commands` - Command hooks, confidence gate
-  - `parallel` - ll-parallel: workers, timeouts, worktree files, feature branches
+  - `parallel` - ll-parallel: workers, timeouts, worktree files, feature branches, epic branches
   - `automation` - ll-auto: workers, timeouts, streaming
   - `documents` - Key document categories for issue alignment
   - `continuation` - Session handoff: auto-detect, includes, expiry

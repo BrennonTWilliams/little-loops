@@ -1824,6 +1824,12 @@ class WorkerPool:
         rebase-merged PRs.  When ``gh`` is absent the cross-check returns False
         for every branch, so only ``--merged``-detected branches are pruned.
 
+        The ``feature/*``-only scope is intentional: ``epic/*`` integration
+        branches (FEAT-2339) are deleted explicitly by the EPIC
+        completion-merge step, never auto-pruned here, so restricting this
+        sweep to ``feature/`` is by design, not a bug (FEAT-2339 Decision
+        Rationale #3).
+
         Args:
             base_branch: Branch that acts as the merge target (e.g. ``"main"``).
             dry_run: If True, list candidates but do not delete anything.

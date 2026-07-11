@@ -458,6 +458,18 @@ sequenceDiagram
 
 The parallel mode uses git worktrees to process multiple issues concurrently.
 
+**Per-EPIC integration branches (FEAT-2339).** By default each worker forks
+from and merges back to `parallel.base_branch`. When
+`parallel.epic_branches.enabled` is `true` (config, or `--epic-branches` for a
+single run), the `WorkerPool` resolves each issue's nearest ancestor EPIC and
+routes all children of that EPIC onto one shared `epic/<EPIC-ID>-<slug>`
+integration branch — both as fork point and merge target — via
+`WorkerResult.epic_branch`. The `MergeCoordinator` merges the EPIC branch back
+to the base branch once the EPIC's last child completes
+(`epic_branches.merge_to_base_on_complete`), optionally opening a PR
+(`epic_branches.open_pr`). Standalone (parentless) issues keep the per-worker
+branch behavior unchanged.
+
 ```mermaid
 flowchart TB
     subgraph Orchestrator["ParallelOrchestrator"]

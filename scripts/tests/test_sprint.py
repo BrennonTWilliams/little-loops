@@ -2324,6 +2324,62 @@ class TestSprintWaveCleanStart:
             "Wave create_parallel_config must pass clean_start=True to avoid loading stale orchestrator state"
         )
 
+    def test_wave_parallel_config_passes_epic_branches(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Wave create_parallel_config threads --epic-branches through (FEAT-2450)."""
+        import argparse
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli import sprint as cli
+        from little_loops.parallel.types import ParallelConfig
+
+        config, manager = self._setup_multi_issue_sprint(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        captured_kwargs: dict[str, Any] = {}
+
+        original_create = config.create_parallel_config
+
+        def capturing_create(**kwargs: Any) -> ParallelConfig:
+            captured_kwargs.update(kwargs)
+            return original_create(**kwargs)
+
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.run.return_value = 0
+        mock_orchestrator.execution_duration = 0.0
+        mock_orchestrator.queue.completed_ids = ["BUG-001", "FEAT-002"]
+        mock_orchestrator.queue.failed_ids = []
+
+        args = argparse.Namespace(
+            sprint="multi",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            only=None,
+            max_workers=2,
+            quiet=False,
+            skip_analysis=True,
+            type=None,
+            epic_branches=True,
+        )
+
+        with (
+            patch.object(config, "create_parallel_config", side_effect=capturing_create),
+            patch(
+                "little_loops.cli.sprint.run.ParallelOrchestrator",
+                return_value=mock_orchestrator,
+            ),
+        ):
+            cli._cmd_sprint_run(args, manager, config)
+
+        epic_branches = captured_kwargs.get("epic_branches")
+        assert epic_branches is not None, (
+            "Wave create_parallel_config must thread epic_branches when --epic-branches is set"
+        )
+        assert epic_branches.enabled is True
+
 
 class TestSprintManagerLoadOrResolve:
     """Tests for SprintManager.load_or_resolve() (FEAT-1737)."""

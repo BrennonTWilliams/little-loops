@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
 from pathlib import Path
@@ -140,6 +141,13 @@ Examples:
             help="Enable/disable feature-branch mode for this run (overrides config)",
         )
         parser.add_argument(
+            "--epic-branches",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Enable/disable per-EPIC integration-branch mode for this run "
+            "(overrides parallel.epic_branches.enabled)",
+        )
+        parser.add_argument(
             "--overlap-detection",
             action="store_true",
             help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
@@ -261,6 +269,11 @@ Examples:
             serialize_overlapping=not args.warn_only,
             base_branch=_base_branch,
             use_feature_branches=args.feature_branches,
+            epic_branches=(
+                dataclasses.replace(config.parallel.epic_branches, enabled=args.epic_branches)
+                if args.epic_branches is not None
+                else None
+            ),
             skip_learning_gate=args.skip_learning_gate,
         )
 

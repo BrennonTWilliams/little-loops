@@ -962,6 +962,7 @@ class TestSprintParallelBaseBranchDetection:
         args.context_limit = None
         args.save = False
         args.feature_branches = None
+        args.epic_branches = None
         return args
 
     def _run_multi_issue_wave(

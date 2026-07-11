@@ -363,6 +363,7 @@ def run_tui(
     parallel_workers: int = 4
     worktree_copy_files: list[str] = []
     use_feature_branches: bool = False
+    use_epic_branches: bool = False
     if "parallel" in selected_set:
         workers_str = questionary.text(
             "Max parallel workers:",
@@ -402,6 +403,14 @@ def run_tui(
         if fb_val is None:
             return 130
         use_feature_branches = fb_val
+
+        eb_val: bool | None = questionary.confirm(
+            "Enable per-EPIC integration-branch mode (children of an EPIC share one branch)?",
+            default=_ex_parallel.get("epic_branches", {}).get("enabled", False),
+        ).ask()
+        if eb_val is None:
+            return 130
+        use_epic_branches = eb_val
 
     # Conditional: design-token profile picker
     _ex_dt_profile = existing_config.get("design_tokens", {}).get("active", "default")
@@ -567,6 +576,7 @@ def run_tui(
         scan_custom_excludes=scan_custom_excludes,
         worktree_copy_files=worktree_copy_files,
         use_feature_branches=use_feature_branches,
+        use_epic_branches=use_epic_branches,
         design_token_profile=design_token_profile,
         documents_categories=documents_categories,
         session_digest_enabled=bool(session_digest_enabled),
@@ -631,6 +641,7 @@ def _build_final_config(
     scan_custom_excludes: list[str] | None = None,
     worktree_copy_files: list[str] | None = None,
     use_feature_branches: bool = False,
+    use_epic_branches: bool = False,
     design_token_profile: str = "default",
     documents_categories: dict[str, Any] | None = None,
     session_digest_enabled: bool = True,
@@ -685,6 +696,8 @@ def _build_final_config(
             parallel_section["worktree_copy_files"] = list(worktree_copy_files)
         if use_feature_branches:
             parallel_section["use_feature_branches"] = True
+        if use_epic_branches:
+            parallel_section["epic_branches"] = {"enabled": True}
         if parallel_section:
             config["parallel"] = parallel_section
 

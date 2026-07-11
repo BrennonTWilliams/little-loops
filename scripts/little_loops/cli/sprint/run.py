@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import signal
 import subprocess
@@ -604,6 +605,14 @@ def _cmd_sprint_run(
                     base_branch=_base_branch,
                     clean_start=True,  # Sprint manages its own state; don't load stale orchestrator state
                     use_feature_branches=getattr(args, "feature_branches", None),
+                    epic_branches=(
+                        dataclasses.replace(
+                            config.parallel.epic_branches,
+                            enabled=args.epic_branches,
+                        )
+                        if getattr(args, "epic_branches", None) is not None
+                        else None
+                    ),
                 )
 
                 from little_loops.events import EventBus

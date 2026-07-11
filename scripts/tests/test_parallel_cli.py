@@ -287,3 +287,97 @@ class TestParallelNormalRun:
         mock_detect.assert_not_called()
         parallel_config = mock_cls.call_args.kwargs["parallel_config"]
         assert parallel_config.base_branch == "release"
+
+    def test_epic_branches_flag_enables_epic_mode(self, make_project: Any) -> None:
+        """`--epic-branches` sets parallel_config.epic_branches.enabled True (FEAT-2450)."""
+        project, _ = make_project(
+            config={
+                "project": {"name": "test"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                    "priorities": ["P0", "P1", "P2"],
+                },
+                "parallel": {"max_workers": 2},
+            }
+        )
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_cls.return_value = mock_orch
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-parallel", "--epic-branches", "--config", str(project)],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+        assert result == 0
+        parallel_config = mock_cls.call_args.kwargs["parallel_config"]
+        assert parallel_config.epic_branches.enabled is True
+
+    def test_epic_branches_flag_preserves_configured_prefix(self, make_project: Any) -> None:
+        """`--epic-branches` overrides only `enabled`, preserving config prefix (FEAT-2450)."""
+        project, _ = make_project(
+            config={
+                "project": {"name": "test"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                    "priorities": ["P0", "P1", "P2"],
+                },
+                "parallel": {
+                    "max_workers": 2,
+                    "epic_branches": {"enabled": False, "prefix": "integration/"},
+                },
+            }
+        )
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_cls.return_value = mock_orch
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-parallel", "--epic-branches", "--config", str(project)],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+        assert result == 0
+        parallel_config = mock_cls.call_args.kwargs["parallel_config"]
+        assert parallel_config.epic_branches.enabled is True
+        assert parallel_config.epic_branches.prefix == "integration/"
+
+    def test_no_epic_branches_flag_disables_configured_epic_mode(self, make_project: Any) -> None:
+        """`--no-epic-branches` overrides a config-enabled epic mode to disabled (FEAT-2450)."""
+        project, _ = make_project(
+            config={
+                "project": {"name": "test"},
+                "issues": {
+                    "base_dir": ".issues",
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                    "priorities": ["P0", "P1", "P2"],
+                },
+                "parallel": {"max_workers": 2, "epic_branches": {"enabled": True}},
+            }
+        )
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_cls:
+            mock_orch = MagicMock()
+            mock_orch.run.return_value = 0
+            mock_cls.return_value = mock_orch
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-parallel", "--no-epic-branches", "--config", str(project)],
+            ):
+                from little_loops.cli import main_parallel
+
+                result = main_parallel()
+
+        assert result == 0
+        parallel_config = mock_cls.call_args.kwargs["parallel_config"]
+        assert parallel_config.epic_branches.enabled is False

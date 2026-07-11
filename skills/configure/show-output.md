@@ -51,6 +51,10 @@ Parallel Processing Configuration (ll-parallel)
   push_feature_branches:        {{config.parallel.push_feature_branches}}        (default: false)
   open_pr_for_feature_branches: {{config.parallel.open_pr_for_feature_branches}} (default: false)
   base_branch:                  {{config.parallel.base_branch}}                  (default: main)
+  epic_branches.enabled:        {{config.parallel.epic_branches.enabled}}        (default: false)
+  epic_branches.prefix:         {{config.parallel.epic_branches.prefix}}         (default: epic/)
+  epic_branches.merge_to_base_on_complete: {{config.parallel.epic_branches.merge_to_base_on_complete}} (default: true)
+  epic_branches.open_pr:        {{config.parallel.epic_branches.open_pr}}        (default: false)
 
 Edit: /ll:configure parallel
 ```

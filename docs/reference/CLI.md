@@ -355,6 +355,7 @@ Process issues concurrently using isolated git worktrees.
 | `--stream-output` | | Stream Claude CLI subprocess output to console |
 | `--show-model` | | Verify and display model on worktree setup |
 | `--feature-branches` | | Enable/disable feature-branch mode (`--feature-branches` / `--no-feature-branches`); overrides `parallel.use_feature_branches` in config for this run |
+| `--epic-branches` | | Enable/disable per-EPIC integration-branch mode (`--epic-branches` / `--no-epic-branches`); overrides `parallel.epic_branches.enabled` in config for this run |
 | `--overlap-detection` | | Enable pre-flight overlap detection to reduce merge conflicts |
 | `--warn-only` | | With `--overlap-detection`, warn instead of serializing |
 | `--dry-run` | `-n` | Show what would be processed |
@@ -376,6 +377,8 @@ Process issues concurrently using isolated git worktrees.
 **Per-worktree proof-first gate (ENH-2219):** When `learning_tests.enabled` is `true`, each worktree runs a `proof-first-task` gate before handing off to the implementation loop. The gate reads `learning_tests_required` from the issue file; when that field is absent (an unrefined issue), it resolves targets just-in-time by extracting external-API dependencies from the issue text (BUG-2320), so the firewall still fires on the `capture-issue → ll-parallel` path. A populated field is proven directly — forwarded as `targets_csv` so `proof-first-task` proves exactly the registered list rather than re-extracting an independent one (ENH-2405); a JIT-resolved list still goes through the `assumption-firewall` extraction/classification path. Either way, the gate verifies that every resolved API assumption has a proven (non-stale) record in the registry. If resolution yields no targets, the gate logs "no external dependencies detected" and proceeds (an auditable decision, not a silent skip). Issues that fail the gate are retried once after `/ll:explore-api` completes; if the retry also fails the issue is skipped and marked `blocked`. Use `--skip-learning-gate` for emergency runs when the registry is unavailable.
 
 > **Config tip:** Branch naming and merge behavior are controlled by `parallel.use_feature_branches` in `ll-config.json`. When `true`, branches are named `feature/<id>-<slug>` and auto-merge is skipped, leaving PR-ready branches for review. Set `parallel.push_feature_branches: true` to also push branches to remote after success, and `parallel.open_pr_for_feature_branches: true` to open a draft PR via `gh` and record `pr_url:` on the issue. See [Configuration reference](CONFIGURATION.md#parallel) and the [Feature-Branch / PR-Based Workflow](../guides/SPRINT_GUIDE.md#feature-branch--pr-based-workflow) guide.
+
+> **Config tip (epic branches):** Per-EPIC integration branches are controlled by `parallel.epic_branches.enabled` in `ll-config.json` (or `--epic-branches` for one run). When `true`, children of a single EPIC coalesce their work onto a shared `epic/<EPIC-ID>-<slug>` integration branch (`parallel.epic_branches.prefix`, default `epic/`) instead of per-worker branches. On the EPIC's last child, the integration branch merges back to `base_branch` when `parallel.epic_branches.merge_to_base_on_complete` is `true` (default), and opens a PR via `gh` when `parallel.epic_branches.open_pr` is `true`. See [Configuration reference](CONFIGURATION.md#parallel) and the [Per-EPIC integration branch](../guides/SPRINT_GUIDE.md#per-epic-integration-branch) guide.
 
 **Examples:**
 ```bash
@@ -422,6 +425,7 @@ Execute a sprint or resolve an EPIC's active children as a sprint.
 | `sprint` | | Sprint name **or** EPIC ID (e.g. `EPIC-1234`) to resolve and execute |
 | `--dry-run` | `-n` | Show plan without running |
 | `--feature-branches` | | Enable/disable feature-branch mode (`--feature-branches` / `--no-feature-branches`); overrides `parallel.use_feature_branches` in config for this run |
+| `--epic-branches` | | Enable/disable per-EPIC integration-branch mode (`--epic-branches` / `--no-epic-branches`); overrides `parallel.epic_branches.enabled` in config for this run |
 | `--max-workers` | `-w` | Max parallel workers |
 | `--timeout` | `-t` | Timeout per issue in seconds |
 | `--config` | | Path to project root |

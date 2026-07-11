@@ -152,10 +152,10 @@ When `epic_branches.enabled` is true in `.ll/ll-config.json` (FEAT-2449, FEAT-24
 
 1. The orchestrator stamps `WorkerResult.epic_branch` for every child of an EPIC (`scripts/little_loops/parallel/worker_pool.py`). Children of an EPIC all share one branch name; standalone issues get `None`.
 2. The merge coordinator reads that field and chooses the merge target — base branch when `epic_branch is None`, the EPIC integration branch otherwise.
-3. When the last child of an EPIC has been integrated, the orchestrator opens the EPIC-level merge (or PR, if `open_pr_for_epic_branches` is configured) from `epic/<EPIC-ID>-<slug>` back into the base branch.
+3. When the last child of an EPIC has been integrated, the orchestrator opens the EPIC-level merge (when `epic_branches.merge_to_base_on_complete` is `true`, the default) — or a PR (when `epic_branches.open_pr` is `true`) — from `epic/<EPIC-ID>-<slug>` back into the base branch.
 4. If any child of the EPIC fails, the EPIC branch is held open — the partial-failure gate prevents the EPIC-level merge from firing until the failing child is rerun or removed.
 
-The shared helper that resolves "the nearest ancestor EPIC that already has an integration branch" lives at `scripts/little_loops/issue_progress.py:find_nearest_epic_ancestor` (FEAT-2561) and is also used by `epic_branches.fork_point: auto` to pick a child's fork point. See [Configuration Reference — Per-EPIC Integration Branch](../reference/CONFIGURATION.md#parallel) and [Sprint Guide — Per-EPIC Integration Branch](../guides/SPRINT_GUIDE.md#per-epic-integration-branch) for the user-facing surface.
+The shared helper that resolves "the nearest ancestor EPIC" lives at `scripts/little_loops/issue_progress.py:find_nearest_epic_ancestor` (FEAT-2561) and is used to map each child to its EPIC integration branch (`epic_branches.prefix` + EPIC ID + slug). See [Configuration Reference — Per-EPIC Integration Branch](../reference/CONFIGURATION.md#parallel) and [Sprint Guide — Per-EPIC Integration Branch](../guides/SPRINT_GUIDE.md#per-epic-integration-branch) for the user-facing surface.
 
 ## Sophisticated Error Handling
 

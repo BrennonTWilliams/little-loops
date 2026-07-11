@@ -65,6 +65,7 @@ For interactive editing, use `/ll:configure`.
     "worktree_copy_files": [".claude/settings.local.json", ".env"],
     "require_code_changes": true,
     "use_feature_branches": false,
+    "epic_branches": { "enabled": false },
     "remote_name": "origin"
   },
 
@@ -361,8 +362,9 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `base_branch` | auto-detected | Base branch targeted by PR creation when `open_pr_for_feature_branches` is `true`. Also used as the rebase target for worktree updates. When unset, auto-detected at startup (`origin/HEAD` → current branch → `main`); an explicit value overrides auto-detection. |
 | `remote_name` | `"origin"` | Git remote name for fetch/pull operations. Set if your remote is not named `origin` (e.g., `"upstream"`). |
 | `epic_branches.enabled` | `false` | **FEAT-2447, child 1/4 of FEAT-2339.** When `true`, all children of a single EPIC share one integration branch (`epic/<EPIC-ID>-<slug>`) for both fork point AND merge target (per Decision ARCHITECTURE-096). Standalone (parentless) issues keep today's per-worker behavior unchanged. Worker-pool wiring landed in FEAT-2448; the `_maybe_complete_epic` / `_inspect_worktree` orchestrator paths landed in FEAT-2449 / FEAT-2562. Remaining CLI/TUI/docs polish is tracked in FEAT-2450. See `.ll/decisions.yaml#ARCHITECTURE-096`. |
-| `epic_branches.base_pattern` | `"epic/{epic_id}-{slug}"` | Template for the per-EPIC integration branch name. Placeholders: `{epic_id}` (e.g. `EPIC-2339`), `{slug}` (kebab-cased EPIC title). |
-| `epic_branches.fork_point` | `"auto"` | Where children of the EPIC branch off from. `"auto"` uses the EPIC's nearest ancestor that already has an integration branch (or `parallel.base_branch` for the first child). Set to a branch name to pin all children to a known base. |
+| `epic_branches.prefix` | `"epic/"` | Prefix for the per-EPIC integration branch name; the branch composes as `f"{prefix}{epic_id.lower()}-{slug}"` (e.g. `epic/epic-2339-foo`). `{slug}` is the kebab-cased EPIC title. |
+| `epic_branches.merge_to_base_on_complete` | `true` | When `true`, the EPIC integration branch is itself merged back to `base_branch` after the EPIC's last child completes. Set `false` to leave the integration branch un-merged (e.g. for manual PR review). |
+| `epic_branches.open_pr` | `false` | When `true`, open a PR for the EPIC integration branch via the `gh` CLI on completion. Requires `gh` installed and authenticated. |
 
 ### `product`
 

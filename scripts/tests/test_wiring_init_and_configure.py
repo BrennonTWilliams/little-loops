@@ -174,6 +174,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/configure/show-output.md", "use_feature_branches", "ENH-2174"),
     ("skills/configure/areas.md", "use_feature_branches", "ENH-2174"),
     ("skills/configure/SKILL.md", "feature branches", "ENH-2174"),
+    ("skills/configure/show-output.md", "epic_branches", "FEAT-2450"),
+    ("skills/configure/areas.md", "epic_branches", "FEAT-2450"),
+    ("skills/configure/SKILL.md", "epic branches", "FEAT-2450"),
 ]
 
 

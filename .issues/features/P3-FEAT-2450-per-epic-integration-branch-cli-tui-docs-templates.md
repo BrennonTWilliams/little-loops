@@ -4,8 +4,9 @@ title: "per-EPIC integration branch \u2014 CLI flags, TUI surface, docs, templat
   \ parity"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-02T22:30:00Z'
+completed_at: '2026-07-11T14:02:41Z'
 discovered_date: 2026-07-02
 discovered_by: issue-size-review
 labels:
@@ -61,6 +62,52 @@ this user-facing polish.
 
 Decomposed from FEAT-2339: Per-EPIC integration branch strategy for
 ll-parallel/ll-sprint.
+
+## Use Case
+
+A user running `ll-parallel` or `ll-sprint` across an EPIC's children wants
+each wave to land on a shared per-EPIC integration branch instead of the base
+branch, then merge the integration branch back once the EPIC completes. The
+backend for this now exists (FEAT-2447/2448/2449), but there is no way to
+turn it on from the CLI, no `ll-init` prompt to configure it, and no
+documentation describing the config keys — so the feature is undiscoverable.
+This child exposes and documents the surface.
+
+## Current Behavior
+
+The `EpicBranchesConfig` backend, resolver, runtime wiring, schema, and all 9
+template stamps are complete and test-covered (FEAT-2447/2448/2449, all
+`done`). However:
+- No `--epic-branches` / `--no-epic-branches` argparse flag is registered in
+  `ll-parallel` or `ll-sprint` (`scripts/little_loops/cli/` — zero hits).
+- The multi-issue wave `create_parallel_config()` call
+  (`cli/sprint/run.py:598-607`) does not thread `epic_branches=`.
+- The `ll-init` TUI never prompts for `epic_branches.enabled`.
+- `/ll:configure` does not display or set the new keys.
+- Docs are missing (`CLI.md`) or stale (`CONFIGURATION.md`, `SPRINT_GUIDE.md`,
+  `MERGE-COORDINATOR.md` still reference the never-implemented `base_pattern` /
+  `fork_point` field names instead of `prefix` / `merge_to_base_on_complete` /
+  `open_pr`).
+
+## Expected Behavior
+
+- `ll-parallel --epic-branches` and `ll-sprint --epic-branches` work
+  end-to-end, threading through both `create_parallel_config()` call sites.
+- `ll-init` TUI prompts for `epic_branches.enabled` when `parallel` is selected.
+- `/ll:configure` displays and updates the `epic_branches.*` keys.
+- All docs (`CLI.md`, `CONFIGURATION.md`, `SPRINT_GUIDE.md`, `ARCHITECTURE.md`,
+  `API.md`, `MERGE-COORDINATOR.md`) describe the real field names.
+- `prune_merged_feature_branches()` docstring states its `feature/*`-only scope
+  is intentional.
+- Full `python -m pytest scripts/tests/` exits 0.
+
+## Impact
+
+Without this child, the per-EPIC integration-branch feature (FEAT-2339,
+~three merged child issues) ships with a complete backend that no user can
+reach — a fully-implemented, undiscoverable feature. Completing it closes out
+the FEAT-2339 epic end-to-end and removes stale/incorrect config field names
+from published docs.
 
 ## Scope
 
@@ -678,7 +725,76 @@ _Wiring pass added by `/ll:wire-issue`:_
 17. Add `--epic-branches` flag-table rows and a config-tip block to
     `docs/reference/CLI.md` (near lines 357, 378, 424).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-11_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 65/100 → below informational threshold
+
+### Outcome Risk Factors
+- Broad enumeration across ~22 files (18 impl + 4 test) — no single automated wiring-completeness test asserts all sites landed; recommend treating the numbered wiring steps (items 1–17) as a literal checklist and re-running `/ll:wire-issue` after implementation to catch residual gaps.
+
+## Status
+
+open — all blockers (FEAT-2449, FEAT-2562, FEAT-2563) plus FEAT-2447/2448 are
+`done`; the backend surface exists and this user-facing polish is ready to
+implement.
+
+## Resolution
+
+_Implemented via `/ll:manage-issue feat implement FEAT-2450` on 2026-07-11._
+
+Exposed the per-EPIC integration-branch surface end-to-end:
+
+- **CLI flags**: `--epic-branches` / `--no-epic-branches` (`BooleanOptionalAction`,
+  `default=None`) on `ll-parallel` (`cli/parallel.py`) and `ll-sprint run`
+  (`cli/sprint/__init__.py`). Threaded into both `create_parallel_config()` call
+  sites — `cli/parallel.py` and the multi-issue-wave call in `cli/sprint/run.py`
+  (the second call site from the 2026-07-11 wiring pass, step 14). The bool flag
+  is converted to an `EpicBranchesConfig` override via
+  `dataclasses.replace(config.parallel.epic_branches, enabled=<flag>)`, which
+  toggles only `enabled` and preserves the configured `prefix` /
+  `merge_to_base_on_complete` / `open_pr` (the backend kwarg expects a config
+  object, not a bool).
+- **TUI**: `ll-init` now prompts for `epic_branches.enabled` when `parallel` is
+  selected, writing `parallel.epic_branches = {"enabled": true}` when truthy.
+- **Configure skill**: `areas.md` (display row + Round 3 confirm),
+  `show-output.md` (4 epic_branches display rows), `SKILL.md` (fixed the doubled
+  "feature branches, feature branches" typo at two sites → "feature branches,
+  epic branches"; appended to two more descriptions).
+- **Docstring**: `prune_merged_feature_branches()` now states its `feature/*`-only
+  scope is intentional.
+- **Docs**: `CONFIGURATION.md` (example parity + replaced stale
+  `base_pattern`/`fork_point` rows with real `prefix`/`merge_to_base_on_complete`/
+  `open_pr`), `CLI.md` (flag rows + epic config-tip for both commands),
+  `SPRINT_GUIDE.md` (real field names + `--epic-branches` flag note),
+  `ARCHITECTURE.md` (per-EPIC integration-branch note), `API.md`
+  (`create_parallel_config`/`ParallelConfig` signatures + new
+  `EpicBranchesConfig` entry), `MERGE-COORDINATOR.md` (replaced stale
+  `open_pr_for_epic_branches`/`fork_point` references).
+- **Templates**: all 9 already stamped `epic_branches.{enabled:false}` (FEAT-2447);
+  no change needed.
+- **Tests**: `test_init_tui.py` (`_wire_q` epic-branches slot + enabled/disabled
+  tests), `test_parallel_cli.py` (3 flag end-to-end tests incl. config-prefix
+  preservation and `--no-epic-branches`), `test_sprint.py`
+  (`test_wave_parallel_config_passes_epic_branches`), `test_wiring_init_and_configure.py`
+  (3 `DOC_STRINGS_PRESENT` rows), `test_cli_sprint.py` (`_make_args` now sets
+  `epic_branches=None` so the bare-MagicMock helper doesn't auto-vivify a truthy
+  flag).
+
+**Verification**: FEAT-2450's full test surface is green; the complete suite runs
+14602 passed / 36 skipped with the only 3 failures being a **pre-existing,
+unrelated** bash-3.2 parsing incompatibility in
+`hooks/scripts/check-decisions-yaml.sh` (added by commit `8a590cc1`, a heredoc
+inside `$(...)` that only macOS's default bash 3.2 rejects — bash 5 and Linux CI
+parse it fine). That defect is outside this issue's scope and should be tracked
+separately.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T14:02:02Z - `b9a686c4-4cbd-4a66-b848-14faf96b8e4c.jsonl`
+- `/ll:ready-issue` - 2026-07-11T13:38:24 - `9fcfa346-2625-4095-94b9-6ec512487bac.jsonl`
+- `/ll:confidence-check` - 2026-07-11T00:00:00Z - `db4cccdc-4b6d-49fa-93cc-9ae3dc476335.jsonl`
 - `/ll:wire-issue` - 2026-07-11T13:27:53 - `53a25bae-eb67-44ca-abfb-0dff432a7a14.jsonl`
 - `/ll:wire-issue` - 2026-07-06T23:39:26 - `1dad1670-580d-493a-becb-164b981e5505.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:28:39 - `2a131898-32dd-4a20-b05a-4c40cefc922b.jsonl`

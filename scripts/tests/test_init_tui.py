@@ -63,6 +63,7 @@ def _wire_q(
     workers: str = "4",
     worktree_files: list[str] | None = None,
     use_feature_branches: bool = False,
+    use_epic_branches: bool = False,
     session_digest: bool = True,
     prompt_optimization: bool = True,
     loop_clear_default: bool = True,
@@ -78,8 +79,8 @@ def _wire_q(
       2. Project Basics: name, src_dir, test_cmd, lint_cmd, type_cmd, format_cmd (text)
       3. Scan: focus_dirs (text), add_excludes (confirm), [custom_excludes (text) if add_excludes]
       4. Features: features (checkbox), [workers (text) + worktree_files (checkbox) if parallel],
-                   [use_feature_branches (confirm) if parallel], session_digest (confirm),
-                   prompt_optimization (confirm), loop_clear_default (confirm)
+                   [use_feature_branches (confirm) + use_epic_branches (confirm) if parallel],
+                   session_digest (confirm), prompt_optimization (confirm), loop_clear_default (confirm)
       4b. Loop run defaults: loop_show_diagrams_default (select, via shared return_value)
       5. Hosts: hosts (checkbox)
       6. Settings: settings (select, via shared return_value)
@@ -116,11 +117,12 @@ def _wire_q(
     mock_q.select.return_value.ask.return_value = settings
 
     # Confirm: install_confirmed (screen 1, ENH-2253), add_excludes (screen 3),
-    # [use_feature_branches if parallel] (screen 4), session_digest (screen 4),
+    # [use_feature_branches + use_epic_branches if parallel] (screen 4), session_digest (screen 4),
     # prompt_optimization (screen 4), loop_clear_default (screen 4, ENH-2243), apply (final)
     confirm_returns = [install_confirmed, add_excludes]
     if "parallel" in features:
         confirm_returns.append(use_feature_branches)
+        confirm_returns.append(use_epic_branches)
     confirm_returns.extend([session_digest, prompt_optimization, loop_clear_default, confirmed])
     mock_q.confirm.side_effect = [_mock_ask(v) for v in confirm_returns]
 
@@ -335,6 +337,30 @@ class TestConditionalParallel:
 
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
         assert config.get("parallel", {}).get("use_feature_branches") is None
+
+    @patch("little_loops.init.tui.questionary")
+    def test_epic_branches_enabled_written_to_config(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel"], workers="4", use_epic_branches=True)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config.get("parallel", {}).get("epic_branches", {}).get("enabled") is True
+
+    @patch("little_loops.init.tui.questionary")
+    def test_epic_branches_disabled_not_written_to_config(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel"], workers="4", use_epic_branches=False)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "epic_branches" not in config.get("parallel", {})
 
 
 # ---------------------------------------------------------------------------

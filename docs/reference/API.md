@@ -292,8 +292,16 @@ def create_parallel_config(
     remote_name: str | None = None,
     use_feature_branches: bool | None = None,
     skip_learning_gate: bool = False,
+    epic_branches: EpicBranchesConfig | None = None,
 ) -> ParallelConfig
 ```
+
+`epic_branches` accepts an `EpicBranchesConfig` override (from
+`little_loops.config.automation`); when `None` the value falls back to
+`parallel.epic_branches` in config. CLI callers build the override with
+`dataclasses.replace(config.parallel.epic_branches, enabled=<flag>)` so the
+`--epic-branches` / `--no-epic-branches` flag toggles only `enabled` while
+preserving the configured `prefix` / `merge_to_base_on_complete` / `open_pr`.
 
 Create a `ParallelConfig` from BRConfig settings with optional overrides.
 
@@ -3255,6 +3263,7 @@ class ParallelConfig:
     skip_learning_gate: bool = False
     base_branch: str | None = None
     remote_name: str = "origin"
+    epic_branches: EpicBranchesConfig = field(default_factory=EpicBranchesConfig)
 ```
 
 #### Methods
@@ -3286,6 +3295,28 @@ Build the manage-issue command string.
 - `issue_id` - Issue identifier
 
 **Returns:** Complete command string
+
+### EpicBranchesConfig
+
+Per-EPIC integration branch configuration (FEAT-2339). Declared twice with
+identical fields — a runtime dataclass at `little_loops.parallel.types` (held by
+`ParallelConfig.epic_branches`) and an automation-side dataclass at
+`little_loops.config.automation` (held by `parallel.epic_branches` in config).
+`BRConfig.create_parallel_config` converts the automation form to the runtime
+form via `_build_parallel_epic_branches`.
+
+```python
+@dataclass
+class EpicBranchesConfig:
+    enabled: bool = False              # master switch; False preserves per-worker behavior
+    prefix: str = "epic/"              # branch = f"{prefix}{epic_id.lower()}-{slug}"
+    merge_to_base_on_complete: bool = True  # merge EPIC branch to base after last child
+    open_pr: bool = False              # open a PR for the EPIC branch via gh on completion
+```
+
+When `enabled`, `WorkerPool` routes every child of a shared `parent:` EPIC onto
+one `epic/<EPIC-ID>-<slug>` branch (fork point and merge target), recorded on
+`WorkerResult.epic_branch`. See [Configuration reference](CONFIGURATION.md#parallel).
 
 ### WorkerResult
 

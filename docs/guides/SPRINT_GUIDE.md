@@ -323,10 +323,11 @@ When a multi-issue wave is dominated by children of a single EPIC, running each 
 | Config key | Default | Effect |
 |---|---|---|
 | `epic_branches.enabled` | `false` | When `true`, route children of the same EPIC to a single shared `epic/<id>-<slug>` branch and merge PR target. See [Configuration Reference](../reference/CONFIGURATION.md#parallel) for the full set. |
-| `epic_branches.base_pattern` | `"epic/{epic_id}-{slug}"` | Template for the integration branch name; placeholders are `{epic_id}` (e.g. `EPIC-2339`) and `{slug}` (kebab-cased EPIC title). |
-| `epic_branches.fork_point` | `"auto"` | Where children branch off from. `"auto"` uses the EPIC's nearest ancestor that already has an integration branch, or `parallel.base_branch` for the first child. Pin to a branch name to force a fixed base. |
+| `epic_branches.prefix` | `"epic/"` | Prefix for the integration branch name; the branch composes as `f"{prefix}{epic_id.lower()}-{slug}"` (e.g. `epic/epic-2339-foo`). `{slug}` is the kebab-cased EPIC title. |
+| `epic_branches.merge_to_base_on_complete` | `true` | When `true`, the EPIC integration branch is merged back to `base_branch` after the last child completes. Set `false` to leave it un-merged for manual review. |
+| `epic_branches.open_pr` | `false` | When `true`, open a PR for the EPIC integration branch via the `gh` CLI on completion. Requires `gh` installed and authenticated. |
 
-`ll-sprint run sprint-name` does not require any new flag — the orchestrator decides per wave whether to use the EPIC integration branch based on `epic_branches.enabled` and each issue's `parent:` field.
+`ll-sprint run sprint-name` needs no flag for config-driven runs — the orchestrator decides per wave whether to use the EPIC integration branch based on `epic_branches.enabled` and each issue's `parent:` field. To toggle the mode for a single run without editing config, pass `--epic-branches` (or `--no-epic-branches`) to `ll-parallel` or `ll-sprint run`; the flag overrides `parallel.epic_branches.enabled` for that invocation.
 
 **Interaction with `use_feature_branches`:** the two flags are orthogonal. `use_feature_branches` governs *individual-issue* branch behavior (`feature/<id>-<slug>`, no auto-merge, manual PR). `epic_branches` governs *EPIC-level* integration (one shared branch per EPIC, single EPIC-level PR on completion). They are not designed to combine — if you enable both, the per-EPIC branching wins for children of an EPIC (so the per-issue `feature/` branch is skipped inside an EPIC); standalone issues still get per-issue `feature/` branches. Most teams pick one or the other:
 

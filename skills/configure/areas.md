@@ -195,6 +195,7 @@ Current Parallel Configuration
   use_feature_branches:         {{config.parallel.use_feature_branches}}
   push_feature_branches:        {{config.parallel.push_feature_branches}}
   open_pr_for_feature_branches: {{config.parallel.open_pr_for_feature_branches}}
+  epic_branches.enabled:        {{config.parallel.epic_branches.enabled}}
 ```
 
 ### Round 1 (4 questions)
@@ -265,6 +266,22 @@ questions:
         description: "Yes — ll-parallel creates a local feature/<id>-<slug> branch per issue and retains it after the run (no push, no PR opened automatically). Applies to parallel waves only; does not affect ll-auto (sequential) or single-issue sprint sub-waves."
       - label: "false"
         description: "No, work in-place on current branch (default)"
+    multiSelect: false
+```
+
+### Round 3 (1 question)
+
+```yaml
+questions:
+  - header: "Epic branches"
+    question: "Enable per-EPIC integration-branch mode (children of an EPIC share one branch)?"
+    options:
+      - label: "{{current epic_branches.enabled}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes — children of a single EPIC coalesce their work onto a shared epic/<EPIC-ID>-<slug> integration branch instead of per-worker branches; the integration branch merges back to base after the EPIC's last child completes. Applies to ll-parallel / ll-sprint multi-issue waves only."
+      - label: "false"
+        description: "No, use per-worker branches (default)"
     multiSelect: false
 ```
 
