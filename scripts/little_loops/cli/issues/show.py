@@ -409,14 +409,60 @@ def _ljust(text: str, width: int) -> str:
     return text + " " * pad
 
 
+def _dim(text: str) -> str:
+    """Wrap *text* in the dim SGR code (ENH-2574 item 3: label hierarchy)."""
+    return colorize(text, "2")
+
+
+def _date_only(value: str) -> str:
+    """Strip a trailing ISO time component, returning just the date portion.
+
+    ``"2026-07-01T00:00:00Z"`` -> ``"2026-07-01"``; already-bare dates pass
+    through unchanged (ENH-2574 item 5).
+    """
+    return value.split("T", 1)[0]
+
+
+def _truncate_to_width(text: str, width: int) -> str:
+    """Truncate (optionally ANSI-colored) *text* to *width* visible chars,
+    appending an ellipsis when clipped (ENH-2574 item 7 — guards unbreakable
+    tokens from bleeding past the card's right border). Visible width is
+    measured with ANSI codes stripped; a line that must be clipped loses its
+    color codes (a rare fallback — most lines never hit this path)."""
+    plain = strip_ansi(text)
+    if width <= 0:
+        return ""
+    if len(plain) <= width:
+        return text
+    if width == 1:
+        return plain[:1]
+    return plain[: width - 1] + "…"
+
+
+def _fit(text: str, width: int) -> str:
+    """Truncate then left-pad *text* to exactly *width* visible chars."""
+    return _ljust(_truncate_to_width(text, width), width)
+
+
+# ENH-2574 item 3: status color palette. "Completed" already handled
+# separately (kept for backward compat with the pre-existing green code path).
+_STATUS_COLOR: dict[str, str] = {
+    "Completed": "32",
+    "In Progress": "33",
+    "Blocked": "31",
+    "Deferred": "2",
+    "Cancelled": "2",
+}
+
+
 # Closure context rendering (ENH-2535) — only emits when status is terminal-non-open
 # AND at least one closure field is populated. Returns the rendered "Key: value"
 # lines to append to detail_lines.
 _TERMINAL_STATUSES = {"done", "cancelled", "deferred", "closed"}
 
 
-def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> list[str]:
-    """Render closure-context lines for terminal statuses (ENH-2535).
+def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> list[tuple[str, str]]:
+    """Render closure-context rows for terminal statuses (ENH-2535).
 
     Args:
         fields: Card fields dict from `_parse_card_fields`.
@@ -426,7 +472,7 @@ def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> lis
             that skip extraction) still get closure rendering.
 
     Returns:
-        List of "Key: value" strings to append, or empty list when status is
+        List of (label, value) rows to append, or empty list when status is
         not terminal or no closure fields are populated.
     """
     rs = str(raw_status).lower() if raw_status else ""
@@ -437,7 +483,7 @@ def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> lis
             rs = "done" if ds == "completed" else ds
         else:
             return []
-    out: list[str] = []
+    out: list[tuple[str, str]] = []
     # Order: reason text first, then attribution, then timing.
     if fields.get("closure_text"):
         if rs == "cancelled":
@@ -446,34 +492,34 @@ def _render_closure_block(fields: dict[str, str | None], raw_status: str) -> lis
             label = "Deferral reason"
         else:  # done / closed
             label = "Closing note"
-        out.append(f"{label}: {fields['closure_text']}")
+        out.append((label, str(fields["closure_text"])))
     if fields.get("closed_by"):
-        out.append(f"Closed by: {fields['closed_by']}")
+        out.append(("Closed by", str(fields["closed_by"])))
     if fields.get("closed_at"):
-        out.append(f"Closed at: {fields['closed_at']}")
+        out.append(("Closed at", _date_only(str(fields["closed_at"]))))
     if fields.get("deferred_date"):
-        out.append(f"Deferred at: {fields['deferred_date']}")
+        out.append(("Deferred at", _date_only(str(fields["deferred_date"]))))
     return out
 
 
 # Discovery rendering (ENH-2535) — emits when any discovery field is set.
-def _render_discovery_block(fields: dict[str, str | None]) -> list[str]:
-    """Render discovery-context lines (when / where the issue was first observed)."""
-    out: list[str] = []
+def _render_discovery_block(fields: dict[str, str | None]) -> list[tuple[str, str]]:
+    """Render discovery-context rows (when / where the issue was first observed)."""
+    out: list[tuple[str, str]] = []
     if fields.get("discovered_date"):
-        out.append(f"Discovered: {fields['discovered_date']}")
+        out.append(("Discovered", str(fields["discovered_date"])))
     if fields.get("discovered_commit"):
         sha = str(fields["discovered_commit"])
         # Short-SHA rendering: 7 chars max to avoid right-border bleed
         # (mirrors the long-unbreakable-word guard at show.py:301-313).
         short_sha = sha[:7] if len(sha) > 7 else sha
-        out.append(f"Discovered commit: {short_sha}")
+        out.append(("Discovered commit", short_sha))
     if fields.get("discovered_branch"):
-        out.append(f"Discovered branch: {fields['discovered_branch']}")
+        out.append(("Discovered branch", str(fields["discovered_branch"])))
     if fields.get("discovered_source"):
-        out.append(f"Discovered source: {fields['discovered_source']}")
+        out.append(("Discovered source", str(fields["discovered_source"])))
     if fields.get("discovered_external_repo"):
-        out.append(f"Upstream: {fields['discovered_external_repo']}")
+        out.append(("Upstream", str(fields["discovered_external_repo"])))
     return out
 
 
@@ -491,13 +537,13 @@ _RELATIONSHIP_KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _render_relationships_block(fields: dict[str, str | None]) -> list[str]:
-    """Render relationship edges as a list of 'Key: value' lines (ENH-2535)."""
-    out: list[str] = []
+def _render_relationships_block(fields: dict[str, str | None]) -> list[tuple[str, str]]:
+    """Render relationship edges as a list of (label, value) rows (ENH-2535)."""
+    out: list[tuple[str, str]] = []
     for key, label in _RELATIONSHIP_KEYS:
         val = fields.get(key)
         if val:
-            out.append(f"{label}: {val}")
+            out.append((label, str(val)))
     return out
 
 
@@ -540,6 +586,10 @@ def _render_card(fields: dict[str, str | None]) -> str:
     title = fields.get("title") or "Untitled"
     header = f"{issue_id}: {title}"
 
+    # Inter-field separator: a middot rather than the border glyph, so intra-row
+    # dividers don't read as accidental column lines (ENH-2574 item 4).
+    sep = " · "
+
     # Build metadata line (plain, for width calculation)
     priority = fields.get("priority")
     status = fields.get("status")
@@ -555,7 +605,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
         meta_parts.append(f"Effort: {effort}")
     if risk:
         meta_parts.append(f"Risk: {risk}")
-    meta_line = "  \u2502  ".join(meta_parts)
+    meta_line = sep.join(meta_parts)
 
     # Build scores line (only if at least one score present)
     score_parts: list[str] = []
@@ -563,7 +613,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Confidence: {fields['confidence']}")
     if fields.get("outcome"):
         score_parts.append(f"Outcome: {fields['outcome']}")
-    scores_line = "  \u2502  ".join(score_parts) if score_parts else None
+    scores_line = sep.join(score_parts) if score_parts else None
 
     # Build dimension scores line (only if at least one dimension score present)
     dim_parts: list[str] = []
@@ -575,22 +625,20 @@ def _render_card(fields: dict[str, str | None]) -> str:
         dim_parts.append(f"Ambig: {fields['score_ambiguity']}")
     if fields.get("score_change_surface"):
         dim_parts.append(f"Chsrf: {fields['score_change_surface']}")
-    dim_scores_line = "  \u2502  ".join(dim_parts) if dim_parts else None
+    dim_scores_line = sep.join(dim_parts) if dim_parts else None
 
-    # Build detail lines (source/norm/fmt, integration+labels, history)
+    # Build detail lines (source, integration+labels, then column-aligned rows)
     detail_lines: list[str] = []
-    source_parts: list[str] = []
+
+    # ENH-2574 item 5: "Source: manual" is the default case and is low-signal;
+    # hide it. Norm/Fmt collapse to a single actionable "Needs: formatting"
+    # row, emitted only when formatting is actually missing.
     source_val = fields.get("source")
-    if source_val and source_val != "\u2014":
-        source_parts.append(f"Source: {source_val}")
-    norm_val = fields.get("norm")
-    if norm_val:
-        source_parts.append(f"Norm: {norm_val}")
-    fmt_val = fields.get("fmt")
-    if fmt_val:
-        source_parts.append(f"Fmt: {fmt_val}")
-    if source_parts:
-        detail_lines.append("  \u2502  ".join(source_parts))
+    if source_val and source_val not in ("—", "manual"):
+        detail_lines.append(f"{_dim('Source:')} {source_val}")
+    if fields.get("fmt") == "✗":
+        detail_lines.append(f"{_dim('Needs:')} formatting")
+
     detail_mid_parts: list[str] = []
     if fields.get("integration_files"):
         detail_mid_parts.append(f"Integration: {fields['integration_files']} files")
@@ -599,27 +647,55 @@ def _render_card(fields: dict[str, str | None]) -> str:
     if fields.get("milestone"):
         detail_mid_parts.append(f"Milestone: {fields['milestone']}")
     if detail_mid_parts:
-        detail_lines.append("  \u2502  ".join(detail_mid_parts))
-    # ENH-2535: relationships block \u2014 adjacent to labels/milestone so graph
-    # context sits alongside other structural metadata.
-    detail_lines.extend(_render_relationships_block(fields))
-    if fields.get("captured_at"):
-        detail_lines.append(f"Captured at: {fields['captured_at']}")
+        detail_lines.append(sep.join(detail_mid_parts))
+
+    # ENH-2574 item 6: column-aligned "Key: value" rows -- relationships,
+    # capture/discovery/completion timestamps, history, closure context. Keys
+    # are right-padded once there are >= 4 rows so the eye tracks one column.
+    column_rows: list[tuple[str, str]] = []
+    column_rows.extend(_render_relationships_block(fields))
+
+    # ENH-2574 item 5: collapse "Captured at" when it's the same calendar date
+    # as "Discovered" -- the two otherwise duplicate each other.
+    captured_raw = fields.get("captured_at")
+    discovered_raw = fields.get("discovered_date")
+    if captured_raw:
+        captured_date = _date_only(str(captured_raw))
+        if not (discovered_raw and _date_only(str(discovered_raw)) == captured_date):
+            column_rows.append(("Captured at", captured_date))
     # ENH-2535: discovery block sits between capture and completion timestamps.
-    detail_lines.extend(_render_discovery_block(fields))
+    column_rows.extend(_render_discovery_block(fields))
     if fields.get("completed_at"):
-        detail_lines.append(f"Completed at: {fields['completed_at']}")
-    # ENH-2535: decision coupling line — emits before history so the user sees
+        column_rows.append(("Completed at", _date_only(str(fields["completed_at"]))))
+
+    tail_rows: list[tuple[str, str]] = []
+    if fields.get("history"):
+        tail_rows.append(("History", str(fields["history"])))
+    # ENH-2535: closure context block -- at the tail (terminal statuses only).
+    tail_rows.extend(_render_closure_block(fields, fields.get("raw_status") or ""))
+
+    align = len(column_rows) + len(tail_rows) >= 4
+    label_width = max((len(label) for label, _ in column_rows + tail_rows), default=0)
+
+    def _render_row(label: str, value: str) -> str:
+        key_text = f"{label}:"
+        if align:
+            key_text = key_text.ljust(label_width + 1)
+        return f"{_dim(key_text)} {value}"
+
+    for label, value in column_rows:
+        detail_lines.append(_render_row(label, value))
+
+    # ENH-2535: decision coupling line -- emits before history so the user sees
     # the actionable pointer alongside other metadata, not buried after history.
     decision_line = _render_decision_line(fields)
     if decision_line:
         detail_lines.append(decision_line)
-    if fields.get("history"):
-        detail_lines.append(f"History: {fields['history']}")
-    # ENH-2535: closure context block — at the tail (terminal statuses only).
-    detail_lines.extend(_render_closure_block(fields, fields.get("raw_status") or ""))
 
-    # Build path line
+    for label, value in tail_rows:
+        detail_lines.append(_render_row(label, value))
+
+    # Build path line (dimmed -- reference info, not content).
     path_line = f"Path: {fields.get('path', '???')}"
 
     # Calculate structural width from non-summary content
@@ -628,75 +704,85 @@ def _render_card(fields: dict[str, str | None]) -> str:
         structural_lines.append(scores_line)
     if dim_scores_line:
         structural_lines.append(dim_scores_line)
-    structural_lines.extend(detail_lines)
-    wrap_width = max((len(line) for line in structural_lines), default=60)
-    wrap_width = max(wrap_width, 60)  # minimum content width
+    structural_lines.extend(strip_ansi(dl) for dl in detail_lines)
 
-    # Build summary lines — wrap to fit structural width
+    # ENH-2574 item 2: the card targets ~100 cols on wide terminals, decoupled
+    # from metadata width -- it no longer stays pinned to the longest
+    # structural line. Still capped at terminal_width() - 4.
+    max_content_width = max(terminal_width() - 4, 20)
+    wrap_width = max(min(max_content_width, 100), 60)
+
+    # Build summary lines -- reflow paragraphs first so hard line breaks from
+    # the source markdown don't survive as 1-2 word orphan lines (item 1).
     summary_lines: list[str] = []
     summary_text = fields.get("summary")
     if summary_text:
-        for line in summary_text.splitlines():
-            if line.strip():
-                summary_lines.extend(textwrap.wrap(line, width=wrap_width, break_long_words=False))
-            else:
+        paragraphs = re.split(r"\n\s*\n", summary_text.strip())
+        for idx, para in enumerate(paragraphs):
+            words = " ".join(para.split())
+            if words:
+                summary_lines.extend(textwrap.wrap(words, width=wrap_width, break_long_words=False))
+            if idx < len(paragraphs) - 1:
                 summary_lines.append("")
 
-    # Final width includes wrapped summary (may exceed wrap_width for unbreakable tokens)
+    # Final width includes wrapped summary and structural content.
     all_lines = structural_lines + summary_lines
-    width = max(len(line) for line in all_lines) + 2  # +2 for padding
+    width = max(max((len(line) for line in all_lines), default=60) + 2, wrap_width + 2)
+    width = min(width, max_content_width)
 
-    # Cap width to terminal to prevent overflow
-    width = min(width, terminal_width() - 4)
-
-    # Build colorized header
+    # Build colorized header -- bold title, colored ID (item 3).
     if issue_id and "-" in issue_id:
         itype = issue_id.split("-")[0]
         colored_id = colorize(issue_id, TYPE_COLOR.get(itype, "0"))
     else:
         colored_id = issue_id
-    colored_header = f"{colored_id}: {title}"
+    colored_header = f"{colored_id}: {colorize(title, '1')}"
 
     # Build colorized meta line
     colored_meta_parts: list[str] = []
     if priority:
         colored_meta_parts.append(
-            f"Priority: {colorize(priority, PRIORITY_COLOR.get(priority, '0'))}"
+            f"{_dim('Priority:')} {colorize(priority, PRIORITY_COLOR.get(priority, '0'))}"
         )
     if status:
-        colored_status = colorize("Completed", "32") if status == "Completed" else status
-        colored_meta_parts.append(f"Status: {colored_status}")
+        colored_status = colorize(status, _STATUS_COLOR.get(status, "0"))
+        colored_meta_parts.append(f"{_dim('Status:')} {colored_status}")
     if effort:
-        colored_meta_parts.append(f"Effort: {effort}")
+        colored_meta_parts.append(f"{_dim('Effort:')} {effort}")
     if risk:
         risk_code = {"High": "38;5;208", "Medium": "33", "Low": "2"}.get(risk, "0")
-        colored_meta_parts.append(f"Risk: {colorize(risk, risk_code)}")
-    colored_meta_line = "  \u2502  ".join(colored_meta_parts)
+        colored_meta_parts.append(f"{_dim('Risk:')} {colorize(risk, risk_code)}")
+    colored_meta_line = sep.join(colored_meta_parts)
 
-    # Build card
+    colored_path_line = _dim(path_line)
+
+    # Build card -- borders dimmed so content pops over chrome (item 3).
     lines: list[str] = []
-    top_border = f"{tl}{h * width}{tr}"
-    mid_border = f"{ml}{h * width}{mr}"
-    bot_border = f"{bl}{h * width}{br}"
+    top_border = _dim(f"{tl}{h * width}{tr}")
+    mid_border = _dim(f"{ml}{h * width}{mr}")
+    bot_border = _dim(f"{bl}{h * width}{br}")
+    dim_v = _dim(v)
 
+    # ENH-2574 item 7: every content row is truncated (unbreakable tokens get
+    # an ellipsis) then left-padded — no line bleeds past the right border.
     lines.append(top_border)
-    lines.append(f"{v} {_ljust(colored_header, width - 1)}{v}")
+    lines.append(f"{dim_v} {_fit(colored_header, width - 1)}{dim_v}")
     lines.append(mid_border)
-    lines.append(f"{v} {_ljust(colored_meta_line, width - 1)}{v}")
+    lines.append(f"{dim_v} {_fit(colored_meta_line, width - 1)}{dim_v}")
     if scores_line:
-        lines.append(f"{v} {scores_line:<{width - 1}}{v}")
+        lines.append(f"{dim_v} {_fit(scores_line, width - 1)}{dim_v}")
     if dim_scores_line:
-        lines.append(f"{v} {dim_scores_line:<{width - 1}}{v}")
+        lines.append(f"{dim_v} {_fit(dim_scores_line, width - 1)}{dim_v}")
     if summary_lines:
         lines.append(mid_border)
         for sl in summary_lines:
-            lines.append(f"{v} {sl:<{width - 1}}{v}")
+            lines.append(f"{dim_v} {_fit(sl, width - 1)}{dim_v}")
     if detail_lines:
         lines.append(mid_border)
         for dl in detail_lines:
-            lines.append(f"{v} {dl:<{width - 1}}{v}")
+            lines.append(f"{dim_v} {_fit(dl, width - 1)}{dim_v}")
     lines.append(mid_border)
-    lines.append(f"{v} {path_line:<{width - 1}}{v}")
+    lines.append(f"{dim_v} {_fit(colored_path_line, width - 1)}{dim_v}")
     lines.append(bot_border)
 
     return "\n".join(lines)

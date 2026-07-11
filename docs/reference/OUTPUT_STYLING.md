@@ -228,45 +228,60 @@ logo = get_logo()     # returns str | None
 ### Layout
 
 ```
-┌──────────────────────────────────────────────────┐
-│ FEAT-518: Issue title                            │
-├──────────────────────────────────────────────────┤
-│ Priority: P3  │  Status: Open                    │
-│ Confidence: 85  │  Outcome: 78                   │
-│ Cmplx: 22  │  Tcov: 24  │  Ambig: 25  │  Chsrf: 22│
-├──────────────────────────────────────────────────┤
-│ Summary text wrapped to content                  │
-│ width...                                         │
-├──────────────────────────────────────────────────┤
-│ Source: capture  │  Norm: ✓  │  Fmt: ✗           │
-│ Integration: 4 files  │  Labels: cli, ll-issues  │
-│ Captured at: 2026-04-18T14:32:07Z                │
-│ Completed at: 2026-05-01T09:15:44Z               │
-│ History: /ll:capture-issue, /ll:refine-issue     │
-├──────────────────────────────────────────────────┤
-│ Path: .issues/features/...                       │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ FEAT-518: Issue title                                │
+├──────────────────────────────────────────────────────┤
+│ Priority: P3 · Status: Open                          │
+│ Confidence: 85 · Outcome: 78                         │
+│ Cmplx: 22 · Tcov: 24 · Ambig: 25 · Chsrf: 22          │
+├──────────────────────────────────────────────────────┤
+│ Summary text wrapped to content width, paragraph-     │
+│ reflowed so hard line breaks don't survive as orphans.│
+├──────────────────────────────────────────────────────┤
+│ Integration: 4 files · Labels: cli, ll-issues         │
+│ Discovered:      2026-06-15                           │
+│ Completed at:    2026-05-01                           │
+│ History:         /ll:capture-issue, /ll:refine-issue  │
+├──────────────────────────────────────────────────────┤
+│ Path: .issues/features/...                            │
+└──────────────────────────────────────────────────────┘
 ```
+
+Title is bold; borders, field labels, and the Path line are dimmed; status is
+colored per state (`In Progress` yellow, `Blocked` red, `Deferred`/`Cancelled`
+dim, `Completed` green, `Open` default). The inter-field separator within a
+joined row is `·` (middot), not the `│` border glyph, so it doesn't read as an
+accidental column line (ENH-2574).
 
 **Detail line fields:**
 
 | Field | Source | Display |
 |-------|--------|---------|
-| `Source` | `discovered_by` frontmatter | Short alias (`capture`, `scan`, `audit`, `format`) or first 7 chars; omitted if absent |
-| `Norm` | Filename pattern check | `✓` if matches `P[0-5]-TYPE-NNN-desc.md`, `✗` otherwise |
-| `Fmt` | Required sections check | `✓` if file has all required template sections, `✗` otherwise |
-| `Captured at` | `captured_at` frontmatter | ISO 8601 UTC timestamp of issue capture; omitted if absent |
+| `Source` | `discovered_by` frontmatter | Short alias (`capture`, `scan`, `audit`, `format`) or first 7 chars; omitted if absent **or if the value is `manual`** (the default case is low-signal — ENH-2574) |
+| `Needs: formatting` | Required sections check | Renders only when the file is missing required template sections; omitted entirely when formatting is already correct (collapses the old always-on `Norm`/`Fmt` pair — ENH-2574) |
+| `Captured at` | `captured_at` frontmatter | Date-only (`YYYY-MM-DD`, time component dropped); **omitted** when it equals `Discovered` on the same calendar date (ENH-2574) |
 | `Discovered` | `discovered_date` frontmatter | YYYY-MM-DD date when the bug/feature was *observed*; distinct from `captured_at` (ENH-2535) |
 | `Discovered commit` | `discovered_commit` frontmatter | First 7 chars of the git SHA (short-form to avoid right-border bleed); omitted if absent (ENH-2535) |
 | `Discovered branch` / `Discovered source` / `Upstream` | `discovered_branch` / `discovered_source` / `discovered_external_repo` frontmatter | BUGs benefit most (gives the git-bisect anchor); omitted if absent (ENH-2535) |
-| `Completed at` | `completed_at` frontmatter | ISO 8601 UTC timestamp of issue completion; omitted if absent |
+| `Completed at` | `completed_at` frontmatter | Date-only (time component dropped, ENH-2574); omitted if absent |
 | `Decision needed` / `Decision ref` | `decision_needed` + `decision_ref` frontmatter | Coupled form: `Decision needed → <decision_ref>` when both set; explicit `no` when `decision_needed: false`; standalone `Decision ref:` when only `decision_ref` is set (ENH-2535) |
 | `Parent` | `parent` frontmatter | `EPIC-NNN (Title)` when epic is resolvable; ID-only when not (ENH-2535) |
 | `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535) |
 | `History` | `## Session Log` body section | Distinct `/ll:*` commands with occurrence counts; omitted if absent |
-| `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred` (ENH-2535) |
+| `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred`; `Closed at`/`Deferred at` are date-only (ENH-2535, dates per ENH-2574) |
 
-Width is computed dynamically: the maximum of all content line lengths plus 2 padding, with a minimum of 60 characters. The summary section is wrapped with `textwrap.wrap()` to fit the structural width.
+The relationships / capture / discovery / completion / history / closure rows
+above form a single column-aligned block: once it has 4 or more rows, labels
+right-pad to the widest label so every row's value starts at the same column
+(ENH-2574 item 6).
+
+Width targets `min(terminal_width() - 4, 100)` — the card widens on wide
+terminals instead of staying pinned to the longest structural (metadata) line,
+and never exceeds `terminal_width() - 4`. The summary is reflowed
+paragraph-first (blank lines split paragraphs; hard breaks within a paragraph
+are joined) before wrapping with `textwrap.wrap()`. An unbreakable token wider
+than the content area is truncated with `…` rather than bleeding past the
+right border (ENH-2574).
 
 ---
 

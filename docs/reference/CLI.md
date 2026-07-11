@@ -1094,7 +1094,14 @@ Count issues. Outputs a single integer by default, or a JSON object with breakdo
 
 Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`). Searches all type directories regardless of status.
 
-The card includes: ID, title, priority, status, effort, risk, confidence scores, dimension scores (Cmplx, Tcov, Ambig, Chsrf — when present), source (discovered_by), norm (normalized filename check), fmt (formatted/required sections check), integration file count, labels, `captured_at` / `completed_at` timestamps (when present), session history, and path.
+The card includes: ID, title, priority, status, effort, risk, confidence scores, dimension scores (Cmplx, Tcov, Ambig, Chsrf — when present), source (discovered_by), integration file count, labels, `captured_at` / `completed_at` timestamps (when present), session history, and path.
+
+Rendering is scanning-first (ENH-2574): the title is bold, borders/field labels/the Path line are dimmed, status is colored per state, and the inter-field separator is `·` rather than the border glyph. Several rows are pruned or collapsed for signal:
+
+- **Source** is omitted when `discovered_by` is absent *or* when its value is `manual` (the default case).
+- **Norm/Fmt** collapse into a single `Needs: formatting` row, shown only when the file is actually missing required sections — nothing renders when formatting is already correct.
+- **`captured_at` / `completed_at`** render date-only (the `T00:00:00Z` time component is dropped); `Captured at` is omitted entirely when it's the same calendar date as `Discovered`.
+- Once the capture/discovery/relationships/history/closure block has 4 or more rows, labels right-pad into a column so every row's value starts at the same position.
 
 The card also surfaces, when present in frontmatter (ENH-2535):
 

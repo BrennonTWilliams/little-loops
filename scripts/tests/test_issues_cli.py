@@ -2252,7 +2252,8 @@ class TestIssuesCLIShow:
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """show displays full summary without truncation."""
+        """show truncates an unbreakable summary token rather than letting it
+        bleed past the card's right border (ENH-2574 AC #7)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -2271,9 +2272,10 @@ class TestIssuesCLIShow:
 
         assert result == 0
         captured = capsys.readouterr()
-        # Full text should appear without truncation
-        assert long_text in captured.out
-        assert "..." not in captured.out
+        # Full 100-char token doesn't fit an 80-col terminal; it's truncated
+        # with an ellipsis rather than bleeding past the right border.
+        assert long_text not in captured.out
+        assert "A…" in captured.out
 
     def test_show_with_multiline_summary(
         self,
@@ -2282,7 +2284,9 @@ class TestIssuesCLIShow:
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """show displays multi-line summary in its own section."""
+        """show reflows a hard-broken summary paragraph — the source markdown's
+        line breaks are treated as soft and joined, not preserved verbatim
+        (ENH-2574 AC #1, replacing the pre-reflow-fix orphan-line behavior)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -2305,9 +2309,9 @@ class TestIssuesCLIShow:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "First line of the summary." in captured.out
-        assert "Second line of the summary." in captured.out
-        assert "Third line of the summary." in captured.out
+        # Hard line breaks within a single paragraph are reflowed together.
+        assert "First line of the summary. Second line of the summary." in captured.out
+        assert "summary." in captured.out
 
     def test_show_with_integration_files(
         self,
@@ -2574,7 +2578,9 @@ class TestIssuesCLIShow:
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """show displays Source, Norm, and Fmt fields from frontmatter and filename."""
+        """show displays Source from frontmatter; Norm/Fmt collapse into a
+        single 'Needs: formatting' row when formatting is missing (ENH-2574
+        item 5, replacing the old always-on 'Norm: <check>' row)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -2594,7 +2600,8 @@ class TestIssuesCLIShow:
         assert result == 0
         captured = capsys.readouterr()
         assert "Source: capture" in captured.out
-        assert "Norm: \u2713" in captured.out
+        assert "Norm:" not in captured.out
+        assert "Needs: formatting" in captured.out
 
     def test_show_json_includes_source_norm_fmt(
         self,
@@ -2869,7 +2876,8 @@ class TestIssuesCLIShow:
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """show renders captured_at row when present in frontmatter."""
+        """show renders captured_at row when present in frontmatter, formatted
+        as a bare date (ENH-2574 item 5 — dates render date-only)."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -2888,7 +2896,8 @@ class TestIssuesCLIShow:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Captured at: 2026-04-18T14:32:07Z" in captured.out
+        assert "Captured at: 2026-04-18" in captured.out
+        assert "Captured at: 2026-04-18T14:32:07Z" not in captured.out
 
     def test_show_displays_completed_at_for_completed_issue(
         self,
@@ -2921,8 +2930,9 @@ class TestIssuesCLIShow:
         assert result == 0
         captured = capsys.readouterr()
         assert "Status: Completed" in captured.out
-        assert "Captured at: 2026-04-18T14:32:07Z" in captured.out
-        assert "Completed at: 2026-05-01T09:15:44Z" in captured.out
+        # Dates render date-only (ENH-2574 item 5).
+        assert "Captured at: 2026-04-18" in captured.out
+        assert "Completed at: 2026-05-01" in captured.out
 
     def test_show_json_includes_timestamps(
         self,

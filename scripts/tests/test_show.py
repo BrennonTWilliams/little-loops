@@ -444,8 +444,9 @@ class TestRenderCard:
         assert "┌" in card  # ┌ top-left
         assert "┘" in card  # ┘ bottom-right
 
-    def test_long_unbreakable_word_extends_box(self, stable_snapshot_env: None) -> None:
-        """A very long single token in summary extends the card box past structural width."""
+    def test_long_unbreakable_word_truncated_not_extended(self, stable_snapshot_env: None) -> None:
+        """A very long single token in summary is truncated, not left to bleed
+        past the right border (ENH-2574 AC #7)."""
         long_word = "x" * 120
         fields: dict[str, str | None] = {
             "issue_id": "ENH-1",
@@ -454,8 +455,10 @@ class TestRenderCard:
             "path": ".issues/enhancements/P3-ENH-1.md",
         }
         card = _render_card(fields)
-        # The long word should appear in the card
-        assert long_word in card
+        # The full unbreakable token must NOT bleed into the card...
+        assert long_word not in card
+        # ...but a truncated, ellipsis-terminated prefix of it should.
+        assert "x…" in card
 
     # -- ENH-2535 closure block rendering --
 
@@ -523,7 +526,9 @@ class TestRenderCard:
         }
         card = _render_card(fields)
         assert "Discovered: 2026-06-15" in card
-        assert "Captured at: 2026-07-01T00:00:00Z" in card
+        # Dates render date-only (ENH-2574 item 5) — the time component is dropped.
+        assert "Captured at: 2026-07-01" in card
+        assert "Captured at: 2026-07-01T00:00:00Z" not in card
 
     def test_discovered_commit_shortened(self, stable_snapshot_env: None) -> None:
         """Full discovered_commit SHA is shortened to 7 chars in the card."""
@@ -573,3 +578,152 @@ class TestRenderCard:
         }
         card = _render_card(fields)
         assert "Decision ref: ARCHITECTURE-049" in card
+
+    # -- ENH-2574 summary reflow (item 1) --
+
+    def test_summary_reflow_no_orphan_lines(self, stable_snapshot_env: None) -> None:
+        """Hard line breaks within a paragraph are reflowed together instead of
+        surviving as separate wrapped lines with 1-2 word orphans."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "summary": "First sentence here.\nSecond sentence here.\nThird sentence here.",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "First sentence here. Second sentence here." in card
+
+    def test_summary_reflow_preserves_blank_line_paragraphs(
+        self, stable_snapshot_env: None
+    ) -> None:
+        """Blank-line-separated paragraphs remain distinct (only in-paragraph
+        hard breaks are reflowed)."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "summary": "Paragraph one.\n\nParagraph two.",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        lines = card.splitlines()
+        p1_idx = next(i for i, ln in enumerate(lines) if "Paragraph one." in ln)
+        p2_idx = next(i for i, ln in enumerate(lines) if "Paragraph two." in ln)
+        assert p2_idx > p1_idx + 1  # a blank content row separates the two
+
+    # -- ENH-2574 status coloring (item 3) --
+
+    def test_status_colors_applied_per_state(self, monkeypatch: Any) -> None:
+        """Each non-Open, non-Completed status gets its own SGR color code."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 80)
+        for status, code in (
+            ("In Progress", "33"),
+            ("Blocked", "31"),
+            ("Deferred", "2"),
+            ("Cancelled", "2"),
+        ):
+            fields: dict[str, str | None] = {
+                "issue_id": "ENH-1",
+                "title": "T",
+                "status": status,
+                "path": ".issues/enhancements/P3-ENH-1.md",
+            }
+            card = _render_card(fields)
+            assert f"\033[{code}m{status}\033[0m" in card
+
+    # -- ENH-2574 card width scaling (item 2) --
+
+    def test_width_scales_up_on_wide_terminal(self, monkeypatch: Any) -> None:
+        """Card targets ~100 cols on a wide terminal instead of staying pinned
+        to the (narrow) metadata width."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", False, raising=False)
+        monkeypatch.setattr("little_loops.cli.issues.show.terminal_width", lambda **_kw: 200)
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        top_border_len = len(card.splitlines()[0])
+        assert top_border_len >= 98  # ~100-col target, +2 border chars
+
+    def test_width_never_exceeds_terminal_minus_four(self, monkeypatch: Any) -> None:
+        """Card width is always capped at terminal_width() - 4."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", False, raising=False)
+        monkeypatch.setattr("little_loops.cli.issues.show.terminal_width", lambda **_kw: 200)
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        top_border_len = len(card.splitlines()[0])
+        assert top_border_len <= 196  # terminal_width() - 4
+
+    # -- ENH-2574 metadata column alignment (item 6) --
+
+    def test_column_alignment_with_four_plus_rows(self, stable_snapshot_env: None) -> None:
+        """Detail-block keys right-pad into a column once there are >= 4 rows."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "blocked_by": "BUG-1",
+            "discovered_date": "2026-01-01",
+            "discovered_branch": "main",
+            "history": "capture",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        # "Discovered branch:" is the longest label; shorter labels ("History:")
+        # pad out to match, so both lines' values start at the same column.
+        history_line = next(ln for ln in card.splitlines() if "History:" in ln)
+        branch_line = next(ln for ln in card.splitlines() if "Discovered branch:" in ln)
+        history_col = history_line.index("capture")
+        branch_col = branch_line.index("main")
+        assert history_col == branch_col
+
+    def test_no_column_alignment_below_four_rows(self, stable_snapshot_env: None) -> None:
+        """Fewer than 4 detail rows: no padding is inserted between the label
+        and its value."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "blocked_by": "BUG-9",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Blocked by: BUG-9" in card
+
+    # -- ENH-2574 low-signal row pruning (item 5) --
+
+    def test_source_manual_hidden(self, stable_snapshot_env: None) -> None:
+        """'Source: manual' (the default case) is hidden from the card."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "source": "manual",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Source:" not in card
+
+    def test_needs_formatting_shown_only_when_fmt_missing(self, stable_snapshot_env: None) -> None:
+        """'Needs: formatting' renders only when fmt is ✗; nothing renders when
+        formatting is already present."""
+        fields_missing: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "fmt": "✗",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        assert "Needs: formatting" in _render_card(fields_missing)
+
+        fields_ok: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "fmt": "✓",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card_ok = _render_card(fields_ok)
+        assert "Needs:" not in card_ok
+        assert "Norm:" not in card_ok

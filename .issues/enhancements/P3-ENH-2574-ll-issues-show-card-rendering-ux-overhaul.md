@@ -1,13 +1,26 @@
 ---
 id: ENH-2574
-title: 'll-issues show: card rendering UX overhaul — summary reflow, visual hierarchy, low-signal pruning'
-status: open
+title: "ll-issues show: card rendering UX overhaul \u2014 summary reflow, visual hierarchy,\
+  \ low-signal pruning"
+status: done
 priority: P3
-labels: [cli, ux, issues]
-captured_at: "2026-07-10T03:10:36Z"
-discovered_date: "2026-07-10"
+labels:
+- cli
+- ux
+- issues
+captured_at: '2026-07-10T03:10:36Z'
+completed_at: '2026-07-11T04:14:02Z'
+discovered_date: '2026-07-10'
 discovered_by: capture-issue
-relates_to: [ENH-2572, ENH-2535]
+relates_to:
+- ENH-2572
+- ENH-2535
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2574: ll-issues show: card rendering UX overhaul — summary reflow, visual hierarchy, low-signal pruning
@@ -53,6 +66,15 @@ In `scripts/little_loops/cli/issues/show.py`:
 - **Low-signal rows**: `Source: manual` (the default case), cryptic
   `Norm: ✓ │ Fmt: ✗`, and `Captured at: 2026-07-10T00:00:00Z` duplicating
   `Discovered: 2026-07-10` on the same day.
+
+## Expected Behavior
+
+The card scans cleanly: summary paragraphs wrap without orphan lines, the card
+widens on wide terminals instead of staying pinned to metadata width, title
+and status carry visual weight while borders/labels/Path recede, the intra-row
+separator no longer doubles as the border glyph, low-signal rows (`Source:
+manual`, cryptic `Norm/Fmt`, redundant `Captured at`) are hidden or collapsed,
+and metadata keys align into a column once the detail block has 4+ rows.
 
 ## Proposed Solution
 
@@ -172,6 +194,42 @@ _Added by `/ll:refine-issue` — codebase-driven research findings:_
   ANSI-coded input, plain text, exact-width, and over-width cases; extend
   with a card-level assertion once item 3 colors labels.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Additional breaking tests within `TestRenderCard`** (beyond the reflow
+  conflict above) — these assert literal label/date text that items 3 and
+  5 change: `test_closure_block_present_for_done_status` (`"Closing note:
+  ..." in card`), `test_discovery_block_renders_discovered_date`
+  (`"Discovered: 2026-06-15"` and `"Captured at: 2026-07-01T00:00:00Z"` —
+  both named directly in item 5's date-collapse target), plus
+  `test_discovered_commit_shortened`, `test_decision_coupling_with_ref`,
+  `test_decision_explicit_no_when_false`, `test_decision_ref_alone_renders_explicit`,
+  `test_relationships_block_renders_blocked_by`,
+  `test_blocked_status_includes_blocked_by_name` (all assert literal
+  substrings adjacent to the `"  │  "` separator being swapped in item 4).
+- `scripts/tests/test_issues_cli.py::TestIssuesCLIShow` (~line 1990+) —
+  integration-level tests that invoke `ll-issues show` via
+  `main_issues()`/`sys.argv` and assert on `capsys` output (e.g.
+  `"Priority: P0" in captured.out`), separate from `test_show.py`'s direct
+  `_render_card` unit tests. Lower risk (substrings don't pin exact
+  separator text) but still depends on the `"Priority: {colorize(...)}"`
+  format staying intact — spot-check after implementation.
+- **Test patterns to model new tests after** (no existing test file covers
+  color-on/reflow/width-scaling for `_render_card`):
+  - `scripts/tests/test_loop_layout_alignment.py` —
+    `_assert_boxes_rectangular()` (structural border-column invariant, not
+    substring-based; model for the AC #1 no-orphan-lines check) and the
+    `terminal_width` monkeypatch pattern (narrow-clamped /
+    wide-unclamped pair) for AC #2's width-scaling gap.
+  - `scripts/tests/test_cli_loop_layout.py::TestColorizeLabel._force_color`
+    — `monkeypatch.setattr(..., "_USE_COLOR", True)` fixture; needed since
+    `stable_snapshot_env` (which all current `TestRenderCard` tests use)
+    forces color OFF, so none of today's tests can assert the new bold/dim
+    hierarchy from item 3.
+  - `scripts/tests/test_sprint.py::test_show_color_output` /
+    `test_show_no_color_output` — closest existing analog (a "show"-style
+    card renderer tested once with color forced on, once off); template
+    for the AC #3 color-hierarchy test pair.
+
 ### Documentation
 - `docs/reference/OUTPUT_STYLING.md:211-269` — dedicated "Issue Card:
   `scripts/little_loops/cli/issues/show.py`" section. Line 269 documents
@@ -184,6 +242,24 @@ _Added by `/ll:refine-issue` — codebase-driven research findings:_
   width/truncation helpers (`_display_width`, `_truncate_to_width`,
   `_truncate_to_width_ansi`, `_wrap_to_width`) — reference if item 2's
   truncation guard is implemented via the shared layout module.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:~1093-1108` (`#### ll-issues show <issue_id>`
+  section) — enumerates the exact card fields in prose, including `source
+  (discovered_by)`, `norm`/`fmt`, `captured_at` / `completed_at`
+  timestamps. Item 5's row pruning (hide `Source: manual`, collapse
+  `Norm/Fmt` → `Needs:`, drop `Captured at` when it equals `Discovered`)
+  makes this prose stale — needs a matching edit in the same change.
+
+### Coupling Reference (informational — no action expected)
+_Wiring pass added by `/ll:wire-issue`:_ the following were traced and
+ruled OUT as wiring targets — `_render_card` is the sole consumer of the
+`output.py` primitives it uses (`colorize`, `strip_ansi`, `terminal_width`,
+`status_block`), and none of their signatures change. Machine consumers of
+`ll-issues show` (skills/loops) exclusively use `--json`, which is a
+separate code path unaffected by `_render_card`. No action needed on
+`plugin.json`, `.ll/ll-config.json`, `hooks/hooks.json`, or the 40+ other
+files importing `output.py` helpers for unrelated renderers.
 
 ### Configuration
 - None — this is a pure renderer change. No new CLI flags, no schema, no
@@ -202,6 +278,21 @@ _Added by `/ll:refine-issue` — codebase-driven research findings:_
 5. Prune/collapse low-signal rows (Source, Norm/Fmt → Needs, date formatting).
 6. Align metadata keys into a padded column when ≥4 detail lines.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included
+in the implementation:_
+
+7. Update `docs/reference/CLI.md` (~line 1093-1108) — the `ll-issues show`
+   section's field-list prose still names `Source`/`Norm`/`Fmt`/
+   `Captured at` as always-rendered rows; revise to match item 5's
+   pruning/collapse rules.
+8. Update `scripts/tests/test_show.py::TestRenderCard` — the 8 tests
+   listed under "Tests" that assert literal `Captured at:`/`Discovered:`
+   text or content adjacent to the `"  │  "` separator.
+9. Spot-check `scripts/tests/test_issues_cli.py::TestIssuesCLIShow` after
+   implementation — integration-level assertions on card substrings.
+
 ## Correctness Notes
 
 - Uncolored detail lines use `f"{dl:<{width-1}}"` while colored lines use
@@ -213,21 +304,21 @@ _Added by `/ll:refine-issue` — codebase-driven research findings:_
 
 ## Acceptance Criteria
 
-- [ ] Summary paragraphs reflow cleanly with no 1–2 word orphan lines; hard
+- [x] Summary paragraphs reflow cleanly with no 1–2 word orphan lines; hard
       line breaks from the source markdown do not survive into the card.
-- [ ] Card width scales up on wide terminals (targets ~100 cols, not the
+- [x] Card width scales up on wide terminals (targets ~100 cols, not the
       metadata width) and never exceeds `terminal_width() - 4`.
-- [ ] Title is bold; borders, field labels, and Path are dimmed; all status
+- [x] Title is bold; borders, field labels, and Path are dimmed; all status
       values are colored per state.
-- [ ] Intra-row separator is no longer the border glyph.
-- [ ] `Source: manual` is hidden; `Norm/Fmt` collapses to an actionable
+- [x] Intra-row separator is no longer the border glyph.
+- [x] `Source: manual` is hidden; `Norm/Fmt` collapses to an actionable
       `Needs:` line only when formatting is missing; dates render date-only and
       collapse when captured == discovered.
-- [ ] Metadata keys align into a padded column when the detail block has ≥4
+- [x] Metadata keys align into a padded column when the detail block has ≥4
       rows.
-- [ ] All colored/padded lines use `_ljust`; a token longer than the width cap
+- [x] All colored/padded lines use `_ljust`; a token longer than the width cap
       is truncated rather than bleeding past the right border.
-- [ ] Tests cover the reflow fix and truncation guard.
+- [x] Tests cover the reflow fix and truncation guard.
 
 ## Scope Boundaries
 
@@ -272,5 +363,11 @@ _None identified._
 - **Priority**: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-11T04:13:21 - `c4beaae3-c0b9-45a1-b688-8037d422a9c6.jsonl`
+- `/ll:ready-issue` - 2026-07-11T03:48:09 - `56bccfb9-6c3d-48e1-8028-d234b7a312c1.jsonl`
+- `/ll:ready-issue` - 2026-07-11T03:47:50 - `56bccfb9-6c3d-48e1-8028-d234b7a312c1.jsonl`
+- `/ll:confidence-check` - 2026-07-10T00:00:00Z - `0ce66e18-b0c3-48ab-9ab5-6caf248dbeab.jsonl`
+- `/ll:wire-issue` - 2026-07-11T03:43:28 - `c6b8268e-4922-4226-8bbd-7893754bf36e.jsonl`
+- `/ll:refine-issue` - 2026-07-11T03:37:49 - `6dcfc439-b277-4037-965b-53b0e49c808a.jsonl`
 - `/ll:format-issue` - 2026-07-10T20:13:04 - `2b14d541-25a4-44a2-b564-12e3bfaf1c45.jsonl`
 - `/ll:capture-issue` - 2026-07-10T03:10:36Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/35fe1048-04fc-45c5-b8aa-3c931ebbd1d9.jsonl`
