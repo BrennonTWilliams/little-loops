@@ -56,7 +56,13 @@ fi
 WORK_DIR=$(mktemp -d -t check-decisions-yaml-XXXXXX 2>/dev/null || mktemp -d)
 trap 'rm -rf "$WORK_DIR" 2>/dev/null || true' EXIT INT TERM
 
-STATUS="$(INPUT="$INPUT" WORK_DIR="$WORK_DIR" python3 <<'PY' 2>/dev/null || true
+# NOTE: The heredoc is deliberately NOT wrapped in $(...) command
+# substitution. macOS ships bash 3.2, which mis-parses a heredoc inside
+# $(...) — it scans the body to find the closing ) and miscounts the
+# Python source's single quotes, aborting with "unexpected EOF while
+# looking for matching `''". Redirect Python's status line to a temp file
+# and read it back with a plain (heredoc-free) command substitution instead.
+INPUT="$INPUT" WORK_DIR="$WORK_DIR" python3 <<'PY' >"$WORK_DIR/.ll-status" 2>/dev/null || true
 import json
 import os
 import sys
@@ -135,7 +141,7 @@ with open(candidate_path, 'wb') as fh:
     fh.write(staged)
 print('ok')
 PY
-)"
+STATUS="$(cat "$WORK_DIR/.ll-status" 2>/dev/null || true)"
 
 case "$STATUS" in
     skip:*)
