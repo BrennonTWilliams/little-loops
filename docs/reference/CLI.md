@@ -1829,6 +1829,46 @@ ll-deps tree --epic EPIC-1773 -f json  # Structured JSON (root, nodes, edges)
 
 ---
 
+### ll-code
+
+Structural code queries (callers, callees, imports, impact) via a pluggable `CodeQueryProvider`
+protocol (FEAT-2576). Ships with a grep/AST **fallback** provider that requires no external
+index — every subcommand works out of the box. Graph-backed providers (e.g. ENH-2577's
+`codegraph`) register in the same resolver and take priority under `--provider auto`.
+
+**Global flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--provider` | | Provider name, or `auto` (default) to pick the first available |
+| `--json` | `-j` | Output as JSON: `{provider, freshness, query, results: [CodeRef...]}` |
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|--------------|
+| `status` | Provider name, availability, freshness, capabilities |
+| `callers-of <symbol>` | Who calls this symbol (heuristic) |
+| `callees-of <symbol>` | What this symbol calls (exact) |
+| `importers-of <module>` | Who imports this module/file (heuristic) |
+| `defines <path>` | Symbols defined in a file (exact) |
+| `references <symbol>` | All reference sites — defs + uses (heuristic) |
+| `impact-of <paths...> [--depth N]` | Reverse transitive closure of files impacted by changes to *paths* (default depth: `2`) |
+
+Every result carries a `confidence` (`exact` or `heuristic`) and `provider` field. Exit codes:
+`0` = hits, `1` = no hits, `2` = provider error.
+
+**Examples:**
+```bash
+ll-code status                                     # provider name, availability, freshness
+ll-code callers-of little_loops.issue_manager.IssueManager.load
+ll-code --json callers-of <symbol>                 # machine-readable output for skills/loops
+ll-code --provider fallback callers-of <symbol>    # force a specific provider
+ll-code impact-of little_loops/state.py --depth 3
+```
+
+---
+
 ## History & Analysis
 
 ### ll-history

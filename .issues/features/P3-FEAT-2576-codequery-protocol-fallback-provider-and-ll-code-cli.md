@@ -3,7 +3,7 @@ id: FEAT-2576
 title: CodeQuery provider protocol, grep/AST fallback provider, and ll-code CLI
 type: FEAT
 priority: P3
-status: open
+status: done
 labels:
 - code-intelligence
 - adapters
@@ -11,6 +11,7 @@ labels:
 - token-cost
 - captured
 captured_at: '2026-07-10T05:34:41Z'
+completed_at: '2026-07-12T18:14:52Z'
 discovered_date: '2026-07-10'
 discovered_by: capture-issue
 parent: EPIC-2575
@@ -52,6 +53,17 @@ Every subcommand works with **no graph tool installed** (fallback provider), and
 ## Use Case
 
 `/ll:wire-issue FEAT-XXXX` needs every caller of a function being re-signatured. Today that is 4–8 Grep rounds interpreted by the agent. With this feature the skill runs `ll-code --json callers-of <symbol>` (one Bash call), seeds its Integration Map candidate list from the result, and spends its remaining budget confirming the handful of hits with targeted Grep — instead of discovering them from scratch.
+
+## Acceptance Criteria
+
+- [x] `little_loops/codequery/core.py` defines `CodeQueryProvider` protocol, frozen `CodeRef`/`ProviderStatus` dataclasses, `QUERY_KINDS`, `Unsupported`/`CodeQueryError`, `_PROVIDER_MAP`, and `resolve_provider(name="auto")`, mirroring `adapters/core.py`'s registry shape.
+- [x] `little_loops/codequery/fallback.py`'s `FallbackProvider` is always `available`/`freshness: fresh`, answers `defines`/`callees_of` via `ast` (exact confidence) and `callers_of`/`references`/`importers_of` via `git grep -n` (heuristic confidence), and `impact_of` via a depth-limited import-graph walk.
+- [x] `ll-code` CLI (`main_code`) supports `status | callers-of | callees-of | importers-of | defines | references | impact-of` with `--provider`, `--json`, `--depth` flags and exit codes 0 (hits) / 1 (no hits) / 2 (provider error).
+- [x] `resolve_provider("auto")` reads `BRConfig.code_query.provider` as its default source instead of a hardcoded value.
+- [x] `main_code` is registered in `scripts/little_loops/cli/__init__.py` (import, `__all__`, docstring CLI list) and `ll-code` is added to `.claude/CLAUDE.md`'s CLI Tools list.
+- [x] `test_codequery_core.py`, `test_codequery_fallback.py`, and `test_cli_code.py` pass, including protocol-conformance and `--json` schema/exit-code contract tests.
+- [x] `docs/reference/API.md` and `docs/reference/CLI.md` document the new module and CLI; `ll-verify-docs` passes.
+- [x] Full suite (`python -m pytest scripts/tests/`) passes with no regressions.
 
 ## Proposed Solution
 
@@ -248,11 +260,44 @@ _Added by `/ll:confidence-check` on 2026-07-12_
 ### Outcome Risk Factors
 - Independent re-verification of the cherry-pick (`git cherry-pick --no-commit -n 53512663`, reverted) found a **real conflict in this issue's own frontmatter/body** — not just the "trivial `docs/reference/API.md` auto-merge" claimed in the Codebase Research Findings. The conflict exists because `/ll:refine-issue`, `/ll:decide-issue`, and `/ll:wire-issue` have all edited this issue file since commit `53512663` was authored, so its stale copy of the issue markdown collides with the current one. Trivially resolvable (keep the current issue file, discard the commit's copy of it), but implementers should expect one more conflict than the issue currently documents. All code/test/docs files (`codequery/`, `cli/code.py`, `docs/reference/*.md`, `pyproject.toml`) applied with zero conflicts in this re-verification.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-07-12
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/codequery/core.py`, `fallback.py`, `__init__.py`: cherry-picked from
+  commit `53512663` (protocol, dataclasses, registry, resolver, grep/AST fallback provider).
+- `scripts/little_loops/cli/code.py`: cherry-picked `main_code` CLI; extended `--provider`
+  default to source from `BRConfig.code_query.provider` instead of the hardcoded `"auto"`
+  literal (last remaining AC item not covered by the unmerged commit).
+- `scripts/little_loops/cli/__init__.py`, `scripts/pyproject.toml`: `main_code` registration
+  and `ll-code` console script (cherry-picked, already wired).
+- `.claude/CLAUDE.md`: `ll-code` CLI Tools bullet (cherry-picked).
+- `docs/reference/API.md`, `docs/reference/CLI.md`: new sections (cherry-picked).
+- `scripts/tests/test_codequery_core.py`, `test_codequery_fallback.py`, `test_cli_code.py`:
+  cherry-picked 20 tests; added `test_default_provider_is_sourced_from_config` covering the
+  new config-sourced default.
+
+### Verification Results
+- Tests: PASS (`test_codequery_core.py`, `test_codequery_fallback.py`, `test_cli_code.py`,
+  `test_adapters.py`, `test_config.py` — 424 passed; full suite 14705 passed, 1 pre-existing
+  unrelated failure — `TestPixiDataVizLoop::test_required_top_level_fields`, caused by commit
+  `d1f2da24` which renamed `pixi-data-viz.yaml`'s `input_key` without updating its test,
+  predates this issue and is out of scope here)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`mypy`)
+- Integration: PASS (mirrors `adapters/core.py` registry shape and `cli/deps.py` CLI
+  conventions per the issue's Codebase Research Findings)
+
 ## Status
 
 **Open** | Created: 2026-07-10 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-12T18:14:18Z - `d311b1db-1c37-438e-8e30-d22cb99e20de.jsonl`
+- `/ll:ready-issue` - 2026-07-12T18:06:47 - `229fbe11-9176-4474-9ef7-44e8adce09fb.jsonl`
 - `/ll:confidence-check` - 2026-07-12T00:00:00 - `a03c42b0-4719-47ff-b40c-07de6db2a3cb.jsonl`
 - `/ll:wire-issue` - 2026-07-12T17:49:07 - `2beb02be-92aa-450c-93a9-e259ca395e8e.jsonl`
 - `/ll:decide-issue` - 2026-07-12T17:46:10 - `3f8a7dab-b194-4168-92a6-36d34389d5fd.jsonl`

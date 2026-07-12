@@ -7708,6 +7708,54 @@ To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `Ho
 
 ---
 
+## little_loops.codequery
+
+Structural code-query provider protocol and registry (FEAT-2576). Mirrors the `adapters/`
+shape above: a `@runtime_checkable` Protocol, a lazy-import registry, and a `resolve_*`
+factory. Answers "who calls/imports/defines/references X" and "what is impacted if these
+files change" without requiring any index to be built.
+
+```python
+from little_loops.codequery import CodeQueryProvider, CodeRef, ProviderStatus, resolve_provider
+```
+
+### CodeQueryProvider
+
+```python
+class CodeQueryProvider(Protocol):
+    name: str
+    def capabilities(self) -> set[str]: ...
+    def status(self) -> ProviderStatus: ...
+    def callers_of(self, symbol: str) -> list[CodeRef]: ...
+    def callees_of(self, symbol: str) -> list[CodeRef]: ...
+    def importers_of(self, module: str) -> list[CodeRef]: ...
+    def defines(self, path: str) -> list[CodeRef]: ...
+    def references(self, symbol: str) -> list[CodeRef]: ...
+    def impact_of(self, paths: list[str], depth: int = 2) -> list[CodeRef]: ...
+```
+
+### resolve_provider
+
+```python
+provider = resolve_provider("auto")  # or "fallback"
+refs = provider.callers_of("little_loops.issue_manager.IssueManager.load")
+```
+
+**Args:** `name` — a registered provider name, or `"auto"` (default) to pick the first
+registered provider (registration order) whose `status()` reports `available`.
+**Raises:** `CodeQueryError` if `name` is not registered, or `"auto"` finds none available.
+
+### Built-in providers
+
+| Class | Provider key | Status |
+|-------|--------------|--------|
+| `FallbackProvider` | `"fallback"` | Implemented (FEAT-2576) — grep/AST over the working tree; always available, always `freshness: fresh` |
+
+To add a provider: create `codequery/<provider>.py` implementing `CodeQueryProvider`, then
+register in `_PROVIDER_MAP` in `core.py`.
+
+---
+
 ## little_loops.transport
 
 Transport abstraction for the EventBus. A `Transport` is an additive sink that receives every event emitted on the bus. The Protocol is intentionally minimal — `send(event)` for delivery and `close()` for cleanup — so new sinks can be added without modifying `EventBus` itself.

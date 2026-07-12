@@ -201,6 +201,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db` (corrections + FTS5 matches, capped at 5 rows, stale-filtered). Use `--effort` to output per-issue effort context (session count, cycle time). Use `--for-skill NAME` to gate the call on `history.planning_skills` config (exits 0 with no output if NAME is not in the configured list)
 - `ll-history` - View completed issue statistics, analysis, export topic-filtered excerpts from history, and list sessions per issue (`sessions <ID>`)
 - `ll-deps` - Cross-issue dependency analysis and validation
+- `ll-code` - Structural code queries (callers, callees, imports, impact) via a pluggable provider protocol; grep/AST fallback provider ships day-one, no index required (`status`/`callers-of`/`callees-of`/`importers-of`/`defines`/`references`/`impact-of`, `--provider`, `--json`)
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-package-data` - Lint `__file__` escapes that break non-editable installs + verify manifest assets are in-wheel (exit 1 on any violation)

@@ -37,6 +37,7 @@ Provides command-line interfaces for automated issue management:
 - ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
 - ll-learning-tests: Query and manage the learning test registry
 - ll-doctor: Check host CLI capability support for little-loops features
+- ll-code: Structural code queries (callers, callees, imports, impact) via a pluggable provider protocol
 """
 
 from little_loops.cli.action import main_action
@@ -45,6 +46,7 @@ from little_loops.cli.adapt_agents_for_codex import main_adapt_agents_for_codex
 from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.artifact import main_artifact
 from little_loops.cli.auto import main_auto
+from little_loops.cli.code import main_code
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.ctx_stats import main_ctx_stats
 from little_loops.cli.deps import main_deps
@@ -95,6 +97,7 @@ __all__ = [
     "main_adapt_skills_for_codex",
     "main_auto",
     "main_check_links",
+    "main_code",
     "main_create_extension",
     "main_ctx_stats",
     "main_deps",
