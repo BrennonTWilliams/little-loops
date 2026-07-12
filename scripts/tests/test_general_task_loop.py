@@ -1564,14 +1564,10 @@ class TestENH2365SummarizeSuccess:
             script = script.replace(f"${{context.{key}}}", str(val))
         script = script.replace("${context.run_dir}", str(run_dir))
         # No captured final_counts in a unit context → fall back to the default.
-        script = script.replace(
-            "${captured.final_counts.output:default={}}", "{}"
-        )
+        script = script.replace("${captured.final_counts.output:default={}}", "{}")
         return script
 
-    def test_implemented_counts_checked_criteria_not_leftover(
-        self, tmp_path: Path
-    ) -> None:
+    def test_implemented_counts_checked_criteria_not_leftover(self, tmp_path: Path) -> None:
         """BUG-2608: implemented must be the CHECKED count. On the success path
         every criterion is [x] (count_done routes here only when unchecked==0),
         so a dod.md with N checked criteria must yield implemented==N — never 0,

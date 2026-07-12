@@ -2674,8 +2674,7 @@ class TestSprintManagerLoadOrResolve:
             "---\nid: ENH-902\nstatus: open\nparent: ENH-901\n---\n# ENH-902: Grandchild\n"
         )
         (issues_dir / "enhancements" / "P2-ENH-903-great-grandchild.md").write_text(
-            "---\nid: ENH-903\nstatus: open\nparent: ENH-902\n---\n"
-            "# ENH-903: Great-grandchild\n"
+            "---\nid: ENH-903\nstatus: open\nparent: ENH-902\n---\n# ENH-903: Great-grandchild\n"
         )
 
         manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)

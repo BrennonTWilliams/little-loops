@@ -168,9 +168,11 @@ class FallbackProvider:
             if not path.endswith(".py"):
                 continue
             stripped = text.strip()
-            if stripped.startswith(f"def {short_symbol}(") or stripped.startswith(
-                f"class {short_symbol}"
-            ) or stripped.startswith(f"async def {short_symbol}("):
+            if (
+                stripped.startswith(f"def {short_symbol}(")
+                or stripped.startswith(f"class {short_symbol}")
+                or stripped.startswith(f"async def {short_symbol}(")
+            ):
                 if path not in paths:
                     paths.append(path)
         return paths

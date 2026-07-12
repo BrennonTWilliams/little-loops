@@ -5050,9 +5050,7 @@ class TestSubLoopWorktree:
             result = FSMExecutor(parent, loops_dir=loops_dir).run()
 
         assert result.final_state == "ok"
-        assert len(attach_paths) == 2, (
-            "each entry to a loop: state must attach its own worktree"
-        )
+        assert len(attach_paths) == 2, "each entry to a loop: state must attach its own worktree"
         assert mock_cleanup.call_count == 2, (
             "each entry must also detach its worktree after the child returns"
         )

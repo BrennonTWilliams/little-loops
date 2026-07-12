@@ -1061,8 +1061,7 @@ class TestParallelConfig:
         )
         assert restored.epic_branches.open_pr == original.epic_branches.open_pr
         assert (
-            restored.epic_branches.verify_before_merge
-            == original.epic_branches.verify_before_merge
+            restored.epic_branches.verify_before_merge == original.epic_branches.verify_before_merge
         )
 
         assert restored.max_workers == original.max_workers

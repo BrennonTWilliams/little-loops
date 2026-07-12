@@ -336,9 +336,7 @@ class SprintManager:
         )
 
         all_active = find_issues(self.config, status_filter=_ACTIVE_STATUSES)
-        parent_map = build_parent_map(
-            find_issues(self.config, status_filter=set(_ALL_STATUSES))
-        )
+        parent_map = build_parent_map(find_issues(self.config, status_filter=set(_ALL_STATUSES)))
         backward_ids = {
             info.issue_id
             for info in all_active

@@ -3431,9 +3431,7 @@ class TestAutodevLoop:
         assert "ll-issues finalize-decomposition" in action
         assert "--children-file" in action
         assert "autodev-new-children.txt" in action
-        assert "git mv" not in action, (
-            "the completed/ move is owned by finalize-decomposition now"
-        )
+        assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
         assert "WARN" in action, "CLI failure must degrade to a WARN, not fail the state"
 
     def test_enqueue_or_skip_calls_finalize_decomposition(self, data: dict) -> None:
@@ -3443,9 +3441,7 @@ class TestAutodevLoop:
         children_branch = action.split("else")[0] if "else" in action else action
         assert "ll-issues finalize-decomposition" in children_branch
         assert "--children-file" in children_branch
-        assert "git mv" not in action, (
-            "the completed/ move is owned by finalize-decomposition now"
-        )
+        assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
 
     def test_done_surfaces_autodev_inflight_warning(self, data: dict) -> None:
         """done must read autodev-inflight and emit a warning when non-empty."""
