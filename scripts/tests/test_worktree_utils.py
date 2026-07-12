@@ -9,12 +9,20 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from little_loops.logger import Logger
 from little_loops.parallel.git_lock import GitLock
-from little_loops.worktree_utils import cleanup_worktree, detect_default_branch, setup_worktree
+from little_loops.worktree_utils import (
+    cleanup_worktree,
+    detect_default_branch,
+    merge_epic_branch_to_base,
+    open_pr_for_epic_branch,
+    setup_worktree,
+    verify_epic_branch_before_merge,
+)
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -144,9 +152,7 @@ class TestSetupWorktreeCheckoutExisting:
         current = _git(worktree_path, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
         assert current == "epic/existing"
 
-    def test_base_branch_and_checkout_existing_are_mutually_exclusive(
-        self, tmp_path: Path
-    ) -> None:
+    def test_base_branch_and_checkout_existing_are_mutually_exclusive(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path / "repo")
         _git(repo, "branch", "epic/existing")
         logger = Logger(verbose=False)
@@ -188,3 +194,211 @@ class TestSetupWorktreeCheckoutExisting:
         branches = _git(repo, "branch", "--list", "epic/existing").stdout
         assert "epic/existing" in branches
         assert not worktree_path.exists()
+
+
+class TestMergeEpicBranchToBase:
+    """merge_epic_branch_to_base() (BUG-2614: extracted from
+    ParallelOrchestrator._merge_epic_branch_to_base) merges an EPIC branch
+    into base_branch and deletes it, assuming repo_path is already checked
+    out on base_branch."""
+
+    def _repo_with_epic_branch(self, tmp_path: Path) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / "feature.txt").write_text("epic work\n")
+        _git(repo, "add", "feature.txt")
+        _git(repo, "commit", "-m", "epic work")
+        _git(repo, "checkout", "main")
+        return repo
+
+    def test_merges_and_deletes_branch_on_success(self, tmp_path: Path) -> None:
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok = merge_epic_branch_to_base(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            base_branch="main",
+            repo_path=repo,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is True
+        assert (repo / "feature.txt").exists()
+        branches = _git(repo, "branch", "--list", "epic/epic-1-integration").stdout
+        assert "epic/epic-1-integration" not in branches
+        log = _git(repo, "log", "--oneline").stdout
+        assert "epic work" in log
+
+    def test_conflicting_merge_returns_false_and_aborts(self, tmp_path: Path) -> None:
+        """A merge conflict must not leave the repo mid-merge or delete the branch."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / "README.md").write_text("epic version\n")
+        _git(repo, "commit", "-am", "epic edits README")
+        _git(repo, "checkout", "main")
+        (repo / "README.md").write_text("main version\n")
+        _git(repo, "commit", "-am", "main edits README")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok = merge_epic_branch_to_base(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            base_branch="main",
+            repo_path=repo,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is False
+        branches = _git(repo, "branch", "--list", "epic/epic-1-integration").stdout
+        assert "epic/epic-1-integration" in branches
+        status = _git(repo, "status", "--porcelain").stdout
+        assert status == ""  # merge --abort left a clean tree, not a conflicted one
+
+
+class TestVerifyEpicBranchBeforeMerge:
+    """verify_epic_branch_before_merge() (BUG-2614: extracted from
+    ParallelOrchestrator._verify_epic_branch_before_merge) is stateless —
+    returns (ok, message) instead of mutating instance dicts."""
+
+    def _repo_with_epic_branch(self, tmp_path: Path) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "branch", "epic/epic-1-integration")
+        return repo
+
+    def test_disabled_gate_returns_true_without_running_anything(self, tmp_path: Path) -> None:
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        with patch("little_loops.worktree_utils.subprocess.run") as mock_run:
+            ok, message = verify_epic_branch_before_merge(
+                "EPIC-1",
+                "epic/epic-1-integration",
+                verify_before_merge=False,
+                repo_path=repo,
+                worktree_base=repo / ".worktrees",
+                test_cmd="true",
+                lint_cmd=None,
+                logger=logger,
+                git_lock=git_lock,
+            )
+
+        assert (ok, message) == (True, None)
+        mock_run.assert_not_called()
+
+    def test_passing_test_cmd_returns_true(self, tmp_path: Path) -> None:
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok, message = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd="true",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message) == (True, None)
+
+    def test_failing_test_cmd_returns_false_with_message(self, tmp_path: Path) -> None:
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok, message = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd="false",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is False
+        assert message is not None
+        assert "test_cmd failed" in message
+
+    def test_worktree_setup_failure_returns_false_with_message(self, tmp_path: Path) -> None:
+        """A branch that doesn't exist fails worktree setup, not the test_cmd."""
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok, message = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/does-not-exist",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd="true",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is False
+        assert message is not None
+        assert "worktree setup failed" in message
+
+
+class TestOpenPrForEpicBranch:
+    """open_pr_for_epic_branch() (BUG-2614: extracted from
+    ParallelOrchestrator._open_pr_for_epic_branch) never raises — degrades
+    gracefully when gh is unauthenticated, missing, or times out."""
+
+    def test_skips_when_gh_not_authenticated(self, tmp_path: Path) -> None:
+        logger = Logger(verbose=False)
+        with patch(
+            "little_loops.worktree_utils.subprocess.run",
+            return_value=subprocess.CompletedProcess([], returncode=1),
+        ) as mock_run:
+            open_pr_for_epic_branch(
+                "EPIC-1",
+                "epic/epic-1-integration",
+                base_branch="main",
+                repo_path=tmp_path,
+                logger=logger,
+            )
+        assert mock_run.call_count == 1  # only the auth-status check, no pr create
+
+    def test_creates_pr_when_authenticated(self, tmp_path: Path) -> None:
+        logger = Logger(verbose=False)
+
+        def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if args[:2] == ["gh", "auth"]:
+                return subprocess.CompletedProcess(args, returncode=0)
+            return subprocess.CompletedProcess(args, returncode=0, stdout="https://pr/1\n")
+
+        with patch("little_loops.worktree_utils.subprocess.run", side_effect=fake_run):
+            open_pr_for_epic_branch(
+                "EPIC-1",
+                "epic/epic-1-integration",
+                base_branch="main",
+                repo_path=tmp_path,
+                logger=logger,
+            )
+        # No exception — the pr-create call ran with returncode 0.
+
+    def test_gh_not_found_does_not_raise(self, tmp_path: Path) -> None:
+        logger = Logger(verbose=False)
+        with patch("little_loops.worktree_utils.subprocess.run", side_effect=FileNotFoundError):
+            open_pr_for_epic_branch(
+                "EPIC-1",
+                "epic/epic-1-integration",
+                base_branch="main",
+                repo_path=tmp_path,
+                logger=logger,
+            )

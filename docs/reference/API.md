@@ -3320,13 +3320,31 @@ When `enabled`, `WorkerPool` routes every child of a shared `parent:` EPIC onto
 one `epic/<EPIC-ID>-<slug>` branch (fork point and merge target), recorded on
 `WorkerResult.epic_branch`. See [Configuration reference](CONFIGURATION.md#parallel).
 
-When `verify_before_merge` is `True`, `ParallelOrchestrator._verify_epic_branch_before_merge`
-checks out the EPIC branch tip in a scratch worktree (via `worktree_utils.setup_worktree(...,
-checkout_existing=True)`), runs `project.test_cmd`/`project.lint_cmd` against it, and always
-tears the worktree down. On failure the merge/PR-open is blocked (the branch is NOT added to
-`_merged_epic_branches`, so it is retried on the next completion event), and the failure is
-recorded in `ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which
-`_report_results()` surfaces in the run summary (ENH-2603).
+BUG-2614: the merge/verify/PR logic is implemented as three stateless free functions
+in `little_loops.worktree_utils` — `verify_epic_branch_before_merge`,
+`merge_epic_branch_to_base`, `open_pr_for_epic_branch` — extracted from what were
+previously `ParallelOrchestrator` instance methods, so both `ll-parallel`'s
+`WorkerPool` completion path and the `auto-refine-and-implement` FSM loop's
+`merge_epic_branch` state can share one implementation instead of the FSM loop
+reimplementing it inline. `ParallelOrchestrator._verify_epic_branch_before_merge`/
+`_merge_epic_branch_to_base`/`_open_pr_for_epic_branch` remain as thin wrappers that
+adapt the free functions to this instance's config/state (`self._git_lock`,
+`self.repo_path`, `self._merged_epic_branches` idempotency set,
+`self._epic_branch_verify_failures` reporting dict — none of which the free functions
+take directly, since they're specific to `WorkerPool`'s concurrency model).
+
+When `verify_before_merge` is `True`, `verify_epic_branch_before_merge` checks out the
+EPIC branch tip in a scratch worktree (via `worktree_utils.setup_worktree(...,
+checkout_existing=True)`), runs `test_cmd`/`lint_cmd` against it, and always tears the
+worktree down, returning `(ok, message)`. On the `ll-parallel` path, a failure blocks
+the merge/PR-open (the branch is NOT added to `_merged_epic_branches`, so it is retried
+on the next completion event), and the message is recorded in
+`ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which
+`_report_results()` surfaces in the run summary (ENH-2603). On the FSM loop path, the
+`merge_epic_branch` state writes the outcome to a `$RUN_DIR/epic-merge-verdict.txt`
+artifact instead — the loop runs `merge_epic_branch` exactly once per execution, so no
+idempotency set or failure dict is needed; a branch that no longer exists (already
+merged) is the sole idempotency signal.
 
 ### WorkerResult
 

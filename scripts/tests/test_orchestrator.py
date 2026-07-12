@@ -1549,10 +1549,11 @@ class TestEpicCompletionMerge:
 class TestEpicBranchVerifyGate:
     """Tests for the pre-merge test/lint verify gate (ENH-2603).
 
-    Patches ``setup_worktree``/``cleanup_worktree`` (imported into the
-    orchestrator module) to avoid real worktree creation, and
-    ``subprocess.run`` (the same patch target ``test_opens_pr_when_open_pr_true``
-    uses) to control test_cmd/lint_cmd outcomes.
+    Patches ``setup_worktree``/``cleanup_worktree``/``subprocess.run`` on the
+    ``little_loops.worktree_utils`` module (BUG-2614: the gate logic lives in
+    the stateless ``verify_epic_branch_before_merge`` free function there, not
+    in the orchestrator module) to avoid real worktree creation and control
+    test_cmd/lint_cmd outcomes.
     """
 
     _EPIC_BRANCH = "epic/epic-2451-integration"
@@ -1581,8 +1582,8 @@ class TestEpicBranchVerifyGate:
         calls = self._capture_git(orch)
 
         with (
-            patch("little_loops.parallel.orchestrator.setup_worktree") as mock_setup,
-            patch("little_loops.parallel.orchestrator.subprocess.run") as mock_run,
+            patch("little_loops.worktree_utils.setup_worktree") as mock_setup,
+            patch("little_loops.worktree_utils.subprocess.run") as mock_run,
         ):
             orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
 
@@ -1600,10 +1601,10 @@ class TestEpicBranchVerifyGate:
         calls = self._capture_git(orch)
 
         with (
-            patch("little_loops.parallel.orchestrator.setup_worktree"),
-            patch("little_loops.parallel.orchestrator.cleanup_worktree") as mock_cleanup,
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
             patch(
-                "little_loops.parallel.orchestrator.subprocess.run",
+                "little_loops.worktree_utils.subprocess.run",
                 return_value=MagicMock(returncode=1, stdout="", stderr="2 failed"),
             ),
         ):
@@ -1625,10 +1626,10 @@ class TestEpicBranchVerifyGate:
         calls = self._capture_git(orch)
 
         with (
-            patch("little_loops.parallel.orchestrator.setup_worktree"),
-            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
             patch(
-                "little_loops.parallel.orchestrator.subprocess.run",
+                "little_loops.worktree_utils.subprocess.run",
                 return_value=MagicMock(returncode=0, stdout="", stderr=""),
             ),
         ):
@@ -1648,10 +1649,10 @@ class TestEpicBranchVerifyGate:
 
         with (
             patch(
-                "little_loops.parallel.orchestrator.setup_worktree",
+                "little_loops.worktree_utils.setup_worktree",
                 side_effect=RuntimeError("worktree add failed"),
             ),
-            patch("little_loops.parallel.orchestrator.subprocess.run") as mock_run,
+            patch("little_loops.worktree_utils.subprocess.run") as mock_run,
         ):
             orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
 
@@ -1670,10 +1671,10 @@ class TestEpicBranchVerifyGate:
         calls = self._capture_git(orch)
 
         with (
-            patch("little_loops.parallel.orchestrator.setup_worktree"),
-            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
             patch(
-                "little_loops.parallel.orchestrator.subprocess.run",
+                "little_loops.worktree_utils.subprocess.run",
                 return_value=MagicMock(returncode=1, stdout="", stderr="boom"),
             ),
         ):
@@ -1683,10 +1684,10 @@ class TestEpicBranchVerifyGate:
         assert not [c for c in calls if c[0] == "merge"]
 
         with (
-            patch("little_loops.parallel.orchestrator.setup_worktree"),
-            patch("little_loops.parallel.orchestrator.cleanup_worktree"),
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
             patch(
-                "little_loops.parallel.orchestrator.subprocess.run",
+                "little_loops.worktree_utils.subprocess.run",
                 return_value=MagicMock(returncode=0, stdout="", stderr=""),
             ),
         ):

@@ -824,8 +824,8 @@ class FSMExecutor:
         # template; empty after interpolation is a strict no-op so loop YAMLs can
         # gate it on a captured value (e.g. checkout_epic_branch's output). The
         # Python process never chdirs — the child executor's subprocesses get the
-        # worktree as their cwd, mirroring _verify_epic_branch_before_merge's
-        # explicit-cwd idiom (parallel/orchestrator.py).
+        # worktree as their cwd, mirroring verify_epic_branch_before_merge's
+        # explicit-cwd idiom (BUG-2614: free function in worktree_utils.py).
         child_working_dir = self.working_dir
         detach_worktree: Callable[[], None] | None = None
         worktree_branch = interpolate(state.worktree, ctx).strip() if state.worktree else ""

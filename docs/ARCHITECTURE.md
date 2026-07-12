@@ -478,7 +478,13 @@ path (ENH-2601): `auto-refine-and-implement`/`sprint-refine-and-implement`
 read `parallel.epic_branches.enabled`/`.prefix` to create (not check out) the
 `epic/<EPIC-ID>-<slug>` branch when `scope` resolves to an EPIC-NNN id, then
 run a post-implementation `test_cmd`/`lint_cmd` verify pass folded into
-`summary.json`. See [LOOPS_REFERENCE.md § auto-refine-and-implement](guides/LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
+`summary.json`. Once all the EPIC's children are `done`, a `merge_epic_branch`
+state merges (or, per `epic_branches.open_pr`, opens a PR for) the branch back to
+`base_branch`, honoring `merge_to_base_on_complete`/`verify_before_merge` the same
+way the `WorkerPool` path above does (BUG-2614) — both paths share the same
+stateless free functions in `little_loops.worktree_utils`
+(`verify_epic_branch_before_merge`/`merge_epic_branch_to_base`/`open_pr_for_epic_branch`).
+See [LOOPS_REFERENCE.md § auto-refine-and-implement](guides/LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
 
 ```mermaid
 flowchart TB

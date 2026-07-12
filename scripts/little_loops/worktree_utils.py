@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -238,3 +240,199 @@ def _is_ll_branch(branch_name: str) -> bool:
     return (
         branch_name.startswith("parallel/") or re.match(r"^\d{8}-\d{6}-", branch_name) is not None
     )
+
+
+def verify_epic_branch_before_merge(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    verify_before_merge: bool,
+    repo_path: Path,
+    worktree_base: str | Path,
+    test_cmd: str | None,
+    lint_cmd: str | None,
+    logger: Logger,
+    git_lock: GitLock,
+) -> tuple[bool, str | None]:
+    """Run test_cmd/lint_cmd against an EPIC branch tip before merge/PR (ENH-2603, BUG-2614).
+
+    Stateless free-function extraction of ``ParallelOrchestrator``'s
+    ``_verify_epic_branch_before_merge`` (FEAT-2449/ENH-2603) so both
+    ``WorkerPool``-based runs and the FSM ``auto-refine-and-implement`` loop
+    can share one implementation instead of the loop's prior inline
+    reimplementation. Checks out ``epic_branch`` in a scratch worktree under
+    ``worktree_base``, runs ``test_cmd`` and (if set) ``lint_cmd`` against it,
+    and always tears the worktree down regardless of outcome.
+
+    Args:
+        epic_id: The EPIC issue ID, used for logging and the scratch worktree name.
+        epic_branch: Name of the EPIC integration branch to verify.
+        verify_before_merge: When False, returns ``(True, None)`` immediately
+            without doing any work (the gate is disabled).
+        repo_path: Path to the main repository.
+        worktree_base: Directory (relative to repo_path) to create the scratch
+            worktree in.
+        test_cmd: Shell command to run as the test gate, or None to skip.
+        lint_cmd: Shell command to run as the lint gate, or None to skip.
+        logger: Logger instance.
+        git_lock: Thread-safe git lock for serializing repo operations.
+
+    Returns:
+        ``(True, None)`` if the gate passed (or was disabled). ``(False,
+        message)`` if worktree setup or a configured command failed, where
+        ``message`` describes the failure for the caller to surface.
+    """
+    if not verify_before_merge:
+        return True, None
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    worktree_path = repo_path / worktree_base / f"verify-{epic_id.lower()}-{timestamp}"
+
+    try:
+        setup_worktree(
+            repo_path=repo_path,
+            worktree_path=worktree_path,
+            branch_name=epic_branch,
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+            checkout_existing=True,
+        )
+    except RuntimeError as e:
+        message = f"verify-gate worktree setup failed: {e}"
+        logger.warning(f"EPIC {epic_id}: {message}")
+        return False, message
+
+    try:
+        for label, cmd in (("test", test_cmd), ("lint", lint_cmd)):
+            if not cmd:
+                continue
+            logger.info(f"EPIC {epic_id}: running {label}_cmd against {epic_branch}")
+            result = subprocess.run(
+                shlex.split(cmd),
+                capture_output=True,
+                text=True,
+                cwd=worktree_path,
+            )
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "").strip()[:500]
+                message = f"{label}_cmd failed (exit {result.returncode}): {detail}"
+                logger.warning(f"EPIC {epic_id}: {message}")
+                return False, message
+        return True, None
+    finally:
+        cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=False)
+
+
+def merge_epic_branch_to_base(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    base_branch: str,
+    repo_path: Path,
+    logger: Logger,
+    git_lock: GitLock,
+) -> bool:
+    """Merge ``epic_branch`` into ``base_branch`` then delete it (FEAT-2449, BUG-2614).
+
+    Stateless free-function extraction of ``ParallelOrchestrator``'s
+    ``_merge_epic_branch_to_base``. Assumes ``repo_path``'s working tree is
+    already checked out on (or fast-forwardable to) ``base_branch`` — no
+    checkout is performed here, mirroring the orchestrator precedent where
+    the main repo stays on ``base_branch`` throughout a run.
+
+    Args:
+        epic_id: The EPIC issue ID, used in the merge commit message and logs.
+        epic_branch: Name of the EPIC integration branch to merge and delete.
+        base_branch: Branch to merge into.
+        repo_path: Path to the repository, checked out on ``base_branch``.
+        logger: Logger instance.
+        git_lock: Thread-safe git lock for serializing repo operations.
+
+    Returns:
+        True if the merge succeeded (and the branch was deleted), False on
+        merge failure or an unexpected error (never raises).
+    """
+    try:
+        result = git_lock.run(
+            [
+                "merge",
+                "--no-ff",
+                epic_branch,
+                "-m",
+                f"Merge EPIC integration branch {epic_id} into {base_branch}",
+            ],
+            cwd=repo_path,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            logger.success(f"EPIC {epic_id} integration branch merged into {base_branch}")
+            git_lock.run(["branch", "-D", epic_branch], cwd=repo_path, timeout=10)
+            return True
+        else:
+            logger.warning(f"EPIC {epic_id} integration branch merge failed: {result.stderr}")
+            git_lock.run(["merge", "--abort"], cwd=repo_path, timeout=10)
+            return False
+    except Exception as e:  # noqa: BLE001 — never let completion crash the caller
+        logger.warning(f"EPIC {epic_id} integration branch merge error: {e}")
+        return False
+
+
+def open_pr_for_epic_branch(
+    epic_id: str,
+    epic_branch: str,
+    *,
+    base_branch: str,
+    repo_path: Path,
+    logger: Logger,
+) -> None:
+    """Open one PR for a completed EPIC integration branch via gh (FEAT-2449, BUG-2614).
+
+    Stateless free-function extraction of ``ParallelOrchestrator``'s
+    ``_open_pr_for_epic_branch``. The branch is NOT deleted — the PR needs
+    it. ``--head`` is the epic branch, ``--base`` is ``base_branch``.
+
+    Args:
+        epic_id: The EPIC issue ID, used in the PR title/body and logs.
+        epic_branch: Name of the EPIC integration branch to open a PR for.
+        base_branch: PR base branch.
+        repo_path: Path to the repository.
+        logger: Logger instance.
+    """
+    try:
+        auth_result = subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if auth_result.returncode != 0:
+            logger.warning(f"EPIC {epic_id}: gh not authenticated, skipping integration PR")
+            return
+        pr_result = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                f"EPIC {epic_id} integration",
+                "--body",
+                f"Integration branch for {epic_id} (all children complete)",
+                "--base",
+                base_branch,
+                "--head",
+                epic_branch,
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if pr_result.returncode == 0:
+            logger.info(f"EPIC {epic_id}: integration PR created: {pr_result.stdout.strip()}")
+        else:
+            logger.warning(f"EPIC {epic_id}: gh pr create failed: {pr_result.stderr.strip()}")
+    except FileNotFoundError:
+        logger.warning(f"EPIC {epic_id}: gh CLI not found, skipping integration PR")
+    except subprocess.TimeoutExpired:
+        logger.warning(f"EPIC {epic_id}: gh pr create timed out")

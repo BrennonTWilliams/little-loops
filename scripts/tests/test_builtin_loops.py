@@ -2029,13 +2029,15 @@ class TestAutoRefineAndImplementLoop:
         assert "rev-parse" in action
         assert "ls-remote" in action
 
-    def test_verify_state_exists_and_routes_to_finalize(self, data: dict) -> None:
+    def test_verify_state_exists_and_routes_to_merge_epic_branch(self, data: dict) -> None:
         """verify runs unconditionally after delegate and always continues to
-        finalize (pass/fail is advisory, folded into summary.json, not gating)."""
+        merge_epic_branch (pass/fail is advisory, folded into summary.json,
+        not gating). BUG-2614: merge_epic_branch was inserted between verify
+        and finalize."""
         state = data["states"].get("verify", {})
         assert state.get("action_type") == "shell"
-        assert state.get("next") == "finalize"
-        assert state.get("on_error") == "finalize"
+        assert state.get("next") == "merge_epic_branch"
+        assert state.get("on_error") == "merge_epic_branch"
 
     def test_verify_reads_project_test_and_lint_cmd(self, data: dict) -> None:
         """verify must source project.test_cmd/lint_cmd from ll-config.json (no
@@ -2064,13 +2066,17 @@ class TestAutoRefineAndImplementLoop:
         assert state.get("worktree") == "${captured.epic_branch.output}"
 
     def test_verify_attaches_epic_worktree(self, data: dict) -> None:
-        """verify must run test/lint against the epic branch's actual state via a
-        scratch worktree (checkout_existing=True, delete_branch=False) when
-        epic-branch-name.txt exists — the main tree never has the commits."""
+        """verify must run test/lint against the epic branch's actual state via
+        the shared verify_epic_branch_before_merge free function (BUG-2614:
+        extracted from orchestrator._verify_epic_branch_before_merge, which
+        internally does the checkout_existing=True/delete_branch=False scratch
+        worktree dance) when epic-branch-name.txt exists — the main tree never
+        has the commits. verify_before_merge=True since this state's checks
+        run unconditionally, unlike merge_epic_branch's config-gated call."""
         action = data["states"].get("verify", {}).get("action", "")
         assert "epic-branch-name.txt" in action
-        assert "checkout_existing=True" in action
-        assert "delete_branch=False" in action
+        assert "verify_epic_branch_before_merge" in action
+        assert "verify_before_merge=True" in action
 
     def test_finalize_computes_closures_from_epic_branch(self, data: dict) -> None:
         """finalize must source completed/ and status:done snapshots from the epic
@@ -2718,6 +2724,155 @@ class TestVerifyStateConfigReadShell:
 
     def test_lint_cmd_optional(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, test_cmd="true", lint_cmd=None) == "passed"
+
+
+class TestMergeEpicBranchConfigReadShell:
+    """BUG-2614 end-to-end: exercise merge_epic_branch's config-gated merge-back
+    against a real git repo (mirrors TestCheckoutEpicBranchConfigReadShell's
+    technique — extract the state's raw action, substitute FSM placeholders,
+    run via bash -c, assert on real git state)."""
+
+    _EPIC_BRANCH = "epic/epic-42-my-epic-title"
+
+    def _setup_repo(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        (tmp_path / "README.md").write_text("x\n")
+        subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+        subprocess.run(["git", "branch", self._EPIC_BRANCH], cwd=tmp_path, check=True)
+        subprocess.run(["git", "checkout", "-q", self._EPIC_BRANCH], cwd=tmp_path, check=True)
+        (tmp_path / "feature.txt").write_text("epic work\n")
+        subprocess.run(["git", "add", "feature.txt"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "epic work"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+
+    def _write_issues(self, tmp_path: Path, child_statuses: dict[str, str]) -> None:
+        subdir = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
+        epics_dir = tmp_path / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        (epics_dir / "P3-EPIC-42-my-epic.md").write_text(
+            "---\nid: EPIC-42\ntitle: My Epic Title\nstatus: in_progress\n---\n"
+            "# EPIC-42: My Epic Title\n"
+        )
+        for cid, status in child_statuses.items():
+            sub = subdir[cid.split("-")[0]]
+            (tmp_path / ".issues" / sub).mkdir(parents=True, exist_ok=True)
+            (tmp_path / ".issues" / sub / f"P3-{cid}-child.md").write_text(
+                f"---\nid: {cid}\nstatus: {status}\nparent: EPIC-42\n---\n# {cid}: Child\n"
+            )
+
+    def _run(
+        self,
+        tmp_path: Path,
+        *,
+        child_statuses: dict[str, str],
+        merge_to_base_on_complete: bool = True,
+        open_pr: bool = False,
+        verify_before_merge: bool = False,
+        write_branch_file: bool = True,
+    ) -> tuple[subprocess.CompletedProcess, Path]:
+        self._setup_repo(tmp_path)
+        self._write_issues(tmp_path, child_statuses)
+
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {
+                    "parallel": {
+                        "base_branch": "main",
+                        "epic_branches": {
+                            "enabled": True,
+                            "merge_to_base_on_complete": merge_to_base_on_complete,
+                            "open_pr": open_pr,
+                            "verify_before_merge": verify_before_merge,
+                        },
+                    }
+                }
+            )
+        )
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(exist_ok=True)
+        if write_branch_file:
+            (run_dir / "epic-branch-name.txt").write_text(self._EPIC_BRANCH + "\n")
+        (run_dir / "base-branch-name.txt").write_text("main\n")
+
+        loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
+        action = loop["states"]["merge_epic_branch"]["action"]
+        action = action.replace("${context.scope}", "EPIC-42").replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        result = subprocess.run(
+            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        return result, run_dir
+
+    def _branches(self, tmp_path: Path) -> str:
+        return subprocess.run(
+            ["git", "branch", "--list"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout
+
+    def test_merges_when_all_children_done(self, tmp_path: Path) -> None:
+        result, run_dir = self._run(
+            tmp_path, child_statuses={"FEAT-010": "done", "FEAT-020": "done"}
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
+        assert self._EPIC_BRANCH not in self._branches(tmp_path)
+        log = subprocess.run(
+            ["git", "log", "--oneline"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout
+        assert "epic work" in log
+        assert (tmp_path / "feature.txt").exists()
+
+    def test_held_open_when_child_not_done(self, tmp_path: Path) -> None:
+        result, run_dir = self._run(
+            tmp_path, child_statuses={"FEAT-010": "done", "FEAT-020": "in_progress"}
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "held_open"
+        assert self._EPIC_BRANCH in self._branches(tmp_path)
+
+    def test_skipped_when_merge_to_base_on_complete_false(self, tmp_path: Path) -> None:
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done"},
+            merge_to_base_on_complete=False,
+            open_pr=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "skipped"
+        assert self._EPIC_BRANCH in self._branches(tmp_path)
+
+    def test_skipped_when_no_epic_branch_file(self, tmp_path: Path) -> None:
+        """Non-EPIC scope runs never write epic-branch-name.txt — must no-op."""
+        result, run_dir = self._run(
+            tmp_path, child_statuses={"FEAT-010": "done"}, write_branch_file=False
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "skipped"
+
+    def test_idempotent_when_branch_already_merged(self, tmp_path: Path) -> None:
+        """A second run after the branch is already merged/deleted must no-op,
+        not error — the git-existence check is the sole idempotency guard
+        (BUG-2614 FSM Plumbing Design: no persisted marker needed)."""
+        first, run_dir = self._run(tmp_path, child_statuses={"FEAT-010": "done"})
+        assert first.returncode == 0, first.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
+
+        loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
+        action = loop["states"]["merge_epic_branch"]["action"]
+        action = action.replace("${context.scope}", "EPIC-42").replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        second = subprocess.run(
+            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert second.returncode == 0, second.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "skipped"
 
 
 class TestAutodevLoop:

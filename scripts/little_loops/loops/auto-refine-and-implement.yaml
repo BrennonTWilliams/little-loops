@@ -36,6 +36,14 @@ description: |
   are epic-branch aware for the same reason: the main tree never has the
   branch's commits, so verify attaches its own scratch worktree and finalize
   snapshots completed/ and status:done from the branch via git.
+
+  BUG-2614: merge_epic_branch runs after verify, before finalize — once all
+  the EPIC's children are done, it merges (or, per epic_branches.open_pr,
+  opens a PR for) the integration branch back into base_branch, honoring
+  merge_to_base_on_complete/verify_before_merge the same way ll-parallel's
+  ParallelOrchestrator already does (both share the stateless free functions
+  in worktree_utils.py). Previously this config was silently unhonored on the
+  FSM path — the branch was created and committed to but never merged back.
 initial: init
 max_steps: 50
 timeout: 28800
@@ -214,6 +222,12 @@ states:
 
       run_dir.mkdir(parents=True, exist_ok=True)
       (run_dir / "epic-branch-name.txt").write_text(branch + "\n")
+      # BUG-2614: persist the resolved base branch so merge_epic_branch can
+      # merge back into the SAME branch this one was forked from, instead of
+      # re-deriving it (and potentially disagreeing, since
+      # create_parallel_config()'s "main" fallback differs from
+      # detect_default_branch()'s git-derived one used here).
+      (run_dir / "base-branch-name.txt").write_text(base + "\n")
       print(branch)
       PYEOF
     action_type: shell
@@ -256,13 +270,15 @@ states:
     # convention used elsewhere for unconfigured verification commands.
     # ENH-2609: when epic-branch-name.txt exists, the commits under test live
     # on the epic branch, NOT in the main tree — so verify attaches its own
-    # scratch worktree (checkout_existing=True, delete_branch=False on
-    # cleanup, mirroring orchestrator._verify_epic_branch_before_merge) and
-    # runs the checks with cwd=worktree. Non-epic runs verify in place.
+    # scratch worktree via the shared worktree_utils.verify_epic_branch_before_merge
+    # (BUG-2614: extracted from orchestrator._verify_epic_branch_before_merge,
+    # called here with verify_before_merge=True since this state's checks are
+    # unconditional rather than gated by the epic_branches.verify_before_merge
+    # config flag — that flag instead gates merge_epic_branch's own call to
+    # the same function below). Non-epic runs verify in place, unchanged.
     action: |
       RUN_DIR="${context.run_dir}"
       VERIFY_VERDICT=$(python3 << 'PYEOF'
-      import datetime
       import json
       import shlex
       import subprocess
@@ -279,61 +295,56 @@ states:
           print('skipped')
           raise SystemExit(0)
 
-      def run_checks(cwd):
-          for cmd in (test_cmd, lint_cmd):
-              if not cmd:
-                  continue
-              result = subprocess.run(
-                  shlex.split(cmd), capture_output=True, text=True, cwd=cwd
-              )
-              if result.returncode != 0:
-                  return 'failed'
-          return 'passed'
-
       run_dir = Path("""${context.run_dir}""")
       branch_file = run_dir / 'epic-branch-name.txt'
       epic_branch = branch_file.read_text().strip() if branch_file.exists() else ''
 
       if not epic_branch:
+          def run_checks(cwd):
+              for cmd in (test_cmd, lint_cmd):
+                  if not cmd:
+                      continue
+                  result = subprocess.run(
+                      shlex.split(cmd), capture_output=True, text=True, cwd=cwd
+                  )
+                  if result.returncode != 0:
+                      return 'failed'
+              return 'passed'
           print(run_checks(None))
           raise SystemExit(0)
 
       from little_loops.config import BRConfig
       from little_loops.logger import Logger
       from little_loops.parallel.git_lock import GitLock
-      from little_loops.worktree_utils import cleanup_worktree, setup_worktree
+      from little_loops.worktree_utils import verify_epic_branch_before_merge
 
       repo = Path.cwd()
       ll_cfg = BRConfig(repo)
-      ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-      wt = ll_cfg.get_worktree_base() / f'{ts}-verify-epic'
       logger = Logger(verbose=False)
       lock = GitLock(logger)
-      try:
-          setup_worktree(
-              repo_path=repo,
-              worktree_path=wt,
-              branch_name=epic_branch,
-              copy_files=ll_cfg.parallel.worktree_copy_files,
-              logger=logger,
-              git_lock=lock,
-              checkout_existing=True,
-          )
-      except RuntimeError as e:
-          print(f'verify: worktree attach failed: {e}', file=sys.stderr)
-          print('failed')
-          raise SystemExit(0)
-      try:
-          print(run_checks(wt))
-      finally:
-          cleanup_worktree(wt, repo, logger, lock, delete_branch=False)
+      epic_id = """${context.scope}""".strip()
+
+      ok, message = verify_epic_branch_before_merge(
+          epic_id,
+          epic_branch,
+          verify_before_merge=True,
+          repo_path=repo,
+          worktree_base=ll_cfg.get_worktree_base(),
+          test_cmd=test_cmd,
+          lint_cmd=lint_cmd,
+          logger=logger,
+          git_lock=lock,
+      )
+      if not ok and message:
+          print(f'verify: {message}', file=sys.stderr)
+      print('passed' if ok else 'failed')
       PYEOF
       )
       echo "$VERIFY_VERDICT" > "$RUN_DIR/verify-verdict.txt"
       echo "verify: verdict=$VERIFY_VERDICT"
     action_type: shell
-    next: finalize
-    on_error: finalize
+    next: merge_epic_branch
+    on_error: merge_epic_branch
 
   record_error:
     # autodev crashed at the infrastructure level before it could drain the set.
@@ -344,6 +355,142 @@ states:
       echo "ERROR: autodev crashed on set ${captured.issue_set.output} — see events.jsonl"
     action_type: shell
     next: finalize
+
+  merge_epic_branch:
+    # BUG-2614: the FSM-loop-side equivalent of
+    # ParallelOrchestrator._maybe_complete_epic — merges (or, per
+    # epic_branches.open_pr, opens a PR for) the EPIC integration branch back
+    # to base_branch once all its children are done, honoring
+    # parallel.epic_branches.merge_to_base_on_complete/verify_before_merge/
+    # open_pr the same way ll-parallel already does. Previously this config
+    # was silently unhonored on the FSM path — the branch was created and
+    # committed to but never merged back (see issue for the EPIC-2575 case
+    # this was found from).
+    #
+    # No-op ("skipped") when scope isn't an EPIC id (no epic-branch-name.txt),
+    # both merge_to_base_on_complete and open_pr are false, or the branch has
+    # already been merged by a prior run/retry — idempotency comes for free
+    # from git: merge_epic_branch_to_base deletes the branch on success, so a
+    # `git rev-parse --verify` miss means "already merged", no persisted
+    # marker needed (see issue's FSM Plumbing Design — this state runs
+    # exactly once per loop execution, unlike the orchestrator's
+    # multiply-fired _maybe_complete_epic, so no idempotency SET is needed
+    # either, only the git-existence check).
+    #
+    # "held_open" when the EPIC's children aren't all `done` yet (mirrors the
+    # orchestrator's all-done gate via compute_epic_progress; no run-level
+    # failure-set gate here since finalize has no queue/state object to scope
+    # one from — on-disk status is the sole source of truth in this context).
+    action: |
+      RUN_DIR="${context.run_dir}"
+      python3 << 'PYEOF' > "$RUN_DIR/epic-merge-verdict.txt"
+      import subprocess
+      import sys
+      from pathlib import Path
+
+      run_dir = Path("""${context.run_dir}""")
+      branch_file = run_dir / "epic-branch-name.txt"
+      base_file = run_dir / "base-branch-name.txt"
+      epic_id = """${context.scope}""".strip()
+
+      if not branch_file.exists():
+          print("skipped")
+          raise SystemExit(0)
+      epic_branch = branch_file.read_text().strip()
+
+      exists = subprocess.run(
+          ["git", "rev-parse", "--verify", epic_branch],
+          capture_output=True, text=True,
+      ).returncode == 0
+      if not exists:
+          print("skipped")
+          raise SystemExit(0)
+
+      from little_loops.config import BRConfig
+
+      cfg = BRConfig(Path.cwd())
+      epic_cfg = cfg.parallel.epic_branches
+      if not epic_cfg.merge_to_base_on_complete and not epic_cfg.open_pr:
+          print("skipped")
+          raise SystemExit(0)
+
+      from little_loops.issue_parser import find_issues
+      from little_loops.issue_progress import compute_epic_progress
+
+      all_issues = find_issues(
+          cfg,
+          status_filter={"open", "in_progress", "blocked", "done", "cancelled", "deferred"},
+      )
+      prog = compute_epic_progress(epic_id, all_issues)
+      if prog is None:
+          print("skipped")
+          raise SystemExit(0)
+
+      total = len(prog.children)
+      done_count = prog.by_status.get("done", 0)
+      blocked_count = prog.by_status.get("blocked", 0)
+      cancelled_count = prog.by_status.get("cancelled", 0)
+      all_done = (
+          total > 0 and done_count == total and blocked_count == 0 and cancelled_count == 0
+      )
+      if not all_done:
+          print("held_open")
+          raise SystemExit(0)
+
+      base_branch = (
+          base_file.read_text().strip()
+          if base_file.exists()
+          else (cfg.parallel.base_branch or "main")
+      )
+
+      from little_loops.logger import Logger
+      from little_loops.parallel.git_lock import GitLock
+      from little_loops.worktree_utils import (
+          merge_epic_branch_to_base,
+          open_pr_for_epic_branch,
+          verify_epic_branch_before_merge,
+      )
+
+      repo = Path.cwd()
+      logger = Logger(verbose=False)
+      lock = GitLock(logger)
+
+      ok, message = verify_epic_branch_before_merge(
+          epic_id,
+          epic_branch,
+          verify_before_merge=epic_cfg.verify_before_merge,
+          repo_path=repo,
+          worktree_base=cfg.get_worktree_base(),
+          test_cmd=cfg.project.test_cmd,
+          lint_cmd=cfg.project.lint_cmd,
+          logger=logger,
+          git_lock=lock,
+      )
+      if not ok:
+          print(f"merge_epic_branch: verify gate failed: {message}", file=sys.stderr)
+          print("verify_failed")
+          raise SystemExit(0)
+
+      if epic_cfg.open_pr:
+          open_pr_for_epic_branch(
+              epic_id, epic_branch, base_branch=base_branch, repo_path=repo, logger=logger
+          )
+          print("pr_opened")
+      else:
+          merged = merge_epic_branch_to_base(
+              epic_id,
+              epic_branch,
+              base_branch=base_branch,
+              repo_path=repo,
+              logger=logger,
+              git_lock=lock,
+          )
+          print("merged" if merged else "merge_failed")
+      PYEOF
+      echo "merge_epic_branch: verdict=$(cat "$RUN_DIR/epic-merge-verdict.txt")"
+    action_type: shell
+    next: finalize
+    on_error: finalize
 
   finalize:
     # Write a machine-readable summary.json so callers (e.g.
@@ -504,6 +651,13 @@ states:
       # delegate/verify pass at all).
       VERIFY_VERDICT=$(cat "$RUN_DIR/verify-verdict.txt" 2>/dev/null || echo "not_run")
 
+      # BUG-2614: EPIC_MERGE_VERDICT is sourced from merge_epic_branch's
+      # artifact (merged/pr_opened/held_open/verify_failed/merge_failed/
+      # skipped) — "not_run" when merge_epic_branch never ran (e.g. the
+      # record_error crash path routes straight to finalize). Advisory only,
+      # same as VERIFY_VERDICT — does not gate finalize's own closure verdict.
+      EPIC_MERGE_VERDICT=$(cat "$RUN_DIR/epic-merge-verdict.txt" 2>/dev/null || echo "not_run")
+
       # Verdict reflects real closure. A run is only 'success' when it closed
       # something and left nothing parked (no skips, no not-closed, no crash).
       if [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
@@ -520,14 +674,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","epic_merge_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s verify_verdict=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
     action_type: shell
     next: done
 

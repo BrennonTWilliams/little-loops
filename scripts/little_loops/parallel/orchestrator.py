@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import shutil
 import signal
 import subprocess
@@ -39,8 +38,9 @@ from little_loops.session_log import append_session_log_entry
 from little_loops.worktree_utils import (
     _is_ll_branch,
     _is_ll_worktree,
-    cleanup_worktree,
-    setup_worktree,
+    merge_epic_branch_to_base,
+    open_pr_for_epic_branch,
+    verify_epic_branch_before_merge,
 )
 
 if TYPE_CHECKING:
@@ -1323,162 +1323,62 @@ class ParallelOrchestrator:
     def _verify_epic_branch_before_merge(self, epic_id: str, epic_branch: str) -> bool:
         """Run test_cmd/lint_cmd against the EPIC branch tip before merge/PR (ENH-2603).
 
-        Gated by ``epic_branches.verify_before_merge`` (default False, added
-        in ENH-2602) — returns True immediately when disabled. Otherwise,
-        checks out ``epic_branch`` in a scratch worktree, runs the project's
-        configured ``test_cmd`` and (if set) ``lint_cmd`` against it, and
-        always tears the worktree down regardless of outcome. On failure,
-        records a message in ``self._epic_branch_verify_failures`` for
-        ``_report_results()`` to surface and returns False so the caller
-        blocks the merge/PR-open.
+        Thin wrapper around the stateless
+        ``worktree_utils.verify_epic_branch_before_merge`` (BUG-2614) that
+        adapts this instance's config/state: reads
+        ``epic_branches.verify_before_merge`` and ``project.test_cmd``/
+        ``lint_cmd`` from config, and records a failure message into
+        ``self._epic_branch_verify_failures`` for ``_report_results()`` to
+        surface.
         """
         cfg = self.parallel_config.epic_branches
-        if not cfg.verify_before_merge:
-            return True
-
         project = self.br_config.project
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        worktree_path = (
-            self.repo_path
-            / self.parallel_config.worktree_base
-            / f"verify-{epic_id.lower()}-{timestamp}"
+        ok, message = verify_epic_branch_before_merge(
+            epic_id,
+            epic_branch,
+            verify_before_merge=cfg.verify_before_merge,
+            repo_path=self.repo_path,
+            worktree_base=self.parallel_config.worktree_base,
+            test_cmd=project.test_cmd,
+            lint_cmd=project.lint_cmd,
+            logger=self.logger,
+            git_lock=self._git_lock,
         )
-
-        try:
-            setup_worktree(
-                repo_path=self.repo_path,
-                worktree_path=worktree_path,
-                branch_name=epic_branch,
-                copy_files=[],
-                logger=self.logger,
-                git_lock=self._git_lock,
-                checkout_existing=True,
-            )
-        except RuntimeError as e:
-            message = f"verify-gate worktree setup failed: {e}"
-            self.logger.warning(f"EPIC {epic_id}: {message}")
+        if not ok and message is not None:
             with self._state_lock:
                 self._epic_branch_verify_failures[epic_id] = message
-            return False
-
-        try:
-            for label, cmd in (("test", project.test_cmd), ("lint", project.lint_cmd)):
-                if not cmd:
-                    continue
-                self.logger.info(f"EPIC {epic_id}: running {label}_cmd against {epic_branch}")
-                result = subprocess.run(
-                    shlex.split(cmd),
-                    capture_output=True,
-                    text=True,
-                    cwd=worktree_path,
-                )
-                if result.returncode != 0:
-                    detail = (result.stderr or result.stdout or "").strip()[:500]
-                    message = f"{label}_cmd failed (exit {result.returncode}): {detail}"
-                    self.logger.warning(f"EPIC {epic_id}: {message}")
-                    with self._state_lock:
-                        self._epic_branch_verify_failures[epic_id] = message
-                    return False
-            return True
-        finally:
-            cleanup_worktree(
-                worktree_path, self.repo_path, self.logger, self._git_lock, delete_branch=False
-            )
+        return ok
 
     def _merge_epic_branch_to_base(self, epic_id: str, epic_branch: str) -> None:
         """Merge ``epic_branch`` into ``base_branch`` then delete it (FEAT-2449).
 
-        Lifts the ``git merge --no-ff`` + inline ``branch -D`` shape from
-        ``_merge_pending_worktrees`` (gated only on the merge succeeding — no
-        ``_is_ll_branch`` gate; explicit deletion per FEAT-2339 Rationale #3).
-        The main repo stays checked out on ``base_branch`` throughout a parallel
-        run, so no checkout is needed (mirrors the pending-merge precedent).
+        Thin wrapper around the stateless
+        ``worktree_utils.merge_epic_branch_to_base`` (BUG-2614). The main repo
+        stays checked out on ``base_branch`` throughout a parallel run, so no
+        checkout is needed (mirrors the pending-merge precedent).
         """
-        base = self.parallel_config.base_branch
-        try:
-            result = self._git_lock.run(
-                [
-                    "merge",
-                    "--no-ff",
-                    epic_branch,
-                    "-m",
-                    f"Merge EPIC integration branch {epic_id} into {base}",
-                ],
-                cwd=self.repo_path,
-                timeout=60,
-            )
-            if result.returncode == 0:
-                self.logger.success(f"EPIC {epic_id} integration branch merged into {base}")
-                self._git_lock.run(
-                    ["branch", "-D", epic_branch],
-                    cwd=self.repo_path,
-                    timeout=10,
-                )
-            else:
-                self.logger.warning(
-                    f"EPIC {epic_id} integration branch merge failed: {result.stderr}"
-                )
-                self._git_lock.run(
-                    ["merge", "--abort"],
-                    cwd=self.repo_path,
-                    timeout=10,
-                )
-        except Exception as e:  # noqa: BLE001 — never let completion crash the run
-            self.logger.warning(f"EPIC {epic_id} integration branch merge error: {e}")
+        merge_epic_branch_to_base(
+            epic_id,
+            epic_branch,
+            base_branch=self.parallel_config.base_branch,
+            repo_path=self.repo_path,
+            logger=self.logger,
+            git_lock=self._git_lock,
+        )
 
     def _open_pr_for_epic_branch(self, epic_id: str, epic_branch: str) -> None:
         """Open one PR for a completed EPIC integration branch via gh (FEAT-2449).
 
-        Models the 3-tier graceful degradation of ``_open_pr_for_branch``
-        (auth check → create → catch missing/timeout gh). The branch is NOT
-        deleted on the PR path — the PR needs it. ``--head`` is the epic branch,
-        ``--base`` is ``base_branch``. Log lines avoid the ``"pushed"``/``"PR
-        opened"`` substrings asserted by the feature-branch tests.
+        Thin wrapper around the stateless
+        ``worktree_utils.open_pr_for_epic_branch`` (BUG-2614).
         """
-        base = self.parallel_config.base_branch
-        try:
-            auth_result = subprocess.run(
-                ["gh", "auth", "status"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if auth_result.returncode != 0:
-                self.logger.warning(
-                    f"EPIC {epic_id}: gh not authenticated, skipping integration PR"
-                )
-                return
-            pr_result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "create",
-                    "--title",
-                    f"EPIC {epic_id} integration",
-                    "--body",
-                    f"Integration branch for {epic_id} (all children complete)",
-                    "--base",
-                    base,
-                    "--head",
-                    epic_branch,
-                ],
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if pr_result.returncode == 0:
-                self.logger.info(
-                    f"EPIC {epic_id}: integration PR created: {pr_result.stdout.strip()}"
-                )
-            else:
-                self.logger.warning(
-                    f"EPIC {epic_id}: gh pr create failed: {pr_result.stderr.strip()}"
-                )
-        except FileNotFoundError:
-            self.logger.warning(f"EPIC {epic_id}: gh CLI not found, skipping integration PR")
-        except subprocess.TimeoutExpired:
-            self.logger.warning(f"EPIC {epic_id}: gh pr create timed out")
+        open_pr_for_epic_branch(
+            epic_id,
+            epic_branch,
+            base_branch=self.parallel_config.base_branch,
+            repo_path=self.repo_path,
+            logger=self.logger,
+        )
 
     def _merge_sequential(self, result: WorkerResult) -> None:
         """Merge a sequential (P0) result immediately.

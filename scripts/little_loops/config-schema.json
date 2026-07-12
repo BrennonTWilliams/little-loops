@@ -411,7 +411,7 @@
         },
         "epic_branches": {
           "type": "object",
-          "description": "Per-EPIC integration branch configuration for ll-parallel/ll-sprint (FEAT-2447). When enabled, children of a single EPIC coalesce onto a shared epic/<EPIC-ID>-<slug> branch instead of the default per-worker parallel/<id>-<timestamp> branch.",
+          "description": "Per-EPIC integration branch configuration, honored by ll-parallel/ll-sprint and the auto-refine-and-implement FSM loop (FEAT-2447; BUG-2614 wired the FSM path's merge-back). When enabled, children of a single EPIC coalesce onto a shared epic/<EPIC-ID>-<slug> branch instead of the default per-worker parallel/<id>-<timestamp> branch.",
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -435,7 +435,7 @@
             },
             "verify_before_merge": {
               "type": "boolean",
-              "description": "When true, run test_cmd/lint_cmd against the EPIC branch before merge-to-base or PR-open. Inert until ENH-2603 reads it.",
+              "description": "When true, run test_cmd/lint_cmd against the EPIC branch before merge-to-base or PR-open. Read by ll-parallel (ENH-2603) and the auto-refine-and-implement FSM loop's merge_epic_branch state (BUG-2614).",
               "default": false
             }
           },
