@@ -62,6 +62,15 @@
   "sprints": {
     "default_max_workers": 2
   },
+  "parallel": {
+    "epic_branches": {
+      "enabled": true,
+      "prefix": "epic/",
+      "merge_to_base_on_complete": true,
+      "open_pr": false,
+      "verify_before_merge": false
+    }
+  },
   "design_tokens": {
     "active": "warm-paper",
     "active_theme": "dark"

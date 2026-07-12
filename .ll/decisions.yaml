@@ -4919,3 +4919,46 @@
   scope: issue
   alternatives_rejected: split into wave_num INTEGER, total_waves INTEGER
   issue: ENH-2492
+- id: ARCHITECTURE-136
+  type: decision
+  timestamp: '2026-07-11T22:16:59Z'
+  category: architecture
+  labels: []
+  rationale: checkout_epic_branch creates the epic branch but delegate's autodev sub-loop
+    never lands commits on it; worktree-per-delegate selected as the mechanism per
+    ENH-2601's prior research
+  rule: 'Captured: worktree-per-delegate for epic-scoped auto-refine-and-implement'
+  scope: issue
+  issue: ENH-2609
+- id: ARCHITECTURE-137
+  type: decision
+  timestamp: '2026-07-11T22:55:41Z'
+  category: architecture
+  labels: []
+  rationale: events.otel.* is read only inside the opt-in wire_transports() gate;
+    F5 toggles govern always-on capture-time behavior writing to history.db, so a
+    dedicated top-level observability block is the honest home and avoids loosening
+    events.otel additionalProperties:false. Scored A=11/12 vs B=7/12.
+  rule: 'Config home for observability toggles: new top-level observability block
+    (Option A)'
+  scope: issue
+  alternatives_rejected: Option B — extend events.otel block
+  issue: FEAT-2478
+- id: ARCHITECTURE-138
+  type: decision
+  timestamp: '2026-07-11T23:01:46Z'
+  category: architecture
+  labels: []
+  rationale: subprocess_utils.py:449-470 already isolates on_usage vs on_usage_detailed
+    into independent branches, so F5's FSM-path scope needs zero edits to the three
+    optional callers (cli/action.py, issue_manager.py, worker_pool.py). Deferring
+    the mechanical on_usage_detailed upgrade to a follow-on has direct in-repo precedent
+    (FEAT-958), the DES gate is type-literal-only and already satisfied, and no test/doc
+    claims gen_ai.* telemetry for those paths today. Scored D 12/12 vs C 5/12.
+  rule: 'Option D — Deferred: F5 covers only the mandatory FSM path'
+  scope: issue
+  alternatives_rejected: 'Option C — In scope: upgrade all three callers now (reuse
+    score 1: no caller-side precedent for live on_usage_detailed consumption, no shared
+    closure helper, cli/action.py needs from-scratch wiring + locked-schema-golden
+    change)'
+  issue: FEAT-2478
