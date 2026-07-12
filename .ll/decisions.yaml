@@ -4962,3 +4962,41 @@
     closure helper, cli/action.py needs from-scratch wiring + locked-schema-golden
     change)'
   issue: FEAT-2478
+- id: ARCHITECTURE-139
+  type: decision
+  timestamp: '2026-07-12T17:58:21Z'
+  category: architecture
+  labels: []
+  rationale: resolve_set captures issue_set once; children decomposed mid-run have
+    no scope-membership path into the epic branch
+  rule: 'Captured: Mid-run decomposed children bypass the epic-branch worktree'
+  scope: issue
+  issue: ENH-2615
+- id: ARCHITECTURE-140
+  type: decision
+  timestamp: '2026-07-12T17:59:04Z'
+  category: architecture
+  labels: []
+  rationale: Matches the dominant unvalidated-enum convention (SyncConfig.provider,
+    GitHubSyncConfig.pull_template, DiscoverabilityConfig.mode, LearningTestsConfig.release_gate)
+    vs only 2 validated call sites in scripts/little_loops/config/, both guarding
+    fields with immediate runtime consequences unlike this inert config-only block.
+  rule: Option A — Unvalidated enum fields for CodeQueryConfig (data.get(field, default),
+    JSON-Schema enum only)
+  scope: issue
+  alternatives_rejected: Option B — module-level frozenset + raise ValueError validation
+    (minority pattern, premature for a field with no consumer until ENH-2613)
+  issue: ENH-2612
+- id: ARCHITECTURE-141
+  type: decision
+  timestamp: '2026-07-12T17:59:05Z'
+  category: architecture
+  labels: []
+  rationale: Independent dry-run cherry-pick verified zero conflicts (one trivial
+    docs/reference/API.md auto-merge); reuses 20 already-passing tests; git-grep-based
+    logic has no other in-repo precedent, making a from-scratch rewrite the riskier
+    path
+  rule: Cherry-pick commit 53512663 onto main rather than reimplementing
+  scope: issue
+  alternatives_rejected: 'Option B: reimplement from scratch per Proposed Solution'
+  issue: FEAT-2576
