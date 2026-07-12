@@ -376,8 +376,10 @@ Tune `policy-refine` to be stricter — require a high security score before dec
    instead of `done`, with no state rewiring — only a table edit.
 
 4. **Validate, then run.** Before executing, validate the loop — `ll-loop validate` enforces
-   the [MR-4 dead-end rule](HARNESS_OPTIMIZATION_GUIDE.md) and warns on missing catch-alls and
-   shadowed rules, catching the routing gaps the table edit might have introduced:
+   the [MR-4 dead-end rule](HARNESS_OPTIMIZATION_GUIDE.md) and warns on missing catch-alls,
+   shadowed rules, and predicates that reference a dimension never scored (the policy-table
+   rule — see the table in [CLAUDE.md](../../.claude/CLAUDE.md)), catching the routing gaps
+   the table edit might have introduced:
 
    ```bash
    ll-loop validate policy-refine

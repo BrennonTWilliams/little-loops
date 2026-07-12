@@ -13,8 +13,8 @@ The system has three layers you can use independently or together:
 The core flow in one line: **observe → capture → refine → implement → complete**.
 
 ```
-observe ──→ /ll:capture-issue ──→ /ll:ready-issue ──→ /ll:manage-issue ──→ /ll:commit
- (spot it)      (record it)         (validate it)       (implement it)      (ship it)
+observe ──→ /ll:capture-issue ──→ /ll:format-issue ──→ /ll:refine-issue ──→ /ll:ready-issue ──→ /ll:manage-issue ──→ /ll:commit
+ (spot it)      (record it)        (fix template)      (codebase research)   (validate it)       (implement it)      (ship it)
 ```
 
 ---
@@ -83,7 +83,7 @@ ll-init
 .ll/ll-config.json
 ```
 
-**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.ll/ll-context-state.json`) so runtime state never ends up committed.
+**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` (`.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`) so runtime state never ends up committed.
 
 ### Flags
 
@@ -162,14 +162,16 @@ For a trivial bug, skip this step and go straight to implementation. For anythin
 
 ### Step 3: Implement
 
-`/ll:manage-issue` handles the full implementation cycle: plan, implement, run tests, and mark the issue complete.
+`/ll:manage-issue` handles the full implementation cycle: research, plan, implement, run tests, and mark the issue complete.
 
 ```bash
 /ll:manage-issue bug fix BUG-001
-#    → Plans → implements → runs tests → sets status: done in frontmatter
+#    → Researches → plans → implements → runs tests → sets status: done in frontmatter
 ```
 
 When it finishes, the issue file remains in `.issues/bugs/` with `status: done` in its frontmatter (the YAML metadata block at the top of the file).
+
+Useful flags: `--plan-only` (stop after planning, alias `--dry-run`), `--resume` (continue from a checkpoint), `--gates` (pause for manual verification at phase boundaries; disabled by default), `--quick` (skip deep research and the confidence gate), `--force-implement` (bypass the confidence gate).
 
 ### Step 4: Commit
 

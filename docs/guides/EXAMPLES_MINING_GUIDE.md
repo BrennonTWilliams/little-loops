@@ -2,7 +2,7 @@
 
 ## When to Use This Guide
 
-Use `examples-miner` when `apo-textgrad` pass rates have plateaued (≥ 90% on your corpus) but the prompt still fails on real inputs, or when your `examples.json` was hand-crafted months ago and the skill has since evolved. **You need ≥ 5 completed issues with session logs before `harvest` returns useful results.** If you're starting fresh, complete a few issues first, then come back.
+Use `examples-miner` when `apo-textgrad` pass rates have plateaued (≥ 90% on your corpus) but the prompt still fails on real inputs, or when your `examples.json` was hand-crafted months ago and the skill has since evolved. **This is a soft recommendation, not an enforced gate: nothing in the loop checks a minimum issue count.** With very few completed issues, `harvest` will simply return few or zero candidates, and `judge`/`calibrate` will pass through what little survives quality-gating and the 40–80% difficulty band. If you're starting fresh, complete a few issues first, then come back for a more useful corpus.
 
 ---
 

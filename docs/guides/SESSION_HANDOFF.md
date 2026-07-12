@@ -274,10 +274,13 @@ Run /ll:handoff to generate one, or specify a custom path:
 |---------|---------|-------------|
 | `context_monitor.enabled` | `false` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
-| `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known Claude 4 base models → 200000; baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
+| `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known Claude 4 base models → 200000; if the measured transcript baseline exceeds the resolved limit but is ≤ 1,100,000 — an upper bound that guards against corrupt transcript reads triggering a false upgrade — it auto-upgrades to 1000000 as a fallback). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
 | `context_monitor.estimate_weights.tool_call_base` | `100` | Base token overhead per tool call |
 | `context_monitor.estimate_weights.bash_output_per_char` | `0.3` | Token cost per character for Bash output |
+| `context_monitor.estimate_weights.per_turn_overhead` | `800` | Tokens added per tool call to account for Claude's response and user message tokens not captured by the transcript baseline lag |
+| `context_monitor.estimate_weights.system_prompt_baseline` | `10000` | One-time token estimate for the system prompt (CLAUDE.md, skills, etc.), added on the first tool call of a session only when no transcript baseline is available yet (avoids double-counting once `cache_read_input_tokens` captures it) |
+| `context_monitor.post_compaction_percent` | `30` | After context compaction is detected, resets the token estimate to this percentage of `context_limit_estimate` as a safety margin |
 | `context_monitor.use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Improves accuracy from ±30–50% to ±5–15%. Falls back to pure heuristics when unavailable. |
 | `continuation.enabled` | `true` | Enable session continuation features |
 | `continuation.include_todos` | `true` | Include current todo list state in deep mode handoff output |
@@ -286,12 +289,14 @@ Run /ll:handoff to generate one, or specify a custom path:
 | `continuation.max_continuations` | `3` | Max auto-continuations per issue (automation) |
 | `continuation.prompt_expiry_hours` | `24` | Hours before prompt marked stale |
 
-The threshold can also be overridden per-run via the `--handoff-threshold` CLI flag (1-100), which takes precedence over the config value:
+The threshold can also be overridden per-run via the `--handoff-threshold` CLI flag (1-100), which takes precedence over the config value. It is available on `ll-auto`, `ll-parallel`, `ll-sprint run`, and — via `add_handoff_threshold_arg` in `cli_args.py` — on `ll-loop run` and `ll-loop resume` as well, where it sets the `LL_HANDOFF_THRESHOLD` environment variable consumed by the context-monitor hook:
 
 ```bash
 ll-auto --handoff-threshold 90      # Trigger handoff at 90% for this run
 ll-parallel --handoff-threshold 70  # Earlier warnings for parallel runs
 ll-sprint run my-sprint --handoff-threshold 85
+ll-loop run my-loop --handoff-threshold 85
+ll-loop resume my-loop --handoff-threshold 85
 ```
 
 ### Transcript Baseline Mode (Default)
@@ -358,18 +363,22 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
   "tool_calls": 63,
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
   "handoff_complete": false,
+  "last_baseline_mtime": "1705315800",
   "breakdown": {
     "read": 60000,
     "bash": 30000,
     "grep": 15000,
     "glob": 5000,
-    "task": 15000
+    "task": 15000,
+    "claude_overhead": 15000
   }
 }
 ```
 
 - `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
 - `result_token_count`: The authoritative `input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `_on_usage_writer` callback in `process_issue_inplace` (note: this does **not** include `cache_read_input_tokens`, contrary to other heuristic estimators in the file). When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
+- `last_baseline_mtime`: The transcript file's mtime (epoch seconds, as a string) at the time `transcript_baseline_tokens` was last read. Used to detect turn boundaries — the transcript baseline is only re-read when the mtime advances, so repeated tool calls within the same turn serve the cached value.
+- `breakdown.claude_overhead`: Cumulative `per_turn_overhead` (plus the one-time `system_prompt_baseline` on the first call) added across all tool calls, tracked separately from per-tool estimates for diagnosing where estimated tokens come from.
 
 ## Troubleshooting
 
@@ -475,7 +484,7 @@ Both `ll-auto` and `ll-parallel` support automatic continuation:
 ```python
 # In issue_manager.py and worker_pool.py
 if detect_context_handoff(result.stdout):
-    prompt_content = read_continuation_prompt(working_dir)
+    prompt_content = read_continuation_prompt(repo_path)
     # Spawn fresh session with prompt
 ```
 

@@ -1,11 +1,16 @@
 ---
 id: ENH-2621
 priority: P3
-status: open
+status: done
 type: ENH
+testable: false
 created: 2026-07-12
-parent:
-labels: [docs, audit, technical-debt]
+completed_at: '2026-07-12T23:23:26Z'
+parent: null
+labels:
+- docs
+- audit
+- technical-debt
 ---
 
 # ENH-2621: Apply remaining docs/guides/ audit fixes from 2026-07-12 sweep
@@ -18,6 +23,35 @@ labels: [docs, audit, technical-debt]
 **Source**: One-time sweep (no prior audit issue existed)
 **Files staged**: 15 of 16 files (`docs/guides/{AUTOMATIC_HARNESSING,BUILTIN_HOOKS,DECISIONS_LOG,EXAMPLES_MINING,GETTING_STARTED,HARNESS_OPTIMIZATION,HISTORY_SESSION,ISSUE_MANAGEMENT,LEARNING_TESTS,LOOPS,LOOPS_REFERENCE,POLICY_ROUTER,SESSION_HANDOFF,SPRINT,WORKFLOW_ANALYSIS}_GUIDE.md`)
 **Recurring-corrected**: No
+
+## Current Behavior
+
+16 guide files under `docs/guides/` contain a cumulative ~249 audit findings (line-level reference, code samples, schema references, and prose claims) that diverged from the code they document. ~50 low-risk mechanical fixes (factual corrections, line-range updates, exact-string replacements) were committed in the 2026-07-12 sweep. The remaining ~199 findings sit across the same 15 files (RECURSIVE_LOOPS_GUIDE.md untouched in the first wave) and cluster into four triage buckets: high-severity path/syntax corrections, schema/config-table completeness, FSM-diagram updates, and risk-flagged prose needing design discussion.
+
+## Expected Behavior
+
+After closure, all 16 guide files reflect current code, schema, and CLI surface with no contradictions. Each finding is either fixed (committed with `docs:` trailer or rolled into a parent epic) or explicitly carried forward with a `<!-- TODO: ... -->` stub. The guide-set re-passes `/ll:audit-docs docs/guides/` at zero ERROR severity, and a `python -m pytest scripts/tests/` run passes (covers any code-rendered sections in the guides).
+
+## Scope Boundaries
+
+In scope:
+- All remaining ~199 findings enumerated in this issue, across the 16 files staged for the 2026-07-12 audit.
+- Schema/config-table additive updates (SESSION_HANDOFF, HISTORY_SESSION config keys).
+- FSM-diagram updates for the 5 loops flagged in LOOPS_REFERENCE.
+
+Explicitly out of scope:
+- New guide files or net-new documentation sections (no new doc creation — only repair of existing).
+- Code-side changes to make docs easier to write (e.g. naming, renaming flags). The docs catch up to the code, not the other way around.
+- Audits of `docs/` outside `docs/guides/`. Run a separate sweep if needed.
+- Translation/localization.
+- Architectural rewrites of individual guides (split into per-area `FEAT-` children if scope grows beyond ~10 days of effort, per the Related note).
+
+## Impact
+
+- **Priority**: P3 — technical debt on docs only; no runtime impact, no user-facing CLI behavior change. Lowers trust in guides and slows future contributors who rely on them.
+- **Effort**: Large — ~199 findings, structurally heterogeneous (some sed-replaceable, some require research-then-rewrite). The author estimates 4–8 focused commits across 2–3 sprint cycles if handled as a single audit-driven sprint, or rolled into existing docs work.
+- **Risk**: Low — each fix is local and reversible; commit per area. Cross-link contradictions are the main risk and are caught by the cross-link check AC.
+- **Breaking Change**: No.
 
 ## What was already fixed (committed, ~50 items, low-risk)
 
@@ -261,3 +295,46 @@ This file is heavy with structural rewrites. Recommend opening a single ENH that
 - Skill: `/ll:audit-docs` invoked 2026-07-12 with `docs/guides/` scope
 - Templates: `skills/audit-docs/templates.md` defines the finding→issue mapping used here
 - Note: this issue replaces the verbose per-file/per-finding issue rollup; sub-issues should be created per-area (`FEAT-` per rewrite region) if scope grows beyond ~10 days of effort.
+
+## Status
+
+**Done** | Created: 2026-07-12 | Priority: P3
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-12
+- **Status**: Completed
+
+### Changes Made
+
+All 15 remaining files (`RECURSIVE_LOOPS_GUIDE.md` plus the 14 files from the first sweep) had their outstanding audit findings resolved via 12 parallel research-and-fix passes, each verifying every claim against the actual source/loop YAML before editing:
+
+- `docs/guides/RECURSIVE_LOOPS_GUIDE.md` — all 8 finding groups fixed directly (call-graph rewrite, artifact list, outcome-routing table, three-loop comparison).
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — all 6 findings fixed directly (MR-1 evaluator list, canonical-shape mapping, `route:` rewrite, wizard label).
+- `docs/guides/LOOPS_REFERENCE.md` — largest file; 7 of 8 finding groups fixed directly (stale run_dir paths, variable inversion, library count, fragment table, 6 FSM diagrams, `--context` syntax, `run_dir` suffix); 2 items left as `<!-- TODO: ENH-2621 -->` stubs (four undocumented libraries needing new sections; an unverifiable cross-reference).
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — all 4 findings fixed directly (`route:` rewrite for tie/no_baseline, corrected attribution and archival description).
+- `docs/guides/SESSION_HANDOFF.md` — all 6 findings fixed directly (config-table additions, cap documentation, parameter rename).
+- `docs/guides/SPRINT_GUIDE.md` — 3 real drift issues fixed; remaining items verified already-correct from the prior sweep.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — all 7 findings fixed directly (schema/version table, regex list, `prune`/`export` documentation, config-table rows).
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — 3 findings fixed directly, 1 already correct; 1 `<!-- TODO: ENH-2621 -->` stub left on a self-drifting example.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — 3 findings fixed directly, 1 verified already correct.
+- `docs/guides/EXAMPLES_MINING_GUIDE.md` — 1 finding fixed directly, 2 verified already correct.
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — 2 findings fixed directly (pipeline lists), remainder verified already correct.
+- `docs/guides/GETTING_STARTED.md` — all 3 findings fixed directly.
+- `docs/guides/DECISIONS_LOG_GUIDE.md` — all 3 findings fixed directly.
+- `docs/guides/POLICY_ROUTER_GUIDE.md` — 1 finding tightened, 1 verified already correct.
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md` — all 4 findings fixed directly (including one real bug: wrong default `--output` path in the manual pipeline example).
+
+3 `<!-- TODO: ENH-2621 -->` stubs remain in place for genuinely design-heavy items (per AC, a stub is an acceptable resolution): `LEARNING_TESTS_GUIDE.md:400`, `LOOPS_REFERENCE.md:1532`, `LOOPS_REFERENCE.md:3352`.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 14756 passed, 36 skipped)
+- Links: PASS (`ll-check-links -C docs/guides` — 1 pre-existing placeholder example URL, not introduced by this change)
+- Lint: N/A (docs-only change)
+- Types: N/A (docs-only change)
+
+## Session Log
+- `/ll:ready-issue` - 2026-07-12T23:02:45 - `ae9bc6a7-7b7d-4f49-b2fa-c571106f7655.jsonl`
+- `/ll:ready-issue` - 2026-07-12T23:00:26 - `dc9f730a-cdad-4332-8632-a118b6276ae2.jsonl`
+- `/ll:manage-issue` - 2026-07-12T23:22:26 - see current session transcript

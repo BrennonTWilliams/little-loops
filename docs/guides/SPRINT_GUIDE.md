@@ -144,14 +144,15 @@ The skill proposes seven auto-grouping strategies:
 
 | Strategy | Groups issues by |
 |----------|-----------------|
-| Priority cluster | P0-P1 together, P2-P3 together, etc. |
-| Type cluster | All bugs, all features, all enhancements |
-| No-blockers sprint | Only issues with no dependencies (fully parallelizable) |
-| Theme-based | Keyword clusters: test coverage, performance, security, docs |
-| Component/file-based | Issues touching the same files or directories |
-| Goal-aligned | Mapped against `ll-goals.md` if present |
+| Priority cluster | All P0-P1 issues together (2+ match required) |
+| Type cluster | All issues of the most populous type — bugs, features, or enhancements (3+ match required) |
+| Parallelizable issues | Issues with no blockers, i.e. no `Blocked By` entries (3+ match required) |
+| Theme clusters | Keyword clusters in title/summary: test coverage, performance, security, docs, workflow-automation, config-cleanup, hook-system, cli-polish, error-handling (2+ match required per theme) |
+| Component cluster | Issues touching the same top-level directory (e.g. `commands/`, `scripts/`), top 2 by issue count (2+ match required) |
+| Goal-aligned | Mapped against `ll-goals.md` if `product.enabled` is set (2+ match required) |
+| Refined-ready | Issues with `confidence_score` at or above the readiness threshold (3+ match required) |
 
-You can accept one strategy, mix strategies, or skip auto-grouping and specify issues directly.
+At most 4 groupings are presented at once (prioritizing distinctiveness and a mix across categories); you can accept one strategy, mix strategies, or skip auto-grouping and specify issues directly.
 
 ### Direct CLI
 
@@ -468,7 +469,6 @@ ll-sprint analyze sprint-1 --format json
 - **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started (only present on `ll-sprint run`, not on `ll-sprint show`)
 - **Issue file paths** — full paths included in `ll-sprint show --json` for easy machine consumption (text output uses issue IDs only)
 - **Readiness/confidence scores** — per-issue scores from any completed confidence checks
-- **Issue file paths** — full paths shown in the execution plan for easy navigation
 - **Human-friendly timestamps** — relative time suffixes (e.g., "3 days ago") on dated fields
 
 Use `--json` to get all fields as structured JSON for scripting or integration.
@@ -497,7 +497,7 @@ Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 | `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
 | `default_max_workers` | `2` | Max parallel workers per wave (also overridable per sprint via `options.max_workers` / `--max-workers`) |
 | `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM |
-| `parallel.timeout_per_issue` | `2700` | Timeout for multi-issue waves (mirrors `max_issue_wall_clock_time`; in-place single-issue waves use `sprints.max_issue_wall_clock_time` instead) |
+| `parallel.timeout_per_issue` | `3600` | Timeout for multi-issue waves (independent default from `max_issue_wall_clock_time`; in-place single-issue waves use `sprints.max_issue_wall_clock_time` instead) |
 
 Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
 

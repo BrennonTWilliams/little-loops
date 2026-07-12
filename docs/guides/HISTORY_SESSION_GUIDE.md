@@ -32,7 +32,7 @@ Use this when you want to query what happened in past sessions, inject historica
 | Which files I touched in the last week | `ll-session recent --kind file` |
 | All times I debugged authentication | `ll-session search --fts "authentication"` |
 | Every correction Claude received about a topic | `ll-session search --fts "rate limit" --kind correction` |
-| How long issue BUG-123 took | `ll-history-context BUG-123 --effort` |
+| How long issue BUG-1759 took | `ll-history-context BUG-1759 --effort` |
 | Which sessions worked on issue FEAT-42 | `ll-history sessions FEAT-42` |
 | A trend analysis for the last quarter | `ll-history analyze --since 2026-01-01 --format markdown` |
 | All tools used across sessions | `ll-session recent --kind tool --limit 20` |
@@ -47,7 +47,30 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 18. The v15–v18 migrations are driven by EPIC-2457 children (ENH-2458 `commit_events`, ENH-2459 `test_run_events`, ENH-2460 `skill_events` completion columns, ENH-2462 `issue_events.session_id`) and are additive — no user action is required when the schema version advances.
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 18, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+
+| Version | Issue | Adds |
+|---------|-------|------|
+| v1 | — | Initial bootstrap: `tool_events`, `file_events`, `issue_events`, `loop_events`, `user_corrections`, `search_index`, `meta` |
+| v2 | ENH-1621 | Issue completion-summary columns on `issue_events`; `message_events` table |
+| v3 | ENH-1690 | Dedup index on `issue_events(issue_id, transition)` |
+| v4 | ENH-1710 | `sessions` table (session ID → JSONL path) |
+| v5 | ENH-1711 | `issue_sessions` view (timestamp-overlap join) |
+| v6 | ENH-1830 | `last_backfill_ts` meta key for incremental backfill |
+| v7 | ENH-1833 | `skill_events` table |
+| v8 | ENH-1848 | `cli_events` table |
+| v9 | ENH-1904 | Dedup index on `user_corrections` |
+| v10 | FEAT-1712 | `summary_nodes` / `summary_spans` (LCM compaction DAG) |
+| v11 | ENH-1942 | `assistant_messages` table |
+| v12 | ENH-1953 | `level` column on `summary_nodes` for N-level DAG |
+| v13 | ENH-2046 | `correction_retirements` table |
+| v14 | ENH-2151 | `issue_snapshots` table |
+| v15 | ENH-2460 | `skill_events` completion columns (`exit_code`, `success`, `duration_ms`) |
+| v16 | ENH-2462 | Authoritative `issue_events.session_id` column |
+| v17 | ENH-2458 | `commit_events` table |
+| v18 | ENH-2459 | `test_run_events` table |
+
+v15–v18 are the EPIC-2457 children; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -62,7 +85,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | `loop_events` | FSM (finite-state machine) loop transitions with loop name and retry count |
 | `message_events` | User message content for FTS indexing |
 | `assistant_messages` | Assistant response content with tool-use count |
-| `user_corrections` | Messages matching correction patterns ("no", "don't", "instead", "remember") |
+| `user_corrections` | Messages matching correction patterns: message-start signals (`no,`/`no!`, `don't`, `stop`, `revert`, `that's wrong`, `not like that`, `!remember`) and anywhere-in-message phrases (`instead`, `actually that/this/it`, `you missed`, `should be` (excluding `should be fine/ok/good/great/...`), `wrong approach`, `remember that`, `always use`, `never use`, `from now on`, `I meant...not`, `not...use`); extend with `analytics.capture.correction_patterns` (see [Configuration Reference](#configuration-reference)) |
 | `skill_events` | `/ll:` skill invocations with args. v15 added nullable `exit_code`, `success`, and `duration_ms` columns so `ll-session skill-stats` can compute per-skill success rates (ENH-2460). |
 | `cli_events` | `ll-*` CLI commands with exit code and duration |
 | `sessions` | Maps session IDs to their `.jsonl` file paths |
@@ -71,9 +94,12 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 
-Two captures are opt-in via config (both enabled by default):
-- `analytics.capture.file_events` — file reads/writes
-- `analytics.capture.corrections` — user correction signals
+Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
+- `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording
+- `analytics.capture.corrections` (bool, default `true`) — gate `user_corrections` recording
+- `analytics.capture.skills` (array of glob patterns, default `["*"]`) — which skill names get recorded to `skill_events`; e.g. `["create-sprint", "manage-issue"]` records only those skills
+- `analytics.capture.cli_commands` (array of glob patterns, default `["*"]`) — which `ll-*` CLI command names get recorded to `cli_events`
+- `analytics.capture.correction_patterns` (array of regex strings, default `[]`) — additional patterns appended to the built-in correction detector (built-ins always remain active; see [What Gets Recorded](#what-gets-recorded) for the full built-in list)
 
 ---
 
@@ -166,6 +192,17 @@ ll-session path abc123-def456
 
 Useful when you want to open the raw session transcript.
 
+### Export tables as JSONL
+
+```bash
+ll-session export                                    # all non-message tables, to stdout
+ll-session export --tables issue_event correction     # only these types
+ll-session export --since 2026-06-01 -o export.jsonl  # date-filtered, to a file
+ll-session export --include-messages                  # also include message_events (~46K rows)
+```
+
+Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `commit_event`, `test_run_event`, `message_event`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add it back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
+
 ---
 
 ## Issue ↔ Session Cross-References
@@ -244,7 +281,7 @@ To add a skill or disable injection entirely:
 Add `--effort` to get session count and cycle-time context for an issue:
 
 ```bash
-ll-history-context ENH-1708 --effort
+ll-history-context BUG-1759 --effort
 ```
 
 **How automation calls it:**
@@ -404,16 +441,25 @@ ll-session grep "auth" --summary-id 42   # search within a node's scope
 history.db grows over time. The `prune` command deletes raw events older than a configured age and VACUUMs the database:
 
 ```bash
-ll-session prune --dry-run   # show what would be deleted
+ll-session prune --dry-run   # show what would be deleted, without deleting
 ll-session prune             # apply
+ll-session prune --json      # machine-readable result
 ```
 
+`--dry-run` counts eligible rows per table without deleting them (`vacuumed` is always `false` in this mode). `--json` prints the result dict instead of a human-readable summary.
+
+**Tables pruned** (age-based, by `ts` column): `tool_events`, `cli_events`, `file_events`, `message_events`. **Never pruned**, regardless of age: `issue_events`, `user_corrections` (and all other tables not in the prunable list) — these are considered high-value and are excluded by design.
+
+**Gating:** both minimums below must be exceeded before *any* row is deleted (dual-gated, not either/or):
+
+- `analytics.retention.min_project_age_days` (default: 365) — project age is measured as `MIN(started_at)` from the `sessions` table, not wall-clock repo age
+- `analytics.retention.min_db_size_mb` (default: 800) — measured as the `.ll/history.db` file size on disk
+
+If either gate is unmet, `prune` returns a `gate_unmet` list explaining why and deletes nothing. If both gates pass but `raw_event_max_age_days` is `null`, pruning is considered to have "run" but no age cutoff is applied (no rows deleted). Otherwise, rows in the prunable tables older than the cutoff are deleted, the transaction is committed, and a `VACUUM` runs afterward on a separate connection (avoids transaction conflicts) to reclaim disk space.
+
+**Result shape** (both human and `--json` output derive from this dict): `pruned` (bool, whether pruning executed), `gate_unmet` (list of human-readable reasons), `project_age_days`, `db_size_mb`, `deleted` (dict of table → row count, actual or dry-run-projected), `vacuumed` (bool).
+
 **When to prune:** If your project is under 1 year old, leave the defaults alone — the guards prevent premature pruning. Only lower `raw_event_max_age_days` if `ll-session` commands feel slow (consistently > 500ms), which indicates the database has grown large.
-
-Pruning is guarded by two minimums to prevent accidental data loss on young or small projects:
-
-- `analytics.retention.min_project_age_days` (default: 365) — don't prune if the project is younger than this
-- `analytics.retention.min_db_size_mb` (default: 800) — don't prune if the database is smaller than this
 
 The raw event max age:
 
@@ -438,20 +484,28 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `history.planning_skills` | `["create-sprint", "scope-epic", "manage-issue", "review-epic"]` | Skills that trigger `## Historical Context` injection |
 | `history.velocity_window` | `10` | Issue count window for velocity calculations |
 | `history.max_age_days` | `null` | Global max age for all history queries (null = no limit) |
+| `history.effort_fields` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for `ll-history-context --effort` reporting |
 | `history.session_digest.enabled` | `true` | Inject project-wide digest block at session start |
 | `history.session_digest.days` | `7` | Lookback window for session digest |
 | `history.session_digest.char_cap` | `1200` | Max characters in injected context block |
+| `history.session_digest.sections` | `[]` | Ordered list of digest section providers to include; empty = all v1 providers |
 | `history.compaction.enabled` | `false` | LCM summarization during backfill |
 | `history.compaction.budget_tokens` | `4096` | Token budget per summary node |
 | `history.compaction.cross_session_enabled` | `true` | Build cross-session condensed nodes |
 | `history.compaction.model` | `null` | Model override for compaction LLM calls (null = host default) |
 | `history.compaction.timeout` | `60` | Timeout (seconds) per compaction LLM call; on timeout, escalation falls through to deterministic truncation |
 | `history.compaction.max_level` | `null` | Max cross-session condensation depth (null = recurse until one root node remains) |
+| `history.evolution.feedback_min_recurrence` | `2` | Min recurrence count for a correction to surface in evolution analysis |
+| `history.evolution.bypass_min_count` | `2` | Min bypass count threshold for evolution signal suppression |
+| `history.go_no_go.correction_penalty` | `-0.2` | Score penalty applied per correction event in go/no-go scoring |
+| `history.capture_issue.dup_overlap_threshold` | `0.7` | Overlap ratio above which a new captured issue is considered a duplicate |
 | `analytics.retention.min_project_age_days` | `365` | Min project age before pruning is allowed |
 | `analytics.retention.min_db_size_mb` | `800` | Min DB size before pruning is allowed |
 | `analytics.retention.raw_event_max_age_days` | `90` | Age threshold for raw event deletion |
 | `analytics.capture.file_events` | `true` | Record file reads/writes |
 | `analytics.capture.corrections` | `true` | Record user correction messages |
+| `analytics.capture.skills` | `["*"]` | Glob patterns for skill names to record to `skill_events` |
+| `analytics.capture.cli_commands` | `["*"]` | Glob patterns for CLI command names to record to `cli_events` |
 | `analytics.capture.correction_patterns` | `[]` | Additional regex patterns for correction detection |
 
 ---

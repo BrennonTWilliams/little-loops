@@ -91,7 +91,7 @@ suppressed with a top-level flag when you have a justified reason.
 
 | Rule | What it requires | Why | Severity | Suppress with |
 |------|------------------|-----|----------|---------------|
-| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `convergence`, `diff_stall`, `score_stall`, `mcp_result`) | Self-grades are unreliable (ENH-1665) | **ERROR** | `meta_self_eval_ok: true` |
+| **MR-1** | Every `check_semantic` / `llm_structured` state pairs with ≥1 non-LLM evaluator (`exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`, `score_stall`, `open_question_stall`, `action_stall`, `mcp_result`, `harbor_scorer`, `classify`) | Self-grades are unreliable (ENH-1665) | **ERROR** | `meta_self_eval_ok: true` |
 | **MR-2** | A meta-loop's captured baseline value must be referenced by a later evaluator (measure→propose→apply→re-measure spine) | Without a baseline comparison, the gate cannot tell whether an edit helped or hurt | WARNING | `meta_self_eval_ok: true` |
 | **MR-3** | Intermediate artifacts write under `${context.run_dir}/`, not bare `.loops/tmp/` | Concurrency safety — shared `.loops/tmp/` corrupts state across concurrent runs (`.issues/`, `.loops/diagnostics/`, `thoughts/` are exempt) | WARNING | `shared_state_ok: true` |
 | **MR-4** | An LLM-judged state with `on_yes` must also route `on_no`/`on_partial` (or `next:`/full `route:`) — no silent dead-end on a non-yes verdict | Half of verdicts are adverse (ENH-1917) | WARNING | `partial_route_ok: true` |
@@ -163,9 +163,12 @@ which covers mistakes a harness-optimizer loop makes when editing another loop.
 ## The Canonical Shape
 
 Harness-optimizer loops follow a `diagnose → propose → apply → measure-externally` shape,
-**not** the generic 5-phase skill-harness pipeline. The reference implementation is
+**not** the generic 5-phase skill-harness pipeline. The diagram and table below are a
+pedagogical simplification of the shape; the actual reference implementation,
 [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml),
-and the wizard-generated template lives in
+has additional plumbing states (queueing, trajectory logging, directive loading) around
+this core and uses different state names (`baseline_score`, `commit_and_log`,
+`revert_and_log`, etc.). The wizard-generated template lives in
 [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md):
 
 ```
@@ -173,16 +176,16 @@ diagnose → baseline → propose → apply → score → gate ─┬─► comm
                                                        └─► revert ─► done
 ```
 
-| State | Role |
-|-------|------|
-| `diagnose` | **Initial state.** Identify the highest-priority component to fix before any edit — this is the biggest lever on fix-rate. |
-| `baseline` | Run the scorer once; capture the pre-edit score. |
-| `propose` | LLM proposes **one** targeted edit to the diagnosed component. |
-| `apply` | Apply the proposed change to the target file(s). |
-| `score` | Run the scorer again; capture the post-edit score. |
-| `gate` | A **non-LLM `convergence` evaluator** compares scores: accept on improvement/target, reject on stall/regression. |
-| `commit` | Persist the accepted edit; re-enter `diagnose` to re-prioritize against the new baseline. |
-| `revert` | `git restore` the rejected edit; terminate. |
+| State (simplified) | Role | Corresponding state in `harness-optimize.yaml` |
+|-------|------|------|
+| `diagnose` | **Initial state.** Identify the highest-priority component to fix before any edit — this is the biggest lever on fix-rate. | `load_directive` (reads the optimization directive from `.ll/program.md`) |
+| `baseline` | Run the scorer once; capture the pre-edit score. | `baseline_score` / `init_prev` |
+| `propose` | LLM proposes **one** targeted edit to the diagnosed component. | `propose` |
+| `apply` | Apply the proposed change to the target file(s). | `apply` |
+| `score` | Run the scorer again; capture the post-edit score. | `score` |
+| `gate` | A **non-LLM `convergence` evaluator** compares scores: accept on improvement/target, reject on stall/regression. | `gate` (routes `target`/`progress` → accept, `stall`/`error` → reject) |
+| `commit` | Persist the accepted edit; re-enter `diagnose` to re-prioritize against the new baseline. | `commit_and_log` → `write_trajectory_accepted` → `check_queue`/`capture_prev` |
+| `revert` | `git restore` the rejected edit; terminate. | `revert_and_log` → `write_trajectory_rejected` |
 
 Two properties make this shape safe by construction:
 
@@ -219,9 +222,10 @@ states:
     next: baseline
 
   baseline:                          # measure BEFORE the edit so the gate has a reference
-    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no && echo SCORE=$(pytest --co -q | wc -l)"
-    on_yes: propose
-    on_error: propose
+    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action_type: shell
+    capture: baseline
+    next: propose
 
   propose:                           # LLM generates ONE targeted edit
     action: "Propose exactly one change to the ${captured.diagnose.output} component of skills/capture-issue/SKILL.md that would fix the pattern you diagnosed. Output the diff."
@@ -234,16 +238,22 @@ states:
     next: score
 
   score:                             # measure AFTER the edit
-    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no"
+    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action_type: shell
+    capture: benchmark_score
     next: gate
 
-  gate:                              # NON-LLM convergence gate: keep on improvement, revert on regression
+  gate:                              # NON-LLM convergence gate: keep on improvement/target, revert on stall/error
     evaluate:
       type: convergence
-      source: "${captured.score.exit_code}"
+      source: "${captured.benchmark_score.output}"
       target: "0"
-    on_yes: commit
-    on_no: revert
+      previous: "${captured.baseline.output}"
+    route:
+      target: commit
+      progress: commit
+      stall: revert
+      error: revert
 
   commit:                            # accept and loop back to diagnose
     action: "git add skills/capture-issue/SKILL.md && git commit -m 'harness: optimizer improvement'"
@@ -271,7 +281,7 @@ diagnosis prompt.
 
 ## Creating One
 
-Run `/ll:create-loop` and choose **"Optimize a harness"**. The wizard asks for:
+Run `/ll:create-loop` and choose **"Optimize a harness (meta-loop)"**. The wizard asks for:
 
 - **Targets** — space-separated artifact paths to optimize (e.g. `skills/foo/SKILL.md`,
   `.loops/docs-sync.yaml`).
@@ -462,9 +472,15 @@ The canonical example with a commented `check_substrate` block is at
 ### Note on MR-1
 
 `check_substrate` uses `evaluate: type: llm_structured`. In a standard specialist-pipeline
-loop (not a meta-loop), MR-1 does not apply — planning loops are not category `harness`
-or `meta`. If you embed this state in a meta-loop, pair it with a non-LLM evaluator
-(e.g., `exit_code` or `output_numeric`) to satisfy MR-1.
+loop (not a meta-loop), MR-1 does not apply. Meta-loop status is not decided by the loop's
+`category:` field — it is detected by `_is_meta_loop()` in
+[`scripts/little_loops/fsm/validation.py`](../../scripts/little_loops/fsm/validation.py),
+which flags a loop as meta if it imports `lib/benchmark.yaml`, or if any state's `action`
+string matches a harness-artifact-path pattern (writes another loop YAML, skill, agent,
+command, or `.claude/CLAUDE.md`), or references `yaml_state_editor`/`replace_action`. A
+plain specialist-pipeline loop with `check_substrate` normally trips none of these, so MR-1
+doesn't fire. If you embed this state in a loop that does trip the meta-loop detector, pair
+it with a non-LLM evaluator (e.g., `exit_code` or `output_numeric`) to satisfy MR-1.
 
 ---
 
@@ -476,5 +492,5 @@ or `meta`. If you embed this state in a meta-loop, pair it with a non-LLM evalua
 - [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-10 rules
 - *Towards Direct Evaluation of Harness Optimizers* — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
 - [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml) — the reference harness-optimizer loop
-- [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness" template
+- [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness (meta-loop)" template
 - [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) § Specialist Pipeline — `check_substrate` template and wizard question S3.5

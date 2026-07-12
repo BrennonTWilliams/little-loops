@@ -95,7 +95,7 @@ ll-loop run general-task "Refactor the auth module to use dependency injection"
 > ```bash
 > # Equivalent: pass multiple context vars as a JSON object (auto-unpacked)
 > ll-loop run recursive-refine '{"input": "FEAT-42,FEAT-43"}'
-> ll-loop run outer-loop-eval '{"loop_name": "issue-refinement", "input": "some value"}'
+> ll-loop run outer-loop-eval '{"input": "issue-refinement", "loop_input": "some value"}'
 > ```
 
 The loop follows a structured cycle:
@@ -254,7 +254,7 @@ ll-loop run rn-plan "build a rate-limiting middleware for the API"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `task` | `""` | Task description (populated from positional CLI arg via `input_key: task`) |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-plan-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-plan-{instance_id}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location. |
 
 **Output artifacts** (written to `${context.run_dir}`):
 
@@ -268,13 +268,19 @@ ll-loop run rn-plan "build a rate-limiting middleware for the API"
 
 ```
 init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / research.md)
+  → load_planning_prompt  (shell: read the current planning-guidance prompt file so
+  │                         generate_rubric consumes rn-plan-apo's latest optimized
+  │                         text, BUG-2417)
   → generate_rubric     (prompt: write initial outline + 8-dim rubric at LOW)
     → check_substrate   (llm: validate plan actions against env constraints; ENH-2098)
         on_yes (feasible)   → research_iteration
         on_no/partial       → generate_rubric  (revise plan before iterating)
           → research_iteration (oracle: classify→research→synthesize→score)
-              on_yes (ALL_VERY_HIGH) → done
-              on_no  (ITERATE)       → research_iteration (next iteration)
+              on_success → score
+                on_yes (ALL_VERY_HIGH) → done
+                on_no  (ITERATE)       → research_iteration (next iteration)
+                on_error                → diagnose → failed
+              on_failure/on_error → diagnose → failed
 ```
 
 > **`check_substrate` gate** (ENH-2098): After the initial rubric is generated, an LLM feasibility check validates that every proposed action is achievable in the target execution environment (shell commands, MCP tool access, file write permissions, token budget). Infeasible plans route back to `generate_rubric` for revision before any research is run. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
@@ -301,7 +307,7 @@ ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 | `max_nodes` | `40` | Global cap on total tree nodes; decomposition is suppressed once reached, bounding worst-case cost. |
 | `synth_workers` | `4` | ENH-2565: fan-out width for the parallel bottom-up integration phase. `synth_dispatch` background-spawns up to this many `oracles/integrate-node` workers over the shared synth queue (clamped to the number of internal nodes). |
 | `resume` | `""` | **Resume only.** When non-empty **and** a prior `nodes/` tree exists under the (re-passed) `run_dir`, `init` skips re-seeding and `check_resume` reconciles against on-disk completion markers (BUG-2610): if any visited node lacks a `node_outcome_<id>.txt` or `queue.txt` is non-empty, it re-enters the walk (`resume_reconcile` → `dequeue_next`); otherwise it routes straight into bottom-up synthesis (`resume_build_synth`), reusing existing `nodes/*/final.md` and skipping the (hours-long) refinement phase. Re-pass the same `plan_file` and `run_dir`: `ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior>`. Without `--context resume=1`, `init` now refuses to re-seed a `run_dir` whose `nodes/` already exists (exits 1 with a hint) rather than clobbering it. |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{timestamp}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location (**required on resume** — re-pass the prior run's dir). |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-refine-{instance_id}/`); created automatically before the `init` state. Override with `--context run_dir=path/` to write to a fixed location (**required on resume** — re-pass the prior run's dir). |
 
 **Output artifacts** (written to `${context.run_dir}`):
 
@@ -333,11 +339,12 @@ init              (shell: validate plan_file; seed root node n0 + work-tree file
          → refine_node          (loop: oracles/plan-node-refine — refine to convergence,
           │                       then decide LEAF vs DECOMPOSE; on DECOMPOSE it writes
           │                       child sub-plans + enqueues them depth-first itself)
-          → classify_node       (shell: read node_outcome token)
+          on_success/on_failure → classify_node       (shell: read node_outcome token)
             route_decomposed → dequeue_next        (children already enqueued)
             route_leaf       → record_leaf  → dequeue_next
             route_capped     → record_capped → dequeue_next
             (else)           → record_failure → dequeue_next
+          on_error → record_node_crash → dequeue_next
 
   (queue drained) → build_synth   (shell+python: order internal nodes deepest-first;
                   │                 backfill leaf final.md)
@@ -352,8 +359,10 @@ init              (shell: validate plan_file; seed root node n0 + work-tree file
        │               complete, loops until DRAIN. Same-depth nodes integrate in parallel.)
       → assemble  (shell: root final.md → run_dir/plan.md)
         → final_score (plan_rubric_score on the reassembled plan)
-          → preflight_check → finalize  (shell: overwrite the source file in place)
-            → report  (prompt: tree + scores + diff hint) → done
+          → preflight_check
+              on_yes           → finalize  (shell: overwrite the source file in place)
+                                   → report  (prompt: tree + scores + diff hint) → done
+              on_no/on_error   → finalize_aborted  (terminal — diff-invariant/backup/section-presence guard tripped)
 
 init on_error → diagnose → failed
 ```
@@ -401,7 +410,7 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842"
 | `max_depth` | `3` | Maximum decomposition depth; issues at or beyond this depth are capped |
 | `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
 | `schedule_mode` | `"fifo"` | Scheduler: `"fifo"` (default, pop queue head) or `"value_ranked"` (select highest-value ready issue each tick) |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{timestamp}/`); created automatically before the `init` state |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{instance_id}/`); created automatically before the `init` state |
 
 **`schedule_mode: value_ranked`**
 
@@ -536,13 +545,16 @@ ll-loop run rn-decompose "<issue-id>" \
 ```
 snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
   → run_size_review   (fragment: with_rate_limit_handling, /ll:issue-size-review --auto)
-    → detect_children (shell: comm -13 diff pre/post ID lists, filter by parent: reference)
+    on_success/on_partial → detect_children (shell: comm -13 diff pre/post ID lists, filter by parent: reference)
       on_yes (children found) → enqueue_children
-      on_no  (no children)    → failed
-    → enqueue_children  (shell: cycle detection via visited.txt + queue.txt union, depth-first prepend, write depth_map)
-      → done
-    → rate_limit_diagnostic → done
-  → failed
+      on_no  (no children)    → emit_no_children → done
+      on_error                → emit_size_review_failed → failed
+    on_no/on_error → emit_size_review_failed → failed
+    on_rate_limit_exhausted → rate_limit_diagnostic → failed
+  → enqueue_children  (shell: cycle detection via visited.txt + queue.txt union, depth-first prepend, write depth_map)
+      on_yes (children survive cycle filter) → finalize_parent (close parent, write DECOMPOSED token) → done
+      on_no  (all children cycle-filtered)   → emit_no_children → done
+      on_error                               → emit_size_review_failed → failed
 ```
 
 **Notes**: Child detection is a two-step filter: (1) `comm -13` identifies net-new IDs created during size review, (2) each candidate's issue file must contain an explicit `parent:` frontmatter reference or `"Decomposed from <PARENT_ID>"` body line to avoid picking up unrelated concurrently-created issues. Cycle detection checks candidates against the union of `visited.txt` and `queue.txt`; cycle candidates are logged to `cycles.txt` and filtered out. Depth-first prepend means children are inserted at the head of the queue before existing entries, so the tree is explored depth-first. The decomposed parent is tracked via `decomposed_count.txt` (incremented by `enqueue_children`) and the `DECOMPOSED` outcome token written by `finalize_parent`; it is not written to `skipped.txt`. `max_steps: 100`, `timeout: 3600`, `on_handoff: spawn`.
@@ -744,7 +756,7 @@ PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v
 **Manual checklist** — after `ll-loop run` completes, verify:
 
 1. Exit code is 0 (no FSM crash)
-2. `.loops/runs/rn-build-<timestamp>/epic-id.txt` exists (`scope_project` completed)
+2. `.loops/runs/rn-build-<instance_id>/epic-id.txt` exists (`scope_project` completed)
 3. Dispatch output does **not** contain `eval-driven-development`
 4. Dispatch output contains `goal-cluster` (sub-loop header `== loop: goal-cluster …`)
 5. Dispatch output contains `rn-implement` (dispatched by `goal-cluster`)
@@ -908,9 +920,15 @@ init (snapshot .issues/completed/ baseline)
       │       id AND parallel.epic_branches.enabled, ensure epic/<EPIC-ID>-<slug>
       │       exists off base_branch — create-without-switch, no-op otherwise)
       │     → delegate (sub-loop: autodev, input=<resolved IDs>)
-      │         ├─ on_success / on_failure → verify (ENH-2601: runs
-      │         │     project.test_cmd/lint_cmd in place; pass/fail/skipped is
-      │         │     advisory, folded into summary.json, never gates finalize)
+      │         ├─ on_success / on_failure → recheck_set (ENH-2615: EPIC scopes
+      │         │     re-resolve the descendant set and re-dispatch any
+      │         │     not-yet-dispatched descendants back to delegate, capped
+      │         │     at 5 cycles; non-EPIC scopes fall through immediately)
+      │         │     on_yes (more to dispatch) → delegate
+      │         │     on_no/on_error → verify (ENH-2601: runs
+      │         │           project.test_cmd/lint_cmd in place; pass/fail/skipped
+      │         │           is advisory, folded into summary.json, never gates
+      │         │           finalize)
       │         │     → merge_epic_branch (BUG-2614: once all EPIC children
       │         │           are done, merges — or PRs, per open_pr — the
       │         │           branch back to base_branch; no-op/held-open
@@ -982,11 +1000,13 @@ init → dequeue_next → [queue empty?]
                                                                                                                                      └─ NO  → dequeue_next
 ```
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Both `refine_current` (sub-loop) and `implement_current` (shell `ll-auto`) use the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); `refine_current` on rate-limit exhaustion dequeues and continues, while `implement_current` on exhaustion terminates the loop via `done`. The broke-down handshake flag (written by `refine-to-ready-issue` to `.loops/tmp/recursive-refine-broke-down`) is copied into `.loops/tmp/autodev-broke-down` only on the `on_success` path (via `copy_broke_down`), so the rest of autodev's state machine reads only the `autodev-*` namespace. When `refine_current` exits via `on_failure` or `on_error`, the sub-loop's `failed` terminal or a signal/crash routes to `skip_inflight` instead — the issue is recorded in `.loops/tmp/autodev-skipped.txt` and the queue advances without passing an unrefined issue to `implement_current` (ENH-1679). This interleaved design also means partial forward progress is preserved if the run is interrupted — any leaves that already passed refinement have already been implemented. **Auth fast-fail (ENH-2353)**: `implement_current` failures are screened for host auth signatures (HTTP 401/403 or "Could not resolve authentication") via the shared `check_impl_auth` state; on match the loop aborts to `abort_env_not_ready` (producing an `ENV_NOT_READY` outcome) rather than recording `IMPLEMENT_FAILED`.
+**Diagram omissions**: For brevity every `[decision_needed?]` branch above is drawn as a direct `YES → run_decide` hop. In the actual YAML, all four decision-gate entry points (`check_decision_at_dequeue` before `refine_current`, `check_decision_after_refine` after `copy_broke_down`, `decide_current`, and `check_decision_before_size_review`) route first through a shared `check_decision_decidable` state (`ll-issues check-decidable`); only when it returns `on_yes` does the flow reach `run_decide`. On `on_no` (zero enumerable options), it detours to `deposit_options` (`/ll:refine-issue --auto`) → `record_options_deposited` → `check_open_question_progress` → back to `check_decision_decidable`, which short-circuits straight to `run_decide` on the retry (ENH-2443, BUG-2605). Also omitted: after `recheck_after_decide`'s threshold gate, an `assert_decision_cleared` state re-verifies `decision_needed` was actually resolved before `implement_current` — if not, it routes to `record_decision_unresolved → dequeue_next` instead of implementing. Finally, `implement_current`'s failure path is abbreviated to `dequeue_next`; the real routing is `implement_current.on_no → check_learning_gate` (blocked issues → `mark_gate_blocked → dequeue_next`) `→ check_impl_auth` (auth failures → `abort_env_not_ready → done`, else → `dequeue_next`).
 
-**In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `.loops/tmp/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. Both `refine_current` (sub-loop) and `implement_current` (shell `ll-auto`) use the `with_rate_limit_handling` fragment (3 retries, 30s base backoff); `refine_current` on rate-limit exhaustion dequeues and continues, while `implement_current` on exhaustion terminates the loop via `done`. The broke-down handshake flag (written by `refine-to-ready-issue` to `${context.run_dir}/recursive-refine-broke-down`) is copied into `${context.run_dir}/autodev-broke-down` only on the `on_success` path (via `copy_broke_down`), so the rest of autodev's state machine reads only the `autodev-*` namespace. When `refine_current` exits via `on_failure` or `on_error`, the sub-loop's `failed` terminal or a signal/crash routes to `skip_inflight` instead — the issue is recorded in `${context.run_dir}/autodev-skipped.txt` and the queue advances without passing an unrefined issue to `implement_current` (ENH-1679). This interleaved design also means partial forward progress is preserved if the run is interrupted — any leaves that already passed refinement have already been implemented. **Auth fast-fail (ENH-2353)**: `implement_current` failures are screened for host auth signatures (HTTP 401/403 or "Could not resolve authentication") via the shared `check_impl_auth` state; on match the loop aborts to `abort_env_not_ready` (producing an `ENV_NOT_READY` outcome) rather than recording `IMPLEMENT_FAILED`.
 
-**Outcome failure triage** (BUG-1277, ENH-1291, ENH-1415): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `mark_decide_ran` (sets `.loops/tmp/autodev-decide-ran` so decide does not re-fire later in the same iteration) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate). On gate pass, the loop proceeds to `implement_current` without decomposition. On gate fail (ENH-1415), the loop routes to `snap_and_size_review` (refreshes the pre-ids baseline) → `run_size_review` rather than dropping the issue, since the only outcome dimensions that can still drag the score below threshold after decide are Complexity and Change Surface — both decomposable. The decide-ran flag means that if size-review fails to decompose and `recheck_after_size_review` re-enters `decide_current`, that state short-circuits to `implement_current` rather than firing decide a second time. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) → `run_refine` (invoking `/ll:refine-issue --auto`) → `rerun_confidence_after_wire` (invoking `/ll:confidence-check` to refresh stale pre-repair scores, BUG-1491) → `enqueue_or_skip`; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
+**In-flight tracking** (BUG-1226): `dequeue_next` writes the popped issue ID to `${context.run_dir}/autodev-inflight`; `enqueue_or_skip` clears it in the children-found branch; `recheck_after_size_review` clears it on the skip path (BUG-1230); `enqueue_children` clears it after decomposition; `init` resets it at loop start. On natural termination, `done` reads this flag and, if non-empty, prints a warning naming the issue that did not reach a clean resolution so the user knows to re-queue it. Pairs with the executor's pending-shell-state flush (see `docs/reference/EVENT-SCHEMA.md` `loop_complete` / `state_enter.flushed`) — between them, autodev no longer silently drops a breakdown result when the wall-clock timeout fires between `refine_current` returning and `copy_broke_down` executing.
+
+**Outcome failure triage** (BUG-1277, ENH-1291, ENH-1415): When `check_passed` fails (confidence thresholds not met), the loop enters `triage_outcome_failure` rather than immediately routing to size-review. This state reads `score_ambiguity` from the issue frontmatter and branches: if `score_ambiguity ≤ 10`, the issue is well-scoped but has an unresolved design decision causing low outcome confidence — the loop routes to `run_decide` (invoking `/ll:decide-issue --auto`) → `mark_decide_ran` (sets `${context.run_dir}/autodev-decide-ran` so decide does not re-fire later in the same iteration) → `rerun_confidence_after_decide` (invoking `/ll:confidence-check` to refresh stale pre-decision scores, BUG-1378) → `recheck_after_decide` (threshold gate). On gate pass, the loop proceeds to `implement_current` without decomposition. On gate fail (ENH-1415), the loop routes to `snap_and_size_review` (refreshes the pre-ids baseline) → `run_size_review` rather than dropping the issue, since the only outcome dimensions that can still drag the score below threshold after decide are Complexity and Change Surface — both decomposable. The decide-ran flag means that if size-review fails to decompose and `recheck_after_size_review` re-enters `decide_current`, that state short-circuits to `implement_current` rather than firing decide a second time. On parse error, the loop falls back safely to `detect_children`. Otherwise, the loop enters `check_missing_artifacts`, which reads the `missing_artifacts` frontmatter flag (set by `/ll:confidence-check` Phase 4.7 when Outcome Risk Factors mention absent files or unwired components): if `true`, the loop routes to `run_wire` (invoking `/ll:wire-issue --auto`) → `run_refine` (invoking `/ll:refine-issue --auto`) → `rerun_confidence_after_wire` (invoking `/ll:confidence-check` to refresh stale pre-repair scores, BUG-1491) → `enqueue_or_skip`; if `false`, the loop falls through to `detect_children → size_review`. This three-branch triage prevents incorrect decomposition of issues whose low outcome confidence stems from an unresolved design decision or a wiring gap rather than excessive scope.
 
 **Decidability gate parity (ENH-2443, BUG-2605)**: all four `decision_needed: true` entry points — `check_decision_at_dequeue`, `check_decision_after_refine`, `decide_current`, and `check_decision_before_size_review` — route through `check_decision_decidable` (the same `ll-issues check-decidable <ID>` deterministic pre-check used by `rn-remediate`) before `run_decide`. Zero enumerable options routes to `deposit_options` (`/ll:refine-issue --auto`) → `record_options_deposited` (writes `${context.run_dir}/autodev-decide-options-deposited`, cleared per-issue at `dequeue_next`) → back to `check_decision_decidable`, which short-circuits straight to `run_decide` on the second pass. The marker bounds the detour to one deposit attempt per issue per iteration regardless of which of the four gates first observes `decision_needed: true`.
 
@@ -1052,7 +1072,7 @@ ll-loop run recursive-refine "FEAT-42"
 ll-loop run recursive-refine "FEAT-42,FEAT-43,BUG-17"
 
 # Drive the whole backlog in value-ranked order (equivalent to running issue-refinement)
-ll-loop run recursive-refine --context order=next-action commit_every=5 no_recursion=true
+ll-loop run recursive-refine --context order=next-action --context commit_every=5 --context no_recursion=true
 
 # JSON shorthand: pass as a JSON object — keys auto-unpacked into context variables
 ll-loop run recursive-refine '{"input": "FEAT-42,FEAT-43"}'
@@ -1083,7 +1103,11 @@ parse_input → dequeue_next → [queue/backlog empty?]
                                                                                                     ├─ YES → dequeue_next
                                                                                                     └─ NO  → check_depth → [depth >= max_depth?]
                                                                                                                 ├─ YES → dequeue_next (depth-cap)
-                                                                                                                └─ NO  → check_decision_needed → check_missing_artifacts → run_size_review → enqueue_or_skip → dequeue_next
+                                                                                                                └─ NO  → check_decision_needed → check_missing_artifacts → [missing_artifacts=true?]
+                                                                                                                              ├─ YES → check_wire_budget → [wire already attempted?]
+                                                                                                                              │          ├─ NO  → run_wire_for_artifacts → capture_baseline (retry sub-loop)
+                                                                                                                              │          └─ YES → skip_missing_artifacts → dequeue_next
+                                                                                                                              └─ NO  → run_size_review → enqueue_or_skip → dequeue_next
 ```
 
 **Summary output**: When the queue is exhausted, `aggregate_decomposition` emits the parent→children rollup (if any decompositions occurred), then `done` emits a structured summary followed (by default) by an indented decomposition tree:
@@ -1118,7 +1142,7 @@ Set `tree_summary: false` in context to suppress the tree block.
 ```
 The counters reflect cumulative totals at the moment of dequeue: position `N/total-enqueued`, the issue ID and depth, and running passed/queued/skipped tallies. After every `enqueue_children` or `enqueue_or_skip` enqueue, a queue-peek line shows the next 3–5 IDs waiting in the queue so you can see what the loop will process next without waiting for individual dequeue lines.
 
-**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. All non-passing issue IDs are aggregated in `.loops/tmp/recursive-refine-skipped.txt` (read by outer-loop callers); decomposed parents are also marked `status: done` in frontmatter so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `.loops/tmp/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `.loops/tmp/recursive-refine-broke-down`; per-issue depth tracking is in `.loops/tmp/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `.loops/tmp/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `.loops/tmp/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `.loops/tmp/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `.loops/tmp/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `.loops/tmp/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `.loops/tmp/recursive-refine-skipped-budget.txt`; parents that were decomposed into children (by either `enqueue_children` or the `enqueue_or_skip` children branch) are recorded in `.loops/tmp/recursive-refine-skipped-decomposed.txt`; issues with no further decomposition possible are recorded in `.loops/tmp/recursive-refine-skipped-deadend.txt`; issues skipped because `decision_needed: true` was set are recorded in `.loops/tmp/recursive-refine-skipped-decision.txt` (also merged into the shared `recursive-refine-skipped.txt`) and labeled `(skipped: decision-needed)` in the decomposition tree — run `/ll:decide-issue` on each to resolve the ambiguity, then re-run `recursive-refine`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `.loops/tmp/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
+**Notes**: The loop runs up to 500 iterations with an 8-hour timeout and uses `on_handoff: spawn` to continue across session boundaries. All non-passing issue IDs are aggregated in `${context.run_dir}/recursive-refine-skipped.txt` (read by outer-loop callers); decomposed parents are also marked `status: done` in frontmatter so they never re-appear as active candidates after a skip-file reset; issues that passed thresholds are in `${context.run_dir}/recursive-refine-passed.txt`; the per-issue breakdown guard flag is in `${context.run_dir}/recursive-refine-broke-down`; per-issue depth tracking is in `${context.run_dir}/recursive-refine-depth-map.txt` (`<ID> <depth>` pairs for all enqueued issues); the depth of the currently-processing issue is in `${context.run_dir}/recursive-refine-current-depth.txt`; issues skipped due to the depth cap are recorded separately in `${context.run_dir}/recursive-refine-skipped-depth.txt`; every dequeued ID is appended to `${context.run_dir}/recursive-refine-visited.txt` (cycle-detection guard); issues skipped because all proposed children were already visited are additionally recorded in `${context.run_dir}/recursive-refine-skipped-cycle.txt`; per-issue attempt counts are tracked in `${context.run_dir}/recursive-refine-attempts.txt` (one ID per line, appended each pass); issues skipped due to the per-issue budget cap are recorded in `${context.run_dir}/recursive-refine-skipped-budget.txt`; parents that were decomposed into children (by either `enqueue_children` or the `enqueue_or_skip` children branch) are recorded in `${context.run_dir}/recursive-refine-skipped-decomposed.txt`; issues with no further decomposition possible are recorded in `${context.run_dir}/recursive-refine-skipped-deadend.txt`; issues skipped because `decision_needed: true` was set are recorded in `${context.run_dir}/recursive-refine-skipped-decision.txt` (also merged into the shared `recursive-refine-skipped.txt`) and labeled `(skipped: decision-needed)` in the decomposition tree — run `/ll:decide-issue` on each to resolve the ambiguity, then re-run `recursive-refine`; every decomposition event (from either the `enqueue_children` or `enqueue_or_skip` path) is appended to `${context.run_dir}/recursive-refine-decomposition.tsv` (columns: `parent_id`, `child_ids` (comma-joined), `decomposer` (`sub-loop` | `size-review`), `timestamp`) so the `aggregate_decomposition` state can produce a parent→children rollup at the end of each run.
 
 ### Code Quality
 
@@ -1392,7 +1416,7 @@ ll-loop run html-anything "a dashboard showing real-time server metrics"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language artifact description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-anything-{timestamp}/`) containing `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-anything-{instance_id}/`) containing `index.html`, `brief.md`, `rubric.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `7` | Minimum score per criterion (1–10); **all criteria** must meet their individual rubric thresholds |
 
@@ -1468,7 +1492,7 @@ ll-loop run hitl-compare ".issues/bugs/P1-BUG-100-implementation-details.md"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `inputs` | (from `loop_input`) | Whitespace-separated file paths or raw text tokens — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-compare-{timestamp}/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-compare-{instance_id}/`) containing `index.html`, `items.md`, `review.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 
 **FSM flow:**
@@ -1505,7 +1529,7 @@ init → identify → prune → generate → evaluate
 
 > **Simplified 2026-06**: the original ENH-1770 "sensemaking layer" (staged `IntersectionObserver` highlighting, an adaptive density slider, multi-channel saliency toggles, a schema-switching toolbar, a canvas minimap + visit heatmap, and full click-to-reveal trust-calibration friction) was removed. Stacking ~10 toolbar controls onto a read-and-edit surface added extraneous cognitive load — contradicting the sensemaking research it cited — and made the 13-gate generator-evaluator rubric near-impossible to converge within `max_steps`. Only the lightweight confidence cue survived.
 
-> **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`), deliberately diverging from the standard LOOPS_GUIDE.md design rule at line 897 ("never back to generate"). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern.
+> **Evaluate routing note**: The `evaluate` state's `on_error` routes to `generate` (not `score`). Playwright errors here typically indicate the HTML itself is malformed — regenerating is preferable to scoring a broken page. This follows the `svg-image-generator.yaml` precedent. The `on_no` route (Playwright unavailable) still goes to `score` for LLM-only fallback per the standard pattern. <!-- TODO: ENH-2621 - This previously cited a "standard LOOPS_GUIDE.md design rule at line 897 (never back to generate)" that does not exist anywhere in LOOPS_GUIDE.md; either document that rule there or drop the claim of a broader convention. -->
 
 **When to use**: After running the `recursive-refine` loop or a planning skill to produce a long PRD or implementation plan markdown file. Rather than reviewing linearly in an editor, run `hitl-md` to get a focused segment-level review surface. Also useful for reviewing AI-generated research notes, design documents, or refined issues where you want to flag specific spans for targeted AI revision without losing positional context.
 
@@ -1525,7 +1549,7 @@ ll-loop run hitl-md "# My Plan\n\nThis is the first paragraph..."
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `input` | (from `loop_input`) | File path or raw markdown text — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-md-{timestamp}/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/hitl-md-{instance_id}/`) containing `index.html`, `segments.json`, `critique.md`, and `screenshot.png`. The final approved `index.html` is also copied to `./hitl-md-review.html` in the cwd. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 
 **FSM flow:**
@@ -1574,7 +1598,7 @@ ll-loop run html-website-generator "a landing page for a Dutch art museum"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language website description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-website-generator-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-website-generator-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
@@ -1638,7 +1662,7 @@ ll-loop run svg-image-generator "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-image-generator-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-image-generator-{instance_id}/`) for `image.svg`, `brief.md`, `critique.md`, and `screenshot.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 
@@ -1697,7 +1721,7 @@ ll-loop run openscad-model-generator "a parametric snap-fit enclosure for a 60x4
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language part description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/openscad-model-generator-{timestamp}/`) |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/openscad-model-generator-{instance_id}/`) |
 | `view_presets` | `"iso,front,top"` | Comma-separated camera angle presets; supported: `iso`, `front`, `top`, `side`, `back` |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); all four criteria must clear this value |
 | `export_stl` | `"false"` | Set to `"true"` to export `model.stl` after generation completes |
@@ -1752,7 +1776,7 @@ ll-loop run svg-textgrad "a minimalist coffee cup icon"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language SVG description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-textgrad-{timestamp}/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/svg-textgrad-{instance_id}/`) for `image.svg`, `brief.md`, `critique.md`, `gradients.md`, `scores.md`, `screenshot.png`, `best.svg`, and `best-brief.md`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `7` | Weighted-average gate: `(2×visual_clarity + 2×originality + craft + scalability) / 6` must meet or exceed this value (default raised from 6 to 7 to match the tighter discriminating threshold) |
 | `min_per_criterion` | `6` | Per-criterion floor: each of the four scores must be ≥ this value before the weighted average is checked; a single weak criterion (e.g. scalability 5/10) forces another gradient iteration |
@@ -1839,7 +1863,7 @@ ll-loop run p5js-sketch-generator "a particle accumulation field that blooms out
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language sketch description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/p5js-sketch-generator-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/p5js-sketch-generator-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 | `sample_frames` | `"0,90,240"` | Comma-separated `frameCount` values to screenshot; controls which animation moments the evaluator judges |
@@ -1908,7 +1932,7 @@ ll-loop run pixi-data-viz "animated bar chart showing monthly revenue by product
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language visualization description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-data-viz-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-data-viz-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score for non-gated criteria (1–10); `encoding_clarity` is hard-gated at 7 regardless of this value |
 | `sample_frames` | `"0,120,240"` | Comma-separated `__loopFrame` values to screenshot; defaults capture initial chrome, mid-transition, and settled state |
@@ -1972,7 +1996,7 @@ ll-loop run pixi-generative-art "a bioluminescent deep-sea particle system with 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language sketch description — passed as the positional argument |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-generative-art-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-generative-art-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 | `sample_frames` | `"0,90,240"` | Comma-separated `__loopFrame` values to screenshot |
@@ -2051,7 +2075,7 @@ ll-loop run vega-viz "choropleth map of sales by region" \
 | `data_path` | `""` | Optional path to a CSV or JSON file; empty → generator fabricates labeled synthetic data |
 | `pass_threshold` | `6` | Minimum score for `effectiveness` and `craft` (1–10) |
 | `hard_gate` | `7` | Hard floor for `faithfulness` and `honesty` — a chart that misrepresents data fails regardless of polish |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/vega-viz-{timestamp}/`) for `index.html`, `brief.md`, `critique.md`, and interaction-frame PNGs; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/vega-viz-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and interaction-frame PNGs; created automatically. Override with `--context run_dir=path/`. |
 
 Override per-run:
 
@@ -2131,7 +2155,7 @@ ll-loop run canvas-sketch-generator "flow field with particle accumulation along
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
 | `min_nonblank_ratio` | `0.03` | Objective gate: fraction of non-background pixels required to count as "drew something" (spike-confirmed: good sketch ≈ 0.41, blank sketch = 0.00) |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values; empty string when tokens are disabled or the tokens path is missing |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/canvas-sketch-generator-{timestamp}/`) for `index.html`, `screenshot.png`, `brief.md`, `critique.md`, `scores.tsv`, and `iter-N/` snapshots; created automatically. Override with `--context run_dir=path/`. |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/canvas-sketch-generator-{instance_id}/`) for `index.html`, `screenshot.png`, `brief.md`, `critique.md`, `scores.tsv`, and `iter-N/` snapshots; created automatically. Override with `--context run_dir=path/`. |
 
 **FSM flow:**
 
@@ -2203,7 +2227,7 @@ ll-loop run rlhf-animated-svg \
 | `smoke_fail_streak_max` | `2` | Consecutive smoke failures before skipping to score |
 | `smoke_bypass_threshold` | `5` | Total smoke attempts after which smoke gate is bypassed |
 | `score_fail_streak_max` | `3` | Consecutive VISION_FAIL evaluations before triggering replan |
-| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rlhf-animated-svg-{timestamp}/`) |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rlhf-animated-svg-{instance_id}/`) |
 
 **FSM flow** (orchestration-only; evaluation and refinement are delegated to sub-loops):
 ```
@@ -2434,7 +2458,7 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 **Meta-loop discipline (MR-1)**: Every LLM-proposed artifact is paired with a non-LLM external evaluator — the LLM score-bootstrap state judges measured numbers, not its own generated artifacts.
 
-**Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<loop>-<timestamp>/` and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional.
+**Per-run artifact isolation (MR-3)**: Loops must write intermediate artifacts under `${context.run_dir}/`, not bare `.loops/tmp/`. The runner injects `run_dir` as `.loops/runs/<instance_id>/` (instance_id defaults to `<loop>-<timestamp>`, but may be overridden, e.g. on resume) and creates the folder before execution. Writing to shared `.loops/tmp/` causes state corruption when two instances of the same loop run concurrently. Set `shared_state_ok: true` at the loop top-level to suppress this validation warning when cross-run sharing is intentional.
 
 **Partial-route dead-end guard (MR-4)**: An LLM-judged state (action_type: `prompt` or `slash_command`, or an explicit `llm_structured`/`check_semantic` evaluator) can receive `yes`, `no`, or `partial` verdicts from the default judge. If the state maps `on_yes` but provides no route for `no` or `partial` — and has no `next:` or `route:` table with a `default` — then a `no`/`partial` verdict causes `_route` to return `None`, silently terminating the loop. A parent loop reads this as a failure, discarding any progress made. `ll-loop validate` emits a WARNING (MR-4) for this shape so the dead-end is caught at authoring time. Fix by adding `on_no`/`on_partial`, using `next:` for an unconditional handoff, or providing a `route:` table. Set `partial_route_ok: true` at the loop top-level to suppress when intentional.
 
@@ -3058,22 +3082,22 @@ Loops in this category analyze other loops — auditing their YAML definitions, 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `loop_name` | _(required)_ | Target loop name — built-in (`outer-loop-eval`) or project-level (`.loops/my-loop`) |
-| `input` | `""` | Optional input value passed to the sub-loop when it runs |
+| `input` | _(required)_ | Target loop name — built-in (`outer-loop-eval`) or project-level (`.loops/my-loop`) |
+| `loop_input` | `""` | Optional input value passed to the sub-loop when it runs |
 
 **Invocation**:
 
 ```bash
 # Audit a built-in loop
-ll-loop run outer-loop-eval --context loop_name=issue-refinement
+ll-loop run outer-loop-eval --context input=issue-refinement
 
 # Audit a project-level loop with an input
 ll-loop run outer-loop-eval \
-  --context loop_name=my-custom-loop \
-  --context input="some context value"
+  --context input=my-custom-loop \
+  --context loop_input="some context value"
 
 # JSON shorthand: pass both context variables as a single JSON object (auto-unpacked into context)
-ll-loop run outer-loop-eval '{"loop_name": "my-custom-loop", "input": "some context value"}'
+ll-loop run outer-loop-eval '{"input": "my-custom-loop", "loop_input": "some context value"}'
 
 # Install to project for customization
 ll-loop install outer-loop-eval
@@ -3089,9 +3113,9 @@ analyze_definition (/ll:debug-loop-run --auto) → run_sub_loop → analyze_exec
                                                                                                                   └─ NO (all "None identified.") → refine_analysis (/ll:audit-loop-run --auto) → generate_report
 ```
 
-**Execution failure handling**: If `loop_name` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` delegates to `/ll:debug-loop-run` and `/ll:audit-loop-run` as-is — the skills surface whatever can be inferred from available context.
+**Execution failure handling**: If `input` is empty, `validate_input` exits immediately with a clear error message before any analysis begins — preventing hallucinated reports. If the target loop is found but fails to start (not found after validation, crashes on launch), `outer-loop-eval` delegates to `/ll:debug-loop-run` and `/ll:audit-loop-run` as-is — the skills surface whatever can be inferred from available context.
 
-**Skill delegation**: `analyze_definition` and `analyze_execution` both invoke `/ll:debug-loop-run ${loop_name} --auto`; `generate_report` and `refine_analysis` invoke `/ll:audit-loop-run ${loop_name} --auto`. Improvements to either skill (new signals, richer scoring, updated heuristics) flow through to `outer-loop-eval` automatically.
+**Skill delegation**: `analyze_definition` and `analyze_execution` both invoke `/ll:debug-loop-run ${context.input} --auto`; `generate_report` and `refine_analysis` invoke `/ll:audit-loop-run ${context.input} --auto`. Improvements to either skill (new signals, richer scoring, updated heuristics) flow through to `outer-loop-eval` automatically.
 
 **Report content**: The improvement report is produced by `/ll:audit-loop-run` and includes its standard scorecard sections. Use `ll-loop install outer-loop-eval` to copy the YAML and customize which skills are invoked or how their output is evaluated.
 
@@ -3159,7 +3183,7 @@ See [harness-optimize reference](../reference/loops.md#harness-optimize) for the
 
 ## Built-in Fragment Libraries
 
-Seven libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`:
+Eleven libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`: `common.yaml`, `benchmark.yaml`, `score-plan-quality.yaml`, `cli.yaml`, `prompt-fragments.yaml`, `harness.yaml`, `apo-base.yaml`, `apo-shape-a.yaml`, `rubric-router.yaml`, `policy-router.yaml`, and `composer.yaml`.
 
 ### `lib/common.yaml` — type-pattern fragments
 
@@ -3172,14 +3196,19 @@ Generic structure fragments (action_type + evaluate combinator) used by all buil
 | `llm_gate` | LLM prompt state with structured yes/no output. When the prompt performs multiple MCP tool calls followed by synthesis (~10 calls), set `timeout: 1500` or higher at the state level; the 3600s executor fallback is bypassed by any loop-level `default_timeout:`. | `action_type: prompt` + `evaluate.type: llm_structured` | `action`, `evaluate.prompt`, routing (`on_yes`, `on_no`), optionally `timeout` |
 | `numeric_gate` | Shell command evaluated by numeric output comparison. | `action_type: shell` + `evaluate.type: output_numeric` | `action`, `evaluate.operator`, `evaluate.target`, routing (`on_yes`, `on_no`) |
 | `with_rate_limit_handling` | Applies per-state two-tier rate-limit retry handling: 3 short retries (30 s base backoff) then the default long-wait ladder (5 min → 15 min → 30 min → 1 h) up to a 6 h wall-clock budget. | `max_rate_limit_retries: 3`, `rate_limit_backoff_base_seconds: 30`, plus inherited `rate_limit_long_wait_ladder` and `rate_limit_max_wait_seconds` defaults | `on_rate_limit_exhausted` (target state name) |
+| `with_throttle` | Applies per-state progressive tool-call throttling: calls 1-3 pass through, call 8 injects a `throttle_warn` event, call 12 transitions to `on_throttle_hard` (or `on_error`). States with `type: learning` are exempt from the hard-max check. | `throttle: {normal_max: 3, warn_max: 8, hard_max: 12}` | `on_throttle_hard` (target state); may override any `throttle.*` value |
 | `parse_tagged_json` | Shell state that extracts a tagged JSON line from LLM output. Injects `action_type: shell` only; caller supplies all extraction and normalization logic in `action:`. Nested `${captured.${context.var}.output}` interpolation is NOT supported (single-pass engine) — use the captured variable's literal name directly in `action:`. | `action_type: shell` | `action` (extraction + normalization script referencing captured output by literal name), `capture`, `evaluate` (`output_json` recommended), routing (`on_yes`, `on_no`) |
 | `convergence_gate` | Shell state evaluated by the convergence evaluator toward a numeric target. Callers supply only overrides; `type: convergence` and `direction: maximize` are fixed by the fragment. | `action_type: shell` + `evaluate.type: convergence` + `evaluate.direction: maximize` | `action`, `evaluate.target`, `evaluate.tolerance`, routing (`route.target`, `route.progress`, `route.stall`); optionally `evaluate.previous`, `route.error` |
 | `queue_pop` | Shell state that atomically pops the head of a queue file (head-1/tail-n+2/mv idiom). Evaluates by exit code: exit 0 = item popped (`on_yes`), exit 1 = queue empty (`on_no`). | `action_type: shell` + `evaluate.type: exit_code` | `action` (pop shell script), routing (`on_yes`, `on_no`); optionally `on_error`, `capture` |
 | `queue_track` | Shell state that appends an ID to a skip or visited tracking file (echo >> idiom). No evaluator — always transitions unconditionally. | `action_type: shell` | `action` (echo append script), `next:` |
 | `diff_stall_gate` | Shell state evaluated by the `diff_stall` evaluator; yields `on_yes` when a git diff is detected (progress), `on_no` after `max_stall` (default 2) consecutive iterations with no diff change. Used to skip idempotent iterations instead of exhausting `max_steps`. | `action_type` inherited from caller + `evaluate.type: diff_stall` + `evaluate.max_stall: 2` | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error`, `evaluate.scope` |
 | `score_stall_gate` | Shell state evaluated by the `score_stall` evaluator; yields `on_yes` while the aggregate rubric score keeps improving by more than `epsilon`, `on_no` after `max_stall` (default 2) consecutive rounds with no score improvement (accept best-so-far). Reads a per-round `.score_history` file under `${context.run_dir}/`. Companion to `diff_stall_gate` for the score-plateau case that byte-diff misses (ENH-2428). | `evaluate.type: score_stall` + `evaluate.max_stall: 2` | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error`, `evaluate.history_file`, `evaluate.epsilon` |
+| `open_question_stall_gate` | Evaluator-only fragment for the `open_question_stall` evaluator; yields `on_yes` while the open-question count keeps strictly decreasing by more than `epsilon`, `on_no` after `max_stall` (default 2) rounds with no decrease. Reads a per-round `.open_questions_history` file under `${context.run_dir}/`. Companion to `score_stall_gate` (ENH-2446). | `evaluate.type: open_question_stall` + `evaluate.max_stall: 2` | `action`, `action_type`, routing (`on_yes`, `on_no`); optionally `on_error`, `evaluate.history_file`, `evaluate.epsilon` |
+| `snapshot_artifact` | Shell state that snapshots the current artifact into a per-iteration `iter-N/` subdirectory within the run directory, tracked by an `.iter_counter` file. No evaluator — always transitions unconditionally. Declares `parameters: {artifact_path, run_dir}` — bind at call site via `with:`. | `action_type: shell` + unconditional snapshot script | `with: {artifact_path: ..., run_dir: ...}`, routing (`on_yes`, `on_no`, or `next:`) |
 | `plan_rubric_score` | 9-dimension plan scorer for rn-* loops. Evaluates plan.md on breadth/depth/complexity/clarity/consistency/logic_strategy/feasibility/testability/risk_mitigation, rewrites plan-rubric.md, and emits `ALL_VERY_HIGH` on convergence. Distinct from `score_plan_quality` (4-dimension batch scorer in `lib/score-plan-quality.yaml`). | `action_type: prompt` + 9-dimension scoring action + `evaluate.type: output_contains` with `pattern: "ALL_VERY_HIGH"` | routing (`on_yes`, `on_no`, `on_error`) |
 | `loop_failure_diagnose` | Terminal failure handler for rn-* planning loops. Prompts for root-cause diagnosis, reads rubric/plan artifacts, writes a one-paragraph diagnostic summary. Declares `parameters: {loop_name, extra_bullets}` — bind at call site via `with:`. Fixed `next: failed`. | `action_type: prompt` + diagnosis action + fixed `next: failed` | `with: {loop_name: <name>}`; optionally `with: {extra_bullets: <bullets>}` |
+| `ll_auto_auth_check` | Shell state that greps a run-dir file (`${context.run_dir}/ll_auto_last.txt`) for host-auth failure signatures (HTTP 401/403, credential errors) and emits `AUTH_FAILED` or `OK` (ENH-2353). | `action_type: shell` + `evaluate.type: output_contains` (`pattern: "AUTH_FAILED"`) | `on_yes` (auth detected), `on_no` (continue), `on_error` |
+| `ll_auto_learning_gate_check` | Shell state that greps a run-dir file (`${context.run_dir}/ll_auto_last.txt`) for the `LEARNING_GATE_BLOCKED` marker (ENH-2319 gate) and emits `GATE_BLOCKED` or `OK`. Pair before `ll_auto_auth_check` so a gate block isn't misattributed as an auth failure. | `action_type: shell` + `evaluate.type: output_contains` (`pattern: "GATE_BLOCKED"`) | `on_yes` (gate blocked), `on_no` (continue), `on_error` |
 | `subloop_rate_limit_diagnostic` | Sub-loop terminal handler for rate-limit exhaustion (ENH-1977 GAP A). Writes an outcome token to `${context.run_dir}/subloop_outcome_<ID>.txt` and routes to `failed` so the parent reads exhaustion correctly. Declares `parameters: {operation, outcome_token}` — bind at call site via `with:`. Fixed `next: failed`. | `action_type: shell` + outcome-token write + log line + fixed `next: failed` | `with: {operation: <word>}`; optionally `with: {outcome_token: <token>}` |
 
 ### `lib/benchmark.yaml` — Harbor-format benchmark runner
@@ -3310,7 +3339,7 @@ states:
 
 ### `lib/apo-base.yaml` — APO base loop skeleton
 
-Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other six libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_steps`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
+Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other ten libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_steps`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
 
 ```yaml
 from: lib/apo-base
@@ -3319,5 +3348,7 @@ initial: my_custom_init
 ```
 
 Not runnable directly — kept under `lib/` so it is excluded from non-recursive loop discovery. See [Loop Template Inheritance via `from:`](LOOPS_GUIDE.md#loop-template-inheritance-via-from) for full inheritance semantics and examples.
+
+<!-- TODO: ENH-2621 - Add dedicated sections for lib/apo-shape-a.yaml, lib/rubric-router.yaml, lib/policy-router.yaml, and lib/composer.yaml (currently only counted in the library list above, not documented with fragment tables/examples like the other seven documented libraries). -->
 
 Built-in loops import the libraries as `import: ["lib/common.yaml"]` or `import: ["lib/cli.yaml"]`. User loops in `.loops/` can do the same — built-in fragment libraries resolve automatically, so no copying or symlinking is required. You can also define your own local fragments in your loop file or a local library.

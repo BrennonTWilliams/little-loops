@@ -204,6 +204,13 @@ Use `--dry-run` to preview the scoring table and selected option without modifyi
 /ll:decide-issue FEAT-1933 --dry-run
 ```
 
+Two more flags are available: `--auto` runs non-interactively, writing the decision without prompting for confirmation, and `--validate-only` only probes whether the issue has a decidable set of options (Phases 1–2.5) — it does no scoring and makes no writes, exiting 0 if there is something to decide or exiting 1 with `OPTIONS_MISSING` otherwise. `--validate-only` is intended for direct/interactive use (not automation subprocesses).
+
+```
+/ll:decide-issue ENH-277 --auto
+/ll:decide-issue FEAT-398 --auto --validate-only
+```
+
 **Sample output:**
 
 ```
@@ -230,8 +237,9 @@ CHANGES APPLIED
   - Annotated issue with > **Selected:** callout
   - Appended ### Decision Rationale section
   - decision_needed: set to false
-  - Appended decision entry to .ll/decisions.yaml
 ```
+
+`CHANGES APPLIED` reports only these three issue-file edits (each line flips to "Skipped (idempotent)" / "already false — no change" on a repeat run). The decisions.yaml log append happens separately in Phase 7b via `ll-issues decisions add` — it's a silent no-op when `decisions.yaml` doesn't exist, and isn't itself listed in the `CHANGES APPLIED` block.
 
 ---
 
@@ -462,7 +470,7 @@ The old entry stays in the YAML for audit trail purposes. `--active-only` filter
 
 ## Configuration
 
-The decisions feature has a small config namespace in `.ll/ll-config.json`:
+The decisions feature has a small config namespace in `.ll/ll-config.json`. Defaults shown below; `auto_generate` defaults to `[]` (no auto-generation) — the example sets it to `["FEAT", "ENH"]` to illustrate a common customization that skips BUG entries:
 
 ```json
 {

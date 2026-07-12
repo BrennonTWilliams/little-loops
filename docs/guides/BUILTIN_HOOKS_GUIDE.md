@@ -110,7 +110,7 @@ Session ends
 
 The behaviors that **write data or change your repo** are **off until you opt in**:
 
-- `analytics.enabled` (recording to `history.db`) — **off**
+- `analytics.enabled` (recording to `history.db`) — **off** at runtime (the JSON schema lists `default: true` for documentation/UI purposes, but the hook code's `feature_enabled()` helper treats an *absent* key as `false`, so a project with no explicit `analytics.enabled` in `.ll/ll-config.json` gets no analytics recording)
 - `scratch_pad.enabled` (output redirection) — **off**
 - `learning_tests.enabled` (import gate) — **off**
 - `issues.auto_commit` (auto-committing issue files) — **off**
@@ -176,7 +176,7 @@ Toggle interactively with `/ll:toggle-autoprompt`.
 
 ### Analytics recording
 
-If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (default **true**) and `analytics.capture.corrections` (default **true**).
+If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (schema default `true`, but effectively **off** at runtime unless set explicitly — see [Safe by Default](#safe-by-default)) and `analytics.capture.corrections` (default **true**).
 
 **Never blocks.** Exit 0 always.
 
@@ -345,7 +345,7 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 **Hook:** `session-cleanup.sh` (pure bash)
 
-Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionEnd — see BUG-2420.) Always on.
+Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` specifically, not `automation.worktree_base`. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionEnd — see BUG-2420.) Always on.
 
 ---
 
@@ -380,10 +380,10 @@ This is what lets a post-compaction context pick up mid-task. Always on; writes 
 ```
 
 The four conditions (each requires evidence in the transcript; absence → defer):
-1. **closed_unit** — reasoning unit has a definite resolution (default signals: `done`, `completed`, `fixed`)
-2. **reducible** — content can be summarised to a few facts (default signals: `in summary`, `to summarize`)
-3. **progress** — something changed since the last compact (default signals: `changed`, `updated`, `modified`)
-4. **not_stuck** — no stuck-loop signals detected (default signals: `same error`, `still failing`)
+1. **closed_unit** — reasoning unit has a definite resolution (default signals: `done`, `completed`, `fixed`, `resolved`)
+2. **reducible** — content can be summarised to a few facts (default signals: `in summary`, `to summarize`, `overall`)
+3. **progress** — something changed since the last compact (default signals: `changed`, `updated`, `modified`, `implemented`)
+4. **not_stuck** — no stuck-loop signals detected (default signals: `same error`, `still failing`, `repeat`)
 
 Signal lists are configurable via `hooks.pre_compact.rubric.signals.*`. Disabled by default; when disabled (or on any transcript-read error), falls back to the original threshold-only behaviour.
 
@@ -444,7 +444,7 @@ A few quick controls:
 | `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
 | `hooks.stale_ref_fix` | SessionStart | `report` | `report` or `auto` |
-| `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope |
+| `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope (distinct from `automation.worktree_base`, which `ll-auto`/FSM sub-loops use and this hook does not read) |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).
 

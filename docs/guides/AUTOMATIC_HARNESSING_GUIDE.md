@@ -350,10 +350,11 @@ check_comparator:
     baseline_path: ".loops/baselines/my-loop/"
     auto_promote: true    # on first run (no baseline), bootstrap and route yes
     min_pairs: 1          # increase for higher confidence (majority vote)
-  on_yes: check_invariants
-  on_no: execute
-  on_tie: execute         # tie counts as no regression — route to retry
-  on_no_baseline: check_invariants  # baseline missing without auto_promote
+  route:
+    yes: check_invariants
+    no: execute                  # baseline wins — route to retry
+    tie: execute                 # tie counts as no regression — route to retry
+    no_baseline: check_invariants  # baseline missing without auto_promote
 ```
 
 **Verdict table:**
@@ -807,7 +808,7 @@ plan -> research -> implement -> check_stall -> check_concrete -> check_semantic
 | Implementer | `implement` | Apply the plan using research context; equivalent to `execute` in Variants A/B |
 | Reporter | `report` | Summarize what was done after the evaluation chain passes |
 
-**Human-in-the-loop (HITL) gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the workaround pattern from `scripts/little_loops/loops/loop-router.yaml` (a prompt state with `output_contains` routing). The ready-to-run example includes the HITL gate as a commented-out `# OPTIONAL: review_plan` block.
+**Human-in-the-loop (HITL) gate pattern (FEAT-1794 dependency):** Between `plan` and `research`, an optional `review_plan` gate can pause the loop for human approval. Until `action_type: human_approval` (FEAT-1794) is available, use the `output_contains`-routed prompt-state workaround shown as a commented-out `# OPTIONAL: review_plan` block directly in [`scripts/little_loops/loops/harness-plan-research-implement-report.yaml`](../../scripts/little_loops/loops/harness-plan-research-implement-report.yaml) (a prompt asks the reviewer to reply APPROVE or REVISE, routed via `on_yes`/`on_no`).
 
 **Evaluation chain:** Variants A and B evaluation phases (`check_stall`, `check_concrete`, `check_semantic`, `check_invariants`) apply between `implement` and `report`, identical to Variant A. The stall route goes to `report` rather than `done`, so the earlier planning and research context is always surfaced in the final report even when implementation stalls.
 
@@ -1105,10 +1106,11 @@ check_comparator:
     baseline_path: ".loops/baselines/harness-single-shot/"
     auto_promote: true    # bootstrap baseline on first run if missing
     min_pairs: 1
-  on_yes: check_invariants
-  on_no: execute          # retry if baseline wins
-  on_tie: check_invariants
-  on_no_baseline: check_invariants
+  route:
+    yes: check_invariants
+    no: execute          # retry if baseline wins
+    tie: check_invariants
+    no_baseline: check_invariants
 ```
 
 **The two modes are complementary, not the same:**
@@ -1162,7 +1164,7 @@ locks in CI.
 POSIX `SIGKILL` cannot be intercepted by a Python signal handler. If a
 supervisor, CI runner, or OOM killer issues `SIGKILL`, the loop dies
 without invoking any handler code. Rows already appended to
-`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:129-145` —
+`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:135-151` —
 every append is `flush()` + `os.fsync()`-d before returning), but the
 `.history/<run_id>-<loop_name>/` archive and the final `state.json`
 snapshot may not land.
@@ -1179,8 +1181,11 @@ on shutdown rather than `SIGKILL`:
 
 The end-to-end SIGINT contract is verified by
 `scripts/tests/test_fsm_signal_integration.py`. When in doubt, prefer
-to inspect the audit trail (`events.jsonl` and the `.history/...`
-archive) instead of assuming the latest state was captured.
+to inspect the audit trail — but note `events.jsonl` (the live, fsync'd
+run file) and the `.history/...` archive (a copy written by
+`archive_run()`) are not guaranteed to be co-located after a hard kill:
+the former can survive `SIGKILL` on its own even when the latter never
+lands — instead of assuming the latest state was captured.
 
 ---
 

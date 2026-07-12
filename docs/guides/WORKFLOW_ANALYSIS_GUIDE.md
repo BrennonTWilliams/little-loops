@@ -107,12 +107,20 @@ Key flags reference:
 |------|-------|-------------|
 | `--limit N` | `-n N` | Max messages to extract (default: 100) |
 | `--since DATE` | `-S` | Only messages after this date (YYYY-MM-DD or ISO) |
-| `--output FILE` | `-o FILE` | Output file path |
+| `--output FILE` | `-o FILE` | Output file path (default: `.ll/user-messages-{timestamp}.jsonl`) |
+| `--cwd DIR` | | Working directory to use (default: current directory) |
+| `--exclude-agents` | | Exclude agent session files (`agent-*.jsonl`) |
 | `--stdout` | | Print to terminal instead of file |
 | `--verbose` | `-v` | Show progress information |
 | `--include-response-context` | | Include tools used and files modified per message |
-| `--skip-cli` | | Exclude CLI commands from output |
+| `--skip-cli` | | Exclude CLI commands from output (included by default) |
 | `--commands-only` | | Extract only CLI commands, no prose messages |
+| `--tools LIST` | | Comma-separated tools to extract commands from (default: `Bash`) |
+| `--skill NAME` | | Filter to sessions where this skill was invoked |
+| `--examples-format` | | Output (input, output) training pairs instead of raw messages (mutually exclusive with `--sft-format`) |
+| `--sft-format FORMAT` | | Output SFT training format: `chatml`, `alpaca`, or `sharegpt` (mutually exclusive with `--examples-format`) |
+| `--context-window N` | | Preceding messages to include as context for `--examples-format`/`--sft-format` (default: 3) |
+| `--reader SOURCE` | | Data source for `--sft-format`: `auto`, `db`, or `jsonl` (default: `auto`) |
 
 ## Running the Full Pipeline: `/ll:analyze-workflows`
 
@@ -219,8 +227,8 @@ You can run Step 2 independently — useful if you've run Step 1 manually or wan
 
 ```bash
 # Shortest form — assumes step1-patterns.yaml already exists from a prior Step 1 agent run;
-# sets the --input path to the default so ll-workflows can find it automatically
-ll-messages --output .ll/workflow-analysis/user-messages.jsonl
+# writes ll-messages output to ll-workflows' default --input path so it's found automatically
+ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
 ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
@@ -270,7 +278,7 @@ This skill reads Step 1 and Step 2 outputs and writes `step3-proposals.yaml`. Ru
 
 ### CLI alternative: `ll-workflows propose`
 
-If the skill invocation is unavailable (e.g., `disable-model-invocation` config issue), use the CLI fallback to run Step 3 non-interactively:
+If you'd rather not spend a Skill tool invocation (or are scripting outside an interactive session), use the CLI fallback to run Step 3 non-interactively:
 
 ```bash
 ll-workflows propose \
@@ -285,7 +293,11 @@ ll-workflows propose \
   --format json -o step3.json
 ```
 
-This makes the complete three-step pipeline scriptable end-to-end without an interactive session.
+`ll-workflows analyze` (Step 2) and `ll-workflows propose` (Step 3) are plain CLIs with no
+LLM dependency. Step 1 is not: it spawns the `workflow-pattern-analyzer` agent via the Task
+tool, which requires a Claude CLI session. The pipeline is only scriptable end-to-end if
+that Claude CLI invocation is itself part of your script (e.g. `claude -p ...`) — Steps 2
+and 3 alone do not remove the dependency.
 
 ### What It Looks For
 

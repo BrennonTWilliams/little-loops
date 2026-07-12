@@ -37,7 +37,7 @@ There are two sub-families, joined by that shared idea:
 
 | Loop | Family | Role | Input | Output |
 |------|--------|------|-------|--------|
-| `rn-plan` | Planning | Entry point | A task description (string) | `plan.md` + rubric |
+| `rn-plan` | Planning | Entry point | A task description (string) | `plan.md` + `plan-rubric.md` + `research.md` |
 | `rn-refine` | Planning | Entry point / orchestrator | Path to an existing `plan.md` | Recursively refined `plan.md` (in place) |
 | `rn-implement` | Implementation | Entry point / orchestrator | Issue ID(s) | Implemented issues + `summary.json` |
 | `rn-remediate` | Implementation | Sub-loop (per issue) | One issue ID | Outcome token |
@@ -50,43 +50,50 @@ There are two sub-families, joined by that shared idea:
 
 ## The Big Picture
 
-The capstone `rn-build` loop ties both families together — it plans, scopes an
-EPIC, then implements — but you can run either family on its own. The call graph:
+`rn-build` is a separate capstone orchestrator (spec → tech research → design →
+EPIC → issue refinement → eval harness → clustered implementation → eval gate)
+that shares the "recurse until converged" idea but does **not** delegate to
+`rn-plan`, `rn-refine`, or `rn-implement` directly — it has its own
+research/design/scoping states, uses the `recursive-refine` loop to seed-refine
+newly scoped issues, and dispatches execution through `goal-cluster`, which in
+turn batches work out to `rn-implement`. See
+[Built-in Loops Reference § rn-build](LOOPS_REFERENCE.md#rn-build--spec-to-project-capstone-orchestrator)
+for its full state chain. The two families below (`rn-plan`/`rn-refine` and
+`rn-implement`/`rn-remediate`/`rn-decompose`) are each independently runnable
+and don't call each other directly at runtime. The call graph for the two
+families:
 
 ```
-rn-build  (capstone: spec → plans → EPIC → implement)
-  │
-  ├── Planning ─────────────────────────────────────────────
-  │     rn-plan   (task → plan.md)
-  │         └── oracles/plan-research-iteration
-  │               classify → research (files|web) → synthesize
-  │     rn-refine (existing plan.md → recursively refined plan.md)
-  │         │  dequeue node → refine → decide leaf|decompose
-  │         └── oracles/plan-node-refine  (per node)
-  │               refine to convergence (reuses plan-research-iteration)
-  │               then LEAF, or DECOMPOSE → enqueue child sub-plans
-  │                                         (depth-first recursion)
-  │
-  └── Implementation ───────────────────────────────────────
-        rn-implement  (queue orchestrator)
-          │  dequeue issue → gates (blocked / depth / status)
-          │
-          ├── rn-remediate  (per issue: diagnose → remediate → converge)
-          │       emits outcome token ──► parent routes
-          │
-          └── rn-decompose  (split issue into children)
-                  enqueues children ──► back into rn-implement's queue
-                                        (depth-first recursion)
+Planning ─────────────────────────────────────────────
+  rn-plan   (task → plan.md)
+      └── oracles/plan-research-iteration
+            classify → research (files|web) → synthesize
+  rn-refine (existing plan.md → recursively refined plan.md)
+      │  dequeue node → refine → decide leaf|decompose
+      └── oracles/plan-node-refine  (per node)
+            refine to convergence (reuses plan-research-iteration)
+            then LEAF, or DECOMPOSE → enqueue child sub-plans
+                                      (depth-first recursion)
+
+Implementation ───────────────────────────────────────
+  rn-implement  (queue orchestrator)
+    │  dequeue issue → gates (blocked / depth / status)
+    │
+    ├── rn-remediate  (per issue: diagnose → remediate → converge)
+    │       emits outcome token ──► parent routes
+    │
+    └── rn-decompose  (split issue into children)
+            enqueues children ──► back into rn-implement's queue
+                                  (depth-first recursion)
 ```
 
-The two families don't call each other directly at runtime — `rn-build` is the
-glue that runs planning first and implementation second. Both families share the
-same recursion shape: a depth-bounded queue where a node, when it is too large/
-coarse, is split into children that are *prepended* back onto the queue and
-processed depth-first. In implementation that feedback arrow is `rn-decompose`
-prepending child issues onto `rn-implement`'s queue; in planning it is
-`oracles/plan-node-refine` prepending child sub-plans onto `rn-refine`'s node
-queue. That prepend-and-re-enter step is what makes each tree *recursive*.
+Both families share the same recursion shape: a depth-bounded queue where a
+node, when it is too large/coarse, is split into children that are *prepended*
+back onto the queue and processed depth-first. In implementation that feedback
+arrow is `rn-decompose` prepending child issues onto `rn-implement`'s queue; in
+planning it is `oracles/plan-node-refine` prepending child sub-plans onto
+`rn-refine`'s node queue. That prepend-and-re-enter step is what makes each
+tree *recursive*.
 
 ## Planning Loops: `rn-plan` & `rn-refine`
 
@@ -119,8 +126,11 @@ phase runs **in parallel**: `synth_dispatch` background-spawns up to `synth_work
 readiness gate (a node integrates only once all its children have, so same-depth
 nodes fold up concurrently). Per-node work is delegated to the
 `oracles/plan-node-refine` sub-loop, which itself reuses the same research/synthesize
-chain as `rn-plan`. On completion it **overwrites the original file in place** — no
-manual copy out of `.loops/` needed.
+chain as `rn-plan`. Before writing, a `preflight_check` state verifies invariants
+(ENH-2418) and can abort rather than risk a destructive write; once it passes,
+`finalize` first writes a timestamped backup (`${run_dir}/source-backup-<ISO>.md`)
+and then **overwrites the original file in place** — no manual copy out of
+`.loops/` needed, and the backup means the pre-refine version isn't lost.
 
 ```bash
 ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
@@ -226,10 +236,9 @@ it and route. For `rn-remediate`:
 
 | Outcome token | Meaning | `rn-implement` routes to |
 |---------------|---------|--------------------------|
-| `IMPLEMENTED` | Issue implemented (FEAT-2552: code-run-gate passed — build / test / typecheck / lint / health all green, or all commands null → `GATE_SKIP` treated as pass) | Re-enqueue newly-unblocked issues, continue |
-| `GATE_FAILED` | FEAT-2552: code-run-gate oracle reported a non-skip failure (build / test / typecheck / lint / health). Written by `rn-remediate.record_gate_failure`. Increments the same `remediation_count_<ID>.txt` counter that `check_remediation_budget` enforces, so a gate failure consumes a budget slot. Tagged `GATE_FAILED_CODE_QUALITY` in `failures.txt` for the report's per-tag tally. | `record_failure` (parent), dequeue next |
-| `GATE_FAILED_INFRA` | FEAT-2552 / ENH-2005 mirror: code-run-gate child crashed / timed out / context-resolution-failed before writing its token. Distinct from `GATE_FAILED` so a gate infrastructure failure isn't confused with a code-quality failure. | `emit_implement_failed` (terminal) |
-| `GATE_SKIP` | FEAT-2551 / FEAT-2552: oracle emitted SKIP (all commands null/empty — docs-only no-op pass). Treated identically to `GATE_PASS` by F2b's wiring (routes to `emit_implemented`); no separate routing row in `rn-implement`'s table. | `emit_implemented` (treated as pass) |
+| `IMPLEMENTED` | Issue implemented. FEAT-2552: `rn-remediate`'s inner code-run-gate oracle passed (build / test / typecheck / lint / health all green), or all commands were null/empty (`GATE_SKIP` from the oracle, which `rn-remediate`'s own gate-child routing treats identically to `GATE_PASS` before ever writing the parent-visible sidecar) — so `GATE_SKIP` never appears as a distinct token in this table; it's folded into `IMPLEMENTED` upstream. | `route_rem_implemented` → `re_enqueue_unblocked`, continue |
+| `GATE_FAILED` | FEAT-2552: code-run-gate oracle reported a non-skip failure (build / test / typecheck / lint / health). Written by `rn-remediate.record_gate_failure`. Increments the same `remediation_count_<ID>.txt` counter that `check_remediation_budget` enforces, so a gate failure consumes a budget slot. Tagged `GATE_FAILED_CODE_QUALITY` in `failures.txt` for the report's per-tag tally. | `route_rem_gate_failed` → `record_failure`, dequeue next |
+| `GATE_FAILED_INFRA` | FEAT-2552 / ENH-2005 mirror: code-run-gate child crashed / timed out / context-resolution-failed before writing its token. Written by `rn-remediate.record_gate_error`. Distinct from `GATE_FAILED` so a gate infrastructure failure isn't confused with a code-quality failure, but it is **not** a separate terminal — the `GATE_FAILED` substring match in `route_rem_gate_failed` also catches it, so it routes the same way. | `route_rem_gate_failed` → `record_failure` (tagged `GATE_FAILED_INFRA` in `failures.txt`), dequeue next |
 | `NEEDS_DECOMPOSE` | Issue too large | Delegate to `rn-decompose` |
 | `STALLED_NEEDS_DECOMPOSE` | Remediation exhausted its budget | Try `rn-decompose`; if no children, defer |
 | `MANUAL_REVIEW_NEEDED` | Needs a human decision | Mark blocked |
@@ -241,8 +250,11 @@ it and route. For `rn-remediate`:
 | `ENV_NOT_READY` | Host auth not configured (HTTP 401/403 during `ll-auto`) | Abort the queue (ENH-2353) |
 | `LEARNING_GATE_BLOCKED` | Learning gate (ENH-2319) blocked the issue on unproven external-API deps | Record diagnostic separately (remedy: `/ll:explore-api`), continue |
 
-The learning-gate routing is **consistent across all three core implementation
-loops**: `rn-remediate`, `autodev`, and (via `auto-refine-and-implement` →
+The learning-gate routing is **consistent across all three loops that call
+`ll-auto --only` directly**: `rn-remediate` (the sub-loop `rn-implement`
+delegates to per issue — `rn-implement` itself makes no LLM/`ll-auto` calls of
+its own, see [`rn-implement` — the orchestrator you run](#rn-implement--the-orchestrator-you-run)),
+`autodev`, and (via `auto-refine-and-implement` →
 `autodev`) `sprint-refine-and-implement` all implement through the same
 `ll-auto --only` choke point, which runs the ENH-2319 gate inside
 `process_issue_inplace`. On a block, `ll-auto` prints the `LEARNING_GATE_BLOCKED`
@@ -363,8 +375,8 @@ Step 6b verdict, follow-up runs) reads them via the archived copy under
 sidecars are surfaced in `summary_warnings.txt` rather than aborting the
 report.
 
-> **Tip**: For the full end-to-end pipeline (spec → design → EPIC → batched
-> implementation), use `rn-build` — see its section in the
+> **Tip**: For the full end-to-end pipeline (spec → design → EPIC → eval harness
+> → batched implementation → eval gate), use `rn-build` — see its section in the
 > [Built-in Loops Reference](LOOPS_REFERENCE.md#rn-build--spec-to-project-capstone-orchestrator).
 
 ## See Also

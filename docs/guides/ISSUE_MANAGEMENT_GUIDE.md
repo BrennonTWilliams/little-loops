@@ -79,7 +79,7 @@ Issues move through seven states (plus Deferred, a parking state outside the mai
         │
         ▼
   ┌────────────┐
-  │ Validating │  ← refinement pipeline (normalize → format → refine → verify → tradeoff)
+  │ Validating │  ← refinement pipeline (normalize → format → refine → decide → wire → verify → tradeoff → align → link-epics)
   └────────────┘
         │
         ▼
@@ -189,7 +189,7 @@ Both commands can generate many issues at once. Run them when onboarding to a ne
 
 ### The Refinement Pipeline
 
-Refinement transforms raw captures into implementation-ready issues. **You don't need all eight steps on every issue** — use the decision tree below to pick your path:
+Refinement transforms raw captures into implementation-ready issues. **You don't need all ten steps on every issue** — use the decision tree below to pick your path:
 
 ```
 What kind of issue is it?
@@ -201,20 +201,22 @@ What kind of issue is it?
 │    → normalize → format --auto → refine → wire → verify → manage-issue
 │
 └─ Large feature or complex change
-     → all 8 steps below
+     → all 10 steps below
 ```
 
 The full pipeline in order:
 
 ```
-1. normalize-issues    ← fix filenames (missing IDs, bad format)
-2. prioritize-issues   ← set P0-P5 prefix
-3. format-issue        ← promote to v2.0 template
-4. refine-issue        ← research codebase, fill knowledge gaps
-5. decide-issue        ← resolve competing options (only if decision_needed: true)
-6. wire-issue          ← complete integration map (callers, config, docs, tests)
-7. verify-issues       ← test claims against actual code
-8. tradeoff-review-issues ← prune low-value issues before investing more time
+1.  normalize-issues    ← fix filenames (missing IDs, bad format)
+2.  prioritize-issues   ← set P0-P5 prefix
+3.  format-issue        ← promote to v2.0 template
+4.  refine-issue        ← research codebase, fill knowledge gaps
+5.  decide-issue        ← resolve competing options (only if decision_needed: true)
+6.  wire-issue          ← complete integration map (callers, config, docs, tests)
+7.  verify-issues       ← test claims against actual code
+8.  tradeoff-review-issues ← prune low-value issues before investing more time
+9.  align-issues        ← validate issues against key documents for relevance
+10. link-epics          ← wire unparented issues to the right EPIC
 ```
 
 > See [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) for the full decisions system: how `decision_needed` gates automation, the four entry types (`decision`, `rule`, `exception`, `coupling`), and how `ll-issues decisions sync` propagates required rules to `.ll/ll.local.md`.

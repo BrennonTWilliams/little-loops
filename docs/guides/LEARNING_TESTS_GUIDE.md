@@ -64,7 +64,7 @@ Enable automatic discovery of unproven API assumptions as you write code by sett
 
 ### 1. Ingest
 
-The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. by the `adopt-third-party-api` loop), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
+The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. via the `/ll:scrape-docs` skill — invoked as the first state of the `adopt-third-party-api` loop, or run standalone), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
 
 ### 2. Hypothesize
 
@@ -222,6 +222,7 @@ Five named loops compose the learning-test gate stack. Pick the one that matches
 | Loop | When to use |
 |------|-------------|
 | `ready-to-implement-gate` | You already have an explicit list of API targets and want to prove them before implementation. The sub-loop primitive used by every other gate. |
+| `oracles/enumerate-and-prove` | Internal sub-loop (not a direct entry point) that parses a tagged `ENUMERATE_JSON` line from LLM output, flattens the extracted targets list, and proves each via `ready-to-implement-gate`. Used by `adopt-third-party-api` and `integrate-sdk` to share their parse → flatten → prove logic (ENH-1873). |
 | `assumption-firewall` | You have an issue file and want the gate to extract and validate API assumptions for you before you start writing code. |
 | `integrate-sdk` | You are starting from an SDK discovery (greenfield or existing usage) and want proof-backed scaffolding with citation comments in the output. |
 | `adopt-third-party-api` | You are starting from a vendor docs URL and want an end-to-end pipeline: scrape → enumerate endpoints → prove each → write an integration playbook. |
@@ -336,7 +337,7 @@ Controlled by the `learning_tests.discoverability` block in `.ll/ll-config.json`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `discoverability.mode` | `str` | `"warn"` | `"off"` — silent; `"warn"` — emits hint, allows tool call; `"block"` — injects feedback into model context and blocks the write. |
-| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Package names that are never flagged (stdlib, type stubs, internal). |
+| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Package names that are never flagged (stdlib, type stubs, internal). Unioned at runtime with a hardcoded `_BUILTIN_SKIP` set (`__future__`, `__builtins__`, `typing_extensions`, `abc`, `io`, `re`, `json`) in `scripts/little_loops/hooks/learning_tests_gate.py` — these are always skipped and cannot be re-enabled via config. |
 
 Enabling the gate:
 
@@ -395,13 +396,14 @@ When `learning_tests.enabled` is `true`, `/ll:manage-release` runs a pre-release
 | `"warn"` (default) | Prints warning table, release continues |
 | `"block"` | Prints warning table, aborts with exit 1 |
 
-**Example output (block mode):**
+**Example output (block mode, `stale_after_days: 30`, run on 2026-07-12):**
+<!-- TODO: ENH-2621 - day-counts are computed as (today - record.date) at run time (release_gate.py:81); pin these to a documented "as of" date or regenerate the example on each guide refresh so they don't silently drift out of sync. -->
 ```
 ⚠ Learning Test Pre-Release Audit
 Package                        Status     Record Date    Days Since Proven
 ----------------------------------------------------------------------
-anthropic                      stale      2026-05-01     49
-requests                       refuted    2026-04-15     64
+anthropic                      stale      2026-06-01     41
+requests                       refuted    2026-05-20     53
 
 ✗ Release blocked: fix or re-prove the above records, or set release_gate: warn to proceed.
 ```
