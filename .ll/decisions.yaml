@@ -5000,3 +5000,30 @@
   scope: issue
   alternatives_rejected: 'Option B: reimplement from scratch per Proposed Solution'
   issue: FEAT-2576
+- id: ARCHITECTURE-142
+  type: decision
+  timestamp: '2026-07-12T18:16:41Z'
+  category: architecture
+  labels: []
+  rationale: Matches auto-refine-and-implement.yaml's existing free-function import
+    style (checkout_epic_branch/verify), no FSM loop shells out to ll-parallel today,
+    and it collapses the verify state's duplicated reimplementation instead of leaving
+    it. Scored 10/12 vs Option B's 8/12.
+  rule: Option A — extract _merge_epic_branch_to_base/_verify_epic_branch_before_merge
+    into free functions (worktree_utils.py precedent), not a new ll-parallel CLI flag
+  scope: issue
+  alternatives_rejected: 'Option B: new ll-parallel --merge-epic-branch CLI flag'
+  issue: BUG-2614
+- id: ARCHITECTURE-143
+  type: decision
+  timestamp: '2026-07-12T18:18:43Z'
+  category: architecture
+  labels: []
+  rationale: Reuses the proven _maybe_complete_epic transitive-walk pattern; Option
+    B requires scattered logic across 4 non-uniform decomposition entry points
+  rule: 'Option A: re-resolve issue_set transitively via issue_progress.py before
+    each delegate dispatch'
+  scope: issue
+  alternatives_rejected: 'Option B: decomposition-side worktree check via epic-branch-name.txt
+    marker'
+  issue: ENH-2615

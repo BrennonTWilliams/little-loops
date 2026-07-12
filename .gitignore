@@ -93,6 +93,7 @@ scripts/little_loops/loops/.history/
 
 # Debug output files
 deepcodebase-*.txt
+changelog-data.json
 
 # little-loops context/sync state files
 .ll/*.lock
