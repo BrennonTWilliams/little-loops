@@ -2737,6 +2737,34 @@ ll-verify-design-tokens -C /path/to/root         # Discover under a specific pro
 
 ---
 
+### ll-verify-decisions
+
+Validate `.ll/decisions.yaml` by loading it through `load_decisions()` and asserting no YAML syntax errors, missing required fields, or unknown entry-type discriminators. Gates the three transport-layer corruption checks (ENH-2589): the pre-commit hook (ENH-2590), the pytest CI gate (ENH-2591), and the Claude Code `PreToolUse` hook (ENH-2592) all delegate to this binary and rely on its exit-code contract.
+
+The validator catches three corruption classes:
+
+1. **YAML syntax corruption** (e.g. an unescaped `""` inside a double-quoted `rationale:` scalar → `yaml.YAMLError`).
+2. **Schema drift** — entries missing required fields (`id`, `result`/`measured_at` for outcomes, etc.) → `KeyError`.
+3. **Unknown `type` discriminator** → `ValueError("Unknown entry type")`.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--config-root` | Project root whose `.ll/decisions.yaml` to validate (default: cwd). Equivalent to `BRConfig.project_root`. |
+
+**Exit codes:** `0` = loadable via `load_decisions()` and schema-clean; `1` = any caught `yaml.YAMLError`/`KeyError`/`ValueError`, with a single-line `ERROR: <path>: <ExcType>: <msg>` on stderr.
+
+**Examples:**
+```bash
+ll-verify-decisions                       # Validate .ll/decisions.yaml from cwd
+ll-verify-decisions --config-root /repo   # Validate under a specific project root
+```
+
+See [CONTRIBUTING.md § Decisions YAML Validation](../../CONTRIBUTING.md#decisions-yaml-validation-ll-verify-decisions) for the pre-commit wiring and [docs/guides/DECISIONS_LOG_GUIDE.md § Validation](../guides/DECISIONS_LOG_GUIDE.md) for the full three-layer defense model.
+
+---
+
 ### ll-verify-des-audit
 
 Walk the source tree and verify every event-emit site maps to a registered DES variant — the F5 adoption gate (ENH-2475). The audit reads every emit-call string literal in `scripts/little_loops/`, then checks each against the canonical `DES_VARIANTS` registry (defined in `little_loops.observability.schema`). Exit 0 means every currently-emitted event type has a registered variant; exit 1 means a new event was emitted without being registered — block F5's `gen_ai.usage.*` adoption until the variant is added.
