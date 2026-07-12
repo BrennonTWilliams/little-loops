@@ -23,6 +23,7 @@ from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
     AnalyticsCaptureConfig,
     ArtifactsConfig,
+    CodeQueryConfig,
     DecisionsConfig,
     DesignTokensConfig,
     EventsConfig,
@@ -224,6 +225,7 @@ class BRConfig:
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
         )
+        self._code_query = CodeQueryConfig.from_dict(self._raw_config.get("code_query", {}))
         self._cli = CliConfig.from_dict(self._raw_config.get("cli", {}))
         self._refine_status = RefineStatusConfig.from_dict(
             self._raw_config.get("refine_status", {})
@@ -300,6 +302,11 @@ class BRConfig:
     def dependency_mapping(self) -> DependencyMappingConfig:
         """Get dependency mapping configuration."""
         return self._dependency_mapping
+
+    @property
+    def code_query(self) -> CodeQueryConfig:
+        """Get code-query provider configuration."""
+        return self._code_query
 
     @property
     def cli(self) -> CliConfig:
@@ -750,6 +757,13 @@ class BRConfig:
                     "type": self._dependency_mapping.scoring_weights.type,
                 },
                 "exclude_common_files": self._dependency_mapping.exclude_common_files,
+            },
+            "code_query": {
+                "provider": self._code_query.provider,
+                "codegraph": {
+                    "db_path": self._code_query.codegraph.db_path,
+                },
+                "staleness": self._code_query.staleness,
             },
             "cli": {
                 "color": self._cli.color,

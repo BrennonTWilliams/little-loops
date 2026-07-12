@@ -22,6 +22,8 @@ from little_loops.config import (
     CliColorsTypeConfig,
     CliConfig,
     ClusterConfig,
+    CodeQueryCodegraphConfig,
+    CodeQueryConfig,
     CommandsConfig,
     CompactionConfig,
     ComposerAdaptiveConfig,
@@ -2180,6 +2182,83 @@ class TestDependencyMappingConfig:
         config = BRConfig(temp_project_dir)
         assert config.resolve_variable("dependency_mapping.conflict_threshold") == "0.4"
         assert config.resolve_variable("dependency_mapping.overlap_min_files") == "2"
+
+
+class TestCodeQueryConfig:
+    """Tests for CodeQueryConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating CodeQueryConfig with default values."""
+        config = CodeQueryConfig.from_dict({})
+        assert config.provider == "auto"
+        assert config.codegraph.db_path == ".codegraph/codegraph.db"
+        assert config.staleness == "warn"
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating CodeQueryConfig with all fields specified."""
+        data = {
+            "provider": "codegraph",
+            "codegraph": {"db_path": "custom/path.db"},
+            "staleness": "strict",
+        }
+        config = CodeQueryConfig.from_dict(data)
+        assert config.provider == "codegraph"
+        assert config.codegraph.db_path == "custom/path.db"
+        assert config.staleness == "strict"
+
+    def test_from_dict_partial_data(self) -> None:
+        """Test creating CodeQueryConfig with partial data."""
+        data = {"staleness": "off"}
+        config = CodeQueryConfig.from_dict(data)
+        assert config.staleness == "off"
+        # Other fields should use defaults
+        assert config.provider == "auto"
+        assert config.codegraph.db_path == ".codegraph/codegraph.db"
+
+    def test_codegraph_from_dict_with_defaults(self) -> None:
+        """Test creating CodeQueryCodegraphConfig with default values."""
+        config = CodeQueryCodegraphConfig.from_dict({})
+        assert config.db_path == ".codegraph/codegraph.db"
+
+    def test_brconfig_defaults(self, temp_project_dir: Path) -> None:
+        """Test BRConfig loads code_query with defaults."""
+        config = BRConfig(temp_project_dir)
+        assert config.code_query.provider == "auto"
+        assert config.code_query.staleness == "warn"
+
+    def test_brconfig_loads_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test BRConfig loads code_query from config file."""
+        sample_config["code_query"] = {
+            "provider": "codegraph",
+            "codegraph": {"db_path": ".codegraph/custom.db"},
+            "staleness": "strict",
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.code_query.provider == "codegraph"
+        assert config.code_query.codegraph.db_path == ".codegraph/custom.db"
+        assert config.code_query.staleness == "strict"
+
+    def test_code_query_in_to_dict(self, temp_project_dir: Path) -> None:
+        """Test code_query config appears in to_dict output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "code_query" in result
+        cq = result["code_query"]
+        assert cq["provider"] == "auto"
+        assert cq["codegraph"]["db_path"] == ".codegraph/codegraph.db"
+        assert cq["staleness"] == "warn"
+
+    def test_resolve_variable_code_query(self, temp_project_dir: Path) -> None:
+        """Test resolve_variable works for code_query config paths."""
+        config = BRConfig(temp_project_dir)
+        assert config.resolve_variable("code_query.provider") == "auto"
+        assert config.resolve_variable("code_query.staleness") == "warn"
 
 
 class TestCliColorsLoggerConfig:

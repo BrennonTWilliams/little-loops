@@ -727,6 +727,38 @@ class SyncConfig:
 
 
 @dataclass
+class CodeQueryCodegraphConfig:
+    """Codegraph provider settings for CodeQueryConfig."""
+
+    db_path: str = ".codegraph/codegraph.db"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CodeQueryCodegraphConfig:
+        """Create CodeQueryCodegraphConfig from dictionary."""
+        return cls(
+            db_path=data.get("db_path", ".codegraph/codegraph.db"),
+        )
+
+
+@dataclass
+class CodeQueryConfig:
+    """Code-query provider selection and staleness policy (inert until ENH-2613)."""
+
+    provider: str = "auto"
+    codegraph: CodeQueryCodegraphConfig = field(default_factory=CodeQueryCodegraphConfig)
+    staleness: str = "warn"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CodeQueryConfig:
+        """Create CodeQueryConfig from dictionary."""
+        return cls(
+            provider=data.get("provider", "auto"),
+            codegraph=CodeQueryCodegraphConfig.from_dict(data.get("codegraph", {})),
+            staleness=data.get("staleness", "warn"),
+        )
+
+
+@dataclass
 class SocketEventsConfig:
     """UnixSocketTransport configuration."""
 

@@ -133,6 +133,7 @@ BRConfig(project_root: Path)
 | `loops` | `LoopsConfig` | FSM loop settings |
 | `sync` | `SyncConfig` | GitHub Issues sync settings |
 | `dependency_mapping` | `DependencyMappingConfig` | Overlap detection thresholds |
+| `code_query` | `CodeQueryConfig` | Code-query provider selection, codegraph db path, and staleness policy (inert until a provider consumes it, see [CONFIGURATION.md#code_query](CONFIGURATION.md#code_query)) |
 | `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |

@@ -1202,6 +1202,37 @@
       },
       "additionalProperties": false
     },
+    "code_query": {
+      "type": "object",
+      "description": "Code-query provider selection, codegraph db path, and staleness policy (opt-in; inert until a provider consumes it)",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["auto", "codegraph", "fallback"],
+          "description": "Code-query provider to use for structural code lookups",
+          "default": "auto"
+        },
+        "codegraph": {
+          "type": "object",
+          "description": "Codegraph-specific provider settings",
+          "properties": {
+            "db_path": {
+              "type": "string",
+              "description": "Path to the codegraph SQLite database",
+              "default": ".codegraph/codegraph.db"
+            }
+          },
+          "additionalProperties": false
+        },
+        "staleness": {
+          "type": "string",
+          "enum": ["strict", "warn", "off"],
+          "description": "How to treat a stale codegraph database relative to source changes",
+          "default": "warn"
+        }
+      },
+      "additionalProperties": false
+    },
     "cli": {
       "type": "object",
       "description": "CLI output settings",

@@ -346,6 +346,37 @@ class TestConfigSchema:
         assert enabled["type"] == "boolean"
         assert enabled["default"] is True
 
+    def test_code_query_in_schema(self) -> None:
+        """code_query block must be declared in config-schema.json (ENH-2612).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'code_query' will be rejected unless the property is
+        declared here. The block is inert until a provider (ENH-2613) consumes it.
+        """
+        data = json.loads(_load_schema_text())
+        assert "code_query" in data["properties"], (
+            "code_query is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        code_query = data["properties"]["code_query"]
+        assert code_query["type"] == "object"
+        assert code_query.get("additionalProperties") is False
+
+        cq_props = code_query["properties"]
+        assert cq_props["provider"]["type"] == "string"
+        assert cq_props["provider"]["enum"] == ["auto", "codegraph", "fallback"]
+        assert cq_props["provider"]["default"] == "auto"
+
+        assert cq_props["staleness"]["type"] == "string"
+        assert cq_props["staleness"]["enum"] == ["strict", "warn", "off"]
+        assert cq_props["staleness"]["default"] == "warn"
+
+        codegraph = cq_props["codegraph"]
+        assert codegraph["type"] == "object"
+        assert codegraph.get("additionalProperties") is False
+        assert codegraph["properties"]["db_path"]["type"] == "string"
+        assert codegraph["properties"]["db_path"]["default"] == ".codegraph/codegraph.db"
+
     def test_history_in_schema(self) -> None:
         """history block must be declared in config-schema.json (ENH-1913).
 

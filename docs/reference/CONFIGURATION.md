@@ -203,6 +203,14 @@ For interactive editing, use `/ll:configure`.
     ]
   },
 
+  "code_query": {
+    "provider": "auto",
+    "codegraph": {
+      "db_path": ".codegraph/codegraph.db"
+    },
+    "staleness": "warn"
+  },
+
   "refine_status": {
     "columns": [],
     "elide_order": []
@@ -953,6 +961,18 @@ Dependency mapping threshold configuration for overlap detection and conflict sc
 | `exclude_common_files` | See below | Infrastructure files excluded from overlap detection |
 
 Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]`
+
+### `code_query`
+
+Code-query provider selection, codegraph db path, and staleness policy. This block
+is opt-in and inert — its presence or absence causes zero runtime behavior change
+until a provider consumes it (ENH-2613, the codegraph SQLite provider).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `provider` | `"auto"` | Code-query provider to use for structural code lookups. One of `auto`, `codegraph`, `fallback`. |
+| `codegraph.db_path` | `".codegraph/codegraph.db"` | Path to the codegraph SQLite database. |
+| `staleness` | `"warn"` | How to treat a stale codegraph database relative to source changes. One of `strict`, `warn`, `off`. |
 
 ### `issues.next_issue`
 
