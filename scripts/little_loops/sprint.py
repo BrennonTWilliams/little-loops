@@ -321,9 +321,29 @@ class SprintManager:
         # Forward lookup: relates_to on the EPIC file
         forward_ids: set[str] = set(epic_info.relates_to)
 
-        # Backward lookup: scan all active issues for parent == epic_id
+        # Backward lookup (ENH-2615): walk each active issue's parent: chain
+        # transitively so grandchildren (e.g. follow-ups decomposed from a child
+        # mid-run) resolve into the set — the same semantics
+        # compute_epic_progress / _maybe_complete_epic use for the EPIC
+        # completion gate, so run construction and closure agree on membership.
+        # The parent map spans ALL statuses so a done intermediate (a decomposed
+        # parent closed in place) still links its open children to the EPIC;
+        # membership itself stays active-only.
+        from little_loops.issue_progress import (
+            _ALL_STATUSES,
+            _issue_descends_to,
+            build_parent_map,
+        )
+
         all_active = find_issues(self.config, status_filter=_ACTIVE_STATUSES)
-        backward_ids = {info.issue_id for info in all_active if info.parent == epic_id}
+        parent_map = build_parent_map(
+            find_issues(self.config, status_filter=set(_ALL_STATUSES))
+        )
+        backward_ids = {
+            info.issue_id
+            for info in all_active
+            if _issue_descends_to(info.issue_id, epic_id, parent_map)
+        }
 
         # Union + dedup; intersect with active set so forward refs to done issues are dropped
         active_ids_set = {info.issue_id for info in all_active}

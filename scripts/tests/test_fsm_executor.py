@@ -5008,6 +5008,55 @@ class TestSubLoopWorktree:
         assert result.final_state == "err"
         mock_cleanup.assert_not_called()
 
+    def test_loop_state_reentry_reattaches_worktree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-2615 characterization: the worktree attach is per-ENTRY, not
+        per-run — routing back into the same `loop:` state re-interpolates
+        state.worktree and attaches a fresh worktree (attach on entry, detach
+        in the finally after the child returns). auto-refine-and-implement's
+        recheck_set → delegate cycle relies on this; no new executor
+        re-attach primitive is needed."""
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true"
+        )
+        marker = tmp_path / "reentry-marker"
+        gate = StateConfig(
+            action=f'if [ -f "{marker}" ]; then exit 1; else touch "{marker}"; exit 0; fi',
+            action_type="shell",
+            on_yes="run_child",
+            on_no="ok",
+        )
+        parent = self._parent(
+            states_extra={"gate": gate},
+            branch="epic/test-branch",
+            run_dir=str(tmp_path / "run"),
+        )
+        parent.states["run_child"].on_yes = "gate"
+
+        attach_paths: list[Path] = []
+
+        def fake_setup(**kwargs: Any) -> None:
+            attach_paths.append(Path(kwargs["worktree_path"]))
+            Path(kwargs["worktree_path"]).mkdir(parents=True, exist_ok=True)
+
+        with (
+            patch("little_loops.worktree_utils.setup_worktree", side_effect=fake_setup),
+            patch("little_loops.worktree_utils.cleanup_worktree") as mock_cleanup,
+        ):
+            result = FSMExecutor(parent, loops_dir=loops_dir).run()
+
+        assert result.final_state == "ok"
+        assert len(attach_paths) == 2, (
+            "each entry to a loop: state must attach its own worktree"
+        )
+        assert mock_cleanup.call_count == 2, (
+            "each entry must also detach its worktree after the child returns"
+        )
+
 
 class TestExecutorWorkingDir:
     """ENH-2609: FSMExecutor(working_dir=...) threads cwd to shell actions."""

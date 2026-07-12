@@ -97,3 +97,34 @@ def test_missing_parent_reports_warning(tmp_path: Path) -> None:
     result = finalize_decomposed_parent("ENH-999", ["ENH-201"], issues)
     assert result["moved"] is False
     assert any("parent file not found" in w for w in result["warnings"])
+
+
+def test_cli_children_file_path(tmp_path: Path, capsys: object) -> None:
+    """ENH-2615: cmd_finalize_decomposition reads child IDs from --children-file
+    (the invocation shape autodev's enqueue_children/enqueue_or_skip use with
+    the run_dir's autodev-new-children.txt artifact)."""
+    import argparse
+
+    from little_loops.cli.issues.finalize_decomposition import cmd_finalize_decomposition
+
+    issues = _make_tree(tmp_path, epic=True)
+    children_file = tmp_path / "autodev-new-children.txt"
+    children_file.write_text("ENH-201\nENH-202\n")
+
+    args = argparse.Namespace(
+        parent="ENH-200",
+        children=[],
+        children_file=str(children_file),
+        issues_dir=str(issues),
+        no_move=False,
+        config=tmp_path,
+    )
+    rc = cmd_finalize_decomposition(None, args)  # type: ignore[arg-type]  # config unused
+
+    assert rc == 0
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "children=2" in out
+    assert (issues / "completed" / "P2-ENH-200-parent.md").exists()
+    for cid in ("ENH-201", "ENH-202"):
+        child = next(issues.rglob(f"*-{cid}-*.md"))
+        assert parse_frontmatter(child.read_text())["parent"] == "EPIC-100"

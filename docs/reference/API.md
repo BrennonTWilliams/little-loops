@@ -77,7 +77,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
-| `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking for `rn-implement` loops. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4). |
+| `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
 | `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
 | `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
@@ -5875,7 +5875,7 @@ Manager for sprint CRUD operations.
 |--------|---------|-------------|
 | `create(name, issues, description, options)` | `Sprint` | Create new sprint |
 | `load(name)` | `Sprint \| None` | Load sprint by name |
-| `load_or_resolve(arg)` | `Sprint \| None` | Load sprint by name **or** resolve an EPIC ID (`EPIC-NNN`) to an ephemeral Sprint via forward (`relates_to:`) + backward (`parent:`) lookup, filtered to active statuses |
+| `load_or_resolve(arg)` | `Sprint \| None` | Load sprint by name **or** resolve an EPIC ID (`EPIC-NNN`) to an ephemeral Sprint via forward (`relates_to:`) + backward **transitive** (`parent:`-chain walk, cycle-guarded — grandchildren under sub-EPICs/intermediates included, ENH-2615) lookup, filtered to active statuses |
 | `list_all()` | `list[Sprint]` | List all sprints |
 | `delete(name)` | `bool` | Delete sprint |
 | `validate_issues(issues)` | `dict[str, Path]` | Validate issue IDs exist |

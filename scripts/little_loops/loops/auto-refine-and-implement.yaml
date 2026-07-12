@@ -44,6 +44,14 @@ description: |
   ParallelOrchestrator already does (both share the stateless free functions
   in worktree_utils.py). Previously this config was silently unhonored on the
   FSM path — the branch was created and committed to but never merged back.
+
+  ENH-2615: on EPIC scopes the issue set is no longer resolved only once —
+  after each delegate pass, recheck_set re-resolves the EPIC's descendant set
+  (SprintManager.load_or_resolve now walks parent: chains transitively) and
+  diffs it against the dispatched ledger. Children decomposed mid-run cycle
+  back into delegate, whose per-entry worktree attach re-attaches the SAME
+  epic branch, so their commits also land on epic/<EPIC-ID>-<slug> instead of
+  bypassing it. Non-EPIC scopes keep the single upfront resolution.
 initial: init
 max_steps: 50
 timeout: 28800
@@ -140,6 +148,10 @@ states:
         echo "No issues to process" >&2
         exit 1
       fi
+      # ENH-2615: seed the dispatched ledger so recheck_set can diff later
+      # re-resolutions against what has already been dispatched to delegate.
+      printf '%s\n' "$LIST" | tr ',' '\n' | grep -v '^[[:space:]]*$' \
+        >> "${context.run_dir}/auto-refine-and-implement-dispatched.txt"
       printf '%s\n' "$LIST"
     fragment: shell_exit
     capture: issue_set
@@ -239,13 +251,13 @@ states:
     # Delegate the entire refine+implement to the autodev engine. autodev shares
     # this loop's run_dir (executor injects it via setdefault), so its
     # autodev-passed.txt / autodev-skipped.txt land under ${context.run_dir}
-    # where finalize reads them. on_success/on_failure both route to verify
-    # (ENH-2601) rather than finalize directly, so the post-implementation
-    # test/lint check runs regardless of autodev's collapsed terminal verdict
-    # (the ground-truth completed/ diff computed in finalize remains the
-    # authoritative closure verdict). on_error routes to a DISTINCT crash state
-    # so an infrastructure failure is not laundered into a clean completion
-    # (ENH-2005 / ENH-2376).
+    # where finalize reads them. on_success/on_failure both route to recheck_set
+    # (ENH-2615) so an EPIC scope re-resolves its descendant set and cycles new
+    # mid-run children back through this state before verify's post-
+    # implementation test/lint check runs (the ground-truth completed/ diff
+    # computed in finalize remains the authoritative closure verdict). on_error
+    # routes to a DISTINCT crash state so an infrastructure failure is not
+    # laundered into a clean completion (ENH-2005 / ENH-2376).
     # ENH-2609: worktree attaches a scratch worktree to the epic branch that
     # checkout_epic_branch created (checkout_existing, branch preserved on
     # detach), so autodev's commits land on epic/<EPIC-ID>-<slug> without the
@@ -256,9 +268,66 @@ states:
     with:
       input: "${captured.issue_set.output}"
       skip_learning_gate: "${context.skip_learning_gate}"
-    on_success: verify
-    on_failure: verify
+    on_success: recheck_set
+    on_failure: recheck_set
     on_error: record_error
+
+  recheck_set:
+    # ENH-2615: after each delegate pass, re-resolve the EPIC's descendant set
+    # (SprintManager.load_or_resolve now walks parent: chains transitively) and
+    # diff it against the dispatched ledger. Children decomposed mid-run —
+    # repointed to the EPIC by autodev's finalize-decomposition wiring, or
+    # chaining to it transitively — surface here and cycle back to delegate,
+    # whose per-entry worktree attach (ENH-2609, fsm/executor.py) re-attaches
+    # the SAME epic branch for the new batch, preserving the "everything for
+    # this epic lands on one branch" guarantee. Non-EPIC scopes exit 1 →
+    # verify: the backlog/sprint paths keep the single upfront resolution and
+    # must not pick up unrelated new issues mid-run. Re-dispatch cycles are
+    # capped at 5 (the recheck-count artifact) as a runaway guard on top of
+    # max_steps; load_or_resolve's active-status filter drops closed children,
+    # and the dispatched-ledger diff drops parked/skipped ones, so each cycle
+    # only dispatches genuinely new work.
+    action: |
+      RUN_DIR="${context.run_dir}"
+      SCOPE=$(printf '%s' "${context.scope}" | tr -d '[:space:]')
+      printf '%s' "$SCOPE" | grep -qE '^EPIC-[0-9]+$' || exit 1
+      N=$(cat "$RUN_DIR/auto-refine-and-implement-recheck-count.txt" 2>/dev/null || echo 0)
+      if [ "$N" -ge 5 ]; then
+        echo "recheck_set: re-dispatch cycle cap (5) reached" >&2
+        exit 1
+      fi
+      LIST=$(python3 << 'PYEOF'
+      import sys
+      from pathlib import Path
+      from little_loops.config import BRConfig
+      from little_loops.sprint import SprintManager
+
+      arg = """${context.scope}""".strip()
+      sprint = SprintManager(config=BRConfig(Path.cwd())).load_or_resolve(arg)
+      if sprint is None:
+          sys.exit(1)
+      print(",".join(sprint.issues or []))
+      PYEOF
+      ) || exit 1
+      sort -u "$RUN_DIR/auto-refine-and-implement-dispatched.txt" 2>/dev/null \
+        > "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt" || true
+      NEW=$(printf '%s\n' "$LIST" | tr ',' '\n' | grep -v '^[[:space:]]*$' | sort -u \
+        | comm -23 - "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt" \
+        | paste -sd ',' -)
+      NEW=$(printf '%s' "$NEW" | tr -d '[:space:]')
+      if [ -z "$NEW" ]; then
+        exit 1
+      fi
+      echo $((N + 1)) > "$RUN_DIR/auto-refine-and-implement-recheck-count.txt"
+      printf '%s\n' "$NEW" | tr ',' '\n' | grep -v '^[[:space:]]*$' \
+        >> "$RUN_DIR/auto-refine-and-implement-dispatched.txt"
+      echo "recheck_set: re-dispatching new descendants: $NEW" >&2
+      printf '%s\n' "$NEW"
+    fragment: shell_exit
+    capture: issue_set
+    on_yes: delegate
+    on_no: verify
+    on_error: verify
 
   verify:
     # ENH-2601: post-implementation correctness check, folded into
@@ -635,10 +704,17 @@ states:
 
       # ENH-2404: PARKED_RATE is a visibility signal, NOT a blocking gate —
       # with skipped_breakdown present, a high rate interprets itself (e.g.
-      # "4 low_readiness" is actionable, "4 decomposed" is healthy). Denominator
-      # is the resolved issue_set size from resolve_set; 0.0 when unavailable.
-      INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
-        | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+      # "4 low_readiness" is actionable, "4 decomposed" is healthy).
+      # ENH-2615: with per-dispatch re-resolution the captured issue_set holds
+      # only the LAST batch, so the cumulative dispatched ledger is the real
+      # denominator; fall back to the capture when the ledger is absent.
+      if [ -s "$RUN_DIR/auto-refine-and-implement-dispatched.txt" ]; then
+        INPUT_SIZE=$(sort -u "$RUN_DIR/auto-refine-and-implement-dispatched.txt" \
+          | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+      else
+        INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
+          | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+      fi
       if [ "$INPUT_SIZE" -gt 0 ]; then
         PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
       else

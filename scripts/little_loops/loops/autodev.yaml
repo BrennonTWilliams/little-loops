@@ -564,8 +564,11 @@ states:
     # Prepend newly-detected child issues to the front of the unified queue
     # (depth-first), so children are refined AND implemented before the next
     # sibling in the original list. Records the parent as skipped (it was
-    # decomposed, not refined to ready) and moves the parent file to
-    # .issues/completed/ to mirror recursive-refine's cleanup discipline.
+    # decomposed, not refined to ready) and closes it via `ll-issues
+    # finalize-decomposition` (ENH-2615), which owns the status-done close +
+    # completed/ move AND repoints the children's parent: to the EPIC when the
+    # parent had one — so epic-scoped re-resolution recognizes the children.
+    # Mirrors rn-decompose finalize_parent's WARN-not-fail shape.
     # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success
     # outcome, distinct from a refinement/readiness failure.
     action: |
@@ -575,12 +578,9 @@ states:
         | grep -v '^[[:space:]]*$' \
         > ${context.run_dir}/autodev-queue.txt
       echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
-      PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
-      if [ -n "$PARENT_FILE" ]; then
-        mkdir -p .issues/completed
-        git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
-          || mv "$PARENT_FILE" .issues/completed/
-      fi
+      ll-issues finalize-decomposition "${captured.input.output}" \
+        --children-file ${context.run_dir}/autodev-new-children.txt \
+        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
       CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
       # BUG-1226: parent is resolved (decomposed); clear the in-flight flag
@@ -699,9 +699,10 @@ states:
   enqueue_or_skip:
     # After explicit size-review: diff IDs against the pre-size-review
     # baseline. If children found: prepend to queue depth-first; mark parent
-    # as skipped; move parent to .issues/completed/. If none: route to
-    # recheck_after_size_review so a score check can decide whether to
-    # implement or skip (BUG-1230).
+    # as skipped; close the parent via ll-issues finalize-decomposition
+    # (ENH-2615 — owns the completed/ move and repoints children to the EPIC).
+    # If none: route to recheck_after_size_review so a score check can decide
+    # whether to implement or skip (BUG-1230).
     # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success
     # outcome, distinct from a refinement/readiness failure.
     action: |
@@ -732,12 +733,9 @@ states:
           | grep -v '^[[:space:]]*$' \
           > ${context.run_dir}/autodev-queue.txt
         echo "${captured.input.output}  decomposed" >> ${context.run_dir}/autodev-skipped.txt
-        PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
-        if [ -n "$PARENT_FILE" ]; then
-          mkdir -p .issues/completed
-          git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
-            || mv "$PARENT_FILE" .issues/completed/
-        fi
+        ll-issues finalize-decomposition "${captured.input.output}" \
+          --children-file ${context.run_dir}/autodev-new-children.txt \
+          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
         CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
         # BUG-1226: parent resolved by decomposition; clear in-flight flag.

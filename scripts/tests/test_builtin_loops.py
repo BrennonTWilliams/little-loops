@@ -1902,6 +1902,7 @@ class TestAutoRefineAndImplementLoop:
             "resolve_set",
             "checkout_epic_branch",
             "delegate",
+            "recheck_set",
             "verify",
             "record_error",
             "finalize",
@@ -1975,13 +1976,55 @@ class TestAutoRefineAndImplementLoop:
     def test_delegate_crash_routes_to_record_error(self, data: dict) -> None:
         """on_error must route to a DISTINCT crash state (not finalize/verify directly)
         so an infrastructure crash is recorded, not laundered into a clean no-op
-        (ENH-2005). on_success/on_failure route through verify (ENH-2601) rather than
-        straight to finalize."""
+        (ENH-2005). on_success/on_failure route through recheck_set (ENH-2615) so
+        mid-run decomposed descendants get re-dispatched before verify."""
         state = data["states"].get("delegate", {})
-        assert state.get("on_success") == "verify"
-        assert state.get("on_failure") == "verify"
+        assert state.get("on_success") == "recheck_set"
+        assert state.get("on_failure") == "recheck_set"
         assert state.get("on_error") == "record_error"
         assert state.get("on_error") != state.get("on_success")
+
+    def test_recheck_set_structure_and_routing(self, data: dict) -> None:
+        """ENH-2615: recheck_set re-resolves the EPIC's descendant set after each
+        delegate pass. New undispatched descendants → cycle back to delegate
+        (re-entry re-attaches the epic-branch worktree); drained/none → verify."""
+        state = data["states"].get("recheck_set", {})
+        assert state.get("fragment") == "shell_exit"
+        assert state.get("capture") == "issue_set", (
+            "recheck_set must overwrite the issue_set capture so delegate "
+            "re-reads the new batch on re-entry"
+        )
+        assert state.get("on_yes") == "delegate"
+        assert state.get("on_no") == "verify"
+        assert state.get("on_error") == "verify"
+
+    def test_recheck_set_gates_on_epic_scope_and_caps_cycles(self, data: dict) -> None:
+        """ENH-2615: re-resolution only applies to EPIC scopes (backlog/sprint
+        scopes must NOT pick up unrelated new issues mid-run) and must be
+        cycle-capped so a pathological set can't loop delegate forever."""
+        action = data["states"].get("recheck_set", {}).get("action", "")
+        assert "EPIC-" in action, "recheck_set must gate on an EPIC-NNN scope"
+        assert "load_or_resolve" in action, (
+            "recheck_set must re-resolve via SprintManager.load_or_resolve "
+            "(now transitive, ENH-2615)"
+        )
+        assert "auto-refine-and-implement-dispatched.txt" in action, (
+            "recheck_set must subtract already-dispatched IDs from the ledger"
+        )
+        assert "recheck-count" in action, "recheck_set must cap re-dispatch cycles"
+
+    def test_resolve_set_seeds_dispatched_ledger(self, data: dict) -> None:
+        """ENH-2615: resolve_set must record the initially-dispatched IDs so
+        recheck_set can diff later resolutions against what already ran."""
+        action = data["states"]["resolve_set"].get("action", "")
+        assert "auto-refine-and-implement-dispatched.txt" in action
+
+    def test_finalize_input_size_prefers_dispatched_ledger(self, data: dict) -> None:
+        """ENH-2615: with multiple delegate dispatches, the captured issue_set
+        only holds the LAST batch — finalize's parked-rate denominator must
+        prefer the cumulative dispatched ledger."""
+        action = data["states"]["finalize"].get("action", "")
+        assert "auto-refine-and-implement-dispatched.txt" in action
 
     def test_record_error_tracks_crash_and_finalizes(self, data: dict) -> None:
         """record_error writes a distinct errored.txt and routes to finalize."""
@@ -3376,6 +3419,32 @@ class TestAutodevLoop:
         assert "autodev-inflight" in action, (
             "enqueue_children resolves the current issue by decomposition and "
             "must clear autodev-inflight (BUG-1226)"
+        )
+
+    def test_enqueue_children_calls_finalize_decomposition(self, data: dict) -> None:
+        """ENH-2615: enqueue_children must close the decomposed parent via
+        `ll-issues finalize-decomposition --children-file` (which owns the
+        completed/ move AND repoints the children's parent: to the EPIC) instead
+        of a raw git mv that leaves the EPIC linkage stale. Mirrors
+        rn-decompose's finalize_parent WARN-not-fail shape."""
+        action = data["states"].get("enqueue_children", {}).get("action", "")
+        assert "ll-issues finalize-decomposition" in action
+        assert "--children-file" in action
+        assert "autodev-new-children.txt" in action
+        assert "git mv" not in action, (
+            "the completed/ move is owned by finalize-decomposition now"
+        )
+        assert "WARN" in action, "CLI failure must degrade to a WARN, not fail the state"
+
+    def test_enqueue_or_skip_calls_finalize_decomposition(self, data: dict) -> None:
+        """ENH-2615: enqueue_or_skip's children-found branch must finalize the
+        decomposed parent via the CLI, same as enqueue_children."""
+        action = data["states"].get("enqueue_or_skip", {}).get("action", "")
+        children_branch = action.split("else")[0] if "else" in action else action
+        assert "ll-issues finalize-decomposition" in children_branch
+        assert "--children-file" in children_branch
+        assert "git mv" not in action, (
+            "the completed/ move is owned by finalize-decomposition now"
         )
 
     def test_done_surfaces_autodev_inflight_warning(self, data: dict) -> None:
@@ -5188,7 +5257,7 @@ class TestPixiDataVizLoop:
         """Loop must have name, initial, input_key, and states fields."""
         assert data.get("name") == "pixi-data-viz"
         assert data.get("initial") == "init"
-        assert data.get("input_key") == "description"
+        assert data.get("input_key") == "input"
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:

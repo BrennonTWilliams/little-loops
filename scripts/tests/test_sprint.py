@@ -2604,15 +2604,14 @@ class TestSprintManagerLoadOrResolve:
         assert data["name"] == "epic-700"
         assert "BUG-001" in data["issues"]
 
-    def test_load_or_resolve_nested_epic_grandchild_depth_mismatch(
+    def test_load_or_resolve_nested_epic_grandchild_transitive(
         self, tmp_path: Path, epic_project: BRConfig
     ) -> None:
-        """FEAT-2449: sprint resolution is direct-only; a grandchild reached via
-        an intermediate sub-EPIC is NOT included by ``load_or_resolve`` (which
-        does ``info.parent == epic_id`` at sprint.py:326), while
-        ``compute_epic_progress`` walks transitively and DOES include it. This
-        documents the run-construction vs. completion-gate depth mismatch the
-        EPIC-completion trigger relies on.
+        """ENH-2615: sprint resolution walks the ``parent:`` chain transitively —
+        a grandchild reached via an intermediate sub-EPIC IS included by
+        ``load_or_resolve``, matching ``compute_epic_progress``'s semantics so
+        run construction and the EPIC-completion gate agree on membership
+        (closes the FEAT-2449 depth mismatch).
         """
         issues_dir = tmp_path / ".issues"
         (issues_dir / "epics" / "P1-EPIC-800-top.md").write_text(
@@ -2630,14 +2629,14 @@ class TestSprintManagerLoadOrResolve:
         result = manager.load_or_resolve("EPIC-800")
 
         assert result is not None
-        # Direct-only backward lookup: the sub-EPIC is a direct child of EPIC-800,
-        # but the grandchild (parent == EPIC-801) is one hop too deep.
         assert "EPIC-801" in result.issues
-        assert "FEAT-030" not in result.issues
+        assert "FEAT-030" in result.issues, (
+            "transitive backward lookup must include grandchildren reached "
+            "via an intermediate sub-EPIC"
+        )
 
-        # compute_epic_progress walks the parent chain transitively → the
-        # grandchild IS resolved as a child of EPIC-800 (the semantics the
-        # completion gate uses).
+        # compute_epic_progress uses the same transitive walk — membership
+        # semantics now agree between run construction and the completion gate.
         from little_loops.issue_parser import find_issues
         from little_loops.issue_progress import compute_epic_progress
 
@@ -2657,6 +2656,88 @@ class TestSprintManagerLoadOrResolve:
         child_ids = {c.issue_id for c in prog.children}
         assert "FEAT-030" in child_ids
         assert "EPIC-801" in child_ids
+
+    def test_load_or_resolve_transitive_multi_hop(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """ENH-2615: a 3-hop ``parent:`` chain (great-grandchild) resolves into
+        the EPIC's issue set. Mirrors the shape of
+        ``test_find_nearest_epic_ancestor_multi_hop``."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-900-top.md").write_text(
+            "---\nid: EPIC-900\nstatus: in_progress\n---\n# EPIC-900: Top\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-901-child.md").write_text(
+            "---\nid: ENH-901\nstatus: open\nparent: EPIC-900\n---\n# ENH-901: Child\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-902-grandchild.md").write_text(
+            "---\nid: ENH-902\nstatus: open\nparent: ENH-901\n---\n# ENH-902: Grandchild\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-903-great-grandchild.md").write_text(
+            "---\nid: ENH-903\nstatus: open\nparent: ENH-902\n---\n"
+            "# ENH-903: Great-grandchild\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-900")
+
+        assert result is not None
+        assert set(result.issues) >= {"ENH-901", "ENH-902", "ENH-903"}
+
+    def test_load_or_resolve_transitive_chain_through_done_intermediate(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """ENH-2615: a decomposed (status: done, in place) intermediate must not
+        break the chain — its open child still resolves into the EPIC's set,
+        while the done intermediate itself is excluded (active filter)."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-910-top.md").write_text(
+            "---\nid: EPIC-910\nstatus: in_progress\n---\n# EPIC-910: Top\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-911-decomposed.md").write_text(
+            "---\nid: ENH-911\nstatus: done\nparent: EPIC-910\n---\n# ENH-911: Decomposed\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-912-follow-up.md").write_text(
+            "---\nid: ENH-912\nstatus: open\nparent: ENH-911\n---\n# ENH-912: Follow-up\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-910")
+
+        assert result is not None
+        assert "ENH-912" in result.issues, (
+            "the parent map must include non-active issues so a done "
+            "intermediate still links its open children to the EPIC"
+        )
+        assert "ENH-911" not in result.issues, "done intermediate stays excluded"
+
+    def test_load_or_resolve_transitive_cycle_guard(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """ENH-2615: a ``parent:`` cycle between two issues must not hang the
+        transitive walk; cycle members unreachable from the EPIC are excluded.
+        Mirrors ``test_find_nearest_epic_ancestor_cycle_guard``."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-920-top.md").write_text(
+            "---\nid: EPIC-920\nstatus: in_progress\n---\n# EPIC-920: Top\n"
+        )
+        (issues_dir / "bugs" / "P2-BUG-041-cycle-a.md").write_text(
+            "---\nid: BUG-041\nstatus: open\nparent: BUG-042\n---\n# BUG-041: Cycle A\n"
+        )
+        (issues_dir / "bugs" / "P2-BUG-042-cycle-b.md").write_text(
+            "---\nid: BUG-042\nstatus: open\nparent: BUG-041\n---\n# BUG-042: Cycle B\n"
+        )
+        (issues_dir / "bugs" / "P2-BUG-043-real-child.md").write_text(
+            "---\nid: BUG-043\nstatus: open\nparent: EPIC-920\n---\n# BUG-043: Real Child\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-920")
+
+        assert result is not None
+        assert "BUG-043" in result.issues
+        assert "BUG-041" not in result.issues
+        assert "BUG-042" not in result.issues
 
 
 class TestSprintListJsonShortForm:

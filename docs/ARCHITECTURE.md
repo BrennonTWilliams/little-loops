@@ -478,7 +478,11 @@ path (ENH-2601): `auto-refine-and-implement`/`sprint-refine-and-implement`
 read `parallel.epic_branches.enabled`/`.prefix` to create (not check out) the
 `epic/<EPIC-ID>-<slug>` branch when `scope` resolves to an EPIC-NNN id, then
 run a post-implementation `test_cmd`/`lint_cmd` verify pass folded into
-`summary.json`. Once all the EPIC's children are `done`, a `merge_epic_branch`
+`summary.json`. After each `delegate` pass, `recheck_set` re-resolves the
+EPIC's descendant set (transitive `parent:`-chain walk, ENH-2615) and cycles
+newly-decomposed children back through `delegate` — whose per-entry worktree
+attach re-attaches the same epic branch — so mid-run decomposition work also
+lands on the integration branch instead of bypassing it. Once all the EPIC's children are `done`, a `merge_epic_branch`
 state merges (or, per `epic_branches.open_pr`, opens a PR for) the branch back to
 `base_branch`, honoring `merge_to_base_on_complete`/`verify_before_merge` the same
 way the `WorkerPool` path above does (BUG-2614) — both paths share the same
