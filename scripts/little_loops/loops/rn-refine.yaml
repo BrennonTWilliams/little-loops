@@ -76,6 +76,12 @@ states:
           /*) echo "$DIR" ;;
           *) echo "$(pwd)/$DIR" ;;
         esac
+      elif [ -z "$RESUME" ] && [ -d "$DIR/nodes" ]; then
+        # BUG-2610: refuse to clobber a populated prior tree when the caller
+        # forgot --context resume=1 — re-seeding here would destroy completed
+        # node work with no warning.
+        echo "ERROR: $DIR/nodes already exists but resume is unset. Pass --context resume=1 --context run_dir=$DIR to continue this run, or point run_dir at a fresh directory."
+        exit 1
       else
         mkdir -p "$DIR/nodes/n0"
         # Canonical working copy of the (eventually reassembled) plan + final rubric.
@@ -106,23 +112,88 @@ states:
     next: check_resume
 
   check_resume:
-    # ENH-2565: route a resume invocation straight into bottom-up synthesis,
-    # skipping the (already-complete) refinement phase. Deterministic, non-LLM.
-    # A fresh run falls through to dequeue_next exactly as before.
+    # BUG-2610: three-way resume routing. A resume invocation can land in one of
+    # two very different phases of a prior run — mid-walk (refinement still in
+    # progress) or post-walk (only integration was interrupted) — and each needs
+    # a different re-entry point. Reconciles against the same on-disk completion
+    # markers `classify_node` reads (node_outcome_<id>.txt) plus queue.txt, rather
+    # than trusting the resume flag alone.
+    #   RESUME_WALK  — queue.txt non-empty, OR a visited node has no outcome file
+    #                  (the true in-flight node at kill time) -> resume_reconcile
+    #   RESUME_SYNTH — queue empty and every visited node has an outcome file
+    #                  -> resume_build_synth (ENH-2565, unchanged)
+    #   FRESH        — no resume flag / no prior tree -> dequeue_next
     action_type: shell
     action: |
       RESUME="${context.resume}"
       RUN_DIR="${captured.run_dir.output}"
       if [ -n "$RESUME" ] && [ -d "$RUN_DIR/nodes" ]; then
-        echo "RESUME_MODE"
+        QUEUE="$RUN_DIR/queue.txt"
+        VISITED="$RUN_DIR/visited.txt"
+        INCOMPLETE=0
+        if [ -s "$VISITED" ]; then
+          while IFS= read -r NID; do
+            [ -z "$NID" ] && continue
+            [ -f "$RUN_DIR/node_outcome_$${NID}.txt" ] || { INCOMPLETE=1; break; }
+          done < "$VISITED"
+        fi
+        if [ -s "$QUEUE" ] || [ "$INCOMPLETE" -eq 1 ]; then
+          echo "RESUME_WALK"
+        else
+          echo "RESUME_SYNTH"
+        fi
       else
         echo "FRESH"
       fi
+    capture: resume_check
     evaluate:
       type: output_contains
-      pattern: "RESUME_MODE"
+      pattern: "RESUME_WALK"
+    on_yes: resume_reconcile
+    on_no: route_resume_synth
+    on_error: dequeue_next
+
+  route_resume_synth:
+    # Second leg of the three-way split (RESUME_MODE evaluators only support
+    # on_yes/on_no, so the 3-way choice chains two gates — same precedent as
+    # route_decomposed/route_leaf/route_capped below).
+    evaluate:
+      type: output_contains
+      source: "${captured.resume_check.output}"
+      pattern: "RESUME_SYNTH"
     on_yes: resume_build_synth
     on_no: dequeue_next
+    on_error: dequeue_next
+
+  resume_reconcile:
+    # BUG-2610: re-queue any visited node lacking a completion marker (the
+    # in-flight node at kill time, plus any earlier visited-but-incomplete
+    # nodes) onto the FRONT of queue.txt, preserving visited.txt's relative
+    # order among them — mirrors materialize_children's depth-first prepend
+    # idiom (oracles/plan-node-refine.yaml:310-313) with PENDING in place of
+    # CHILD_IDS. Nodes already sitting in queue.txt (never dequeued) are kept
+    # after the reconciled prefix, unchanged.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      QUEUE="$RUN_DIR/queue.txt"
+      VISITED="$RUN_DIR/visited.txt"
+      PENDING=""
+      if [ -s "$VISITED" ]; then
+        while IFS= read -r NID; do
+          [ -z "$NID" ] && continue
+          if [ ! -f "$RUN_DIR/node_outcome_$${NID}.txt" ]; then
+            PENDING="$PENDING $NID"
+          fi
+        done < "$VISITED"
+      fi
+      EXISTING=$(cat "$QUEUE" 2>/dev/null || true)
+      { for n in $PENDING; do echo "$n"; done; echo "$EXISTING"; } \
+        | grep -v '^[[:space:]]*$' > "$QUEUE.tmp"
+      mv "$QUEUE.tmp" "$QUEUE"
+      echo "RECONCILED $(grep -c '[^[:space:]]' "$QUEUE" 2>/dev/null || echo 0)"
+    capture: resume_reconcile
+    next: dequeue_next
     on_error: dequeue_next
 
   dequeue_next:

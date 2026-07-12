@@ -8207,9 +8207,27 @@ class TestRnRefineRecursiveDecomposition:
         # rebuilds the synth queue from on-disk final.md completion markers.
         states = data.get("states", {})
         assert states.get("init", {}).get("next") == "check_resume"
-        assert states.get("check_resume", {}).get("on_yes") == "resume_build_synth"
-        assert states.get("check_resume", {}).get("on_no") == "dequeue_next"
         assert states.get("resume_build_synth", {}).get("next") == "synth_dispatch"
+
+    def test_resume_three_way_routing(self, data: dict) -> None:
+        # BUG-2610: check_resume must distinguish walk-resume (RESUME_WALK ->
+        # resume_reconcile -> dequeue_next) from synth-resume (RESUME_SYNTH ->
+        # resume_build_synth) and fresh runs (FRESH -> dequeue_next), since the
+        # two-way RESUME_MODE gate treated a mid-walk kill as fully refined.
+        states = data.get("states", {})
+        assert states.get("check_resume", {}).get("on_yes") == "resume_reconcile"
+        assert states.get("check_resume", {}).get("on_no") == "route_resume_synth"
+        assert states.get("route_resume_synth", {}).get("on_yes") == "resume_build_synth"
+        assert states.get("route_resume_synth", {}).get("on_no") == "dequeue_next"
+        assert states.get("resume_reconcile", {}).get("next") == "dequeue_next"
+
+    def test_init_refuses_reseed_without_resume_flag(self, data: dict) -> None:
+        # BUG-2610: pointing run_dir at a populated prior tree without
+        # --context resume=1 must refuse (exit 1 with a hint), not re-seed and
+        # destroy completed node work.
+        action = data.get("states", {}).get("init", {}).get("action", "")
+        assert "resume=1" in action
+        assert "exit 1" in action
 
     def test_finalize_overwrites_source_in_place(self, data: dict) -> None:
         """The reassembled plan is written back over the user's source file."""

@@ -455,16 +455,20 @@ class TestBuildSynthOrder:
 
 
 class TestResumeRouting:
-    """init -> check_resume -> resume_build_synth skips refinement on resume."""
+    """init -> check_resume routes 3-way (BUG-2610): RESUME_WALK -> resume_reconcile,
+    RESUME_SYNTH -> resume_build_synth (via route_resume_synth), FRESH -> dequeue_next."""
 
     def test_init_routes_to_check_resume(self) -> None:
         assert _load_rn_refine().states["init"].next == "check_resume"
 
-    def test_check_resume_routes_resume_and_fresh(self) -> None:
+    def test_check_resume_routes_walk_and_synth_legs(self) -> None:
         fsm = _load_rn_refine()
-        assert fsm.states["check_resume"].on_yes == "resume_build_synth"
-        assert fsm.states["check_resume"].on_no == "dequeue_next"
+        assert fsm.states["check_resume"].on_yes == "resume_reconcile"
+        assert fsm.states["check_resume"].on_no == "route_resume_synth"
         assert fsm.states["check_resume"].on_error == "dequeue_next"
+        assert fsm.states["route_resume_synth"].on_yes == "resume_build_synth"
+        assert fsm.states["route_resume_synth"].on_no == "dequeue_next"
+        assert fsm.states["resume_reconcile"].next == "dequeue_next"
 
     def test_resume_context_knob_declared(self) -> None:
         assert "resume" in _load_rn_refine().context
@@ -480,17 +484,84 @@ class TestResumeRouting:
             action, context={"resume": ""}, captured={"run_dir": {"output": str(rd)}}
         )
         result = _bash(rendered, tmp_path)
-        assert "FRESH" in result.stdout and "RESUME_MODE" not in result.stdout
+        assert "FRESH" in result.stdout
+        assert "RESUME_WALK" not in result.stdout and "RESUME_SYNTH" not in result.stdout
 
-    def test_check_resume_emits_resume_mode_with_knob_and_tree(self, tmp_path: Path) -> None:
+    def test_check_resume_emits_resume_synth_when_tree_fully_walked(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
         (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF\n")
+        (rd / "queue.txt").write_text("")
         action = _load_rn_refine().states["check_resume"].action
         rendered = _render(
             action, context={"resume": "1"}, captured={"run_dir": {"output": str(rd)}}
         )
         result = _bash(rendered, tmp_path)
-        assert "RESUME_MODE" in result.stdout
+        assert "RESUME_SYNTH" in result.stdout
+
+    def test_check_resume_emits_resume_walk_when_node_in_flight(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        # n0 visited and complete; n1 visited but never got an outcome (in-flight kill).
+        (rd / "visited.txt").write_text("n0\nn1\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF\n")
+        (rd / "queue.txt").write_text("")
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action, context={"resume": "1"}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert "RESUME_WALK" in result.stdout
+
+    def test_check_resume_emits_resume_walk_when_queue_nonempty(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "node_outcome_n0.txt").write_text("DECOMPOSED\n")
+        (rd / "queue.txt").write_text("n1\n")
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action, context={"resume": "1"}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert "RESUME_WALK" in result.stdout
+
+
+class TestResumeReconcile:
+    """resume_reconcile re-queues visited-but-outcome-less nodes ahead of anything
+    still sitting in queue.txt, preserving visited.txt's relative order (BUG-2610)."""
+
+    def _action(self) -> str:
+        return _load_rn_refine().states["resume_reconcile"].action
+
+    def test_requeues_incomplete_visited_nodes_before_stale_queue(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir(parents=True)
+        # n0, n1 visited+complete; n19 visited, no outcome (in-flight at kill time).
+        (rd / "visited.txt").write_text("n0\nn1\nn19\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF\n")
+        (rd / "node_outcome_n1.txt").write_text("DECOMPOSED\n")
+        # n5, n20-n23 were sitting in queue.txt, never dequeued.
+        (rd / "queue.txt").write_text("n5\nn20\nn21\nn22\nn23\n")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        order = [ln for ln in (rd / "queue.txt").read_text().splitlines() if ln.strip()]
+        # In-flight node first, then the never-dequeued queue tail, unchanged order.
+        assert order == ["n19", "n5", "n20", "n21", "n22", "n23"]
+
+    def test_no_incomplete_nodes_leaves_queue_untouched(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "node_outcome_n0.txt").write_text("DECOMPOSED\n")
+        (rd / "queue.txt").write_text("n1\nn2\n")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        order = [ln for ln in (rd / "queue.txt").read_text().splitlines() if ln.strip()]
+        assert order == ["n1", "n2"]
 
 
 class TestInitResumeShortCircuit:
@@ -533,6 +604,28 @@ class TestInitResumeShortCircuit:
         assert result.returncode == 0
         assert (rd / "queue.txt").read_text().strip() == "n0"
         assert (rd / "node_counter.txt").read_text().strip() == "1"
+
+    def test_no_resume_flag_refuses_to_reseed(self, tmp_path: Path) -> None:
+        """BUG-2610: run_dir pointed at a populated prior tree without
+        --context resume=1 must refuse (exit 1 + hint), not destroy the tree."""
+        plan = tmp_path / "plan.md"
+        plan.write_text("# Plan\n\n## A\n- x\n")
+        rd = tmp_path / "run"
+        (rd / "nodes" / "n0").mkdir(parents=True)
+        (rd / "nodes" / "n0" / "plan.md").write_text("# INDEX (do not clobber)\n")
+        (rd / "queue.txt").write_text("nSHOULD_SURVIVE\n")
+        (rd / "node_counter.txt").write_text("7")
+        rendered = _render(
+            self._init_action(),
+            context={"plan_file": str(plan), "run_dir": str(rd), "resume": ""},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 1
+        assert "resume=1" in result.stdout
+        # Existing tree must survive the refusal untouched.
+        assert (rd / "queue.txt").read_text().strip() == "nSHOULD_SURVIVE"
+        assert (rd / "node_counter.txt").read_text().strip() == "7"
+        assert (rd / "nodes" / "n0" / "plan.md").read_text() == "# INDEX (do not clobber)\n"
 
 
 class TestResumeBuildSynth:

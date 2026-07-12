@@ -126,16 +126,24 @@ manual copy out of `.loops/` needed.
 ll-loop run rn-refine ".loops/runs/rn-plan-20260526T143022/plan.md"
 ```
 
-If a long run is interrupted during integration (e.g. a wall-clock timeout on a
-large tree), resume it straight into synthesis without redoing refinement — re-pass
-the same plan and run dir:
+If a long run is interrupted, resume it with the same flags regardless of which
+phase was in flight — re-pass the same plan and run dir:
 
 ```bash
 ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior-run-dir>
 ```
 
-Resume rebuilds the integration queue from which nodes still lack a `final.md`, so
-already-refined and already-integrated work is reused (ENH-2565).
+`check_resume` reconciles against on-disk state to pick the right re-entry point
+(BUG-2610): if the tree was fully refined (every visited node has a completion
+marker and the queue is empty), resume rebuilds the integration queue from which
+nodes still lack a `final.md`, so already-refined and already-integrated work is
+reused (ENH-2565). If the interruption instead landed **mid-walk** — refinement
+itself was killed, e.g. via `ll-loop stop` — resume re-queues the in-flight node
+(and any other visited-but-incomplete node) and continues the walk from durable
+on-disk state before ever reaching synthesis, rather than treating the tree as
+though it were done. Omitting `--context resume=1` against a `run_dir` that
+already has a `nodes/` tree is refused (exit 1 with a hint) instead of
+re-seeding and destroying the prior work.
 
 > **Tip**: Pick `rn-plan` when you're starting cold; pick `rn-refine` when you
 > already have a draft and want it deepened without losing existing structure.

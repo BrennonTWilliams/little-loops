@@ -1,7 +1,8 @@
 ---
 id: BUG-2610
-status: open
+status: done
 captured_at: '2026-07-12T02:55:44Z'
+completed_at: '2026-07-12T03:58:42Z'
 discovered_date: 2026-07-12
 discovered_by: capture-issue
 relates_to:
@@ -104,14 +105,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `check_resume` distinguishes walk-resume from synth-resume via `node_outcome_*.txt` / `queue.txt` state and routes walk-resume back through `dequeue_next`.
-- [ ] Visited-but-outcome-less nodes (in-flight at kill time) are re-queued and re-processed on walk-resume.
-- [ ] `init` refuses to re-seed a `run_dir` containing an existing `nodes/` dir when `resume` is unset.
-- [ ] Synth-resume behavior (all outcomes present, queue empty) is unchanged.
-- [ ] A `scripts/tests/test_builtin_loops.py`-style test asserts the three-way routing against fixture run-dir states (mid-walk, post-walk, fresh).
-- [ ] `ll-loop validate rn-refine` passes.
+- [x] `check_resume` distinguishes walk-resume from synth-resume via `node_outcome_*.txt` / `queue.txt` state and routes walk-resume back through `dequeue_next`.
+- [x] Visited-but-outcome-less nodes (in-flight at kill time) are re-queued and re-processed on walk-resume.
+- [x] `init` refuses to re-seed a `run_dir` containing an existing `nodes/` dir when `resume` is unset.
+- [x] Synth-resume behavior (all outcomes present, queue empty) is unchanged.
+- [x] A `scripts/tests/test_builtin_loops.py`-style test asserts the three-way routing against fixture run-dir states (mid-walk, post-walk, fresh).
+- [x] `ll-loop validate rn-refine` passes.
+
+## Resolution
+
+`check_resume` now reconciles against on-disk completion markers instead of trusting the
+`resume` flag alone, and routes 3-way via a chained `output_contains` gate (mirroring
+`route_decomposed`/`route_leaf`/`route_capped`):
+
+- **`RESUME_WALK`** (`queue.txt` non-empty, or a `visited.txt` entry lacks a matching
+  `node_outcome_<id>.txt`) → new `resume_reconcile` state prepends every incomplete
+  visited node onto the front of `queue.txt` (oldest-incomplete-first, ahead of anything
+  still sitting in the queue), then routes to `dequeue_next`.
+- **`RESUME_SYNTH`** (queue empty, every visited node has an outcome) → `route_resume_synth`
+  → existing `resume_build_synth` (ENH-2565), unchanged.
+- **`FRESH`** → `dequeue_next`, unchanged.
+
+`init` also gained a hard refusal: `nodes/` exists under `run_dir` but `resume` is unset now
+exits 1 with a `--context resume=1` hint instead of re-seeding and destroying the tree.
+
+`oracles/plan-node-refine`'s per-node `setup` idempotency was reviewed per the issue's
+caveat: it preserves `plan.md`/`research.md` on re-entry and only resets `.node_iter`/
+`children/`, so a re-queued in-flight node redoes refinement iterations rather than
+skipping work — acceptable per the issue, no change needed there.
+
+Docs updated: `docs/guides/LOOPS_REFERENCE.md` (catalog row, `resume` context-var row,
+FSM flow diagram, resume notes) and `docs/guides/RECURSIVE_LOOPS_GUIDE.md` (resume example
++ prose).
 
 ## Session Log
+- `/ll:manage-issue` (fix) - 2026-07-12T03:58:22Z - `cfb160eb-1859-4f62-a50f-d31e46bccd0b.jsonl`
+- `/ll:ready-issue` - 2026-07-12T03:49:32 - `d515b3b5-92b9-4c68-b1e2-5b39ff5f441b.jsonl`
 - `/ll:wire-issue` - 2026-07-12T03:30:27 - `118fcc05-0101-48e9-9735-9721f77a6ee0.jsonl`
 - `/ll:refine-issue` - 2026-07-12T03:20:29 - `3b4e4367-c46d-42a1-8673-1a5f4c6a41ea.jsonl`
 - `/ll:capture-issue` - 2026-07-12T02:55:44Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1eac247c-15b6-4270-a306-2f8ac305bf0a.jsonl`
