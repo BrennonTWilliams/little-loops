@@ -1,7 +1,7 @@
 name: pixi-data-viz
 category: harness
-input_key: description
-required_inputs: ["description"]
+input_key: input
+required_inputs: ["input"]
 # The viz file is the single deliverable; latest-wins overwrite is intentional.
 artifact_versioning_ok: true
 description: |
@@ -23,7 +23,7 @@ timeout: 7200
 # (axes/chrome only), mid-transition, and settled state — the three moments
 # that diagnose animation legibility.
 context:
-  description: ""             # populated from loop_input via input_key: description
+  input: ""                  # populated from loop_input via input_key: input
   pass_threshold: 6           # minimum score per criterion (1-10) for non-gated criteria
   sample_frames: "0,120,240"  # comma-separated __loopFrame values to screenshot
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
@@ -59,7 +59,7 @@ states:
     action: |
       Write a visualization brief to ${captured.run_dir.output}/brief.md for the
       following PixiJS data viz:
-      "${context.description}"
+      "${context.input}"
 
       The brief must include:
       - **Dataset shape**: what kind of data is being visualized — time-series
