@@ -32,7 +32,10 @@ def _write_and_commit(repo: Path, rel_path: str, content: str) -> None:
 
 
 def test_status_json_output_is_valid_json(capsys):
-    with patch.object(sys, "argv", ["ll-code", "--json", "status"]):
+    # Pin --provider fallback: this repo's own .codegraph/codegraph.db is a
+    # real index (ENH-2613), so "auto" may resolve to codegraph here instead
+    # of fallback. This test only cares that status JSON is well-formed.
+    with patch.object(sys, "argv", ["ll-code", "--json", "--provider", "fallback", "status"]):
         exit_code = main()
     assert exit_code == 0
     data = json.loads(capsys.readouterr().out)
@@ -76,6 +79,21 @@ def test_defines_no_hits_returns_exit_code_1(tmp_path, monkeypatch, capsys):
         exit_code = main()
 
     assert exit_code == 1
+
+
+def test_provider_codegraph_status_reports_unavailable_without_index(tmp_path, monkeypatch, capsys):
+    repo = _init_repo(tmp_path / "repo")
+    _write_and_commit(repo, "pkg/mod.py", "def helper():\n    pass\n")
+    monkeypatch.chdir(repo)
+
+    with patch.object(sys, "argv", ["ll-code", "--json", "--provider", "codegraph", "status"]):
+        exit_code = main()
+
+    assert exit_code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["provider"] == "codegraph"
+    assert data["available"] is False
+    assert data["freshness"] == "unknown"
 
 
 def test_default_provider_is_sourced_from_config(tmp_path, monkeypatch, capsys):

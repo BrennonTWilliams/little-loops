@@ -3,8 +3,8 @@
 Mirrors ``little_loops.adapters.core`` (FEAT-2391): a ``@runtime_checkable``
 Protocol, a lazy-import name→(module, class) registry, and a
 ``resolve_provider`` factory. Concrete providers live in sibling modules
-(``fallback.py`` today; ``codegraph.py`` in ENH-2577); this module owns only
-the shared interface, registry, and dataclasses.
+(``fallback.py``, ``codegraph.py``); this module owns only the shared
+interface, registry, and dataclasses.
 
 See FEAT-2576 for the full design.
 """
@@ -95,6 +95,7 @@ class CodeQueryProvider(Protocol):
 # we must not import them at module level — only resolve on demand via
 # importlib. Order matters for "auto": graph providers first, fallback last.
 _PROVIDER_MAP: dict[str, tuple[str, str]] = {
+    "codegraph": ("little_loops.codequery.codegraph", "CodegraphProvider"),
     "fallback": ("little_loops.codequery.fallback", "FallbackProvider"),
 }
 

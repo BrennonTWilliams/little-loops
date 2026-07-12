@@ -3,7 +3,7 @@ id: ENH-2613
 title: codegraph SQLite provider with staleness detection
 type: ENH
 priority: P3
-status: open
+status: done
 labels:
 - code-intelligence
 - adapters
@@ -15,6 +15,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-07-12T18:41:37Z'
 ---
 
 # ENH-2613: codegraph SQLite provider with staleness detection
@@ -440,12 +441,14 @@ edits, not open-ended doc writing:_
 ## Blocked By
 
 - FEAT-2576: `.issues/features/P3-FEAT-2576-codequery-protocol-fallback-provider-and-ll-code-cli.md`
-  — `status: open`. Implemented (commit `53512663`) but only on branch
-  `epic/epic-2575-code-knowledge-graph-adapter-query-protocol-providers-skill-integration`,
-  not merged to `main`. Confirmed `scripts/little_loops/codequery/` does not
-  exist on `main` HEAD (`4c4dcc79`) — the `CodeQueryProvider` Protocol,
-  `_PROVIDER_MAP`, and `core.py` this issue registers against do not exist yet
-  on the branch implementation would target.
+  — **now `status: done`**, merged to `main` at commit `fa8c3872`
+  ("feat(codequery): add CodeQuery provider protocol, grep/AST fallback, and
+  ll-code CLI"). Confirmed `scripts/little_loops/codequery/core.py` exists on
+  `main` HEAD with the exact shapes this issue's Proposed Solution section
+  depends on: `CodeRef`, `ProviderStatus`, `CodeQueryProvider` Protocol,
+  `Confidence`/`Freshness` literals, `Unsupported`, `_PROVIDER_MAP`,
+  `resolve_provider()`, `_instantiate()`. No longer a blocker — implementation
+  can proceed directly against `main`.
 
 ## Related Issues
 
@@ -453,19 +456,40 @@ edits, not open-ended doc writing:_
 - **ENH-2612** — sibling; hard dependency, **now `done`** — `CodeQueryConfig`/
   `CodeQueryCodegraphConfig` are live on `main` (see Codebase Research Findings
   under Scope Boundaries).
-- **EPIC-2575** — grandparent. **Blocked by FEAT-2576** — implemented (commit
-  `53512663`) but only on branch
-  `epic/epic-2575-code-knowledge-graph-adapter-query-protocol-providers-skill-integration`,
-  not yet merged to `main`. Confirm that branch is the target for this issue's
-  work, or wait for it to land, before starting implementation.
+- **EPIC-2575** — grandparent. **No longer blocked** — FEAT-2576 merged to
+  `main` at commit `fa8c3872`.
 - **ENH-2578** — consumer; blocked by this issue.
 - **EPIC-2456** — token cost reduction context.
 
+## Resolution
+
+Implemented `CodegraphProvider` (`scripts/little_loops/codequery/codegraph.py`) and
+registered it as `"codegraph"` in `_PROVIDER_MAP` ahead of `"fallback"`. Read-only
+`sqlite3` access to `.codegraph/codegraph.db` mirrors
+`issue_history/evolution.py::_open_db()`; `status()` computes staleness by comparing
+`MAX(files.indexed_at)` (fallback: `schema_versions.applied_at`) against
+`git log --since=<indexed_at>` (commits landed) and `git status --porcelain` (dirty
+files), then enforces `code_query.staleness` (`strict` → unavailable when stale,
+`warn` → served with `freshness: stale`, `off` → always `fresh`). `callers_of`/
+`callees_of`/`references` query `edges.kind='calls'`/`'references'`; `importers_of`
+queries `edges.kind='imports'` against `import`-kind nodes; `defines` filters `nodes`
+by `file_path`. `impact_of` raises `Unsupported` — no edge kind maps to it, so it's
+omitted from `capabilities()` and the resolver falls through to `fallback` for that
+query. Added `scripts/tests/test_codequery_codegraph.py` (24 tests: schema-drift
+guard, capabilities, missing-index, staleness matrix across
+fresh/commits-ahead/dirty-tree × strict/warn/off using deterministic
+`GIT_AUTHOR_DATE`-pinned fixture repos, and per-verb query correctness against a
+hand-built fixture DB) and a `--provider codegraph` case in `test_cli_code.py`.
+Updated `docs/reference/CLI.md`, `docs/reference/API.md`, and
+`docs/reference/CONFIGURATION.md` per the issue's wiring plan.
+
 ## Status
 
-**Open** | Created: 2026-07-12 | Priority: P3
+**Done** | Created: 2026-07-12 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-12T18:40:46Z - `db791533-d20c-493a-b5e5-1773772b3319.jsonl`
+- `/ll:ready-issue` - 2026-07-12T18:26:12 - `cdc63a6f-8ccf-4d77-bbb5-c7eb9cd913ec.jsonl`
 - `/ll:confidence-check` - 2026-07-12T18:22:33Z - `7ef47c57-f220-4887-ad6f-0d69ea727eb7.jsonl`
 - `/ll:refine-issue` - 2026-07-12T16:07:00 - `b095603c-f679-498a-ba5a-adcda46b8422.jsonl`
 - `/ll:ready-issue` - 2026-07-12T07:14:28 - `c26614d0-bc28-439e-be6f-9d5d43820663.jsonl`

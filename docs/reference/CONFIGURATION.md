@@ -964,9 +964,10 @@ Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "
 
 ### `code_query`
 
-Code-query provider selection, codegraph db path, and staleness policy. This block
-is opt-in and inert — its presence or absence causes zero runtime behavior change
-until a provider consumes it (ENH-2613, the codegraph SQLite provider).
+Code-query provider selection, codegraph db path, and staleness policy, consumed by the
+`codegraph` `CodeQueryProvider` (ENH-2613, `ll-code`). This block is opt-in: with no
+`.codegraph/` index present, `ll-code`'s `auto` resolution falls through to the always-available
+`fallback` provider unchanged.
 
 | Key | Default | Description |
 |-----|---------|-------------|
