@@ -212,10 +212,10 @@ states:
 
 | Field | Default | Behavior |
 |-------|---------|----------|
-| `cost_ceiling_per_state` | `null` (no cap) | When a state visit's USD cost exceeds this value, the run routes to `on_ceiling_exceeded` (if set) or terminates with `terminated_by="cost_ceiling_exceeded"`. Validator rejects negative values. |
-| `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_warn` event when crossed but does not block. Validator WARNS when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
+| `cost_ceiling_per_state` | `null` (no cap) | When a state visit's USD cost exceeds this value, the run routes per `on_no`/`on_error` (no dedicated `on_ceiling_exceeded` key exists in the schema). Validator rejects negative values. |
+| `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_warn` event when crossed but does not block. Validator **rejects** (error) when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
 
-The validator at `fsm/validation.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` warning. Composes with the global `--max-cost` ceiling (FEAT-2476); neither replaces the other.
+The validator at `fsm/validation.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` rejection. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
 
 ### Prompt-Size Guard (prompt_size_guard)
 
@@ -951,9 +951,7 @@ states:
 
 `with:` and `context_passthrough` are mutually exclusive on the same state; missing `required: true` parameters and unknown `with:` keys are validation errors. Prefer `with:` for reusable children — a rename in the parent can't silently break the child.
 
-<!-- TODO: update-docs stub — BUG-2305 — drafted 2026-06-25 -->
-**`loop:` references are validated at definition time.** `ll-loop validate` (and `load_and_validate`) now checks that every `loop:` field resolves to an actual file on disk, reporting a `WARNING`-severity error if the referenced loop is missing. This catches typos and stale sub-loop names before a run starts rather than at runtime. Dynamically interpolated names (`loop: "${context.child_name}"`) are skipped — they can only be checked at runtime. If you see a warning like `Loop reference 'fix-quality-and-tests' does not resolve to any file.`, either correct the loop name or ensure the target YAML exists in your loops directory.
-<!-- END TODO stub -->
+**`loop:` references are validated at definition time.** `ll-loop validate` (and `load_and_validate`) checks that every static `loop:` field resolves to an actual file on disk and fails the run with `severity=ERROR` if it does not (BUG-2305; severity was promoted from WARNING to ERROR by BUG-2400). This catches typos and stale sub-loop names before a run starts rather than at runtime. Dynamically interpolated names (`loop: "${context.child_name}"`) are skipped — they can only be checked at runtime. If you see an error like `Loop reference 'fix-quality-and-tests' does not resolve to any file.`, either correct the loop name or ensure the target YAML exists in your loops directory.
 
 When `--show-diagrams` is active, parent and child FSM diagrams render together, with the parent state highlighted throughout child execution — at any nesting depth.
 
@@ -1141,8 +1139,7 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 **LLM evaluator errors.** Claude CLI auth or network issue. Ensure the `claude` CLI is authenticated, or use `--no-llm` to fall back to deterministic evaluators.
 
-<!-- TODO: update-docs stub — BUG-2302 — drafted 2026-06-25 -->
-**Auth/credential failure aborts the loop immediately.** When a loop action outputs authentication or credential error text (e.g., `"Not logged in"`, `"Authentication required"`), the executor classifies the failure as `NON_RECOVERABLE` and routes directly to `on_error` — without retrying. Unlike `TRANSIENT` failures (network blips, timeouts), credential failures cannot be resolved by re-running the same action, so the executor bypasses any `max_retries` or `retryable_exit_codes` config and aborts. To handle this cleanly, add an `on_error:` route to your auth-sensitive state and point it to a recovery or abort state:
+**Auth/credential failure aborts the loop immediately.** When a loop action outputs authentication or credential error text (e.g., `"Not logged in"`, `"Authentication required"`), the executor classifies the failure as `NON_RECOVERABLE` and routes directly to `on_error` — without retrying (BUG-2302, landed). Unlike `TRANSIENT` failures (network blips, timeouts), credential failures cannot be resolved by re-running the same action, so the executor bypasses any `max_retries` or `retryable_exit_codes` config and aborts. To handle this cleanly, add an `on_error:` route to your auth-sensitive state and point it to a recovery or abort state:
 
 ```yaml
 cua_observe:
@@ -1162,8 +1159,7 @@ auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` yields `verdict="error"` when any listed pattern is found in the output — this routes to `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
-<!-- END TODO stub -->
+The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (`scripts/little_loops/fsm/evaluators.py:369-380`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 

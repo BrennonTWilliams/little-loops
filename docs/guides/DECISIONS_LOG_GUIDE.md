@@ -319,7 +319,7 @@ Personal development preferences.
 
 > The `## Active Rules` section is machine-written. Don't hand-edit it — it will be overwritten on the next `sync`. Advisory rules (`enforcement: advisory`) are not included.
 
-Sync runs automatically at session start and after `ll-issues decisions add --enforcement required`. Run it manually after editing `.ll/decisions.yaml` directly.
+Sync runs automatically after `ll-issues decisions promote --enforcement required` (the default). Run it manually after `ll-issues decisions add`, after editing `.ll/decisions.yaml` directly, or after `extract-from-completed`.
 
 ---
 

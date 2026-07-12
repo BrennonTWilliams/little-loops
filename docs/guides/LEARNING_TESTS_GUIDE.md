@@ -263,7 +263,7 @@ The loop enumerates installed packages (pip + npm), uses the LLM to map record t
 
 Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To guard against this in scripts, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.
 
-> Loop-state troubleshooting (`type: learning` states that re-trigger, `No valid transition` errors) lives in [LOOPS_GUIDE.md → Troubleshooting](LOOPS_GUIDE.md).
+> Loop-state troubleshooting (`type: learning` states that re-trigger, `No valid transition` errors) lives in [LOOPS_GUIDE.md → Troubleshooting](LOOPS_GUIDE.md#troubleshooting).
 
 ## Practical Patterns
 
@@ -355,9 +355,7 @@ Enabling the gate:
 ### Example output (warn mode)
 
 ```
-[ll: proof-first hint] No learning-test record found for "stripe".
-You're about to write integration code based on training-data assumptions.
-Consider: ll-loop run proof-first-task "<your task>"
+[ll: proof-first hint] No learning-test record found for "stripe". You're about to write integration code based on training-data assumptions. Consider: ll-loop run proof-first-task --context task="<your task>"
 ```
 
 The tool call proceeds — the nudge is informational. Set `mode: "block"` to require a proven record before any write, which is appropriate for teams where all external API assumptions must be pre-verified.
@@ -374,7 +372,7 @@ Or, to suppress the hint for a specific package without adding it to the skip li
 
 ### Caching
 
-The gate caches each package lookup for the lifetime of the Python process (one Claude Code session). Re-running `/ll:explore-api "<target>"` while in the same session will not clear the cache; start a new session to pick up freshly-proven records.
+The gate caches each package lookup for the lifetime of the hook process (`_SESSION_CACHE` is module-level in `scripts/little_loops/hooks/learning_tests_gate.py:42`). Re-running `/ll:explore-api "<target>"` while the same hook process is alive will not pick up freshly-proven records; restart the session to clear the cache.
 
 ---
 

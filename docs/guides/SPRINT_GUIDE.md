@@ -61,7 +61,7 @@ Two relationship fields affect sprint scheduling differently:
 
 | Field | Arrow | Effect on sprint |
 |-------|-------|-----------------|
-| `blocked_by` | `──→` (hard dependency) | Wave-gated — the dependent issue is held back until all listed issues are done |
+| `blocked_by` | `──→` (hard dependency) | Soft ordering — wave-gated when practical, but a ready prerequisite may still be pulled into the same wave to fill capacity |
 | `depends_on` | `-->` (soft ordering) | Not wave-gated — recorded for context and `ll-deps` validation but does not delay execution |
 
 Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., ISSUE-A calls an API that ISSUE-B introduces). Use `depends_on` when the ordering is recommended but the issues can technically proceed in parallel (e.g., ISSUE-A tests a subsystem that ISSUE-B improves, but ISSUE-A is still valid without ISSUE-B).
@@ -70,6 +70,7 @@ Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., IS
 
 - **Single-issue wave**: runs in-place without worktree overhead (fast path)
 - **Multi-issue wave**: each issue runs in its own git worktree in parallel, up to `max_workers` at once
+- **Merge coordination**: parallel workers do not share the main working directory; merge coordination may subsequently integrate their commits into the base checkout.
 
 > **What is a worktree?** A git worktree is an isolated checkout of your repository at a temporary directory. Each issue in a multi-issue wave gets its own worktree so the agents don't share file state or context — they work in parallel without interfering with each other. Your main working directory is never touched during the run.
 
@@ -139,7 +140,7 @@ The interactive skill walks you through sprint creation:
 3. **Dependency validation** — checks that blocked issues are included or have their blockers satisfied
 4. **Confirmation** — shows the proposed sprint before writing the YAML
 
-The skill proposes six auto-grouping strategies:
+The skill proposes seven auto-grouping strategies:
 
 | Strategy | Groups issues by |
 |----------|-----------------|
@@ -220,6 +221,7 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - Issue files exist on disk
 - No dependency cycles
 - Wave structure computed and displayed
+- Completed and cancelled issues are logged individually and surfaced in a pre-validation summary rather than silently skipped
 - Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately
 
 The execution plan is printed before any work begins:
@@ -263,6 +265,8 @@ Each wave runs as follows:
 - **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `.ll/ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
 > **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When `use_feature_branches` is set and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch the work lands on. Dependency chains that produce all single-issue waves will see this warning for every sprint run; if per-issue feature branches are required for all issues, avoid all-sequential dependency chains or track the follow-up enhancement.
+>
+> **State checkpoint cadence** (ENH-2530): State is checkpointed after each execution wave or contention sub-wave completes, not only after each logical dependency wave — so a refined sub-wave plan that splits a wave into N serialized steps yields N checkpoints, one per sub-wave.
 
 After each wave completes:
 - State is checkpointed to `.sprint-state.json`
@@ -347,11 +351,11 @@ When a multi-issue wave is dominated by children of a single EPIC, running each 
 - Sprints where you need each child merge to land independently as soon as it completes — partial-failure semantics will hold back the entire EPIC branch on any single child failure
 - You're already using a git-flow / GitHub-ruleset workflow that branches per-issue to `feature/` and you don't want one-EPIC-one-PR
 
-The EPIC merge path lives in `merge_coordinator`'s EPIC-aware router (see [merge coordinator internals](../../development/MERGE-COORDINATOR.md)); orchestrator wires per-issue results through `WorkerResult.epic_branch` (see [API Reference — WorkerResult](../../reference/API.md#workerresult)).
+The EPIC merge path lives in `merge_coordinator`'s EPIC-aware router (see [merge coordinator internals](../development/MERGE-COORDINATOR.md)); orchestrator wires per-issue results through `WorkerResult.epic_branch` (see [API Reference — WorkerResult](../reference/API.md#workerresult)).
 
 This same merge/verify/PR behavior is also available outside `ll-parallel`/`ll-sprint`: the `auto-refine-and-implement` FSM loop (used by `ll-loop run auto-refine-and-implement --context scope=EPIC-NNN` and its `sprint-refine-and-implement` alias) honors the same `epic_branches` config keys via a `merge_epic_branch` state, sharing the underlying free functions with the orchestrator path above (BUG-2614). See [LOOPS_REFERENCE.md § auto-refine-and-implement](LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
 
-**Not to be confused with `ll-parallel --epic-branches` / `ll-sprint --epic-branches` (ENH-2601):** everything above describes the `WorkerPool`/orchestrator path — `ll-parallel`, `ll-sprint run`, and the `--epic-branches` CLI flag documented in [CLI Reference](../reference/CLI.md). The FSM loops `auto-refine-and-implement` / `sprint-refine-and-implement` are a **separate** code path with no CLI flag of their own: when invoked with `scope=EPIC-NNN` and `parallel.epic_branches.enabled: true`, they read the same config group to *create* (not merge) the `epic/<EPIC-ID>-<slug>` branch via a `checkout_epic_branch` state before delegating to `autodev`, and add a post-implementation `verify` state whose pass/fail/skip verdict is folded into that run's `summary.json`. Since ENH-2609, `delegate` runs `autodev` inside a scratch worktree attached to that branch, so the refine+implement commits land on `epic/<EPIC-ID>-<slug>` without the main tree's checkout changing — no manual `git checkout` is needed. Merging the branch back to base remains a manual step (or use the `WorkerPool` path's merge coordinator) — see [LOOPS_REFERENCE.md § auto-refine-and-implement](LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
+**Not to be confused with `ll-parallel --epic-branches` / `ll-sprint --epic-branches` (ENH-2601):** everything above describes the `WorkerPool`/orchestrator path — `ll-parallel`, `ll-sprint run`, and the `--epic-branches` CLI flag documented in [CLI Reference](../reference/CLI.md). The FSM loops `auto-refine-and-implement` / `sprint-refine-and-implement` are a **separate** code path with no CLI flag of their own: when invoked with `scope=EPIC-NNN` and `parallel.epic_branches.enabled: true`, they read the same config group to *create* (not merge) the `epic/<EPIC-ID>-<slug>` branch via a `checkout_epic_branch` state before delegating to `autodev`, and add a post-implementation `verify` state whose pass/fail/skip verdict is folded into that run's `summary.json`. Since ENH-2609, `delegate` runs `autodev` inside a scratch worktree attached to that branch, so the refine+implement commits land on `epic/<EPIC-ID>-<slug>` without the main tree's checkout changing — no manual `git checkout` is needed. After verification, `merge_epic_branch` honors `parallel.epic_branches.merge_to_base_on_complete`, `open_pr`, and `verify_before_merge`; it merges or opens the configured PR once all EPIC children are done. See [LOOPS_REFERENCE.md § auto-refine-and-implement](LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
 
 ### Failed Issues
 
@@ -415,7 +419,7 @@ To resume an interrupted sprint:
 ll-sprint run sprint-name --resume
 ```
 
-The runner reads `.sprint-state.json`, finds the first incomplete wave, and starts there. Completed issues from earlier waves are skipped automatically.
+The runner reads `.sprint-state.json`, finds the first incomplete wave or sub-wave, and starts there. Completed issues from earlier waves are skipped automatically. Crash recovery is reliable only for graceful `Ctrl+C` or after a previously-saved checkpoint; an abrupt restart that lands between waves will leave a gap in the checkpoint log.
 
 State is automatically deleted when the sprint completes successfully. If you want to force a fresh start (discarding resume state), run without `--resume`:
 
@@ -461,7 +465,8 @@ ll-sprint analyze sprint-1 --format json
 `ll-sprint show` is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run. The output also includes:
 
 - **Composition breakdown** — issue count by type (BUG/FEAT/ENH/EPIC) and priority distribution
-- **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started
+- **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started (only present on `ll-sprint run`, not on `ll-sprint show`)
+- **Issue file paths** — full paths included in `ll-sprint show --json` for easy machine consumption (text output uses issue IDs only)
 - **Readiness/confidence scores** — per-issue scores from any completed confidence checks
 - **Issue file paths** — full paths shown in the execution plan for easy navigation
 - **Human-friendly timestamps** — relative time suffixes (e.g., "3 days ago") on dated fields
@@ -490,8 +495,9 @@ Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 |--------|---------|-------------|
 | `sprints_dir` | `.sprints` | Directory where sprint YAML files are stored |
 | `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
-| `default_max_workers` | `2` | Max parallel workers per wave |
+| `default_max_workers` | `2` | Max parallel workers per wave (also overridable per sprint via `options.max_workers` / `--max-workers`) |
 | `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM |
+| `parallel.timeout_per_issue` | `2700` | Timeout for multi-issue waves (mirrors `max_issue_wall_clock_time`; in-place single-issue waves use `sprints.max_issue_wall_clock_time` instead) |
 
 Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
 

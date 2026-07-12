@@ -145,7 +145,7 @@ The `harvest` state runs `ll-messages` with `--examples-format` to extract `(inp
   "type": "example",
   "skill": "capture-issue",
   "input": "<N preceding user messages concatenated>",
-  "output": "{\"tools_used\": [\"Read\", \"Write\"], \"files_modified\": [\".issues/features/P3-FEAT-849-...\"], \"completion_status\": \"success\"}",
+  "output": "{\"tools_used\": [{\"tool\": \"Read\", \"count\": 1}, {\"tool\": \"Write\", \"count\": 1}], \"files_modified\": [\".issues/features/P3-FEAT-849-...\"], \"completion_status\": \"success\"}",
   "session_id": "361c2c3a-bd3c-417b-9d69-cfd541e136fc",
   "timestamp": "2026-03-21T22:21:36",
   "context_window": 3
@@ -153,7 +153,7 @@ The `harvest` state runs `ll-messages` with `--examples-format` to extract `(inp
 ```
 
 > **ResponseMetadata** — A JSON object automatically captured by little-loops at issue completion.
-> Key fields: `tools_used` (array), `files_modified` (array), `completion_status` (string).
+> Key fields: `tools_used` (array of `{tool, count}` objects), `files_read` (array), `files_modified` (array), `completion_status` (string: `"success" | "failure" | "partial"`), `error_message` (string or `null`).
 > You don't create this manually — the harness captures it automatically.
 
 **Important**: the `output` field is not free text. It is a JSON-serialized `ResponseMetadata` object recording what tools the agent used and what files it changed — not the raw assistant response. The oracle judge evaluates tool choices and file changes, not prose quality.
@@ -253,7 +253,7 @@ run_optimizer (sub-loop: apo-textgrad, context_passthrough: true)
 
 `apo-textgrad` reads `examples_file` from disk — it cannot receive the corpus via FSM captures. The `write_examples` state handles this by writing the calibrated corpus to `examples_file` before the optimizer starts. This is the intermediate write; `publish` performs the final write at the end.
 
-`run_optimizer` invokes `apo-textgrad` as a child FSM. With `context_passthrough: true`, the child inherits the parent's `prompt_file`, `examples_file`, and other context variables. The child runs to completion independently (up to its own `max_iterations: 20`), then routes the parent:
+`run_optimizer` invokes `apo-textgrad` as a child FSM. With `context_passthrough: true`, the child inherits the parent's `prompt_file`, `examples_file`, and other context variables. The child runs to completion independently (up to its inherited `max_steps: 20` from `lib/apo-base.yaml`), then routes the parent:
 
 - **SUCCESS** (child reached its `done` terminal state): gradient signal is available in `${captured.run_optimizer.gradient.output}` → proceed to `synthesize`
 - **FAILURE** (child hit `max_iterations` or timed out): no gradient available → skip adversarial synthesis, go directly to `diversify`
@@ -335,7 +335,7 @@ publish (prompt, 60s)
 ```
 
 **Diversify**: enforces per-axis coverage minimums when the corpus has ≥ 10 examples:
-- At least 2 examples per represented issue type (BUG / FEAT / ENH / EPIC)
+- At least 2 examples per represented issue type (BUG / FEAT / ENH per current YAML — EPIC is not currently checked)
 - At least 1 example per represented priority band (P0–P5)
 - Adversarial examples ≤ 30% of corpus (trim lowest `oracle_score` first)
 
@@ -358,7 +358,7 @@ Each object in the published `examples.json` array has the following fields:
 ```json
 {
   "input": "User message history preceding the skill invocation (N messages concatenated)",
-  "expected": "{\"tools_used\": [\"Read\", \"Write\"], \"files_modified\": [\".issues/features/P3-FEAT-849-...\"], \"completion_status\": \"success\"}",
+  "expected": "{\"tools_used\": [{\"tool\": \"Read\", \"count\": 1}, {\"tool\": \"Write\", \"count\": 1}], \"files_modified\": [\".issues/features/P3-FEAT-849-...\"], \"completion_status\": \"success\"}",
   "source": "harvested",
   "difficulty_score": 62,
   "failure_cluster": null,
@@ -401,7 +401,7 @@ Set context variables with `--context key=value` flags or by editing the loop's 
 | `prompt_file` | `system.md` | Path to the prompt being optimized; passed to the inner `apo-textgrad` loop |
 | `examples_file` | `examples.json` | Written twice per run: intermediate (before optimizer) and final (at publish) |
 | `corpus_state_file` | `corpus.json` | If this file exists, calibrate loads it and decays `freshness_weight` ×0.9 |
-| `target_pass_rate` | `0.6` | Center of the 40–80% difficulty band (fraction, 0–1); used only in the calibrate prompt |
+| `target_pass_rate` | `0.6` | Defined in context but **not currently read** by any `examples-miner` state. `context_passthrough` would inherit this into `apo-textgrad` and override its default (`90`), silently changing the convergence comparison (`PASS_RATE exceeds target_pass_rate` where `PASS_RATE` is 0–100). Leave unset unless you want this override. |
 
 ---
 
@@ -521,7 +521,7 @@ judge:
   on_failure: done
 ```
 
-> **Note**: The `loop:` field does not support context interpolation — `loop: oracles/oracle-${context.skill_name}` does NOT work. Hardcode the oracle path.
+> **Note**: Although `loop:` is interpolated at parse time (`scripts/little_loops/fsm/executor.py:779` runs `interpolate(state.loop, ctx)`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
 
 ### 4. Calibrate the oracle
 
@@ -619,7 +619,7 @@ CALIBRATED_COUNT=2
 **Final `examples.json`** (after optimizer + synthesis + publish):
 ```json
 [
-  {"input":"I found a bug where...","expected":"{\"tools_used\":[\"Write\"],\"files_modified\":[\".issues/bugs/P3-BUG-001-login-button.md\"],\"completion_status\":\"success\"}","source":"harvested","difficulty_score":62,"oracle_score":87,"freshness_weight":1.0},
+  {"input":"I found a bug where...","expected":"{\"tools_used\":[{\"tool\":\"Write\",\"count\":1}],\"files_modified\":[\".issues/bugs/P3-BUG-001-login-button.md\"],\"completion_status\":\"success\"}","source":"harvested","difficulty_score":62,"oracle_score":87,"freshness_weight":1.0},
   {"input":"...","source":"adversarial","difficulty_score":68,"failure_cluster":"type_confusion","perturbation_type":"type_confusion","oracle_score":79,"freshness_weight":1.0}
 ]
 ```
@@ -631,7 +631,7 @@ The `source` field distinguishes harvested real examples from synthesized target
 ## See Also
 
 - [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
-- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (12 states with complete action prompts)
+- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (12 non-terminal states + a `done` terminal)
 - [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
 - [`scripts/little_loops/loops/apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
 - [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — related guide for wrapping skills in layered quality evaluation pipelines

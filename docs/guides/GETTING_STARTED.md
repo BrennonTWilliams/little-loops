@@ -94,7 +94,7 @@ ll-init
 | `--force` | Overwrites an existing `.ll/ll-config.json` (TUI now pre-populates from existing values automatically, so `--force` is rarely needed) | Forcing a full template reset regardless of existing config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
 | `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
-| `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
+| `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid (in argparse order): `product`, `analytics`, `context_monitor`, `learning_tests`, `decisions`, `scratch_pad`, `session_capture`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
 | `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), and scope-aware-update the claude-code plugin. Default headless mode is warn-only | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
@@ -238,8 +238,8 @@ By default, `/ll:capture-issue` creates a full v2.0 issue with all sections. Pas
 
 ```bash
 /ll:capture-issue "login button broken"           # full template (default)
-/ll:capture-issue "login button broken" --quick   # minimal — 5 fields only
-/ll:format-issue BUG-001                          # promote minimal → full when ready to implement
+/ll:capture-issue "login button broken" --quick   # minimal template variant (per creation_variants.minimal in your config)
+/ll:format-issue BUG-001                          # align issue with template v2.0 (sections, gaps, quality)
 ```
 
 ---

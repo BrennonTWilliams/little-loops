@@ -234,14 +234,14 @@ ll-workflows analyze \
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.ll/workflow-analysis/user-messages.jsonl`) |
+| `--input FILE` | `-i FILE` | No | Input JSONL file with user messages (default: `.ll/workflow-analysis/step1-patterns.jsonl`) |
 | `--patterns FILE` | `-p FILE` | Yes | Step 1 output YAML (from workflow-pattern-analyzer) |
 | `--output FILE` | `-o FILE` | No | Output YAML (default: `.ll/workflow-analysis/step2-workflows.yaml`) |
 | `--verbose` | `-v` | No | Print detailed progress |
 | `--format` | `-f` | No | Output format: `yaml` or `json` (default: `yaml`) |
 | `--overlap-threshold` | | No | Minimum entity overlap to cluster messages (default: `0.3`) |
 | `--boundary-threshold` | | No | Minimum boundary score to split workflow segments (default: `0.6`) |
-| `--intent QUERY` | | No | Intent query for output filtering (no-op pass-through, pending FTS5 ranking) |
+| `--intent QUERY` | | No | Intent query for output filtering (no-op until FTS5 ranking lands) |
 | `--intent-limit N` | | No | Max lines for intent-filtered output (default: `50`) |
 
 ### How the Analysis Works

@@ -338,8 +338,10 @@ The context monitor estimates the current-turn delta based on tool activity:
 |------|---------|
 | `.ll/ll-continue-prompt.md` | Generated continuation prompt |
 | `.ll/ll-context-state.json` | Running context usage state |
-| `.ll/ll-session-state.json` | Session metadata (fallback) |
+| `.ll/ll-context-handoff-needed` | Sentinel written by `Stop → context-handoff-sentinel.sh` when the session ended context-heavy (≥ ~50% estimated) — consumed by `run_with_continuation` and the next session |
 | `.ll/ll-precompact-state.json` | Idempotency guard written by `precompact.sh`; read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
+
+> **Note**: `.ll/ll-session-state.json` is mentioned in `commands/resume.md` but is not currently produced by any hook or script. Treat it as legacy documentation until `feat-1680` (session-end hook sweeping stale cross-issue status refs) lands.
 
 ### State File Format
 
@@ -367,7 +369,7 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 ```
 
 - `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
-- `result_token_count`: The authoritative `input_tokens + cache_read_input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `on_usage` callback in `process_issue_inplace`. When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
+- `result_token_count`: The authoritative `input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `_on_usage_writer` callback in `process_issue_inplace` (note: this does **not** include `cache_read_input_tokens`, contrary to other heuristic estimators in the file). When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
 
 ## Troubleshooting
 

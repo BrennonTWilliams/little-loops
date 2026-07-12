@@ -55,7 +55,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 
 | Table | What it stores |
 |-------|---------------|
-| `tool_events` | Every tool call (Bash, Read, Write, etc.) with token counts and cache-hit flag |
+| `tool_events` | Every tool call (Bash, Read, Write, etc.) with byte counts (`bytes_in`, `bytes_out`, `result_size`) and `cache_hit` flag |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
 | `issue_events` | Issue state transitions: captured, started, completed, deferred. v16 added a `session_id` column (indexed) so the `issue_sessions` view no longer relies on timestamp overlap (ENH-2462). |
 | `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; indexed for full-text search (FTS) via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |
@@ -147,7 +147,7 @@ ll-session recent --kind loop --limit 10
 ll-session recent --kind issue --issue BUG-1759
 ```
 
-`--kind` is required. `--issue` filters to events associated with a specific issue ID.
+`--kind` is required unless `--issue` is given (in which case sessions for that issue are listed instead). `--kind` + `--issue` together filters events of that kind to the issue.
 
 ### All events for an issue
 
@@ -297,7 +297,7 @@ Shows the top-level condensed summary node when LCM compaction is enabled. `--ex
 
 ```bash
 ll-session recent --kind test_run --limit 5
-ll-session recent --kind test_run --branch main
+# Filtering by branch is not supported on `recent`; use `ll-session backfill --branch main --since ...` for branch-scoped queries.
 ```
 
 Each row is a pytest invocation captured live during a session or by `ll-session backfill` from a recorded run: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Use this to spot a branch where tests started failing, or to find the commit that flipped a passing run red. (ENH-2459.)

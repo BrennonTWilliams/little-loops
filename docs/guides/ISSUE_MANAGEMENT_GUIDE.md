@@ -122,7 +122,7 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 | `done` | Work finished and committed |
 | `cancelled` | Decided not to implement or closed without a code change |
 
-Synonyms (`complete`, `completed`, `finished`, `wip`, `in-progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
+Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
 As noted in [Issue File Anatomy](#issue-file-anatomy), CLI tools bucket issues by this `status` field, never by directory location.
 
@@ -217,7 +217,7 @@ The full pipeline in order:
 8. tradeoff-review-issues ← prune low-value issues before investing more time
 ```
 
-> See [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) for the full decisions system: how `decision_needed` gates automation, the four entry types (decisions, rules, exceptions, coupling contracts), and how `ll-issues decisions sync` propagates required rules to `.ll/ll.local.md`.
+> See [Decisions Log Guide](DECISIONS_LOG_GUIDE.md) for the full decisions system: how `decision_needed` gates automation, the four entry types (`decision`, `rule`, `exception`, `coupling`), and how `ll-issues decisions sync` propagates required rules to `.ll/ll.local.md`.
 
 ### Fixing Filenames
 
@@ -263,7 +263,7 @@ After prioritization, review the assignments. The AI doesn't know your deadlines
 ```
 /ll:format-issue                     ← interactive: asks Q&A for each section
 /ll:format-issue --auto              ← non-interactive: fills gaps automatically
-/ll:format-issue P2-BUG-042-...md   ← target a specific file
+/ll:format-issue BUG-042              ← target a specific issue (uses ISSUE_ID, not a file path)
 ```
 
 Promotes a minimal issue to the full v2.0 structure. In interactive mode, the skill asks clarifying questions to populate new sections (Motivation, Integration Map, Implementation Steps, Root Cause). In `--auto` mode, it makes its best guess from existing content.
@@ -502,7 +502,7 @@ When you have many issues to process, the CLI tools can handle them in bulk with
 
 ```bash
 ll-auto                              ← process all active issues one by one
-ll-auto --only BUG-042              ← process a specific issue
+ll-auto --only BUG-042,FEAT-100      ← process a comma-separated list of specific issues
 ll-auto --dry-run                    ← preview what would be processed
 ```
 
@@ -519,7 +519,7 @@ Runs multiple issues in separate git worktrees simultaneously. Each worker gets 
 ### Sprint-Based: ll-sprint
 
 ```bash
-ll-sprint create sprint-name        ← create a sprint from issues
+ll-sprint create sprint-name --issues BUG-001,FEAT-010   ← create a sprint from issues
 ll-sprint run sprint-name           ← execute the sprint
 ll-sprint show sprint-name          ← inspect sprint details and wave structure
 ```

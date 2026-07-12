@@ -192,7 +192,8 @@ Two properties make this shape safe by construction:
   satisfies MR-1 by construction (there is no `check_semantic` to pair). The accept/revert
   branch is the operational answer to "half of edits are detrimental."
 
-Artifacts isolate per run under `.loops/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`,
+Artifacts isolate per run under `${context.run_dir}/states/<state>/trajectory.jsonl`
+(resolved by the loop runner, not hard-coded by the doc; the actual default for `harness-optimize` is `.ll/runs/harness-optimize-<timestamp>/...`),
 recording every iteration's score and accept/reject verdict — so the trajectory survives
 even when individual edits are reverted (MR-3 / MR-5).
 
@@ -339,10 +340,10 @@ What it does:
 
 1. Runs the normal baseline A/B on your primary host (whatever `resolve_host()`
    selects — `LL_HOST_CLI` / `orchestration.host_cli` / probe order).
-2. Picks the next available host from the probe order (`claude`, `codex`,
-   `opencode`, `pi`) whose binary is on `PATH`, and re-runs the identical
-   baseline trial with `LL_HOST_CLI` overridden to it. `--baseline-skill` and
-   `--items` are forwarded unchanged.
+2. Picks the next available host from the probe order (`claude-code`, `codex`,
+   `pi`, `gemini`, `omp` — `opencode` is deliberately absent) whose binary is on
+   `PATH`, and re-runs the identical baseline trial with `LL_HOST_CLI` overridden
+   to it. `--baseline-skill` and `--items` are forwarded unchanged.
 3. Prints a **Cross-host Comparison** table: per-host harness pass rate with
    Wilson 95% confidence intervals and trial counts.
 

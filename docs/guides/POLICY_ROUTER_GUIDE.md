@@ -285,8 +285,8 @@ Common flags:
 | `--dry-run` | Print the table to stdout; don't open the editor or write YAML |
 | `--format csv` | Render (and parse) CSV instead of markdown |
 | `--decision-table` | Force compound mode (otherwise auto-detected for policy-router loops) |
-| `--no-warnings` | Skip the gap/conflict report printed before the editor opens |
-| `--allow-delete` | Apply row deletions instead of ignoring them (see below) |
+| `--no-warnings` | Skip the gap/conflict warnings (verdict-matrix: pre-editor; compound-mode: post-save) |
+| `--allow-delete` | Apply state-row deletions instead of ignoring them (verdict-matrix mode only — `PolicyRuleApplier` for compound mode does not consume this flag) |
 
 Exit codes: `0` success or no changes, `1` parse error or an unknown state name in the edited
 table, `2` loop not found.

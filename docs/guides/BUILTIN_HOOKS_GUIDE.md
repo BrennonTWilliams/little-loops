@@ -54,7 +54,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` from Claude-side Write/Edit | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
-| **PreToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
+| **PostToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
 | **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash output to a scratch file | **yes** | off |
 | **PostToolUse** | post-tool-use | Records tool & file events to `history.db` | — | opt-in |
 | **PostToolUse** | context-monitor | Estimates context usage; nudges a handoff near the limit | exit 2 | on |
@@ -88,7 +88,7 @@ You use the Write or Edit tool
   → PreToolUse (learning-tests gate, if enabled): warns if import has no proven record
 
 You run a Bash install command (pip install, npm install, etc.)
-  → PreToolUse (install-nudge gate, if learning_tests.enabled): suggests /ll:explore-api for the new package
+  → PostToolUse (install-nudge gate, if learning_tests.enabled): suggests /ll:explore-api for the new package
 
 The tool finishes
   → PostToolUse (analytics, if enabled): records tool + file events to history.db
@@ -192,7 +192,7 @@ Four hooks run before a tool executes. These are the only place little-loops can
 
 On `Write`/`Edit` of a **new** `.md` file under `issues.base_dir` (default `.issues`), it checks whether the bare issue integer is already allocated under a different type (e.g. creating `FEAT-007` when `BUG-007` exists). If so it **denies** the write with:
 
-> `[little-loops] Duplicate ID detected: … conflicts with … Use the next available ID.`
+> `[little-loops] Duplicate issue ID detected: ${ISSUE_ID} conflicts with ${EXISTING_BASENAME} — integer ${ISSUE_NUM} must be unique across all types (BUG/FEAT/ENH/EPIC). Use the next available ID.`
 
 It allows edits to existing files and anything outside `.issues/`. Always on; uses an advisory lock that fails open.
 
@@ -233,15 +233,17 @@ Keeps large **Bash** output out of the conversation: it rewrites allowlisted com
 
 > `scratch_pad.threshold_lines` and `scratch_pad.file_extension_filters` are retained for config compatibility but no longer affect behavior (they only gated the removed `Read` interception).
 
-### Install-nudge gate (warn)
+### Install-nudge gate (warn, PostToolUse)
 
-**Hook:** `pre-tool-use.sh` → `little_loops.hooks.install_learning_gate.gate`
+**Hook:** `post-tool-use.sh` → `little_loops.hooks.post_tool_use.handle` → `little_loops.hooks.install_learning_gate.gate`
 
-When Claude Code is about to run a `Bash` command that invokes a package-install tool (`pip install`, `pip3 install`, `uv pip install`, `npm install`, `pnpm add`, `yarn add`), this hook emits a one-line nudge suggesting you run `/ll:explore-api` to prove the newly-installed package's API assumptions before writing integration code:
+After a `Bash` tool call that just installed a package (`pip install`, `pip3 install`, `uv pip install`, `npm install`, `pnpm add`, `yarn add`), this hook emits a one-line nudge suggesting you run `/ll:explore-api` to prove the newly-installed package's API assumptions before writing integration code:
 
-> `[ll: explore-api nudge] About to install stripe — consider /ll:explore-api "stripe" to prove its API before writing integration code.`
+> `[ll: new dependency] No learning test for "stripe". Consider: /ll:explore-api "stripe"`
 
 Never blocks (always advisory, exit 0). Gated by `learning_tests.enabled` (default **false**) — the nudge is silent unless learning tests are enabled. No additional configuration keys beyond the parent `learning_tests` block.
+
+> **Note on lifecycle**: although this hook reads from the Bash tool result, it is wired as PostToolUse (not PreToolUse) because the package manager must already have produced a side-effect before a meaningful "you just installed X" nudge can fire.
 
 ---
 
@@ -286,7 +288,7 @@ TOCTOU — "time-of-check to time-of-use" — is the race window between checkin
 
 The belt-and-suspenders partner to the PreToolUse guard: after a `Write` lands, it re-checks for an ID collision and, if the just-written file is the duplicate, **deletes it** and returns exit 2:
 
-> `[little-loops] Duplicate ID: … File removed — call ll-issues next-id again for a unique ID.`
+> `[little-loops] Duplicate ID: ${FILENAME} conflicts with ${DUPLICATE_BASENAME} (integer ${ISSUE_NUM} already allocated). File removed — call ll-issues next-id again for a unique ID.`
 
 Always on. Closes the race window where two writes pick the same ID concurrently.
 
@@ -343,7 +345,7 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 **Hook:** `session-cleanup.sh` (pure bash)
 
-Removes this session's lock and context-state files, clears `.loops/tmp/scratch`, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Always on.
+Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionEnd — see BUG-2420.) Always on.
 
 ---
 

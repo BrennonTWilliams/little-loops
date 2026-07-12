@@ -486,7 +486,7 @@ check_stall:
 
 ---
 
-**Full 6-phase ordering (with all phases active):**
+**Full evaluation ordering (5 evaluation gates + stall detection, with all phases active):**
 
 ```
 check_stall      → no-op detection (diff_stall, <1s) — first, before any evaluation cost
@@ -1149,8 +1149,8 @@ current state, then `PersistentExecutor.run`'s post-block calls
 ### Second Ctrl-C — force-exit with audit trail
 
 If a second `SIGINT` arrives while the loop is still shutting down, the
-handler takes a force-exit branch (ENH-2516,
-`scripts/little_loops/cli/loop/_helpers.py:103-107`) that calls
+handler takes a force-exit branch (ENH-2516, in the
+`scripts/little_loops/cli/loop/_helpers.py` module around lines 126–148) that calls
 `PersistentExecutor.archive_run_only(terminated_by="interrupted_force")`
 *before* `sys.exit(1)`. The `.history/<run_id>-<loop_name>/` archive
 still lands. Exit code: `1`. This is the user-visible contract that
