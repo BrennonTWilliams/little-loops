@@ -2874,11 +2874,30 @@ class TestAutodevLoop:
             f"refine_current.on_error should be 'skip_inflight', got {state.get('on_error')!r}"
         )
 
-    def test_refine_current_on_no_routes_to_dequeue_next(self, data: dict) -> None:
-        """refine_current.on_no (sub-loop queue empty / never started) must route to dequeue_next."""
+    def test_refine_current_has_no_explicit_on_no(self, data: dict) -> None:
+        """BUG-2611: refine_current must NOT declare a raw on_no key. schema.py's
+        `on_no = on_no or on_failure` means an explicit on_no here silently shadows
+        on_failure, permanently dead-coding the skip_inflight route — every
+        refine_current crash routed straight to dequeue_next with no ledger write.
+        Leaving on_no unset lets it correctly fall back to on_failure's value."""
         state = data["states"].get("refine_current", {})
-        assert state.get("on_no") == "dequeue_next", (
-            f"refine_current.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
+        assert "on_no" not in state, (
+            "refine_current must not set on_no directly — it shadows on_failure "
+            "(BUG-2611); the skip_inflight route depends on on_no falling back to "
+            "on_failure via schema.py's StateConfig.from_dict"
+        )
+
+    def test_refine_current_compiled_on_no_resolves_to_skip_inflight(self, data: dict) -> None:
+        """BUG-2611 regression: verify the *compiled* schema, not just the raw YAML dict —
+        on_no must resolve to skip_inflight (matching on_failure) so a crashed sub-loop's
+        terminal-but-not-done result actually reaches the ledger-writing state."""
+        from little_loops.fsm.schema import StateConfig
+
+        state = StateConfig.from_dict(data["states"]["refine_current"])
+        assert state.on_no == "skip_inflight", (
+            f"refine_current's compiled on_no should resolve to 'skip_inflight' "
+            f"(via the on_failure fallback), got {state.on_no!r} — a crashed "
+            f"refine-to-ready-issue sub-loop would silently skip the ledger write"
         )
 
     def test_skip_inflight_state_exists(self, data: dict) -> None:

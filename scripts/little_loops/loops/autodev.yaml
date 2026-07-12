@@ -126,14 +126,21 @@ states:
     # 'failed' terminal (e.g. diagnose → failed) — route to skip_inflight so
     # the issue is recorded as skipped and the queue advances without passing an
     # unrefined issue to implement_current. on_error (signal/crash) takes the
-    # same skip path. on_no (queue empty / sub-loop never started) drains normally.
+    # same skip path.
+    #
+    # BUG-2611: do NOT add an `on_no:` key here. `_execute_delegate_state`
+    # (executor.py) routes any non-"done" terminal — including a genuine
+    # crash — through `on_no`, and schema.py's `on_no = on_no or on_failure`
+    # means an explicit `on_no` silently shadows `on_failure`, permanently
+    # dead-coding the skip_inflight route above. Leaving on_no unset lets it
+    # fall back to on_failure's value ("skip_inflight"), which is correct for
+    # every failure mode (crash, max_iterations, timeout, signal).
     fragment: with_rate_limit_handling
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: copy_broke_down
     on_failure: skip_inflight
     on_error: skip_inflight
-    on_no: dequeue_next
     on_rate_limit_exhausted: dequeue_next
 
   skip_inflight:
