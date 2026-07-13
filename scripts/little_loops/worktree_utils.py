@@ -254,7 +254,7 @@ def verify_epic_branch_before_merge(
     logger: Logger,
     git_lock: GitLock,
     src_dir: str | None = None,
-) -> tuple[bool, str | None]:
+) -> tuple[bool, str | None, int | None]:
     """Run test_cmd/lint_cmd against an EPIC branch tip before merge/PR (ENH-2603, BUG-2614).
 
     Stateless free-function extraction of ``ParallelOrchestrator``'s
@@ -290,12 +290,17 @@ def verify_epic_branch_before_merge(
             non-editable / non-Python setups.
 
     Returns:
-        ``(True, None)`` if the gate passed (or was disabled). ``(False,
-        message)`` if worktree setup or a configured command failed, where
-        ``message`` describes the failure for the caller to surface.
+        ``(ok, message, returncode)``. ``(True, None, None)`` if the gate
+        passed (or was disabled). ``(False, message, returncode)`` if worktree
+        setup or a configured command failed, where ``message`` describes the
+        failure for the caller to surface and ``returncode`` is the failing
+        process exit code (``None`` for a worktree-setup failure, which never
+        ran a command). ENH-2631: the exit code lets callers distinguish a
+        pytest collection/usage error (exit 2, a harness/env problem — BUG-2629)
+        from a real test failure (exit 1) without re-running the suite.
     """
     if not verify_before_merge:
-        return True, None
+        return True, None, None
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     worktree_path = repo_path / worktree_base / f"verify-{epic_id.lower()}-{timestamp}"
@@ -313,7 +318,7 @@ def verify_epic_branch_before_merge(
     except RuntimeError as e:
         message = f"verify-gate worktree setup failed: {e}"
         logger.warning(f"EPIC {epic_id}: {message}")
-        return False, message
+        return False, message, None
 
     env: dict[str, str] | None = None
     if src_dir:
@@ -341,8 +346,8 @@ def verify_epic_branch_before_merge(
                 detail = (result.stderr or result.stdout or "").strip()[:500]
                 message = f"{label}_cmd failed (exit {result.returncode}): {detail}"
                 logger.warning(f"EPIC {epic_id}: {message}")
-                return False, message
-        return True, None
+                return False, message, result.returncode
+        return True, None, None
     finally:
         cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=False)
 

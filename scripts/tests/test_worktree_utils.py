@@ -264,7 +264,7 @@ class TestMergeEpicBranchToBase:
 class TestVerifyEpicBranchBeforeMerge:
     """verify_epic_branch_before_merge() (BUG-2614: extracted from
     ParallelOrchestrator._verify_epic_branch_before_merge) is stateless —
-    returns (ok, message) instead of mutating instance dicts."""
+    returns (ok, message, returncode) instead of mutating instance dicts."""
 
     def _repo_with_epic_branch(self, tmp_path: Path) -> Path:
         repo = _init_repo(tmp_path / "repo")
@@ -277,7 +277,7 @@ class TestVerifyEpicBranchBeforeMerge:
         git_lock = GitLock(logger)
 
         with patch("little_loops.worktree_utils.subprocess.run") as mock_run:
-            ok, message = verify_epic_branch_before_merge(
+            ok, message, returncode = verify_epic_branch_before_merge(
                 "EPIC-1",
                 "epic/epic-1-integration",
                 verify_before_merge=False,
@@ -289,7 +289,7 @@ class TestVerifyEpicBranchBeforeMerge:
                 git_lock=git_lock,
             )
 
-        assert (ok, message) == (True, None)
+        assert (ok, message, returncode) == (True, None, None)
         mock_run.assert_not_called()
 
     def test_passing_test_cmd_returns_true(self, tmp_path: Path) -> None:
@@ -297,7 +297,7 @@ class TestVerifyEpicBranchBeforeMerge:
         logger = Logger(verbose=False)
         git_lock = GitLock(logger)
 
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
             "epic/epic-1-integration",
             verify_before_merge=True,
@@ -309,14 +309,14 @@ class TestVerifyEpicBranchBeforeMerge:
             git_lock=git_lock,
         )
 
-        assert (ok, message) == (True, None)
+        assert (ok, message, returncode) == (True, None, None)
 
     def test_failing_test_cmd_returns_false_with_message(self, tmp_path: Path) -> None:
         repo = self._repo_with_epic_branch(tmp_path)
         logger = Logger(verbose=False)
         git_lock = GitLock(logger)
 
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
             "epic/epic-1-integration",
             verify_before_merge=True,
@@ -331,6 +331,32 @@ class TestVerifyEpicBranchBeforeMerge:
         assert ok is False
         assert message is not None
         assert "test_cmd failed" in message
+        # ENH-2631: `false` exits 1 (a real failure), surfaced as returncode 1.
+        assert returncode == 1
+
+    def test_collection_error_exit_code_surfaces_returncode_2(self, tmp_path: Path) -> None:
+        """ENH-2631: a pytest-style exit 2 (collection/usage error) must surface
+        returncode 2 so the caller can classify it as collection_error rather
+        than a real test failure (exit 1)."""
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok, message, returncode = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd="sh -c 'exit 2'",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is False
+        assert returncode == 2
+        assert message is not None and "exit 2" in message
 
     def test_src_dir_prepends_worktree_source_onto_pythonpath(self, tmp_path: Path) -> None:
         """BUG-2629: when src_dir is set, the worktree's source dir is prepended to
@@ -349,7 +375,7 @@ class TestVerifyEpicBranchBeforeMerge:
             "sys.exit(0 if os.path.basename(p)=='scripts' else 1)"
         )
 
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
             "epic/epic-1-integration",
             verify_before_merge=True,
@@ -362,7 +388,7 @@ class TestVerifyEpicBranchBeforeMerge:
             src_dir="scripts",
         )
 
-        assert (ok, message) == (True, None)
+        assert (ok, message, returncode) == (True, None, None)
 
     def test_falsy_src_dir_leaves_pythonpath_uninjected(self, tmp_path: Path) -> None:
         """BUG-2629: src_dir=None (default) preserves prior behavior — no injection."""
@@ -376,7 +402,7 @@ class TestVerifyEpicBranchBeforeMerge:
             "sys.exit(1 if os.path.basename(p)=='scripts' else 0)"
         )
 
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
             "epic/epic-1-integration",
             verify_before_merge=True,
@@ -388,7 +414,7 @@ class TestVerifyEpicBranchBeforeMerge:
             git_lock=git_lock,
         )
 
-        assert (ok, message) == (True, None)
+        assert (ok, message, returncode) == (True, None, None)
 
     def test_worktree_setup_failure_returns_false_with_message(self, tmp_path: Path) -> None:
         """A branch that doesn't exist fails worktree setup, not the test_cmd."""
@@ -396,7 +422,7 @@ class TestVerifyEpicBranchBeforeMerge:
         logger = Logger(verbose=False)
         git_lock = GitLock(logger)
 
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
             "epic/does-not-exist",
             verify_before_merge=True,
@@ -411,6 +437,8 @@ class TestVerifyEpicBranchBeforeMerge:
         assert ok is False
         assert message is not None
         assert "worktree setup failed" in message
+        # ENH-2631: no command ran (setup failed first) — returncode is None.
+        assert returncode is None
 
 
 class TestOpenPrForEpicBranch:

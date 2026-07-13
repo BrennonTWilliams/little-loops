@@ -3336,7 +3336,10 @@ take directly, since they're specific to `WorkerPool`'s concurrency model).
 When `verify_before_merge` is `True`, `verify_epic_branch_before_merge` checks out the
 EPIC branch tip in a scratch worktree (via `worktree_utils.setup_worktree(...,
 checkout_existing=True)`), runs `test_cmd`/`lint_cmd` against it, and always tears the
-worktree down, returning `(ok, message)`. When the optional `src_dir` kwarg is truthy
+worktree down, returning `(ok, message, returncode)` (ENH-2631: `returncode` is the
+failing process exit code — `None` on success or a worktree-setup failure — so callers
+can tell a pytest collection/usage error, exit 2, from a real test failure, exit 1,
+without re-running the suite). When the optional `src_dir` kwarg is truthy
 (callers forward `project.src_dir`, e.g. `"scripts"`), the verify subprocess prepends
 the worktree's `<worktree>/<src_dir>` onto `PYTHONPATH` so branch-only modules resolve
 to the worktree — defeating editable-install `.pth` shadowing that would otherwise

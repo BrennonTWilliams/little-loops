@@ -354,6 +354,31 @@ states:
       import sys
       from pathlib import Path
 
+      run_dir = Path("""${context.run_dir}""")
+
+      # ENH-2631: map a process exit code to a verdict class so triage can tell
+      # a pytest collection/usage error (exit 2 — a harness/env problem like
+      # BUG-2629) from a real test failure (exit 1, a code defect) without
+      # re-running the suite. Everything non-zero-and-not-2 stays 'failed'.
+      def classify(returncode):
+          if returncode == 0:
+              return 'passed'
+          if returncode == 2:
+              return 'collection_error'
+          return 'failed'
+
+      # ENH-2631: persist the failing exit code + a detail snippet as flat text
+      # artifacts alongside the verdict token (Option A, ENH-2631 decision), then
+      # emit the verdict on stdout. Written only on failure; passed/skipped runs
+      # leave the detail/returncode files absent so finalize defaults them.
+      def emit(verdict, returncode=None, detail=''):
+          if returncode is not None:
+              (run_dir / 'verify-returncode.txt').write_text(str(returncode))
+          if detail:
+              (run_dir / 'verify-detail.txt').write_text(detail[:500])
+          print(verdict)
+          raise SystemExit(0)
+
       p = Path('.ll/ll-config.json')
       cfg = json.loads(p.read_text()) if p.exists() else {}
       project = cfg.get('project', {})
@@ -361,26 +386,22 @@ states:
       lint_cmd = project.get('lint_cmd')
 
       if not test_cmd:
-          print('skipped')
-          raise SystemExit(0)
+          emit('skipped')
 
-      run_dir = Path("""${context.run_dir}""")
       branch_file = run_dir / 'epic-branch-name.txt'
       epic_branch = branch_file.read_text().strip() if branch_file.exists() else ''
 
       if not epic_branch:
-          def run_checks(cwd):
-              for cmd in (test_cmd, lint_cmd):
-                  if not cmd:
-                      continue
-                  result = subprocess.run(
-                      shlex.split(cmd), capture_output=True, text=True, cwd=cwd
-                  )
-                  if result.returncode != 0:
-                      return 'failed'
-              return 'passed'
-          print(run_checks(None))
-          raise SystemExit(0)
+          for cmd in (test_cmd, lint_cmd):
+              if not cmd:
+                  continue
+              result = subprocess.run(
+                  shlex.split(cmd), capture_output=True, text=True
+              )
+              if result.returncode != 0:
+                  detail = (result.stderr or result.stdout or '').strip()
+                  emit(classify(result.returncode), result.returncode, detail)
+          emit('passed', 0)
 
       from little_loops.config import BRConfig
       from little_loops.logger import Logger
@@ -405,7 +426,7 @@ states:
       if sha.returncode == 0:
           (run_dir / 'verify-sha.txt').write_text(sha.stdout.strip())
 
-      ok, message = verify_epic_branch_before_merge(
+      ok, message, returncode = verify_epic_branch_before_merge(
           epic_id,
           epic_branch,
           verify_before_merge=True,
@@ -417,9 +438,14 @@ states:
           git_lock=lock,
           src_dir=ll_cfg.project.src_dir,
       )
-      if not ok and message:
+      if ok:
+          emit('passed', 0)
+      if message:
           print(f'verify: {message}', file=sys.stderr)
-      print('passed' if ok else 'failed')
+      # ENH-2631: returncode is None only for a worktree-setup failure (no
+      # command ran) — fall back to 'failed' there rather than misclassifying.
+      verdict = classify(returncode) if returncode is not None else 'failed'
+      emit(verdict, returncode, message or '')
       PYEOF
       )
       echo "$VERIFY_VERDICT" > "$RUN_DIR/verify-verdict.txt"
@@ -562,7 +588,10 @@ states:
               ok, message = True, None
 
       if ok is None:
-          ok, message = verify_epic_branch_before_merge(
+          # ENH-2631: the free function now returns (ok, message, returncode);
+          # merge_epic_branch only gates on ok, so the exit code is discarded here
+          # (the verify state already persisted it to verify-returncode.txt).
+          ok, message, _returncode = verify_epic_branch_before_merge(
               epic_id,
               epic_branch,
               verify_before_merge=epic_cfg.verify_before_merge,
@@ -766,6 +795,20 @@ states:
       # delegate/verify pass at all).
       VERIFY_VERDICT=$(cat "$RUN_DIR/verify-verdict.txt" 2>/dev/null || echo "not_run")
 
+      # ENH-2631: the verify state persists the failing process exit code to
+      # verify-returncode.txt (flat text, Option A). Surface it as a JSON number
+      # so a `verify_verdict: failed` run is triageable without a re-run — 1 =
+      # tests failed, 2 = collection/usage error (verdict class collection_error).
+      # Defaults to `null` when absent (passed/skipped/not_run leave no file, or
+      # only the verdict was seeded). The value is a bare integer we control, so
+      # embedding it unquoted in the summary.json printf is safe (unlike an
+      # arbitrary-text detail field — see the ENH-2631 decision rationale, which
+      # keeps the detail snippet in verify-detail.txt out of the JSON entirely).
+      VERIFY_RETURNCODE=$(cat "$RUN_DIR/verify-returncode.txt" 2>/dev/null || echo "null")
+      case "$VERIFY_RETURNCODE" in
+        ''|*[!0-9-]*) VERIFY_RETURNCODE=null ;;
+      esac
+
       # BUG-2614: EPIC_MERGE_VERDICT is sourced from merge_epic_branch's
       # artifact (merged/pr_opened/held_open/verify_failed/merge_failed/
       # skipped) — "not_run" when merge_epic_branch never ran (e.g. the
@@ -789,8 +832,8 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","epic_merge_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.

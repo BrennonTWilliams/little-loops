@@ -1333,7 +1333,7 @@ class ParallelOrchestrator:
         """
         cfg = self.parallel_config.epic_branches
         project = self.br_config.project
-        ok, message = verify_epic_branch_before_merge(
+        ok, message, _returncode = verify_epic_branch_before_merge(
             epic_id,
             epic_branch,
             verify_before_merge=cfg.verify_before_merge,

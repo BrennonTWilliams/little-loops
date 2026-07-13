@@ -2193,6 +2193,7 @@ class TestAutoRefineAndImplementLoop:
         skipped_reasons: tuple[str, ...] = (),
         issue_set: tuple[str, ...] = (),
         verify_verdict: str | None = None,
+        verify_returncode: str | None = None,
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -2217,6 +2218,12 @@ class TestAutoRefineAndImplementLoop:
         p = "auto-refine-and-implement"
         if verify_verdict is not None:
             (run_dir / "verify-verdict.txt").write_text(verify_verdict + "\n")
+        # ENH-2631: seed verify-returncode.txt (the flat-text exit-code artifact
+        # the verify state writes on failure) so summary.json's verify_returncode
+        # key can be exercised; when omitted the file is absent and finalize must
+        # default the field to null.
+        if verify_returncode is not None:
+            (run_dir / "verify-returncode.txt").write_text(verify_returncode + "\n")
         (run_dir / f"{p}-completed-baseline.txt").write_text(
             "".join(f"{i}\n" for i in sorted(baseline))
         )
@@ -2453,6 +2460,41 @@ class TestAutoRefineAndImplementLoop:
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir)
         assert summary["verify_verdict"] == "not_run", f"got {summary}"
+
+    # --- ENH-2631: verify_returncode + collection_error verdict class ---------
+
+    def test_finalize_sources_verify_returncode_artifact(self, data: dict) -> None:
+        """finalize must read verify-returncode.txt — the flat-text exit-code
+        artifact the verify state writes on failure (ENH-2631)."""
+        action = data["states"].get("finalize", {}).get("action", "")
+        assert "verify-returncode.txt" in action
+
+    def test_finalize_surfaces_verify_returncode(self, data: dict, tmp_path: Path) -> None:
+        """A verify failure must surface its exit code as a JSON number so a
+        collection_error (exit 2) is triageable without a re-run (ENH-2631)."""
+        for verdict, code in (("failed", "1"), ("collection_error", "2")):
+            run_dir = tmp_path / f"run-{code}"
+            run_dir.mkdir()
+            summary = self._run_finalize(
+                data,
+                run_dir,
+                closed=("FEAT-1",),
+                passed=("FEAT-1",),
+                verify_verdict=verdict,
+                verify_returncode=code,
+            )
+            assert summary["verify_verdict"] == verdict, f"got {summary}"
+            assert summary["verify_returncode"] == int(code), f"got {summary}"
+
+    def test_finalize_verify_returncode_defaults_to_null(self, data: dict, tmp_path: Path) -> None:
+        """When verify passed/skipped/never-ran, no exit-code artifact exists —
+        verify_returncode must be JSON null, not omitted or a crash (ENH-2631)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",), verify_verdict="passed"
+        )
+        assert summary["verify_returncode"] is None, f"got {summary}"
 
     def test_finalize_sources_gate_blocked_ledger(self, data: dict) -> None:
         """finalize must read autodev-gate-blocked.txt — previously never referenced,
@@ -2781,6 +2823,24 @@ class TestVerifyStateConfigReadShell:
 
     def test_failed_when_test_cmd_fails(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, test_cmd="false") == "failed"
+
+    def test_collection_error_when_test_cmd_exits_2(self, tmp_path: Path) -> None:
+        """ENH-2631: exit 2 (pytest collection/usage error) yields the distinct
+        collection_error verdict class, not a plain 'failed'."""
+        assert self._run(tmp_path, test_cmd="sh -c 'exit 2'") == "collection_error"
+
+    def test_failure_persists_returncode_and_detail_artifacts(self, tmp_path: Path) -> None:
+        """ENH-2631: a verify failure must persist the exit code and a detail
+        snippet as flat-text artifacts in the run_dir for post-hoc triage."""
+        assert self._run(tmp_path, test_cmd="sh -c 'echo boom >&2; exit 1'") == "failed"
+        run_dir = tmp_path / "run"
+        assert (run_dir / "verify-returncode.txt").read_text().strip() == "1"
+        assert "boom" in (run_dir / "verify-detail.txt").read_text()
+
+    def test_passed_leaves_no_detail_artifact(self, tmp_path: Path) -> None:
+        """A passing verify writes no detail file (only failures carry detail)."""
+        assert self._run(tmp_path, test_cmd="true") == "passed"
+        assert not (tmp_path / "run" / "verify-detail.txt").exists()
 
     def test_failed_when_lint_cmd_fails(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, test_cmd="true", lint_cmd="false") == "failed"

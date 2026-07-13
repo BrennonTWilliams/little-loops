@@ -2,9 +2,10 @@
 id: ENH-2631
 title: Verify gate discards failure message and exit code
 type: enhancement
-status: open
+status: done
 priority: P3
 captured_at: '2026-07-13T18:30:06Z'
+completed_at: '2026-07-13T19:55:13Z'
 discovered_date: 2026-07-13
 discovered_by: capture-issue
 relates_to:
@@ -273,6 +274,8 @@ _Added by `/ll:refine-issue` — concrete anchors for each step:_
   reflected in `summary.json`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T19:54:47 - `37d5c8a1-5f96-44a8-b5c4-7ebc67181cf9.jsonl`
+- `/ll:ready-issue` - 2026-07-13T19:39:41 - `02e02d18-58b5-4853-bfbd-004f4676c389.jsonl`
 - `/ll:confidence-check` - 2026-07-13T19:15:00 - `f50585fe-3374-421c-8014-87f7e2c49944.jsonl`
 - `/ll:wire-issue` - 2026-07-13T19:08:36 - `9c6037dd-59e4-4810-80d3-c2c8497d31c4.jsonl`
 - `/ll:decide-issue` - 2026-07-13T19:01:59 - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`

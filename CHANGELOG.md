@@ -68,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against corruption (ENH-2592).
 - **`pixi-data-viz`** — renamed `input_key` to match the input-port convention
   (d1f2da2).
+- **Epic verify gate** — the gate now surfaces the failure's exit code and detail:
+  `verify_epic_branch_before_merge` returns `(ok, message, returncode)`, the
+  `auto-refine-and-implement` verify state persists `verify-returncode.txt` /
+  `verify-detail.txt`, and `summary.json` carries a `verify_returncode` field plus a
+  distinct `collection_error` verdict class (pytest exit 2) so a harness/import error
+  is triageable without a re-run (ENH-2631).
 
 ### Other
 

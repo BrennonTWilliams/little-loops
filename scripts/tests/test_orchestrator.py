@@ -1616,6 +1616,31 @@ class TestEpicBranchVerifyGate:
         mock_cleanup.assert_called_once()
         assert mock_cleanup.call_args.kwargs.get("delete_branch") is False
 
+    def test_blocks_merge_on_collection_error_exit_2(
+        self,
+        make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
+    ) -> None:
+        """ENH-2631: a collection/usage error (exit 2) blocks merge just like a
+        real test failure (exit 1); the failure message carries the exit code so
+        the verdict class can be derived downstream."""
+        orch, _ = make_epic_orchestrator(
+            {"FEAT-010": "done", "FEAT-020": "done"}, verify_before_merge=True
+        )
+        calls = self._capture_git(orch)
+
+        with (
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
+            patch(
+                "little_loops.worktree_utils.subprocess.run",
+                return_value=MagicMock(returncode=2, stdout="", stderr="collection error"),
+            ),
+        ):
+            orch._maybe_complete_epic("FEAT-010", self._EPIC_BRANCH)
+
+        assert not [c for c in calls if c[0] == "merge"]
+        assert "exit 2" in orch.epic_branch_verify_failures["EPIC-2451"]
+
     def test_allows_merge_on_success(
         self,
         make_epic_orchestrator: Callable[..., tuple[ParallelOrchestrator, Path]],
