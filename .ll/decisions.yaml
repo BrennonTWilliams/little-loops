@@ -5064,3 +5064,16 @@
     rebuild() architecture; Option B/D (per-state grain) — not derivable from raw_events
     transcript lines
   issue: ENH-2461
+- id: ARCHITECTURE-146
+  type: decision
+  timestamp: '2026-07-13T04:40:06Z'
+  category: architecture
+  labels: []
+  rationale: Confines DB-path unification to session_store.py, preserving env/config
+    routing for all ~13 default-shaped-but-absolute call sites; Option B would touch
+    far more surface than the issue names.
+  rule: Option A — default-shaped vs deliberate-override DB-path classification
+  scope: issue
+  alternatives_rejected: Option B — strict == DEFAULT_DB_PATH gate plus call-site
+    fixes
+  issue: ENH-2623

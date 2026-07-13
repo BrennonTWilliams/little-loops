@@ -15,6 +15,12 @@ labels:
 - history-db
 - config
 - captured
+confidence_score: 100
+outcome_confidence: 91
+score_complexity: 22
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 21
 ---
 
 # ENH-2623: Configurable history.db_path and unified DB-path resolution
