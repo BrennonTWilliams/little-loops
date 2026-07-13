@@ -257,6 +257,101 @@ class TestQueueFifoOrdering:
         assert _is_earliest_waiter(good_id, queue_dir) is True
 
 
+class TestReadQueueEntries:
+    """read_queue_entries returns live, sorted queue entries, pruning dead PIDs (ENH-2617)."""
+
+    def test_missing_dir_returns_empty(self, tmp_path: Path) -> None:
+        """Returns [] when the queue directory does not exist."""
+        from little_loops.cli.loop._helpers import read_queue_entries
+
+        assert read_queue_entries(tmp_path / ".queue") == []
+
+    def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
+        """Returns [] when the queue directory exists but is empty."""
+        from little_loops.cli.loop._helpers import read_queue_entries
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+        assert read_queue_entries(queue_dir) == []
+
+    def test_entries_sorted_by_enqueued_at(self, tmp_path: Path) -> None:
+        """Surviving entries are returned sorted by enqueuedAt ascending."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import read_queue_entries
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        id_b = str(uuid.uuid4())
+        id_c = str(uuid.uuid4())
+        (queue_dir / f"{id_c}.json").write_text(
+            json.dumps({"id": id_c, "enqueuedAt": "2026-05-02T10:00:01+00:00"})
+        )
+        (queue_dir / f"{id_b}.json").write_text(
+            json.dumps({"id": id_b, "enqueuedAt": "2026-05-02T10:00:00+00:00"})
+        )
+
+        entries = read_queue_entries(queue_dir)
+        assert [e["id"] for e in entries] == [id_b, id_c]
+
+    def test_dead_pid_entries_are_pruned(self, tmp_path: Path) -> None:
+        """Dead-PID entries are unlinked and excluded from the result (BUG-1360)."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import read_queue_entries
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        stale_id = str(uuid.uuid4())
+        live_id = str(uuid.uuid4())
+        stale_file = queue_dir / f"{stale_id}.json"
+        stale_file.write_text(
+            json.dumps(
+                {
+                    "id": stale_id,
+                    "enqueuedAt": "2026-05-01T00:00:00+00:00",
+                    "context": {"pid": 99999999},
+                }
+            )
+        )
+        (queue_dir / f"{live_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": live_id,
+                    "enqueuedAt": "2026-05-02T00:00:00+00:00",
+                    "context": {"pid": None},
+                }
+            )
+        )
+
+        entries = read_queue_entries(queue_dir)
+        assert [e["id"] for e in entries] == [live_id]
+        assert not stale_file.exists()
+
+    def test_malformed_entries_are_skipped(self, tmp_path: Path) -> None:
+        """Malformed JSON entries are skipped without affecting valid entries."""
+        import json
+        import uuid
+
+        from little_loops.cli.loop._helpers import read_queue_entries
+
+        queue_dir = tmp_path / ".queue"
+        queue_dir.mkdir()
+
+        good_id = str(uuid.uuid4())
+        (queue_dir / f"{good_id}.json").write_text(
+            json.dumps({"id": good_id, "enqueuedAt": "2026-05-02T10:00:00+00:00"})
+        )
+        (queue_dir / "bad.json").write_text("not-valid-json")
+
+        entries = read_queue_entries(queue_dir)
+        assert [e["id"] for e in entries] == [good_id]
+
+
 class TestCmdRunTransportWiring:
     """Tests for FEAT-1323: cmd_run wires transports onto the executor's EventBus."""
 

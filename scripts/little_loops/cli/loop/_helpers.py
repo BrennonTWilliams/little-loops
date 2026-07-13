@@ -169,18 +169,21 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
                 fsm_proc.kill()
 
 
-def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
-    """Return True if entry_id is the earliest-enqueued waiter in queue_dir.
+def read_queue_entries(queue_dir: Path) -> list[dict]:
+    """Return the live, sorted queue entries in queue_dir, pruning dead ones.
 
-    Returns True when this waiter is first or the queue is empty/unreadable,
-    allowing it to proceed with acquire(). Non-first waiters return False and
-    should back off to yield to the earlier waiter (ENH-1332).
+    Reads every ``*.json`` entry, drops (and unlinks) any whose ``context.pid``
+    references a process that is no longer alive so orphaned queue files from
+    crashed processes do not linger (BUG-1360), and returns the surviving
+    entries sorted ascending by ``enqueuedAt``. Malformed or unreadable entries
+    are skipped. Returns ``[]`` when queue_dir does not exist.
 
-    Stale entries (dead PIDs) are removed on the fly so orphaned queue files
-    from crashed processes do not block live waiters indefinitely (BUG-1360).
+    This is the single source of truth for "what's actually in the queue right
+    now," shared by ``_is_earliest_waiter()`` and the ``ll-loop queue``
+    subcommands (ENH-2617).
     """
     if not queue_dir.exists():
-        return True
+        return []
     entries: list[dict] = []
     for f in queue_dir.glob("*.json"):
         try:
@@ -193,10 +196,22 @@ def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
             entries.append(data)
         except (json.JSONDecodeError, KeyError, FileNotFoundError, OSError):
             continue
-    if not entries:
-        return True
     entries.sort(key=lambda d: d.get("enqueuedAt", ""))
-    return entries[0].get("id") == entry_id
+    return entries
+
+
+def _is_earliest_waiter(entry_id: str, queue_dir: Path) -> bool:
+    """Return True if entry_id is the earliest-enqueued waiter in queue_dir.
+
+    Returns True when this waiter is first or the queue is empty/unreadable,
+    allowing it to proceed with acquire(). Non-first waiters return False and
+    should back off to yield to the earlier waiter (ENH-1332).
+
+    Stale entries (dead PIDs) are removed on the fly so orphaned queue files
+    from crashed processes do not block live waiters indefinitely (BUG-1360).
+    """
+    entries = read_queue_entries(queue_dir)
+    return not entries or entries[0].get("id") == entry_id
 
 
 def register_loop_signal_handlers(
