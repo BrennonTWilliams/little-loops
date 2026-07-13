@@ -393,6 +393,18 @@ states:
       lock = GitLock(logger)
       epic_id = """${context.scope}""".strip()
 
+      # ENH-2630: persist the epic branch tip alongside the verdict so
+      # merge_epic_branch can reuse this run's result when the tip is unchanged
+      # (the two states run back-to-back, so it normally is) instead of
+      # re-running the full suite. Written only on the epic-branch code path —
+      # the non-epic in-place branch above has no branch to rev-parse.
+      sha = subprocess.run(
+          ["git", "rev-parse", "--verify", epic_branch],
+          capture_output=True, text=True,
+      )
+      if sha.returncode == 0:
+          (run_dir / 'verify-sha.txt').write_text(sha.stdout.strip())
+
       ok, message = verify_epic_branch_before_merge(
           epic_id,
           epic_branch,
@@ -525,18 +537,43 @@ states:
       logger = Logger(verbose=False)
       lock = GitLock(logger)
 
-      ok, message = verify_epic_branch_before_merge(
-          epic_id,
-          epic_branch,
-          verify_before_merge=epic_cfg.verify_before_merge,
-          repo_path=repo,
-          worktree_base=cfg.get_worktree_base(),
-          test_cmd=cfg.project.test_cmd,
-          lint_cmd=cfg.project.lint_cmd,
-          logger=logger,
-          git_lock=lock,
-          src_dir=cfg.project.src_dir,
-      )
+      # ENH-2630: the verify state already ran the suite against this same tip
+      # and recorded verify-verdict.txt + verify-sha.txt. When that verdict is
+      # `passed` and its recorded SHA still matches the current epic tip, reuse
+      # it instead of re-running ~15k tests a second time (the two states run
+      # back-to-back, so the tip normally matches). The binding gate below is
+      # kept as a fallback for a missing/non-passed verdict or a SHA mismatch,
+      # so a disagreement can still never merge a failing tip.
+      ok = None
+      message = None
+      if epic_cfg.verify_before_merge:
+          verdict_file = run_dir / "verify-verdict.txt"
+          sha_file = run_dir / "verify-sha.txt"
+          prior_verdict = (
+              verdict_file.read_text().strip() if verdict_file.exists() else ""
+          )
+          prior_sha = sha_file.read_text().strip() if sha_file.exists() else ""
+          current = subprocess.run(
+              ["git", "rev-parse", "--verify", epic_branch],
+              capture_output=True, text=True,
+          )
+          current_sha = current.stdout.strip() if current.returncode == 0 else ""
+          if prior_verdict == "passed" and prior_sha and prior_sha == current_sha:
+              ok, message = True, None
+
+      if ok is None:
+          ok, message = verify_epic_branch_before_merge(
+              epic_id,
+              epic_branch,
+              verify_before_merge=epic_cfg.verify_before_merge,
+              repo_path=repo,
+              worktree_base=cfg.get_worktree_base(),
+              test_cmd=cfg.project.test_cmd,
+              lint_cmd=cfg.project.lint_cmd,
+              logger=logger,
+              git_lock=lock,
+              src_dir=cfg.project.src_dir,
+          )
       if not ok:
           print(f"merge_epic_branch: verify gate failed: {message}", file=sys.stderr)
           print("verify_failed")

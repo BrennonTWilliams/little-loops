@@ -3350,7 +3350,16 @@ on the next completion event), and the message is recorded in
 `merge_epic_branch` state writes the outcome to a `$RUN_DIR/epic-merge-verdict.txt`
 artifact instead — the loop runs `merge_epic_branch` exactly once per execution, so no
 idempotency set or failure dict is needed; a branch that no longer exists (already
-merged) is the sole idempotency signal.
+merged) is the sole idempotency signal. ENH-2630: on the FSM loop path the
+`verify` state runs `verify_epic_branch_before_merge` first (unconditionally) and
+records both its verdict (`$RUN_DIR/verify-verdict.txt`) and the epic tip SHA
+(`$RUN_DIR/verify-sha.txt`). `merge_epic_branch` then **reuses** that verdict —
+skipping its own `verify_epic_branch_before_merge` call — when the verdict is
+`passed` and the recorded SHA still matches the current epic tip (the two states
+run back-to-back, so it normally does), avoiding a redundant second full-suite
+run. It falls back to invoking the gate only when the verdict is missing,
+non-`passed`, or the SHA is stale, so the binding gate still cannot merge a
+failing tip.
 
 ### WorkerResult
 

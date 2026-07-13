@@ -2,9 +2,10 @@
 id: ENH-2630
 title: merge_epic_branch re-runs full suite already run by verify state
 type: enhancement
-status: open
+status: done
 priority: P3
 captured_at: '2026-07-13T18:30:06Z'
+completed_at: '2026-07-13T19:38:26Z'
 discovered_date: 2026-07-13
 discovered_by: capture-issue
 relates_to:
@@ -258,7 +259,24 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - The merge decision and the reported `verify_verdict` cannot disagree for the
   same tip.
 
+## Resolution
+
+Implemented Option A (reuse-with-freshness). The `verify` state now records the
+epic branch tip SHA to `$RUN_DIR/verify-sha.txt` alongside `verify-verdict.txt`
+(epic-branch path only). `merge_epic_branch` reads both and, when the verdict is
+`passed` and the recorded SHA matches the current tip, reuses that verdict and
+skips its own `verify_epic_branch_before_merge` call — eliminating the redundant
+second full-suite run. The binding gate remains a fallback for a missing,
+non-`passed`, or stale verdict, so a failing tip still cannot merge.
+
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `verify` + `merge_epic_branch` states.
+- `scripts/tests/test_builtin_loops.py` — 3 behavioral reuse/re-run tests (failing-`test_cmd` discriminator) + 2 static-content assertions.
+- Docs: API.md, MERGE-COORDINATOR.md, CONFIGURATION.md, CLI.md, LOOPS_REFERENCE.md.
+
+Verified: full suite `14856 passed, 36 skipped`; `ll-loop validate auto-refine-and-implement` valid.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T19:37:48Z - implemented Option A, all tests green
 - `/ll:wire-issue` - 2026-07-13T19:07:00 - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`
 - `/ll:decide-issue` - 2026-07-13T19:00:30 - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`
 - `/ll:refine-issue` - 2026-07-13T18:55:38 - `e555b243-e23c-429d-9cab-61c70b69018b.jsonl`

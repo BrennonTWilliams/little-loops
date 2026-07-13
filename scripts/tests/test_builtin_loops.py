@@ -2122,6 +2122,16 @@ class TestAutoRefineAndImplementLoop:
         assert "verify_before_merge=True" in action
         # BUG-2629: verify must isolate PYTHONPATH from editable-install .pth shadowing.
         assert "src_dir=" in action
+        # ENH-2630: verify persists the epic branch tip so merge_epic_branch can
+        # reuse this run's verdict instead of re-running the suite.
+        assert "verify-sha.txt" in action
+
+    def test_merge_epic_branch_reuses_fresh_verify_verdict(self, data: dict) -> None:
+        """ENH-2630: merge_epic_branch must read the verify state's persisted
+        verdict + SHA and skip its own re-run when the tip is unchanged."""
+        action = data["states"].get("merge_epic_branch", {}).get("action", "")
+        assert "verify-verdict.txt" in action
+        assert "verify-sha.txt" in action
 
     def test_merge_epic_branch_forwards_src_dir(self, data: dict) -> None:
         """BUG-2629: merge_epic_branch's verify_epic_branch_before_merge call must
@@ -2826,32 +2836,45 @@ class TestMergeEpicBranchConfigReadShell:
         open_pr: bool = False,
         verify_before_merge: bool = False,
         write_branch_file: bool = True,
+        test_cmd: str | None = None,
+        seed_verdict: str | None = None,
+        seed_sha: str | None = None,
     ) -> tuple[subprocess.CompletedProcess, Path]:
         self._setup_repo(tmp_path)
         self._write_issues(tmp_path, child_statuses)
 
         (tmp_path / ".ll").mkdir(exist_ok=True)
-        (tmp_path / ".ll" / "ll-config.json").write_text(
-            json.dumps(
-                {
-                    "parallel": {
-                        "base_branch": "main",
-                        "epic_branches": {
-                            "enabled": True,
-                            "merge_to_base_on_complete": merge_to_base_on_complete,
-                            "open_pr": open_pr,
-                            "verify_before_merge": verify_before_merge,
-                        },
-                    }
-                }
-            )
-        )
+        config: dict = {
+            "parallel": {
+                "base_branch": "main",
+                "epic_branches": {
+                    "enabled": True,
+                    "merge_to_base_on_complete": merge_to_base_on_complete,
+                    "open_pr": open_pr,
+                    "verify_before_merge": verify_before_merge,
+                },
+            }
+        }
+        if test_cmd is not None:
+            config["project"] = {"test_cmd": test_cmd}
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(config))
 
         run_dir = tmp_path / "run"
         run_dir.mkdir(exist_ok=True)
         if write_branch_file:
             (run_dir / "epic-branch-name.txt").write_text(self._EPIC_BRANCH + "\n")
         (run_dir / "base-branch-name.txt").write_text("main\n")
+        # ENH-2630: seed the verify state's artifacts to exercise merge_epic_branch's
+        # reuse-of-fresh-verdict path. seed_sha="MATCH" resolves the current epic tip.
+        if seed_verdict is not None:
+            (run_dir / "verify-verdict.txt").write_text(seed_verdict + "\n")
+        if seed_sha is not None:
+            if seed_sha == "MATCH":
+                seed_sha = subprocess.run(
+                    ["git", "rev-parse", "--verify", self._EPIC_BRANCH],
+                    cwd=tmp_path, capture_output=True, text=True,
+                ).stdout.strip()
+            (run_dir / "verify-sha.txt").write_text(seed_sha + "\n")
 
         loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
         action = loop["states"]["merge_epic_branch"]["action"]
@@ -2926,6 +2949,54 @@ class TestMergeEpicBranchConfigReadShell:
         )
         assert second.returncode == 0, second.stderr
         assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "skipped"
+
+    # --- ENH-2630: reuse the verify state's fresh verdict, skip the re-run -----
+
+    def test_reuses_fresh_verify_verdict_and_skips_rerun(self, tmp_path: Path) -> None:
+        """When verify-verdict.txt=passed and verify-sha.txt matches the current
+        epic tip, merge_epic_branch must reuse that verdict and skip its own
+        re-run. Discriminator: a failing test_cmd — if the re-run happened, the
+        gate would fail (verify_failed); reuse merges instead (ENH-2630)."""
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done"},
+            verify_before_merge=True,
+            test_cmd="false",
+            seed_verdict="passed",
+            seed_sha="MATCH",
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
+        assert self._EPIC_BRANCH not in self._branches(tmp_path)
+
+    def test_reruns_when_verify_sha_is_stale(self, tmp_path: Path) -> None:
+        """A recorded SHA that no longer matches the epic tip must force the
+        binding gate to re-run — proven by the failing test_cmd producing
+        verify_failed rather than a reused pass (ENH-2630)."""
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done"},
+            verify_before_merge=True,
+            test_cmd="false",
+            seed_verdict="passed",
+            seed_sha="0" * 40,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "verify_failed"
+        assert self._EPIC_BRANCH in self._branches(tmp_path)
+
+    def test_reruns_when_verify_verdict_missing(self, tmp_path: Path) -> None:
+        """No seeded verdict/SHA (e.g. the verify state never ran on this tip)
+        must fall through to the binding gate, which re-runs and fails on the
+        failing test_cmd (ENH-2630)."""
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done"},
+            verify_before_merge=True,
+            test_cmd="false",
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "verify_failed"
 
 
 class TestAutodevLoop:
