@@ -141,7 +141,8 @@ Returns the full `CapabilityReport` for the configured host. Does not invoke Cla
     {"name": "permission_skip", "status": "full", "note": ""},
     {"name": "agent_select", "status": "full", "note": ""},
     {"name": "tool_allowlist", "status": "full", "note": ""},
-    {"name": "json_schema", "status": "unsupported", "note": "..."}
+    {"name": "json_schema", "status": "unsupported", "note": "..."},
+    {"name": "structured_output", "status": "full", "note": "..."}
   ],
   "hooks": [
     {"name": "session_start", "status": "installed", "note": ""}
@@ -226,7 +227,7 @@ ll-harness dsl evals/dsl/my-loop/ --model claude-haiku-4-5-20251001
 
 ### ll-doctor
 
-Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist) and one `HookEntry` per registered hook event.
+Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output) and one `HookEntry` per registered hook event.
 
 **Flags:**
 - `-j`, `--json` — emit the `CapabilityReport` as JSON instead of the human-readable table.

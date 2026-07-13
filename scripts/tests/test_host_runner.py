@@ -1030,6 +1030,24 @@ class TestDescribeCapabilities:
         assert by_name["permission_skip"].status == "full"
         assert by_name["agent_select"].status == "full"
         assert by_name["tool_allowlist"].status == "full"
+        # ENH-2627: claude CLI honors an inline --json-schema flag (Anthropic backend).
+        assert by_name["structured_output"].status == "full"
+
+    def test_structured_output_capability_flag_per_host(self) -> None:
+        """ENH-2627: only the claude CLI honors the inline --json-schema flag the
+        FSM evaluators append; every other host gates the flag off."""
+        assert ClaudeCodeRunner().capabilities.structured_output is True
+        assert CodexRunner().capabilities.structured_output is False
+        assert GeminiRunner().capabilities.structured_output is False
+        assert OmpRunner().capabilities.structured_output is False
+        assert OpenCodeRunner().capabilities.structured_output is False
+        assert PiRunner().capabilities.structured_output is False
+
+    def test_structured_output_entry_unsupported_on_non_claude_hosts(self) -> None:
+        """ENH-2627: describe_capabilities surfaces the flag for ll-doctor."""
+        for runner in (CodexRunner(), GeminiRunner(), OmpRunner()):
+            by_name = {e.name: e for e in runner.describe_capabilities().capabilities}
+            assert by_name["structured_output"].status == "unsupported"
 
     def test_codex_runner_returns_capability_report(self) -> None:
         report = CodexRunner().describe_capabilities()

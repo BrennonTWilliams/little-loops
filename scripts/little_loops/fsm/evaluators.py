@@ -156,6 +156,22 @@ def _extract_tagged_structured_output(text: str) -> dict[str, Any] | None:
     return result
 
 
+def _structured_output_args(invocation: Any, schema: dict[str, Any]) -> list[str]:
+    """Build the CLI args, appending inline structured-output flags host-gated.
+
+    ENH-2627: the ``--json-schema`` flag (and the claude-only
+    ``--no-session-persistence``) are honored only by hosts that advertise
+    ``HostCapabilities.structured_output``. For hosts that ignore or reject an
+    inline schema flag we skip both and rely on the prompt-and-parse path (the
+    BUG-2626 ``_extract_tagged_structured_output`` tag fallback stays as the
+    safety net for :func:`evaluate_llm_structured`).
+    """
+    args = list(invocation.args)
+    if getattr(invocation.capabilities, "structured_output", False):
+        args += ["--json-schema", json.dumps(schema), "--no-session-persistence"]
+    return args
+
+
 # Schema for blind A/B comparator: evaluates two anonymized outputs
 BLIND_COMPARATOR_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -1081,12 +1097,9 @@ def evaluate_llm_structured(
 
     invocation = resolve_host().build_blocking_json(prompt=user_prompt, model=model)
     # Builder drops json_schema (Protocol surface only) and omits the
-    # claude-CLI-specific --no-session-persistence flag; augment at call site.
-    args = list(invocation.args) + [
-        "--json-schema",
-        json.dumps(effective_schema),
-        "--no-session-persistence",
-    ]
+    # claude-CLI-specific --no-session-persistence flag; augment at call site,
+    # but only for hosts whose CLI honors an inline --json-schema (ENH-2627).
+    args = _structured_output_args(invocation, effective_schema)
 
     t0 = time.monotonic()
     try:
@@ -1277,11 +1290,10 @@ def evaluate_blind_comparator(
     )
 
     invocation = resolve_host().build_blocking_json(prompt=user_prompt, model=model)
-    args = list(invocation.args) + [
-        "--json-schema",
-        json.dumps(BLIND_COMPARATOR_SCHEMA),
-        "--no-session-persistence",
-    ]
+    # ENH-2627: gate the inline --json-schema flag on host capability. Note this
+    # site has no tag-recovery fallback (unlike evaluate_llm_structured), so on a
+    # host with structured_output=False it relies purely on prompt-and-parse.
+    args = _structured_output_args(invocation, BLIND_COMPARATOR_SCHEMA)
 
     try:
         proc = subprocess.run(
@@ -1530,11 +1542,9 @@ def evaluate_contract(
         )
 
         invocation = resolve_host().build_blocking_json(prompt=judge_prompt, model=model)
-        args = list(invocation.args) + [
-            "--json-schema",
-            json.dumps(contract_schema),
-            "--no-session-persistence",
-        ]
+        # ENH-2627: gate the inline --json-schema flag on host capability (this
+        # site also has no tag-recovery fallback — prompt-and-parse only).
+        args = _structured_output_args(invocation, contract_schema)
 
         t0 = time.monotonic()
         try:

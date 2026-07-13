@@ -87,6 +87,11 @@ class HostCapabilities:
     permission_skip: bool = False
     agent_select: bool = False
     tool_allowlist: bool = False
+    # ENH-2627: True only when the host's CLI honors the inline ``--json-schema``
+    # flag the FSM evaluators append (Anthropic ``claude`` CLI). Other hosts
+    # ignore or reject it, so evaluators skip the flag and rely on the
+    # prompt-and-parse path (BUG-2626 tag fallback stays as the safety net).
+    structured_output: bool = False
 
 
 @dataclass(frozen=True)
@@ -228,6 +233,7 @@ class ClaudeCodeRunner:
         permission_skip=True,
         agent_select=True,
         tool_allowlist=True,
+        structured_output=True,  # ENH-2627: claude CLI honors inline --json-schema
     )
 
     def detect(self) -> bool:
@@ -298,9 +304,12 @@ class ClaudeCodeRunner:
         if model:
             args += ["--model", model]
         # json_schema is part of the Protocol surface so other hosts can wire
-        # structured-output constraints; the claude CLI does not currently
-        # accept a schema flag, so we silently drop it here. Callers that
-        # require schema enforcement should warn via CapabilityNotSupported.
+        # structured-output constraints; this builder does not thread it into
+        # argv. The claude CLI *does* honor an inline --json-schema flag (see the
+        # structured_output capability, ENH-2627) — the FSM evaluators append it
+        # at their call site rather than through this builder, so we drop the
+        # kwarg here. Callers needing builder-side enforcement should warn via
+        # CapabilityNotSupported.
         _ = json_schema
         return HostInvocation(
             binary="claude",
@@ -345,6 +354,15 @@ class ClaudeCodeRunner:
                     "json_schema",
                     "unsupported",
                     "claude CLI does not accept an inline schema flag; parameter is silently dropped",
+                ),
+                # ENH-2627: separate from json_schema — describes the inline
+                # --json-schema flag the FSM evaluators append (honored by the
+                # Anthropic backend), gating HostCapabilities.structured_output.
+                CapabilityEntry(
+                    "structured_output",
+                    "full",
+                    "claude CLI honors an inline --json-schema flag; FSM evaluators "
+                    "append it for schema-constrained verdicts",
                 ),
             ],
         )
@@ -620,6 +638,15 @@ class CodexRunner:
                     "partial",
                     "codex --output-schema requires a file path; schema is written to a "
                     "temp file and path returned in HostInvocation.cleanup_paths for caller cleanup",
+                ),
+                # ENH-2627: codex supports schema via --output-schema (temp file),
+                # NOT the inline --json-schema flag the FSM evaluators append, so
+                # structured_output is False and the flag is gated off for codex.
+                CapabilityEntry(
+                    "structured_output",
+                    "unsupported",
+                    "codex uses --output-schema (temp file), not the inline --json-schema "
+                    "flag FSM evaluators append; evaluators fall back to prompt-and-parse",
                 ),
             ],
         )
@@ -951,6 +978,13 @@ class GeminiRunner:
                     "gemini CLI does not accept an inline schema flag; parameter "
                     "is silently dropped",
                 ),
+                # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
+                CapabilityEntry(
+                    "structured_output",
+                    "unsupported",
+                    "gemini CLI has no inline --json-schema flag; FSM evaluators fall "
+                    "back to prompt-and-parse",
+                ),
             ],
         )
 
@@ -1102,6 +1136,13 @@ class OmpRunner:
                     "json_schema",
                     "unsupported",
                     "omp has no structured-output schema flag; parameter is silently dropped",
+                ),
+                # ENH-2627: no inline --json-schema support; evaluators gate the flag off.
+                CapabilityEntry(
+                    "structured_output",
+                    "unsupported",
+                    "omp has no inline --json-schema flag; FSM evaluators fall back to "
+                    "prompt-and-parse",
                 ),
             ],
         )

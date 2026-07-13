@@ -773,11 +773,16 @@ def _cmd_extract_from_completed(config, args, path) -> int:
         )
 
         invocation = resolve_host().build_blocking_json(prompt=prompt, model="sonnet")
-        llm_args = list(invocation.args) + [
-            "--json-schema",
-            json.dumps(_EXTRACTION_SCHEMA),
-            "--no-session-persistence",
-        ]
+        # ENH-2627: only append the inline --json-schema flag (and the claude-only
+        # --no-session-persistence) on hosts whose CLI honors it; other hosts get
+        # the schema via the prompt text and are parsed leniently below.
+        llm_args = list(invocation.args)
+        if getattr(invocation.capabilities, "structured_output", False):
+            llm_args += [
+                "--json-schema",
+                json.dumps(_EXTRACTION_SCHEMA),
+                "--no-session-persistence",
+            ]
 
         try:
             proc = subprocess.run(

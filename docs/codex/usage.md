@@ -123,7 +123,9 @@ for p in inv.cleanup_paths:
     p.unlink(missing_ok=True)
 ```
 
-This support is marked `"partial"` in `describe_capabilities` because the schema is file-mediated rather than passed inline. Direct ll-orchestration call sites (`evaluators.py`, `worker_pool.py`) do not pass `json_schema`, so `cleanup_paths` is always `()` in those paths.
+This support is marked `"partial"` in `describe_capabilities` because the schema is file-mediated rather than passed inline. Direct ll-orchestration call sites (`evaluators.py`, `worker_pool.py`) do not pass `json_schema` to `build_blocking_json`, so `cleanup_paths` is always `()` in those paths.
+
+Separately, the FSM evaluators append an inline `--json-schema` flag directly to the invocation args, but **only** when the resolved host advertises `HostCapabilities.structured_output` (ENH-2627). Codex reports `structured_output == "unsupported"` — the file-mediated `--output-schema` bridge above is a different mechanism the evaluators do not use — so on Codex the evaluators skip the inline flag and rely on prompt-and-parse (with the BUG-2626 `<StructuredOutput>` tag fallback).
 
 ### Hook intents without consumers
 

@@ -851,6 +851,52 @@ class TestLLMStructuredEvaluator:
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
 
+    def test_json_schema_present_when_host_supports_structured_output(self, mock_cli) -> None:
+        """ENH-2627: the flag is appended for a structured-output-capable host.
+
+        The real resolve_host() resolves ClaudeCodeRunner in the test env, whose
+        structured_output capability is True.
+        """
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "done")
+
+        evaluate_llm_structured("output")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--json-schema" in call_args
+        assert "--no-session-persistence" in call_args
+
+    def test_json_schema_omitted_when_host_lacks_structured_output(self) -> None:
+        """ENH-2627: --json-schema (and the claude-only --no-session-persistence)
+        are skipped when the resolved host has structured_output=False; the
+        response is recovered via the prompt-and-parse path instead."""
+        from little_loops.host_runner import HostCapabilities, HostInvocation
+
+        fake = HostInvocation(
+            binary="codex",
+            args=["-p", "prompt"],
+            capabilities=HostCapabilities(structured_output=False),
+        )
+        fake_runner = MagicMock()
+        fake_runner.build_blocking_json.return_value = fake
+
+        with (
+            patch("little_loops.fsm.evaluators.resolve_host", return_value=fake_runner),
+            patch("little_loops.fsm.evaluators.subprocess.run") as mock_run,
+        ):
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_result.stdout = self._cli_stdout("yes", 0.9, "done")
+            mock_run.return_value = mock_result
+
+            result = evaluate_llm_structured("output")
+
+        call_args = mock_run.call_args[0][0]
+        assert "--json-schema" not in call_args
+        assert "--no-session-persistence" not in call_args
+        assert result.verdict == "yes"
+
     def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
         mock_run, mock_result = mock_cli

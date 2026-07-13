@@ -7545,6 +7545,7 @@ class HostCapabilities:
     permission_skip: bool = False
     agent_select: bool = False
     tool_allowlist: bool = False
+    structured_output: bool = False
 ```
 
 **Fields:**
@@ -7555,6 +7556,7 @@ class HostCapabilities:
 | `permission_skip` | `bool` | `False` | Host supports skipping interactive permission prompts (Claude `--dangerously-skip-permissions`, Codex `--dangerously-bypass-approvals-and-sandbox`). Required for headless automation. |
 | `agent_select` | `bool` | `False` | Host accepts a per-invocation agent / persona selector. |
 | `tool_allowlist` | `bool` | `False` | Host accepts an explicit tool allowlist on invocation. |
+| `structured_output` | `bool` | `False` | Host's CLI honors the inline `--json-schema` flag the FSM evaluators append (Anthropic `claude` CLI). When `False`, evaluators skip the flag and rely on prompt-and-parse (BUG-2626 tag fallback). Gated at the evaluator call sites (ENH-2627). |
 
 ### HostRunner
 

@@ -3,7 +3,7 @@ id: ENH-2627
 title: Gate --json-schema on a structured_output host capability flag
 type: ENH
 priority: P3
-status: open
+status: done
 labels:
 - fsm
 - evaluators
@@ -11,6 +11,7 @@ labels:
 - host-portability
 - captured
 captured_at: '2026-07-13T06:46:00Z'
+completed_at: '2026-07-13T19:28:04Z'
 discovered_date: '2026-07-13'
 discovered_by: capture-issue
 relates_to:
@@ -301,12 +302,43 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `HostCapabilities.structured_output` exists and is set truthfully per host.
-- [ ] `evaluate_llm_structured` appends `--json-schema` only when the capability is
+- [x] `HostCapabilities.structured_output` exists and is set truthfully per host.
+- [x] `evaluate_llm_structured` appends `--json-schema` only when the capability is
       `True`; the BUG-2626 tag fallback still parses responses when it is `False`.
-- [ ] `ll-doctor` shows the `structured_output` capability with ✓/✗ per host.
-- [ ] Tests cover both the flag-present and flag-absent branches.
-- [ ] `python -m pytest scripts/tests/` green; `ruff`/`mypy` clean.
+- [x] `ll-doctor` shows the `structured_output` capability with ✓/✗ per host.
+- [x] Tests cover both the flag-present and flag-absent branches.
+- [x] `python -m pytest scripts/tests/` green; `ruff`/`mypy` clean.
+
+## Resolution
+
+Implemented Option A (per the recorded decision): added a separate
+`structured_output: bool = False` flag to `HostCapabilities`, keeping the existing
+per-host `json_schema` `CapabilityEntry` as its own diagnostic surface.
+
+- **Per-host values (from real behavior, not the option shorthand):** only
+  `ClaudeCodeRunner` is `True` — its CLI honors the inline `--json-schema` flag the
+  FSM evaluators append (Anthropic backend). `CodexRunner` is `False`: it supports
+  schema via a different mechanism (`--output-schema` temp file in
+  `build_blocking_json`), not the inline flag the evaluators use. Gemini/omp/
+  OpenCode/Pi are `False`.
+- **Gating:** added `_structured_output_args()` helper in `evaluators.py`; all three
+  sites (`evaluate_llm_structured`, `evaluate_blind_comparator`, `evaluate_contract`)
+  now append `--json-schema` + the claude-only `--no-session-persistence` only when
+  the resolved host advertises `structured_output`. The fourth site in
+  `cli/issues/decisions.py` (decisions-sync extraction — flagged for decision in the
+  wiring pass) was gated inline for consistency.
+- **Diagnostics:** each runner's `describe_capabilities()` now emits a
+  `structured_output` `CapabilityEntry` (`ClaudeCodeRunner` → `full`, others →
+  `unsupported`), so `ll-doctor` and `ll-action capabilities` render it generically.
+- **Docs/comments:** updated `API.md`, `HOST_COMPATIBILITY.md` (new matrix row +
+  `[^struct]` footnote), `CLI.md`, `docs/codex/usage.md`, and the stale
+  "claude CLI does not accept a schema flag" comment in `ClaudeCodeRunner.build_blocking_json`.
+- **Tests:** `test_host_runner.py` asserts the per-host bool + `CapabilityEntry`
+  status; `test_fsm_evaluators.py` covers flag-present (real ClaudeCodeRunner) and
+  flag-absent (mocked `resolve_host` with `structured_output=False`, verifying the
+  prompt-and-parse path still yields a verdict).
+
+Full suite: **14852 passed, 36 skipped**; `ruff`/`mypy` clean on changed files.
 
 ## Impact
 
@@ -329,6 +361,7 @@ done), and any change to the default LLM schema or evidence contract (ENH-2342).
 - **Blocking**: none (BUG-2626 mitigation already ships)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T19:27:16Z - `000ba01e-76b0-4308-a39e-fdaf76f9715c.jsonl`
 - `/ll:wire-issue` - 2026-07-13T18:33:15 - `e418041f-97b9-4193-89df-c4643e9794aa.jsonl`
 - `/ll:decide-issue` - 2026-07-13T18:27:04 - `4856cd4a-cd92-4d93-9617-eff1bb991f10.jsonl`
 - `/ll:refine-issue` - 2026-07-13T18:02:12 - `a57eb810-b1eb-44db-8139-1f8ccc8244b0.jsonl`
