@@ -5077,3 +5077,17 @@
   alternatives_rejected: Option B — strict == DEFAULT_DB_PATH gate plus call-site
     fixes
   issue: ENH-2623
+- id: ARCH-207
+  type: rule
+  timestamp: '2026-07-13T06:14:27Z'
+  category: architecture
+  labels:
+  - extracted
+  - global
+  rationale: Two components with top-level const declarations will throw a page-killing
+    SyntaxError if not scoped, even under Shadow DOM; this is a non-obvious gotcha
+    that must hold for any non-iframe composition mode.
+  rule: Shadow DOM encapsulates CSS and element ids but NOT JavaScript scope — every
+    composed component must still get its own J
+  enforcement: advisory
+  issue: ENH-2625

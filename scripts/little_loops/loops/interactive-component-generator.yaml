@@ -30,7 +30,7 @@ context:
   pass_threshold: 7           # per-component minimum rubric score (1-10) to accept
   n_build: 4                  # how many ranked candidates to implement (the "best 3-5")
   n_final: 3                  # max winners embedded in the final file (the "best 1-3")
-  compose_isolation: "iframe" # iframe | shadow | scoped — how components are merged
+  compose_isolation: "shadow" # shadow (default, native CSS+id isolation) | scope-css (@scope, most seamless theming) | scoped (build-time namespacing, most portable)
   allow_cdn: "false"          # "false" = vanilla, offline, truly self-contained.
                               # "true"  = permit CDN libs (richer, but needs network).
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
@@ -211,7 +211,12 @@ states:
           visibly change the view (filter, recompute, animate, drill, sort, etc.).
         - Renders correctly from a file:// URL with NO HTTP server.
         - Mounts its entire UI inside a single root element <div id="ll-root"> so it
-          can be embedded as-is during composition. Keep all state internal.
+          can be embedded as-is during composition. Keep all state internal. Scope every
+          DOM query to the #ll-root subtree (query within that element, not the whole
+          document) so the component still works after being relocated into a shadow
+          root. Do NOT style bare body/html/:root or depend on a global CSS reset, and
+          prefix any @keyframes name with the component id so animations never collide
+          when merged.
         - Gives every interactive element a STABLE selector: an id or a
           data-ll-action attribute (these are what the smoke test will target).
         - Unless ALLOW_CDN is "true" (currently "${context.allow_cdn}"), embeds ALL
@@ -375,9 +380,10 @@ states:
 
   compose:
     # FANOUT: Compose the winners into ONE self-contained index.html. Isolation is set
-    # by ${context.compose_isolation}: iframe (default) gives total CSS+JS+lib isolation
-    # so independently-built widgets never collide; shadow/scoped trade isolation for
-    # seamless theming. verify_final re-tests the merged result.
+    # by ${context.compose_isolation}: shadow (default) gives native CSS + id-namespace
+    # encapsulation while inheritable props / design tokens still flow in via :host, so
+    # widgets read as one cohesive page with no iframe auto-size hack. scope-css / scoped
+    # are non-shadow fallbacks. verify_final re-tests the merged result.
     action_type: prompt
     action: |
       Read ${captured.run_dir.output}/selection.md and
@@ -391,17 +397,34 @@ states:
       Produce ONE self-contained file at ${captured.run_dir.output}/index.html:
       - A clean page shell: the title + intro from selection.md, then each winner in a
         titled <section>, in winners.txt order.
-      - Embed each component using compose_isolation = "${context.compose_isolation}":
-          * iframe (default): one <iframe data-ll-component="<id>" srcdoc="...escaped
-            full component HTML..."></iframe> per winner. Include a small shared script
-            that auto-sizes each iframe to its content height (onload + ResizeObserver
-            on the frame's documentElement) so there are no inner scrollbars.
-          * shadow: mount each component's markup into its own ShadowRoot via a tiny
-            loader, so CSS does not leak between components.
-          * scoped: inline each component with ALL its CSS class names and top-level JS
-            identifiers prefixed by the component id, each script wrapped in an IIFE.
-      - Carry the data-ll-component="<id>" attribute on each component's outer wrapper
-        (iframe or section) so verify_final can map a frame/section back to its manifest.
+      - Embed each component using compose_isolation = "${context.compose_isolation}".
+        In EVERY mode: give each component its OWN JavaScript scope (wrap its script so
+        its top-level names cannot collide with another component's — colliding top-level
+        `const`/`let`/`function` names throw a page-killing SyntaxError otherwise), and
+        carry data-ll-component="<id>" on the component's outer element so verify_final
+        can target it.
+          * shadow (default): for each winner define a custom element
+            <ll-comp-<id> data-ll-component="<id>"> whose connectedCallback attaches an
+            OPEN shadow root (this.attachShadow({mode:'open'})), injects the component's
+            <style> + markup into it, then runs the component's JS inside that same
+            callback closure with `const root = this.shadowRoot`, REWRITING every
+            document.querySelector / getElementById / querySelectorAll in the component
+            to query `root` instead. CSS rules and element ids are then natively scoped
+            per component — no prefixing needed and each component's manifest selectors
+            keep resolving. Pass design tokens down as CSS custom properties on the host
+            so the component's `:host { … }` / `var(--…)` picks them up (inheritable
+            props flow through the shadow boundary; do NOT re-inject a full theme reset
+            inside each root).
+          * scope-css: inline each component inside <div data-ll-component="<id>">, wrap
+            ALL of its CSS in `@scope ([data-ll-component="<id>"]) { … }`, prefix every
+            @keyframes / @font-face NAME with the component id (@scope does not scope
+            those), and wrap its JS in an IIFE with
+            `const root = document.querySelector('[data-ll-component="<id>"]')`, querying
+            within `root`.
+          * scoped: inline each component with ALL its CSS class names, element ids, and
+            @keyframes names prefixed by the component id, and its JS wrapped in an IIFE.
+            Because ids are prefixed, ALSO prefix the matching manifest selectors when you
+            emit them (this mode is the most portable but the most transformation).
       - Keep the result self-contained: unless ALLOW_CDN is "true" (currently
         "${context.allow_cdn}"), there must be NO external requests — it must render
         offline from file://.
@@ -411,7 +434,9 @@ states:
     # FANOUT: Re-verify the MERGED file — composition is where independently-built
     # widgets break (global-name clashes, CSS bleed, double-mounted listeners). We
     # re-run the smoke battery on index.html: no pageerrors anywhere, top-level content
-    # present, and every winner's manifest interactions re-dispatched in its own frame.
+    # present, and every winner's manifest interactions re-dispatched scoped to that
+    # winner's data-ll-component host (Playwright auto-pierces open shadow roots, so this
+    # works for shadow and disambiguates duplicate ids under scope-css/scoped).
     # A bounded recompose loop (.compose_rounds, cap 2) writes merge issues to
     # compose_critique.md and routes back to compose; past the cap we accept best-so-far.
     # Also captures screenshot.png for the optional vision_gate.
@@ -436,15 +461,14 @@ states:
         for (const id of winners) {
           let manifest = [];
           try { manifest = JSON.parse(fs.readFileSync(rd + '/comp-' + id + '/manifest.json','utf8')); } catch(_) { continue; }
-          const handle = await page.$('[data-ll-component=\"' + id + '\"]');
-          const frame = handle ? await handle.contentFrame() : null;
-          const ctx = frame || page;       // iframe -> its frame; shadow/scoped -> the page
+          const host = page.locator('[data-ll-component=\"' + id + '\"]');
           for (const step of manifest) {
             try {
-              if (step.action === 'click')  await ctx.click(step.selector, { timeout: 1500 });
-              else if (step.action === 'fill')   await ctx.fill(step.selector, String(step.value), { timeout: 1500 });
-              else if (step.action === 'hover')  await ctx.hover(step.selector, { timeout: 1500 });
-              else if (step.action === 'select') await ctx.selectOption(step.selector, String(step.value), { timeout: 1500 });
+              const target = host.locator(step.selector);   // Playwright pierces open shadow roots
+              if (step.action === 'click')  await target.click({ timeout: 1500 });
+              else if (step.action === 'fill')   await target.fill(String(step.value), { timeout: 1500 });
+              else if (step.action === 'hover')  await target.hover({ timeout: 1500 });
+              else if (step.action === 'select') await target.selectOption(String(step.value), { timeout: 1500 });
               await page.waitForTimeout(150);
             } catch (e) { errors.push(id + '[' + step.selector + ']: ' + e.message); }
           }
