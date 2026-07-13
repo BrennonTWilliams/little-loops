@@ -2344,6 +2344,9 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `grep` | Regex search over `message_events` with optional summary-node scope filtering; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `expand` | Return all `message_events` covered by a given summary node ID; condensed nodes use recursive CTE for N-level DAG traversal (ENH-1955) |
 | `describe` | Show metadata (level, block span, parent) for a summary node |
+| `rebuild` | Re-derive the JSONL-cache tables (`tool_events`, `message_events`, …) from `raw_events`; idempotent (ENH-2581) |
+| `compact` | Sweep `raw_events` past the retention max-age into per-session `retention` summary nodes; `--and-prune` also deletes and VACUUMs (ENH-2581) |
+| `recompress` | Rewrite legacy uncompressed `raw_events` payloads (`raw_line`/`parsed_json`) as zlib BLOBs and VACUUM; idempotent, off-hot-path maintenance (ENH-2624) |
 | `prune` | Delete raw event rows older than configured `analytics.retention` max-age and VACUUM the DB |
 
 **`grep` flags:**
@@ -2430,6 +2433,20 @@ into per-session `kind='retention'` `summary_nodes` rows (a deterministic
 one-liner, not an LLM summary) and marks them `compacted=1` so `prune` can
 delete them safely later (ENH-2581).
 
+**`recompress` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--batch N` | Rows to rewrite per transaction (default: 2000) |
+| `--json` | Output result summary as JSON |
+
+New `raw_events` rows written by `backfill` already store `raw_line`/`parsed_json`
+as zlib-compressed BLOBs (~2.9× smaller per row). `recompress` is a one-time
+maintenance sweep that converts pre-existing uncompressed TEXT rows (written
+before ENH-2624) to the compressed form and VACUUMs afterward. The read path
+(`rebuild`) transparently decompresses either representation, so the command is
+idempotent and byte-lossless — running it twice is a no-op on the second pass.
+
 **`export` flags:**
 
 | Flag | Description |
@@ -2465,6 +2482,8 @@ ll-session export --since 2026-01-01 --include-messages             # Full dump 
 ll-session prune --dry-run                      # Preview what would be pruned without deleting
 ll-session prune                                # Delete old raw events and VACUUM
 ll-session prune --json                         # Prune result as JSON
+ll-session recompress                           # Compress legacy raw_events payloads and VACUUM (ENH-2624)
+ll-session recompress --batch 5000              # Rewrite 5000 rows per transaction
 ```
 
 **`prune` flags:**
