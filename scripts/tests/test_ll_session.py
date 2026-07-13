@@ -1003,6 +1003,40 @@ class TestCompactSubcommand:
         assert "pruned" in out.lower()
 
 
+class TestRecompressSubcommand:
+    """ll-session recompress — compress legacy raw_events payloads."""
+
+    def test_recompress_parsed_from_argv(self) -> None:
+        with patch("sys.argv", ["ll-session", "recompress", "--batch", "500"]):
+            args = _parse_args()
+        assert args.command == "recompress"
+        assert args.batch == 500
+
+    def test_recompress_default_batch(self) -> None:
+        with patch("sys.argv", ["ll-session", "recompress"]):
+            args = _parse_args()
+        assert args.batch == 2000
+
+    def test_recompress_invokes_session_store_recompress(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recompress"]):
+            with patch("little_loops.cli.session.recompress_raw_events") as mock_recompress:
+                mock_recompress.return_value = {
+                    "recompressed": 42,
+                    "size_before_mb": 100.0,
+                    "size_after_mb": 40.0,
+                }
+                result = main_session()
+        assert result == 0
+        assert mock_recompress.called
+        assert mock_recompress.call_args.kwargs["batch_size"] == 2000
+        out = capsys.readouterr().out
+        assert "42" in out
+        assert "60.0" in out  # saved MB
+
+
 class TestSkillStatsAndNewKinds:
     """ENH-2458/2459/2460: skill-stats subcommand and commit/test_run kinds."""
 

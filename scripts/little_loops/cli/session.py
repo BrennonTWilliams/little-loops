@@ -18,6 +18,7 @@ Subcommands:
     expand   return message_events covered by a summary node
     describe metadata for a summary node
     prune    delete compacted raw_events rows older than configured max-age and VACUUM (ENH-1906)
+    recompress rewrite legacy uncompressed raw_events payloads as zlib BLOBs and VACUUM
     export   dump selected tables as JSONL for visualization or external tooling
 """
 
@@ -52,6 +53,7 @@ from little_loops.session_store import (
     prune,
     rebuild,
     recent,
+    recompress_raw_events,
     search,
 )
 from little_loops.user_messages import get_project_folder
@@ -78,6 +80,7 @@ Examples:
   %(prog)s describe 42                            # Metadata for summary node 42
   %(prog)s prune --dry-run                        # Show what would be pruned
   %(prog)s prune                                  # Delete old raw events and VACUUM
+  %(prog)s recompress                             # Compress legacy raw_events payloads and VACUUM
 """,
     )
     parser.add_argument(
@@ -301,6 +304,19 @@ Examples:
         help="Report which rows would be deleted without actually deleting them",
     )
     add_json_arg(prune_parser)
+
+    recompress_parser = subparsers.add_parser(
+        "recompress",
+        help="Rewrite legacy uncompressed raw_events payloads as zlib BLOBs and VACUUM",
+    )
+    recompress_parser.add_argument(
+        "--batch",
+        type=int,
+        default=2000,
+        metavar="N",
+        help="Rows to rewrite per transaction (default: 2000)",
+    )
+    add_json_arg(recompress_parser)
 
     return parser
 
@@ -718,6 +734,19 @@ def main_session() -> int:
             if not args.dry_run and result.get("vacuumed"):
                 print("Database VACUUMed.")
 
+            return 0
+
+        if args.command == "recompress":
+            result = recompress_raw_events(args.db, batch_size=args.batch)
+            if args.json:
+                print_json(result)
+                return 0
+            saved = result["size_before_mb"] - result["size_after_mb"]
+            print(
+                f"Recompressed {result['recompressed']:,} raw_events row(s).\n"
+                f"DB: {result['size_before_mb']:.1f} MB -> "
+                f"{result['size_after_mb']:.1f} MB (saved {saved:.1f} MB)"
+            )
             return 0
 
         if args.command == "export":

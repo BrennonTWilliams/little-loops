@@ -20,7 +20,9 @@ from little_loops.session_store import (
     SQLiteTransport,
     _derive_transition,
     _estimate_tokens,
+    _pack_payload,
     _summarize_block,
+    _unpack_payload,
     backfill,
     backfill_incremental,
     backfill_raw_events,
@@ -33,6 +35,7 @@ from little_loops.session_store import (
     prune,
     rebuild,
     recent,
+    recompress_raw_events,
     record_correction,
     search,
 )
@@ -2633,6 +2636,106 @@ class TestSummarizeBlock:
         assert "Message one" in prompt
         assert "\n---\n" in prompt
         assert "Message three" in prompt
+
+
+class TestRawEventsPayloadCompression:
+    """raw_events payload columns are stored zlib-compressed, losslessly.
+
+    Guards the pack/unpack round-trip, the writer emitting BLOBs, the coexistence
+    of legacy TEXT rows with new BLOB rows through rebuild(), and the batched
+    recompress maintenance command.
+    """
+
+    @staticmethod
+    def _user_line(content: str, ts: str = "2026-05-22T00:00:00Z", line_no: int = 1) -> str:
+        return json.dumps(
+            {
+                "type": "user",
+                "sessionId": "s1",
+                "timestamp": ts,
+                "message": {"content": content},
+            }
+        )
+
+    def test_pack_unpack_round_trip(self) -> None:
+        for text in ["", "hello", "unïcodé 🎉", json.dumps({"a": [1, 2, 3], "b": "x" * 2000})]:
+            packed = _pack_payload(text)
+            assert isinstance(packed, bytes)
+            assert _unpack_payload(packed) == text
+
+    def test_unpack_passes_through_legacy_text(self) -> None:
+        """A str value (legacy uncompressed row) is returned unchanged."""
+        assert _unpack_payload('{"type":"user"}') == '{"type":"user"}'
+
+    def test_backfill_stores_compressed_blobs(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT typeof(raw_line), typeof(parsed_json) FROM raw_events").fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("blob", "blob")
+
+    def test_rebuild_reads_mixed_legacy_and_compressed_rows(self, tmp_path: Path) -> None:
+        """A legacy TEXT row and a compressed BLOB row both materialize correctly."""
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("compressed") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # writes a BLOB row
+        conn = connect(db)
+        legacy = self._user_line("legacy", ts="2026-05-22T00:00:01Z")
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES('2026-05-22T00:00:01Z', 's1', 'claude-code', ?, 2, 'user', ?, '{}')",
+            (str(jsonl), legacy),  # raw_line stored as plain TEXT
+        )
+        conn.commit()
+        conn.close()
+        counts = rebuild(db)
+        assert counts["messages"] == 2
+
+    def test_recompress_converts_legacy_rows_and_preserves_rebuild(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO raw_events"
+                "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+                " VALUES(?, 's1', 'claude-code', 's.jsonl', ?, 'user', ?, ?)",
+                (
+                    f"2026-05-22T00:00:0{i}Z",
+                    i + 1,
+                    self._user_line(f"m{i}", ts=f"2026-05-22T00:00:0{i}Z"),
+                    "{}",
+                ),
+            )
+        conn.commit()
+        conn.close()
+        before = rebuild(db)["messages"]
+
+        result = recompress_raw_events(db, batch_size=2)
+        assert result["recompressed"] == 3
+
+        conn = connect(db)
+        try:
+            types = {r[0] for r in conn.execute("SELECT DISTINCT typeof(raw_line) FROM raw_events")}
+        finally:
+            conn.close()
+        assert types == {"blob"}
+        assert rebuild(db)["messages"] == before  # output identical after compression
+
+    def test_recompress_is_idempotent(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # already compressed
+        result = recompress_raw_events(db)
+        assert result["recompressed"] == 0  # nothing legacy left to convert
 
 
 class TestRawEventsTable:

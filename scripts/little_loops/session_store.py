@@ -48,6 +48,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import zlib
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -68,6 +69,7 @@ __all__ = [
     "backfill_snapshots",
     "backfill_incremental",
     "backfill_raw_events",
+    "recompress_raw_events",
     "rebuild",
     "compact",
     "mine_corrections_from_messages",
@@ -101,6 +103,33 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     if env_val:
         return Path(env_val)
     return Path(path) if path is not None else DEFAULT_DB_PATH
+
+
+# raw_events payload compression (ENH: shrink the source-of-truth table).
+# ``raw_line``/``parsed_json`` are stored zlib-compressed as BLOBs. SQLite's
+# dynamic typing lets a BLOB live in the existing (nominally TEXT) columns with
+# no destructive DDL, and legacy uncompressed TEXT rows coexist with new BLOB
+# rows: readers dispatch on the Python type (bytes → decompress, str → legacy
+# passthrough), so a partially-recompressed table always reads correctly. Level
+# 6 is stdlib zlib's default (good ratio/speed; ~2.9x on these JSONL payloads).
+_PAYLOAD_ZLIB_LEVEL = 6
+
+
+def _pack_payload(text: str) -> bytes:
+    """Compress a payload string for storage in ``raw_events``."""
+    return zlib.compress(text.encode("utf-8"), _PAYLOAD_ZLIB_LEVEL)
+
+
+def _unpack_payload(value: str | bytes) -> str:
+    """Return payload text: ``bytes`` → zlib-decompress, ``str`` → legacy passthrough.
+
+    New rows store compressed BLOBs (read back as ``bytes``); rows written before
+    the compression change are plain TEXT (read back as ``str``) and pass through
+    unchanged. This keeps a partially-recompressed table fully readable.
+    """
+    if isinstance(value, bytes):
+        return zlib.decompress(value).decode("utf-8")
+    return value
 
 
 SCHEMA_VERSION = 20
@@ -584,6 +613,10 @@ _MIGRATIONS: list[str] = [
         source_path TEXT NOT NULL,
         line_no     INTEGER NOT NULL,
         event_type  TEXT NOT NULL,
+        -- raw_line/parsed_json are declared TEXT but store zlib-compressed
+        -- BLOBs on write via SQLite dynamic typing (see _pack_payload,
+        -- _unpack_payload, recompress_raw_events). Legacy uncompressed TEXT rows
+        -- coexist and read back via the str/bytes dispatch in _unpack_payload.
         raw_line    TEXT NOT NULL,
         parsed_json TEXT NOT NULL
     );
@@ -1709,11 +1742,12 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
     ``list[Path]`` (re-reads files line-by-line) or a ``raw_events`` cursor
     selecting ``(raw_line, source_path)`` rows in that order — the
     :func:`rebuild` path, replaying previously-ingested lines instead of
-    re-reading the filesystem (ENH-2581).
+    re-reading the filesystem (ENH-2581). Cursor-sourced ``raw_line`` values pass
+    through :func:`_unpack_payload` (compressed BLOB → text; legacy TEXT unchanged).
     """
     if isinstance(source, sqlite3.Cursor):
         for row in source:
-            yield row[0], row[1]
+            yield _unpack_payload(row[0]), row[1]
         return
     for jsonl_file in source:
         try:
@@ -2608,8 +2642,8 @@ def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> i
                         source_path,
                         line_no,
                         str(record.get("type") or "unknown"),
-                        line,
-                        json.dumps(record),
+                        _pack_payload(line),
+                        _pack_payload(json.dumps(record)),
                     ),
                 )
                 count += cur.rowcount
@@ -2648,6 +2682,65 @@ def backfill_raw_events(
     finally:
         conn.close()
     return count
+
+
+def recompress_raw_events(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    batch_size: int = 2000,
+) -> dict[str, Any]:
+    """Rewrite legacy uncompressed ``raw_events`` payloads as compressed BLOBs.
+
+    New rows are written compressed by :func:`_backfill_raw_events`; this backfills
+    the one-time conversion of pre-existing TEXT rows. Runs in short per-batch
+    transactions (not one giant lock) so it does not freeze the interactive hook
+    write path, then ``VACUUM`` reclaims the freed pages. Idempotent and resumable
+    via ``typeof(...) = 'text'`` — already-compressed rows are BLOBs and skipped.
+
+    Returns ``{"recompressed": int, "size_before_mb": float, "size_after_mb": float}``.
+    """
+    db_path = ensure_db(db)  # resolves env-override-for-default and creates schema
+    size_before = db_path.stat().st_size if db_path.exists() else 0
+    conn = connect(db_path)
+    recompressed = 0
+    try:
+        while True:
+            rows = conn.execute(
+                "SELECT id, raw_line, parsed_json FROM raw_events "
+                "WHERE typeof(raw_line) = 'text' OR typeof(parsed_json) = 'text' "
+                "LIMIT ?",
+                (batch_size,),
+            ).fetchall()
+            if not rows:
+                break
+            conn.execute("BEGIN")
+            for row in rows:
+                raw_line = row["raw_line"]
+                parsed_json = row["parsed_json"]
+                packed_raw = raw_line if isinstance(raw_line, bytes) else _pack_payload(raw_line)
+                packed_parsed = (
+                    parsed_json if isinstance(parsed_json, bytes) else _pack_payload(parsed_json)
+                )
+                conn.execute(
+                    "UPDATE raw_events SET raw_line = ?, parsed_json = ? WHERE id = ?",
+                    (packed_raw, packed_parsed, row["id"]),
+                )
+            conn.commit()
+            recompressed += len(rows)
+    finally:
+        conn.close()
+    if recompressed:
+        vac = sqlite3.connect(str(db_path))
+        try:
+            vac.execute("VACUUM")
+        finally:
+            vac.close()
+    size_after = db_path.stat().st_size if db_path.exists() else 0
+    return {
+        "recompressed": recompressed,
+        "size_before_mb": round(size_before / 1_000_000, 1),
+        "size_after_mb": round(size_after / 1_000_000, 1),
+    }
 
 
 # Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
