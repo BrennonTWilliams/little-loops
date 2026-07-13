@@ -154,6 +154,7 @@ taxonomy, and the canonical shape live in
 | MR-8 | WARN | `check_semantic` `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`); default-`DEFAULT_LLM_PROMPT` states exempt | `evidence_contract_ok` |
 | MR-9 | ERROR | `$$(` or `$$VAR` over-escapes bash — `$$` expands to the runner PID; use single `$` for subst/vars, `$$` only for `$${VAR}` braces | `shell_pid_ok` |
 | MR-10 | WARN | inline Python `json.load*` catches parse errors and `exit(0)` with no `on_error:` route (swallows failures as empty success) | `parse_swallow_ok` |
+| MR-11 | WARN | user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` pasted raw into a `shell` body outside a safe position (single-quoted string, quoted heredoc, `:shell` suffix); shell metacharacters (`"`, `$`, `` ` ``, `\`, `!`) break bash tokenizing or inject commands | `unsafe_context_interpolation_ok` |
 | policy-table | WARN | `context.policy_rules` predicate references a dimension never scored (`rubric_dimensions` / `rubric-dim-<name>.txt`) — silently inert | `policy_dims_scored_ok` |
 | static `loop:` ref | ERROR | a state's static (non-`${...}`) `loop:` name resolves to no `.yaml`; blocks load. Use the full relative path (`loop: oracles/foo`) | — |
 

@@ -47,7 +47,13 @@ states:
     # Using a temp file (not live ll-issues list) prevents infinite loops:
     # if the same issue is always first in the list, the loop would never advance.
     action: |
-      if [ -z "${context.input}" ]; then
+      # Write context.input via a quoted heredoc so shell metacharacters in the
+      # prompt (", $, `, \) are read literally, not paste-injected into bash
+      # (BUG-2622). Never test ${context.input} as a bare token.
+      cat > "${context.run_dir}/validate-input.txt" <<'LL_INPUT_EOF'
+      ${context.input}
+      LL_INPUT_EOF
+      if ! grep -q '[^[:space:]]' "${context.run_dir}/validate-input.txt"; then
         echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
         exit 1
       fi
@@ -93,7 +99,7 @@ states:
     # need the $$ escaping prefix — only shell vars referencing across FSM passes do.
     action: |
       ISSUE_ID="${captured.current_item.output}"
-      PROMPT="${context.input}"
+      PROMPT=${context.input:shell}
       echo "$PROMPT" | sed "s/{issue_id}/$ISSUE_ID/g"
     action_type: shell
     capture: final_prompt

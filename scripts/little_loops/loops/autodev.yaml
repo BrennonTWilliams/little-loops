@@ -43,18 +43,23 @@ states:
     # serves both refinement and implementation throughout — there is no
     # separate impl queue.
     action: |
-      if [ -z "${context.input}" ]; then
+      mkdir -p .loops/tmp
+      # Write context.input via a quoted heredoc so shell metacharacters in the
+      # value are read literally, not paste-injected into bash (BUG-2622).
+      cat > ${context.run_dir}/autodev-input.txt <<'LL_INPUT_EOF'
+      ${context.input}
+      LL_INPUT_EOF
+      if ! grep -q '[^[:space:]]' ${context.run_dir}/autodev-input.txt; then
         echo "ERROR: input is required. Usage: ll-loop run autodev \"ID1,ID2\""
         exit 1
       fi
-      mkdir -p .loops/tmp
       printf '' > ${context.run_dir}/autodev-passed.txt
       printf '' > ${context.run_dir}/autodev-skipped.txt
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
       rm -f ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-inflight
-      echo "${context.input}" | tr ',' '\n' \
+      tr ',' '\n' < ${context.run_dir}/autodev-input.txt \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
         > ${context.run_dir}/autodev-queue.txt

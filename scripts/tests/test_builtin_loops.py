@@ -9353,6 +9353,7 @@ class TestValidatorWarningBudget:
         "artifact-versioning": "to a flat path in an iterative cycle",
         "capture-ordering": "References ${captured.",
         "loop-reference": "does not resolve to any file",
+        "unsafe-context-interp": "interpolates user-controlled context raw into a shell body",
     }
 
     # (loop stem, category) -> allowed warning paths.

@@ -1137,6 +1137,7 @@ class FSMLoop:
     shell_pid_ok: bool = False
     parse_swallow_ok: bool = False
     policy_dims_scored_ok: bool = False
+    unsafe_context_interpolation_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1238,6 +1239,8 @@ class FSMLoop:
             result["parse_swallow_ok"] = self.parse_swallow_ok
         if self.policy_dims_scored_ok:
             result["policy_dims_scored_ok"] = self.policy_dims_scored_ok
+        if self.unsafe_context_interpolation_ok:
+            result["unsafe_context_interpolation_ok"] = self.unsafe_context_interpolation_ok
 
         return result
 
@@ -1329,6 +1332,7 @@ class FSMLoop:
             shell_pid_ok=data.get("shell_pid_ok", False),
             parse_swallow_ok=data.get("parse_swallow_ok", False),
             policy_dims_scored_ok=data.get("policy_dims_scored_ok", False),
+            unsafe_context_interpolation_ok=data.get("unsafe_context_interpolation_ok", False),
             imports=data.get("import", []),
         )
 

@@ -21,8 +21,9 @@ states:
   validate_input:
     action_type: shell
     action: |
-      test -n "${context.input}" \
-        && echo "loop: ${context.input}" \
+      INPUT=${context.input:shell}
+      test -n "$INPUT" \
+        && echo "loop: $INPUT" \
         || (echo "ERROR: target loop name is required. Pass as positional arg: ll-loop run outer-loop-eval <name>" >&2; exit 1)
     on_error: fail_missing_input
     next: load_definition
@@ -36,7 +37,7 @@ states:
     action_type: shell
     timeout: 60
     action: |
-      ll-loop show "${context.input}" 2>&1
+      ll-loop show ${context.input:shell} 2>&1
     capture: loop_definition
     on_error: analyze_definition
     next: analyze_definition

@@ -264,7 +264,7 @@ states:
   extract_input:
     action_type: shell
     action: |
-      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo ${context.goal:shell}
     capture: derived_params
     on_error: select_loop
     next: select_loop
@@ -350,7 +350,7 @@ states:
   refresh_input:
     action_type: shell
     action: |
-      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo "${context.goal}"
+      cat ${context.run_dir}/loop-router-input.txt 2>/dev/null || echo ${context.goal:shell}
     capture: derived_params
     on_error: dispatch
     next: dispatch

@@ -23,7 +23,7 @@ exist to make harness optimization safe — see [Why It Needs Guardrails](#why-i
 
 - [What Is Harness Optimization?](#what-is-harness-optimization)
 - [Why It Needs Guardrails](#why-it-needs-guardrails)
-- [The Design Rules (MR-1…MR-10)](#the-design-rules-mr-1mr-10)
+- [The Design Rules (MR-1…MR-11)](#the-design-rules-mr-1mr-11)
 - [The Optimizer Error Taxonomy](#the-optimizer-error-taxonomy)
 - [The Canonical Shape](#the-canonical-shape)
 - [Creating One](#creating-one)
@@ -82,7 +82,7 @@ trial-and-error into *safe* trial-and-error.
 
 ---
 
-## The Design Rules (MR-1…MR-10)
+## The Design Rules (MR-1…MR-11)
 
 `ll-loop validate` enforces these rules. [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md)
 carries the compact lookup table for quick in-session reference; **this section is the rationale
@@ -101,6 +101,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **MR-8** | A `check_semantic`/`llm_structured` state whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) may return verdicts without citing output text, defaulting to optimism (SHOR Table 1 — the study cited in [See Also](#see-also): 33–55% accuracy) | Require the LLM to quote specific output text; absent evidence is coerced to `"no"` at the parsing layer (ENH-2342). States with no `evaluate.prompt` (using `DEFAULT_LLM_PROMPT`) are exempt — the contract is injected automatically | WARNING | `evidence_contract_ok: true` |
 | **MR-9** | A shell action string contains `$$(` or `$$VAR` — over-escaped bash. The FSM interpolator only rewrites `$${...}` → `${...}`; bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference | Use single `$` for command substitution and variables; reserve `$$` exclusively for the `$${VAR}` brace form that collides with `${ns.path}` interpolation | **ERROR** | `shell_pid_ok: true` |
 | **MR-10** | A `shell` state whose inline Python calls `json.load`/`json.loads`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and `exit(0)`s without an `on_error:` route | Swallowed parse failures reach the FSM as exit 0 → treated as successful, producing zero results with no log, stderr, or non-zero exit (BUG-2383, observed across three loops). Add an `on_error:` route so parse failures route explicitly | WARNING | `parse_swallow_ok: true` |
+| **MR-11** | A `shell` state pastes a user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` value raw into the action body, outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) | `interpolate()` does a bare `str(value)` substitution with no shell escaping; a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing (misrouting the loop) or, from an untrusted source, injects commands (BUG-2622). Wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it | WARNING | `unsafe_context_interpolation_ok: true` |
 | **policy-table** | For any loop with `context.policy_rules`, every predicate dimension must be *scored* — listed in `context.rubric_dimensions` (normalized: lowercase + spaces→hyphens) or written by a shell state as `rubric-dim-<name>.txt` | An unscored dimension is silently inert: `_eval_predicate` returns `True` only for `!=`, so `==`/`>=`/`<=`/`<`/`>` predicates never match and routing always falls to the catch-all (ENH-2309) | WARNING | `policy_dims_scored_ok: true` |
 | **static `loop:` ref** | A state's static (non-`${...}`) `loop:` name must resolve to a `.yaml` file at definition time — use the full relative path incl. any subdir prefix (`loop: oracles/verify-confidence-scores`, not `loop: verify-confidence-scores`) | An unresolvable static ref fails identically every run (`FileNotFoundError`); the validator blocks load so `ll-loop validate` exits 1 and `ll-loop run` refuses to start (BUG-2400). Dynamic `${...}` names are not checked | **ERROR** | — |
 
@@ -305,7 +306,7 @@ Run these three commands in sequence before declaring a harness optimizer produc
 ```bash
 # Step 1: Check the YAML for rule violations
 ll-loop validate my-optimizer
-# → Enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10 (WARNING). Fix all ERRORs before continuing.
+# → Enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11 (WARNING). Fix all ERRORs before continuing.
 
 # Step 2: Verify the gate actually discriminates
 ll-loop diagnose-evaluators my-optimizer
@@ -318,7 +319,7 @@ ll-loop run my-optimizer --baseline
 #   If the harness doesn't beat baseline by a meaningful margin, the loop isn't worth the overhead.
 ```
 
-- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10 (WARNING)
+- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11 (WARNING)
   before you run.
 - **`ll-loop diagnose-evaluators <loop>`** — after MR-1 passes, checks that your gate is
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never
@@ -489,7 +490,7 @@ it with a non-LLM evaluator (e.g., `exit_code` or `output_numeric`) to satisfy M
 - [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) — the sibling pattern:
   wrapping a *skill* in a quality pipeline (not optimizing the harness itself)
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — full FSM reference: evaluators, state fields, CLI
-- [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-10 rules
+- [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the normative MR-1…MR-11 rules
 - *Towards Direct Evaluation of Harness Optimizers* — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
 - [`scripts/little_loops/loops/harness-optimize.yaml`](../../scripts/little_loops/loops/harness-optimize.yaml) — the reference harness-optimizer loop
 - [`skills/create-loop/templates.md`](../../skills/create-loop/templates.md) — the wizard-generated "Optimize a harness (meta-loop)" template

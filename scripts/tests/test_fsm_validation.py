@@ -43,6 +43,7 @@ from little_loops.fsm.validation import (
     _validate_policy_dimensions_scored,
     _validate_progress_paths_isolation,
     _validate_state_action,
+    _validate_unsafe_context_interpolation,
     _validate_zero_retry_counter,
     load_and_validate,
     validate_fsm,
@@ -3392,6 +3393,138 @@ class TestOverescapedShell:
             "description: A loop that intentionally embeds a literal PID via $$\n"
             "initial: work\n"
             "shell_pid_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+
+class TestUnsafeContextInterpolation:
+    """MR-11 (BUG-2622): user-controlled ${context.*} pasted raw into a shell body."""
+
+    def _simple_fsm(
+        self,
+        action: str,
+        *,
+        action_type: str | None = "shell",
+        unsafe_context_interpolation_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(
+                    action=action, action_type=action_type, on_yes="done", on_no="work"
+                ),
+                "done": make_state(terminal=True),
+            },
+            unsafe_context_interpolation_ok=unsafe_context_interpolation_ok,
+        )
+
+    def test_mr11_fires_for_double_quoted_token_position(self) -> None:
+        """MR-11 WARNING fires for [ -z "${context.input}" ] (the BUG-2622 repro)."""
+        fsm = self._simple_fsm('if [ -z "${context.input}" ]; then exit 1; fi')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.action"
+        assert "${context.input}" in errors[0].message
+
+    def test_mr11_fires_for_bare_unquoted_token(self) -> None:
+        """MR-11 fires for a bare unquoted ${context.goal} token position."""
+        fsm = self._simple_fsm("echo ${context.goal}")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert len(errors) == 1
+
+    def test_mr11_fires_for_each_user_controlled_var_name(self) -> None:
+        """MR-11 recognizes input/goal/description/task/prompt/query/topic."""
+        for var in ("input", "goal", "description", "task", "prompt", "query", "topic"):
+            fsm = self._simple_fsm(f'echo "${{context.{var}}}"')
+            errors = _validate_unsafe_context_interpolation(fsm)
+            assert len(errors) == 1, f"expected a finding for context.{var}"
+
+    def test_mr11_does_not_fire_for_other_context_vars(self) -> None:
+        """MR-11 does not flag non-user-controlled context vars like run_dir."""
+        fsm = self._simple_fsm('echo "${context.run_dir}"')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_does_not_fire_for_single_quoted_position(self) -> None:
+        """MR-11 does not fire when the placeholder sits inside single quotes."""
+        fsm = self._simple_fsm("printf '%s' '${context.input}'")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_does_not_fire_inside_quoted_heredoc(self) -> None:
+        """MR-11 does not fire for a value written through a quoted heredoc."""
+        fsm = self._simple_fsm(
+            "cat > \"${context.run_dir}/in.txt\" <<'LL_EOF'\n"
+            "${context.input}\n"
+            "LL_EOF\n"
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_does_not_fire_for_shell_suffix(self) -> None:
+        """MR-11 does not fire when the placeholder already uses :shell."""
+        fsm = self._simple_fsm("INPUT=${context.input:shell}")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_does_not_fire_in_comment(self) -> None:
+        """MR-11 does not fire for a placeholder mentioned only in a comment."""
+        fsm = self._simple_fsm(
+            "# Never test ${context.input} as a bare token.\necho ok"
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_ignores_prompt_actions(self) -> None:
+        """A raw ${context.input} in a prompt action is safe (LLM payload, not bash)."""
+        fsm = self._simple_fsm('Describe: "${context.input}"', action_type="prompt")
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_ignores_slash_command_actions(self) -> None:
+        """A raw ${context.input} in a slash-command body is not shell-parsed."""
+        fsm = self._simple_fsm('/ll:refine-issue "${context.input}"')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_suppressed_by_flag(self) -> None:
+        """unsafe_context_interpolation_ok: true suppresses MR-11."""
+        fsm = self._simple_fsm(
+            'echo "${context.input}"', unsafe_context_interpolation_ok=True
+        )
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
+    def test_mr11_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-11 warnings for unsafe raw context interpolation."""
+        fsm = self._simple_fsm('echo "${context.input}"')
+        errors = validate_fsm(fsm)
+        mr11 = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "(MR-11)" in e.message
+        ]
+        assert len(mr11) == 1
+
+    def test_unsafe_context_interpolation_ok_recognized_as_top_level_key(
+        self, tmp_path: Path
+    ) -> None:
+        """A YAML with top-level unsafe_context_interpolation_ok produces no
+        Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally embeds raw context in shell\n"
+            "initial: work\n"
+            "unsafe_context_interpolation_ok: true\n"
             "states:\n"
             "  work:\n"
             "    action: run.sh\n"

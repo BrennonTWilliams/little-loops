@@ -3684,6 +3684,44 @@ class TestBashDefaultOk:
         assert fsm.bash_default_ok is False
 
 
+class TestUnsafeContextInterpolationOk:
+    """MR-11 (BUG-2622): unsafe_context_interpolation_ok field round-trip serialization."""
+
+    def test_unsafe_context_interpolation_ok_true_round_trips(self) -> None:
+        """unsafe_context_interpolation_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            unsafe_context_interpolation_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("unsafe_context_interpolation_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.unsafe_context_interpolation_ok is True
+
+    def test_unsafe_context_interpolation_ok_false_omitted_from_dict(self) -> None:
+        """unsafe_context_interpolation_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "unsafe_context_interpolation_ok" not in d
+
+    def test_unsafe_context_interpolation_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without unsafe_context_interpolation_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.unsafe_context_interpolation_ok is False
+
+
 class TestSingleton:
     """BUG-2526: FSMLoop.singleton field round-trip serialization.
 

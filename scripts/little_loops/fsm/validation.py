@@ -131,6 +131,21 @@ _PARSE_EXCEPT_CATCHING_RE = re.compile(
 )
 _ZERO_EXIT_RE = re.compile(r"\b(?:sys\.exit|exit)\s*\(\s*0\s*\)")
 
+# MR-11: unsafe user-controlled context interpolation detector. Matches
+# ${context.<user-controlled>...} placeholders (interpolation.py substitutes these
+# with a bare str(value), no shell escaping) so a raw shell-metacharacter value
+# (`"`, `$`, backtick, `\`, `!`) breaks bash tokenizing or, from an untrusted
+# source, injects commands (BUG-2622).
+_UNSAFE_CONTEXT_INTERP_RE = re.compile(
+    r"\$\{context\.(?:input|goal|description|task|prompt|query|topic)\b[^}]*\}"
+)
+
+# MR-11: quoted heredoc start, e.g. `<<'EOF'` / `<<-"EOF"`. Content between this
+# line and a line consisting only of the marker is written to the shell literally
+# (no expansion), so a placeholder substituted inside it is safe regardless of
+# shell metacharacters.
+_QUOTED_HEREDOC_START_RE = re.compile(r"<<-?\s*['\"](\w+)['\"]")
+
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
@@ -211,6 +226,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "shell_pid_ok",
         "parse_swallow_ok",
         "policy_dims_scored_ok",
+        "unsafe_context_interpolation_ok",
         "import",
         "fragments",
         "from",
@@ -1258,6 +1274,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_parse_swallow(fsm))
 
+    errors.extend(_validate_unsafe_context_interpolation(fsm))
+
     errors.extend(_validate_classify_route_default(fsm))
 
     errors.extend(_validate_policy_dimensions_scored(fsm))
@@ -1887,6 +1905,88 @@ def _validate_overescaped_shell(fsm: FSMLoop) -> list[ValidationError]:
                     severity=ValidationSeverity.ERROR,
                 )
             )
+    return errors
+
+
+def _find_unsafe_context_interpolations(fsm: FSMLoop) -> list[tuple[str, str]]:
+    """Return (state_name, matched_token) for user-controlled ${context.*} vars
+    interpolated into a shell body outside a safe position.
+
+    Safe positions (not flagged):
+      - single-quoted string (``'...'``) — bash performs no expansion inside it
+      - quoted heredoc (``<<'EOF'`` / ``<<-"EOF"``) — content is written literally
+      - the ``:shell`` suffix — interpolation.py shlex-quotes it at substitution time
+
+    Everything else (double-quoted, or a bare unquoted token position) is
+    flagged: a value containing ``"``, ``$``, `` ` ``, ``\\``, or ``!`` breaks
+    bash tokenizing there, or injects commands from an untrusted source.
+    """
+    findings: list[tuple[str, str]] = []
+    for state_name, state in fsm.states.items():
+        if not state.action:
+            continue
+        if state.action_type not in ("shell", None):
+            continue
+        if state.action.lstrip().startswith("/"):
+            continue
+        heredoc_marker: str | None = None
+        for line in state.action.splitlines():
+            stripped = line.strip()
+            if heredoc_marker is not None:
+                if stripped == heredoc_marker:
+                    heredoc_marker = None
+                continue
+            if stripped.startswith("#"):
+                continue  # comment line, not evaluated by bash
+            heredoc_match = _QUOTED_HEREDOC_START_RE.search(line)
+            if heredoc_match:
+                heredoc_marker = heredoc_match.group(1)
+            for match in _UNSAFE_CONTEXT_INTERP_RE.finditer(line):
+                token = match.group(0)
+                if token.endswith(":shell}"):
+                    continue
+                if line[: match.start()].count("'") % 2 == 1:
+                    continue  # inside a single-quoted string
+                findings.append((state_name, token))
+    return findings
+
+
+def _validate_unsafe_context_interpolation(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-11 (BUG-2622): unsafe raw shell interpolation of user context.
+
+    ``interpolate()`` substitutes ``${context.*}`` with a bare ``str(value)`` and no
+    shell escaping (interpolation.py). When a `shell` action pastes a user-controlled
+    value (``input``/``goal``/``description``/``task``/``prompt``/``query``/``topic``)
+    into a bash token position — e.g. ``[ -z "${context.input}" ]`` — a value
+    containing ``"``, ``$``, `` ` ``, ``\\``, or ``!`` breaks bash tokenizing (the
+    action misroutes to `on_error`/`on_no`) or, from an untrusted source, injects
+    commands.
+
+    Fix: wrap the placeholder in a single-quoted string, write it through a quoted
+    heredoc (``<<'EOF'``), or add the ``:shell`` suffix (``${context.input:shell}``)
+    to shlex-quote it at interpolation time.
+
+    Suppressed by ``unsafe_context_interpolation_ok: true`` at the loop top-level.
+    """
+    if fsm.unsafe_context_interpolation_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, token in _find_unsafe_context_interpolations(fsm):
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] {token} interpolates user-controlled "
+                    "context raw into a shell body. A value containing \", $, `, \\, "
+                    "or ! can break bash tokenizing or inject commands (BUG-2622). "
+                    "Wrap it in a single-quoted string, write it through a quoted "
+                    "heredoc (<<'EOF'), or add the :shell suffix to shlex-quote it "
+                    "(e.g. ${context.input:shell}). Set "
+                    "`unsafe_context_interpolation_ok: true` to suppress. (MR-11)"
+                ),
+                path=f"states.{state_name}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
     return errors
 
 

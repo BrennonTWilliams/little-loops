@@ -25,7 +25,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-refine-count &&
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
-      { [ -n "${context.input}" ] && printf '%s' "${context.input}" ||
+      { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
     capture: issue_id

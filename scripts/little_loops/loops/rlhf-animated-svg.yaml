@@ -55,12 +55,18 @@ states:
     # Routes to plan_animation when input is valid, or input_missing (terminal) when empty.
     action_type: shell
     action: |
-      if [ -z "${context.input}" ]; then
-        echo "EMPTY_INPUT_ERROR: context.input is empty — cannot plan animation without a description"
-        exit 1
+      # Write context.input via a quoted heredoc so shell metacharacters in the
+      # value (", $, `, \) are read literally instead of paste-injected into the
+      # bash tokenizer (BUG-2622). Never test ${context.input} as a bare token.
+      cat > "${context.run_dir}/validate-input.txt" <<'LL_INPUT_EOF'
+      ${context.input}
+      LL_INPUT_EOF
+      if grep -q '[^[:space:]]' "${context.run_dir}/validate-input.txt"; then
+        echo "INPUT_VALID: proceeding with plan_animation"
+        exit 0
       fi
-      echo "INPUT_VALID: proceeding with plan_animation"
-      exit 0
+      echo "EMPTY_INPUT_ERROR: context.input is empty — cannot plan animation without a description"
+      exit 1
     timeout: 10
     evaluate:
       type: output_contains

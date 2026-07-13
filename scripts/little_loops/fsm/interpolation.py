@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -204,6 +205,9 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
 
     Resolves variables at runtime against the provided context.
     Handles $${...} escaping (becomes literal ${...}).
+    Supports ``:default=value``, ``?`` (nullable), and ``:shell``
+    (``shlex.quote()`` the resolved value, for safe use in a bash token
+    position) suffixes; the three are mutually exclusive.
 
     Args:
         template: String containing variable references
@@ -224,21 +228,26 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
         # Parse optional fallback suffixes
         #   ${namespace.path:default=value} → use "value" on missing path
         #   ${namespace.path?}              → use "" on missing path
+        #   ${namespace.path:shell}         → shlex.quote() the resolved value
         default_value: str | None = None
         nullable = False
+        shell_quote = False
 
         # Check for :default= first (so ? inside a default value is literal)
         if ":default=" in full_path:
             var_part, default_value = full_path.split(":default=", 1)
-            if var_part.endswith("?"):
+            if var_part.endswith("?") or var_part.endswith(":shell"):
                 raise InterpolationError(
                     f"Ambiguous suffix: ${{{full_path}}} "
-                    "(?:default=... and ? are mutually exclusive)"
+                    "(:default=..., ?, and :shell are mutually exclusive)"
                 )
             full_path = var_part
         elif full_path.endswith("?"):
             nullable = True
             full_path = full_path[:-1]
+        elif full_path.endswith(":shell"):
+            shell_quote = True
+            full_path = full_path[: -len(":shell")]
 
         if full_path == "messages":
             # Bare ${messages} is shorthand for the full message log
@@ -254,6 +263,8 @@ def interpolate(template: str, ctx: InterpolationContext) -> str:
             value = ctx.resolve(namespace, path)
             if value is None:
                 return ""
+            if shell_quote:
+                return shlex.quote(str(value))
             return str(value)
         except InterpolationError:
             if default_value is not None:

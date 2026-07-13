@@ -4690,6 +4690,7 @@ class FSMLoop:
     evidence_contract_ok: bool = False    # Suppress MR-8 evidence-contract lint rule (ENH-2342)
     shell_pid_ok: bool = False            # Suppress MR-9 over-escaped shell $$ PID-corruption lint rule (BUG-2368)
     parse_swallow_ok: bool = False        # Suppress MR-10 inline-Python parse-swallow lint rule
+    unsafe_context_interpolation_ok: bool = False  # Suppress MR-11 unsafe raw context interpolation lint rule (BUG-2622)
     policy_dims_scored_ok: bool = False   # Suppress policy-table inactive-rubric-dim lint rule
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
@@ -5316,6 +5317,11 @@ result = interpolate("${captured.missing:default=fallback}", ctx)
 result = interpolate("${captured.missing?}", ctx)
 # Returns: ""
 
+# :shell suffix — shlex.quote()s the value for safe use in a bash token
+# position (BUG-2622); used WITHOUT surrounding quotes
+result = interpolate('VAL=${context.target_dir:shell}', ctx)
+# Returns: "VAL=src/"
+
 # Unsuffixed references still raise InterpolationError on missing paths
 # interpolate("${captured.missing}", ctx)  → InterpolationError
 ```
@@ -5370,6 +5376,8 @@ Validate FSM structure and return list of errors.
 - **MR-7 (ERROR)**: any FSM action string contains an unescaped `${namespace.path:-default}` (bash `:-` default syntax) — the interpolation engine crashes at runtime; use `${ns.path:default=value}` (engine-native) or `$${VAR:-value}` (shell-escaped), or set `bash_default_ok: true` to suppress (ENH-2348)
 - **MR-8 (WARNING)**: a `check_semantic`/`llm_structured` state's `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`) — verdicts without verbatim citation requirements default to optimism (SHOR Table 1: 33–55% accuracy); states with `evaluate.prompt: null` inherit `DEFAULT_LLM_PROMPT` which includes the contract automatically; set `evidence_contract_ok: true` to suppress (ENH-2342)
 - **MR-9 (ERROR)**: a shell action string contains `$$(` or `$$VAR` — over-escaped bash; the FSM interpolator only rewrites the brace form `$${...}` → `${...}`, so bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference; use single `$` for command substitution and variables, reserve `$$` exclusively for the `$${VAR}` brace escape that collides with `${ns.path}` interpolation; set `shell_pid_ok: true` to suppress (BUG-2368)
+- **MR-10 (WARNING)**: a `shell`-type state's inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 — without an `on_error:` route — silently discarding parse failures as an empty success; add `on_error:` to route parse failures explicitly, or set `parse_swallow_ok: true` to suppress when an empty result is intentional (BUG-2383)
+- **MR-11 (WARNING)**: a `shell`-type state pastes a user-controlled `${context.input|goal|description|task|prompt|query|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — `interpolate()` substitutes with a bare `str(value)` and no shell escaping, so a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands; wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it, or set `unsafe_context_interpolation_ok: true` to suppress (BUG-2622)
 
 **Example:**
 ```python

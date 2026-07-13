@@ -983,7 +983,7 @@ states:
     action_type: shell
     action: |
       ABS_DIR="${captured.run_dir.output}"
-      TASK="${context.description}"
+      TASK=${context.description:shell}
 
       # Extract likely output filename from task description.
       # Common patterns: "write to X.md", "save as X.txt", "create X.json"

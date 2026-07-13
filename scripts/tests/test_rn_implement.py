@@ -58,7 +58,7 @@ class TestInitAndInputValidation:
         """init state shell script checks for empty input."""
         data = _load_loop()
         init = data["states"]["init"]
-        assert "${context.input}" in init["action"]
+        assert "${context.input:shell}" in init["action"]
         assert " -z " in init["action"]  # empty check
 
     def test_init_state_routes_on_yes_no_error(self) -> None:

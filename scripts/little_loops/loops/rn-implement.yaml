@@ -57,7 +57,7 @@ states:
   init:
     action_type: shell
     action: |
-      INPUT="${context.input}"
+      INPUT=${context.input:shell}
       if [ -z "$INPUT" ]; then
         echo "ERROR: No input provided. Pass an issue ID as argument."
         exit 1

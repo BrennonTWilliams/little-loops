@@ -49,6 +49,13 @@ states:
     action: |
       ORDER="${context.order:default=queue}"
       mkdir -p "${context.run_dir}"
+      # Write context.input via a quoted heredoc so shell metacharacters in the
+      # value are read literally, not paste-injected into bash (BUG-2622). The
+      # heredoc terminator must sit at column 0, so this lives at the action's
+      # base indent rather than inside the queue-mode else branch below.
+      cat > ${context.run_dir}/recursive-refine-input.txt <<'LL_INPUT_EOF'
+      ${context.input}
+      LL_INPUT_EOF
       _init_common() {
         printf '' > ${context.run_dir}/recursive-refine-passed.txt
         printf '' > ${context.run_dir}/recursive-refine-skipped.txt
@@ -71,12 +78,12 @@ states:
         NO_RECURSION="${context.no_recursion:default=false}"
         echo "Starting next-action mode: commit_every=$${COMMIT_EVERY}, no_recursion=$${NO_RECURSION}"
       else
-        if [ -z "${context.input}" ]; then
+        if ! grep -q '[^[:space:]]' ${context.run_dir}/recursive-refine-input.txt; then
           echo "ERROR: input is required when order=queue. Usage: ll-loop run recursive-refine \"ID1,ID2\""
           exit 1
         fi
         _init_common
-        echo "${context.input}" | tr ',' '\n' \
+        tr ',' '\n' < ${context.run_dir}/recursive-refine-input.txt \
           | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
           | grep -v '^[[:space:]]*$' \
           | sort -u \

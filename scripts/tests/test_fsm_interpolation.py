@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from unittest import mock
 
@@ -833,3 +834,61 @@ class TestSafeInterpolation:
             context={"targets": "some/file.yaml", "run_dir": "/tmp"},
         )
         interpolate(action, ctx)
+
+
+class TestShellSuffix:
+    """Tests for the :shell suffix (BUG-2622 Tier 3): shlex.quote() at interpolation time."""
+
+    def test_shell_suffix_quotes_double_quote(self) -> None:
+        """A value containing a double quote is shlex-quoted, not paste-injected."""
+        ctx = InterpolationContext(context={"input": 'a "quoted" value'})
+        result = interpolate("VAL=${context.input:shell}", ctx)
+        assert result == "VAL='a \"quoted\" value'"
+
+    def test_shell_suffix_quotes_dollar_backtick_backslash(self) -> None:
+        """A value containing $, `, and \\ is shlex-quoted so none are interpreted."""
+        ctx = InterpolationContext(context={"input": 'a $(whoami) `id` \\ value'})
+        result = interpolate("VAL=${context.input:shell}", ctx)
+        assert result == "VAL='a $(whoami) `id` \\ value'"
+
+    def test_shell_suffix_output_passes_bash_dash_n(self) -> None:
+        """Adversarial input shlex-quoted via :shell always produces valid bash syntax."""
+        adversarial = ["a \"b", "a $(rm -rf /) b", "a `id` b", "a \\ b", "a ! b", "a'b"]
+        for value in adversarial:
+            ctx = InterpolationContext(context={"input": value})
+            result = interpolate('if [ -n ${context.input:shell} ]; then echo ok; fi', ctx)
+            proc = subprocess.run(
+                ["bash", "-n", "-c", result], capture_output=True, text=True
+            )
+            assert proc.returncode == 0, f"bash -n failed for {value!r}: {proc.stderr}"
+
+    def test_shell_suffix_simple_value_unquoted_by_shlex_is_still_valid(self) -> None:
+        """A value with no shell metacharacters round-trips through shlex.quote()."""
+        ctx = InterpolationContext(context={"input": "simple_value"})
+        result = interpolate("VAL=${context.input:shell}", ctx)
+        assert result == "VAL=simple_value"
+
+    def test_shell_suffix_empty_value_resolves_to_empty(self) -> None:
+        """None-valued context resolves to empty string, bypassing shlex.quote()."""
+        ctx = InterpolationContext(context={"input": None})
+        result = interpolate("VAL=${context.input:shell}", ctx)
+        assert result == "VAL="
+
+    def test_shell_suffix_and_default_together_raises(self) -> None:
+        """Using :shell and :default= together on the same var part raises. BUG-2622."""
+        ctx = InterpolationContext(context={})
+        with pytest.raises(InterpolationError, match="mutually exclusive"):
+            interpolate("${context.input:shell:default=fallback}", ctx)
+
+    def test_shell_suffix_in_interpolate_dict(self) -> None:
+        """:shell suffix works inside interpolate_dict (mcp_tool params, ENH note)."""
+        ctx = InterpolationContext(context={"input": 'a "b" value'})
+        obj = {"cmd": "echo ${context.input:shell}"}
+        result = interpolate_dict(obj, ctx)
+        assert result == {"cmd": "echo 'a \"b\" value'"}
+
+    def test_shell_suffix_escape_still_works(self) -> None:
+        """$${context.input:shell} passes through as a literal, unexpanded."""
+        ctx = InterpolationContext()
+        result = interpolate("$${context.input:shell}", ctx)
+        assert result == "${context.input:shell}"

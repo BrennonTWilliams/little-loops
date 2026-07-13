@@ -282,7 +282,7 @@ states:
   read_step_input:
     action_type: shell
     action: |
-      cat "${context.run_dir}/current-step-input.txt" 2>/dev/null || echo "${context.goal}"
+      cat "${context.run_dir}/current-step-input.txt" 2>/dev/null || echo ${context.goal:shell}
     capture: next_step_input
     next: dispatch_step
     on_error: failed
