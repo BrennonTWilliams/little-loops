@@ -488,6 +488,11 @@ state merges (or, per `epic_branches.open_pr`, opens a PR for) the branch back t
 way the `WorkerPool` path above does (BUG-2614) — both paths share the same
 stateless free functions in `little_loops.worktree_utils`
 (`verify_epic_branch_before_merge`/`merge_epic_branch_to_base`/`open_pr_for_epic_branch`).
+Both call sites forward `project.src_dir` to `verify_epic_branch_before_merge`, which
+prepends the scratch worktree's source dir onto `PYTHONPATH` before running
+`test_cmd`/`lint_cmd` — so branch-only modules resolve to the worktree rather than the
+editable-install `.pth`'s main checkout, which would otherwise false-fail collection
+for any EPIC branch that adds a new module (BUG-2629).
 See [LOOPS_REFERENCE.md § auto-refine-and-implement](guides/LOOPS_REFERENCE.md#auto-refine-and-implement--full-backlog-refine-and-implement-loop).
 
 ```mermaid

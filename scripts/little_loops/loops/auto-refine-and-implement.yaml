@@ -403,6 +403,7 @@ states:
           lint_cmd=lint_cmd,
           logger=logger,
           git_lock=lock,
+          src_dir=ll_cfg.project.src_dir,
       )
       if not ok and message:
           print(f'verify: {message}', file=sys.stderr)
@@ -534,6 +535,7 @@ states:
           lint_cmd=cfg.project.lint_cmd,
           logger=logger,
           git_lock=lock,
+          src_dir=cfg.project.src_dir,
       )
       if not ok:
           print(f"merge_epic_branch: verify gate failed: {message}", file=sys.stderr)

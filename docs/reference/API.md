@@ -3336,7 +3336,13 @@ take directly, since they're specific to `WorkerPool`'s concurrency model).
 When `verify_before_merge` is `True`, `verify_epic_branch_before_merge` checks out the
 EPIC branch tip in a scratch worktree (via `worktree_utils.setup_worktree(...,
 checkout_existing=True)`), runs `test_cmd`/`lint_cmd` against it, and always tears the
-worktree down, returning `(ok, message)`. On the `ll-parallel` path, a failure blocks
+worktree down, returning `(ok, message)`. When the optional `src_dir` kwarg is truthy
+(callers forward `project.src_dir`, e.g. `"scripts"`), the verify subprocess prepends
+the worktree's `<worktree>/<src_dir>` onto `PYTHONPATH` so branch-only modules resolve
+to the worktree — defeating editable-install `.pth` shadowing that would otherwise
+resolve `import little_loops.<new_module>` to the main checkout and false-fail
+collection (BUG-2629). When `src_dir` is falsy (default `None`), no injection occurs,
+preserving prior behavior for non-editable / non-Python setups. On the `ll-parallel` path, a failure blocks
 the merge/PR-open (the branch is NOT added to `_merged_epic_branches`, so it is retried
 on the next completion event), and the message is recorded in
 `ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which

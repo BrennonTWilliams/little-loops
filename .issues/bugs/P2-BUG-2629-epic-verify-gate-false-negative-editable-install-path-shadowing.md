@@ -2,9 +2,10 @@
 id: BUG-2629
 title: Epic verify gate false-negative from editable-install path shadowing
 type: bug
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-13T18:30:06Z'
+completed_at: '2026-07-13T19:07:22Z'
 discovered_date: 2026-07-13
 discovered_by: capture-issue
 relates_to:
@@ -222,7 +223,23 @@ _Wiring pass added by `/ll:wire-issue`:_ inserting `env=env` into the three
   `"verify_epic_branch_before_merge"` and `"verify_before_merge=True"` verbatim — adding
   `src_dir=...` as a new argument is safe as long as those substrings remain [Agent 2].
 
+## Resolution
+
+Added a keyword-only `src_dir: str | None = None` parameter to
+`verify_epic_branch_before_merge()`. When truthy, the verify subprocess gets
+`env` with `<worktree>/<src_dir>` prepended onto `PYTHONPATH` (via the
+`os.pathsep.join(p for p in (new, existing) if p)` idiom), so branch-only modules
+resolve to the worktree rather than the editable-install `.pth`'s main checkout.
+Falsy (default) preserves prior behavior. All three call sites forward
+`project.src_dir`: the orchestrator wrapper, and both the `verify` and
+`merge_epic_branch` states in `auto-refine-and-implement.yaml`. Docs updated
+(API.md, ARCHITECTURE.md, MERGE-COORDINATOR.md). Regression tests added in
+`test_worktree_utils.py` (PYTHONPATH-injected and falsy-default) and static
+`src_dir=` presence asserts in `test_builtin_loops.py` for both YAML states.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T19:06:55Z - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`
+- `/ll:ready-issue` - 2026-07-13T18:59:49 - `bfb26017-c1ad-49a6-8bca-aef04c7320e0.jsonl`
 - `/ll:wire-issue` - 2026-07-13T18:44:17 - `781c2615-1802-4eab-8b18-5a814f3e9a02.jsonl`
 - `/ll:refine-issue` - 2026-07-13T18:36:34 - `294207a3-b75b-4916-83ed-23137f7e0a6d.jsonl`
 - `/ll:capture-issue` - 2026-07-13T18:30:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e418041f-97b9-4193-89df-c4643e9794aa.jsonl`

@@ -1343,6 +1343,7 @@ class ParallelOrchestrator:
             lint_cmd=project.lint_cmd,
             logger=self.logger,
             git_lock=self._git_lock,
+            src_dir=project.src_dir,
         )
         if not ok and message is not None:
             with self._state_lock:

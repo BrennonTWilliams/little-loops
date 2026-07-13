@@ -7,6 +7,7 @@ exercised against actual git, not mocks.
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -330,6 +331,64 @@ class TestVerifyEpicBranchBeforeMerge:
         assert ok is False
         assert message is not None
         assert "test_cmd failed" in message
+
+    def test_src_dir_prepends_worktree_source_onto_pythonpath(self, tmp_path: Path) -> None:
+        """BUG-2629: when src_dir is set, the worktree's source dir is prepended to
+        PYTHONPATH so the editable-install .pth cannot shadow branch-only modules.
+
+        The test_cmd asserts the first PYTHONPATH entry basename is the src_dir,
+        confirming the gate injects the isolated import path.
+        """
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = (
+            "import os,sys; "
+            "p=os.environ.get('PYTHONPATH','').split(os.pathsep)[0]; "
+            "sys.exit(0 if os.path.basename(p)=='scripts' else 1)"
+        )
+
+        ok, message = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+            src_dir="scripts",
+        )
+
+        assert (ok, message) == (True, None)
+
+    def test_falsy_src_dir_leaves_pythonpath_uninjected(self, tmp_path: Path) -> None:
+        """BUG-2629: src_dir=None (default) preserves prior behavior — no injection."""
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = (
+            "import os,sys; "
+            "p=os.environ.get('PYTHONPATH','').split(os.pathsep)[0]; "
+            "sys.exit(1 if os.path.basename(p)=='scripts' else 0)"
+        )
+
+        ok, message = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message) == (True, None)
 
     def test_worktree_setup_failure_returns_false_with_message(self, tmp_path: Path) -> None:
         """A branch that doesn't exist fails worktree setup, not the test_cmd."""

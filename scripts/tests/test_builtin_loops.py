@@ -2120,6 +2120,16 @@ class TestAutoRefineAndImplementLoop:
         assert "epic-branch-name.txt" in action
         assert "verify_epic_branch_before_merge" in action
         assert "verify_before_merge=True" in action
+        # BUG-2629: verify must isolate PYTHONPATH from editable-install .pth shadowing.
+        assert "src_dir=" in action
+
+    def test_merge_epic_branch_forwards_src_dir(self, data: dict) -> None:
+        """BUG-2629: merge_epic_branch's verify_epic_branch_before_merge call must
+        forward src_dir so its independent scratch-worktree run also isolates the
+        import path from the editable-install .pth."""
+        action = data["states"].get("merge_epic_branch", {}).get("action", "")
+        assert "verify_epic_branch_before_merge" in action
+        assert "src_dir=" in action
 
     def test_finalize_computes_closures_from_epic_branch(self, data: dict) -> None:
         """finalize must source completed/ and status:done snapshots from the epic

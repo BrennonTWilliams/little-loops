@@ -253,6 +253,7 @@ def verify_epic_branch_before_merge(
     lint_cmd: str | None,
     logger: Logger,
     git_lock: GitLock,
+    src_dir: str | None = None,
 ) -> tuple[bool, str | None]:
     """Run test_cmd/lint_cmd against an EPIC branch tip before merge/PR (ENH-2603, BUG-2614).
 
@@ -276,6 +277,17 @@ def verify_epic_branch_before_merge(
         lint_cmd: Shell command to run as the lint gate, or None to skip.
         logger: Logger instance.
         git_lock: Thread-safe git lock for serializing repo operations.
+        src_dir: When truthy, the source directory (relative to the branch
+            worktree, e.g. ``"scripts"``) whose absolute path is prepended to
+            ``PYTHONPATH`` for the test/lint subprocess. This defeats
+            editable-install ``.pth`` shadowing (BUG-2629): the editable
+            ``_editable_impl_*.pth`` hardcodes the *main* checkout's source dir
+            and is loaded at interpreter startup regardless of ``cwd``, so
+            ``import little_loops.<branch_only_module>`` would otherwise resolve
+            to the main tree and fail collection. ``.pth`` entries land on
+            ``sys.path`` *after* ``PYTHONPATH``, so the prepend wins. When falsy
+            (default), no injection occurs — preserving prior behavior for
+            non-editable / non-Python setups.
 
     Returns:
         ``(True, None)`` if the gate passed (or was disabled). ``(False,
@@ -303,6 +315,16 @@ def verify_epic_branch_before_merge(
         logger.warning(f"EPIC {epic_id}: {message}")
         return False, message
 
+    env: dict[str, str] | None = None
+    if src_dir:
+        # Prepend the worktree's source dir to PYTHONPATH so branch-only modules
+        # resolve here, not via the editable-install .pth pointing at the main
+        # checkout (BUG-2629). .pth entries land on sys.path after PYTHONPATH.
+        env = os.environ.copy()
+        worktree_src = str(worktree_path / src_dir)
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (worktree_src, existing) if p)
+
     try:
         for label, cmd in (("test", test_cmd), ("lint", lint_cmd)):
             if not cmd:
@@ -313,6 +335,7 @@ def verify_epic_branch_before_merge(
                 capture_output=True,
                 text=True,
                 cwd=worktree_path,
+                env=env,
             )
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "").strip()[:500]
