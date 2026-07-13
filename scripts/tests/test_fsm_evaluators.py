@@ -1153,6 +1153,98 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.8
 
 
+class TestTaggedStructuredOutputFallback:
+    """Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore --json-schema
+    and emit the verdict as <StructuredOutput> tags in the envelope's "result"
+    string. The parser must recover the verdict from those tags instead of
+    treating the response as an error (spurious loop failure)."""
+
+    @staticmethod
+    def _minimax_stdout(result_text: str) -> str:
+        """Envelope where 'result' carries tag-wrapped text, no structured_output."""
+        return json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "result": result_text,
+            }
+        )
+
+    @pytest.fixture
+    def mock_cli(self):
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
+
+    def test_tagged_verdict_recovered(self, mock_cli) -> None:
+        """A <StructuredOutput> tag response with a 'yes' verdict parses to yes."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._minimax_stdout(
+            "<StructuredOutput>\n"
+            "<verdict>yes</verdict>\n"
+            "<confidence>0.75</confidence>\n"
+            "<reason>The assistant produced a complete artifact</reason>\n"
+            "<evidence>index.html written to run_dir</evidence>\n"
+            "</StructuredOutput>"
+        )
+
+        result = evaluate_llm_structured("generated index.html")
+
+        assert result.verdict == "yes"
+        assert result.details["confidence"] == 0.75
+        assert result.details["reason"] == "The assistant produced a complete artifact"
+        assert result.details["evidence"] == "index.html written to run_dir"
+
+    def test_tagged_verdict_without_evidence_coerced_to_no(self, mock_cli) -> None:
+        """Default-schema evidence contract still holds on the fallback path:
+        a tag verdict lacking <evidence> is coerced to 'no'."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._minimax_stdout(
+            "<StructuredOutput>\n"
+            "<verdict>yes</verdict>\n"
+            "<confidence>0.9</confidence>\n"
+            "<reason>Looks done</reason>\n"
+            "</StructuredOutput>"
+        )
+
+        result = evaluate_llm_structured("some output")
+
+        assert result.verdict == "no"
+        assert result.details["evidence_coerced"] is True
+
+    def test_tagged_verdict_in_json_fence(self, mock_cli) -> None:
+        """Tags wrapped in a ```json fence by a proxy are still recovered."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._minimax_stdout(
+            "```json\n<StructuredOutput>\n"
+            "<verdict>no</verdict>\n"
+            "<confidence>0.8</confidence>\n"
+            "<reason>Tests failed</reason>\n"
+            "<evidence>3 failed</evidence>\n"
+            "</StructuredOutput>\n```"
+        )
+
+        result = evaluate_llm_structured("3 tests failed")
+
+        assert result.verdict == "no"
+        assert result.details["confidence"] == 0.8
+
+    def test_non_tag_garbage_still_errors(self, mock_cli) -> None:
+        """Genuinely unparseable result (no verdict tag, not JSON) still errors."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._minimax_stdout("total garbage with no verdict")
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "error"
+        assert "Failed to parse LLM response" in result.details["error"]
+        assert "raw_preview" in result.details
+
+
 class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""
 

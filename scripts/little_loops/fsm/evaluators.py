@@ -107,6 +107,55 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
 
 DEFAULT_LLM_PROMPT = "Evaluate whether this action succeeded based on its output."
 
+
+def _extract_tagged_structured_output(text: str) -> dict[str, Any] | None:
+    """Mine a ``<StructuredOutput>`` tag block for a verdict dict.
+
+    Anthropic's ``claude`` CLI honors ``--json-schema`` and returns the parsed
+    verdict in the envelope's ``structured_output`` field. Non-Anthropic hosts
+    reached through the same CLI (e.g. a MiniMax backend) ignore the flag and
+    instead emit the verdict as ``<StructuredOutput><verdict>…</verdict>…`` tags
+    inside the envelope's ``result`` string. This fallback recovers the verdict
+    from that tag format so the same evaluators work host-agnostically.
+
+    Args:
+        text: The raw ``result`` string that failed JSON parsing.
+
+    Returns:
+        A dict shaped like the default LLM schema output (``verdict``,
+        ``confidence``, ``reason``, ``evidence``) when a ``<verdict>`` tag is
+        present, else ``None``. Fields absent from the tags are omitted so the
+        caller's downstream defaults/coercion apply unchanged.
+    """
+    # Strip a ```json / ``` fence if a proxy wrapped the tags in one.
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1)
+
+    verdict_match = re.search(r"<verdict>\s*(.*?)\s*</verdict>", text, re.DOTALL | re.IGNORECASE)
+    if not verdict_match:
+        return None
+
+    result: dict[str, Any] = {"verdict": verdict_match.group(1).strip().lower()}
+
+    conf_match = re.search(r"<confidence>\s*(.*?)\s*</confidence>", text, re.DOTALL | re.IGNORECASE)
+    if conf_match:
+        try:
+            result["confidence"] = float(conf_match.group(1).strip())
+        except ValueError:
+            pass  # leave unset; caller defaults confidence to 1.0
+
+    reason_match = re.search(r"<reason>\s*(.*?)\s*</reason>", text, re.DOTALL | re.IGNORECASE)
+    if reason_match:
+        result["reason"] = reason_match.group(1).strip()
+
+    evidence_match = re.search(r"<evidence>\s*(.*?)\s*</evidence>", text, re.DOTALL | re.IGNORECASE)
+    if evidence_match:
+        result["evidence"] = evidence_match.group(1).strip()
+
+    return result
+
+
 # Schema for blind A/B comparator: evaluates two anonymized outputs
 BLIND_COMPARATOR_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -1121,7 +1170,17 @@ def evaluate_llm_structured(
             if isinstance(raw_result, dict):
                 llm_result = raw_result
             elif raw_result:
-                llm_result = json.loads(raw_result)
+                try:
+                    llm_result = json.loads(raw_result)
+                except json.JSONDecodeError:
+                    # Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore
+                    # --json-schema and emit the verdict as <StructuredOutput> tags
+                    # inside "result" rather than a JSON string. Recover it before
+                    # treating the response as unparseable.
+                    tagged = _extract_tagged_structured_output(raw_result)
+                    if tagged is None:
+                        raise
+                    llm_result = tagged
             elif "verdict" in envelope:
                 llm_result = envelope
             else:

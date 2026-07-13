@@ -5091,3 +5091,13 @@
     composed component must still get its own J
   enforcement: advisory
   issue: ENH-2625
+- id: ARCHITECTURE-147
+  type: decision
+  timestamp: '2026-07-13T06:47:33Z'
+  category: architecture
+  labels: []
+  rationale: 'Cleaner long-term design behind BUG-2626: make the flag decision capability-gated
+    and observable in ll-doctor rather than blind.'
+  rule: 'Captured: Gate --json-schema on a structured_output host capability flag'
+  scope: issue
+  issue: ENH-2627
