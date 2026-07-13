@@ -13,8 +13,15 @@ labels:
 captured_at: '2026-07-13T06:46:00Z'
 discovered_date: '2026-07-13'
 discovered_by: capture-issue
-relates_to: [BUG-2626]
+relates_to:
+- BUG-2626
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 83
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 18
 ---
 
 # ENH-2627: Gate --json-schema on a structured_output host capability flag

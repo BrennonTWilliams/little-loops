@@ -5101,3 +5101,27 @@
   rule: 'Captured: Gate --json-schema on a structured_output host capability flag'
   scope: issue
   issue: ENH-2627
+- id: ARCHITECTURE-148
+  type: decision
+  timestamp: '2026-07-13T18:27:04Z'
+  category: architecture
+  labels: []
+  rationale: Reuses the proven non-mirrored bool+CapabilityEntry pattern; zero test
+    churn; Codex partial status can't reduce to a bool so Option B doesn't remove
+    dual-maintenance.
+  rule: 'Option A: separate structured_output bool + keep json_schema CapabilityEntry'
+  scope: issue
+  alternatives_rejected: 'Option B: derive json_schema entry from the new bool (single
+    source of truth)'
+  issue: ENH-2627
+- id: ARCHITECTURE-149
+  type: decision
+  timestamp: '2026-07-13T18:54:44Z'
+  category: architecture
+  labels: []
+  rationale: 'AC #2 needs the fix on the ll-auto/autodev get_ready_issues path, which
+    Option 2 (EPIC-resolver-local) does not touch; Option 1 scored 8/12 vs 7/12.'
+  rule: Enforce depends_on ordering in get_execution_waves (Option 1)
+  scope: issue
+  alternatives_rejected: 'Option 2: EPIC-resolver-local mapping in sprint.py:load_or_resolve'
+  issue: BUG-2632
