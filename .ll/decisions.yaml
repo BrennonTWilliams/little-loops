@@ -5027,3 +5027,25 @@
   alternatives_rejected: 'Option B: decomposition-side worktree check via epic-branch-name.txt
     marker'
   issue: ENH-2615
+- id: ARCHITECTURE-144
+  type: decision
+  timestamp: '2026-07-13T00:14:56Z'
+  category: architecture
+  labels:
+  - history-db
+  - schema
+  - sequencing
+  rationale: raw_events is not yet implemented (schema still v18). ENH-2461 and ENH-2581
+    both independently claimed v19 (collision). Building raw_events first turns ENH-2461/2493/2494/2506/2507/2511
+    from per-feature CREATE TABLE tasks into event_type parser tasks over a single
+    source of truth, and fixes the FTS5 prune leak. FEAT-2123 (downstream of ENH-2461)
+    is not urgent, so foundation-first ordering was chosen.
+  rule: ENH-2581 (raw_events source of truth) owns schema v19 and lands before ENH-2461
+    and the other EPIC-2457 signal children
+  scope: issue
+  alternatives_rejected: 'Option 2: ship ENH-2461 now as a raw-events-compatible standalone
+    writer to unblock FEAT-2123 sooner (rejected: FEAT-2123 not urgent). Option 3:
+    ship ENH-2461 verbatim as a usage_events sibling table (rejected: builds the exact
+    per-feature-table pattern ENH-2581 exists to delete; would be re-derived through
+    rebuild() later).'
+  issue: ENH-2581

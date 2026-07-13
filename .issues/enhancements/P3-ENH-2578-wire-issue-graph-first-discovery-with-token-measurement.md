@@ -47,8 +47,8 @@ The skill's written output (Integration Map) is format-identical to today — on
 ## Proposed Solution
 
 1. **SKILL.md change** — add the graph-accelerated discovery sub-phase (pseudocode above) to `skills/wire-issue/SKILL.md`'s tracing phase, and `Bash(ll-code:*)` to `allowed-tools`. Encode the three safety rules verbatim: silent fallback when unavailable; confirm-before-map for every positive hit; never trust negative results without an exploratory pass.
-2. **Measurement** — define a benchmark set of 3–5 representative closed issues with known-good Integration Maps (e.g., re-run against their pre-implementation commits). Run wire-issue N times per issue with the graph phase disabled vs. enabled; pull per-run token/turn/tool-call counts from the session history db (`ll-history` / `ll-logs`, EPIC-1918-style telemetry). Record results in the issue's Session Log and epic.
-3. **Decision gate** — write the go/no-go into EPIC-2575: material win (target: ≥30% discovery-phase token reduction with zero Integration Map regressions) → file the mechanical follow-ups for find-dead-code / audit-architecture / refine-issue --gap-analysis; a wash → close the epic at protocol+provider with no further skill changes.
+2. **Measurement** — define a benchmark set of 3–5 representative closed issues with known-good Integration Maps (e.g., re-run against their pre-implementation commits). Run wire-issue N times per issue across **three** conditions: graph phase disabled (baseline), graph phase enabled with `code_query.provider` forced to `fallback` (grep/AST, no index — the default most projects will actually run), and graph phase enabled with `provider` forced to `codegraph` (SQLite index built ahead of the run). Pull per-run token/turn/tool-call counts from the session history db (`ll-history` / `ll-logs`, EPIC-1918-style telemetry) and report them per-provider, not pooled. Record results in the issue's Session Log and epic.
+3. **Decision gate** — write the go/no-go into EPIC-2575, evaluated **separately for each provider** (a codegraph win does not imply a fallback win, since fallback is itself grep-based and may show a smaller or negative delta): material win (target: ≥30% discovery-phase token reduction with zero Integration Map regressions) → file the mechanical follow-ups for find-dead-code / audit-architecture / refine-issue --gap-analysis, scoped to the provider(s) that won; a wash on both providers → close the epic at protocol+provider with no further skill changes; a split result (codegraph wins, fallback doesn't) → ship the phase but document that it only pays off with a codegraph index present.
 
 ## Scope Boundaries
 
@@ -82,7 +82,7 @@ The skill's written output (Integration Map) is format-identical to today — on
 
 ### Tests
 - Skill-lint/doc checks (`ll-verify-skills`, `ll-verify-docs`) stay green
-- Manual/benchmark: Integration Map parity check between disabled/enabled runs on the benchmark set (no missing entries)
+- Manual/benchmark: Integration Map parity check between disabled/fallback/codegraph runs on the benchmark set (no missing entries), token/turn deltas reported per provider
 
 ### Documentation
 - CHANGELOG; wire-issue docs note the optional acceleration + fallback behavior
@@ -96,6 +96,49 @@ The skill's written output (Integration Map) is format-identical to today — on
 2. Assemble the benchmark issue set; capture baseline runs (graph phase off).
 3. Capture enabled runs; compare tokens/turns/tool-calls and Integration Map parity.
 4. Write results + go/no-go into EPIC-2575; file follow-up issues if the gate passes.
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-12):_
+
+### ll-code CLI contract (verified anchors)
+
+- **CLI**: `scripts/little_loops/cli/code.py::main_code()`. Subcommands: `status`, `callers-of`, `callees-of`, `importers-of`, `defines`, `references`, `impact-of` (`--depth`, default 2).
+- **Provider lever for the 3 benchmark arms**: `--provider {auto,codegraph,fallback}`. `_default_provider()` reads `BRConfig(cwd).code_query.provider`. Forcing `--provider fallback` / `--provider codegraph` per-invocation is exactly how the three measurement conditions are pinned — no config edit needed between arms.
+- **`--json` envelope**: `{"provider", "freshness", "query", "results": [CodeRef…]}`. `CodeRef` (`codequery/core.py`) fields: `path, line, symbol, kind, confidence ("exact"|"heuristic"), provider`. `ProviderStatus` fields: `available, freshness ("fresh"|"stale"|"unknown"), indexed_at, detail`.
+- **Exit-code contract implements the three safety rules directly** (`main_code()` docstring): `0` = hits, `1` = no hits, `2` = provider error / `Unsupported` query kind. So the skill can branch purely on exit code:
+  - exit `2` → provider unavailable/unsupported → **silent skip** (safety rule 1)
+  - exit `1` → "no callers/importers" negative → **never trust alone; run the exploratory pass** (safety rule 3)
+  - exit `0` → hits → **confirm each with one targeted Grep** before it enters the Integration Map (safety rule 2)
+
+### Implementation-critical gap: codegraph does not support `impact-of`
+
+`CodegraphProvider.capabilities()` (`codequery/codegraph.py`) is `{callers_of, callees_of, importers_of, defines, references}` — **no `impact_of`**. `ll-code impact-of … --provider codegraph` raises `Unsupported` → exit 2. Only `FallbackProvider` implements `impact_of` (ast import-graph reverse-BFS). **Consequence for the pseudocode**: the `impact-of` candidate lever must be treated as "provider doesn't support it → skip this lever" (not an error) in the codegraph arm; `callers-of` / `importers-of` / `references` work on both providers and carry the graph-first discovery there.
+
+### Staleness → availability folding (freshness is pre-interpreted)
+
+`CodegraphProvider.status()` folds `code_query.staleness` into the reported `available`/`freshness`: `off` → always `fresh`/available (trusts index); `strict` + drift → `available=False`, `freshness="stale"`; `warn` (default) + drift → `available=True` but `freshness="stale"`. So the issue's "if STATUS.freshness == stale → treat candidates as leads only" reads straight off the JSON `freshness` field, and under `strict` a stale index takes the exit-2 silent-skip path automatically.
+
+### Measurement blocker — per-run TOKEN counts are not queryable today (capture a separate issue)
+
+The Step-2 plan assumes per-run token/turn/tool-call counts are pullable from `.ll/history.db` via `ll-history`/`ll-logs`. Research finding — **only tool-call/turn counts exist; per-run token counts do not**:
+
+- `.ll/history.db` `tool_events` carries `bytes_in`/`bytes_out`/`cache_hit` (byte-level, not tokens), aggregated DB-wide, not per-run (`session_store.py`).
+- The **only** code path reading real per-message token usage is `ctx_stats.py::_compute_cache_rate_from_jsonl()` — hardcoded to the single most-recently-modified JSONL, **not parameterized by `session_id`**.
+- The intended per-state `usage_event` table (input/output tokens) is stubbed in `ctx_stats.py::_aggregate_usage_events()` and **blocked on ENH-2461** (not yet merged).
+- What *is* available today: `ll-logs diff <a> <b>` → per-tool count deltas; `history_reader.lookup_session_metadata()` → `tool_count`; `ll-history sessions <ID>` → issue→session JSONL mapping.
+
+**Implication** (per this issue's own Scope Boundary "if a counter is missing, capture a separate issue"): the token-delta half of the measurement needs either ENH-2461 to land first, or a small reader that sums `message.usage` tokens for a *named session's* JSONL (generalize `_compute_cache_rate_from_jsonl` to accept a `session_id`). **Recommend**: file that as a blocking dependency issue; meanwhile measure **tool-call and turn deltas** (available today) as the primary signal and report token deltas once the counter lands. This makes ENH-2578 effectively blocked on a token-counter dependency, not just on FEAT-2576/ENH-2577.
+
+### Patterns to model
+
+- **Silent-fallback shellout**: `skills/wire-issue/static-coupling-layer.md` (loaded as Phase 3.5) is the closest in-repo "hints, not verdicts, skip silently" precedent — `2>/dev/null`, empty-result and absent-tool treated identically, results injected as downstream agent hints. The new graph-discovery sub-phase belongs adjacent to it (a Phase 3.5/3.6 slot **before** Phase 4's parallel wiring agents in `skills/wire-issue/SKILL.md`), and `allowed-tools` gains `Bash(ll-code:*)` following the existing `Bash(ll-<tool>:*)` wildcard convention.
+- **A/B measurement reporting**: `ll-loop run <loop> --baseline` (`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`) is the repo's median-delta format (median tokens/duration/pass-rate + explicit % delta per arm) — report per-provider the same way.
+- **Recording the go/no-go**: use the epic-body `## Implementation Status` / `## Success Metrics` strikethrough pattern (EPIC-1918 precedent), not just a Session Log line.
+
+### Config already landed (no config work in this issue)
+
+The `code_query` block is fully wired: `CodeQueryConfig` / `CodeQueryCodegraphConfig` (`config/features.py`), schema in `config-schema.json`, consumed by `_default_provider()` and `CodegraphProvider` (ENH-2612 / ENH-2613 done). The skill respects whatever provider/staleness resolves; no schema or dataclass change is required.
 
 ## Impact
 
@@ -115,5 +158,6 @@ The skill's written output (Integration Map) is format-identical to today — on
 **Open** | Created: 2026-07-10 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-12T23:55:22 - `c0410b59-a59a-410c-8b5c-9ba8ced794b2.jsonl`
 
 - `/ll:capture-issue` - 2026-07-10T05:34:41Z - `manual capture via Claude Cowork session (EPIC-2575 design discussion)`

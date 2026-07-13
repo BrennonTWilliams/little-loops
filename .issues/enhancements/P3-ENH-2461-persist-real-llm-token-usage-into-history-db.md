@@ -8,20 +8,47 @@ discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-relates_to: [EPIC-2456, FEAT-2476, ENH-2477, FEAT-2478]
+relates_to: [EPIC-2456, FEAT-2476, ENH-2477, FEAT-2478, ENH-2581]
 blocks: [FEAT-2123]
+blocked_by: [ENH-2581]
+depends_on: [ENH-2581]
 labels:
   - enhancement
   - history-db
   - analytics
   - cost
   - captured
-decision_needed: true
+decision_needed: false
 learning_tests_required:
   - anthropic
 ---
 
 # ENH-2461: Persist real LLM token usage into history.db
+
+> **⚠️ Superseding architecture decision (2026-07-12) — read before implementing.**
+> This issue was written against the pre-`raw_events` architecture and its
+> Proposed Solution (add a `usage_events`/`usage_event` *sibling table* at schema
+> **v19**, wire `record_usage_event()` straight off the `on_usage_detailed`
+> callback) is now **out of date**. [[ENH-2581]] introduces `raw_events` as the
+> single source of truth and lands **first** (schema v19 belongs to ENH-2581, not
+> this issue — the two silently collided on v19). After ENH-2581 lands, this issue
+> becomes a **usage `event_type` parser over `raw_events`** plus a *query* surface
+> (a `usage_events` view/table is added only if a query needs one, per ENH-2581's
+> "schema grows for the query, not the ingest" principle), **not** a new
+> per-feature ingest table.
+>
+> **What stays valid:** the motivation, the `pricing.py`/`estimate_cost_usd`
+> reuse (Step 5 — already done, do not create `usage_pricing.py`), the read-API
+> shape (`recent_usage_events`/`aggregate_usage`), the `ll-ctx-stats` consumer
+> wiring (the `_aggregate_usage_events` stub at `cli/ctx_stats.py:169` already
+> waits for this), the `ll-session --kind usage` surface, and the FEAT-2478 OTel
+> column→attribute mapping table below.
+>
+> **What is now wrong:** "bump `SCHEMA_VERSION` to 19", "append `_MIGRATIONS[18]`
+> for a `usage_events` table", the Option A vs Option B schema choice (the former
+> `decision_needed`), and wiring the writer directly off the JSONL callback
+> instead of through the `raw_events` parser path. Re-derive the writer as a
+> `_backfill_*`-style parser once ENH-2581's `_iter_events()` exists.
 
 ## Summary
 
@@ -277,6 +304,7 @@ per-field mapping for the cache columns, not string prefixing.
 **Open** | Created: 2026-07-02 | Priority: P3
 
 ## Session Log
+- sequencing-review - 2026-07-12 - Resolved the v19 schema collision with [[ENH-2581]]: ENH-2581 owns v19 (`raw_events`) and lands first; this issue is now `blocked_by`/`depends_on` ENH-2581 and reframed from "add a `usage_events` sibling table" to "add a usage `event_type` parser over `raw_events`". Closed the Option A/B `decision_needed` (both obsolete — neither sibling-table form; parser path instead). Added superseding-decision banner at top. FEAT-2123 (blocked by this) is not urgent, so foundation-first ordering was chosen.
 - `/ll:refine-issue` - 2026-07-07T06:54:22 - `d46e494f-5673-4564-b202-2b832d02834f.jsonl`
 - `/ll:refine-issue` - 2026-07-06T23:57:55 - `393e0dc2-c1c3-43c5-b47a-60f52a6d21c0.jsonl`
 - `/ll:explore-api phoenix` - 2026-07-05 - Added Cross-issue coordination note: internal token columns stay underscore, but FEAT-2478's OTel mapping for the two cache columns must use DOTTED names (`gen_ai.usage.cache_read.input_tokens`) — string-prefixing the column name silently breaks OTel-semconv consumers (Phoenix verified). Locked the column→attribute mapping table.

@@ -5,14 +5,32 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-08
-captured_at: "2026-07-08T00:00:00Z"
+captured_at: '2026-07-08T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
+relates_to:
+- ENH-2461
+blocks:
+- ENH-2461
+- ENH-2493
+- ENH-2494
+- ENH-2506
+- ENH-2507
+- ENH-2511
+- ENH-2580
+- ENH-2582
 labels:
-  - enhancement
-  - history-db
-  - schema
-  - captured
+- enhancement
+- history-db
+- schema
+- captured
+schema_version_owner: 19
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 15
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 14
 ---
 
 # ENH-2581: raw_events source of truth and ll-session rebuild subcommand
@@ -347,6 +365,95 @@ Changes:
   `compact --and-prune` if `analytics.auto_collect.enabled`
   is true.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-12). All
+line-number claims elsewhere in this issue were independently re-verified
+against the current file state and are accurate — `backfill()` 2441-2494,
+`backfill_incremental()` 2497-2605, `prune()` 2612-2727, `_PRUNABLE_TABLES`
+2609, `_VALID_KINDS`/`_KIND_TABLE` 104-130, v17 migration 501-520,
+`cli/session.py` 90-106/113-129, `hooks/session_start.py` 150-163. Current
+`SCHEMA_VERSION = 18` (`session_store.py:102`); `raw_events`/`rebuild()`/
+`compact()`/`backfill_raw_events()` do not yet exist anywhere in the tree._
+
+- **Migration counter nuance**: `_apply_migrations()` (`session_store.py:609-645`)
+  iterates `len(_MIGRATIONS)`, not the `SCHEMA_VERSION` constant — the two
+  must be bumped in lockstep manually. `_current_version()`
+  (`session_store.py:592-606`) reads `meta.schema_version`, treating a
+  genuinely-missing `meta` table as version 0 but re-raising any other
+  `OperationalError`. The new v19 entry must be appended to `_MIGRATIONS`
+  *and* `SCHEMA_VERSION` bumped to 19 as two separate edits.
+- **`rebuild()` has no existing precedent in this codebase.** A grep for
+  wipe-then-repopulate idioms (`rebuild`/`reindex`) found none — this would
+  be the first "wipe cache tables + re-derive from a source-of-truth table"
+  function in `session_store.py`. The closest structural precedents are
+  `prune()`'s delete-then-VACUUM shape (`session_store.py:2612-2727`) and
+  `backfill()`'s multi-step dict-of-counts return shape
+  (`session_store.py:2441-2494`).
+- **`_index()` (`session_store.py:705-718`) has no existing bulk/batch call
+  site.** Every current caller (`write_file_event`, `record_correction`,
+  `record_skill_event`, `record_commit_event`, `record_test_run_event`, etc.)
+  calls it once per event, inline with the original write. `rebuild()`'s
+  "iterate the cache tables and call `_index()` for each row" step (Proposed
+  Solution §3.4) is genuinely new — no existing loop-and-batch-index pattern
+  to copy. There is also no existing `DELETE FROM search_index` anywhere in
+  the file (confirmed via grep), matching the FTS5-leak claim in Motivation
+  point 3.
+- **Watermark reads/writes are inlined at each call site, not a shared
+  helper.** There is no `_get_meta`/`_set_meta` function — `backfill_incremental()`
+  repeats the same `SELECT ... FROM meta WHERE key = ?` + ISO-timestamp-parse
+  + `INSERT ... ON CONFLICT DO UPDATE` shape three times (primary key at
+  `session_store.py:2527-2536`/`2597-2601`, `_ASST_KEY` at `2549-2569`,
+  `_SKILL_KEY` at `2574-2594`). Collapsing to `last_raw_event_ts` removes two
+  of these three inlined blocks rather than refactoring into a shared helper
+  (no such helper exists to reuse).
+- **`contextlib.suppress(Exception)` (EPIC-1707 contract) is a caller-side
+  responsibility, not something inside `session_store.py` functions.** All
+  suppress-wrapped call sites are in `hooks/session_start.py` (lines 119,
+  137, 170) and `pytest_history_plugin.py` (line 120); `session_store.py`
+  functions themselves raise normally. `rebuild()` and `compact()` should
+  follow this same convention — raise internally, let `SessionStart`/
+  `SessionEnd` hook call sites wrap them in `contextlib.suppress(Exception)`.
+- **`ll-verify-kinds` (Implementation Step 11) should follow the
+  `ll-verify-decisions` template** (`cli/verify_decisions.py`, 109 lines,
+  the smallest complete example): a private `_run()` returning
+  `(exit_code, error_message)`, wrapped in
+  `with cli_event_context(DEFAULT_DB_PATH, "ll-verify-kinds", sys.argv[1:])`,
+  `--json` via `add_json_arg`/`print_json`, exit 1 on any violation. Register
+  the entry point in `scripts/pyproject.toml` alongside
+  `ll-verify-skills = "little_loops.cli:main_verify_skills"` and
+  `ll-verify-decisions = "little_loops.cli:main_verify_decisions"`.
+- **CLI subcommand addition is two-part** in `cli/session.py`: an
+  `add_parser(...)` block in `_build_parser()` (lines 55-277) plus an
+  `if args.command == "<name>":` dispatch block in `main_session()` (lines
+  303-645). The `prune` subparser (`cli/session.py:265-275`, dispatch at
+  572-621) is the closest structural precedent for the new `rebuild`/
+  `compact` subparsers — both are whole-DB lifecycle operations using
+  `--dry-run`/`add_json_arg` and `resolve_config_path` to load project
+  config before calling into `session_store`. The `backfill` subparser/
+  dispatch pair (parser at `cli/session.py:150-185`, dispatch at 426-501)
+  shows the `--since`-incremental-vs-full branch structure and the
+  `logger.success(f"Backfilled {total} rows (...)")` summary-line
+  convention to mirror for `rebuild`/`compact`.
+- **`backfill_worker.py` has no argparse** — `main()` slices `sys.argv`
+  positionally (`db_path`, `path_arg`). Adding `--rebuild` (Implementation
+  Step 9) needs an ad hoc `"--rebuild" in args`-style check to stay
+  consistent with the file's existing minimal-parsing style, not a new
+  `ArgumentParser`.
+- **Test class precedents are more specific than the issue's generic
+  references**: use `TestSchemaV16IssueSessionId`
+  (`test_session_store.py:3242-3287`) as the template for raw-table-shape
+  assertions (`PRAGMA table_info`, index existence via
+  `EXPLAIN QUERY PLAN`) in the new `TestRawEventsTable`; use
+  `TestBackfillCommitEvents` (`test_session_store.py:3492-3565`, includes an
+  idempotency test calling `backfill()` twice and asserting the second call
+  inserts zero new rows) as the template for `TestRebuild`/`TestCompact`
+  idempotency assertions; use `TestBackfillSinceFlag`
+  (`test_ll_session.py:497-556`, covers argv parsing, default values, a
+  mocked-dispatch assertion via `patch("little_loops.cli.session.backfill_incremental")`,
+  and an invalid-input path) as the template for `TestRebuildSubcommand`/
+  `TestCompactSubcommand`.
+
 ## Acceptance Criteria
 
 - `raw_events` table exists at schema v19 with the columns
@@ -488,5 +595,22 @@ Changes:
 `raw_events` (ENH-2580 writes to it; ENH-2582 reads from
 it via `compact`).
 
+**Owns schema v19.** ENH-2461 was independently drafted
+against schema v19 too (a `usage_events` sibling table);
+that collision is resolved in ENH-2461's favor-of-this-issue
+— this issue owns v19, ENH-2461 is now `blocked_by` this one
+and reframed to a usage `event_type` parser over
+`raw_events` rather than a new ingest table. The same
+reframing applies to the other blocked children
+(ENH-2493, 2494, 2506, 2507, 2511): each becomes an
+`_iter_events()` parser task, not a per-feature `ALTER
+TABLE`/`CREATE TABLE`. Decision recorded 2026-07-12;
+FEAT-2123 (downstream of ENH-2461) is not urgent, so
+foundation-first ordering was chosen.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-13T00:25:25 - `6a2b4c2f-8a8b-4234-b9ef-57429b7ac418.jsonl`
+- `/ll:confidence-check` - 2026-07-12T00:00:00Z - `1e7bea2d-02ea-4e42-8286-a31fd0e09c79.jsonl`
+- `/ll:refine-issue` - 2026-07-13T00:20:45 - `af64d3b3-b8cf-4b8d-86fb-f34d7b26b01f.jsonl`
+- sequencing-review - 2026-07-12 - Confirmed `raw_events` is NOT yet implemented (schema still v18; no `raw_events`/`rebuild()`/`compact()`/`backfill_raw_events()` in `session_store.py`). Marked this issue the v19 schema owner and `blocks` its sibling children (ENH-2461, 2493, 2494, 2506, 2507, 2511, plus ENH-2580/2582). Decision: implement this foundation before ENH-2461 so per-feature signals become parsers, not per-feature tables. See ENH-2461's superseding-decision banner.
 - `/ll:capture-issue` - 2026-07-08T00:00:00Z - fourth-pass expansion of EPIC-2457
