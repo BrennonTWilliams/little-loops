@@ -103,7 +103,7 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     return Path(path) if path is not None else DEFAULT_DB_PATH
 
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -117,6 +117,7 @@ VALID_KINDS: tuple[str, ...] = (
     "snapshot",
     "commit",
     "test_run",
+    "usage",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -130,6 +131,7 @@ _KIND_TABLE = {
     "snapshot": "issue_snapshots",
     "commit": "commit_events",
     "test_run": "test_run_events",
+    "usage": "usage_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -598,6 +600,31 @@ _MIGRATIONS: list[str] = [
     INSERT OR IGNORE INTO meta(key, value) VALUES('last_rebuild_version', NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_retention_dedup
         ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'retention';
+    """,
+    # v20 (ENH-2461): usage_events — real LLM token counts (input/output/cache)
+    # the API returned, plus derived cost_usd, one row per assistant turn.
+    # Derived from raw_events by _backfill_usage_events(): the on-disk transcript
+    # carries the usage block on ``type == "assistant"`` records at
+    # ``message.usage`` (verified against live session files). ``state`` is a
+    # forward-compat column, always NULL on parser-written rows (the transcript
+    # carries no FSM-state boundary — see ENH-2461 Addendum 2); reserved for a
+    # future live per-state writer. Column names mirror the Anthropic API usage
+    # fields (underscore, not the dotted OTel form FEAT-2478 derives).
+    """
+    CREATE TABLE IF NOT EXISTS usage_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        model TEXT,
+        state TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cache_read_input_tokens INTEGER,
+        cache_creation_input_tokens INTEGER,
+        cost_usd REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model);
     """,
 ]
 
@@ -1330,7 +1357,8 @@ def recent(
 ) -> list[dict[str, Any]]:
     """Return the most recent rows for *kind*.
 
-    Kinds: tool, file, issue, loop, correction, message, skill, cli, commit, test_run.
+    Kinds: tool, file, issue, loop, correction, message, skill, cli, commit,
+    test_run, usage.
     """
     if kind not in VALID_KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(VALID_KINDS)}")
@@ -1738,6 +1766,83 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                 ts=ts,
             )
             count += 1
+    return count
+
+
+def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+    """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
+
+    Persists the real LLM token counts the API returned (``input_tokens``,
+    ``output_tokens``, ``cache_read_input_tokens``,
+    ``cache_creation_input_tokens``) plus a derived ``cost_usd``, one row per
+    assistant turn. The on-disk transcript carries the usage block on
+    ``type == "assistant"`` records at ``message.usage`` — verified against live
+    session files. (The ``type == "result"`` shape referenced in earlier issue
+    research only exists in the *live* subprocess stdout stream, which
+    ``raw_events`` never ingests.) The ``state`` column is always ``NULL`` here:
+    the transcript stream carries no FSM-state boundary, so per-state grain is
+    not derivable from this source (ENH-2461 Addendum 2). *source* accepts either
+    JSONL files or a ``raw_events`` cursor — see :func:`_iter_events`.
+    """
+    from little_loops.pricing import estimate_cost_usd
+
+    count = 0
+    for line, source_label in _iter_events(source):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("type") != "assistant":
+            continue
+        message = record.get("message")
+        if not isinstance(message, dict):
+            continue
+        usage = message.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
+        cache_read = usage.get("cache_read_input_tokens")
+        cache_creation = usage.get("cache_creation_input_tokens")
+        # Every real usage block carries at least input/output; skip rows with
+        # no token signal at all (defensive against malformed/partial records).
+        if input_tokens is None and output_tokens is None:
+            continue
+        session_id = record.get("sessionId")
+        ts = str(record.get("timestamp") or "")
+        model = message.get("model")
+        cost_usd = estimate_cost_usd(
+            str(model or ""),
+            int(input_tokens or 0),
+            int(output_tokens or 0),
+            int(cache_read or 0),
+            int(cache_creation or 0),
+        )
+        conn.execute(
+            "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                model,
+                None,
+                input_tokens,
+                output_tokens,
+                cache_read,
+                cache_creation,
+                cost_usd,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{model or ''} usage",
+            kind="usage",
+            ref=str(model or ""),
+            anchor=source_label,
+            ts=ts,
+        )
+        count += 1
     return count
 
 
@@ -2560,8 +2665,9 @@ _REBUILD_TABLES = (
     "user_corrections",
     "summary_nodes",
     "summary_spans",
+    "usage_events",
 )
-_REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction")
+_REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
 
 
 def rebuild(
@@ -2591,6 +2697,7 @@ def rebuild(
         "skill_events": 0,
         "corrections": 0,
         "summaries": 0,
+        "usage_events": 0,
     }
     try:
         for table in _REBUILD_TABLES:
@@ -2611,6 +2718,7 @@ def rebuild(
         counts["messages"] = _backfill_messages(conn, _raw_events_cursor())
         counts["assistant_messages"] = _backfill_assistant_messages(conn, _raw_events_cursor())
         counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())
+        counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor())
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
 
@@ -3039,6 +3147,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "message_event": ("message_events", "ts"),
     "commit_event": ("commit_events", "ts"),
     "test_run_event": ("test_run_events", "ts"),
+    "usage_event": ("usage_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -3051,6 +3160,7 @@ _EXPORT_DEFAULT_TABLES = [
     "summary_node",
     "commit_event",
     "test_run_event",
+    "usage_event",
 ]
 
 

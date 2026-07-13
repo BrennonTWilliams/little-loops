@@ -1253,7 +1253,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 19
+        assert SCHEMA_VERSION == 20
 
 
 class TestBackfillIncremental:
@@ -1698,8 +1698,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1813,8 +1813,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1865,8 +1865,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1944,7 +1944,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 19
+        assert int(version[0]) == 20
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -1961,8 +1961,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2840,6 +2840,179 @@ class TestRebuild:
         assert n == 1
 
 
+class TestBackfillUsageEvents:
+    """_backfill_usage_events parses real LLM token usage from raw_events (ENH-2461)."""
+
+    def _assistant_usage_record(
+        self, session_id: str, ts: str, model: str, usage: dict
+    ) -> str:
+        return json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "timestamp": ts,
+                "message": {"model": model, "usage": usage},
+            }
+        )
+
+    def _seed(self, tmp_path: Path, db: Path, records: list[str]) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text("\n".join(records) + "\n", encoding="utf-8")
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+
+    def test_roundtrip_known_model_computes_cost(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "cache_read_input_tokens": 50,
+                        "cache_creation_input_tokens": 10,
+                    },
+                )
+            ],
+        )
+        counts = rebuild(db)
+        assert counts["usage_events"] == 1
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT * FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["session_id"] == "s1"
+        assert row["model"] == "claude-opus-4-7"
+        assert row["state"] is None  # never populated by the parser path
+        assert row["input_tokens"] == 100
+        assert row["output_tokens"] == 20
+        assert row["cache_read_input_tokens"] == 50
+        assert row["cache_creation_input_tokens"] == 10
+        # 100*15 + 20*75 + 50*1.5 + 10*18.75, all /1e6
+        assert row["cost_usd"] == pytest.approx(0.0032625)
+
+    def test_unknown_model_cost_is_null(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "some-unpriced-model",
+                    {"input_tokens": 5, "output_tokens": 5},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT cost_usd FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["cost_usd"] is None  # no warning, just NULL
+
+    def test_non_assistant_and_usageless_records_skipped(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                json.dumps(
+                    {"type": "user", "sessionId": "s1", "timestamp": "t",
+                     "message": {"content": "hi"}}
+                ),
+                json.dumps(
+                    {"type": "assistant", "sessionId": "s1", "timestamp": "t",
+                     "message": {"model": "claude-opus-4-7"}}  # no usage block
+                ),
+                self._assistant_usage_record(
+                    "s1", "2026-07-13T03:00:00Z", "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                ),
+            ],
+        )
+        counts = rebuild(db)
+        assert counts["usage_events"] == 1  # only the real usage record
+
+    def test_usage_row_is_fts_indexed_and_recent_queryable(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1", "2026-07-13T03:00:00Z", "claude-sonnet-4-6",
+                    {"input_tokens": 10, "output_tokens": 2},
+                )
+            ],
+        )
+        rebuild(db)
+        # recent() by kind
+        rows = recent(db, kind="usage")
+        assert len(rows) == 1
+        # FTS by model name (quoted phrase — hyphens are token separators in FTS5)
+        hits = search(db, query='"claude-sonnet-4-6"', limit=10)
+        assert any(h["kind"] == "usage" for h in hits)
+
+    def test_rebuild_is_idempotent_for_usage(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1", "2026-07-13T03:00:00Z", "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+
+class TestSchemaV20UsageEvents:
+    """v20 migration adds the usage_events table with the Option C columns (ENH-2461)."""
+
+    def test_usage_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(usage_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "session_id",
+            "model",
+            "state",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "cost_usd",
+        }
+
+
 class TestCompact:
     """compact() sweeps old raw_events into retention summaries (ENH-2581)."""
 
@@ -3252,8 +3425,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3293,8 +3466,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 19
-        assert int(row[0]) == 19
+        assert SCHEMA_VERSION == 20
+        assert int(row[0]) == 20
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3348,7 +3521,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 19
+        assert int(version[0]) == 20
         assert "issue_snapshots" in names
 
 

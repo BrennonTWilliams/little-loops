@@ -95,6 +95,16 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "test_run"
 
+    def test_recent_subcommand_usage_accepted(self) -> None:
+        """ENH-2461: --kind usage must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "usage"]):
+            args = _parse_args()
+        assert args.kind == "usage"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "opus", "--kind", "usage"]):
+            args = _parse_args()
+        assert args.kind == "usage"
+
     def test_skill_stats_subcommand(self) -> None:
         """ENH-2460: skill-stats subcommand parses with optional --since."""
         with patch("sys.argv", ["ll-session", "skill-stats", "--since", "2026-01-01"]):
@@ -1051,6 +1061,45 @@ class TestSkillStatsAndNewKinds:
         out = capsys.readouterr().out
         assert "total=5" in out
         assert "env_label=local" in out
+
+    def test_recent_kind_usage_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-2461: usage rows are derived from raw_events via rebuild()."""
+        import json as _json
+
+        from little_loops.session_store import backfill_raw_events, ensure_db, rebuild
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            _json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": "sess-usage",
+                    "timestamp": "2026-07-13T03:00:00Z",
+                    "message": {
+                        "model": "claude-opus-4-7",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 20,
+                            "cache_read_input_tokens": 50,
+                            "cache_creation_input_tokens": 10,
+                        },
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        rebuild(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "usage"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "model=claude-opus-4-7" in out
+        assert "input_tokens=100" in out
 
     def test_search_kind_commit_filters(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
