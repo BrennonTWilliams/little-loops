@@ -488,6 +488,7 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `history.planning_skills` | `["create-sprint", "scope-epic", "manage-issue", "review-epic"]` | Skills that trigger `## Historical Context` injection |
 | `history.velocity_window` | `10` | Issue count window for velocity calculations |
 | `history.max_age_days` | `null` | Global max age for all history queries (null = no limit) |
+| `history.db_path` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this |
 | `history.effort_fields` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for `ll-history-context --effort` reporting |
 | `history.session_digest.enabled` | `true` | Inject project-wide digest block at session start |
 | `history.session_digest.days` | `7` | Lookback window for session digest |

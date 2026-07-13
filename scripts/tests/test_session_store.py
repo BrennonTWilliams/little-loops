@@ -160,6 +160,112 @@ class TestEnsureDb:
         assert legacy.stat().st_size == legacy_size
 
 
+class TestDbPathResolution:
+    """ENH-2623: unified env → config → default DB-path precedence.
+
+    ``resolve_history_db()`` and ``ensure_db()`` must agree for the same inputs
+    (the historical divergence footgun), and the new ``history.db_path`` config
+    key slots in as the middle precedence rung below ``LL_HISTORY_DB``.
+    """
+
+    def _resolvers(self):
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        return DEFAULT_DB_PATH, resolve_history_db
+
+    def test_resolve_and_ensure_agree_matrix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_history_db(p) == ensure_db(p) for {default, override} × {env set, unset}."""
+        DEFAULT_DB_PATH, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        env_db = tmp_path / "env.db"
+        override = tmp_path / "override.db"
+        for path in (None, DEFAULT_DB_PATH, override):
+            for env in (str(env_db), None):
+                if env is None:
+                    monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+                else:
+                    monkeypatch.setenv("LL_HISTORY_DB", env)
+                assert resolve_history_db(path) == ensure_db(path), (
+                    f"divergence for path={path!r} env={env!r}"
+                )
+
+    def test_explicit_override_wins_over_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A deliberate (non-default-shaped) path is honored verbatim over LL_HISTORY_DB."""
+        _, resolve_history_db = self._resolvers()
+        override = tmp_path / "override.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "env.db"))
+        assert resolve_history_db(override) == override
+
+    def test_env_wins_over_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LL_HISTORY_DB beats history.db_path for a default-shaped path."""
+        _, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"history": {"db_path": str(tmp_path / "cfg.db")}}), encoding="utf-8"
+        )
+        env_db = tmp_path / "env.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(env_db))
+        assert resolve_history_db(None) == env_db
+
+    def test_config_used_when_env_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With env unset, history.db_path is the resolved path for a default-shaped input."""
+        _, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        cfg_db = tmp_path / "cfg.db"
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"history": {"db_path": str(cfg_db)}}), encoding="utf-8"
+        )
+        assert resolve_history_db(None) == cfg_db
+
+    def test_config_relative_path_resolves_against_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A relative history.db_path resolves against the project root (cwd)."""
+        _, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"history": {"db_path": "data/hist.db"}}), encoding="utf-8"
+        )
+        assert resolve_history_db(None) == tmp_path / "data" / "hist.db"
+
+    def test_default_when_neither_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No env, no config → DEFAULT_DB_PATH."""
+        DEFAULT_DB_PATH, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        assert resolve_history_db(None) == DEFAULT_DB_PATH
+
+    def test_malformed_config_falls_back_to_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A malformed ll-config.json must not raise; resolution falls through to default."""
+        DEFAULT_DB_PATH, resolve_history_db = self._resolvers()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text("{ not valid json", encoding="utf-8")
+        assert resolve_history_db(None) == DEFAULT_DB_PATH
+
+
 class TestConcurrencyHardening:
     """Lock-contention safety for the migration framework (the ``ll-issues``
     'table tool_events already exists' crash)."""

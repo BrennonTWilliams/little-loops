@@ -988,6 +988,7 @@ class HistoryConfig:
     velocity_window: int = 10
     effort_fields: list[str] = field(default_factory=lambda: ["session_count", "cycle_time_days"])
     max_age_days: int | None = None
+    db_path: str | None = None
     planning_skills: list[str] = field(
         default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
     )
@@ -1004,6 +1005,7 @@ class HistoryConfig:
             velocity_window=data.get("velocity_window", 10),
             effort_fields=data.get("effort_fields", ["session_count", "cycle_time_days"]),
             max_age_days=data.get("max_age_days", None),
+            db_path=data.get("db_path", None),
             planning_skills=data.get(
                 "planning_skills",
                 ["create-sprint", "scope-epic", "manage-issue", "review-epic"],

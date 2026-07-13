@@ -407,6 +407,21 @@ class TestConfigSchema:
         assert "capture_issue" in history["properties"]
         assert "compaction" in history["properties"]
 
+    def test_history_db_path_in_schema(self) -> None:
+        """history.db_path must be declared as a nullable string (ENH-2623).
+
+        additionalProperties: false on the history block rejects the key otherwise.
+        """
+        data = json.loads(_load_schema_text())
+        history = data["properties"]["history"]
+        assert "db_path" in history["properties"], (
+            "history.db_path is not declared; additionalProperties: false rejects it otherwise"
+        )
+        db_path = history["properties"]["db_path"]
+        assert "null" in db_path["type"]
+        assert "string" in db_path["type"]
+        assert db_path["default"] is None
+
     def test_history_compaction_in_schema(self) -> None:
         """history.compaction must be declared (FEAT-1712); additionalProperties: false rejects it otherwise."""
         data = json.loads(_load_schema_text())

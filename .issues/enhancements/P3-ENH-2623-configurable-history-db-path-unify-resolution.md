@@ -3,9 +3,10 @@ id: ENH-2623
 title: Configurable history.db_path and unified DB-path resolution
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-12
 captured_at: '2026-07-12T00:00:00Z'
+completed_at: '2026-07-13T05:37:19Z'
 discovered_by: capture-issue
 decision_needed: false
 relates_to:
@@ -165,16 +166,16 @@ it, so a missed site would silently "work by accident."
 
 ## Acceptance Criteria
 
-- [ ] `config-schema.json` gains a validated `history.db_path` field; a config
+- [x] `config-schema.json` gains a validated `history.db_path` field; a config
       with it set is accepted by schema validation.
-- [ ] With `LL_HISTORY_DB` unset and `history.db_path` set, `connect()` /
+- [x] With `LL_HISTORY_DB` unset and `history.db_path` set, `connect()` /
       `ensure_db()` open the configured path.
-- [ ] With `LL_HISTORY_DB` set, it wins over both config and default.
-- [ ] With neither set, the default `.ll/history.db` is used.
-- [ ] `resolve_history_db()` and `ensure_db()` return the same path for the same
+- [x] With `LL_HISTORY_DB` set, it wins over both config and default.
+- [x] With neither set, the default `.ll/history.db` is used.
+- [x] `resolve_history_db()` and `ensure_db()` return the same path for the same
       inputs (regression test for the current divergence).
-- [ ] Malformed/absent config falls back to default without raising.
-- [ ] `python -m pytest scripts/tests/` passes (this suite is CI; see CLAUDE.md).
+- [x] Malformed/absent config falls back to default without raising.
+- [x] `python -m pytest scripts/tests/` passes (this suite is CI; see CLAUDE.md).
 
 ## Scope Boundaries
 
@@ -356,12 +357,32 @@ call. Config `db_path` slots into the middle rung of the same chain.
 - `scripts/little_loops/session_store.py`: `resolve_history_db()`, `ensure_db()`,
   `connect()`.
 
+## Resolution
+
+Implemented per Option A (default-shaped classification, confined to
+`session_store.py`) on 2026-07-13.
+
+- Added `_is_default_shaped()`, `_config_db_path()` (best-effort, reuses
+  `resolve_config_path` + guarded `json.loads`), and `_resolve_db_path()` (the
+  single `env → config → explicit/default` chain). `resolve_history_db()` now
+  delegates to it.
+- Routed the four strict-`== DEFAULT_DB_PATH` gate sites (`ensure_db`,
+  `cli_event_context`, `skill_event_context`, `SQLiteTransport.__init__`) through
+  the unified resolver, and updated the stale `recompress` call-site comment.
+- Added `history.db_path` (nullable string) to `config-schema.json` and the
+  `HistoryConfig` dataclass; docs updated in `HISTORY_SESSION_GUIDE.md`,
+  `HOST_COMPATIBILITY.md`, `API.md`, and `.claude/CLAUDE.md`.
+- New `TestDbPathResolution` covers the env→config→default matrix and the
+  divergence-regression; schema + config-dataclass tests added. Full suite:
+  14839 passed, 36 skipped.
+
 ## Status
 
-open — captured 2026-07-12.
+done — completed 2026-07-13.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T05:36:33 - `6117ac8b-6c6c-4423-a543-79b447a24b62.jsonl`
 - `/ll:wire-issue` - 2026-07-13T04:57:09 - `2f51a319-6efc-4c4d-a6d6-6a058afd8d6d.jsonl`
 - `/ll:decide-issue` - 2026-07-13T04:40:07 - `c34d2f4c-d3a4-4025-bc6a-2b899a5909ba.jsonl`
 - `/ll:refine-issue` - 2026-07-13T04:35:08 - `753720b1-af3e-4b6a-8164-cfc206346927.jsonl`

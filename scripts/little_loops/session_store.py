@@ -97,12 +97,84 @@ logger = logging.getLogger(__name__)
 DEFAULT_DB_PATH = Path(".ll/history.db")
 
 
-def resolve_history_db(path: Path | str | None = None) -> Path:
-    """Return the DB path; LL_HISTORY_DB env var takes unconditional precedence."""
+def _is_default_shaped(path: Path | str | None) -> bool:
+    """True when *path* names the default DB location (ENH-2623).
+
+    Default-shaped means ``None``, ``DEFAULT_DB_PATH``, or a ``history.db`` under
+    a ``.ll/`` directory (matched by basename + parent, not strict equality — so
+    the cwd-*absolute* ``.ll/history.db`` that hooks construct still routes
+    through the env → config → default chain). Any other path is a deliberate
+    override and is returned verbatim by :func:`_resolve_db_path`.
+    """
+    if path is None:
+        return True
+    p = Path(path)
+    if p == DEFAULT_DB_PATH:
+        return True
+    return p.name == "history.db" and p.parent.name == ".ll"
+
+
+def _config_db_path() -> Path | None:
+    """Best-effort read of ``history.db_path`` from the project config (ENH-2623).
+
+    Returns the configured path (relative paths resolved against the project
+    root, i.e. the current working directory), or ``None`` when the key is
+    unset or the config is missing/malformed. Never raises — mirroring the
+    guarded ``resolve_config_path`` + ``json.loads`` pattern the bootstrap hooks
+    use — so the hot ``SessionStart`` / ``UserPromptSubmit`` path is never
+    blocked by a bad config file.
+    """
+    try:
+        from little_loops.config.core import resolve_config_path
+
+        root = Path.cwd()
+        cfg_path = resolve_config_path(root)
+        if cfg_path is None:
+            return None
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        raw = (data.get("history") or {}).get("db_path")
+        if not raw:
+            return None
+        p = Path(raw)
+        return p if p.is_absolute() else root / p
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _resolve_db_path(path: Path | str | None = None) -> Path:
+    """Unified DB-path resolution (ENH-2623): env → config → explicit/default.
+
+    Precedence for a *default-shaped* *path* (see :func:`_is_default_shaped`):
+
+    1. ``LL_HISTORY_DB`` env var — unconditional ephemeral override.
+    2. ``history.db_path`` config key — persistent per-project setting.
+    3. the explicit *path* argument, or ``DEFAULT_DB_PATH`` when ``None``.
+
+    A deliberate (non-default-shaped) override path is returned verbatim, so
+    callers that hand an explicit location (recompress maintenance, tests) are
+    always honored — resolving the historical ``resolve_history_db`` /
+    ``ensure_db`` divergence into one rule.
+    """
+    if not _is_default_shaped(path):
+        return Path(path)  # type: ignore[arg-type]
     env_val = os.environ.get("LL_HISTORY_DB")
     if env_val:
         return Path(env_val)
+    cfg = _config_db_path()
+    if cfg is not None:
+        return cfg
     return Path(path) if path is not None else DEFAULT_DB_PATH
+
+
+def resolve_history_db(path: Path | str | None = None) -> Path:
+    """Return the DB path via the unified env → config → default chain (ENH-2623).
+
+    ``LL_HISTORY_DB`` takes precedence, then the ``history.db_path`` config key,
+    then the explicit *path* / ``DEFAULT_DB_PATH`` — but only for a default-shaped
+    *path*; a deliberate override is returned verbatim. Delegates to
+    :func:`_resolve_db_path` so this and :func:`ensure_db` never diverge.
+    """
+    return _resolve_db_path(path)
 
 
 # raw_events payload compression (ENH: shrink the source-of-truth table).
@@ -776,11 +848,7 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     in ``contextlib.suppress(Exception)``, which would otherwise silence
     diagnostic context).
     """
-    db_path = Path(path)
-    if db_path == DEFAULT_DB_PATH:
-        env_val = os.environ.get("LL_HISTORY_DB")
-        if env_val:
-            db_path = Path(env_val)
+    db_path = _resolve_db_path(path)
     legacy = db_path.parent / "session.db"
     if legacy.exists() and not db_path.exists():
         for suffix in ("", "-shm", "-wal"):
@@ -997,9 +1065,7 @@ def cli_event_context(
     """
     if args is None:
         args = []
-    effective_path = (
-        resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
-    )
+    effective_path = resolve_history_db(db_path)
     conn = connect(effective_path)
     start = time.time()
     ts = _now()
@@ -1061,9 +1127,7 @@ def skill_event_context(
     args = args[:200]
     conn: sqlite3.Connection | None = None
     row_id: int | None = None
-    effective_path = (
-        resolve_history_db(db_path) if Path(db_path) == DEFAULT_DB_PATH else Path(db_path)
-    )
+    effective_path = resolve_history_db(db_path)
     ts = _now()
     try:
         conn = connect(effective_path)
@@ -1438,12 +1502,7 @@ class SQLiteTransport:
     """
 
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
-        resolved = Path(db_path)
-        if resolved == DEFAULT_DB_PATH:
-            env_val = os.environ.get("LL_HISTORY_DB")
-            if env_val:
-                resolved = Path(env_val)
-        self._path = resolved
+        self._path = resolve_history_db(db_path)
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
         try:
@@ -2699,7 +2758,7 @@ def recompress_raw_events(
 
     Returns ``{"recompressed": int, "size_before_mb": float, "size_after_mb": float}``.
     """
-    db_path = ensure_db(db)  # resolves env-override-for-default and creates schema
+    db_path = ensure_db(db)  # unified env→config→default resolution + schema (ENH-2623)
     size_before = db_path.stat().st_size if db_path.exists() else 0
     conn = connect(db_path)
     recompressed = 0

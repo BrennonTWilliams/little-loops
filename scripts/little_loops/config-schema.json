@@ -1710,6 +1710,11 @@
           "default": ["create-sprint", "scope-epic", "manage-issue", "review-epic"],
           "description": "Skill names whose sessions are included in planning context queries (ENH-1909)."
         },
+        "db_path": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Override the default .ll/history.db location; relative paths resolve against the project root. The LL_HISTORY_DB env var takes precedence over this (ENH-2623)."
+        },
         "session_digest": {
           "type": "object",
           "description": "Session digest injection configuration (ENH-1907).",

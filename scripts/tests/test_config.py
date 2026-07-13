@@ -3247,6 +3247,14 @@ class TestHistoryConfig:
         cfg = HistoryConfig.from_dict({"unknown_key": "value"})
         assert cfg.velocity_window == 10
 
+    def test_db_path_default_none(self) -> None:
+        cfg = HistoryConfig.from_dict({})
+        assert cfg.db_path is None
+
+    def test_db_path_override(self) -> None:
+        cfg = HistoryConfig.from_dict({"db_path": "/data/history.db"})
+        assert cfg.db_path == "/data/history.db"
+
 
 class TestBRConfigHistoryIntegration:
     """Integration tests for BRConfig.history property (ENH-1913)."""
