@@ -121,14 +121,84 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-07-12):_
 
 ### Measurement blocker — per-run TOKEN counts are not queryable today (capture a separate issue)
 
-The Step-2 plan assumes per-run token/turn/tool-call counts are pullable from `.ll/history.db` via `ll-history`/`ll-logs`. Research finding — **only tool-call/turn counts exist; per-run token counts do not**:
+> ⚠ **SUPERSEDED 2026-07-12** — this blocker is now RESOLVED. ENH-2461 landed
+> (commit `02814aa6`, "usage_events consumer + read API for real LLM token
+> usage"), shipping the `usage_events` table and a session-filterable read API.
+> See "Measurement blocker RESOLVED" below. The historical analysis is kept for
+> provenance; the go/no-go dependency chain no longer includes a token-counter
+> issue.
+
+The Step-2 plan assumes per-run token/turn/tool-call counts are pullable from `.ll/history.db` via `ll-history`/`ll-logs`. Research finding (2026-07-12, pre-ENH-2461) — **only tool-call/turn counts existed; per-run token counts did not**:
 
 - `.ll/history.db` `tool_events` carries `bytes_in`/`bytes_out`/`cache_hit` (byte-level, not tokens), aggregated DB-wide, not per-run (`session_store.py`).
 - The **only** code path reading real per-message token usage is `ctx_stats.py::_compute_cache_rate_from_jsonl()` — hardcoded to the single most-recently-modified JSONL, **not parameterized by `session_id`**.
 - The intended per-state `usage_event` table (input/output tokens) is stubbed in `ctx_stats.py::_aggregate_usage_events()` and **blocked on ENH-2461** (not yet merged).
 - What *is* available today: `ll-logs diff <a> <b>` → per-tool count deltas; `history_reader.lookup_session_metadata()` → `tool_count`; `ll-history sessions <ID>` → issue→session JSONL mapping.
 
-**Implication** (per this issue's own Scope Boundary "if a counter is missing, capture a separate issue"): the token-delta half of the measurement needs either ENH-2461 to land first, or a small reader that sums `message.usage` tokens for a *named session's* JSONL (generalize `_compute_cache_rate_from_jsonl` to accept a `session_id`). **Recommend**: file that as a blocking dependency issue; meanwhile measure **tool-call and turn deltas** (available today) as the primary signal and report token deltas once the counter lands. This makes ENH-2578 effectively blocked on a token-counter dependency, not just on FEAT-2576/ENH-2577.
+**Implication** (per this issue's own Scope Boundary "if a counter is missing, capture a separate issue"): the token-delta half of the measurement needs either ENH-2461 to land first, or a small reader that sums `message.usage` tokens for a *named session's* JSONL (generalize `_compute_cache_rate_from_jsonl` to accept a `session_id`). **Recommend**: file that as a blocking dependency issue; meanwhile measure **tool-call and turn deltas** (available today) as the primary signal and report token deltas once the counter lands. ~~This makes ENH-2578 effectively blocked on a token-counter dependency, not just on FEAT-2576/ENH-2577.~~ **← no longer true; ENH-2461 landed 2026-07-12 (see below).**
+
+### Measurement blocker RESOLVED — per-session token counts are queryable now (ENH-2461, 2026-07-12)
+
+_Added by `/ll:refine-issue` — the Step-2 measurement is unblocked. The go/no-go
+no longer waits on a token-counter issue._
+
+ENH-2461 (commit `02814aa6`) added a real `usage_events` table (session-store
+schema **v20**) plus a public read API. The exact surface an implementer/harness
+calls for Step-2 per-provider token deltas:
+
+- **Table** — `usage_events` (`session_store.py`, `_MIGRATIONS` v20; populated by
+  `_backfill_usage_events()`). Columns: `ts, session_id, model, state,
+  input_tokens, output_tokens, cache_read_input_tokens,
+  cache_creation_input_tokens, cost_usd`. Indexed on `session_id` and `model`.
+  Derived from each `type=="assistant"` line's `message["usage"]` during
+  `ll-session backfill`/`rebuild` (raw_events → cache-table materialization, per
+  ENH-2581). Note: `state` is always `NULL` on parser-written rows — the on-disk
+  transcript has no FSM-state boundary, so token deltas are **per-session**, not
+  per-FSM-state.
+- **Public read API** (`history_reader.py`, verified anchors):
+  - `aggregate_usage(group_by="session", *, since=None, db=DEFAULT_DB_PATH) -> list[dict]`
+    — **this is the direct per-run total**: one row per `session_id` with
+    summed `input_tokens`/`output_tokens`/`cache_*`/`cost_usd` and an `events`
+    (assistant-turn) count. This is the primary lever for the before/after
+    token delta per benchmark arm.
+  - `recent_usage_events(session_id=None, model=None, *, since=None, limit=20, db=…) -> list[UsageEvent]`
+    — per-call rows filterable by exact `session_id` (the "sum `message.usage`
+    for a named session" capability the stale finding said was missing). Returns
+    `[]` on any read failure (graceful degradation).
+- **CLI surface** — no dedicated `usage`/`tokens` subcommand yet, but `usage` is
+  a first-class kind: `ll-session recent --kind usage [--issue <ID>] [--limit N] [--json]`
+  (dispatches through `main_session()` in `cli/session.py`; `--issue` filters to
+  sessions co-occurring with the issue via `sessions_for_issue()`), and
+  `ll-session export --tables usage_event --since <DATE> -o file` dumps the raw
+  rows (note the export key is `usage_event`, singular-suffixed, vs. the
+  `--kind usage` value — two names, same table). Map issue→session JSONL with
+  `ll-history sessions <ID>` to pick the arm's session IDs, then aggregate.
+- **`ctx_stats.py::_aggregate_usage_events()` is now a full implementation** (not
+  the stub the prior finding cited), but it rolls up **per-model, project-wide**
+  — it does *not* group by session. For per-run/per-arm deltas call
+  `history_reader.aggregate_usage(group_by="session")` directly, not ctx-stats.
+
+**Net effect on this issue**: the token-delta half of Step-2 is now doable with
+existing telemetry. Recommended Step-2 wiring: for each benchmark arm, capture
+the wire-issue run's `session_id` (via `ll-history sessions <benchmark-ID>` or the
+Session Log line), then
+`history_reader.aggregate_usage(group_by="session")` (or `ll-session recent
+--kind usage --issue <ID> --json`) for that session's input/output token totals;
+report per-provider median deltas in the `ll-loop run --baseline` A/B format (see
+Patterns to model → A/B measurement). Tool-call/turn deltas remain available as a
+corroborating signal.
+
+### A/B reporting has a reusable writer (not just the --baseline guide)
+
+Beyond the `ll-loop run --baseline` median-delta report format, the actual
+serializer is reusable: `ab_writer.py::calculate_ab_summary()` produces an
+`ABResults` dataclass (`harness_pass_rate`, `baseline_pass_rate`, `delta`,
+`median_tokens_harness/baseline`, `median_duration_harness/baseline`, `per_item`)
+and `write_ab_json()`/`ab_results_to_dict()` emit `ab.json` against a draft-07
+schema (`_AB_SCHEMA`). Model the per-provider benchmark report on this field set
+so the three arms (disabled / fallback / codegraph) report identically. FSM
+threads baseline context via `cli/loop/run.py` `fsm.context["_baseline"]`,
+consumed in `fsm/executor.py` when a `--baseline` run finishes.
 
 ### Patterns to model
 
@@ -152,12 +222,18 @@ The `code_query` block is fully wired: `CodeQueryConfig` / `CodeQueryCodegraphCo
 - **EPIC-2575** — parent. **Blocked by FEAT-2576 and ENH-2577** (needs the CLI and a real provider for a meaningful measurement).
 - **EPIC-2456** — token cost reduction; report the measured delta there.
 - **EPIC-1918** — telemetry source for the measurement.
+- **ENH-2461** — ✅ **done** (commit `02814aa6`). Landed the `usage_events` table +
+  `history_reader.aggregate_usage(group_by="session")` read API; this **unblocks the
+  token-delta half of Step-2**. Previously flagged (in prior refine) as a blocking
+  token-counter dependency — no longer outstanding. Depends on ENH-2581 (raw_events
+  source-of-truth / `ll-session rebuild`), which also landed.
 
 ## Status
 
 **Open** | Created: 2026-07-10 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-13T04:36:50 - `c34d2f4c-d3a4-4025-bc6a-2b899a5909ba.jsonl`
 - `/ll:refine-issue` - 2026-07-12T23:55:22 - `c0410b59-a59a-410c-8b5c-9ba8ced794b2.jsonl`
 
 - `/ll:capture-issue` - 2026-07-10T05:34:41Z - `manual capture via Claude Cowork session (EPIC-2575 design discussion)`
