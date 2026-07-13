@@ -4,12 +4,20 @@ title: Verify gate discards failure message and exit code
 type: enhancement
 status: open
 priority: P3
-captured_at: "2026-07-13T18:30:06Z"
+captured_at: '2026-07-13T18:30:06Z'
 discovered_date: 2026-07-13
 discovered_by: capture-issue
-relates_to: [BUG-2629]
-decision_needed: true
-learning_tests_required: [pytest]
+relates_to:
+- BUG-2629
+decision_needed: false
+learning_tests_required:
+- pytest
+confidence_score: 96
+outcome_confidence: 86
+score_complexity: 19
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 20
 ---
 
 # ENH-2631: Verify gate discards failure message and exit code
@@ -63,6 +71,8 @@ this tuple or parsing it back out of the message string.
 the persistence format open ("`verify-detail.txt` / a small `verify.json`"). The
 codebase has precedent for both shapes:
 
+> **Selected:** Option A (flat text artifacts) — reuses the proven single-token verdict-file idiom and sidesteps Option B's `printf %s` corruption risk from arbitrary-text pytest detail.
+
 **Option A**: Flat text artifact (`verify-detail.txt` + `verify-returncode.txt`).
 Matches the existing `echo "$TOKEN" > "$RUN_DIR/<name>-verdict.txt"` → `cat ... ||
 echo "not_run"` idiom already used for `verify-verdict.txt`
@@ -83,6 +93,37 @@ class, and detail snippet atomic (no partial-write skew across three flat files)
 reuses the established nested-JSON-in-summary precedent, and makes the
 `collection_error` vs `failed` distinction a first-class field rather than a parsed
 substring.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-13.
+
+**Selected**: Option A — flat text artifacts (`verify-detail.txt` + `verify-returncode.txt`).
+
+**Reasoning**: The single-token verdict-file idiom (`echo "$TOKEN" > verify-verdict.txt`
+→ `cat ... || echo "not_run"`) is already proven at three call sites
+(`auto-refine-and-implement.yaml:412`, `:455`, read back at `:728`/`:735`) with direct
+test-seeding precedent in `test_builtin_loops.py`. Option B's build-side
+embed-JSON-in-`printf` pattern is a **population of one** (only `SKIPPED_BREAKDOWN` uses
+it), the verify state emits no JSON today, and — critically — a `detail` field carrying
+arbitrary pytest stderr can contain literal `%`, which would corrupt the outer
+`printf %s` format string (SKIPPED_BREAKDOWN is safe only because it holds integers).
+Option A avoids that untested failure mode entirely.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (flat text) | 2/3 | 3/3 | 3/3 | 2/3 | **10/12** |
+| Option B (verify.json) | 2/3 | 1/3 | 2/3 | 1/3 | 6/12 |
+
+**Key evidence**:
+- Option A: Proven `verdict.txt` write/read-back idiom at 3 call sites; direct
+  file-seed test precedent (`test_builtin_loops.py:2199`, `:2416`). Minor divergence:
+  message + returncode as two files vs. the codebase's single-blob multi-field convention.
+- Option B: Parse-side `python3 -c` try/except pattern is reusable, but the build-side
+  nested-`%s` embed is a single-instance precedent; arbitrary-text `detail` risks `%`
+  corrupting `printf`, plus MR-10 parse-swallow exposure in `finalize`.
 
 **Verdict-class split is a well-worn pattern here.** `finalize` already splits one
 binary condition into a richer named verdict via a counter branch (ENH-2376:
@@ -130,6 +171,30 @@ of `$ERR`.
   fallback default (how `finalize` would read a `verify.json`).
 
 ### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — **`class TestVerifyStateConfigReadShell`
+  (~line 2741)** and **`class TestMergeEpicBranchConfigReadShell` (~line 2782)** run
+  the real `verify` / `merge_epic_branch` state actions via `bash -c` and assert on
+  `verify-verdict.txt` / `epic-merge-verdict.txt` contents (`passed`/`failed`/`skipped`
+  at ~2766-2779; merge tokens at ~2876-2928). The shell-embedded Python `ok, message =
+  verify_epic_branch_before_merge(...)` unpack (YAML ~396, ~528) **must be updated in
+  lockstep** if the tuple widens, or these break. Add a `collection_error` (exit 2) case
+  here. [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — **`_run_finalize()` helper (~line 2170)** is
+  the canonical flat-text seed idiom: it does `(run_dir / "verify-verdict.txt").write_text(...)`
+  then executes the finalize action and returns parsed `summary.json`. Extend it with
+  optional `verify_detail` / `verify_returncode` kwargs and add read-back tests modeled on
+  `test_finalize_surfaces_verify_verdict` (~2428) + `test_finalize_verify_verdict_defaults_to_not_run`
+  (~2438). The exit-code→verdict-class mapping should get a table-driven test modeled on
+  `test_finalize_verdict_table` (~2247) and a static-substring test like
+  `test_finalize_has_partial_with_errors_verdict` (~2144). [Agent 3 finding]
+- `scripts/tests/test_orchestrator.py` — `TestEpicBranchVerifyGate` patches
+  `little_loops.worktree_utils.subprocess.run` with `MagicMock(returncode=1, ...)` (~1608);
+  add a `returncode=2` mirror of `test_blocks_merge_on_test_cmd_failure` (~1594). Note the
+  wrapper unpack `ok, message = verify_epic_branch_before_merge(...)`
+  (`orchestrator.py:1336`) breaks with the tuple widen. [Agent 3 finding]
+
 - `scripts/tests/test_worktree_utils.py` — `class TestVerifyEpicBranchBeforeMerge`
   (lines 263-354): uses `test_cmd="true"`/`"false"` real subprocesses. Add a case
   that drives a non-1 exit (e.g. `test_cmd="sh -c 'exit 2'"`) and asserts the
@@ -151,6 +216,29 @@ of `$ERR`.
 - `docs/development/MERGE-COORDINATOR.md` (~lines 471-474) — describes the
   `verify_before_merge` gate.
 - `CHANGELOG.md` — add an entry.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (~lines 892-949) — the `auto-refine-and-implement`
+  finalize/summary.json narrative (notes the verify verdict "is advisory, folded into
+  summary.json"); update to describe the new `collection_error` verdict class and the
+  `verify-detail.txt` / `verify-returncode.txt` artifacts. **Closest doc to the finalize
+  change.** [Agent 2 finding]
+- `docs/ARCHITECTURE.md` (~lines 471-490) — EPIC-branch merge-flow prose lists
+  `verify_epic_branch_before_merge` as a collaborating function; update if the return
+  contract / verdict surface changes user-visible behavior. [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` (~line 376) and `docs/reference/CLI.md` (~line 334) —
+  near-duplicate `epic_branches.verify_before_merge` prose ("a failure blocks the
+  merge... surfaced in the run summary"). _Advisory:_ only touch if the failed-vs-
+  collection-error distinction is worth documenting at the config level. [Agent 2 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` (~lines 436-440), `config/automation.py`
+  (`EpicBranchesConfig`, ~40-63), `parallel/types.py` (`EpicBranchesConfig`, ~312-338) —
+  **FYI / no change expected.** These carry only the `verify_before_merge` *boolean* flag;
+  there is no enum constraining verdict strings, so the new `collection_error` verdict
+  class needs no schema/dataclass edit. Recorded to pre-empt a fruitless audit. [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -185,6 +273,9 @@ _Added by `/ll:refine-issue` — concrete anchors for each step:_
   reflected in `summary.json`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-13T19:15:00 - `f50585fe-3374-421c-8014-87f7e2c49944.jsonl`
+- `/ll:wire-issue` - 2026-07-13T19:08:36 - `9c6037dd-59e4-4810-80d3-c2c8497d31c4.jsonl`
+- `/ll:decide-issue` - 2026-07-13T19:01:59 - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`
 - `/ll:refine-issue` - 2026-07-13T18:57:43 - `e555b243-e23c-429d-9cab-61c70b69018b.jsonl`
 - `/ll:capture-issue` - 2026-07-13T18:30:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e418041f-97b9-4193-89df-c4643e9794aa.jsonl`
 

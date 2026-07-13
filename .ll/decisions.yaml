@@ -5125,3 +5125,29 @@
   scope: issue
   alternatives_rejected: 'Option 2: EPIC-resolver-local mapping in sprint.py:load_or_resolve'
   issue: BUG-2632
+- id: ARCHITECTURE-150
+  type: decision
+  timestamp: '2026-07-13T19:00:30Z'
+  category: architecture
+  labels: []
+  rationale: Additive, no routing surgery, keeps binding gate as safety net, reuses
+    existing RUN_DIR sibling-artifact and git rev-parse --verify idioms
+  rule: 'Option A (reuse-with-freshness): merge_epic_branch reuses verify state''s
+    verdict+SHA when fresh, skipping the double test-suite run'
+  scope: issue
+  alternatives_rejected: 'Option B (route off verify verdict): routing surgery collides
+    with independent held_open gate and verify_before_merge:false paths, no existing
+    tests'
+  issue: ENH-2630
+- id: ARCHITECTURE-151
+  type: decision
+  timestamp: '2026-07-13T19:01:59Z'
+  category: architecture
+  labels: []
+  rationale: Reuses proven single-token verdict-file idiom; avoids Option B printf
+    %s corruption from arbitrary-text pytest detail. Score 10/12 vs 6/12.
+  rule: 'Option A: flat text artifacts (verify-detail.txt + verify-returncode.txt)'
+  scope: issue
+  alternatives_rejected: 'Option B: structured verify.json (nested-JSON-in-printf;
+    build pattern is population-of-one, % corruption risk, MR-10 exposure)'
+  issue: ENH-2631

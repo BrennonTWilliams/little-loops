@@ -1,14 +1,22 @@
 ---
 id: BUG-2632
-title: depends_on not enforced in execution waves — EPIC children run before prerequisites
+title: "depends_on not enforced in execution waves \u2014 EPIC children run before\
+  \ prerequisites"
 type: bug
 status: open
 priority: P2
-captured_at: "2026-07-13T18:40:43Z"
+captured_at: '2026-07-13T18:40:43Z'
 discovered_date: 2026-07-13
 discovered_by: capture-issue
-relates_to: [BUG-2629]
+relates_to:
+- BUG-2629
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-2632: depends_on not enforced in execution waves — EPIC children run before prerequisites
@@ -159,6 +167,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `get_ready_issues()` / sequencing.
 - `scripts/little_loops/cli/deps.py`, `issue_manager.py:1003` — call `DependencyGraph.from_issues()`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/manage.py:109` — calls `get_execution_waves()`, feeds
+  `refine_waves_for_contention()` and conflict-pair reporting. **Regression-sensitive** under
+  the Option 1 change. [Agent 2 finding]
+- `scripts/little_loops/cli/sprint/show.py:194` — calls `get_execution_waves()` for human/JSON
+  (`_show_json`) sprint preview; wave-count/membership changes surface in preview output. [Agent 2 finding]
+- `scripts/little_loops/issue_manager.py:1215` — `IssueManager._get_next_issue()` →
+  `get_ready_issues(completed)`. **This is the exact AC #2 path** (referenced in the Decision
+  Rationale but not previously listed as a dependent file). `get_ready_issues()` (lines 145-171)
+  currently reads only `blocked_by` and never consults `depends_on_edges`, so `depends_on` has
+  zero effect on `ll-auto` single-issue dispatch today — the surface AC #2 must fix. [Agent 3 finding]
+- `scripts/little_loops/dependency_mapper/formatting.py:174-180,243-247` — builds its **own**
+  `depends_on_edges` adjacency from `issue.depends_on` for ASCII chain rendering (`--> depends on`
+  legend); does NOT call `get_execution_waves()`. Won't break, but its "soft" chain arrows will
+  visually contradict the new enforced ordering — reconcile the legend wording if graph-wide
+  semantics change (Option 1). [Agent 2 finding]
+
+### Built-in Loops (consume `load_or_resolve()`)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (lines 125, 306) — the loop from the
+  bug's repro run; inherits corrected EPIC child ordering transparently via `Sprint.issues`. [Agent 1 finding]
+- `scripts/little_loops/loops/goal-cluster.yaml` (lines 103-104) — also resolves EPICs via
+  `load_or_resolve()`; same transparent inheritance. [Agent 1 finding]
+
 ### Tests
 - `scripts/tests/test_dependency_graph.py` — `TestGetExecutionWaves` (class at line 589).
   Helper `make_issue()` (lines 18-39) builds `IssueInfo` fixtures with `blocked_by`/
@@ -174,10 +206,33 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (`ids.index("ENH-2617") < ids.index("FEAT-2618")`, etc.).
 - `scripts/tests/test_sprint_integration.py` — integration coverage for `load_or_resolve()`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_manager.py` — **AC #2 coverage gap (new test needed).** No existing
+  test exercises `_get_next_issue()`/`get_ready_issues()` with a `depends_on` (vs `blocked_by`)
+  fixture — `TestAutoManagerDependencies` (~line 540: `test_blocked_issue_not_selected_first` 565,
+  `test_blocked_issue_selected_after_blocker_completed` 580, `test_no_issue_when_all_blocked` 600)
+  all use `## Blocked By`. Add a `depends_on`-based analog asserting the dependent is not returned
+  until its target completes. Also `TestCycleDetection`/`test_cycle_detected_on_init` (663-677)
+  asserts on the `"Dependency cycle detected"` log string — still valid but will exercise a new
+  code path if `detect_cycles()` starts traversing `depends_on` cycles. [Agent 3 finding]
+- `scripts/tests/test_dependency_graph.py::TestCycleDetection` (class ~line 443) — builds cycles
+  purely via `blocked_by`; existing asserts should still pass, but **new `depends_on`-cycle test
+  cases must be added here** if `detect_cycles()` is extended. [Agent 2 finding]
+- `scripts/tests/test_dependency_mapper.py` — imports `DependencyGraph`; verify chain-rendering
+  tests don't encode the old soft-arrow semantics if `formatting.py` legend wording changes. [Agent 1 finding]
+- `scripts/tests/test_sprint_integration.py` — `test_sprint_wave_composition` (line 243) and
+  wave-count asserts (~1274, ~1322) use `## Blocked By`, so **not expected to break**, but they are
+  the structural precedent for a new `depends_on`-defers-wave integration test (same
+  `_setup_multi_wave_project` fixture shape). [Agent 2/3 finding]
+
 ### Documentation
 - `docs/guides/SPRINT_GUIDE.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — document
   `depends_on:` vs `blocked_by:` semantics for users; update if soft→ordering meaning changes.
 - `docs/reference/API.md` — `DependencyGraph.get_execution_waves()` / `SprintManager` signatures.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — references dependency-graph architecture / Orchestration Layers; update
+  if `depends_on` wave-ordering semantics change graph-wide (Option 1). [Agent 1 finding]
 
 ### Design History (prior-art — the semantics this bug proposes to change)
 - **The soft/pull-forward-only behavior is a deliberately-shipped design, not an oversight.**
@@ -189,6 +244,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   and leaves the global `depends_on` semantics from ENH-1440 intact — **lower blast radius
   on `ll-parallel`/`ll-sprint`** and the recommended path unless the enforcing semantics
   are wanted graph-wide.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+3. Add AC #2 dispatch-order regression test in `test_issue_manager.py` — a `depends_on`-based
+   analog of `test_blocked_issue_not_selected_first` asserting `get_ready_issues()`/`_get_next_issue()`
+   defers the dependent until its `depends_on` target completes (the path `get_execution_waves()`
+   tests do not cover).
+4. Extend `detect_cycles()` to traverse `depends_on_edges` and add `depends_on`-cycle cases to
+   `test_dependency_graph.py::TestCycleDetection`; confirm `test_issue_manager.py:test_cycle_detected_on_init`
+   still passes.
+5. Verify wave-consuming CLI callers (`cli/sprint/manage.py:109`, `cli/sprint/show.py:194`,
+   `cli/sprint/run.py:400`) still behave correctly under the new wave layout — no code change
+   expected, but exercise `ll-sprint show`/`run` on the EPIC-2616 fixture.
+6. Reconcile `dependency_mapper/formatting.py` chain-legend wording (`--> depends on`) with the new
+   enforced ordering, or explicitly document the soft/visual vs. enforced distinction.
+7. Confirm EPIC-resolving loops (`auto-refine-and-implement.yaml`, `goal-cluster.yaml`) inherit the
+   corrected ordering via `Sprint.issues` with no loop-YAML change.
 
 ## Acceptance Criteria
 
@@ -209,7 +283,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   only the ordering defect that skipped ENH-2620.
 - Relates to BUG-2629 (same run's post-mortem).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-13_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
+
+### Outcome Risk Factors
+- Change surface spans ~6-10 dependent callers/consumers (orchestrator.py, sprint/run.py, cli/auto.py, sequence/next_issue.py, cli/deps.py, plus wiring-pass additions in sprint/manage.py, sprint/show.py, issue_manager.py) — broad surface even though each individual site needs no code change, just re-verification under the new wave layout.
+- `detect_cycles()` must be extended to traverse `depends_on_edges` in addition to `blocked_by`, which is new logic (not just a config/data change) and could introduce a new cycle-detection failure mode if not carefully bounded.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-07-13T19:12:08 - `4cd0afa9-a469-4a21-8356-556cc6bf5d6e.jsonl`
+- `/ll:confidence-check` - 2026-07-13T00:00:00 - `512e9fa0-44e8-41e5-881c-991b9a85cd58.jsonl`
+- `/ll:wire-issue` - 2026-07-13T19:03:12 - `3d59c4d4-b18d-40a1-874b-1e281c5157ec.jsonl`
 - `/ll:decide-issue` - 2026-07-13T18:54:44 - `e555b243-e23c-429d-9cab-61c70b69018b.jsonl`
 - `/ll:refine-issue` - 2026-07-13T18:46:15 - `7b1b09e0-77ab-4197-917e-348281ecdd0c.jsonl`
 - `/ll:capture-issue` - 2026-07-13T18:40:43Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e418041f-97b9-4193-89df-c4643e9794aa.jsonl`
