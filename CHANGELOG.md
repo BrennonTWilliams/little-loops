@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.143.0] - 2026-07-13
+
+### Added
+
+- **CodeQuery system** — a pluggable structural code-query provider protocol with
+  a grep/AST fallback provider that needs no index day-one, plus the `ll-code`
+  CLI (`status`/`callers-of`/`callees-of`/`importers-of`/`defines`/`references`/
+  `impact-of`) (FEAT-2576); a `code_query` config block and `CodeQueryConfig`
+  dataclass (ENH-2612); and a codegraph SQLite provider with staleness detection
+  (ENH-2613).
+- **Per-EPIC integration branch strategy** — the epic-branch strategy is now
+  end-to-end: `_inspect_worktree()` epic-branch comparison (FEAT-2562), the
+  `cli/sprint/run.py` in-place warning is epic-aware (FEAT-2563), CLI flags/TUI/
+  docs/templates (FEAT-2450), pre-merge test/lint verification and the
+  `epic_branches.verify_before_merge` flag (ENH-2600, ENH-2602, ENH-2603), FSM
+  refine/implement loops gained epic-branch awareness and a post-implement verify
+  state (ENH-2601), and mid-run decomposed children now route through the
+  epic-branch worktree (ENH-2615) — decomposed from FEAT-2339 (EPIC-2451).
+- **Session-store overhaul** — `raw_events` is now the source of truth with an
+  `ll-session rebuild` subcommand (ENH-2581), real LLM token usage is persisted
+  into `history.db` (ENH-2461), `raw_events` payload columns are losslessly
+  zlib-compressed (ENH-2624), and `history.db_path` is configurable with unified
+  DB-path resolution (ENH-2623).
+- **Iframe-free Shadow DOM composition** for the interactive-component-generator
+  loop (ENH-2625).
+- **`refine-issue` decision recommendations** now emit enumerable options
+  (ENH-2607).
+
+### Fixed
+
+- **FSM shell `${context.*}` injection** — values containing quotes, dollars,
+  backticks, or backslashes no longer break bash tokenizing or misroute loops
+  (BUG-2622, guarded by the new MR-11 lint).
+- **Verdict recovery for non-Anthropic hosts** — recover the verdict from
+  tag-format structured output (BUG-2597 glyphs; fsm executor fix).
+- **Epic-branch merge-back** — the FSM epic-branch loop now merges the epic
+  branch back to base (BUG-2614) and `checkout_epic_branch` commits are no longer
+  dropped by the delegate (ENH-2609).
+- **autodev decision gates** — no longer advances to `implement_current` without
+  verifying `decision_needed` (BUG-2595), fast-path gates no longer bypass
+  `check_decision_decidable`/`deposit_options` (BUG-2605), and `decide-issue`
+  Phase 2.5 auto-recovery no longer short-circuits Phase 3b (BUG-2606).
+- **Resume safety** — `rn-refine` now has a safe resume path after a mid-walk
+  interruption (BUG-2610), and autodev's `skip_inflight` ledger write survives a
+  `refine_current` crash (BUG-2611).
+- **`save_decisions()`** no longer silently drops entry keys not declared on the
+  dataclass (BUG-2588).
+- **`ll_auto_learning_gate_check`** no longer crashes the loop on untrusted
+  ll-auto output (BUG-2594).
+
+### Changed
+
+- **`ll-issues show` card rendering** — summary reflow and visual hierarchy
+  overhaul for scanning-first UX (ENH-2574).
+- **`ll-loop run` header/diagram** — the input value is shown in the run diagram
+  header with the model packed onto the `run_dir` row (ENH-2596), and header
+  lines merge onto one line when terminal width allows (ENH-2604).
+- **general-task** — guards the `continue_work` convergence spin after
+  `abandoned` (ENH-2585).
+- **`.ll/decisions.yaml` integrity** — a Claude Code `PreToolUse` hook guards
+  against corruption (ENH-2592).
+- **`pixi-data-viz`** — renamed `input_key` to match the input-port convention
+  (d1f2da2).
+
+### Other
+
+- **Docs** — documented `ll-verify-decisions` in CLAUDE.md and the CLI reference
+  (3357363), applied the remaining docs/guides audit fixes from the 2026-07-12
+  sweep (ENH-2621, b27281f), and removed a stray general-task loop audit artifact
+  (ba5458c).
+
 ## [1.142.0] - 2026-07-11
 
 ### Added
@@ -4017,6 +4088,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.143.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.142.0...v1.143.0
 [1.142.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.141.0...v1.142.0
 [1.141.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.140.0...v1.141.0
 [1.140.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.139.0...v1.140.0
