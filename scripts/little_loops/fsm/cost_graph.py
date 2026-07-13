@@ -7,16 +7,17 @@ helpers at the module boundary. The on-disk data source is
 written by ``PersistentExecutor._handle_event()`` at
 ``fsm/persistence.py:637-655``.
 
-The ``from_history(db_path)`` constructor is the future API gated by
-sibling ENH-2461 (P3) — until that lands, it returns ``[]`` gracefully
-on a missing ``usage_event`` table so the implementation is shippable
-without ENH-2461.
+This module is the *live* per-state cost path and stays sourced from
+``usage.jsonl`` (which carries FSM ``state``). A history-DB-backed per-state
+reader was considered under ENH-2461 but retired: that issue's ``usage_events``
+table is per-call grain with no ``state`` column, so per-state cost is not
+derivable from it. History-DB usage rollups live on
+``history_reader.aggregate_usage()`` instead (grouped by model/session).
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -269,91 +270,3 @@ def _compute_totals(states: list[PerStateCost]) -> dict[str, Any]:
     if not totals["has_unknown_model"]:
         totals["cost_usd"] = sum(s.cost_usd for s in states)
     return totals
-
-
-# ---------------------------------------------------------------------------
-# ENH-2461-gated API: read per-state cost from .ll/history.db
-# ---------------------------------------------------------------------------
-
-
-def _from_history(db_path: Path) -> list[PerStateCost]:
-    """Read per-state cost from the ``usage_event`` table (ENH-2461, gated).
-
-    The ``usage_event`` table is proposed in ENH-2461 (P3) and is not
-    present at the time of this writing. This constructor returns
-    ``[]`` when the table is missing, so callers can use the
-    feature-flagged API without crashing on legacy DBs.
-    """
-    if not db_path.exists():
-        return []
-    try:
-        conn = sqlite3.connect(str(db_path))
-    except sqlite3.Error:
-        return []
-    try:
-        conn.row_factory = sqlite3.Row
-        try:
-            rows = conn.execute(
-                "SELECT state, input_tokens, output_tokens, "
-                "cache_read_tokens, cache_creation_tokens, "
-                "model, wallclock_ms "
-                "FROM usage_event"
-            ).fetchall()
-        except sqlite3.OperationalError:
-            # ENH-2461 not merged yet — table absent.
-            return []
-    finally:
-        conn.close()
-
-    buckets: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {
-            "iterations": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_creation_tokens": 0,
-            "cost_usd": 0.0,
-            "wallclock_ms": 0,
-            "has_unknown_model": False,
-        }
-    )
-    for row in rows:
-        state = str(row["state"] or "unknown")
-        model = str(row["model"] or "unknown")
-        inp = int(row["input_tokens"] or 0)
-        out = int(row["output_tokens"] or 0)
-        cr = int(row["cache_read_tokens"] or 0)
-        cc = int(row["cache_creation_tokens"] or 0)
-        wallclock = int(row["wallclock_ms"] or 0)
-        bucket = buckets[state]
-        bucket["iterations"] += 1
-        bucket["input_tokens"] += inp
-        bucket["output_tokens"] += out
-        bucket["cache_read_tokens"] += cr
-        bucket["cache_creation_tokens"] += cc
-        bucket["wallclock_ms"] += wallclock
-        cost = estimate_cost_usd(model, inp, out, cr, cc)
-        if cost is None:
-            bucket["has_unknown_model"] = True
-        else:
-            bucket["cost_usd"] += cost
-
-    return [
-        PerStateCost(
-            state=state_name,
-            iterations=b["iterations"],
-            input_tokens=b["input_tokens"],
-            output_tokens=b["output_tokens"],
-            cache_read_tokens=b["cache_read_tokens"],
-            cache_creation_tokens=b["cache_creation_tokens"],
-            cost_usd=b["cost_usd"],
-            wallclock_ms=b["wallclock_ms"],
-            has_unknown_model=b["has_unknown_model"],
-        )
-        for state_name, b in buckets.items()
-    ]
-
-
-# Attach the feature-flagged constructor to PerStateCost so callers
-# can use ``PerStateCost.from_history(db_path)`` per the issue spec.
-PerStateCost.from_history = classmethod(lambda cls, db_path: _from_history(db_path))  # type: ignore[attr-defined]

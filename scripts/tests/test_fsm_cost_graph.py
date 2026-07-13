@@ -6,7 +6,6 @@ Locks the stable JSON shape for per-state cost attribution.
 from __future__ import annotations
 
 import json
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -233,21 +232,3 @@ class TestCostReport:
         loaded = json.loads(out.read_text(encoding="utf-8"))
         assert loaded["states"][0]["state"] in {"research", "summarize"}
         assert loaded["totals"]["iterations"] == 3
-
-
-class TestFromHistoryFeatureFlag:
-    """ENH-2461 gating: from_history() must not crash when usage_event table absent."""
-
-    def test_from_history_falls_back_when_table_absent(self, tmp_path: Path) -> None:
-        # Empty DB file — the usage_event table doesn't exist.
-        db = tmp_path / "history.db"
-        conn = sqlite3.connect(str(db))
-        conn.close()
-        result = PerStateCost.from_history(db)
-        assert result == []
-
-    def test_from_history_returns_list_type(self, tmp_path: Path) -> None:
-        db = tmp_path / "absent.db"
-        # No file at all.
-        result = PerStateCost.from_history(db)
-        assert result == []

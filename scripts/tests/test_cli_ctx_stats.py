@@ -12,6 +12,7 @@ import pytest
 
 from little_loops.cli.ctx_stats import (
     _aggregate_tool_events,
+    _aggregate_usage_events,
     _build_parser,
     _compute_cache_rate_from_jsonl,
     _parse_args,
@@ -164,6 +165,53 @@ class TestAggregateToolEvents:
         summary = _aggregate_tool_events(db)
         assert summary is not None
         assert summary["total_out"] == 0
+
+
+class TestAggregateUsageEvents:
+    """ENH-2461: _aggregate_usage_events reads usage_events, grouped by model."""
+
+    def _populate(self, db: Path, rows: list[tuple]) -> None:
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.executemany(
+                "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+                "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
+                "cost_usd) VALUES(?,?,?,NULL,?,?,?,?,?)",
+                rows,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_missing_db_returns_none(self, tmp_path: Path) -> None:
+        assert _aggregate_usage_events(tmp_path / "nope.db") is None
+
+    def test_absent_table_returns_none(self, tmp_path: Path) -> None:
+        """A pre-v20 DB without usage_events yields None, not a crash."""
+        db = tmp_path / "legacy.db"
+        conn = sqlite3.connect(str(db))
+        conn.close()  # empty file, no schema
+        assert _aggregate_usage_events(db) is None
+
+    def test_aggregates_by_model_with_totals(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._populate(
+            db,
+            [
+                ("t1", "a", "m1", 10, 1, 5, 2, 0.10),
+                ("t2", "a", "m1", 30, 3, 0, 0, 0.30),
+                ("t3", "b", "m2", 5, 5, 0, 0, None),  # unpriced → cost skipped
+            ],
+        )
+        result = _aggregate_usage_events(db)
+        assert result is not None
+        assert result["totals"]["input_tokens"] == 45
+        assert result["totals"]["output_tokens"] == 9
+        assert result["totals"]["cost_usd"] == pytest.approx(0.40)
+        assert result["per_model"]["m1"]["events"] == 2
+        assert result["per_model"]["m1"]["input_tokens"] == 40
+        assert result["per_model"]["m2"]["events"] == 1
 
 
 class TestMainCtxStats:

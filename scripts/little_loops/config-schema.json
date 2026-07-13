@@ -1640,6 +1640,11 @@
               "default": true,
               "description": "Whether to capture file-operation events."
             },
+            "usage_events": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to capture real LLM token-usage events (input/output/cache tokens + derived cost) into usage_events (ENH-2461). Forward-compat gate: usage_events is currently derived by the raw_events rebuild parser, not a live per-event writer."
+            },
             "correction_patterns": {
               "type": "array",
               "items": { "type": "string" },

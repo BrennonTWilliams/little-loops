@@ -538,6 +538,7 @@ class AnalyticsCaptureConfig:
     cli_commands: list[str] = field(default_factory=lambda: ["*"])
     corrections: bool = True
     file_events: bool = True
+    usage_events: bool = True
     correction_patterns: list[str] = field(default_factory=list)
 
     @classmethod
@@ -552,6 +553,7 @@ class AnalyticsCaptureConfig:
             cli_commands=data.get("cli_commands", ["*"]),
             corrections=data.get("corrections", True),
             file_events=data.get("file_events", True),
+            usage_events=data.get("usage_events", True),
             correction_patterns=correction_patterns,
         )
 

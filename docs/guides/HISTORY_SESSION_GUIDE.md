@@ -39,6 +39,7 @@ Use this when you want to query what happened in past sessions, inject historica
 | What the project summary looks like | `ll-history summary` |
 | What shipped recently (commits with issue linkage) | `ll-session recent --kind commit` |
 | Last pytest run on this branch | `ll-session recent --kind test_run --limit 1` |
+| Recent LLM token usage / cost by model | `ll-session recent --kind usage` |
 | Which skills succeed vs. fail | `ll-session skill-stats` |
 
 ---
@@ -69,6 +70,8 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v16 | ENH-2462 | Authoritative `issue_events.session_id` column |
 | v17 | ENH-2458 | `commit_events` table |
 | v18 | ENH-2459 | `test_run_events` table |
+| v19 | ENH-2581 | `raw_events` source-of-truth table |
+| v20 | ENH-2461 | `usage_events` table (real LLM token counts + cost) |
 
 v15–v18 are the EPIC-2457 children; all migrations are additive — no user action is required when the schema version advances.
 
@@ -91,6 +94,7 @@ v15–v18 are the EPIC-2457 children; all migrations are additive — no user ac
 | `sessions` | Maps session IDs to their `.jsonl` file paths |
 | `commit_events` | Git commit metadata: `commit_sha` (unique), `parent_sha`, message, author, branch, `issue_id` (linked when known), `files_json`. Populated live by the session-start backfill. Queryable via `ll-session recent --kind commit` (ENH-2458, v17). |
 | `test_run_events` | Pytest runs: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Queryable via `ll-session recent --kind test_run` (ENH-2459, v18). |
+| `usage_events` | Real LLM token counts per assistant turn: `model`, `state` (always NULL from the parser path), `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd` (NULL for unpriced models). Derived from `raw_events` by `_backfill_usage_events()` (parses `message.usage` on `type == "assistant"` records). Queryable via `ll-session recent --kind usage` and `history_reader.recent_usage_events()`/`aggregate_usage()` (ENH-2461, v20). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 
@@ -163,7 +167,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `commit`, `test_run`.
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `commit`, `test_run`, `usage`.
 
 ### Most recent events
 

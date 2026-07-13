@@ -167,43 +167,38 @@ def _aggregate_tool_events(db_path: Path) -> dict[str, Any] | None:
 
 
 def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
-    """Sum per-state cost from the ``usage_event`` table (ENH-2477, ENH-2461).
+    """Aggregate real LLM token usage from ``usage_events``, by model (ENH-2461).
 
-    This function is feature-gated: the ``usage_event`` table is
-    proposed in sibling ENH-2461 (P3) and is not present at the time
-    of this writing. Until ENH-2461 lands, this returns ``None`` and
-    the JSON payload's ``per_state`` field is ``null``.
-
-    When ENH-2461 merges, the function will read the
-    ``usage_event`` table (mirroring ``_aggregate_tool_events`` at
-    :118-166 for the SQL/group-by shape) and return a dict shaped
-    like::
+    Reads the per-call ``usage_events`` rows (populated by
+    ``session_store._backfill_usage_events``) and rolls them up into overall
+    totals plus a per-model breakdown. Grain is per-call, not per-state:
+    ``usage_events`` carries no FSM ``state`` (the transcript stream has no
+    state boundary — ENH-2461 Addendum 2), so the breakdown is keyed by
+    ``model``, not by loop state. Returns a dict shaped like::
 
         {
             "totals": {
                 "input_tokens": ...,
                 "output_tokens": ...,
-                "cache_read_tokens": ...,
-                "cache_creation_tokens": ...,
+                "cache_read_input_tokens": ...,
+                "cache_creation_input_tokens": ...,
                 "cost_usd": ...,
             },
-            "per_state": {
-                "state_name": {
-                    "iterations": ...,
+            "per_model": {
+                "model_name": {
+                    "events": ...,
                     "input_tokens": ...,
                     "output_tokens": ...,
-                    "cache_read_tokens": ...,
-                    "cache_creation_tokens": ...,
+                    "cache_read_input_tokens": ...,
+                    "cache_creation_input_tokens": ...,
                     "cost_usd": ...,
-                    "wallclock_ms": ...,
                 },
                 ...
             },
         }
 
-    The per-state shape is locked by
-    ``scripts/tests/test_fsm_cost_graph.py::TestPerStateCost::to_dict_exact_keys``
-    so JSON consumers can rely on it.
+    Returns ``None`` when the DB file is missing or the ``usage_events`` table
+    is absent (legacy DB predating the v20 migration).
     """
     if not db_path.exists():
         return None
@@ -212,14 +207,54 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     except sqlite3.Error:
         return None
     try:
-        # Probe for the ENH-2461 table; missing table is the expected
-        # state at this commit, so silently return None.
-        conn.execute("SELECT 1 FROM usage_event LIMIT 1").fetchone()
-    except sqlite3.OperationalError:
-        return None
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT model, input_tokens, output_tokens, "
+                "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
+                "FROM usage_events"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
     finally:
         conn.close()
-    return None  # ENH-2461 not yet merged — keep this branch once it lands.
+
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cost_usd": 0.0,
+    }
+    per_model: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "events": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cost_usd": 0.0,
+        }
+    )
+    for row in rows:
+        model = str(row["model"] or "unknown")
+        bucket = per_model[model]
+        bucket["events"] += 1
+        for col in (
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ):
+            val = int(row[col] or 0)
+            bucket[col] += val
+            totals[col] += val
+        cost = row["cost_usd"]
+        if cost is not None:
+            bucket["cost_usd"] += cost
+            totals["cost_usd"] += cost
+
+    return {"totals": totals, "per_model": dict(per_model)}
 
 
 def _load_fallback_state(path: Path) -> dict[str, Any] | None:
@@ -449,7 +484,7 @@ def _print_json(
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
             "learning_tests": lt_stats,
-            "per_state_cost": usage_events,
+            "usage_by_model": usage_events,
         }
     elif state is not None:
         payload = {

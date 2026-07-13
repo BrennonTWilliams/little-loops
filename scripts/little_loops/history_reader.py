@@ -50,7 +50,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from little_loops.session_store import DEFAULT_DB_PATH, ensure_db
 
@@ -159,6 +159,27 @@ class RunEvent:
         if not self.total:
             return None
         return (self.passed or 0) / self.total
+
+
+@dataclass
+class UsageEvent:
+    """A ``usage_events`` row — real LLM token counts per assistant turn (ENH-2461).
+
+    Column names mirror the Anthropic API usage fields. ``state`` is always
+    ``None`` on parser-written rows (the transcript stream carries no FSM-state
+    boundary); ``cost_usd`` is ``None`` when the model is not in the pricing
+    table.
+    """
+
+    ts: str
+    session_id: str | None
+    model: str | None
+    state: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_input_tokens: int | None
+    cache_creation_input_tokens: int | None
+    cost_usd: float | None
 
 
 @dataclass
@@ -519,6 +540,108 @@ def summarize_skills(
             }
         )
     return result
+
+
+def recent_usage_events(
+    session_id: str | None = None,
+    model: str | None = None,
+    *,
+    since: str | None = None,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[UsageEvent]:
+    """Return recent usage events, newest first, optionally filtered (ENH-2461).
+
+    *session_id* / *model* narrow the result; *since* is an ISO 8601 lower bound
+    on ``ts``. Returns ``[]`` on any read failure (graceful degradation).
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
+            "FROM usage_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if session_id is not None:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+        if model is not None:
+            clauses.append("model = ?")
+            params.append(model)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_usage_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, UsageEvent) for row in rows]
+
+
+def aggregate_usage(
+    group_by: Literal["model", "session"] = "model",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Roll up token totals and cost, grouped by ``model`` or ``session`` (ENH-2461).
+
+    Each result dict carries the group key, ``events`` (row count), summed
+    ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens`` /
+    ``cache_creation_input_tokens``, and ``cost_usd`` (rows with an unpriced
+    model contribute ``NULL`` cost, summed as 0 by SQLite). *since* is an ISO
+    8601 lower bound on ``ts``. Sorted by ``cost_usd`` descending. Grain is
+    per-call — usage_events carries no FSM ``state``, so per-state rollups are
+    not offered here (ENH-2461 Addendum 2).
+    """
+    key_col = "model" if group_by == "model" else "session_id"
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            f"SELECT {key_col} AS group_key, COUNT(*) AS events, "  # noqa: S608 - key_col fixed
+            "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, "
+            "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
+            "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
+            "SUM(cost_usd) AS cost_usd "
+            "FROM usage_events "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ? "
+            params.append(since)
+        sql += f"GROUP BY {key_col} ORDER BY cost_usd DESC"  # noqa: S608 - key_col fixed
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: aggregate_usage query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [
+        {
+            group_by: row["group_key"],
+            "events": row["events"],
+            "input_tokens": row["input_tokens"] or 0,
+            "output_tokens": row["output_tokens"] or 0,
+            "cache_read_input_tokens": row["cache_read_input_tokens"] or 0,
+            "cache_creation_input_tokens": row["cache_creation_input_tokens"] or 0,
+            "cost_usd": row["cost_usd"],
+        }
+        for row in rows
+    ]
 
 
 def recent_commit_events(

@@ -5049,3 +5049,18 @@
     per-feature-table pattern ENH-2581 exists to delete; would be re-derived through
     rebuild() later).'
   issue: ENH-2581
+- id: ARCHITECTURE-145
+  type: decision
+  timestamp: '2026-07-13T02:06:18Z'
+  category: architecture
+  labels: []
+  rationale: Every _backfill_* table (incl. tool_events) is derived independently
+    from raw_events with no cross-table FK; raw_events carries transcript lines, not
+    FSM-state boundaries, so only per-call grain is derivable.
+  rule: 'usage_events: independent table (join on session_id, ts) + per-call grain
+    (Option C)'
+  scope: issue
+  alternatives_rejected: Option A/B (FK to tool_events.id) — contradicts independent-parser
+    rebuild() architecture; Option B/D (per-state grain) — not derivable from raw_events
+    transcript lines
+  issue: ENH-2461

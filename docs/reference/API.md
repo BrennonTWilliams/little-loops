@@ -4038,8 +4038,8 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
-- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}`, `--limit N` (default 20), `--json`
-- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage}`, `--limit N` (default 20), `--json`
+- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
 - `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
 - `rebuild` — Wipe+re-derive the JSONL-derived cache tables (and their `search_index` rows) from `raw_events`; optional `--config PATH`, `--json` (ENH-2581)
 - `compact` — Sweep `raw_events` rows past the retention cutoff into per-session `kind='retention'` summary nodes, marking them `compacted=1`; optional `--and-prune` (also runs `prune` afterward), `--config PATH`, `--json` (ENH-2581)
@@ -7241,7 +7241,7 @@ from little_loops.session_store import (
 def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]
 ```
 
-Dispatch helper letting the five JSONL-derived `_backfill_*` functions accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem.
+Dispatch helper letting the JSONL-derived `_backfill_*` functions (`_backfill_sessions`, `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`) accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem.
 
 ```python
 def rebuild(

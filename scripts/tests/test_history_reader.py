@@ -1526,3 +1526,102 @@ class TestNewEventReaders:
         assert recent_commit_events(db=db) == []
         assert recent_test_runs(db=db) == []
         assert find_session_for_issue_transition("X-1", "done", db=db) is None
+
+
+class TestUsageEventReaders:
+    """ENH-2461: recent_usage_events / aggregate_usage over usage_events."""
+
+    def _seed(self, db: Path, rows: list[dict]) -> None:
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+                    "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
+                    "cost_usd) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (
+                        r["ts"],
+                        r.get("session_id"),
+                        r.get("model"),
+                        None,
+                        r.get("input_tokens"),
+                        r.get("output_tokens"),
+                        r.get("cache_read_input_tokens", 0),
+                        r.get("cache_creation_input_tokens", 0),
+                        r.get("cost_usd"),
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_recent_usage_events_newest_first_and_filters(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_usage_events
+
+        db = tmp_path / "history.db"
+        self._seed(
+            db,
+            [
+                {"ts": "2026-07-01T10:00:00Z", "session_id": "a", "model": "m1",
+                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.1},
+                {"ts": "2026-07-01T11:00:00Z", "session_id": "b", "model": "m2",
+                 "input_tokens": 20, "output_tokens": 2, "cost_usd": 0.2},
+            ],
+        )
+        rows = recent_usage_events(db=db)
+        assert [r.model for r in rows] == ["m2", "m1"]  # newest (highest id) first
+        assert recent_usage_events(model="m1", db=db)[0].session_id == "a"
+        assert recent_usage_events(session_id="b", db=db)[0].model == "m2"
+        assert recent_usage_events(since="2026-07-01T10:30:00Z", db=db) == [
+            r for r in rows if r.model == "m2"
+        ]
+
+    def test_recent_usage_events_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_usage_events
+
+        assert recent_usage_events(db=tmp_path / "no" / "history.db") == []
+
+    def test_aggregate_usage_by_model(self, tmp_path: Path) -> None:
+        import pytest
+
+        from little_loops.history_reader import aggregate_usage
+
+        db = tmp_path / "history.db"
+        self._seed(
+            db,
+            [
+                {"ts": "t1", "session_id": "a", "model": "m1",
+                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.10},
+                {"ts": "t2", "session_id": "a", "model": "m1",
+                 "input_tokens": 30, "output_tokens": 3, "cost_usd": 0.30},
+                {"ts": "t3", "session_id": "b", "model": "m2",
+                 "input_tokens": 5, "output_tokens": 5, "cost_usd": None},
+            ],
+        )
+        agg = aggregate_usage("model", db=db)
+        by_model = {a["model"]: a for a in agg}
+        assert by_model["m1"]["events"] == 2
+        assert by_model["m1"]["input_tokens"] == 40
+        assert by_model["m1"]["cost_usd"] == pytest.approx(0.40)
+        # unpriced model rows: NULL cost sums to 0 in SQLite SUM
+        assert by_model["m2"]["events"] == 1
+
+    def test_aggregate_usage_by_session(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import aggregate_usage
+
+        db = tmp_path / "history.db"
+        self._seed(
+            db,
+            [
+                {"ts": "t1", "session_id": "a", "model": "m1",
+                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.1},
+                {"ts": "t2", "session_id": "a", "model": "m2",
+                 "input_tokens": 20, "output_tokens": 2, "cost_usd": 0.2},
+            ],
+        )
+        agg = aggregate_usage("session", db=db)
+        assert len(agg) == 1
+        assert agg[0]["session"] == "a"
+        assert agg[0]["events"] == 2
+        assert agg[0]["input_tokens"] == 30
