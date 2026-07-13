@@ -36,6 +36,7 @@ def main_loop() -> int:
         )
         from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.cli.loop.queue import cmd_queue_list
         from little_loops.cli.loop.run import cmd_run
         from little_loops.cli.loop.testing import cmd_simulate, cmd_test
         from little_loops.config import BRConfig
@@ -70,6 +71,7 @@ def main_loop() -> int:
             "promote-baseline",
             "edit-routes",
             "monitor",
+            "queue",
             # aliases
             "r",
             "c",
@@ -878,6 +880,25 @@ Examples:
             help="Render compound policy-router decision table instead of state × verdict matrix",
         )
 
+        # Queue subcommand group (nested verbs: list; FEAT-2618)
+        queue_parser = subparsers.add_parser(
+            "queue",
+            help="Inspect the process-backed run queue (.loops/.queue)",
+        )
+        queue_parser.set_defaults(command="queue")
+        queue_parser.set_defaults(_queue_parser=queue_parser)
+        queue_subs = queue_parser.add_subparsers(dest="queue_command")
+        queue_list_parser = queue_subs.add_parser(
+            "list",
+            help="List pending entries in the run queue",
+        )
+        queue_list_parser.add_argument(
+            "-j",
+            "--json",
+            action="store_true",
+            help="Emit queue entries as a JSON array",
+        )
+
         args = parser.parse_args(argv)
 
         # Backfill run defaults from config when CLI flags are at their argparse defaults.
@@ -931,6 +952,11 @@ Examples:
             return cmd_edit_routes(args.loop, args, loops_dir, logger)
         elif args.command == "monitor":
             return cmd_monitor(args, loops_dir)
+        elif args.command == "queue":
+            if getattr(args, "queue_command", None) == "list":
+                return cmd_queue_list(args, loops_dir)
+            args._queue_parser.print_help()
+            return 1
         else:
             parser.print_help()
             return 1

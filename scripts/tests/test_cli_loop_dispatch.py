@@ -47,6 +47,7 @@ def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
             ["cmd_status", "cmd_stop", "cmd_resume", "cmd_monitor"],
         ),
         ("little_loops.cli.loop.next_loop", ["cmd_next_loop"]),
+        ("little_loops.cli.loop.queue", ["cmd_queue_list"]),
         ("little_loops.cli.loop.run", ["cmd_run"]),
         ("little_loops.cli.loop.testing", ["cmd_test", "cmd_simulate"]),
     ]
@@ -1049,3 +1050,49 @@ class TestMainLoopEditRoutesFlagForwarding:
         assert result == 0
         mocks["cmd_edit_routes"].assert_called_once()
         assert mocks["cmd_edit_routes"].call_args[0][1].decision_table is True
+
+
+class TestMainLoopQueueDispatch:
+    """Routing for the nested 'queue' subcommand group (FEAT-2618)."""
+
+    def test_queue_list_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """'ll-loop queue list' dispatches to cmd_queue_list."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "queue", "list"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_queue_list"].assert_called_once()
+
+    def test_queue_list_json_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--json is parsed and forwarded to cmd_queue_list."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "queue", "list", "--json"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_queue_list"].assert_called_once()
+        assert mocks["cmd_queue_list"].call_args[0][0].json is True
+
+    def test_queue_no_subcommand_prints_help(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bare 'll-loop queue' prints help and returns 1 (no verb)."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "queue"]):
+            result = main_loop()
+
+        assert result == 1

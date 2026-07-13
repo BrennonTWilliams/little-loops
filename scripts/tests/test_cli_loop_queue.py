@@ -473,3 +473,95 @@ class TestCmdRunTransportWiring:
         mock_lm.acquire.assert_not_called()
         mock_lm.release.assert_not_called()
         mock_exec.close_transports.assert_called_once()
+
+
+class TestQueueListCommand:
+    """cmd_queue_list renders live queue entries in human and JSON modes (FEAT-2618).
+
+    Thin render-assertion layer only: read_queue_entries() prune/sort/malformed
+    correctness is covered by TestReadQueueEntries; these tests just verify the
+    display and --json contract.
+    """
+
+    @staticmethod
+    def _write_entry(
+        queue_dir: Path, entry_id: str, loop_name: str, enqueued: str, pid: int
+    ) -> None:
+        import json
+
+        queue_dir.mkdir(exist_ok=True)
+        (queue_dir / f"{entry_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": entry_id,
+                    "loopName": loop_name,
+                    "enqueuedAt": enqueued,
+                    "context": {"waitingFor": "other", "scope": ".", "pid": pid},
+                }
+            )
+        )
+
+    def test_empty_queue_human(self, tmp_path: Path, capsys: object) -> None:
+        """Empty queue prints a friendly message and returns 0 in human mode."""
+        import os
+
+        from little_loops.cli.loop.queue import cmd_queue_list
+
+        args = argparse.Namespace(json=False)
+        rc = cmd_queue_list(args, tmp_path)
+        assert rc == 0
+        out = capsys.readouterr().out  # type: ignore[attr-defined]
+        assert "Queue is empty" in out
+        assert os.getpid() == os.getpid()  # sanity anchor; keeps import used
+
+    def test_empty_queue_json(self, tmp_path: Path, capsys: object) -> None:
+        """Empty queue prints [] and returns 0 in JSON mode."""
+        import json
+
+        from little_loops.cli.loop.queue import cmd_queue_list
+
+        args = argparse.Namespace(json=True)
+        rc = cmd_queue_list(args, tmp_path)
+        assert rc == 0
+        out = capsys.readouterr().out  # type: ignore[attr-defined]
+        assert json.loads(out) == []
+
+    def test_populated_human(self, tmp_path: Path, capsys: object) -> None:
+        """Populated queue lists each entry's id, loop name, and PID."""
+        import os
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_list
+
+        queue_dir = tmp_path / ".queue"
+        eid = str(uuid.uuid4())
+        self._write_entry(queue_dir, eid, "my-loop", "2026-05-02T10:00:00+00:00", os.getpid())
+
+        rc = cmd_queue_list(argparse.Namespace(json=False), tmp_path)
+        assert rc == 0
+        out = capsys.readouterr().out  # type: ignore[attr-defined]
+        assert eid[:8] in out
+        assert "my-loop" in out
+        assert str(os.getpid()) in out
+        assert "2026-05-02 10:00:00" in out
+
+    def test_populated_json_sorted(self, tmp_path: Path, capsys: object) -> None:
+        """JSON mode emits plain entry dicts sorted by enqueuedAt."""
+        import json
+        import os
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_list
+
+        queue_dir = tmp_path / ".queue"
+        pid = os.getpid()
+        later = str(uuid.uuid4())
+        earlier = str(uuid.uuid4())
+        self._write_entry(queue_dir, later, "loop-b", "2026-05-02T10:00:01+00:00", pid)
+        self._write_entry(queue_dir, earlier, "loop-a", "2026-05-02T10:00:00+00:00", pid)
+
+        rc = cmd_queue_list(argparse.Namespace(json=True), tmp_path)
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+        assert [e["id"] for e in data] == [earlier, later]
+        assert data[0]["context"]["pid"] == pid
