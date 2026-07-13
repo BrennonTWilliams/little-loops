@@ -608,11 +608,7 @@ def main_session() -> int:
             logger.success(
                 f"Compacted {compact_result['compacted_rows']} raw event(s) into "
                 f"{compact_result['summary_nodes']} retention summary node(s)"
-                + (
-                    f"; pruned {compact_result['pruned_rows']} row(s)"
-                    if args.and_prune
-                    else ""
-                )
+                + (f"; pruned {compact_result['pruned_rows']} row(s)" if args.and_prune else "")
             )
             return 0
 

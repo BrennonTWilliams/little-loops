@@ -1563,10 +1563,22 @@ class TestUsageEventReaders:
         self._seed(
             db,
             [
-                {"ts": "2026-07-01T10:00:00Z", "session_id": "a", "model": "m1",
-                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.1},
-                {"ts": "2026-07-01T11:00:00Z", "session_id": "b", "model": "m2",
-                 "input_tokens": 20, "output_tokens": 2, "cost_usd": 0.2},
+                {
+                    "ts": "2026-07-01T10:00:00Z",
+                    "session_id": "a",
+                    "model": "m1",
+                    "input_tokens": 10,
+                    "output_tokens": 1,
+                    "cost_usd": 0.1,
+                },
+                {
+                    "ts": "2026-07-01T11:00:00Z",
+                    "session_id": "b",
+                    "model": "m2",
+                    "input_tokens": 20,
+                    "output_tokens": 2,
+                    "cost_usd": 0.2,
+                },
             ],
         )
         rows = recent_usage_events(db=db)
@@ -1591,12 +1603,30 @@ class TestUsageEventReaders:
         self._seed(
             db,
             [
-                {"ts": "t1", "session_id": "a", "model": "m1",
-                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.10},
-                {"ts": "t2", "session_id": "a", "model": "m1",
-                 "input_tokens": 30, "output_tokens": 3, "cost_usd": 0.30},
-                {"ts": "t3", "session_id": "b", "model": "m2",
-                 "input_tokens": 5, "output_tokens": 5, "cost_usd": None},
+                {
+                    "ts": "t1",
+                    "session_id": "a",
+                    "model": "m1",
+                    "input_tokens": 10,
+                    "output_tokens": 1,
+                    "cost_usd": 0.10,
+                },
+                {
+                    "ts": "t2",
+                    "session_id": "a",
+                    "model": "m1",
+                    "input_tokens": 30,
+                    "output_tokens": 3,
+                    "cost_usd": 0.30,
+                },
+                {
+                    "ts": "t3",
+                    "session_id": "b",
+                    "model": "m2",
+                    "input_tokens": 5,
+                    "output_tokens": 5,
+                    "cost_usd": None,
+                },
             ],
         )
         agg = aggregate_usage("model", db=db)
@@ -1614,10 +1644,22 @@ class TestUsageEventReaders:
         self._seed(
             db,
             [
-                {"ts": "t1", "session_id": "a", "model": "m1",
-                 "input_tokens": 10, "output_tokens": 1, "cost_usd": 0.1},
-                {"ts": "t2", "session_id": "a", "model": "m2",
-                 "input_tokens": 20, "output_tokens": 2, "cost_usd": 0.2},
+                {
+                    "ts": "t1",
+                    "session_id": "a",
+                    "model": "m1",
+                    "input_tokens": 10,
+                    "output_tokens": 1,
+                    "cost_usd": 0.1,
+                },
+                {
+                    "ts": "t2",
+                    "session_id": "a",
+                    "model": "m2",
+                    "input_tokens": 20,
+                    "output_tokens": 2,
+                    "cost_usd": 0.2,
+                },
             ],
         )
         agg = aggregate_usage("session", db=db)

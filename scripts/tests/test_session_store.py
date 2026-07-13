@@ -200,9 +200,7 @@ class TestDbPathResolution:
         monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "env.db"))
         assert resolve_history_db(override) == override
 
-    def test_env_wins_over_config(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_env_wins_over_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """LL_HISTORY_DB beats history.db_path for a default-shaped path."""
         _, resolve_history_db = self._resolvers()
         monkeypatch.chdir(tmp_path)
@@ -2780,7 +2778,9 @@ class TestRawEventsPayloadCompression:
         backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
         conn = connect(db)
         try:
-            row = conn.execute("SELECT typeof(raw_line), typeof(parsed_json) FROM raw_events").fetchone()
+            row = conn.execute(
+                "SELECT typeof(raw_line), typeof(parsed_json) FROM raw_events"
+            ).fetchone()
         finally:
             conn.close()
         assert tuple(row) == ("blob", "blob")
@@ -3052,9 +3052,7 @@ class TestRebuild:
 class TestBackfillUsageEvents:
     """_backfill_usage_events parses real LLM token usage from raw_events (ENH-2461)."""
 
-    def _assistant_usage_record(
-        self, session_id: str, ts: str, model: str, usage: dict
-    ) -> str:
+    def _assistant_usage_record(self, session_id: str, ts: str, model: str, usage: dict) -> str:
         return json.dumps(
             {
                 "type": "assistant",
@@ -3137,15 +3135,25 @@ class TestBackfillUsageEvents:
             db,
             [
                 json.dumps(
-                    {"type": "user", "sessionId": "s1", "timestamp": "t",
-                     "message": {"content": "hi"}}
+                    {
+                        "type": "user",
+                        "sessionId": "s1",
+                        "timestamp": "t",
+                        "message": {"content": "hi"},
+                    }
                 ),
                 json.dumps(
-                    {"type": "assistant", "sessionId": "s1", "timestamp": "t",
-                     "message": {"model": "claude-opus-4-7"}}  # no usage block
+                    {
+                        "type": "assistant",
+                        "sessionId": "s1",
+                        "timestamp": "t",
+                        "message": {"model": "claude-opus-4-7"},
+                    }  # no usage block
                 ),
                 self._assistant_usage_record(
-                    "s1", "2026-07-13T03:00:00Z", "claude-opus-4-7",
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
                     {"input_tokens": 1, "output_tokens": 1},
                 ),
             ],
@@ -3161,7 +3169,9 @@ class TestBackfillUsageEvents:
             db,
             [
                 self._assistant_usage_record(
-                    "s1", "2026-07-13T03:00:00Z", "claude-sonnet-4-6",
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-sonnet-4-6",
                     {"input_tokens": 10, "output_tokens": 2},
                 )
             ],
@@ -3182,7 +3192,9 @@ class TestBackfillUsageEvents:
             db,
             [
                 self._assistant_usage_record(
-                    "s1", "2026-07-13T03:00:00Z", "claude-opus-4-7",
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
                     {"input_tokens": 1, "output_tokens": 1},
                 )
             ],
