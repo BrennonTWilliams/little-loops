@@ -847,19 +847,17 @@ class TestShellSuffix:
 
     def test_shell_suffix_quotes_dollar_backtick_backslash(self) -> None:
         """A value containing $, `, and \\ is shlex-quoted so none are interpreted."""
-        ctx = InterpolationContext(context={"input": 'a $(whoami) `id` \\ value'})
+        ctx = InterpolationContext(context={"input": "a $(whoami) `id` \\ value"})
         result = interpolate("VAL=${context.input:shell}", ctx)
         assert result == "VAL='a $(whoami) `id` \\ value'"
 
     def test_shell_suffix_output_passes_bash_dash_n(self) -> None:
         """Adversarial input shlex-quoted via :shell always produces valid bash syntax."""
-        adversarial = ["a \"b", "a $(rm -rf /) b", "a `id` b", "a \\ b", "a ! b", "a'b"]
+        adversarial = ['a "b', "a $(rm -rf /) b", "a `id` b", "a \\ b", "a ! b", "a'b"]
         for value in adversarial:
             ctx = InterpolationContext(context={"input": value})
-            result = interpolate('if [ -n ${context.input:shell} ]; then echo ok; fi', ctx)
-            proc = subprocess.run(
-                ["bash", "-n", "-c", result], capture_output=True, text=True
-            )
+            result = interpolate("if [ -n ${context.input:shell} ]; then echo ok; fi", ctx)
+            proc = subprocess.run(["bash", "-n", "-c", result], capture_output=True, text=True)
             assert proc.returncode == 0, f"bash -n failed for {value!r}: {proc.stderr}"
 
     def test_shell_suffix_simple_value_unquoted_by_shlex_is_still_valid(self) -> None:

@@ -2,7 +2,8 @@
 id: BUG-2622
 type: BUG
 priority: P1
-status: in_progress
+status: done
+completed_at: '2026-07-13T00:46:13Z'
 labels:
 - fsm
 - interpolation
@@ -235,12 +236,12 @@ _Wiring pass added by `/ll:wire-issue`: `interpolate()` has callers beyond `exec
 
 - [x] `rlhf-animated-svg` / `prompt-across-issues` / `autodev` / `recursive-refine`
       no longer misroute on inputs containing shell metacharacters.
-- [ ] `ll-loop validate` warns on the unsafe pattern (Tier 2).
-- [ ] `${context.x:shell}` shlex-quote escape available in the engine (Tier 3).
-- [ ] Regression tests per Tier 4 added and gating.
-- [ ] `loop-composer{,-adaptive}` / `loop-router` `echo "${context.goal}"` fallbacks
+- [x] `ll-loop validate` warns on the unsafe pattern (Tier 2).
+- [x] `${context.x:shell}` shlex-quote escape available in the engine (Tier 3).
+- [x] Regression tests per Tier 4 added and gating.
+- [x] `loop-composer{,-adaptive}` / `loop-router` `echo "${context.goal}"` fallbacks
       converted to a safe pattern.
-- [ ] New MR-N row + `:shell` suffix documented in **all five** MR-table sites
+- [x] New MR-N row + `:shell` suffix documented in **all five** MR-table sites
       (CLAUDE.md, HARNESS_OPTIMIZATION_GUIDE.md, CLI.md, API.md, review-loop/reference.md),
       and `TestValidatorWarningBudget` (`test_builtin_loops.py`) stays green
       (`CATEGORY_PATTERNS`/`ALLOWLIST` updated if the new rule fires on any builtin loop).
@@ -260,6 +261,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **In Progress** | Created: 2026-07-13 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T00:45:46 - `f0259e2d-9bfb-475b-bfd0-dfe5d17fb82b.jsonl`
 - `/ll:ready-issue` - 2026-07-13T00:21:14 - `af64d3b3-b8cf-4b8d-86fb-f34d7b26b01f.jsonl`
 - `/ll:confidence-check` - 2026-07-13T00:18:23 - `ad641d10-ec71-4e00-8362-c23466a87d83.jsonl`
 - `/ll:wire-issue` - 2026-07-13T00:16:10 - `574636e3-3d15-47b4-adff-896e7a79fe1e.jsonl`

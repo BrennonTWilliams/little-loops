@@ -1976,7 +1976,7 @@ def _validate_unsafe_context_interpolation(fsm: FSMLoop) -> list[ValidationError
             ValidationError(
                 message=(
                     f"[state: {state_name}] {token} interpolates user-controlled "
-                    "context raw into a shell body. A value containing \", $, `, \\, "
+                    'context raw into a shell body. A value containing ", $, `, \\, '
                     "or ! can break bash tokenizing or inject commands (BUG-2622). "
                     "Wrap it in a single-quoted string, write it through a quoted "
                     "heredoc (<<'EOF'), or add the :shell suffix to shlex-quote it "

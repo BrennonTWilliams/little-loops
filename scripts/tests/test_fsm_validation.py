@@ -3464,9 +3464,7 @@ class TestUnsafeContextInterpolation:
     def test_mr11_does_not_fire_inside_quoted_heredoc(self) -> None:
         """MR-11 does not fire for a value written through a quoted heredoc."""
         fsm = self._simple_fsm(
-            "cat > \"${context.run_dir}/in.txt\" <<'LL_EOF'\n"
-            "${context.input}\n"
-            "LL_EOF\n"
+            "cat > \"${context.run_dir}/in.txt\" <<'LL_EOF'\n${context.input}\nLL_EOF\n"
         )
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
@@ -3479,9 +3477,7 @@ class TestUnsafeContextInterpolation:
 
     def test_mr11_does_not_fire_in_comment(self) -> None:
         """MR-11 does not fire for a placeholder mentioned only in a comment."""
-        fsm = self._simple_fsm(
-            "# Never test ${context.input} as a bare token.\necho ok"
-        )
+        fsm = self._simple_fsm("# Never test ${context.input} as a bare token.\necho ok")
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
 
@@ -3499,9 +3495,7 @@ class TestUnsafeContextInterpolation:
 
     def test_mr11_suppressed_by_flag(self) -> None:
         """unsafe_context_interpolation_ok: true suppresses MR-11."""
-        fsm = self._simple_fsm(
-            'echo "${context.input}"', unsafe_context_interpolation_ok=True
-        )
+        fsm = self._simple_fsm('echo "${context.input}"', unsafe_context_interpolation_ok=True)
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
 
