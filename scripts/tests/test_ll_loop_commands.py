@@ -6757,3 +6757,80 @@ states:
         assert "mixed_key:default" not in combined, (
             f"Validator surfaced key with :default= suffix (BUG-2553 regression):\n{combined}"
         )
+
+    def test_shell_suffix_ref_does_not_trip_validator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-2553 successor: `${context.input:shell}` must NOT trip the
+        context validator on its captured-with-suffix name `input:shell`.
+
+        The engine parses the `:shell` transform off before resolving the real
+        var (fsm/interpolation.py:248-250); the CLI pre-flight must strip it too
+        so the check runs against `input`. Here `input` IS present in context,
+        so the context validator falls through to the required_inputs layer
+        (which fires because the value is empty) — the same discriminator the
+        `:default=`/`?` cases above use.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "shell-suffix",
+            action="${context.input:shell}",
+            required_input="input",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "shell-suffix"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        # Validator was bypassed → no false "Missing required context variable"
+        # for the suffixed name `input:shell` (nor for the real name `input`,
+        # which is present).
+        assert "Missing required context variable" not in combined, (
+            f"Validator falsely flagged :shell ref as missing:\n{combined}"
+        )
+        # Required_inputs check fires next, exiting 1 — proves we got past the
+        # context validator rather than reaching the LLM.
+        assert result == 1
+        assert "requires input" in combined and "input" in combined
+
+    def test_missing_shell_ref_reported_under_real_name(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A genuinely-missing `${context.foo:shell}` STILL trips the validator,
+        and the reported key is the real name `foo` (suffix stripped), never
+        `foo:shell`. Mirrors the bare-ref assertions above.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_loop(
+            loops_dir,
+            "shell-missing",
+            action="${context.foo:shell}",
+            required_input="unused_input",
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "shell-missing"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert result == 1
+        assert "Missing required context variable" in combined
+        assert "'foo'" in combined
+        # The printed key must NOT carry the `:shell` transform suffix.
+        assert "foo:shell" not in combined, (
+            f"Validator surfaced key with :shell suffix:\n{combined}"
+        )

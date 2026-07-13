@@ -250,12 +250,17 @@ def cmd_run(
         return 0
 
     # Pre-run validation: check required context variables are present.
-    # Default-guarded refs (`:default=value` or trailing `?`) are safe even
-    # when the underlying key is missing — the FSM interpolation engine
-    # (fsm/interpolation.py:230-241) supplies the fallback at render time,
-    # and the static validator (fsm/validation.py:135-156) honors the same
-    # idiom via `_unguarded_captured_refs`. Skip them here so the CLI
-    # pre-flight check stays aligned with the engine (BUG-2553).
+    # Guarded/transformed refs are safe even when the underlying key is
+    # missing or carries a suffix — the FSM interpolation engine
+    # (fsm/interpolation.py:236-250) parses these suffixes off before
+    # resolving the real var name, so the CLI pre-flight must do the same
+    # to stay aligned with the engine:
+    #   - `:default=value` / trailing `?` supply a fallback at render time,
+    #     so a missing key is not an error (BUG-2553).
+    #   - `:shell` is a transform (shlex.quote) on the resolved value; the
+    #     real var name is what must exist in context, not `input:shell`.
+    #     Strip it before the membership check so `${context.input:shell}`
+    #     validates against `input` (BUG-2553 successor).
     _ctx_var_re = re.compile(r"\$\{context\.([^}.]+)")
     missing_keys: set[str] = set()
     for state in fsm.states.values():
@@ -267,6 +272,8 @@ def cmd_run(
                 raw = m.group(1)
                 if ":default=" in raw or raw.endswith("?"):
                     continue
+                if raw.endswith(":shell"):
+                    raw = raw[: -len(":shell")]
                 if raw not in fsm.context:
                     missing_keys.add(raw)
     if missing_keys:
