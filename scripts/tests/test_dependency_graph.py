@@ -494,6 +494,40 @@ class TestCycleDetection:
         sorted_issues = graph.topological_sort()
         assert len(sorted_issues) == 4
 
+    def test_depends_on_cycle_detected(self) -> None:
+        """A depends_on-only cycle is detected (BUG-2632 extends traversal to depends_on)."""
+        issue_a = make_issue("FEAT-001", depends_on=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        cycles = graph.detect_cycles()
+        assert len(cycles) > 0
+        assert graph.has_cycles()
+        cycle_nodes = set(cycles[0])
+        assert "FEAT-001" in cycle_nodes
+        assert "FEAT-002" in cycle_nodes
+
+    def test_mixed_blocked_by_depends_on_cycle_detected(self) -> None:
+        """A cycle spanning both blocked_by and depends_on edges is detected."""
+        # FEAT-001 --blocked_by--> FEAT-002 --depends_on--> FEAT-001
+        issue_a = make_issue("FEAT-001", blocked_by=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert graph.has_cycles()
+
+    def test_depends_on_cycle_raises_in_execution_waves(self) -> None:
+        """A depends_on-only cycle surfaces a meaningful cycle error, not an empty one."""
+        issue_a = make_issue("FEAT-001", depends_on=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        with pytest.raises(ValueError, match="FEAT-001"):
+            graph.get_execution_waves()
+
 
 class TestContains:
     """Tests for __contains__ method."""
@@ -704,13 +738,15 @@ class TestGetExecutionWaves:
 
         assert waves == []
 
-    def test_depends_on_soft_ordering(self) -> None:
-        """depends_on target is nudged into the current wave when its hard blockers are satisfied."""
-        # FEAT-001 and FEAT-003 have no hard blockers (wave 0 naturally)
-        # FEAT-002 is hard-blocked by FEAT-003 (wave 1 naturally)
-        # FEAT-001 depends_on FEAT-002 — after wave 0 collects FEAT-001 and FEAT-003,
-        # FEAT-002's only hard blocker (FEAT-003) is in the current wave, so FEAT-002
-        # is nudged into wave 0 alongside FEAT-001.
+    def test_depends_on_enforces_wave_ordering(self) -> None:
+        """depends_on defers a dependent to a strictly later wave than its prereq (BUG-2632).
+
+        Ordering-enforcing semantics: a dependent is never placed in the same
+        wave as (or an earlier wave than) a depends_on target that still exists
+        in the graph.
+        """
+        # FEAT-001 depends_on FEAT-002; FEAT-002 hard-blocked by FEAT-003.
+        # Enforced order: FEAT-003 -> FEAT-002 -> FEAT-001, one per wave.
         issue_a = make_issue("FEAT-001", depends_on=["FEAT-002"])
         issue_b = make_issue("FEAT-002", blocked_by=["FEAT-003"])
         issue_c = make_issue("FEAT-003")
@@ -718,18 +754,45 @@ class TestGetExecutionWaves:
 
         waves = graph.get_execution_waves()
 
-        wave0_ids = {i.issue_id for i in waves[0]}
-        assert "FEAT-002" in wave0_ids, "depends_on target should be nudged into wave 0"
-        assert "FEAT-001" in wave0_ids
-        assert "FEAT-003" in wave0_ids
+        assert [[i.issue_id for i in wave] for wave in waves] == [
+            ["FEAT-003"],
+            ["FEAT-002"],
+            ["FEAT-001"],
+        ]
 
-    def test_depends_on_does_not_hard_block(self) -> None:
-        """A depends_on target being absent or in the same wave never prevents the dependent."""
-        # FEAT-001 depends_on FEAT-999 (not in graph) — FEAT-001 still enters a wave
+    def test_depends_on_diamond_ordering(self) -> None:
+        """depends_on diamond A -> (B, C) -> D orders D strictly last (BUG-2632 repro shape)."""
+        # Mirrors EPIC-2616: helper -> (list, remove) -> docs, all via depends_on.
+        helper = make_issue("ENH-2617")
+        list_ = make_issue("FEAT-2618", depends_on=["ENH-2617"])
+        remove = make_issue("FEAT-2619", depends_on=["ENH-2617"])
+        docs = make_issue("ENH-2620", depends_on=["FEAT-2618", "FEAT-2619"])
+        graph = DependencyGraph.from_issues([helper, list_, remove, docs])
+
+        waves = graph.get_execution_waves()
+
+        assert [i.issue_id for i in waves[0]] == ["ENH-2617"]
+        assert {i.issue_id for i in waves[1]} == {"FEAT-2618", "FEAT-2619"}
+        assert [i.issue_id for i in waves[2]] == ["ENH-2620"]
+
+    def test_depends_on_absent_target_does_not_defer(self) -> None:
+        """A depends_on target that is absent from the graph never blocks the dependent."""
+        # FEAT-001 depends_on FEAT-999 (not in graph) — FEAT-001 still enters wave 0.
         issue_a = make_issue("FEAT-001", depends_on=["FEAT-999"])
         graph = DependencyGraph.from_issues([issue_a])
 
         waves = graph.get_execution_waves()
+
+        assert len(waves) == 1
+        assert waves[0][0].issue_id == "FEAT-001"
+
+    def test_depends_on_completed_target_does_not_defer(self) -> None:
+        """A depends_on target already completed at construction never blocks the dependent."""
+        issue_a = make_issue("FEAT-001", depends_on=["FEAT-002"])
+        issue_b = make_issue("FEAT-002")
+        graph = DependencyGraph.from_issues([issue_a, issue_b], completed_ids={"FEAT-002"})
+
+        waves = graph.get_execution_waves(completed={"FEAT-002"})
 
         assert len(waves) == 1
         assert waves[0][0].issue_id == "FEAT-001"

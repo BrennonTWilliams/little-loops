@@ -655,7 +655,7 @@ class IssueInfo:
     blocked_by: list[str] = []             # Issue IDs that block this issue (hard dependency — wave-gated)
     blocks: list[str] = []                 # Issue IDs that this issue blocks (computed inverse of blocked_by)
     parent: str | None = None              # Parent issue ID this was decomposed from (e.g., "ENH-179")
-    depends_on: list[str] = []            # Soft ordering prerequisites (preferred ordering, not wave-gated)
+    depends_on: list[str] = []            # Soft ordering prerequisites (wave-gated: scheduled after; non-fatal if absent)
     relates_to: list[str] = []            # Thematically related issue IDs (no ordering constraint)
     duplicate_of: str | None = None        # Issue ID this duplicates; set when closing a duplicate
     discovered_by: str | None = None       # Source command/workflow that created this issue

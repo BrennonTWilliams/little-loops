@@ -616,6 +616,85 @@ class TestDependencyAwareSequencing:
         assert info is None
 
     @pytest.fixture
+    def temp_project_with_depends_on(self, temp_project_dir: Path) -> Path:
+        """Set up project where FEAT-002 depends_on FEAT-001 (soft prerequisite)."""
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        # FEAT-001 (no dependencies)
+        (issues_dir / "P1-FEAT-001-first-feature.md").write_text(
+            "---\nid: FEAT-001\n---\n# FEAT-001: First Feature\n\n## Summary\nFirst\n"
+        )
+
+        # FEAT-002 declares a soft prerequisite on FEAT-001 via frontmatter
+        (issues_dir / "P1-FEAT-002-second-feature.md").write_text(
+            "---\nid: FEAT-002\ndepends_on:\n  - FEAT-001\n---\n"
+            "# FEAT-002: Second Feature\n\n## Summary\nSecond\n"
+        )
+
+        return temp_project_dir
+
+    def test_depends_on_dependent_not_selected_first(
+        self, temp_project_with_depends_on: Path
+    ) -> None:
+        """A depends_on dependent is not dispatched before its prerequisite (BUG-2632, AC #2)."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_depends_on)
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
+
+        # FEAT-002 depends_on FEAT-001, so FEAT-001 must be selected first even
+        # though both are otherwise unblocked and share the same priority.
+        info = manager._get_next_issue()
+        assert info is not None
+        assert info.issue_id == "FEAT-001"
+
+    def test_depends_on_dependent_selected_after_prereq_completed(
+        self, temp_project_with_depends_on: Path
+    ) -> None:
+        """The depends_on dependent becomes available once its prerequisite completes."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_depends_on)
+        manager = AutoManager(
+            config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+        )
+
+        manager.state_manager.state.completed_issues.append("FEAT-001")
+
+        info = manager._get_next_issue()
+        assert info is not None
+        assert info.issue_id == "FEAT-002"
+
+    @pytest.fixture
     def temp_project_with_cycle(self, temp_project_dir: Path) -> Path:
         """Set up project with issues that have a dependency cycle."""
 

@@ -288,8 +288,11 @@ class SprintManager:
 
         If `arg` matches ^EPIC-\\d+$ (case-insensitive), resolves the EPIC's
         active children via union of forward (relates_to:) and backward (parent:)
-        lookups, filtered to active statuses and ordered by dependency graph.
-        Otherwise falls through to the file-based load() path.
+        lookups, filtered to active statuses and ordered by the dependency graph.
+        Ordering honours both `blocked_by:` (hard) and `depends_on:` (soft)
+        prerequisites: a child is scheduled in a strictly later wave than every
+        issue it depends on (BUG-2632). Otherwise falls through to the
+        file-based load() path.
 
         Args:
             arg: Sprint name (file-based) or EPIC ID matching ^EPIC-\\d+$

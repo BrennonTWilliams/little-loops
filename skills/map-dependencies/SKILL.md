@@ -24,7 +24,7 @@ Issues use six frontmatter fields to express relationships:
 |-------|------|---------|---------|
 | `parent` | string | Parent issue this was decomposed from | — |
 | `blocked_by` | list | Hard dependencies — `──→` — must complete before this issue can start (wave-gated) | Hard stop |
-| `depends_on` | list | Soft ordering prerequisites — `-->` — preferred ordering but not wave-gated | Soft |
+| `depends_on` | list | Soft ordering prerequisites — `-->` — wave-gated (scheduled in a later wave) but non-fatal if the prerequisite is absent | Soft |
 | `relates_to` | list | Thematically related issues (no ordering constraint) | — |
 | `duplicate_of` | string | Superseded by another issue | — |
 | `blocks` | list | Computed inverse of `blocked_by`; written by `ll-deps fix` | — |

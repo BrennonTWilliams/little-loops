@@ -145,17 +145,25 @@ class DependencyGraph:
         return graph
 
     def get_ready_issues(self, completed: set[str] | None = None) -> list[IssueInfo]:
-        """Return issues whose blockers are all completed.
+        """Return issues whose prerequisites are all completed.
 
         An issue is "ready" if:
         - It is not already completed
-        - All its blockers are either completed or not in the graph
+        - All its hard blockers (``blocked_by``) are either completed or not in
+          the graph
+        - All its soft prerequisites (``depends_on``) that exist in the graph are
+          completed
+
+        ``depends_on`` is ordering-enforcing-but-non-fatal: a dependent is
+        deferred until its prerequisites complete, but a prerequisite that is
+        absent from the graph (or was already completed at construction) never
+        blocks the dependent (BUG-2632).
 
         Args:
             completed: Set of completed issue IDs
 
         Returns:
-            List of IssueInfo for issues with no active blockers,
+            List of IssueInfo for issues with no active prerequisites,
             sorted by priority (highest first) then issue_id
         """
         completed = completed or set()
@@ -163,19 +171,51 @@ class DependencyGraph:
         for issue_id, issue in self.issues.items():
             if issue_id in completed:
                 continue
-            blockers = self.get_blocking_issues(issue_id, completed)
-            if not blockers:
-                ready.append(issue)
+            if self.get_blocking_issues(issue_id, completed):
+                continue
+            if self.get_pending_prerequisites(issue_id, completed):
+                continue
+            ready.append(issue)
         # Sort by priority then issue_id for consistent ordering
         ready.sort(key=lambda x: (x.priority_int, x.issue_id))
         return ready
 
+    def get_pending_prerequisites(
+        self, issue_id: str, completed: set[str] | None = None
+    ) -> set[str]:
+        """Return incomplete ``depends_on`` prerequisites for an issue.
+
+        Only prerequisites still present in the graph are considered: targets
+        that are absent (or were already completed when the graph was built) are
+        never recorded in ``depends_on_edges`` and thus never defer the
+        dependent.
+
+        Args:
+            issue_id: Issue ID to check
+            completed: Set of completed issue IDs
+
+        Returns:
+            Set of ``depends_on`` target IDs that are not yet completed
+        """
+        completed = completed or set()
+        return self.depends_on_edges.get(issue_id, set()) - completed
+
     def get_execution_waves(self, completed: set[str] | None = None) -> list[list[IssueInfo]]:
         """Return issues grouped into parallel execution waves.
 
-        Wave 1: All issues with no blockers (or blockers already completed)
-        Wave 2: Issues whose blockers are all in wave 1
-        Wave N: Issues whose blockers are all in waves 1..N-1
+        Wave 1: All issues with no prerequisites (or prerequisites already
+                completed)
+        Wave 2: Issues whose prerequisites are all in wave 1
+        Wave N: Issues whose prerequisites are all in waves 1..N-1
+
+        Both hard blockers (``blocked_by``) and soft prerequisites
+        (``depends_on``) are ordering-enforcing: a dependent is placed in a
+        strictly later wave than all of its prerequisites (BUG-2632). The
+        difference between the two edge kinds is fatality, not ordering — an
+        unresolved ``blocked_by`` cycle and an unresolved ``depends_on`` cycle
+        both raise ``ValueError`` here (see ``detect_cycles``), but a
+        ``depends_on`` target that is simply absent from the graph never defers
+        its dependent.
 
         This is similar to topological_sort but groups issues by "level"
         rather than returning a flat list.
@@ -201,26 +241,14 @@ class DependencyGraph:
         processed: set[str] = set(completed)
 
         while True:
-            # Get issues ready to run (all hard blockers in processed set)
+            # Get issues ready to run (all prerequisites in processed set).
+            # get_ready_issues enforces both blocked_by and depends_on ordering,
+            # so a dependent lands in a strictly later wave than its prereqs.
             wave = self.get_ready_issues(completed=processed)
             if not wave:
                 break
 
-            # Soft ordering: nudge depends_on targets into this wave when their
-            # hard blockers are all satisfied by processed ∪ current wave.
-            after_wave: set[str] = processed | {i.issue_id for i in wave}
-            nudged: list[IssueInfo] = []
-            for issue in wave:
-                for target_id in self.depends_on_edges.get(issue.issue_id, set()):
-                    if target_id in after_wave or target_id not in self.issues:
-                        continue
-                    if not self.get_blocking_issues(target_id, after_wave):
-                        nudged.append(self.issues[target_id])
-                        after_wave.add(target_id)
-            wave.extend(nudged)
-
             waves.append(wave)
-            # Mark this wave (including nudged) as processed for next iteration
             for issue in wave:
                 processed.add(issue.issue_id)
 
@@ -331,6 +359,13 @@ class DependencyGraph:
         A cycle exists when we encounter a node that is currently being
         visited (GRAY state) in the DFS traversal.
 
+        Traverses both hard (``blocked_by``) and soft (``depends_on``)
+        prerequisite edges: since ``depends_on`` became ordering-enforcing in
+        ``get_execution_waves`` (BUG-2632), a ``depends_on``-only cycle would
+        otherwise leave issues unschedulable while cycle detection reported
+        nothing — producing a misleading empty "cycles" error. Both edge kinds
+        point from a dependent to its prerequisite, so they share one traversal.
+
         Returns:
             List of cycles, each cycle is a list of issue IDs forming
             a path from the cycle start back to itself.
@@ -348,8 +383,10 @@ class DependencyGraph:
             color[node] = GRAY
             path.append(node)
 
-            # Traverse blockers (edges point from blocked to blocker)
-            for neighbor in self.blocked_by.get(node, set()):
+            # Traverse prerequisite edges (blocked_by + depends_on); both point
+            # from a dependent to its prerequisite.
+            neighbors = self.blocked_by.get(node, set()) | self.depends_on_edges.get(node, set())
+            for neighbor in neighbors:
                 if neighbor not in color:
                     continue
                 if color[neighbor] == GRAY:

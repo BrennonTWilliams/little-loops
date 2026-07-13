@@ -2466,6 +2466,48 @@ class TestSprintManagerLoadOrResolve:
         assert result.name == "epic-200"
         assert "FEAT-010" in result.issues
 
+    def test_load_or_resolve_epic_depends_on_ordering(
+        self, tmp_path: Path, epic_project: BRConfig
+    ) -> None:
+        """depends_on among EPIC children enforces strict scheduling order (BUG-2632, AC #1).
+
+        Reproduces EPIC-2616: helper -> (list, remove) -> docs, wired purely via
+        depends_on. Every child must precede all issues that depend on it.
+        """
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-2616-queue.md").write_text(
+            "---\nid: EPIC-2616\nstatus: open\n---\n# EPIC-2616: Queue\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-2617-helper.md").write_text(
+            "---\nid: ENH-2617\nparent: EPIC-2616\n---\n# ENH-2617: Helper\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-2618-list.md").write_text(
+            "---\nid: FEAT-2618\nparent: EPIC-2616\ndepends_on:\n  - ENH-2617\n---\n"
+            "# FEAT-2618: List\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-2619-remove.md").write_text(
+            "---\nid: FEAT-2619\nparent: EPIC-2616\ndepends_on:\n  - ENH-2617\n---\n"
+            "# FEAT-2619: Remove\n"
+        )
+        (issues_dir / "enhancements" / "P2-ENH-2620-docs.md").write_text(
+            "---\nid: ENH-2620\nparent: EPIC-2616\ndepends_on:\n  - FEAT-2618\n  - FEAT-2619\n---\n"
+            "# ENH-2620: Docs\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        result = manager.load_or_resolve("EPIC-2616")
+
+        assert result is not None
+        ids = result.issues
+        assert set(ids) == {"ENH-2617", "FEAT-2618", "FEAT-2619", "ENH-2620"}
+        # Helper before the two consumers; both consumers before docs.
+        assert ids.index("ENH-2617") < ids.index("FEAT-2618")
+        assert ids.index("ENH-2617") < ids.index("FEAT-2619")
+        assert ids.index("FEAT-2618") < ids.index("ENH-2620")
+        assert ids.index("FEAT-2619") < ids.index("ENH-2620")
+        # ENH-2620 must be last despite lexically sorting before the FEAT ids.
+        assert ids[-1] == "ENH-2620"
+
     def test_load_or_resolve_epic_id_union_dedup(
         self, tmp_path: Path, epic_project: BRConfig
     ) -> None:

@@ -53,7 +53,7 @@ status: open
 priority: P2
 parent: ENH-040            # parent issue this was decomposed from (omit if top-level)
 blocked_by: []             # hard dependencies — must complete before this issue starts
-depends_on: []             # soft ordering prerequisites — preferred order, not wave-gated
+depends_on: []             # soft ordering prerequisites — wave-gated (scheduled after), non-fatal if absent
 relates_to: []             # thematically related issues (no ordering constraint)
 duplicate_of:              # set when closing as duplicate of another issue
 ---

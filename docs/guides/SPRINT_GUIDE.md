@@ -61,8 +61,8 @@ Two relationship fields affect sprint scheduling differently:
 
 | Field | Arrow | Effect on sprint |
 |-------|-------|-----------------|
-| `blocked_by` | `──→` (hard dependency) | Soft ordering — wave-gated when practical, but a ready prerequisite may still be pulled into the same wave to fill capacity |
-| `depends_on` | `-->` (soft ordering) | Not wave-gated — recorded for context and `ll-deps` validation but does not delay execution |
+| `blocked_by` | `──→` (hard dependency) | Wave-gated and fatal — the dependent waits in a strictly later wave; an unresolved cycle raises an error |
+| `depends_on` | `-->` (soft ordering) | Wave-gated but non-fatal — the dependent is scheduled in a strictly later wave than its prerequisites (BUG-2632), yet a prerequisite that is absent from the graph never delays it |
 
 Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., ISSUE-A calls an API that ISSUE-B introduces). Use `depends_on` when the ordering is recommended but the issues can technically proceed in parallel (e.g., ISSUE-A tests a subsystem that ISSUE-B improves, but ISSUE-A is still valid without ISSUE-B).
 
@@ -541,7 +541,7 @@ When issues have a natural ordering, dependency-aware sprinting is the key advan
 1. Create issues with blocked_by (hard) or depends_on (soft) fields:
      FEAT-010 has no blockers
      FEAT-011 blocked_by: [FEAT-010]   # hard stop — wave-gated
-     FEAT-012 depends_on: [FEAT-010]   # soft ordering — not wave-gated
+     FEAT-012 depends_on: [FEAT-010]   # soft ordering — wave-gated (after FEAT-010), non-fatal if absent
      FEAT-013 blocked_by: [FEAT-011, FEAT-012]
 2. /ll:map-dependencies            ← validates the graph, proposes missing edges
 3. ll-sprint create feature-sprint --issues FEAT-010,FEAT-011,FEAT-012,FEAT-013

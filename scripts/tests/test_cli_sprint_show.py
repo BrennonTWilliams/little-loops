@@ -439,6 +439,55 @@ class TestCmdSprintShow:
         assert "waves" in data
         assert "has_cycles" in data
 
+    def test_show_json_depends_on_wave_ordering(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--json wave layout reflects depends_on ordering via real get_execution_waves (BUG-2632)."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "features").mkdir(parents=True, exist_ok=True)
+        (issues_dir / "features" / "P1-FEAT-001-base.md").write_text(
+            "---\nid: FEAT-001\nstatus: open\n---\n# FEAT-001: Base\n"
+        )
+        (issues_dir / "features" / "P1-FEAT-002-dependent.md").write_text(
+            "---\nid: FEAT-002\nstatus: open\ndepends_on:\n  - FEAT-001\n---\n# FEAT-002: Dependent\n"
+        )
+
+        config_dir = tmp_path / ".ll"
+        config_dir.mkdir(exist_ok=True)
+        config_data = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                },
+            },
+        }
+        (config_dir / "ll-config.json").write_text(_json.dumps(config_data))
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir(exist_ok=True)
+        Sprint(
+            name="dep-sprint",
+            description="depends_on sprint",
+            issues=["FEAT-002", "FEAT-001"],  # deliberately out of order
+            created="2026-06-01T00:00:00Z",
+        ).save(sprints_dir)
+
+        from little_loops.config import BRConfig
+
+        manager = SprintManager(sprints_dir=sprints_dir, config=BRConfig(tmp_path))
+        args = argparse.Namespace(sprint="dep-sprint", json=True, skip_analysis=False)
+
+        result = _cmd_sprint_show(args, manager)
+        assert result == 0
+
+        data = _json.loads(capsys.readouterr().out)
+        assert data["has_cycles"] is False
+        wave_ids = [wave["issues"] for wave in data["waves"]]
+        # FEAT-001 must be in a strictly earlier wave than FEAT-002.
+        assert wave_ids == [["FEAT-001"], ["FEAT-002"]]
+
     def test_show_skip_analysis(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """--skip-analysis flag suppresses dependency analysis output."""
         manager, sprint_name = self._setup_show_project(tmp_path)

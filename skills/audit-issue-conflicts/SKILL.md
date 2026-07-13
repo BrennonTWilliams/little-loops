@@ -290,7 +290,7 @@ questions:
       - label: "blocked_by (hard stop)"
         description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start (wave-gated)"
       - label: "depends_on (soft ordering)"
-        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — preferred when ordering is desirable but not strictly required"
+        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent"
       - label: "No, skip"
         description: "Leave both issues unchanged"
 ```
