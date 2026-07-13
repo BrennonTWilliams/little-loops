@@ -2382,20 +2382,53 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). `snapshot` and the full choice list are now sourced from `VALID_KINDS`, the single source of truth (ENH-2581) |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
 
 **`backfill` flags:**
 
+`backfill` ingests session JSONL lines into `raw_events` only (ENH-2581) —
+issue/loop-state/commit data is still written directly. The JSONL-derived
+cache tables (`tool_events`, `message_events`, `assistant_messages`,
+`skill_events`, `sessions`) are populated by a separate `rebuild` (or
+`backfill --rebuild` in the same call).
+
 | Flag | Description |
 |------|-------------|
 | `--since DATE` | Incremental mode: only process JSONL files modified on or after DATE (ENH-1830) |
 | `--host HOST` | Filter to a single host source: `claude-code`, `codex`, `opencode`, or `pi` |
+| `--rebuild` | Also materialize the JSONL-derived cache tables from `raw_events` in this call (ENH-2581) |
 | `--snapshots` | Also seed the `issue_snapshots` table from `.issues/` files (ENH-2151) |
 | `--extract-decisions` | Run `extract-from-completed` on issue history after backfill (ENH-2152) |
 | `--max-sessions N` | Cap the number of sessions compacted in this run (newest first); useful for large DBs that would otherwise time out (ENH-2252) |
+
+**`rebuild` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--config PATH` | Path to `ll-config.json` (default: auto-resolve from cwd) |
+| `--json` | Output row counts as JSON |
+
+Wipes and re-derives `tool_events`, `message_events`, `assistant_messages`,
+`skill_events`, `sessions`, `user_corrections`, `summary_nodes`/
+`summary_spans`, and their `search_index` rows from `raw_events`. Idempotent.
+Issue/loop/commit/cli/file/test_run tables are outside `raw_events`'s scope
+and are untouched (ENH-2581).
+
+**`compact` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--and-prune` | Also delete the newly-compacted `raw_events` rows and VACUUM afterward |
+| `--config PATH` | Path to `ll-config.json` (default: auto-resolve from cwd) |
+| `--json` | Output result summary as JSON |
+
+Sweeps `raw_events` rows past `analytics.retention.raw_event_max_age_days`
+into per-session `kind='retention'` `summary_nodes` rows (a deterministic
+one-liner, not an LLM summary) and marks them `compacted=1` so `prune` can
+delete them safely later (ENH-2581).
 
 **`export` flags:**
 
@@ -2415,9 +2448,12 @@ ll-session recent --kind test_run               # Recent pytest runs (ENH-2459)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions
-ll-session backfill                             # Seed the database from on-disk sources
+ll-session backfill                             # Ingest on-disk sources (raw_events + issues/loops/commits)
+ll-session backfill --rebuild                   # Ingest, then materialize cache tables in one call
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
 ll-session backfill --max-sessions 50           # Compact at most 50 sessions this run
+ll-session rebuild                              # Re-derive cache tables from raw_events (ENH-2581)
+ll-session compact --and-prune                  # Sweep+summarize old raw_events, then delete (ENH-2581)
 ll-session path <session_id>                    # Resolve JSONL file path for a session ID
 ll-session grep "error"                         # Regex search over messages
 ll-session grep "traceback" --summary-id 5      # Search within a summary node's span
@@ -2438,7 +2474,7 @@ ll-session prune --json                         # Prune result as JSON
 | `--dry-run` | Report rows that would be deleted without actually deleting them |
 | `--json` | Output result summary as JSON |
 
-Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). High-value tables (`issue_events`, `user_corrections`) are never pruned. See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
+Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). Only `raw_events` rows already marked `compacted=1` (by `compact`) past `raw_event_max_age_days` are deleted (ENH-2581) — issue/loop/commit/cli/file/test_run tables and uncompacted `raw_events` rows are never pruned. See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
@@ -2763,6 +2799,19 @@ ll-verify-decisions --config-root /repo   # Validate under a specific project ro
 ```
 
 See [CONTRIBUTING.md § Decisions YAML Validation](../../CONTRIBUTING.md#decisions-yaml-validation-ll-verify-decisions) for the pre-commit wiring and [docs/guides/DECISIONS_LOG_GUIDE.md § Validation](../guides/DECISIONS_LOG_GUIDE.md) for the full three-layer defense model.
+
+---
+
+### ll-verify-kinds
+
+Assert every `CREATE TABLE` in `session_store._MIGRATIONS` is either registered in `_KIND_TABLE` (so `recent()`/`search --kind` can query it) or explicitly listed in `_KINDLESS_TABLES` (support tables with no "recent by kind" concept — `meta`, `search_index`, `sessions`, `assistant_messages`, `summary_nodes`, `summary_spans`, `raw_events`, `correction_retirements`). Catches the case a new `*_events` table is added without registering its kind — the gap this issue fixed for `snapshot` (ENH-2581).
+
+**Exit codes:** `0` = every table is registered or explicitly kindless; `1` = one or more tables are neither, listed on stderr.
+
+**Examples:**
+```bash
+ll-verify-kinds    # Check the current tree's session_store._MIGRATIONS
+```
 
 ---
 

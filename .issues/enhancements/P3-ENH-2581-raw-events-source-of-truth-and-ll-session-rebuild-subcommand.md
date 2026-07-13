@@ -3,9 +3,10 @@ id: ENH-2581
 title: raw_events source of truth and ll-session rebuild subcommand
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-08
 captured_at: '2026-07-08T00:00:00Z'
+completed_at: '2026-07-13T01:39:45Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 relates_to:
@@ -608,7 +609,56 @@ TABLE`/`CREATE TABLE`. Decision recorded 2026-07-12;
 FEAT-2123 (downstream of ENH-2461) is not urgent, so
 foundation-first ordering was chosen.
 
+## Resolution
+
+Implemented per the Proposed Solution, with two scope decisions made
+autonomously (documented in `thoughts/shared/plans/2026-07-13-ENH-2581-management.md`,
+gitignored):
+
+1. **`raw_events` scope is the 5 JSONL-sourced event kinds only** (tool,
+   message, assistant_message, skill_event, session-mapping) — matching the
+   concrete `backfill_raw_events(db, *, jsonl_files, since_ts=None)` signature
+   given in Proposed Solution §2 and the three JSONL-only watermarks being
+   replaced. Issue/loop-state/commit ingestion keeps its existing direct-write
+   path in `backfill()`, unaffected — out of scope for this issue, called out
+   explicitly rather than silently narrowed.
+2. **`rebuild()` wipes only tables with a real re-derivation path**:
+   `tool_events`, `message_events`, `assistant_messages`, `skill_events`,
+   `sessions`, `user_corrections`, `summary_nodes`/`summary_spans`, plus the
+   corresponding `search_index` kinds. `cli_events`/`file_events`/
+   `test_run_events` (in the issue's literal "13 cache tables" list) have no
+   `_backfill_*` re-derivation function today — they're live-write-only —
+   so wiping them would be unrecoverable data loss with no way back. Left
+   untouched.
+3. `compact()`'s new `kind='retention'` summary nodes use a fresh dedup index
+   (`idx_summary_nodes_retention_dedup`) — the existing
+   `idx_summary_nodes_condensed_dedup` is `UNIQUE(session_id) WHERE
+   kind='condensed'` (one row per session, full stop), which would have
+   silently swallowed retention summaries for any session already compacted
+   by the unrelated `history.compaction` (LLM-summary) feature.
+4. `ll-verify-kinds` surfaced one real pre-existing gap while being written:
+   `correction_retirements` (v13/ENH-2046) had no kind registration and no
+   kindless-table exemption — added to `_KINDLESS_TABLES`.
+5. Fixed a latent bug found during `_KIND_TABLE` centralization:
+   `recent(kind="snapshot")` raised `KeyError` (missing from `_KIND_TABLE`
+   despite being in `VALID_KINDS`) — now maps to `issue_snapshots`, satisfying
+   the AC verbatim ("`recent --kind snapshot` ... work[s] (silently doesn't
+   today)").
+
+All 12 Implementation Steps landed: v19 migration, `backfill_raw_events()`,
+`_iter_events()` dispatch + 5 refactored `_backfill_*` functions, `rebuild()`,
+`compact()`, `prune()` refactor, `VALID_KINDS` centralization + `ll-verify-kinds`,
+`rebuild`/`compact` CLI subcommands + `backfill --rebuild`,
+`backfill_worker.py --rebuild`, `SessionStart` conditional-rebuild wiring, full
+test coverage (new: `TestRawEventsTable`, `TestRebuild`, `TestCompact`,
+`TestFts5LeakFixed`, `TestValidKindsCentralization`, `TestRebuildSubcommand`,
+`TestCompactSubcommand`, `TestSessionStartRebuild`, `test_verify_kinds.py`),
+and docs (`ARCHITECTURE.md`, `API.md`, `CLI.md`, `.claude/CLAUDE.md`).
+14807 tests pass, `ruff check`/`mypy` clean (mypy's one remaining error,
+`wcwidth` missing stubs, predates this change and is unrelated).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-13T01:38:52Z - `ee2927c1-e09d-4666-af82-d0275f2ca1cd.jsonl`
 - `/ll:ready-issue` - 2026-07-13T00:25:25 - `6a2b4c2f-8a8b-4234-b9ef-57429b7ac418.jsonl`
 - `/ll:confidence-check` - 2026-07-12T00:00:00Z - `1e7bea2d-02ea-4e42-8286-a31fd0e09c79.jsonl`
 - `/ll:refine-issue` - 2026-07-13T00:20:45 - `af64d3b3-b8cf-4b8d-86fb-f34d7b26b01f.jsonl`

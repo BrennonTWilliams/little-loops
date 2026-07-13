@@ -14,19 +14,24 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.session_store import (
+    _KIND_TABLE,
     SCHEMA_VERSION,
+    VALID_KINDS,
     SQLiteTransport,
     _derive_transition,
     _estimate_tokens,
     _summarize_block,
     backfill,
     backfill_incremental,
+    backfill_raw_events,
     cli_event_context,
+    compact,
     compact_session,
     connect,
     ensure_db,
     is_correction,
     prune,
+    rebuild,
     recent,
     record_correction,
     search,
@@ -371,7 +376,11 @@ class TestBackfill:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "none", loops_dir=tmp_path / "none", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "none",
+            loops_dir=tmp_path / "none",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["tools"] == 1
         assert recent(db, kind="tool")[0]["tool_name"] == "Bash"
@@ -382,15 +391,9 @@ class TestBackfill:
         assert counts == {
             "issues": 0,
             "loops": 0,
-            "tools": 0,
-            "messages": 0,
-            "assistant_messages": 0,
-            "skill_events": 0,
-            "sessions": 0,
-            "corrections": 0,
-            "summaries": 0,
             "snapshots": 0,
             "commits": 0,
+            "raw_events": 0,
         }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
@@ -409,7 +412,11 @@ class TestBackfill:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["sessions"] == 1
         conn = connect(db)
@@ -592,7 +599,11 @@ class TestBackfillMessages:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["messages"] == 1
         rows = recent(db, kind="message")
@@ -610,7 +621,13 @@ class TestBackfillMessages:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         rows = recent(db, kind="message")
         assert rows[0]["content"] == "first\nsecond"
 
@@ -632,7 +649,11 @@ class TestBackfillMessages:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["messages"] == 1
 
@@ -643,7 +664,13 @@ class TestBackfillMessages:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         results = search(db, query="needle")
         assert any(r["kind"] == "message" for r in results)
 
@@ -661,7 +688,11 @@ class TestBackfillMessages:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["corrections"] == 1
         rows = recent(db, kind="correction")
@@ -683,6 +714,7 @@ class TestBackfillMessages:
             loops_dir=tmp_path / "no",
             jsonl_files=[jsonl],
             config={"analytics": {"capture": {"corrections": False}}},
+            also_rebuild=True,
         )
         assert counts["corrections"] == 0
         assert len(recent(db, kind="correction")) == 0
@@ -695,8 +727,20 @@ class TestBackfillMessages:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         rows = recent(db, kind="correction")
         assert len(rows) == 1, "re-running backfill must not duplicate correction rows"
 
@@ -1209,7 +1253,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 18
+        assert SCHEMA_VERSION == 19
 
 
 class TestBackfillIncremental:
@@ -1255,28 +1299,27 @@ class TestBackfillIncremental:
         jsonl = self._make_tool_jsonl(tmp_path, "s1")
         db = tmp_path / "history.db"
         counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
-        assert counts["tools"] >= 1
+        assert counts["raw_events"] >= 1
 
     def test_filters_files_with_future_since_ts(self, tmp_path: Path) -> None:
         """Files with mtime before a far-future since_ts are excluded."""
         jsonl = self._make_tool_jsonl(tmp_path, "s2")
         db = tmp_path / "history.db"
         counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0)
-        assert counts["tools"] == 0
-        assert counts["messages"] == 0
+        assert counts["raw_events"] == 0
 
-    def test_writes_last_backfill_ts_after_run(self, tmp_path: Path) -> None:
+    def test_writes_last_raw_event_ts_after_run(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         backfill_incremental(db, jsonl_files=[], since_ts=0.0)
         conn = connect(db)
         try:
-            row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
         finally:
             conn.close()
         assert row is not None
         assert row["value"] is not None
 
-    def test_reads_last_backfill_ts_from_meta_when_since_none(self, tmp_path: Path) -> None:
+    def test_reads_last_raw_event_ts_from_meta_when_since_none(self, tmp_path: Path) -> None:
         """When since_ts=None, meta value controls the mtime filter."""
         jsonl = self._make_tool_jsonl(tmp_path, "s3")
         db = tmp_path / "history.db"
@@ -1284,7 +1327,7 @@ class TestBackfillIncremental:
         conn = connect(db)
         try:
             conn.execute(
-                "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
+                "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 ("9999-12-31T23:59:59Z",),
             )
@@ -1292,125 +1335,48 @@ class TestBackfillIncremental:
         finally:
             conn.close()
         counts = backfill_incremental(db, jsonl_files=[jsonl])
-        assert counts["tools"] == 0
+        assert counts["raw_events"] == 0
 
     def test_missing_file_is_skipped_silently(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         counts = backfill_incremental(
             db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0
         )
-        assert counts["tools"] == 0
+        assert counts["raw_events"] == 0
 
-    def test_messages_and_sessions_backfilled(self, tmp_path: Path) -> None:
+    def test_also_rebuild_materializes_messages_and_sessions(self, tmp_path: Path) -> None:
         jsonl = self._make_msg_jsonl(tmp_path, "s4")
         db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
         assert counts["messages"] >= 1
         assert counts["sessions"] >= 1
 
-    def test_sessions_inserted_from_jsonl(self, tmp_path: Path) -> None:
+    def test_without_also_rebuild_cache_tables_stay_empty(self, tmp_path: Path) -> None:
+        """backfill_incremental() is ingest-only by default (ENH-2581)."""
         jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
         db = tmp_path / "history.db"
         backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            sessions_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            tools_count = conn.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+            raw_count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert sessions_count == 0
+        assert tools_count == 0
+        assert raw_count == 1
+
+    def test_also_rebuild_materializes_sessions(self, tmp_path: Path) -> None:
+        jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
         conn = connect(db)
         try:
             count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
         finally:
             conn.close()
         assert count == 1
-
-
-class TestBackfillIncrementalAssistantMessages:
-    """Per-table watermark for assistant_messages (BUG-1882)."""
-
-    def _make_assistant_text_jsonl(self, directory: Path, session_id: str) -> Path:
-        jsonl = directory / f"{session_id}.jsonl"
-        jsonl.write_text(
-            json.dumps(
-                {
-                    "type": "assistant",
-                    "sessionId": session_id,
-                    "timestamp": "2026-05-22T00:00:00Z",
-                    "message": {"content": [{"type": "text", "text": "hello from assistant"}]},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        return jsonl
-
-    def test_populates_assistant_messages_on_first_run(self, tmp_path: Path) -> None:
-        """When last_backfill_ts_assistant_messages is absent, all files are processed."""
-        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-1")
-        db = tmp_path / "history.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
-        assert counts["assistant_messages"] >= 1
-        conn = connect(db)
-        try:
-            n = conn.execute("SELECT COUNT(*) FROM assistant_messages").fetchone()[0]
-        finally:
-            conn.close()
-        assert n >= 1
-
-    def test_per_table_watermark_written_after_run(self, tmp_path: Path) -> None:
-        """backfill_incremental writes last_backfill_ts_assistant_messages to meta."""
-        db = tmp_path / "history.db"
-        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
-        conn = connect(db)
-        try:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key = 'last_backfill_ts_assistant_messages'"
-            ).fetchone()
-        finally:
-            conn.close()
-        assert row is not None and row["value"] is not None
-
-    def test_historical_files_included_even_when_global_ts_excludes_them(
-        self, tmp_path: Path
-    ) -> None:
-        """Files older than global last_backfill_ts are still processed for assistant_messages
-        when last_backfill_ts_assistant_messages is absent (schema migration gap scenario)."""
-        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-hist")
-        db = tmp_path / "history.db"
-        ensure_db(db)
-        conn = connect(db)
-        try:
-            # Set global watermark to far future → global filter excludes the file
-            conn.execute(
-                "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                ("9999-12-31T23:59:59Z",),
-            )
-            # No last_backfill_ts_assistant_messages → per-table ts defaults to 0
-            conn.commit()
-        finally:
-            conn.close()
-
-        counts = backfill_incremental(db, jsonl_files=[jsonl])
-        # Global filter skips the file for other tables but assistant_messages uses its own ts
-        assert counts["assistant_messages"] >= 1
-        assert counts["tools"] == 0  # global ts still excludes tools
-
-    def test_assistant_messages_respects_own_watermark_on_subsequent_runs(
-        self, tmp_path: Path
-    ) -> None:
-        """Once last_backfill_ts_assistant_messages is set, future runs skip old files."""
-        jsonl = self._make_assistant_text_jsonl(tmp_path, "asst-2")
-        db = tmp_path / "history.db"
-        ensure_db(db)
-        conn = connect(db)
-        try:
-            conn.execute(
-                "INSERT INTO meta(key, value) VALUES('last_backfill_ts_assistant_messages', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                ("9999-12-31T23:59:59Z",),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
-        assert counts["assistant_messages"] == 0  # own watermark excludes the file
 
 
 class TestIsCorrectionHeuristic:
@@ -1600,7 +1566,11 @@ class TestBackfillSkillEvents:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -1618,7 +1588,11 @@ class TestBackfillSkillEvents:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -1634,7 +1608,11 @@ class TestBackfillSkillEvents:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["skill_events"] == 0
 
@@ -1647,7 +1625,11 @@ class TestBackfillSkillEvents:
         )
         db = tmp_path / "session.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["skill_events"] == 1
         rows = recent(db, kind="skill")
@@ -1661,7 +1643,13 @@ class TestBackfillSkillEvents:
             encoding="utf-8",
         )
         db = tmp_path / "session.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         results = search(db, query="ready")
         assert any(r["kind"] == "skill" for r in results)
 
@@ -1710,8 +1698,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1825,8 +1813,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1877,8 +1865,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1956,7 +1944,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 18
+        assert int(version[0]) == 19
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -1973,8 +1961,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2210,7 +2198,7 @@ class TestCompactSession:
             mock_run.return_value = _make_completed(
                 returncode=0, stdout=_llm_response(short_summary)
             )
-            counts = backfill(db, jsonl_files=[jsonl], config=config)
+            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True)
         assert counts["summaries"] >= 1
         conn = connect(db)
         try:
@@ -2241,7 +2229,9 @@ class TestCompactSession:
         }
         jsonl.write_text(json.dumps(record) + "\n", encoding="utf-8")
         db = tmp_path / "history.db"
-        counts = backfill(db, jsonl_files=[jsonl])  # no config → compaction.enabled=False
+        counts = backfill(
+            db, jsonl_files=[jsonl], also_rebuild=True
+        )  # no config → compaction.enabled=False
         assert counts["summaries"] == 0
         conn = connect(db)
         try:
@@ -2645,26 +2635,415 @@ class TestSummarizeBlock:
         assert "Message three" in prompt
 
 
+class TestRawEventsTable:
+    """v19 migration: raw_events is the JSONL source of truth (ENH-2581)."""
+
+    def test_table_and_columns_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(raw_events)")}
+        finally:
+            conn.close()
+        assert {
+            "id",
+            "ts",
+            "session_id",
+            "host",
+            "source_path",
+            "line_no",
+            "event_type",
+            "raw_line",
+            "parsed_json",
+            "compacted",
+            "summary_node_id",
+        } <= cols
+
+    def test_meta_seeds_present(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            keys = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT key FROM meta WHERE key IN"
+                    " ('last_raw_event_ts', 'last_rebuild_version')"
+                )
+            }
+        finally:
+            conn.close()
+        assert keys == {"last_raw_event_ts", "last_rebuild_version"}
+
+    def test_backfill_raw_events_ingests_one_row_per_line(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "history.db"
+        count = backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert count == 1
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT * FROM raw_events").fetchone()
+        finally:
+            conn.close()
+        assert row["event_type"] == "user"
+        assert row["session_id"] == "s1"
+        assert row["source_path"] == str(jsonl)
+        assert row["line_no"] == 1
+        assert row["compacted"] == 0
+        assert row["host"]  # populated from resolve_host().name
+
+    def test_dedup_on_source_path_and_line_no(self, tmp_path: Path) -> None:
+        """Re-ingesting the same file produces no duplicate raw_events rows."""
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1
+
+    def test_updates_last_raw_event_ts(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
+        finally:
+            conn.close()
+        assert row is not None and row["value"] is not None
+
+
+class TestRebuild:
+    """rebuild() wipes+re-derives the JSONL-derived cache tables from raw_events (ENH-2581)."""
+
+    def _seed_raw_events(self, tmp_path: Path, db: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from rebuild test"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+
+    def test_rebuild_materializes_from_raw_events_without_original_files(
+        self, tmp_path: Path
+    ) -> None:
+        """rebuild() replays raw_events rows even after the source JSONL is gone."""
+        db = tmp_path / "history.db"
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from rebuild test"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        jsonl.unlink()  # source file gone — rebuild must not need it
+
+        counts = rebuild(db)
+        assert counts["messages"] == 1
+        assert counts["sessions"] == 1
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+    def test_rebuild_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+    def test_rebuild_updates_last_rebuild_version(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_rebuild_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(row["value"]) == SCHEMA_VERSION
+
+    def test_rebuild_does_not_touch_out_of_scope_tables(self, tmp_path: Path) -> None:
+        """issue_events/loop_events/commit_events are outside raw_events's scope."""
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition) VALUES(?,?,?)",
+                ("2026-01-01T00:00:00Z", "ENH-2581", "open"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rebuild(db)
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute("SELECT COUNT(*) FROM issue_events").fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 1
+
+
+class TestCompact:
+    """compact() sweeps old raw_events into retention summaries (ENH-2581)."""
+
+    _RETENTION_CFG = {"analytics": {"retention": {"raw_event_max_age_days": 90}}}
+
+    def _insert_old_raw_event(self, conn: sqlite3.Connection, session_id: str = "s1") -> None:
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES('2020-01-01T00:00:00Z', ?, 'claude-code', 's.jsonl', 1, 'user', '{}', '{}')",
+            (session_id,),
+        )
+        conn.commit()
+
+    def test_compact_marks_rows_and_creates_retention_summary(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        result = compact(db, config=self._RETENTION_CFG)
+        assert result["compacted_rows"] == 1
+        assert result["summary_nodes"] == 1
+
+        conn2 = connect(db)
+        try:
+            row = conn2.execute("SELECT compacted, summary_node_id FROM raw_events").fetchone()
+            summary = conn2.execute(
+                "SELECT kind, session_id FROM summary_nodes WHERE id = ?",
+                (row["summary_node_id"],),
+            ).fetchone()
+        finally:
+            conn2.close()
+        assert row["compacted"] == 1
+        assert row["summary_node_id"] is not None
+        assert summary["kind"] == "retention"
+        assert summary["session_id"] == "s1"
+
+    def test_compact_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        compact(db, config=self._RETENTION_CFG)
+        result2 = compact(db, config=self._RETENTION_CFG)
+        assert result2["compacted_rows"] == 0  # already compacted, nothing left to sweep
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind = 'retention'"
+            ).fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 1
+
+    def test_and_prune_deletes_compacted_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        config = {
+            "analytics": {
+                "retention": {
+                    "raw_event_max_age_days": 90,
+                    "min_project_age_days": 0,
+                    "min_db_size_mb": 0,
+                }
+            }
+        }
+        result = compact(db, config=config, and_prune=True)
+        assert result["pruned_rows"] == 1
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 0
+
+    def test_null_max_age_is_noop(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        result = compact(db, config={"analytics": {"retention": {"raw_event_max_age_days": None}}})
+        assert result["compacted_rows"] == 0
+        assert result["summary_nodes"] == 0
+
+
+class TestFts5LeakFixed:
+    """rebuild() re-derives search_index from the current raw_events state (ENH-2581).
+
+    Regression coverage for the FTS5 leak: prune() used to delete cache-table
+    rows without ever touching search_index, leaving stale FTS rows pointing
+    at deleted events. Now prune() only deletes raw_events, and rebuild()
+    always wipes+re-populates search_index — so after prune+rebuild, the FTS
+    row count matches the surviving cache-table row count.
+    """
+
+    def test_fts_row_count_drops_to_match_after_prune_and_rebuild(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        jsonl = tmp_path / "s.jsonl"
+        records = [
+            {
+                "type": "user",
+                "sessionId": "s1",
+                "timestamp": f"2020-01-01T00:0{i}:00Z",
+                "message": {"content": f"message number {i}"},
+            }
+            for i in range(2)
+        ]
+        jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        rebuild(db)
+
+        conn = connect(db)
+        try:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind = 'message'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert before == 2
+
+        # Mark one raw_events row compacted and prune it away.
+        conn = connect(db)
+        try:
+            conn.execute("UPDATE raw_events SET compacted = 1 WHERE line_no = 1")
+            conn.commit()
+        finally:
+            conn.close()
+        prune(
+            db,
+            config={
+                "analytics": {
+                    "retention": {
+                        "raw_event_max_age_days": 0,
+                        "min_project_age_days": 0,
+                        "min_db_size_mb": 0,
+                    }
+                }
+            },
+        )
+
+        rebuild(db)
+
+        conn = connect(db)
+        try:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind = 'message'"
+            ).fetchone()[0]
+            message_count = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert after == 1
+        assert after == message_count
+
+
+class TestValidKindsCentralization:
+    """VALID_KINDS is the single source for recent()/search --kind (ENH-2581)."""
+
+    def test_every_valid_kind_has_a_kind_table_entry(self) -> None:
+        assert set(VALID_KINDS) == set(_KIND_TABLE.keys())
+
+    def test_recent_snapshot_kind_does_not_raise(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert recent(db, kind="snapshot") == []
+
+
 class TestPrune:
-    """Retention/compaction policy for history.db raw event tables (ENH-1906)."""
+    """Retention lifecycle for raw_events (ENH-1906, refactored onto raw_events by ENH-2581).
+
+    prune() only deletes raw_events rows already marked compacted=1 (see
+    TestCompact for compact()'s role in setting that flag) — an uncompacted row
+    is never deleted even past the cutoff, matching the compact -> prune
+    lifecycle order.
+    """
 
     # Config that disables both dual gates so pruning always runs in tests.
     _GATES_OPEN = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 0}}}
 
-    def _insert_old_row(
-        self, conn: sqlite3.Connection, table: str, ts: str = "2020-01-01T00:00:00Z"
+    def _insert_raw_event(
+        self,
+        conn: sqlite3.Connection,
+        ts: str = "2020-01-01T00:00:00Z",
+        *,
+        compacted: int = 1,
+        source_path: str = "s.jsonl",
+        line_no: int = 1,
     ) -> None:
-        """Insert a minimal row with an old timestamp into a prunable table."""
-        if table == "tool_events":
-            conn.execute("INSERT INTO tool_events(ts) VALUES(?)", (ts,))
-        elif table == "cli_events":
-            conn.execute(
-                "INSERT INTO cli_events(ts, binary, args) VALUES(?, 'll-session', '[]')", (ts,)
-            )
-        elif table == "file_events":
-            conn.execute("INSERT INTO file_events(ts) VALUES(?)", (ts,))
-        elif table == "message_events":
-            conn.execute("INSERT INTO message_events(ts) VALUES(?)", (ts,))
+        """Insert a minimal raw_events row, compacted by default (prune-eligible)."""
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json,"
+            " compacted)"
+            " VALUES(?, 's1', 'claude-code', ?, ?, 'user', '{}', '{}', ?)",
+            (ts, source_path, line_no, compacted),
+        )
         conn.commit()
 
     def _insert_session(self, conn: sqlite3.Connection, started_at: str) -> None:
@@ -2713,12 +3092,11 @@ class TestPrune:
         assert any("365d" in g for g in result["gate_unmet"])
         assert any("800MB" in g for g in result["gate_unmet"])
 
-    def test_prunes_old_rows_from_high_volume_tables(self, tmp_path: Path) -> None:
-        """Rows older than raw_event_max_age_days are deleted from all prunable tables."""
+    def test_prunes_old_compacted_raw_events(self, tmp_path: Path) -> None:
+        """Compacted rows older than raw_event_max_age_days are deleted."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        for table in ("tool_events", "cli_events", "file_events", "message_events"):
-            self._insert_old_row(conn, table)
+        self._insert_raw_event(conn, compacted=1)
         conn.close()
 
         config = {**self._GATES_OPEN, "analytics": {**self._GATES_OPEN["analytics"]}}
@@ -2726,32 +3104,45 @@ class TestPrune:
         result = prune(db, config=config)
 
         assert result["pruned"]
+        assert result["deleted"]["raw_events"] == 1
         conn2 = connect(db)
-        for table in ("tool_events", "cli_events", "file_events", "message_events"):
-            count = conn2.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            assert count == 0, f"{table} should be empty after prune"
-            assert result["deleted"][table] == 1
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         conn2.close()
+        assert count == 0
 
-    def test_retains_recent_rows(self, tmp_path: Path) -> None:
-        """Rows newer than the cutoff are kept after pruning."""
+    def test_uncompacted_rows_never_pruned(self, tmp_path: Path) -> None:
+        """Rows past the cutoff but not yet compacted survive — compact() must run first."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        self._insert_old_row(conn, "tool_events", "2020-01-01T00:00:00Z")
-        conn.execute("INSERT INTO tool_events(ts) VALUES(?)", ("2099-12-31T00:00:00Z",))
-        conn.commit()
+        self._insert_raw_event(conn, compacted=0)
         conn.close()
 
         result = prune(db, config=self._GATES_OPEN)
-        assert result["deleted"]["tool_events"] == 1
+        assert result["deleted"]["raw_events"] == 0
 
         conn2 = connect(db)
-        count = conn2.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 1
+
+    def test_retains_recent_rows(self, tmp_path: Path) -> None:
+        """Rows newer than the cutoff are kept after pruning even if compacted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, "2020-01-01T00:00:00Z", compacted=1, line_no=1)
+        self._insert_raw_event(conn, "2099-12-31T00:00:00Z", compacted=1, line_no=2)
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["deleted"]["raw_events"] == 1
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         conn2.close()
         assert count == 1  # only the future row survives
 
     def test_high_value_tables_never_pruned(self, tmp_path: Path) -> None:
-        """issue_events and user_corrections are never deleted by prune()."""
+        """issue_events and user_corrections are never touched by prune()."""
         db = tmp_path / "h.db"
         conn = connect(db)
         conn.execute(
@@ -2778,36 +3169,36 @@ class TestPrune:
         """Second prune call with no new rows reports 0 deleted."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        self._insert_old_row(conn, "tool_events")
+        self._insert_raw_event(conn, compacted=1)
         conn.close()
 
         prune(db, config=self._GATES_OPEN)
         result2 = prune(db, config=self._GATES_OPEN)
         assert result2["pruned"]
-        assert result2["deleted"].get("tool_events", 0) == 0
+        assert result2["deleted"].get("raw_events", 0) == 0
 
     def test_dry_run_does_not_delete_rows(self, tmp_path: Path) -> None:
         """dry_run=True counts rows without deleting them."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        self._insert_old_row(conn, "message_events")
+        self._insert_raw_event(conn, compacted=1)
         conn.close()
 
         result = prune(db, config=self._GATES_OPEN, dry_run=True)
         assert result["pruned"]
-        assert result["deleted"]["message_events"] == 1
+        assert result["deleted"]["raw_events"] == 1
         assert not result["vacuumed"]
 
         conn2 = connect(db)
-        count = conn2.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         conn2.close()
         assert count == 1  # row still present
 
     def test_null_raw_event_max_age_disables_pruning(self, tmp_path: Path) -> None:
-        """raw_event_max_age_days=null means no table is pruned."""
+        """raw_event_max_age_days=null means no row is pruned."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        self._insert_old_row(conn, "tool_events")
+        self._insert_raw_event(conn, compacted=1)
         conn.close()
 
         config = {
@@ -2824,7 +3215,7 @@ class TestPrune:
         assert result["deleted"] == {}
 
         conn2 = connect(db)
-        count = conn2.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         conn2.close()
         assert count == 1
 
@@ -2832,7 +3223,7 @@ class TestPrune:
         """vacuumed flag is set True when pruning runs and rows are deleted."""
         db = tmp_path / "h.db"
         conn = connect(db)
-        self._insert_old_row(conn, "cli_events")
+        self._insert_raw_event(conn, compacted=1)
         conn.close()
 
         result = prune(db, config=self._GATES_OPEN)
@@ -2861,8 +3252,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2902,8 +3293,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 18
-        assert int(row[0]) == 18
+        assert SCHEMA_VERSION == 19
+        assert int(row[0]) == 19
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2957,7 +3348,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 18
+        assert int(version[0]) == 19
         assert "issue_snapshots" in names
 
 

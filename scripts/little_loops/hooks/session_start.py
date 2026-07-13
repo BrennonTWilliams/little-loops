@@ -147,14 +147,32 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
+                # ENH-2581: pass --rebuild only when SCHEMA_VERSION has advanced past
+                # the last rebuild() run, so the (expensive) cache-table rebuild is
+                # opt-in-on-migration rather than run on every session start.
+                _worker_argv = [
+                    sys.executable,
+                    "-m",
+                    "little_loops.cli.backfill_worker",
+                    str(_db_path),
+                    _backfill_path,
+                ]
+                with contextlib.suppress(Exception):
+                    from little_loops.session_store import SCHEMA_VERSION, connect
+
+                    _rebuild_conn = connect(_db_path)
+                    try:
+                        _row = _rebuild_conn.execute(
+                            "SELECT value FROM meta WHERE key = 'last_rebuild_version'"
+                        ).fetchone()
+                    finally:
+                        _rebuild_conn.close()
+                    _last_rebuild_version = int(_row[0]) if (_row and _row[0]) else 0
+                    if _last_rebuild_version < SCHEMA_VERSION:
+                        _worker_argv.append("--rebuild")
+
                 subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-m",
-                        "little_loops.cli.backfill_worker",
-                        str(_db_path),
-                        _backfill_path,
-                    ],
+                    _worker_argv,
                     start_new_session=True,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,

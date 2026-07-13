@@ -60,12 +60,16 @@ from little_loops.host_runner import resolve_host
 __all__ = [
     "DEFAULT_DB_PATH",
     "SCHEMA_VERSION",
+    "VALID_KINDS",
     "ensure_db",
     "connect",
     "SQLiteTransport",
     "backfill",
     "backfill_snapshots",
     "backfill_incremental",
+    "backfill_raw_events",
+    "rebuild",
+    "compact",
     "mine_corrections_from_messages",
     "compact_session",
     "export_history",
@@ -99,22 +103,20 @@ def resolve_history_db(path: Path | str | None = None) -> Path:
     return Path(path) if path is not None else DEFAULT_DB_PATH
 
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
-_VALID_KINDS = frozenset(
-    {
-        "tool",
-        "file",
-        "issue",
-        "loop",
-        "correction",
-        "message",
-        "skill",
-        "cli",
-        "snapshot",
-        "commit",
-        "test_run",
-    }
+VALID_KINDS: tuple[str, ...] = (
+    "tool",
+    "file",
+    "issue",
+    "loop",
+    "correction",
+    "message",
+    "skill",
+    "cli",
+    "snapshot",
+    "commit",
+    "test_run",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -125,9 +127,29 @@ _KIND_TABLE = {
     "message": "message_events",
     "skill": "skill_events",
     "cli": "cli_events",
+    "snapshot": "issue_snapshots",
     "commit": "commit_events",
     "test_run": "test_run_events",
 }
+
+# Cache tables that intentionally have no VALID_KINDS entry — support tables
+# with no "recent by kind" concept (raw_events is the JSONL source-of-truth,
+# not itself a queryable kind; sessions/assistant_messages/summary_nodes/
+# summary_spans are structural, not event streams; meta/search_index are
+# infrastructure). ll-verify-kinds (ENH-2581) checks every other CREATE TABLE
+# in _MIGRATIONS has a _KIND_TABLE entry.
+_KINDLESS_TABLES = frozenset(
+    {
+        "meta",
+        "search_index",
+        "sessions",
+        "assistant_messages",
+        "summary_nodes",
+        "summary_spans",
+        "raw_events",
+        "correction_retirements",
+    }
+)
 
 # FSM event types the SQLiteTransport records as loop_events rows.
 _LOOP_EVENT_TYPES = frozenset(
@@ -541,6 +563,41 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_test_run_events_head_sha ON test_run_events(head_sha);
     CREATE INDEX IF NOT EXISTS idx_test_run_events_branch ON test_run_events(branch);
     CREATE INDEX IF NOT EXISTS idx_test_run_events_failed_count ON test_run_events(failed);
+    """,
+    # v19 (ENH-2581): raw_events — verbatim JSONL line + parsed fields, the
+    # source of truth for the JSONL-derived cache tables (tool_events,
+    # message_events, assistant_messages, skill_events, sessions). backfill()
+    # ingests here only; rebuild() wipes+re-derives the cache tables from this
+    # table. compact()/prune() operate on raw_events for the retention
+    # lifecycle (compacted=1 marks rows summarized and eligible for deletion).
+    # The three per-table watermarks (last_backfill_ts,
+    # last_backfill_ts_assistant_messages, last_backfill_ts_skill_events)
+    # collapse to the single last_raw_event_ts meta key.
+    """
+    CREATE TABLE IF NOT EXISTS raw_events (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts          TEXT NOT NULL,
+        session_id  TEXT,
+        host        TEXT NOT NULL,
+        source_path TEXT NOT NULL,
+        line_no     INTEGER NOT NULL,
+        event_type  TEXT NOT NULL,
+        raw_line    TEXT NOT NULL,
+        parsed_json TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_raw_events_dedup
+        ON raw_events(source_path, line_no);
+    CREATE INDEX IF NOT EXISTS idx_raw_events_session_ts
+        ON raw_events(session_id, ts);
+    CREATE INDEX IF NOT EXISTS idx_raw_events_host_ts
+        ON raw_events(host, ts);
+    ALTER TABLE raw_events ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE raw_events ADD COLUMN summary_node_id INTEGER
+        REFERENCES summary_nodes(id);
+    INSERT OR IGNORE INTO meta(key, value) VALUES('last_raw_event_ts', NULL);
+    INSERT OR IGNORE INTO meta(key, value) VALUES('last_rebuild_version', NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_nodes_retention_dedup
+        ON summary_nodes(session_id, ts_start, ts_end) WHERE kind = 'retention';
     """,
 ]
 
@@ -1275,8 +1332,8 @@ def recent(
 
     Kinds: tool, file, issue, loop, correction, message, skill, cli, commit, test_run.
     """
-    if kind not in _VALID_KINDS:
-        raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(_VALID_KINDS)}")
+    if kind not in VALID_KINDS:
+        raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(VALID_KINDS)}")
     table = _KIND_TABLE[kind]
     conn = connect(db)
     try:
@@ -1617,10 +1674,20 @@ def _backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int:
     return count
 
 
-def _backfill_tool_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
-    """Seed ``tool_events`` from assistant tool-use blocks in session JSONL files."""
-    count = 0
-    for jsonl_file in jsonl_files:
+def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]:
+    """Yield ``(raw_line, source_label)`` pairs from JSONL files or a raw_events cursor.
+
+    Lets the JSONL-derived ``_backfill_*`` functions accept either a legacy
+    ``list[Path]`` (re-reads files line-by-line) or a ``raw_events`` cursor
+    selecting ``(raw_line, source_path)`` rows in that order — the
+    :func:`rebuild` path, replaying previously-ingested lines instead of
+    re-reading the filesystem (ENH-2581).
+    """
+    if isinstance(source, sqlite3.Cursor):
+        for row in source:
+            yield row[0], row[1]
+        return
+    for jsonl_file in source:
         try:
             handle = jsonl_file.open(encoding="utf-8")
         except OSError:
@@ -1628,103 +1695,107 @@ def _backfill_tool_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> 
         with handle:
             for line in handle:
                 line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if record.get("type") != "assistant":
-                    continue
-                session_id = record.get("sessionId")
-                ts = str(record.get("timestamp") or "")
-                content = record.get("message", {}).get("content", [])
-                if not isinstance(content, list):
-                    continue
-                for block in content:
-                    if not isinstance(block, dict) or block.get("type") != "tool_use":
-                        continue
-                    tool_name = str(block.get("name", ""))
-                    args = block.get("input", {})
-                    conn.execute(
-                        "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                        "result_size, bytes_in, bytes_out, cache_hit) "
-                        "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                        (ts, session_id, tool_name, _hash_args(args), None, None, None, None),
-                    )
-                    _index(
-                        conn,
-                        content=tool_name,
-                        kind="tool",
-                        ref=tool_name,
-                        anchor=str(jsonl_file),
-                        ts=ts,
-                    )
-                    count += 1
+                if line:
+                    yield line, str(jsonl_file)
+
+
+def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+    """Seed ``tool_events`` from assistant tool-use blocks in session JSONL files.
+
+    *source* is either a list of on-disk JSONL files (legacy) or a
+    ``raw_events`` cursor (the :func:`rebuild` path) — see :func:`_iter_events`.
+    """
+    count = 0
+    for line, source_label in _iter_events(source):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("type") != "assistant":
+            continue
+        session_id = record.get("sessionId")
+        ts = str(record.get("timestamp") or "")
+        content = record.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            tool_name = str(block.get("name", ""))
+            args = block.get("input", {})
+            conn.execute(
+                "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
+                "result_size, bytes_in, bytes_out, cache_hit) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (ts, session_id, tool_name, _hash_args(args), None, None, None, None),
+            )
+            _index(
+                conn,
+                content=tool_name,
+                kind="tool",
+                ref=tool_name,
+                anchor=source_label,
+                ts=ts,
+            )
+            count += 1
     return count
 
 
-def _backfill_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+def _backfill_messages(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``message_events`` from user blocks in session JSONL files.
 
     Mirrors :func:`_backfill_tool_events` but selects ``type == "user"`` records
     and inserts the user's textual content. Used by analyze_workflows() so
     workflow analysis can read message bodies from the DB instead of a JSONL
-    file (ENH-1621).
+    file (ENH-1621). *source* accepts either JSONL files or a raw_events
+    cursor — see :func:`_iter_events`.
     """
     count = 0
-    for jsonl_file in jsonl_files:
+    for line, source_label in _iter_events(source):
         try:
-            handle = jsonl_file.open(encoding="utf-8")
-        except OSError:
+            record = json.loads(line)
+        except json.JSONDecodeError:
             continue
-        with handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if record.get("type") != "user":
-                    continue
-                session_id = record.get("sessionId")
-                ts = str(record.get("timestamp") or "")
-                # The user message body lives at message.content; it may be a
-                # plain string or a list of content blocks. We persist a text
-                # rendering — list blocks are concatenated by their "text"
-                # field so analyze_workflows() can run its regexes over it.
-                content = record.get("message", {}).get("content", "")
-                if isinstance(content, list):
-                    parts: list[str] = []
-                    for block in content:
-                        if isinstance(block, dict) and isinstance(block.get("text"), str):
-                            parts.append(block["text"])
-                    text = "\n".join(parts)
-                elif isinstance(content, str):
-                    text = content
-                else:
-                    text = ""
-                if not text.strip():
-                    continue
-                conn.execute(
-                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
-                    (ts, str(session_id) if session_id else None, text),
-                )
-                _index(
-                    conn,
-                    content=text[:512],
-                    kind="message",
-                    ref=str(session_id) if session_id else "",
-                    anchor=str(jsonl_file),
-                    ts=ts,
-                )
-                count += 1
+        if record.get("type") != "user":
+            continue
+        session_id = record.get("sessionId")
+        ts = str(record.get("timestamp") or "")
+        # The user message body lives at message.content; it may be a
+        # plain string or a list of content blocks. We persist a text
+        # rendering — list blocks are concatenated by their "text"
+        # field so analyze_workflows() can run its regexes over it.
+        content = record.get("message", {}).get("content", "")
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, dict) and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+            text = "\n".join(parts)
+        elif isinstance(content, str):
+            text = content
+        else:
+            text = ""
+        if not text.strip():
+            continue
+        conn.execute(
+            "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+            (ts, str(session_id) if session_id else None, text),
+        )
+        _index(
+            conn,
+            content=text[:512],
+            kind="message",
+            ref=str(session_id) if session_id else "",
+            anchor=source_label,
+            ts=ts,
+        )
+        count += 1
     return count
 
 
-def _backfill_assistant_messages(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+def _backfill_assistant_messages(
+    conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor
+) -> int:
     """Seed ``assistant_messages`` from assistant blocks in session JSONL files.
 
     Mirrors :func:`_backfill_messages` but selects ``type == "assistant"`` records
@@ -1735,61 +1806,50 @@ def _backfill_assistant_messages(conn: sqlite3.Connection, jsonl_files: list[Pat
 
     Idempotent: INSERT OR IGNORE prevents duplicate rows on repeated backfill.
     Depends on the ``sessions`` table (v4 / ENH-1710) for the session_id→JSONL
-    mapping used by ``conversation_turns()`` to JOIN on session_id.
+    mapping used by ``conversation_turns()`` to JOIN on session_id. *source*
+    accepts either JSONL files or a raw_events cursor — see :func:`_iter_events`.
     """
     count = 0
-    for jsonl_file in jsonl_files:
+    for line, source_label in _iter_events(source):
         try:
-            handle = jsonl_file.open(encoding="utf-8")
-        except OSError:
+            record = json.loads(line)
+        except json.JSONDecodeError:
             continue
-        session_id_from_file: str | None = None
-        with handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if record.get("type") != "assistant":
-                    continue
-                session_id = record.get("sessionId")
-                if session_id_from_file is None and session_id:
-                    session_id_from_file = str(session_id)
-                ts = str(record.get("timestamp") or "")
-                content = record.get("message", {}).get("content", [])
-                if not isinstance(content, list):
-                    continue
-                # Collect text blocks and count tool_use blocks
-                text_blocks: list[str] = []
-                tool_use_count = 0
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get("type") == "text":
-                            txt = block.get("text", "").strip()
-                            if txt:
-                                text_blocks.append(txt)
-                        elif block.get("type") == "tool_use":
-                            tool_use_count += 1
-                if not text_blocks:
-                    continue
-                concatenated = "\n\n".join(text_blocks)
-                conn.execute(
-                    "INSERT OR IGNORE INTO assistant_messages(ts, session_id, content, tool_use_count)"
-                    " VALUES(?, ?, ?, ?)",
-                    (ts, str(session_id) if session_id else None, concatenated, tool_use_count),
-                )
-                _index(
-                    conn,
-                    content=concatenated[:512],
-                    kind="message",
-                    ref=str(session_id) if session_id else "",
-                    anchor=str(jsonl_file),
-                    ts=ts,
-                )
-                count += 1
+        if record.get("type") != "assistant":
+            continue
+        session_id = record.get("sessionId")
+        ts = str(record.get("timestamp") or "")
+        content = record.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        # Collect text blocks and count tool_use blocks
+        text_blocks: list[str] = []
+        tool_use_count = 0
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    txt = block.get("text", "").strip()
+                    if txt:
+                        text_blocks.append(txt)
+                elif block.get("type") == "tool_use":
+                    tool_use_count += 1
+        if not text_blocks:
+            continue
+        concatenated = "\n\n".join(text_blocks)
+        conn.execute(
+            "INSERT OR IGNORE INTO assistant_messages(ts, session_id, content, tool_use_count)"
+            " VALUES(?, ?, ?, ?)",
+            (ts, str(session_id) if session_id else None, concatenated, tool_use_count),
+        )
+        _index(
+            conn,
+            content=concatenated[:512],
+            kind="message",
+            ref=str(session_id) if session_id else "",
+            anchor=source_label,
+            ts=ts,
+        )
+        count += 1
     return count
 
 
@@ -1797,69 +1857,61 @@ _BACKFILL_SKILL_RE = re.compile(r"<command-name>/ll:(\S+)")
 _BACKFILL_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 
 
-def _backfill_skill_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``skill_events`` from /ll: invocations in user blocks of session JSONL files.
 
     Mirrors :func:`_backfill_messages` but selects ``type == "user"`` records and
     matches the ``<command-name>/ll:<name></command-name>`` signal. Populates the
     ``skill_events`` table that was added in schema v7 (ENH-1833) but never extended
     to include a backfill path (BUG-2283). Used by ``ll-logs stats`` so pre-init
-    invocations are reflected in skill invocation counts.
+    invocations are reflected in skill invocation counts. *source* accepts either
+    JSONL files or a raw_events cursor — see :func:`_iter_events`.
     """
     count = 0
-    for jsonl_file in jsonl_files:
+    for line, source_label in _iter_events(source):
         try:
-            handle = jsonl_file.open(encoding="utf-8")
-        except OSError:
+            record = json.loads(line)
+        except json.JSONDecodeError:
             continue
-        with handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if record.get("type") != "user":
-                    continue
-                session_id = record.get("sessionId")
-                ts = str(record.get("timestamp") or "")
-                content = record.get("message", {}).get("content", "")
-                if isinstance(content, list):
-                    text = ""
-                    for block in content:
-                        if isinstance(block, dict):
-                            text = block.get("text", "")
-                            if text:
-                                break
-                elif isinstance(content, str):
-                    text = content
-                else:
-                    text = ""
-                if not text:
-                    continue
-                m = _BACKFILL_SKILL_RE.search(text)
-                if not m:
-                    continue
-                skill_name = m.group(1)
-                if skill_name.endswith("</command-name>"):
-                    skill_name = skill_name[: -len("</command-name>")]
-                args_m = _BACKFILL_ARGS_RE.search(text)
-                args = args_m.group(1).strip()[:200] if args_m else ""
-                conn.execute(
-                    "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
-                    (ts, str(session_id) if session_id else None, skill_name, args),
-                )
-                _index(
-                    conn,
-                    content=skill_name,
-                    kind="skill",
-                    ref=str(session_id) if session_id else "",
-                    anchor=str(jsonl_file),
-                    ts=ts,
-                )
-                count += 1
+        if record.get("type") != "user":
+            continue
+        session_id = record.get("sessionId")
+        ts = str(record.get("timestamp") or "")
+        content = record.get("message", {}).get("content", "")
+        if isinstance(content, list):
+            text = ""
+            for block in content:
+                if isinstance(block, dict):
+                    text = block.get("text", "")
+                    if text:
+                        break
+        elif isinstance(content, str):
+            text = content
+        else:
+            text = ""
+        if not text:
+            continue
+        m = _BACKFILL_SKILL_RE.search(text)
+        if not m:
+            continue
+        skill_name = m.group(1)
+        if skill_name.endswith("</command-name>"):
+            skill_name = skill_name[: -len("</command-name>")]
+        args_m = _BACKFILL_ARGS_RE.search(text)
+        args = args_m.group(1).strip()[:200] if args_m else ""
+        conn.execute(
+            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+            (ts, str(session_id) if session_id else None, skill_name, args),
+        )
+        _index(
+            conn,
+            content=skill_name,
+            kind="skill",
+            ref=str(session_id) if session_id else "",
+            anchor=source_label,
+            ts=ts,
+        )
+        count += 1
     return count
 
 
@@ -2374,36 +2426,34 @@ def compact_session(
     return result
 
 
-def _backfill_sessions(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``sessions`` table by mapping each JSONL file to its session_id.
 
-    Reads just enough of each file to extract the first ``sessionId`` value,
-    then inserts one row per unique session. ``INSERT OR IGNORE`` + PRIMARY KEY
-    makes repeated calls idempotent (ENH-1710).
+    Reads just enough of each source to extract the first ``sessionId`` value,
+    then inserts one row per unique source. ``INSERT OR IGNORE`` + PRIMARY KEY
+    makes repeated calls idempotent (ENH-1710). *source* accepts either JSONL
+    files or a raw_events cursor — see :func:`_iter_events`. Unlike the legacy
+    per-file loop this no longer short-circuits to the next physical file on
+    the first hit (the cursor path has no file boundary), instead skipping
+    further parse attempts for a source once its session_id is known.
     """
     count = 0
-    for jsonl_file in jsonl_files:
-        try:
-            handle = jsonl_file.open(encoding="utf-8")
-        except OSError:
+    seen: set[str] = set()
+    for line, source_label in _iter_events(source):
+        if source_label in seen:
             continue
-        with handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                session_id = record.get("sessionId")
-                if session_id:
-                    cur = conn.execute(
-                        "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
-                        (str(session_id), str(jsonl_file)),
-                    )
-                    count += cur.rowcount
-                    break  # one session_id per file is sufficient
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        session_id = record.get("sessionId")
+        if session_id:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (str(session_id), source_label),
+            )
+            count += cur.rowcount
+            seen.add(source_label)
     return count
 
 
@@ -2413,6 +2463,166 @@ def _mtime(path: Path) -> float:
         return path.stat().st_mtime
     except OSError:
         return 0.0
+
+
+def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+    """Parse *jsonl_files* and INSERT OR IGNORE one row per line into raw_events.
+
+    Idempotent via the ``(source_path, line_no)`` dedup index. ``event_type``
+    is the record's own ``type`` field (``"user"``, ``"assistant"``, ...) —
+    one JSONL line can feed multiple derived cache rows (e.g. an assistant
+    line yields both an assistant_messages row and zero-or-more tool_events
+    rows), so raw_events stores the source line verbatim rather than a
+    cache-table kind (ENH-2581).
+    """
+    host = resolve_host().name
+    count = 0
+    for jsonl_file in jsonl_files:
+        try:
+            handle = jsonl_file.open(encoding="utf-8")
+        except OSError:
+            continue
+        source_path = str(jsonl_file)
+        with handle:
+            for line_no, line in enumerate(handle, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO raw_events"
+                    "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+                    " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(record.get("timestamp") or ""),
+                        record.get("sessionId"),
+                        host,
+                        source_path,
+                        line_no,
+                        str(record.get("type") or "unknown"),
+                        line,
+                        json.dumps(record),
+                    ),
+                )
+                count += cur.rowcount
+    return count
+
+
+def backfill_raw_events(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    jsonl_files: list[Path],
+    since_ts: float | None = None,
+) -> int:
+    """Parse JSONL files and INSERT OR IGNORE rows into raw_events.
+
+    Idempotent via ``INSERT OR IGNORE`` on ``(source_path, line_no)``. Filters
+    *jsonl_files* by mtime >= *since_ts* when given (``None`` processes every
+    provided file). Updates the ``last_raw_event_ts`` meta key on success —
+    the single watermark that replaces ``last_backfill_ts`` /
+    ``last_backfill_ts_assistant_messages`` / ``last_backfill_ts_skill_events``
+    (ENH-2581). Returns the count of new rows inserted.
+    """
+    conn = connect(db)
+    try:
+        filtered = (
+            [f for f in jsonl_files if _mtime(f) >= since_ts]
+            if since_ts is not None
+            else jsonl_files
+        )
+        count = _backfill_raw_events(conn, filtered)
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_now(),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return count
+
+
+# Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
+# cli_events/file_events/test_run_events/issue_events/loop_events/commit_events/
+# issue_snapshots — those have no raw_events-backed _backfill_* path (they're
+# either live-write-only or sourced from .issues/.loops/git log, out of this
+# issue's scope; see ENH-2581 management plan). Wiping them here with no
+# re-derivation path would be unrecoverable data loss.
+_REBUILD_TABLES = (
+    "tool_events",
+    "message_events",
+    "assistant_messages",
+    "skill_events",
+    "sessions",
+    "user_corrections",
+    "summary_nodes",
+    "summary_spans",
+)
+_REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction")
+
+
+def rebuild(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+    max_sessions: int | None = None,
+) -> dict[str, int]:
+    """Wipe and re-derive the JSONL-sourced cache tables from ``raw_events``.
+
+    Wipes ``_REBUILD_TABLES`` plus the ``search_index`` rows for
+    ``_REBUILD_SEARCH_KINDS``, then re-derives them by replaying every
+    ``raw_events`` row through the same ``_backfill_*`` parsers the legacy
+    JSONL path uses (via :func:`_iter_events`). Idempotent — safe to call
+    repeatedly. Updates the ``last_rebuild_version`` meta key to
+    ``SCHEMA_VERSION`` on success.
+
+    Issue/loop/commit/cli/file/test_run tables are outside ``raw_events``'s
+    scope for this issue (ENH-2581) and are left untouched.
+    """
+    conn = connect(db)
+    counts: dict[str, int] = {
+        "sessions": 0,
+        "tools": 0,
+        "messages": 0,
+        "assistant_messages": 0,
+        "skill_events": 0,
+        "corrections": 0,
+        "summaries": 0,
+    }
+    try:
+        for table in _REBUILD_TABLES:
+            conn.execute(f"DELETE FROM {table}")
+        placeholders = ",".join(["?"] * len(_REBUILD_SEARCH_KINDS))
+        conn.execute(
+            f"DELETE FROM search_index WHERE kind IN ({placeholders})",
+            _REBUILD_SEARCH_KINDS,
+        )
+
+        def _raw_events_cursor() -> sqlite3.Cursor:
+            return conn.execute("SELECT raw_line, source_path FROM raw_events ORDER BY id")
+
+        # sessions first: assistant_messages/backfill order elsewhere relies on
+        # the sessions table already being populated (ENH-1710).
+        counts["sessions"] = _backfill_sessions(conn, _raw_events_cursor())
+        counts["tools"] = _backfill_tool_events(conn, _raw_events_cursor())
+        counts["messages"] = _backfill_messages(conn, _raw_events_cursor())
+        counts["assistant_messages"] = _backfill_assistant_messages(conn, _raw_events_cursor())
+        counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())
+        counts["corrections"] = mine_corrections_from_messages(conn, config)
+        counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
+
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('last_rebuild_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (str(SCHEMA_VERSION),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return counts
 
 
 def backfill_snapshots(
@@ -2447,14 +2657,20 @@ def backfill(
     config: dict | None = None,
     max_sessions: int | None = None,
     repo_root: Path | None = None,
+    also_rebuild: bool = False,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
-    Reads issue-file frontmatter, FSM loop-state JSON, git commit history
-    (ENH-2458; only when *repo_root* is given and contains ``.git``), and
-    (optionally) session JSONL tool-use blocks plus user-message blocks.
-    Returns a per-kind count of rows inserted. Sources that are absent are
-    skipped silently.
+    Reads issue-file frontmatter, FSM loop-state JSON, and git commit history
+    (ENH-2458; only when *repo_root* is given and contains ``.git``) directly.
+    Session JSONL lines are ingested into ``raw_events`` only (ENH-2581) — the
+    JSONL-derived cache tables (``tool_events``, ``message_events``,
+    ``assistant_messages``, ``skill_events``, ``sessions``) are **not**
+    populated here; call :func:`rebuild` (or pass ``also_rebuild=True`` to do
+    both in one call) to materialize them from ``raw_events``.
+
+    Returns a per-kind count of rows inserted/derived. Sources that are
+    absent are skipped silently.
     """
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
@@ -2462,15 +2678,9 @@ def backfill(
     counts: dict[str, int] = {
         "issues": 0,
         "loops": 0,
-        "tools": 0,
-        "messages": 0,
-        "assistant_messages": 0,
-        "sessions": 0,
-        "corrections": 0,
-        "summaries": 0,
         "snapshots": 0,
-        "skill_events": 0,
         "commits": 0,
+        "raw_events": 0,
     }
     try:
         if issues_dir.is_dir():
@@ -2481,16 +2691,19 @@ def backfill(
         if repo_root is not None and (repo_root / ".git").exists():
             counts["commits"] = _backfill_commit_events(conn, repo_root)
         if jsonl_files:
-            counts["tools"] = _backfill_tool_events(conn, jsonl_files)
-            counts["messages"] = _backfill_messages(conn, jsonl_files)
-            counts["assistant_messages"] = _backfill_assistant_messages(conn, jsonl_files)
-            counts["skill_events"] = _backfill_skill_events(conn, jsonl_files)
-            counts["sessions"] = _backfill_sessions(conn, jsonl_files)
-        counts["corrections"] = mine_corrections_from_messages(conn, config)
-        counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
+            counts["raw_events"] = _backfill_raw_events(conn, jsonl_files)
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_now(),),
+        )
         conn.commit()
     finally:
         conn.close()
+
+    if also_rebuild:
+        counts.update(rebuild(db, config=config, max_sessions=max_sessions))
+
     return counts
 
 
@@ -2500,113 +2713,139 @@ def backfill_incremental(
     jsonl_files: list[Path],
     since_ts: float | None = None,
     config: dict | None = None,
+    also_rebuild: bool = False,
 ) -> dict[str, int]:
-    """Backfill only JSONL files modified after *since_ts*.
+    """Ingest JSONL files modified after *since_ts* into ``raw_events``.
 
-    If *since_ts* is ``None``, reads ``last_backfill_ts`` from the ``meta``
+    Thin wrapper over :func:`backfill_raw_events` (ENH-2581): ingest only.
+    The three legacy per-table watermarks (``last_backfill_ts``,
+    ``last_backfill_ts_assistant_messages``, ``last_backfill_ts_skill_events``)
+    collapse to the single ``last_raw_event_ts`` key maintained by
+    :func:`backfill_raw_events`.
+
+    If *since_ts* is ``None``, reads ``last_raw_event_ts`` from the ``meta``
     table (defaults to 0.0 — all files — when the key is absent or NULL).
-    On success, writes the current UTC time as the new ``last_backfill_ts``
-    so the next call automatically skips already-processed files.
+
+    Pass ``also_rebuild=True`` to materialize the JSONL-derived cache tables
+    from ``raw_events`` afterward in the same call — used by the
+    ``SessionStart`` hook worker when ``SCHEMA_VERSION`` has changed (see
+    ``cli/backfill_worker.py --rebuild``).
 
     Issues and loop-state JSON are NOT backfilled here; this variant is
     JSONL-only and designed for low-latency background use in session hooks.
     Errors are not suppressed — the caller (session hook) catches them and
     logs a warning.
     """
-    conn = connect(db)
-    counts: dict[str, int] = {
-        "tools": 0,
-        "messages": 0,
-        "assistant_messages": 0,
-        "skill_events": 0,
-        "sessions": 0,
-        "corrections": 0,
-    }
-    try:
-        if since_ts is None:
-            row = conn.execute("SELECT value FROM meta WHERE key = 'last_backfill_ts'").fetchone()
-            raw = row[0] if (row and row[0]) else None
-            if raw:
-                try:
-                    since_ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
-                except ValueError:
-                    since_ts = 0.0
-            else:
+    if since_ts is None:
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
+        finally:
+            conn.close()
+        raw = row[0] if (row and row[0]) else None
+        if raw:
+            try:
+                since_ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+            except ValueError:
                 since_ts = 0.0
-
-        filtered = [f for f in jsonl_files if _mtime(f) >= since_ts]
-        if filtered:
-            counts["sessions"] = _backfill_sessions(conn, filtered)
-            counts["tools"] = _backfill_tool_events(conn, filtered)
-            counts["messages"] = _backfill_messages(conn, filtered)
-
-        # Per-table watermark for assistant_messages (added in v11 / ENH-1942).
-        # When the key is absent the table has never been backfilled (e.g. it
-        # was added by a schema migration after the last full backfill), so we
-        # reprocess ALL provided files rather than only the globally-filtered
-        # subset. This self-heals the historical gap on the first incremental
-        # run after the migration without requiring a manual full backfill.
-        _ASST_KEY = "last_backfill_ts_assistant_messages"
-        _asst_row = conn.execute("SELECT value FROM meta WHERE key = ?", (_ASST_KEY,)).fetchone()
-        _asst_raw = _asst_row[0] if (_asst_row and _asst_row[0]) else None
-        if _asst_raw:
-            try:
-                _asst_since = datetime.fromisoformat(
-                    str(_asst_raw).replace("Z", "+00:00")
-                ).timestamp()
-            except ValueError:
-                _asst_since = 0.0
         else:
-            _asst_since = 0.0  # never backfilled → process all files
+            since_ts = 0.0
 
-        asst_filtered = [f for f in jsonl_files if _mtime(f) >= _asst_since]
-        if asst_filtered:
-            counts["assistant_messages"] = _backfill_assistant_messages(conn, asst_filtered)
-        conn.execute(
-            "INSERT INTO meta(key, value) VALUES(?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (_ASST_KEY, _now()),
-        )
-
-        # Per-table watermark for skill_events (added in v7 / ENH-1833, backfill
-        # path added in BUG-2283). Same self-healing logic as assistant_messages:
-        # absent key → reprocess all files on the first incremental run after deploy.
-        _SKILL_KEY = "last_backfill_ts_skill_events"
-        _skill_row = conn.execute("SELECT value FROM meta WHERE key = ?", (_SKILL_KEY,)).fetchone()
-        _skill_raw = _skill_row[0] if (_skill_row and _skill_row[0]) else None
-        if _skill_raw:
-            try:
-                _skill_since = datetime.fromisoformat(
-                    str(_skill_raw).replace("Z", "+00:00")
-                ).timestamp()
-            except ValueError:
-                _skill_since = 0.0
-        else:
-            _skill_since = 0.0  # never backfilled → process all files
-
-        skill_filtered = [f for f in jsonl_files if _mtime(f) >= _skill_since]
-        if skill_filtered:
-            counts["skill_events"] = _backfill_skill_events(conn, skill_filtered)
-        conn.execute(
-            "INSERT INTO meta(key, value) VALUES(?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (_SKILL_KEY, _now()),
-        )
-
-        counts["corrections"] = mine_corrections_from_messages(conn, config)
-        conn.execute(
-            "INSERT INTO meta(key, value) VALUES('last_backfill_ts', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (_now(),),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    raw_count = backfill_raw_events(db, jsonl_files=jsonl_files, since_ts=since_ts)
+    counts: dict[str, int] = {"raw_events": raw_count}
+    if also_rebuild:
+        counts.update(rebuild(db, config=config))
     return counts
 
 
-# High-volume tables eligible for age-based pruning.
-_PRUNABLE_TABLES = ("tool_events", "cli_events", "file_events", "message_events")
+def compact(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+    and_prune: bool = False,
+) -> dict[str, int]:
+    """Sweep old ``raw_events`` rows into per-session retention summaries.
+
+    Reads ``analytics.retention.raw_event_max_age_days`` (default 90) from
+    *config*. Groups eligible (uncompacted, past-cutoff) ``raw_events`` rows by
+    ``session_id`` and inserts one ``kind='retention'`` ``summary_nodes`` row
+    per session — a deterministic one-liner; this lifecycle path makes no
+    host-CLI call, unlike the LLM-backed ``history.compaction`` feature
+    (:func:`_compact_sessions`, which uses ``kind='condensed'`` — a distinct
+    kind so the two features' dedup indexes never collide). Marks the swept
+    rows ``compacted=1`` with ``summary_node_id`` set so :func:`prune` can
+    delete them safely later. Idempotent via
+    ``idx_summary_nodes_retention_dedup``.
+
+    If *and_prune*, calls :func:`prune` afterward and folds its deleted-row
+    count into the return value.
+    """
+    from little_loops.config.features import RetentionConfig
+
+    raw = (config or {}).get("analytics", {}).get("retention", {})
+    retention_cfg = RetentionConfig.from_dict(raw)
+    result: dict[str, int] = {"compacted_rows": 0, "summary_nodes": 0, "pruned_rows": 0}
+
+    if retention_cfg.raw_event_max_age_days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
+        cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT id, ts, session_id FROM raw_events"
+                " WHERE ts < ? AND compacted = 0 ORDER BY session_id, ts",
+                (cutoff_str,),
+            ).fetchall()
+
+            by_session: dict[str | None, list[sqlite3.Row]] = {}
+            for row in rows:
+                by_session.setdefault(row["session_id"], []).append(row)
+
+            now = _now()
+            for session_id, session_rows in by_session.items():
+                ts_start = session_rows[0]["ts"]
+                ts_end = session_rows[-1]["ts"]
+                summary = (
+                    f"Compacted {len(session_rows)} raw event(s) for session "
+                    f"{session_id or '(unknown)'} between {ts_start} and {ts_end}."
+                )
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO summary_nodes"
+                    "(kind, content, tokens, session_id, ts_start, ts_end, created_at)"
+                    " VALUES('retention', ?, ?, ?, ?, ?, ?)",
+                    (summary, _estimate_tokens(summary), session_id, ts_start, ts_end, now),
+                )
+                if cursor.rowcount:
+                    summary_node_id = cursor.lastrowid
+                    result["summary_nodes"] += 1
+                else:
+                    existing = conn.execute(
+                        "SELECT id FROM summary_nodes"
+                        " WHERE kind='retention' AND session_id IS ?"
+                        " AND ts_start = ? AND ts_end = ?",
+                        (session_id, ts_start, ts_end),
+                    ).fetchone()
+                    summary_node_id = existing[0] if existing else None
+
+                ids = [r["id"] for r in session_rows]
+                placeholders = ",".join(["?"] * len(ids))
+                conn.execute(
+                    f"UPDATE raw_events SET compacted = 1, summary_node_id = ?"
+                    f" WHERE id IN ({placeholders})",
+                    [summary_node_id, *ids],
+                )
+                result["compacted_rows"] += len(ids)
+
+            conn.commit()
+        finally:
+            conn.close()
+
+    if and_prune:
+        prune_result = prune(db, config=config)
+        result["pruned_rows"] = sum(prune_result.get("deleted", {}).values())
+
+    return result
 
 
 def prune(
@@ -2615,15 +2854,18 @@ def prune(
     config: dict | None = None,
     dry_run: bool = False,
 ) -> dict:
-    """Prune raw event rows older than configured max-age, then VACUUM the database.
+    """Delete compacted ``raw_events`` rows older than max-age, then VACUUM.
+
+    Operates on ``raw_events`` only (ENH-2581): rows must already be marked
+    ``compacted=1`` by :func:`compact` before ``prune()`` will delete them.
+    ``prune()`` never mutates ``search_index`` or the cache tables —
+    :func:`rebuild` owns re-deriving those. ``cli_events``/``file_events``/
+    ``test_run_events`` are outside ``raw_events``'s scope for this issue and
+    are no longer pruned by this path.
 
     Both dual gates must be exceeded before any rows are deleted:
     - ``min_project_age_days``: project age (MIN(started_at) from sessions table)
     - ``min_db_size_mb``: DB file size on disk
-
-    High-volume tables pruned: ``tool_events``, ``cli_events``, ``file_events``,
-    ``message_events``. High-value tables (``issue_events``, ``user_corrections``)
-    are never pruned.
 
     Args:
         db: Path to the history database.
@@ -2636,7 +2878,7 @@ def prune(
         - ``gate_unmet`` (list[str]): human-readable reason for each unmet gate
         - ``project_age_days`` (int): measured project age
         - ``db_size_mb`` (float): DB file size in MB
-        - ``deleted`` (dict[str, int]): row counts per table (actual or projected)
+        - ``deleted`` (dict[str, int]): ``{"raw_events": count}`` (actual or projected)
         - ``vacuumed`` (bool): whether VACUUM ran (always False in dry_run)
     """
     from little_loops.config.features import RetentionConfig
@@ -2693,16 +2935,14 @@ def prune(
         cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        deleted: dict[str, int] = {}
-        for table in _PRUNABLE_TABLES:
-            count_row = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE ts < ?", (cutoff_str,)
-            ).fetchone()
-            deleted[table] = count_row[0] if count_row else 0
-            if not dry_run and deleted[table] > 0:
-                conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff_str,))
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM raw_events WHERE ts < ? AND compacted = 1", (cutoff_str,)
+        ).fetchone()
+        deleted_count = count_row[0] if count_row else 0
+        if not dry_run and deleted_count > 0:
+            conn.execute("DELETE FROM raw_events WHERE ts < ? AND compacted = 1", (cutoff_str,))
 
-        result["deleted"] = deleted
+        result["deleted"] = {"raw_events": deleted_count}
         result["pruned"] = True
 
         if not dry_run:

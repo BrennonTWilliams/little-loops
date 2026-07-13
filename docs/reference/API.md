@@ -4038,15 +4038,17 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
-- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli}`, `--limit N` (default 20), `--json`
-- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
-- `backfill` — Seed the database from existing on-disk sources; `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830); output includes `corrections=N` count of user-correction rows mined from `message_events` (ENH-1904). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}`, `--limit N` (default 20), `--json`
+- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
+- `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
+- `rebuild` — Wipe+re-derive the JSONL-derived cache tables (and their `search_index` rows) from `raw_events`; optional `--config PATH`, `--json` (ENH-2581)
+- `compact` — Sweep `raw_events` rows past the retention cutoff into per-session `kind='retention'` summary nodes, marking them `compacted=1`; optional `--and-prune` (also runs `prune` afterward), `--config PATH`, `--json` (ENH-2581)
 - `related` — Issue events for a given issue ID; requires `ISSUE_ID` positional arg, optional `--limit N` and `--json`
 - `path` — Resolve and print the JSONL file path for a session ID; exits non-zero if unknown
 - `grep` — Regex search over `message_events` with optional summary-node context; requires `PATTERN`, optional `--summary-id ID`, `--limit N` (default 50), `--json`
 - `expand` — Return `message_events` covered by a summary node; requires `SUMMARY_ID`, optional `--json`
 - `describe` — Show metadata for a summary node; requires `NODE_ID`, optional `--json`
-- `prune` — Prune raw event rows older than configured max-age and VACUUM the database; optional `--dry-run`, `--json`
+- `prune` — Delete `raw_events` rows already marked `compacted=1` past the configured max-age, then VACUUM the database; optional `--dry-run`, `--json` (ENH-2581 — previously deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events`)
 
 ---
 
@@ -7209,11 +7211,12 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **18**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **19**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 18
+    SCHEMA_VERSION,        # 19
+    VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
     record_correction,     # write a user_corrections row
@@ -7223,9 +7226,46 @@ from little_loops.session_store import (
     record_test_run_event, # write a test_run_events row (ENH-2459)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
-    prune,                 # prune old event rows and VACUUM
+    backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
+    rebuild,               # wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
+    compact,               # sweep old raw_events into retention summary_nodes (ENH-2581)
+    prune,                 # delete compacted raw_events rows and VACUUM (ENH-2581)
 )
 ```
+
+### raw_events / rebuild / compact (ENH-2581)
+
+`raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per JSONL line, storing both the verbatim `raw_line` and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.
+
+```python
+def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]
+```
+
+Dispatch helper letting the five JSONL-derived `_backfill_*` functions accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem.
+
+```python
+def rebuild(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+    max_sessions: int | None = None,
+) -> dict[str, int]
+```
+
+Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Idempotent. Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`. Issue/loop/commit/cli/file/test_run tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
+
+```python
+def compact(
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+    and_prune: bool = False,
+) -> dict[str, int]
+```
+
+Sweeps `raw_events` rows older than `analytics.retention.raw_event_max_age_days` (default 90) that aren't yet `compacted`, groups them by `session_id`, and inserts one `kind='retention'` `summary_nodes` row per session — a deterministic one-liner (no host-CLI call), distinct from the LLM-backed `history.compaction` feature's `kind='condensed'` nodes so the two features' dedup indexes never collide. Marks the swept rows `compacted=1` with `summary_node_id` set. `and_prune=True` also calls `prune()` afterward.
+
+`prune()` now deletes only `raw_events` rows already marked `compacted=1` past the cutoff (previously it deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events` and never touched `search_index`, leaving stale FTS rows behind a since-deleted event — the "FTS5 leak"). Because `rebuild()` always wipes+re-populates `search_index` from current cache-table state, running `rebuild()` after a `prune()` brings FTS row counts back in sync.
 
 ### skill_event_context
 

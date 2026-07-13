@@ -7,15 +7,17 @@ scattered JSON/markdown sources the analyze-* skills read.
 Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
     recent   most recent rows for an event kind (tool, file, issue, loop, correction,
-             message, skill, cli, commit, test_run)
+             message, skill, cli, snapshot, commit, test_run)
     skill-stats per-skill invocation/success-rate rollup (ENH-2460)
-    backfill seed the database from existing on-disk sources
+    backfill ingest on-disk sources into raw_events + issue/loop/commit tables (ENH-2581)
+    rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
+    compact  sweep old raw_events into per-session retention summaries (ENH-2581)
     related  issue events for a given issue ID
     path     resolve JSONL file path for a session ID
     grep     regex search over message_events with covering summary node context
     expand   return message_events covered by a summary node
     describe metadata for a summary node
-    prune    delete raw event rows older than configured max-age and VACUUM (ENH-1906)
+    prune    delete compacted raw_events rows older than configured max-age and VACUUM (ENH-1906)
     export   dump selected tables as JSONL for visualization or external tooling
 """
 
@@ -39,13 +41,16 @@ from little_loops.history_reader import search as history_search
 from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
+    VALID_KINDS,
     backfill,
     backfill_incremental,
     backfill_snapshots,
     cli_event_context,
+    compact,
     connect,
     export_history,
     prune,
+    rebuild,
     recent,
     search,
 )
@@ -64,7 +69,10 @@ Examples:
   %(prog)s search --fts "error" --kind loop       # FTS5 search filtered by kind
   %(prog)s recent --kind loop                     # Recent loop events
   %(prog)s related BUG-1759                       # Events for a specific issue
-  %(prog)s backfill                               # Seed the database from on-disk sources
+  %(prog)s backfill                               # Ingest on-disk sources (raw_events + issues/loops/commits)
+  %(prog)s backfill --rebuild                     # Ingest, then materialize cache tables in one call
+  %(prog)s rebuild                                # Re-derive cache tables from raw_events
+  %(prog)s compact --and-prune                    # Sweep+summarize old raw_events, then delete
   %(prog)s grep "auth middleware"                 # Regex search over message_events
   %(prog)s expand 42                              # Messages covered by summary node 42
   %(prog)s describe 42                            # Metadata for summary node 42
@@ -89,18 +97,7 @@ Examples:
     search_parser.add_argument("--fts", required=True, metavar="QUERY", help="FTS5 match query")
     search_parser.add_argument(
         "--kind",
-        choices=[
-            "tool",
-            "file",
-            "issue",
-            "loop",
-            "correction",
-            "message",
-            "skill",
-            "cli",
-            "commit",
-            "test_run",
-        ],
+        choices=list(VALID_KINDS),
         default=None,
         help="Filter results by event kind",
     )
@@ -112,18 +109,7 @@ Examples:
     recent_parser = subparsers.add_parser("recent", help="Recent events by kind")
     recent_parser.add_argument(
         "--kind",
-        choices=[
-            "tool",
-            "file",
-            "issue",
-            "loop",
-            "correction",
-            "message",
-            "skill",
-            "cli",
-            "commit",
-            "test_run",
-        ],
+        choices=list(VALID_KINDS),
         default=None,
         help="Event kind to list (required unless --issue is given)",
     )
@@ -183,6 +169,48 @@ Examples:
         dest="max_sessions",
         help="Cap the number of sessions compacted in this run (newest first); useful for large DBs",
     )
+    backfill_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        default=False,
+        help=(
+            "Also materialize the JSONL-derived cache tables from raw_events "
+            "in this call (ingest + rebuild in one step; ENH-2581)"
+        ),
+    )
+
+    rebuild_parser = subparsers.add_parser(
+        "rebuild",
+        help="Wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)",
+    )
+    rebuild_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Path to ll-config.json (default: auto-resolve from cwd)",
+    )
+    add_json_arg(rebuild_parser)
+
+    compact_parser = subparsers.add_parser(
+        "compact",
+        help="Sweep old raw_events into per-session retention summaries (ENH-2581)",
+    )
+    compact_parser.add_argument(
+        "--and-prune",
+        action="store_true",
+        default=False,
+        dest="and_prune",
+        help="Also delete the newly-compacted raw_events rows and VACUUM afterward",
+    )
+    compact_parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Path to ll-config.json (default: auto-resolve from cwd)",
+    )
+    add_json_arg(compact_parser)
 
     export_parser = subparsers.add_parser(
         "export",
@@ -462,14 +490,25 @@ def main_session() -> int:
                     logger.error("No session project folder found; cannot discover JSONL files.")
                     return 1
                 jsonl_files = list(project_folder.glob("*.jsonl"))
+                also_rebuild = getattr(args, "rebuild", False)
                 inc_counts = backfill_incremental(
-                    args.db, jsonl_files=jsonl_files, since_ts=since_ts, config=_config
+                    args.db,
+                    jsonl_files=jsonl_files,
+                    since_ts=since_ts,
+                    config=_config,
+                    also_rebuild=also_rebuild,
                 )
                 inc_total = sum(inc_counts.values())
                 logger.success(
                     f"Backfilled {inc_total} rows (incremental, since {since_flag}; "
-                    f"tools={inc_counts['tools']}, messages={inc_counts['messages']}, "
-                    f"sessions={inc_counts['sessions']}, corrections={inc_counts.get('corrections', 0)})"
+                    f"raw_events={inc_counts['raw_events']}"
+                    + (
+                        f", messages={inc_counts.get('messages', 0)}, "
+                        f"sessions={inc_counts.get('sessions', 0)}, "
+                        f"corrections={inc_counts.get('corrections', 0)})"
+                        if also_rebuild
+                        else ")"
+                    )
                 )
                 if getattr(args, "extract_decisions", False):
                     _run_extract_decisions(since=since_flag)
@@ -486,18 +525,79 @@ def main_session() -> int:
                 config=_config,
                 max_sessions=max_sessions,
                 repo_root=Path.cwd(),
+                also_rebuild=getattr(args, "rebuild", False),
             )
             total = sum(counts.values())
             logger.success(
                 f"Backfilled {total} rows "
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
-                f"tools={counts['tools']}, messages={counts.get('messages', 0)}, "
-                f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
-                f"summaries={counts.get('summaries', 0)}, snapshots={counts.get('snapshots', 0)}, "
-                f"commits={counts.get('commits', 0)})"
+                f"raw_events={counts.get('raw_events', 0)}, "
+                f"snapshots={counts.get('snapshots', 0)}, commits={counts.get('commits', 0)}"
+                + (
+                    f", tools={counts.get('tools', 0)}, messages={counts.get('messages', 0)}, "
+                    f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
+                    f"summaries={counts.get('summaries', 0)})"
+                    if getattr(args, "rebuild", False)
+                    else ")"
+                )
             )
             if getattr(args, "extract_decisions", False):
                 _run_extract_decisions(since=None)
+            return 0
+
+        if args.command == "rebuild":
+            import json as _json
+
+            from little_loops.config.core import resolve_config_path
+
+            config_path = getattr(args, "config", None) or resolve_config_path(Path.cwd())
+            config = None
+            if config_path is not None:
+                try:
+                    config = _json.loads(config_path.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError):
+                    config = None
+
+            counts = rebuild(args.db, config=config)
+            if args.json:
+                print_json(counts)
+                return 0
+            total = sum(counts.values())
+            logger.success(
+                f"Rebuilt {total} rows from raw_events "
+                f"(tools={counts.get('tools', 0)}, messages={counts.get('messages', 0)}, "
+                f"assistant_messages={counts.get('assistant_messages', 0)}, "
+                f"skill_events={counts.get('skill_events', 0)}, sessions={counts.get('sessions', 0)}, "
+                f"corrections={counts.get('corrections', 0)}, summaries={counts.get('summaries', 0)})"
+            )
+            return 0
+
+        if args.command == "compact":
+            import json as _json
+
+            from little_loops.config.core import resolve_config_path
+
+            config_path = getattr(args, "config", None) or resolve_config_path(Path.cwd())
+            config = None
+            if config_path is not None:
+                try:
+                    config = _json.loads(config_path.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError):
+                    config = None
+
+            compact_result = compact(args.db, config=config, and_prune=args.and_prune)
+            if args.json:
+                print_json(compact_result)
+                return 0
+            logger.success(
+                f"Compacted {compact_result['compacted_rows']} raw event(s) into "
+                f"{compact_result['summary_nodes']} retention summary node(s)"
+                + (
+                    f"; pruned {compact_result['pruned_rows']} row(s)"
+                    if args.and_prune
+                    else ""
+                )
+            )
             return 0
 
         if args.command == "skill-stats":
@@ -574,7 +674,7 @@ def main_session() -> int:
 
             from little_loops.config.core import resolve_config_path
 
-            config: dict | None = None
+            config = None
             config_path = resolve_config_path(Path.cwd())
             if config_path is not None:
                 try:

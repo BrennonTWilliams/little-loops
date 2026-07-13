@@ -209,25 +209,31 @@ class TestMainSession:
     def test_backfill_reports_messages_count(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """backfill success line includes messages= and sessions= counts (ENH-1621, ENH-1710)."""
+        """backfill --rebuild success line includes messages= and sessions= counts
+        (ENH-1621, ENH-1710, ENH-2581)."""
         db = tmp_path / "session.db"
-        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill", "--rebuild"]):
             with patch("little_loops.cli.session.backfill") as mock_backfill:
                 mock_backfill.return_value = {
                     "issues": 2,
                     "loops": 0,
-                    "tools": 3,
+                    "raw_events": 3,
                     "messages": 5,
                     "sessions": 2,
                     "corrections": 0,
                     "snapshots": 0,
+                    "tools": 3,
+                    "assistant_messages": 0,
+                    "skill_events": 0,
+                    "summaries": 0,
+                    "commits": 0,
                 }
                 assert main_session() == 0
         out = capsys.readouterr().out
         assert "messages=5" in out
         assert "sessions=2" in out
         assert "corrections=0" in out
-        assert "Backfilled 12" in out
+        assert "Backfilled 15" in out
 
     def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """The recent CLI accepts --kind message after ENH-1621."""
@@ -518,7 +524,7 @@ class TestBackfillSinceFlag:
             with patch("little_loops.cli.session.backfill_incremental") as mock_inc:
                 with patch("little_loops.cli.session.get_project_folder") as mock_folder:
                     mock_folder.return_value = tmp_path
-                    mock_inc.return_value = {"tools": 2, "messages": 3, "sessions": 1}
+                    mock_inc.return_value = {"raw_events": 6}
                     result = main_session()
         assert result == 0
         assert mock_inc.called
@@ -911,6 +917,80 @@ class TestBackfillSnapshotsFlag:
         out = capsys.readouterr().out
         assert "3" in out
         assert "snapshot" in out.lower()
+
+
+class TestRebuildSubcommand:
+    """ll-session rebuild — materialize cache tables from raw_events (ENH-2581)."""
+
+    def test_rebuild_parsed_from_argv(self) -> None:
+        with patch("sys.argv", ["ll-session", "rebuild"]):
+            args = _parse_args()
+        assert args.command == "rebuild"
+
+    def test_rebuild_invokes_session_store_rebuild(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "rebuild"]):
+            with patch("little_loops.cli.session.rebuild") as mock_rebuild:
+                mock_rebuild.return_value = {
+                    "sessions": 1,
+                    "tools": 2,
+                    "messages": 3,
+                    "assistant_messages": 0,
+                    "skill_events": 0,
+                    "corrections": 0,
+                    "summaries": 0,
+                }
+                result = main_session()
+        assert result == 0
+        assert mock_rebuild.called
+        out = capsys.readouterr().out
+        assert "messages=3" in out
+
+    def test_rebuild_json_flag(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        db = tmp_path / "history.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "rebuild", "--json"]):
+            with patch("little_loops.cli.session.rebuild") as mock_rebuild:
+                mock_rebuild.return_value = {"tools": 1}
+                result = main_session()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert '"tools"' in out
+
+
+class TestCompactSubcommand:
+    """ll-session compact [--and-prune] — retention lifecycle (ENH-2581)."""
+
+    def test_compact_parsed_from_argv(self) -> None:
+        with patch("sys.argv", ["ll-session", "compact", "--and-prune"]):
+            args = _parse_args()
+        assert args.command == "compact"
+        assert args.and_prune is True
+
+    def test_compact_default_and_prune_is_false(self) -> None:
+        with patch("sys.argv", ["ll-session", "compact"]):
+            args = _parse_args()
+        assert args.and_prune is False
+
+    def test_compact_invokes_session_store_compact(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "compact", "--and-prune"]):
+            with patch("little_loops.cli.session.compact") as mock_compact:
+                mock_compact.return_value = {
+                    "compacted_rows": 5,
+                    "summary_nodes": 2,
+                    "pruned_rows": 5,
+                }
+                result = main_session()
+        assert result == 0
+        assert mock_compact.called
+        assert mock_compact.call_args.kwargs["and_prune"] is True
+        out = capsys.readouterr().out
+        assert "5" in out
+        assert "pruned" in out.lower()
 
 
 class TestSkillStatsAndNewKinds:

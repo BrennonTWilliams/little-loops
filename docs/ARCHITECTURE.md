@@ -664,6 +664,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v16 | `issue_events.session_id`, `idx_issue_events_session_id`, rebuilt `issue_sessions` VIEW | Authoritative session linkage captured at transition time by `SQLiteTransport` from the `issue.*` event payload; the timestamp-overlap heuristic is preserved as the deprecated `legacy_issue_sessions_ts_overlap` VIEW and the `issue_sessions` VIEW now prefers exact `session_id` joins, falling back to the legacy inference only for issues with no authoritative rows (ENH-2462). |
 | v17 | `commit_events` | Ground-truth record of what shipped: `(ts, commit_sha UNIQUE, parent_sha, message, author, branch, issue_id, files_json)`. Written live by `record_commit_event()` (post-commit hook `hooks/scripts/record-commit-post-commit` → `little_loops.hooks.post_commit`) and retroactively by `ll-session backfill` walking `git log --all`; `issue_id` inferred from `Closes/Fixes/Issue:` references and branch naming. Enables `ll-session recent --kind commit` and FTS with `kind="commit"` (ENH-2458). |
 | v18 | `test_run_events` | Persisted pytest run results (pass/fail/error/skip counts, duration, failing node IDs, env label, HEAD sha, branch, command) written best-effort by the `little_loops.pytest_history_plugin` pytest11 plugin via `record_test_run_event()`; opt out with `PYTEST_DISABLE_PLUGIN_LL_HISTORY=1`. Enables `ll-session recent --kind test_run` and FTS with `kind="test_run"` (ENH-2459). |
+| v19 | `raw_events` | Verbatim-JSONL-line source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): `(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json, compacted, summary_node_id)`, unique on `(source_path, line_no)`. `ll-session backfill` now ingests JSONL lines here only; `ll-session rebuild` wipes and re-derives the cache tables (plus `user_corrections`, `summary_nodes`/`summary_spans`, and the corresponding `search_index` rows) by replaying `raw_events`. `ll-session compact [--and-prune]` sweeps rows past `analytics.retention.raw_event_max_age_days` into per-session `kind='retention'` summary nodes and marks them `compacted=1`; `ll-session prune` now deletes only `raw_events` rows already marked `compacted=1` (previously it deleted `tool_events`/`cli_events`/`file_events`/`message_events` directly and never touched `search_index`, leaving stale FTS rows — fixed by `rebuild()` always re-populating `search_index` from current state). The three legacy watermarks (`last_backfill_ts`, `last_backfill_ts_assistant_messages`, `last_backfill_ts_skill_events`) collapse to a single `last_raw_event_ts` meta key; a new `last_rebuild_version` key gates the `SessionStart` hook's opt-in-on-migration `--rebuild` pass. Issue/loop/commit/cli/file/test_run tables are outside this table's scope and keep their existing direct-write paths (ENH-2581). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -708,8 +709,8 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v18)
-    SS-->>DB: backfill_incremental() in background thread
+    SS->>DB: ensure_db() — bootstrap schema (v1–v19)
+    SS-->>DB: backfill_incremental() ingests JSONL into raw_events (background thread; --rebuild only when SCHEMA_VERSION > last_rebuild_version)
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
     EB->>ST: emit(IssueEvent | LoopEvent)
@@ -733,7 +734,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v18 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v19 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
@@ -796,7 +797,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v18) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v19) and CLI transport-wiring table.
 
 ---
 

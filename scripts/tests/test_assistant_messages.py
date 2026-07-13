@@ -85,7 +85,7 @@ class TestAssistantMessagesMigration:
             conn.close()
 
     def test_schema_version_is_12(self) -> None:
-        assert SCHEMA_VERSION == 18
+        assert SCHEMA_VERSION == 19
 
     def test_upgrade_from_v10_preserves_data(self, tmp_path: Path) -> None:
         """Simulate v10 → v11 upgrade: existing tables survive the migration."""
@@ -132,7 +132,11 @@ class TestBackfillAssistantMessages:
         )
         db = tmp_path / "test.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["assistant_messages"] == 1
 
@@ -158,7 +162,13 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
 
         conn = connect(db)
         try:
@@ -180,7 +190,13 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
 
         conn = connect(db)
         try:
@@ -206,7 +222,11 @@ class TestBackfillAssistantMessages:
         )
         db = tmp_path / "test.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["assistant_messages"] == 0
 
@@ -228,7 +248,11 @@ class TestBackfillAssistantMessages:
         )
         db = tmp_path / "test.db"
         counts = backfill(
-            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl]
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
         )
         assert counts["assistant_messages"] == 0
 
@@ -241,8 +265,20 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         # Second backfill should not duplicate rows
         conn = connect(db)
         try:
@@ -259,7 +295,13 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", jsonl_files=[jsonl])
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
         results = search(db, query="unique answer")
         assert any(r["kind"] == "message" and "42" in r["content"] for r in results)
 
@@ -272,7 +314,7 @@ class TestBackfillAssistantMessages:
             encoding="utf-8",
         )
         db = tmp_path / "test.db"
-        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
         assert counts["assistant_messages"] == 1
 
 

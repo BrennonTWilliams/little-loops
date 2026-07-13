@@ -303,6 +303,51 @@ class TestSessionStartBackfillThread:
         assert str(in_tmp) in args
 
 
+class TestSessionStartRebuild:
+    """ENH-2581: --rebuild is passed only when SCHEMA_VERSION > last_rebuild_version."""
+
+    def _mock_popen(self, monkeypatch: pytest.MonkeyPatch) -> list[list]:
+        calls: list[list] = []
+
+        class _FakePopen:
+            def __init__(self_inner, args, **kw):
+                calls.append(list(args))
+
+        monkeypatch.setattr("little_loops.hooks.session_start.subprocess.Popen", _FakePopen)
+        return calls
+
+    def _setup(self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> list[list]:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(json.dumps({}))
+        calls = self._mock_popen(monkeypatch)
+        import little_loops.user_messages as um
+
+        monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: in_tmp)
+        monkeypatch.delenv("LL_NON_INTERACTIVE", raising=False)
+        return calls
+
+    def test_rebuild_flag_added_on_fresh_db(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A freshly-migrated DB has last_rebuild_version=NULL < SCHEMA_VERSION."""
+        calls = self._setup(in_tmp, monkeypatch)
+        handle(_event())
+        assert len(calls) == 1
+        assert "--rebuild" in calls[0]
+
+    def test_rebuild_flag_omitted_when_already_current(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After a rebuild() call, last_rebuild_version matches SCHEMA_VERSION — no flag."""
+        from little_loops.session_store import rebuild
+
+        rebuild(in_tmp / ".ll" / "history.db")
+        calls = self._setup(in_tmp, monkeypatch)
+        handle(_event())
+        assert len(calls) == 1
+        assert "--rebuild" not in calls[0]
+
+
 class TestSessionStartCodexTranscriptPath:
     """ENH-1945: session_start consumes transcript_path from Codex hook payloads."""
 
