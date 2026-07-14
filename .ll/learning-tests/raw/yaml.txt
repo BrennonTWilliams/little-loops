@@ -1,0 +1,11 @@
+=== DUMPED ===
+relates_to:
+- ENH-693
+- BUG-836 with a very long descriptive suffix that will force PyYAML to wrap this
+  line across multiple physical lines using backslash continuation syntax
+
+=== has backslash continuation === False
+=== LOADED === {'relates_to': ['ENH-693', 'BUG-836 with a very long descriptive suffix that will force PyYAML to wrap this line across multiple physical lines using backslash continuation syntax']}
+=== round trip matches === True
+=== priority type === <class 'int'> 2
+=== bad YAML raised YAMLError === ParserError
