@@ -842,6 +842,7 @@ check_stall:
 | `ll-loop simulate <name>` | Trace execution interactively without running actions (`--scenario all-pass\|all-fail\|all-error\|first-fail\|alternating`) |
 | `ll-loop list` | List loops as a compact name grid (public tier only by default); `-l/--long` for the detailed per-row layout; `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
 | `ll-loop status <name>` | Current state and iteration count (`--json` for paths and PIDs) |
+| `ll-loop queue list` | List pending run-queue entries (loops waiting on a scope lock via `--queue`); prunes dead-PID entries as a side effect (`-j/--json` for a JSON array) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
 | `ll-loop history <name>` | Show history; pass `run_id` for a specific archived run; `--tail`, `--event`, `--state`, `--since`, `--verbose`, `--full`, `--json` |

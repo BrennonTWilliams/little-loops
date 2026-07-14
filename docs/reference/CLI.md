@@ -662,7 +662,30 @@ When `ll-loop run --queue` encounters a scope conflict with a running loop, it c
 }
 ```
 
-Entries are short-lived and ephemeral — treat the directory as a live view, not a history log. Stale entries are possible if a process exits abnormally without running `atexit` handlers; cleanup tooling may want to prune entries whose `pid` is no longer alive.
+Entries are short-lived and ephemeral — treat the directory as a live view, not a history log. Stale entries are possible if a process exits abnormally without running `atexit` handlers; `ll-loop queue list` (below) *is* that cleanup tooling — reading the queue prunes entries whose `pid` is no longer alive.
+
+#### `ll-loop queue list`
+
+List pending entries in the process-backed run queue (the `.loops/.queue/*.json` files documented under [Queue entries](#queue-entries-loopsqueue) above). This is the observability surface for loops waiting on a scope lock via `ll-loop run --queue`.
+
+**Pruning side effect:** listing the queue calls `read_queue_entries()`, which **unlinks dead-PID entries** as a side effect — every rendered entry is `alive` by construction. Running `ll-loop queue list` is therefore also the sanctioned way to garbage-collect stale queue files left behind by a process that exited without running its `atexit` handlers.
+
+Human-readable output prints a `Pending queue entries (N):` header followed by one line per entry, sorted ascending by enqueue time:
+
+```
+Pending queue entries (2):
+
+  a1b2c3d4  my-loop  pid=12345  alive  2026-07-13 19:40:00
+  e5f6a7b8  other-loop  pid=12346  alive  2026-07-13 19:41:12
+```
+
+Each line is `<short id (first 8 chars)>  <loopName>  pid=<pid>  alive  <YYYY-MM-DD HH:MM:SS>`. When the queue is empty, it prints `Queue is empty`.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | `-j` | Emit the queue as a JSON array (one object per entry, using the [entry schema](#queue-entries-loopsqueue)); an empty queue emits `[]`. Exit code is `0` in all cases. |
+
+**Bare `ll-loop queue` (no subcommand):** invoking `ll-loop queue` without `list` prints the `queue` subparser help and exits with code `1`.
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 

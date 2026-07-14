@@ -143,6 +143,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stale/false-positive): (".claude/CLAUDE.md", "DecisionsConfig", "FEAT-1045"),
     # REMOVED (stale/false-positive): ("docs/reference/CLI.md", "DecisionsConfig", "FEAT-1045"),
     # REMOVED (stale/false-positive): ("commands/help.md", "Bash(ll-logs:*)", "ll-logs"),
+    ("docs/reference/CLI.md", "ll-loop queue list", "ENH-2629"),
+    (".claude/CLAUDE.md", "queue list", "ENH-2629"),
+    ("docs/guides/LOOPS_GUIDE.md", "ll-loop queue list", "ENH-2629"),
 ]
 
 

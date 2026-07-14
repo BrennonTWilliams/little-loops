@@ -2,7 +2,7 @@
 id: ENH-2620
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: 2026-07-12 19:49:49+00:00
 discovered_date: 2026-07-12
 discovered_by: scope-epic
@@ -10,13 +10,13 @@ parent: EPIC-2616
 depends_on:
 - FEAT-2618
 - FEAT-2619
-confidence_score: 73
+confidence_score: 75
 outcome_confidence: 73
 score_complexity: 20
 score_test_coverage: 20
 score_ambiguity: 15
 score_change_surface: 18
-size: Very Large  # reviewed: /ll:issue-size-review 2026-07-13, decomposition declined (single coupled doc task)
+size: Very Large
 ---
 
 # Document `ll-loop queue` subcommand family
@@ -69,6 +69,21 @@ _Wiring pass added by `/ll:wire-issue`:_
   listable/removable resource, so it is thematically adjacent, not stale — no
   edit required there.
 
+_Wiring pass added by `/ll:wire-issue` (2026-07-13, re-run):_
+- Bare `ll-loop queue` (no subcommand) behavior is locked in by a test —
+  `scripts/tests/test_cli_loop_dispatch.py:1087-1095`
+  (`test_queue_no_subcommand_prints_help`) asserts it prints help and returns
+  exit code `1`. The new CLI.md `#### `ll-loop queue list`` /
+  `#### `ll-loop queue remove <id>`` sections should note this no-verb-supplied
+  behavior/exit code alongside the two subcommands, since `commands/help.md`
+  and `commands/loop-suggester.md` only mention `ll-loop` at the top level
+  (`run`/`validate`/`test`) and are confirmed not stale.
+- `docs/guides/LOOPS_GUIDE.md:1138` — the troubleshooting entry for "Scope
+  conflict error... re-run with `--queue` to wait" is a second, independent
+  cross-link opportunity from the CLI Quick Reference table update (§
+  Implementation Steps item 1): once `ll-loop queue list` is documented, this
+  entry can mention it as the way to inspect current waiters.
+
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -92,6 +107,14 @@ _Wiring pass added by `/ll:wire-issue`:_
   needs no verify-docs update. If a `[...](#anchor)` cross-reference is added,
   the applicable gate is running the real `ll-check-links` (not the mocked
   pytest tests).
+- **Correction** (`/ll:wire-issue` re-run, 2026-07-13): `scripts/tests/test_cli_docs.py`
+  does not exist in the repo (confirmed via grep) — drop that reference; it is
+  not a test to check for conflicts. `DOC_STRINGS_PRESENT` is confirmed at
+  `scripts/tests/test_wiring_cli_registry.py:20-146` as a list of
+  `tuple[doc_rel, needle, issue_id]`; append new rows before the closing `]`
+  at line 146. `DOC_STRINGS_ABSENT` (lines 160-175) is the same 3-tuple shape
+  for forbidden strings — not needed here unless CLI.md:664's stale sentence
+  (see Files to Modify) is replaced with wording that should be asserted absent.
 
 ### Source of Truth (read before writing prose)
 
@@ -109,6 +132,37 @@ _Wiring pass added by `/ll:wire-issue`:_
   `list_parser` at line 339) for how the `queue` subcommand family should surface in
   `--help`. Confirm the final `queue list --json` flag and `queue remove <id>` arg
   spelling against the shipped parser once FEAT-2618/2619 land.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-13):_
+
+**Dependency status update**: FEAT-2618 (`queue list`) has **merged** (commit
+`0a755ba3`); FEAT-2619 (`queue remove`) is still `status: open` — the `remove`
+subcommand does not exist yet.
+
+Confirmed shipped `queue list` surface (document exactly this; verify `remove`
+against FEAT-2619 once it lands):
+
+- Command tree: `ll-loop queue list` — nested subparser under a `queue` parent
+  (`scripts/little_loops/cli/loop/__init__.py:884-899`,
+  `set_defaults(command="queue")`, `queue_command="list"`). Bare `ll-loop queue`
+  with no subcommand prints the queue parser help (`__init__.py:955-958`).
+- Flag: `-j` / `--json` (`action="store_true"`) — emits a JSON array via
+  `print_json`; empty queue emits `[]`. Exit code `0` in all cases.
+- Handler: `cmd_queue_list()` in `scripts/little_loops/cli/loop/queue.py`. Human
+  output prints `Pending queue entries (N):` header then one line per entry:
+  `<short_id(8)>  <loopName>  pid=<pid>  alive  <YYYY-MM-DD HH:MM:SS>`. Empty
+  queue prints `Queue is empty`.
+- Pruning side effect (document this): `queue list` calls `read_queue_entries()`
+  which **unlinks dead-PID entries** as a side effect of listing, so every
+  rendered entry is `alive` by construction — the liveness column is always
+  `alive`. This is the pruning tooling that CLI.md:664 anticipated.
+
+`queue remove <id>` (FEAT-2619) surface — **do not document yet**; no
+`cmd_queue_remove` / `queue_remove` handler exists in `cli/loop/`. Confirm arg
+spelling (`<id>` full vs. 8-char short prefix), exit codes (not-found vs.
+removed), and any `--json`/`--force` flags against the merged implementation.
 
 ### Dependency Note
 
@@ -150,9 +204,41 @@ _Added by `/ll:confidence-check` on 2026-07-13_
 ### Outcome Risk Factors
 - Ambiguity axis: the exact `--json` flag shape and exit codes are explicitly unconfirmed pending FEAT-2618/FEAT-2619 landing — the issue itself flags this as a verify-against-merged-code step
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-13_
+
+**Readiness Score**: 74/100 → STOP — ADDRESS GAPS (dependency unmet)
+**Outcome Confidence**: 73/100 → Moderate
+
+### Gaps to Address
+- FEAT-2618 (`ll-loop queue list`) is now `status: done` (merged in commit `0a755ba3`) — this dependency is resolved.
+- FEAT-2619 (`ll-loop queue remove <id>`) is still `status: open` — `scripts/little_loops/cli/loop/queue.py` only defines `cmd_queue_list`; no `cmd_queue_remove` handler or `remove` subparser exists in `cli/loop/__init__.py`. This remains the sole blocking dependency.
+- The issue's "Files to Modify" and "Implementation Steps" require documenting both `queue list` and `queue remove` across CLI.md, CLAUDE.md, and LOOPS_GUIDE.md — the `remove` half cannot be written accurately until FEAT-2619 ships.
+
+### Outcome Risk Factors
+- Ambiguity axis: `queue remove <id>` arg spelling (full vs. 8-char short id), exit codes, and any `--json`/`--force` flags remain unconfirmed pending FEAT-2619 landing.
+
 ## Session Log
 - `/ll:scope-epic` - 2026-07-12T19:49:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8999ce06-5d43-4dd5-bc03-841f57c28bf2.jsonl`
 - `/ll:refine-issue` - 2026-07-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e07d3b82-65ac-4d0e-9a55-4a17f6c8c8e4.jsonl`
 - `/ll:wire-issue` - 2026-07-13T12:45:00 - session JSONL unresolved
 - `/ll:confidence-check` - 2026-07-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-20260713-123048-subloop-epic-epic-2616-ll-loop-queue-management-cli-list-remove/e42e1aa3-2c95-4ce2-b812-3b8279000b31.jsonl`
 - `/ll:refine-issue` - 2026-07-13T12:30:00 - session JSONL unresolved
+- `/ll:refine-issue` - 2026-07-13T19:15:00 - session JSONL unresolved
+- `/ll:wire-issue` - 2026-07-13T19:22:00 - session JSONL unresolved
+- `/ll:confidence-check` - 2026-07-13T19:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-20260713-190834-subloop-epic-epic-2616-ll-loop-queue-management-cli-list-remove/98cac48b-fd15-43af-8a7c-f0a49e9d4c89.jsonl`
+- `/ll:refine-issue` - 2026-07-13T19:35:00 - session JSONL unresolved
+- `/ll:issue-size-review` - 2026-07-13T19:40:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-20260713-190834-subloop-epic-epic-2616-ll-loop-queue-management-cli-list-remove/ded2c90d-228f-492a-9d17-cb57f6f69ac3.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-07-13
+- **Reason**: Issue too large for single session (score 11/11, Very Large); the `queue remove` half was also blocked on FEAT-2619, so splitting unblocks the `queue list` documentation now.
+
+### Decomposed Into
+- ENH-2629: Document `ll-loop queue list` (and bare `ll-loop queue`) surface — unblocked now
+- ENH-2630: Document `ll-loop queue remove <id>` subcommand — blocked on FEAT-2619
