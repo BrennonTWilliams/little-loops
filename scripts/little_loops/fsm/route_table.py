@@ -381,8 +381,12 @@ def _detect_shadows(rules: list[Rule]) -> list[str]:
 
 
 # Multi-char operators must precede their single-char prefixes for longest-match
-# (e.g. ">=" before ">"). Sort by length descending; alphabetical order is NOT safe.
-_OP_ALT = "|".join(sorted(_ALL_OPS, key=len, reverse=True))
+# (e.g. ">=" before ">"). Sort by length descending (alphabetical order is NOT
+# safe), then alphabetically as a tiebreaker so the compiled pattern is stable
+# across processes — _ALL_OPS is a frozenset whose iteration order is randomized
+# by PYTHONHASHSEED, and a length-only sort leaves the intra-length order (and
+# thus _COND_PATTERN.pattern) non-deterministic.
+_OP_ALT = "|".join(sorted(_ALL_OPS, key=lambda op: (-len(op), op)))
 # Regex to parse a condition cell like ">=85", "<65", "==true"
 _COND_PATTERN = re.compile(rf"^({_OP_ALT})(.+)$")
 
