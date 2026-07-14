@@ -1,6 +1,7 @@
 ---
 id: BUG-2638
-title: ll-issues next-issues leaks EPIC ids into the implementable backlog, causing autodev to refine an EPIC as a leaf
+title: ll-issues next-issues leaks EPIC ids into the implementable backlog, causing
+  autodev to refine an EPIC as a leaf
 type: BUG
 priority: P2
 status: open
@@ -8,6 +9,12 @@ captured_at: '2026-07-14T16:56:26Z'
 discovered_date: '2026-07-14'
 discovered_by: capture-issue
 size: Small
+confidence_score: 96
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 25
+score_change_surface: 20
 ---
 
 # BUG-2638: `ll-issues next-issues` leaks EPIC ids into the implementable backlog
@@ -241,6 +248,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-14T17:30:00 - `1dac9138-8f2d-42c5-9a0f-fad9ff61b5fd.jsonl`
 - `/ll:wire-issue` - 2026-07-14T17:14:36 - `a42f6c07-c78d-46cf-bd5c-2c26d1c9f184.jsonl`
 - `/ll:refine-issue` - 2026-07-14T17:01:32 - `d821aeea-bb88-4025-9e93-40153ba7f852.jsonl`
 - `/ll:capture-issue` - 2026-07-14T16:56:26Z - conversation root-cause analysis of cards run auto-refine-and-implement-20260714T104607
