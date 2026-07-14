@@ -444,6 +444,34 @@ If any signal phrase is found in the Outcome Risk Factors content written by Pha
 
 If no signal phrase is found, or if the issue does not qualify as Pattern B, leave frontmatter unchanged.
 
+### Phase 4.10: Spike-Needed Flag
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode); or the issue frontmatter already carries `spike_attempted: true` or `spike_completed: true` (a spike is already underway or done — never re-flag).
+
+After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unproven **internal** mechanism — the failure mode whose correct remedy is a code spike (FEAT-2567), not decide/wire/decompose. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
+
+**Signal phrases** (any match triggers the candidate check): "no precedent", "zero precedent", "unprecedented", "no existing test exercises", "untested mechanism", "novel mechanism", "unproven approach", "no test coverage of the".
+
+**Score condition** — to avoid flagging rhetorical uses of the phrases, a matched candidate must ALSO satisfy at least one of:
+- `score_test_coverage` (Criterion B) is <= 10 — read directly from the issue frontmatter (persisted by Phase 4 via `--score-test-coverage`), OR
+- Criterion A **Depth** was judged **Moderate** or **Deep** in the Phase 2b assessment. Depth is NOT persisted (only the combined `score_complexity` total is written) — re-derive it from the Phase 2b Criterion A assessment text produced earlier in this same run.
+
+If no signal phrase matches, or the score condition is not satisfied, leave `spike_needed` unchanged (never write `false` — absence is the negative).
+
+**External-API suppression**: if the matched risk-factor sentence names a third-party package, SDK, or external API surface, this is `/ll:explore-api` + `learning_tests_required` territory, NOT a code spike. Apply the same exclusion heuristic as `/ll:refine-issue` Step 7.5 learning-target extraction (mirrored from `learning_tests/extractor.py:_EXTRACTION_PROMPT`): exclude project-internal code, Python builtins, and contract-stable stdlib (`os`, `sys`, `pathlib`, `json`, `re`, `datetime`); an external name outside those exclusions triggers suppression. When suppression applies, do NOT set `spike_needed`; instead emit the advisory line:
+
+```
+ℹ spike_needed suppressed — risk factor names an external API surface; consider /ll:explore-api (learning_tests_required)
+```
+
+and leave `learning_tests_required` handling to the existing machinery. This prevents double-remediation of the same risk.
+
+If a signal phrase matches, the score condition is satisfied, and external-API suppression does NOT apply:
+
+1. Use the Edit tool to update `spike_needed: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4.6/4.7 — **not** a `set-flag` CLI verb, which does not exist)
+2. **Idempotency**: skip the write if `spike_needed` is already `true`
+3. Log to terminal output: `✓ spike_needed set to true — unproven internal mechanism detected in Outcome Risk Factors`
+
 ### Auto Mode Behavior
 
 When `AUTO_MODE` is true: skip any AskUserQuestion prompts (make autonomous
@@ -462,38 +490,9 @@ When `CHECK_MODE` is true, run as an FSM loop evaluator:
 
 This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
-## Output Format
+## Output Format, Integration & Examples
 
-Emit the single-issue report (`CONFIDENCE CHECK: [ISSUE-ID]` banner, READINESS
-SCORES table, OUTCOME CONFIDENCE SCORES table, SUMMARY, RECOMMENDATION, and the
-conditional Concerns / Gaps to Address / Escalation / Outcome Risk Factors
-subsections). See [rubric.md](rubric.md) for the exact output-format template.
-
-## Batch Output Format (--all mode)
-
-When processing all issues, output a summary table after all individual
-evaluations (`CONFIDENCE CHECK BATCH REPORT` banner, READINESS SUMMARY, OUTCOME
-CONFIDENCE SUMMARY, RESULTS table, FRONTMATTER UPDATES). See
-[rubric.md](rubric.md) for the exact batch output-format template.
-
-## Integration with /ll:manage-issue
-
-This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-planning step. When invoked within manage-issue:
-
-- Uses research findings from Phase 1.5 (no redundant searching)
-- Readiness score >=70: proceed to plan creation
-- Readiness score <70: stop and report gaps (manage-issue marks as INCOMPLETE)
-- Non-blocking by default — can be skipped if user prefers
-- The manage-issue Phase 2.5 confidence gate reads `confidence_score` (readiness) from frontmatter — the `outcome_confidence` field is informational and does not affect the gate
-
-## Examples
-
-See [rubric.md](rubric.md) for worked examples: the single-issue scenario table,
-the Criterion D Pattern A vs Pattern B walkthroughs, the Criterion A
-Breadth × Depth walkthroughs, and the CLI usage patterns.
-
-## Additional Resources
-
-- [rubric.md](rubric.md) — full scoring rubric tables (Phase 2 readiness
-  criteria, Phase 2b outcome criteria, Phase 3 score-to-recommendation tables),
-  the single-issue and `--all` output-format templates, and worked examples.
+See [reference.md](reference.md) for the single-issue and `--all` batch
+output-format sections, `/ll:manage-issue` integration notes, worked examples,
+and additional resources. Full scoring rubric tables and output-format templates
+live in [rubric.md](rubric.md).

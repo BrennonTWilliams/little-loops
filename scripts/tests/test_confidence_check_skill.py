@@ -328,6 +328,71 @@ class TestCriterionABreadthDepthSplit:
         )
 
 
+class TestSpikeNeededFlagWriteBack:
+    """Phase 4.10 must document setting spike_needed: true when unproven-mechanism signal phrases found (ENH-2569)."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.10: Spike-Needed Flag")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_4_10_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "Phase 4.10: Spike-Needed Flag" in content, (
+            "SKILL.md must contain a 'Phase 4.10: Spike-Needed Flag' section"
+        )
+
+    def test_spike_needed_true_in_phase_4_10(self) -> None:
+        assert "spike_needed: true" in self._phase_text(), (
+            "Phase 4.10 must document setting spike_needed: true in frontmatter"
+        )
+
+    def test_signal_phrases_documented(self) -> None:
+        text = self._phase_text()
+        assert "no precedent" in text or "no existing test exercises" in text, (
+            "Phase 4.10 must document the signal phrases that trigger the flag"
+        )
+
+    def test_idempotency_guard_present(self) -> None:
+        text = self._phase_text()
+        assert "Idempotency" in text or "idempotent" in text.lower(), (
+            "Phase 4.10 must document the idempotency guard (skip if already true)"
+        )
+
+    def test_check_mode_guard_in_phase_4_10(self) -> None:
+        assert "CHECK_MODE" in self._phase_text(), (
+            "Phase 4.10 must include the CHECK_MODE skip guard (no writes in check mode)"
+        )
+
+    def test_no_ask_user_question_in_phase_4_10(self) -> None:
+        assert "AskUserQuestion" not in self._phase_text(), (
+            "Phase 4.10 must not use AskUserQuestion — flag write-back is unconditional"
+        )
+
+    def test_external_api_suppression_documented(self) -> None:
+        text = self._phase_text()
+        assert "explore-api" in text and (
+            "third-party" in text.lower() or "external" in text.lower()
+        ), (
+            "Phase 4.10 must document the external-API suppression rule (advise /ll:explore-api)"
+        )
+
+    def test_score_condition_documented(self) -> None:
+        text = self._phase_text()
+        assert "score_test_coverage" in text and "Depth" in text, (
+            "Phase 4.10 must document the score condition "
+            "(score_test_coverage <= 10 OR Criterion A Depth Moderate/Deep)"
+        )
+
+    def test_spike_attempted_guard_present(self) -> None:
+        text = self._phase_text()
+        assert "spike_attempted" in text or "spike_completed" in text, (
+            "Phase 4.10 must skip issues already carrying spike_attempted/spike_completed"
+        )
+
+
 class TestPhase48LargeFileSurfaceSuppression:
     """Phase 4.8 must exist and mirror the Phase 4.6/4.7 boilerplate."""
 

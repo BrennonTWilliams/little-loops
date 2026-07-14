@@ -1,14 +1,27 @@
 ---
 id: ENH-2569
-title: confidence-check Phase 4.x — set spike_needed flag from Outcome Risk Factors
+title: "confidence-check Phase 4.x \u2014 set spike_needed flag from Outcome Risk\
+  \ Factors"
 type: ENH
 priority: P3
-status: open
-labels: [skills, confidence, frontmatter-flags, risk-reduction, captured]
-captured_at: "2026-07-10T01:34:59Z"
-discovered_date: "2026-07-10"
+status: done
+labels:
+- skills
+- confidence
+- frontmatter-flags
+- risk-reduction
+- captured
+captured_at: '2026-07-10T01:34:59Z'
+completed_at: '2026-07-14T20:41:48Z'
+discovered_date: '2026-07-10'
 discovered_by: capture-issue
 parent: EPIC-2570
+confidence_score: 96
+outcome_confidence: 89
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # ENH-2569: confidence-check Phase 4.x — set spike_needed flag from Outcome Risk Factors
@@ -98,22 +111,49 @@ If no signal phrase matches, or the score condition fails, or suppression applie
 - `/ll:refine-issue` Step 7.5 — the external-dependency identification heuristic to reuse for suppression.
 
 ### Tests
-- Skills are markdown-only; validation is via whatever existing confidence-check flag phases use (fixture issues + expected frontmatter, if such tests exist; otherwise manual AC below).
+- Structural tests **do exist** — `scripts/tests/test_confidence_check_skill.py` has one class per flag phase: `TestDecisionNeededFlagWriteBack` (~line 87), `TestMissingArtifactsFlagWriteBack` (~line 135), `TestImplementationOrderRiskFlagWriteBack` (~line 185). Each asserts, by string-searching `SKILL.md`: (1) phase heading exists, (2) correct frontmatter field name written, (3) signal phrases documented, (4) idempotency guard present, (5) CHECK_MODE skip guard present, (6) no `AskUserQuestion` (unconditional write); 4.7 adds a co-deliverable-suppression assertion.
+- **New test class to add**: `TestSpikeNeededFlagWriteBack` mirroring the above, plus an assertion that the external-API suppression rule and the score-condition are documented in Phase 4.10.
 - Manual AC: run against ENH-2565 (must flag), a doc-only issue (must not flag), and an external-API issue (must suppress + advise explore-api).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_reference_docs.py` — the `DOC_STRINGS_PRESENT` parametrized list (~line 20) holds one `(doc_path, expected_string, issue_id)` tuple per documented issue-template field (repo convention, ENH-1963). When the `spike_needed` row lands in `ISSUE_TEMPLATE.md` (Step 3), add a tuple `("docs/reference/ISSUE_TEMPLATE.md", "spike_needed", "ENH-2569")` so the new field's doc presence is CI-asserted. Presence-check only; adding a row does not break existing cases. [Agent 3 finding]
+- Confirmed **no change needed**: `cmd_check_flag` is field-agnostic (exercised generically by `scripts/tests/test_autodev_decision_gate.py` and `scripts/tests/test_rn_remediate.py`, not a dedicated test); the `learning_tests/extractor.py` exclusion list is stdlib/builtins-scoped, so the external-API suppression heuristic is authored fresh in Phase 4.10 rather than imported. [Agent 3 finding]
+
 ### Documentation
-- Docs page for confidence-check flag semantics, if one enumerates the flags; CHANGELOG entry.
+- `docs/reference/ISSUE_TEMPLATE.md` — the **Frontmatter Field Reference Table** (~lines 886–888) already enumerates `decision_needed`, `missing_artifacts`, `implementation_order_risk`, `mechanical_fanout_suppressed`; add a `spike_needed` (bool) row there.
+- CHANGELOG entry.
 
 ### Configuration
 - None. Threshold reuse: fires only when Phase 4.5 ran (outcome < `commands.confidence_gate.outcome_threshold`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Exact write mechanism (resolves the "or CLI verb" ambiguity in Proposed Solution):**
+- Phases 4.6/4.7/4.9 write their flag via the **Edit tool**, inline `---` block replacement — `skills/confidence-check/SKILL.md:373` (4.6), `:399` (4.7), `:421` (4.9). This is explicitly *distinct* from Phase 4's `ll-issues set-scores` CLI path.
+- **No `ll-issues set-flag` verb exists** (`scripts/little_loops/cli/issues/__init__.py` dispatcher, confirmed). Do NOT plan around adding one; mirror the Edit-tool pattern. (Generic programmatic writes go through `frontmatter.py:update_frontmatter()` at lines 243–266, but the sibling phases use the Edit tool, not a CLI, so Phase 4.10 should too.)
+- `ll-issues check-flag <ID> <field>` **is** confirmed generic — `scripts/little_loops/cli/issues/check_flag.py:cmd_check_flag()` (lines 13–33) reads any boolean frontmatter field, exit 0 if `'true'`. ENH-2568's `check-flag ... spike_needed` consumer needs no CLI change.
+
+**Score-condition caveat (affects Implementation Step 2):**
+- `score_test_coverage` IS a persisted frontmatter field (written by Phase 4 via `--score-test-coverage`, `SKILL.md:297`), so the `score_test_coverage <= 10` condition can read frontmatter directly.
+- **Criterion A Depth is NOT persisted** — only the combined `score_complexity` total is written (`SKILL.md:296`); the Breadth/Depth sub-split from Phase 2b (`SKILL.md:222–225`, levels Mechanical/Local/Moderate/Deep) exists only in the in-session assessment reasoning. Phase 4.10 must **re-derive** "Depth Moderate/Deep" from the Phase 2b assessment text produced earlier in the same run, not from a `score_complexity_depth` field (none exists).
+
+**External-API suppression heuristic (Implementation Step 2) — concrete source:**
+- The exclusion logic to reuse lives in `scripts/little_loops/learning_tests/extractor.py:_EXTRACTION_PROMPT` (lines 33–61); the canonical exclusion list is at lines 42–46 (project-internal code; Python builtins; contract-stable stdlib `os, sys, pathlib, json, re, datetime`). Entry points: `extract_learning_targets()` (149–194), `resolve_learning_targets()` (197–218).
+
+**Phase ordering note:** In file order Phase 4.8 (`SKILL.md:427`) actually follows Phase 4.9 (`:405`). Place the new phase after both; "next free 4.x number" ⇒ **Phase 4.10**.
+
+**Flag-enumeration touch-points:** `skills/confidence-check/rubric.md` does NOT enumerate flag names (grep-confirmed zero matches) — no change needed there. Only `docs/reference/ISSUE_TEMPLATE.md` needs the new row.
+
 ## Implementation Steps
 
-1. Draft Phase 4.10 text mirroring Phase 4.7's structure (skip conditions, signal phrases, suppression, write, log).
-2. Add the score-condition and external-API-suppression detection methods.
-3. Update any flag enumerations in SKILL.md/rubric.md/docs.
-4. Validate against the three manual AC issues (ENH-2565, doc-only, external-API).
-5. Run `/ll:confidence-check --all` (or `--sprint`) once post-merge and record the `spike_needed` fire rate in ENH-2568 before starting its routing work.
+1. Draft Phase 4.10 text after Phase 4.8 (`SKILL.md:427`), mirroring Phase 4.7's structure (skip conditions, signal phrases, suppression, Edit-tool inline `---` write, log line). Use the Edit-tool pattern — **not** a `set-flag` CLI (none exists).
+2. Add the score-condition (read `score_test_coverage` from frontmatter for the `<= 10` check; re-derive Criterion A Depth from the in-session Phase 2b assessment — no persisted Depth field) and the external-API-suppression rule (reuse the exclusion list from `learning_tests/extractor.py:_EXTRACTION_PROMPT`).
+3. Add a `spike_needed` (bool) row to the Frontmatter Field Reference Table in `docs/reference/ISSUE_TEMPLATE.md` (~line 886). No `rubric.md` change (it does not enumerate flags).
+4. Add `TestSpikeNeededFlagWriteBack` to `scripts/tests/test_confidence_check_skill.py`, mirroring `TestMissingArtifactsFlagWriteBack` (7-assertion shape: heading, field name, signal phrases, idempotency guard, CHECK_MODE guard, no-`AskUserQuestion`, plus the suppression-rule check). Also add the tuple `("docs/reference/ISSUE_TEMPLATE.md", "spike_needed", "ENH-2569")` to `DOC_STRINGS_PRESENT` in `scripts/tests/test_wiring_reference_docs.py` so the new template row is CI-asserted (wiring pass).
+5. Validate against the three manual AC issues (ENH-2565, doc-only, external-API) and run `python -m pytest scripts/tests/test_confidence_check_skill.py -v`.
+6. Run `/ll:confidence-check --all` (or `--sprint`) once post-merge and record the `spike_needed` fire rate in ENH-2568 before starting its routing work.
 
 ## Impact
 
@@ -136,3 +176,6 @@ If no signal phrase matches, or the score condition fails, or suppression applie
 ## Session Log
 
 - `/ll:capture-issue` - 2026-07-10T01:34:59Z - `manual capture via Claude Cowork session`
+- `/ll:refine-issue` - 2026-07-14T15:18:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-20260714-151757-subloop-epic-epic-2570-spike-workflow-skill-confidence-flag-autodev-routing/bbfcda80-6904-47b7-b170-561c9dc789f0.jsonl`
+- `/ll:wire-issue` - 2026-07-14T15:33:00 - `session JSONL unresolved`
+- `/ll:manage-issue` - 2026-07-14T20:41:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-20260714-151757-subloop-epic-epic-2570-spike-workflow-skill-confidence-flag-autodev-routing/8e05480c-967d-46bc-838f-48bac77dd30c.jsonl`

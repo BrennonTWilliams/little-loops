@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.144.0] - 2026-07-14
+
+### Added
+
+- **`spike_needed` frontmatter flag** — `/ll:confidence-check` gains Phase 4.10,
+  which sets `spike_needed: true` when the Phase 4.5 Outcome Risk Factors describe
+  an unproven **internal** mechanism (signal phrases like "no precedent" / "no
+  existing test exercises") and the score condition holds (`score_test_coverage`
+  <= 10 or Criterion A Depth Moderate/Deep). Risk factors naming an external API
+  surface are suppressed and routed to `/ll:explore-api` instead; issues already
+  carrying `spike_attempted`/`spike_completed` are never re-flagged. This turns the
+  ad-hoc "you should spike this" advice into a machine-readable routing signal and
+  a base-rate measurement for the spike lattice (ENH-2569, EPIC-2570).
+
 ## [1.143.0] - 2026-07-13
 
 ### Added
