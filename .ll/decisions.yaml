@@ -5190,3 +5190,18 @@
     stable across process runs, add a determinist
   enforcement: advisory
   issue: BUG-2639
+- id: ARCHITECTURE-154
+  type: decision
+  timestamp: '2026-07-14T23:52:52Z'
+  category: architecture
+  labels: []
+  rationale: 'Empirically confirmed the PYTHONPATH shadow from BUG-2629 (worktree_utils.py
+    verify_epic_branch_before_merge) is sufficient: fresh worktree at 6cc6f994 reproduced
+    the failure without shadowing, then passed 126 tests once PYTHONPATH pointed at
+    the worktree source. The cited failing run used a stale/unshadowed interpreter,
+    not a residual gap.'
+  rule: Option A — close as already-fixed (duplicate of BUG-2629)
+  scope: issue
+  alternatives_rejected: Option B — re-diagnose a residual uncovered edge (no evidence
+    found of a second import route bypassing PYTHONPATH)
+  issue: BUG-2640
