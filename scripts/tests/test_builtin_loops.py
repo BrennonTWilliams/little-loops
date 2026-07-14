@@ -1095,6 +1095,34 @@ class TestRefineToReadyIssueSubLoop:
             "State 'verify_issue' should have been removed; confidence_check.on_yes now routes to 'done'"
         )
 
+    def test_check_epic_id_state_exists(self, data: dict) -> None:
+        """check_epic_id guard state must exist (BUG-2638 defense-in-depth)."""
+        assert "check_epic_id" in data["states"], (
+            "State 'check_epic_id' not found — required so a stray EPIC id is decomposed, "
+            "not refined as a leaf via /ll:refine-issue"
+        )
+
+    def test_resolve_issue_routes_to_check_epic_id(self, data: dict) -> None:
+        """resolve_issue.next must route through the EPIC guard before check_lifetime_limit."""
+        state = data["states"].get("resolve_issue", {})
+        assert state.get("next") == "check_epic_id", (
+            f"resolve_issue.next should be 'check_epic_id', got {state.get('next')!r}"
+        )
+
+    def test_check_epic_id_on_yes_routes_to_breakdown_issue(self, data: dict) -> None:
+        """An EPIC id (exit 0 / on_yes) must route to breakdown_issue, never refine_issue."""
+        state = data["states"].get("check_epic_id", {})
+        assert state.get("on_yes") == "breakdown_issue", (
+            f"check_epic_id.on_yes should be 'breakdown_issue', got {state.get('on_yes')!r}"
+        )
+
+    def test_check_epic_id_on_no_routes_to_check_lifetime_limit(self, data: dict) -> None:
+        """A non-EPIC leaf id (exit 1 / on_no) must proceed to check_lifetime_limit."""
+        state = data["states"].get("check_epic_id", {})
+        assert state.get("on_no") == "check_lifetime_limit", (
+            f"check_epic_id.on_no should be 'check_lifetime_limit', got {state.get('on_no')!r}"
+        )
+
     def test_check_lifetime_limit_routes_to_breakdown_issue(self, data: dict) -> None:
         """check_lifetime_limit.on_no must route to breakdown_issue (not failed)."""
         state = data["states"].get("check_lifetime_limit", {})

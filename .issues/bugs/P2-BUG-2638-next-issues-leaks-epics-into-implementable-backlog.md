@@ -4,8 +4,9 @@ title: ll-issues next-issues leaks EPIC ids into the implementable backlog, caus
   autodev to refine an EPIC as a leaf
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-14T16:56:26Z'
+completed_at: '2026-07-14T17:27:49Z'
 discovered_date: '2026-07-14'
 discovered_by: capture-issue
 size: Small
@@ -247,7 +248,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
       `/ll:refine-issue` (defense-in-depth; may be a separate AC/test).
 - [ ] `python -m pytest scripts/tests/` passes.
 
+## Resolution
+
+Fixed 2026-07-14. Excluded EPIC-type ids from the ranked backlog at the source
+and added a defense-in-depth guard in the loop.
+
+- **Primary fix** — `next_issues.py` (`cmd_next_issues`) and `next_issue.py`
+  (`cmd_next_issue`): applied a `not i.issue_id.startswith("EPIC-")` post-filter
+  to every `find_issues(...)` result (default `skip_blocked`, `--include-blocked`,
+  and the `all_active` fallback branches), before sort/slice. Covers `--json`,
+  `--path`, and singular/plural variants.
+- **Defense-in-depth** — `loops/refine-to-ready-issue.yaml`: new `check_epic_id`
+  guard state between `resolve_issue` and `check_lifetime_limit`. A stray EPIC id
+  (exit 0 / `on_yes`) routes to `breakdown_issue` (decompose) instead of
+  `refine_issue`; leaves (exit 1 / `on_no`) proceed normally.
+- **Tests** — `TestNextIssuesEpicExclusion` / `TestNextIssueEpicExclusion`
+  regression tests (EPIC absent, children present, across output modes); four new
+  `check_epic_id` routing tests in `TestRefineToReadyIssueSubLoop`.
+- **Docs** — EPIC-exclusion notes added to `docs/reference/CLI.md` and
+  `docs/reference/API.md` for both commands.
+
+Full suite: 14923 passed, 36 skipped. `ll-loop validate refine-to-ready-issue`
+passes.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-14T17:27:17Z - `000ba01e-76b0-4308-a39e-fdaf76f9715c.jsonl`
 - `/ll:confidence-check` - 2026-07-14T17:30:00 - `1dac9138-8f2d-42c5-9a0f-fad9ff61b5fd.jsonl`
 - `/ll:wire-issue` - 2026-07-14T17:14:36 - `a42f6c07-c78d-46cf-bd5c-2c26d1c9f184.jsonl`
 - `/ll:refine-issue` - 2026-07-14T17:01:32 - `d821aeea-bb88-4025-9e93-40153ba7f852.jsonl`

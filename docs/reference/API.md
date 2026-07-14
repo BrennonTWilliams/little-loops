@@ -3692,6 +3692,10 @@ By default (ENH-2436), issues whose `Blocked By` references a non-terminal
 returned ID is always actionable. Pass `--include-blocked` to revert to the
 legacy behavior (return any active issue, blocked or not).
 
+EPIC-type ids are never returned (BUG-2638), in any output mode — EPICs are
+umbrella containers meant to be decomposed via scope resolution, not implemented
+as leaves.
+
 **Output flags:**
 - `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, the row additionally carries `blocked` (bool), `blocked_by` (sorted list of issue IDs), and `pending_prerequisites` (sorted list of still-open soft `depends_on` targets, ENH-2635). `blocked` reflects hard `blocked_by` edges only; combined with `pending_prerequisites` this distinguishes three states — **hard-blocked** (`blocked: true`), **soft-deferred** (`blocked: false` with a non-empty `pending_prerequisites`), and **ready** (`blocked: false`, `pending_prerequisites: []`). The default (no-flag) path already filters both hard and soft edges via `get_ready_issues()`, so it never returns a soft-deferred pick; this field only matters in the `--include-blocked` reporting mode.
 - `--path` - Output only the file path instead of the issue ID
@@ -3740,6 +3744,11 @@ By default (ENH-2436), issues whose `Blocked By` references a non-terminal
 (`done`/`cancelled`) issue are filtered out of the ranked list. Pass
 `--include-blocked` to revert to the legacy behavior (return every active
 issue, blocked or not).
+
+EPIC-type ids are never included in the ranked list (BUG-2638), in any output
+mode — EPICs are decomposed via scope resolution, not ranked as implementable
+leaves. This also prevents an EPIC and its own children from being
+double-dispatched into the same backlog wave.
 
 **Arguments:**
 - `COUNT` - Optional integer; limit output to top N issues

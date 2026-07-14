@@ -39,7 +39,9 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
     include_blocked = bool(getattr(args, "include_blocked", False))
 
     if include_blocked:
-        all_issues = find_issues(config)
+        # EPICs are umbrella containers meant to be decomposed via scope
+        # resolution, never ranked as implementable leaves (BUG-2638).
+        all_issues = [i for i in find_issues(config) if not i.issue_id.startswith("EPIC-")]
         if not all_issues:
             return 1
 
@@ -60,9 +62,13 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
         count = getattr(args, "count", None)
         ranked = all_issues[:count] if count else all_issues
     else:
-        issues = find_issues(config, skip_blocked=True)
+        issues = [
+            i
+            for i in find_issues(config, skip_blocked=True)
+            if not i.issue_id.startswith("EPIC-")
+        ]
         if not issues:
-            all_active = find_issues(config)
+            all_active = [i for i in find_issues(config) if not i.issue_id.startswith("EPIC-")]
             if all_active:
                 print(
                     f"Error: No ready issues ({len(all_active)} blocked, 0 ready)",

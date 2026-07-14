@@ -42,7 +42,13 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
     if include_blocked:
         # Compute the full ranked set without filtering, then evaluate
         # each candidate's blocked status against the dep graph.
-        ranked = find_issues(config, skip_ids=skip_ids or None)
+        # EPICs are umbrella containers meant to be decomposed via scope
+        # resolution, never ranked as implementable leaves (BUG-2638).
+        ranked = [
+            i
+            for i in find_issues(config, skip_ids=skip_ids or None)
+            if not i.issue_id.startswith("EPIC-")
+        ]
         if not ranked:
             return 1
 
@@ -63,12 +69,20 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         # would otherwise report as ready in --include-blocked (ENH-2635).
         top_pending_prereqs = sorted(graph.get_pending_prerequisites(top.issue_id))
     else:
-        issues = find_issues(config, skip_ids=skip_ids or None, skip_blocked=True)
+        issues = [
+            i
+            for i in find_issues(config, skip_ids=skip_ids or None, skip_blocked=True)
+            if not i.issue_id.startswith("EPIC-")
+        ]
         if not issues:
             # Distinguish "all active issues blocked" from "no active issues at
             # all" by counting the unfiltered active set; if non-empty, all of
             # them must currently be blocked.
-            all_active = find_issues(config, skip_ids=skip_ids or None)
+            all_active = [
+                i
+                for i in find_issues(config, skip_ids=skip_ids or None)
+                if not i.issue_id.startswith("EPIC-")
+            ]
             if all_active:
                 print(
                     f"Error: No ready issues ({len(all_active)} blocked, 0 ready)",

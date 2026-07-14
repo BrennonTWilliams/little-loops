@@ -998,3 +998,72 @@ class TestNextIssueBlockedFilter:
         assert result == 0
         # Done blocker → FEAT-007 is unblocked and selected.
         assert out == "FEAT-007"
+
+
+class TestNextIssueEpicExclusion:
+    """EPICs must never be returned as the top implementable pick (BUG-2638)."""
+
+    def _setup_epics_dir(self, temp_project_dir: Path) -> Path:
+        epics_dir = temp_project_dir / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        return epics_dir
+
+    def test_epic_never_top_pick(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A highest-ranked EPIC is skipped; the top leaf child is returned instead."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        epics_dir = self._setup_epics_dir(temp_project_dir)
+
+        _make_issue(
+            epics_dir,
+            "P0-EPIC-482-umbrella.md",
+            "EPIC-482: Umbrella",
+            outcome_confidence=99,
+            confidence_score=99,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-477-child.md",
+            "FEAT-477: Child",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out == "FEAT-477"
+
+    def test_epic_only_backlog_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A backlog containing only EPICs yields no ready issue (exit 1)."""
+        _write_config(temp_project_dir, sample_config)
+        _setup_dirs(temp_project_dir)
+        epics_dir = self._setup_epics_dir(temp_project_dir)
+
+        _make_issue(epics_dir, "P0-EPIC-482-umbrella.md", "EPIC-482: Umbrella")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issue", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        assert capsys.readouterr().out.strip() == ""

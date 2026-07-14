@@ -2,6 +2,7 @@ name: "refine-to-ready-issue"
 description: "Drives a single issue from backlog to ready-state: refines it, wires integration points, runs confidence checks, and routes to issue-size-review if confidence thresholds cannot be met."
 category: issue-management
 # Routing summary:
+#   resolve_issue → check_epic_id → (on_yes: EPIC id) breakdown_issue | (on_no: leaf) check_lifetime_limit
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
@@ -29,8 +30,27 @@ states:
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
     capture: issue_id
-    next: check_lifetime_limit
+    next: check_epic_id
     on_error: diagnose
+
+  check_epic_id:
+    # Defense-in-depth (BUG-2638): EPICs are umbrella containers, never
+    # implementable leaves. `ll-issues next-issue` now filters EPIC ids out at
+    # the source, but a stray EPIC id reaching this loop (explicit
+    # context.input, an unfiltered caller) must be decomposed, not refined as a
+    # leaf via /ll:refine-issue. Route EPIC ids to breakdown_issue.
+    action: |
+      case "${captured.issue_id.output}" in
+        EPIC-*) exit 0 ;;
+        *) exit 1 ;;
+      esac
+    action_type: shell
+    # exit 0 (on_yes) = id is an EPIC → decompose; exit 1 (on_no) = leaf → proceed
+    evaluate:
+      type: exit_code
+    on_yes: breakdown_issue
+    on_no: check_lifetime_limit
+    on_error: check_lifetime_limit
 
   check_lifetime_limit:
     action: |

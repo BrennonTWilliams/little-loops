@@ -821,3 +821,92 @@ class TestNextIssuesBlockedFilterContract:
         for row in data:
             assert "blocked" not in row
             assert "blocked_by" not in row
+
+
+class TestNextIssuesEpicExclusion:
+    """EPICs are umbrella containers and must never appear in ranked output (BUG-2638)."""
+
+    def _setup_epics_dir(self, temp_project_dir: Path) -> Path:
+        epics_dir = temp_project_dir / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        return epics_dir
+
+    def test_epic_excluded_children_remain(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """An open EPIC (even highest-ranked) is absent; its children remain present."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        epics_dir = self._setup_epics_dir(temp_project_dir)
+
+        _make_issue(
+            epics_dir,
+            "P0-EPIC-482-umbrella.md",
+            "EPIC-482: Umbrella",
+            outcome_confidence=99,
+            confidence_score=99,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-477-child.md",
+            "FEAT-477: Child",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-issues", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        lines = capsys.readouterr().out.strip().splitlines()
+        assert result == 0
+        assert "EPIC-482" not in lines
+        assert "FEAT-477" in lines
+
+    def test_epic_excluded_from_json_and_include_blocked(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json and --include-blocked variants also drop EPIC ids."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        epics_dir = self._setup_epics_dir(temp_project_dir)
+
+        _make_issue(epics_dir, "P0-EPIC-482-umbrella.md", "EPIC-482: Umbrella")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-477-child.md",
+            "FEAT-477: Child",
+            outcome_confidence=80,
+            confidence_score=80,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issues",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        data = json.loads(capsys.readouterr().out)
+        assert result == 0
+        ids = [row["id"] for row in data]
+        assert "EPIC-482" not in ids
+        assert "FEAT-477" in ids

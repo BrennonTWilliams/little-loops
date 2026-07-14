@@ -1240,6 +1240,8 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 
 **Dependency filter:** By default (ENH-2436), issues whose `Blocked By` references a non-terminal (`done`/`cancelled`) issue are filtered out before ranking, so the returned ID is always actionable. Pass `--include-blocked` to revert to the legacy behavior (return any active issue, blocked or not).
 
+**EPIC exclusion:** EPIC-type ids are never returned (BUG-2638). EPICs are umbrella containers meant to be decomposed via scope resolution (`SprintManager.load_or_resolve`), not implemented as leaves; the exclusion applies to all output modes (`--json`, `--path`, `--include-blocked`).
+
 **Exit codes:** 0 = issue found, 1 = no active issues OR every active issue is currently blocked. The all-blocked case emits `Error: No ready issues (N blocked, 0 ready)` on stderr.
 
 | Flag | Description |
@@ -1257,6 +1259,8 @@ Print all active issues in ranked order by outcome confidence and readiness scor
 **Sort order:** Config-driven via `issues.next_issue.strategy` (default: `confidence_first` — `outcome_confidence` desc, `confidence_score` desc, `priority` asc). Issues without scores are ranked below all scored issues.
 
 **Dependency filter:** By default (ENH-2436), issues whose `Blocked By` references a non-terminal (`done`/`cancelled`) issue are filtered out before ranking. Pass `--include-blocked` to revert to the legacy behavior.
+
+**EPIC exclusion:** EPIC-type ids are never returned (BUG-2638), in any output mode. EPICs are decomposed via scope resolution, not ranked as implementable leaves.
 
 **Exit codes:** 0 = at least one unblocked issue found, 1 = no active issues OR every active issue is currently blocked. The all-blocked case emits `Error: No ready issues (N blocked, 0 ready)` on stderr.
 
