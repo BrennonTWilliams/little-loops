@@ -1221,10 +1221,10 @@ Print the issue ranked highest by outcome confidence and readiness score. Design
 
 | Flag | Description |
 |------|-------------|
-| `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, the row also carries `blocked` (bool) and `blocked_by` (sorted list of issue IDs). |
+| `--json` / `-j` | Output a JSON object: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, the row also carries `blocked` (bool), `blocked_by` (sorted list of issue IDs), and `pending_prerequisites` (sorted list of still-open soft `depends_on` targets). `blocked` reflects hard `blocked_by` edges only, so the three states are distinguishable: hard-blocked (`blocked: true`), soft-deferred (`blocked: false` with a non-empty `pending_prerequisites`), and ready (`blocked: false`, `pending_prerequisites: []`). |
 | `--path` | Output only the file path (useful for shell scripting: `$(ll-issues next-issue --path)`) |
 | `--skip / -s ISSUE_ID[,...]` | Comma-separated issue IDs to exclude (e.g. `FEAT-007,BUG-001`); absent `--skip` preserves existing behavior |
-| `--include-blocked` | Include issues with unresolved blockers in the ranked output. With `--json`, each row carries `blocked` and `blocked_by` fields. |
+| `--include-blocked` | Include issues with unresolved blockers in the ranked output. With `--json`, each row carries `blocked`, `blocked_by`, and `pending_prerequisites` fields. |
 | `--config` | Path to project root |
 
 #### `ll-issues next-issues [N]` / `ll-issues nxs [N]`
@@ -1240,9 +1240,9 @@ Print all active issues in ranked order by outcome confidence and readiness scor
 | Flag/Arg | Description |
 |----------|-------------|
 | `N` | Optional count — limit output to top N issues |
-| `--json` / `-j` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, each row also carries `blocked` (bool) and `blocked_by` (sorted list). |
+| `--json` / `-j` | Output a JSON array of objects: `{id, path, outcome_confidence, confidence_score, priority}`. With `--include-blocked`, each row also carries `blocked` (bool), `blocked_by` (sorted list), and `pending_prerequisites` (sorted list of still-open soft `depends_on` targets). As with `next-issue`, `blocked` reflects hard `blocked_by` edges only, so hard-blocked, soft-deferred, and ready rows are distinguishable. |
 | `--path` | Output file paths instead of issue IDs |
-| `--include-blocked` | Include issues with unresolved blockers in the ranked list. With `--json`, each row carries `blocked` and `blocked_by` fields. |
+| `--include-blocked` | Include issues with unresolved blockers in the ranked list. With `--json`, each row carries `blocked`, `blocked_by`, and `pending_prerequisites` fields. |
 | `--config` | Path to project root |
 
 #### `ll-issues skip <issue_id>` / `ll-issues sk`

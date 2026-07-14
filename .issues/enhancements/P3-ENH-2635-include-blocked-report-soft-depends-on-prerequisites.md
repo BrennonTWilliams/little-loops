@@ -1,12 +1,19 @@
 ---
 id: ENH-2635
-title: "next-issue --include-blocked should report pending depends_on prerequisites"
+title: next-issue --include-blocked should report pending depends_on prerequisites
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-07-14T00:33:55Z"
+status: done
+captured_at: '2026-07-14T00:33:55Z'
+completed_at: '2026-07-14T01:23:33Z'
 discovered_date: 2026-07-14
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 24
+score_change_surface: 23
 ---
 
 # ENH-2635: next-issue --include-blocked should report pending depends_on prerequisites
@@ -116,18 +123,23 @@ _Wiring pass added by `/ll:wire-issue`:_
   branch of `cmd_next_issue` (lines 42–91). Compute `pending` from
   `graph.get_pending_prerequisites(top.issue_id)` after the sort and stamp it into
   the JSON row where `blocked`/`blocked_by` are set. [Agent 1 finding]
+- `scripts/little_loops/cli/issues/next_issues.py` (plural) — apply the same additive
+  `pending_prerequisites` field for parity (**decision resolved — see § Sibling Command
+  Parity**). `cmd_next_issues` builds an identical `blocked_by_map` (lines 39–70) and
+  JSON-row shape from the same `DependencyGraph`; compute pending prerequisites per row
+  and stamp them into each JSON row alongside `blocked`/`blocked_by`. [Agent 1 finding]
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `docs/reference/CLI.md` — the `next-issue` JSON field table (~line 1224) and the
-  `--include-blocked` row (~line 1227) currently describe only `blocked`/`blocked_by`;
-  add `pending_prerequisites`. Goes stale the moment the field lands. [Agent 2 finding]
-- `docs/reference/API.md` — `#### next-issue` prose (lines 3681–3728) describes the
-  dependency-filter and `--include-blocked` semantics narratively; add the new field
-  and the "hard-blocked vs soft-deferred vs ready" distinction the Motivation calls
-  out. [Agent 2 finding]
+- `docs/reference/CLI.md` — update **both** the `next-issue` JSON field table
+  (~line 1224) and the `next-issues` field table (lines 1230–1245); each currently
+  describes only `blocked`/`blocked_by`. Add `pending_prerequisites` to both to keep
+  the parallel wording consistent. Goes stale the moment the field lands. [Agent 2 finding]
+- `docs/reference/API.md` — update **both** `#### next-issue` (lines 3681–3728) and
+  `#### next-issues` (lines 3730–3778) prose; add the new field and the "hard-blocked
+  vs soft-deferred vs ready" distinction the Motivation calls out. [Agent 2 finding]
 - `docs/guides/LOOPS_REFERENCE.md` — lines 943, 3285 reference `--include-blocked`
   conceptually (not field-level). Advisory only; no edit needed unless the meaning of
   `blocked` is redefined rather than kept purely additive. [Agent 2 finding]
@@ -145,24 +157,34 @@ _Wiring pass added by `/ll:wire-issue`:_
   and asserting `pending_prerequisites` is populated while `blocked` stays `False`.
   Add a completed-`depends_on`-target variant (mirror `test_done_blocker_does_not_block`,
   line 757) and a mixed `blocked_by`+`depends_on` variant. [Agent 1 + 3 findings]
+- `scripts/tests/test_next_issues.py` — mirror the soft-defer JSON coverage for the
+  plural command so `next_issues.py`'s parity change is tested too. [Agent 1 finding]
 - `scripts/tests/test_dependency_graph.py` — `get_pending_prerequisites` is already
   covered (`test_depends_on_edges_populated` line 190, `test_depends_on_completed_target_skipped`
   line 200); no change needed, referenced as the fixture-construction model for
   `depends_on` edges. [Agent 3 finding]
 
-### Sibling Command (Decision Required)
+### Sibling Command Parity (Decision: RESOLVED — include for parity)
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `scripts/little_loops/cli/issues/next_issues.py` (plural) — `cmd_next_issues`
-  contains an **identical** `blocked_by_map` construction (lines 39–70) and the same
-  JSON-row shape, built from the same `DependencyGraph`. The issue scopes only the
-  singular `next-issue`. If left unchanged, `next-issue --include-blocked --json` will
-  report `pending_prerequisites` while `next-issues --include-blocked --json` will not,
-  for identical dependency data — a documentation-visible asymmetry (CLI.md lines
-  1230–1245, API.md lines 3730–3778 describe them in parallel wording). **Recommendation:
-  apply the same additive field to `next_issues.py` and its docs/tests
-  (`scripts/tests/test_next_issues.py`) to keep the two commands consistent.** [Agent 1 + 2 findings]
+**Decision:** `next_issues.py` (plural) **is in scope** for this issue and gets the
+same additive `pending_prerequisites` field.
+
+Rationale: `cmd_next_issues` contains an **identical** `blocked_by_map` construction
+(lines 39–70) and the same JSON-row shape, built from the same `DependencyGraph`. If
+the plural command were left unchanged, `next-issue --include-blocked --json` would
+report `pending_prerequisites` while `next-issues --include-blocked --json` would not,
+for identical dependency data — a documentation-visible asymmetry (CLI.md lines
+1230–1245, API.md lines 3730–3778 describe the two commands in parallel wording). The
+change is additive and low-risk, so applying it to both keeps the surface consistent.
+
+Scope of the parity change (all folded into the sections above):
+- `scripts/little_loops/cli/issues/next_issues.py` — compute + stamp `pending_prerequisites`
+  per JSON row (see § Files to Modify).
+- `docs/reference/CLI.md` / `docs/reference/API.md` — update the `next-issues` field
+  table and prose alongside `next-issue` (see § Documentation).
+- `scripts/tests/test_next_issues.py` — add soft-defer coverage (see § Tests). [Agent 1 + 2 findings]
 
 ### No Coupling Found
 
@@ -175,13 +197,33 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Impact
 
-- Affected: `scripts/little_loops/cli/issues/next_issue.py` (`--include-blocked`
-  JSON path only). Default path unchanged. **Consider `next_issues.py` for parity
-  (see Integration Map § Sibling Command).**
-- Also touched: `docs/reference/CLI.md`, `docs/reference/API.md` (doc field list),
-  `scripts/tests/test_next_issue.py` (extend `_make_issue` for `depends_on`).
+- Affected: `scripts/little_loops/cli/issues/next_issue.py` **and**
+  `scripts/little_loops/cli/issues/next_issues.py` (`--include-blocked` JSON path only,
+  both commands for parity — see Integration Map § Sibling Command Parity). Default
+  paths unchanged.
+- Also touched: `docs/reference/CLI.md`, `docs/reference/API.md` (doc field list for
+  both commands), `scripts/tests/test_next_issue.py` (extend `_make_issue` for
+  `depends_on`), `scripts/tests/test_next_issues.py` (parity coverage).
 - Low blast radius — additive JSON field. Any consumer relying on `blocked` alone
   to gauge readiness benefits from the correction.
+
+## Scope Boundaries
+
+In scope:
+- Add an additive `pending_prerequisites` field to the `--include-blocked --json`
+  output of both `next-issue` and `next-issues`.
+- Extend `_make_issue` (and the plural test module) to construct `depends_on` edges
+  for fixtures.
+- Update the `next-issue`/`next-issues` field tables in `docs/reference/CLI.md` and
+  `docs/reference/API.md`.
+
+Out of scope:
+- Changing default (no-flag) `next-issue`/`next-issues` behavior, ordering, or exit
+  codes — those already enforce soft `depends_on` via `get_ready_issues()`.
+- Redefining the semantics of the existing `blocked`/`blocked_by` fields (kept purely
+  additive; `blocked` stays hard-edge-only).
+- Any new runtime consumer of the JSON output (no consumers exist today — see
+  § No Coupling Found).
 
 ## Acceptance Criteria
 
@@ -195,12 +237,41 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `docs/reference/CLI.md` and `docs/reference/API.md` `next-issue` sections mention
-  the new `pending_prerequisites` field and the blocked/deferred/ready distinction.
-- Decision recorded on whether `next_issues.py` (plural) gets the same field for
-  parity; if yes, its docs and `test_next_issues.py` are updated too.
+- `docs/reference/CLI.md` and `docs/reference/API.md` `next-issue` **and `next-issues`**
+  sections mention the new `pending_prerequisites` field and the blocked/deferred/ready
+  distinction.
+- `next-issues --include-blocked --json` (plural) also includes `pending_prerequisites`
+  for parity with `next-issue`, covered by `test_next_issues.py`.
 
+
+## Resolution
+
+**Done** — 2026-07-14. Added an additive `pending_prerequisites` field to the
+`--include-blocked --json` output of both `next-issue` and `next-issues`.
+
+- `scripts/little_loops/cli/issues/next_issue.py` — computes
+  `sorted(graph.get_pending_prerequisites(top.issue_id))` after the sort (keyed on
+  the post-sort `top`) and stamps it into the JSON row alongside `blocked`/`blocked_by`.
+  The non-`--include-blocked` branch emits an empty list.
+- `scripts/little_loops/cli/issues/next_issues.py` — builds a `pending_prereq_map`
+  parallel to `blocked_by_map` and stamps `pending_prerequisites` per row (parity).
+- `blocked` stays hard-`blocked_by`-edge-only, so callers can now distinguish
+  hard-blocked / soft-deferred / ready. Default (no-flag) paths unchanged — they
+  already filter soft `depends_on` via `get_ready_issues()`.
+- Extended the `_make_issue` test helper in both `test_next_issue.py` and
+  `test_next_issues.py` with a `depends_on` param, and added soft-defer / ready /
+  done-prereq / mixed-hard-and-soft JSON coverage.
+- Updated `docs/reference/CLI.md` and `docs/reference/API.md` field tables/prose for
+  both commands.
+
+All acceptance criteria met. Full suite: 14882 passed, 36 skipped. Lint + mypy clean.
+
+## Status
+
+**Done** | Created: 2026-07-14 | Completed: 2026-07-14 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-14T01:22:52 - `4c543f5a-a89a-4026-a3bb-82f808ce9096.jsonl`
+- `/ll:ready-issue` - 2026-07-14T01:11:56 - `82850630-6ee6-45d8-a849-9f6a55a252a7.jsonl`
 - `/ll:wire-issue` - 2026-07-14T00:43:59 - `fd4d0ee0-3009-440f-aebb-109c902cef3c.jsonl`
 - `/ll:refine-issue` - 2026-07-14T00:36:21 - `db508eb9-b933-4dbd-9d51-19f77e3f7336.jsonl`

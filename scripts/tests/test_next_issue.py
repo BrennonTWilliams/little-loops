@@ -24,6 +24,7 @@ def _make_issue(
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
     blocked_by: list[str] | None = None,
+    depends_on: list[str] | None = None,
     status: str | None = None,
 ) -> None:
     """Write a minimal issue file with optional frontmatter fields.
@@ -35,23 +36,31 @@ def _make_issue(
         confidence_score: Optional ``confidence_score`` frontmatter.
         outcome_confidence: Optional ``outcome_confidence`` frontmatter.
         blocked_by: Optional ``blocked_by`` list frontmatter (ENH-2436).
+        depends_on: Optional ``depends_on`` list frontmatter (soft prerequisite,
+            ENH-2635). Forces ``status: open`` when set (like ``blocked_by``) so
+            the soft-dependency edge — not ``status: blocked`` — is what defers
+            the issue.
         status: Optional ``status`` frontmatter. Defaults to ``open`` when
-            ``blocked_by`` is set (issues with a non-empty ``blocked_by`` list
-            are exercised as open by default).
+            ``blocked_by`` or ``depends_on`` is set (issues with a non-empty
+            dependency list are exercised as open by default).
     """
     frontmatter_lines: list[str] = []
     if confidence_score is not None:
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         frontmatter_lines.append(f"outcome_confidence: {outcome_confidence}")
-    if blocked_by is not None:
-        # status defaults to "open" when blocked_by is non-empty so the
-        # dependency edge is what makes the issue blocked, not status: blocked.
+    if blocked_by is not None or depends_on is not None:
+        # status defaults to "open" when a dependency edge is present so the
+        # edge is what defers the issue, not status: blocked.
         frontmatter_lines.append(f"status: {status or 'open'}")
         if blocked_by:
             frontmatter_lines.append("blocked_by:")
             for blocker in blocked_by:
                 frontmatter_lines.append(f"  - {blocker}")
+        if depends_on:
+            frontmatter_lines.append("depends_on:")
+            for prereq in depends_on:
+                frontmatter_lines.append(f"  - {prereq}")
     elif status is not None:
         frontmatter_lines.append(f"status: {status}")
 
@@ -704,6 +713,207 @@ class TestNextIssueBlockedFilter:
         assert data["outcome_confidence"] == 85
         assert data["confidence_score"] == 75
         assert data["priority"] == "P2"
+
+    def test_include_blocked_json_reports_pending_prerequisites(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--include-blocked --json` surfaces soft `depends_on` deferrals (ENH-2635).
+
+        The top pick has an open `depends_on` target but no hard `blocked_by`
+        edge. It must be reported as `blocked: False` (hard-edge-only) while
+        `pending_prerequisites` lists the unresolved soft prerequisite, so a
+        soft-deferred pick is distinguishable from a genuinely ready one.
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        # FEAT-008 (highest confidence) soft-depends on the still-open FEAT-009.
+        _make_issue(
+            features_dir,
+            "P2-FEAT-008-soft-deferred.md",
+            "FEAT-008: Soft-deferred, highest confidence",
+            outcome_confidence=90,
+            confidence_score=90,
+            depends_on=["FEAT-009"],
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-009-prereq.md",
+            "FEAT-009: Open prerequisite",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-008"
+        # Hard-blocked stays False — the deferral is soft, surfaced separately.
+        assert data["blocked"] is False
+        assert data["blocked_by"] == []
+        assert data["pending_prerequisites"] == ["FEAT-009"]
+
+    def test_include_blocked_json_prereq_empty_when_ready(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A genuinely ready top pick reports `pending_prerequisites: []` (ENH-2635)."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-010-ready.md",
+            "FEAT-010: Ready",
+            outcome_confidence=90,
+            confidence_score=90,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-010"
+        assert data["blocked"] is False
+        assert data["pending_prerequisites"] == []
+
+    def test_include_blocked_json_done_prereq_not_pending(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A `status: done` `depends_on` target is not reported as pending (ENH-2635).
+
+        Mirrors ``test_done_blocker_does_not_block``: a completed prerequisite is
+        excluded from ``depends_on_edges`` at graph-build time, so the dependent
+        is neither blocked nor soft-deferred.
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        # FEAT-012 is done → dropped by find_issues default; FEAT-011 is ready.
+        _make_issue(
+            features_dir,
+            "P2-FEAT-011-depends-on-done.md",
+            "FEAT-011: Depends on done prereq",
+            outcome_confidence=90,
+            confidence_score=90,
+            depends_on=["FEAT-012"],
+        )
+        _make_issue(features_dir, "P3-FEAT-012-done.md", "FEAT-012: Done prereq", status="done")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-011"
+        assert data["blocked"] is False
+        assert data["pending_prerequisites"] == []
+
+    def test_include_blocked_json_mixed_hard_and_soft(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A pick with both a hard blocker and an open soft prereq reports both (ENH-2635)."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        _make_issue(bugs_dir, "P0-BUG-140-blocker.md", "BUG-140: Hard blocker", status="open")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-013-prereq.md",
+            "FEAT-013: Open soft prereq",
+            outcome_confidence=40,
+            confidence_score=40,
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-014-mixed.md",
+            "FEAT-014: Hard-blocked and soft-deferred",
+            outcome_confidence=95,
+            confidence_score=95,
+            blocked_by=["BUG-140"],
+            depends_on=["FEAT-013"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-014"
+        assert data["blocked"] is True
+        assert data["blocked_by"] == ["BUG-140"]
+        assert data["pending_prerequisites"] == ["FEAT-013"]
 
     def test_all_blocked_returns_exit_1_with_stderr(
         self,

@@ -58,6 +58,10 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         top = ranked[0]
         top_blocked = bool(blocked_by_map.get(top.issue_id))
         top_blocked_by = blocked_by_map.get(top.issue_id, [])
+        # Soft `depends_on` prerequisites still open for the post-sort pick.
+        # Hard `blocked` stays edge-only; this surfaces ordering deferrals that
+        # would otherwise report as ready in --include-blocked (ENH-2635).
+        top_pending_prereqs = sorted(graph.get_pending_prerequisites(top.issue_id))
     else:
         issues = find_issues(config, skip_ids=skip_ids or None, skip_blocked=True)
         if not issues:
@@ -76,6 +80,7 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         top = issues[0]
         top_blocked = False
         top_blocked_by = []
+        top_pending_prereqs = []
 
     if getattr(args, "json", False):
         row: dict[str, object] = {
@@ -88,6 +93,7 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         if include_blocked:
             row["blocked"] = top_blocked
             row["blocked_by"] = top_blocked_by
+            row["pending_prerequisites"] = top_pending_prereqs
         print_json(row)
         return 0
 

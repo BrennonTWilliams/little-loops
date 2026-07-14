@@ -24,6 +24,7 @@ def _make_issue(
     confidence_score: int | None = None,
     outcome_confidence: int | None = None,
     blocked_by: list[str] | None = None,
+    depends_on: list[str] | None = None,
     status: str | None = None,
 ) -> None:
     """Write a minimal issue file with optional frontmatter fields.
@@ -35,23 +36,31 @@ def _make_issue(
         confidence_score: Optional ``confidence_score`` frontmatter.
         outcome_confidence: Optional ``outcome_confidence`` frontmatter.
         blocked_by: Optional ``blocked_by`` list frontmatter (ENH-2436).
+        depends_on: Optional ``depends_on`` list frontmatter (soft prerequisite,
+            ENH-2635). Forces ``status: open`` when set (like ``blocked_by``) so
+            the soft-dependency edge — not ``status: blocked`` — is what defers
+            the issue.
         status: Optional ``status`` frontmatter. Defaults to ``open`` when
-            ``blocked_by`` is set (issues with a non-empty ``blocked_by`` list
-            are exercised as open by default).
+            ``blocked_by`` or ``depends_on`` is set (issues with a non-empty
+            dependency list are exercised as open by default).
     """
     frontmatter_lines: list[str] = []
     if confidence_score is not None:
         frontmatter_lines.append(f"confidence_score: {confidence_score}")
     if outcome_confidence is not None:
         frontmatter_lines.append(f"outcome_confidence: {outcome_confidence}")
-    if blocked_by is not None:
-        # status defaults to "open" when blocked_by is non-empty so the
-        # dependency edge is what makes the issue blocked, not status: blocked.
+    if blocked_by is not None or depends_on is not None:
+        # status defaults to "open" when a dependency edge is present so the
+        # edge is what defers the issue, not status: blocked.
         frontmatter_lines.append(f"status: {status or 'open'}")
         if blocked_by:
             frontmatter_lines.append("blocked_by:")
             for blocker in blocked_by:
                 frontmatter_lines.append(f"  - {blocker}")
+        if depends_on:
+            frontmatter_lines.append("depends_on:")
+            for prereq in depends_on:
+                frontmatter_lines.append(f"  - {prereq}")
     elif status is not None:
         frontmatter_lines.append(f"status: {status}")
 
@@ -556,6 +565,67 @@ class TestNextIssuesBlockedFilter:
         feat_121_row = next(row for row in data if row["id"] == "FEAT-121")
         assert feat_121_row["blocked"] is False
         assert feat_121_row["blocked_by"] == []
+
+    def test_include_blocked_json_reports_pending_prerequisites(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--include-blocked --json` surfaces soft `depends_on` deferrals per row (ENH-2635).
+
+        Parity with the singular ``next-issue`` command: a row soft-deferred by
+        an open ``depends_on`` target reports ``blocked: False`` but lists the
+        prerequisite in ``pending_prerequisites``; a genuinely ready row reports
+        an empty list.
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        # FEAT-122 soft-depends on the still-open FEAT-123.
+        _make_issue(
+            features_dir,
+            "P2-FEAT-122-soft-deferred.md",
+            "FEAT-122: Soft-deferred",
+            outcome_confidence=90,
+            confidence_score=90,
+            depends_on=["FEAT-123"],
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-123-prereq.md",
+            "FEAT-123: Open prerequisite",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issues",
+                "--json",
+                "--include-blocked",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert isinstance(data, list)
+        feat_122_row = next(row for row in data if row["id"] == "FEAT-122")
+        assert feat_122_row["blocked"] is False
+        assert feat_122_row["blocked_by"] == []
+        assert feat_122_row["pending_prerequisites"] == ["FEAT-123"]
+        feat_123_row = next(row for row in data if row["id"] == "FEAT-123")
+        assert feat_123_row["blocked"] is False
+        assert feat_123_row["pending_prerequisites"] == []
 
     def test_all_blocked_returns_exit_1_with_stderr(
         self,

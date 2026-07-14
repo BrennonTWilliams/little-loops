@@ -48,6 +48,13 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in all_issues)
         }
+        # Soft `depends_on` prerequisites still open per issue. Hard `blocked`
+        # stays edge-only; this surfaces ordering deferrals that would otherwise
+        # report as ready in --include-blocked (ENH-2635).
+        pending_prereq_map: dict[str, list[str]] = {
+            issue_id: sorted(graph.get_pending_prerequisites(issue_id))
+            for issue_id in (i.issue_id for i in all_issues)
+        }
 
         all_issues.sort(key=sort_key)
         count = getattr(args, "count", None)
@@ -67,6 +74,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
         count = getattr(args, "count", None)
         ranked = issues[:count] if count else issues
         blocked_by_map = {}
+        pending_prereq_map = {}
 
     if getattr(args, "json", False):
         rows: list[dict[str, object]] = []
@@ -81,6 +89,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
             if include_blocked:
                 row["blocked"] = bool(blocked_by_map.get(i.issue_id))
                 row["blocked_by"] = blocked_by_map.get(i.issue_id, [])
+                row["pending_prerequisites"] = pending_prereq_map.get(i.issue_id, [])
             rows.append(row)
         print_json(rows)
         return 0

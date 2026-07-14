@@ -3693,12 +3693,12 @@ returned ID is always actionable. Pass `--include-blocked` to revert to the
 legacy behavior (return any active issue, blocked or not).
 
 **Output flags:**
-- `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, the row additionally carries `blocked` (bool) and `blocked_by` (sorted list of issue IDs).
+- `--json` - Output as a JSON object with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, the row additionally carries `blocked` (bool), `blocked_by` (sorted list of issue IDs), and `pending_prerequisites` (sorted list of still-open soft `depends_on` targets, ENH-2635). `blocked` reflects hard `blocked_by` edges only; combined with `pending_prerequisites` this distinguishes three states — **hard-blocked** (`blocked: true`), **soft-deferred** (`blocked: false` with a non-empty `pending_prerequisites`), and **ready** (`blocked: false`, `pending_prerequisites: []`). The default (no-flag) path already filters both hard and soft edges via `get_ready_issues()`, so it never returns a soft-deferred pick; this field only matters in the `--include-blocked` reporting mode.
 - `--path` - Output only the file path instead of the issue ID
 
 **Filter flags:**
 - `--skip ISSUE_IDS` - Comma-separated list of issue IDs to exclude (e.g., `BUG-003,FEAT-004`). Useful in FSM loops to skip issues already attempted in the current session.
-- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked output. Each JSON row carries a `blocked` (bool) and `blocked_by` (sorted list) field when this flag is set.
+- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked output. Each JSON row carries `blocked` (bool), `blocked_by` (sorted list), and `pending_prerequisites` (sorted list of open soft `depends_on` targets, ENH-2635) fields when this flag is set.
 
 **Exit codes:** 0 when an issue is found; 1 when no active issues exist or when every active issue is currently blocked (the latter surfaces `Error: No ready issues (N blocked, 0 ready)` on stderr).
 
@@ -3722,7 +3722,7 @@ ll-issues nx --json                             # top unblocked issue as JSON ob
 ll-issues nx --path                             # top unblocked issue file path
 ll-issues nx --skip BUG-003,FEAT-004            # skip specific issues
 ll-issues nx --include-blocked                  # include blocked issues (legacy behavior)
-ll-issues nx --include-blocked --json           # JSON with blocked / blocked_by fields
+ll-issues nx --include-blocked --json           # JSON with blocked / blocked_by / pending_prerequisites
 ```
 
 **FSM loop use**: Use `--skip` to avoid re-selecting issues already processed in the current loop run. Pair with `next-issues` when you need the full ranked list. Loops that need the legacy behavior (i.e. pick any active issue even if blocked) should pass `--include-blocked` to opt back in.
@@ -3745,11 +3745,11 @@ issue, blocked or not).
 - `COUNT` - Optional integer; limit output to top N issues
 
 **Output flags:**
-- `--json` - Output as a JSON array with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, each row additionally carries `blocked` (bool) and `blocked_by` (sorted list).
+- `--json` - Output as a JSON array with fields: `id`, `path`, `outcome_confidence`, `confidence_score`, `priority`. When `--include-blocked` is also set, each row additionally carries `blocked` (bool), `blocked_by` (sorted list), and `pending_prerequisites` (sorted list of still-open soft `depends_on` targets, ENH-2635). As with `next-issue`, `blocked` reflects hard `blocked_by` edges only, so a row's state is **hard-blocked**, **soft-deferred** (non-empty `pending_prerequisites`), or **ready** (both empty).
 - `--path` - Output one file path per line instead of IDs
 
 **Filter flags:**
-- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked list. Each JSON row carries `blocked` and `blocked_by` fields when set.
+- `--include-blocked` (ENH-2436) - Re-include issues with unresolved blockers in the ranked list. Each JSON row carries `blocked`, `blocked_by`, and `pending_prerequisites` (open soft `depends_on` targets, ENH-2635) fields when set.
 
 **Exit codes:** 0 when at least one unblocked issue is found; 1 when no active issues exist or when every active issue is currently blocked (the latter surfaces `Error: No ready issues (N blocked, 0 ready)` on stderr).
 
@@ -3772,7 +3772,7 @@ ll-issues next-issues                       # all unblocked issues ranked
 ll-issues next-issues 5                     # top 5 unblocked
 ll-issues nxs --json                        # unblocked list as JSON array
 ll-issues nxs --path                        # unblocked list as file paths
-ll-issues nxs --include-blocked --json      # JSON with blocked / blocked_by fields
+ll-issues nxs --include-blocked --json      # JSON with blocked / blocked_by / pending_prerequisites
 ```
 
 **FSM loop use**: Pair with `ll-issues next-issue` (singular) when you need only the top item; use `next-issues` when you want to seed a loop queue or inspect the full ranked backlog. Loops that need the legacy behavior (i.e. include blocked issues in the queue) should pass `--include-blocked`.
