@@ -5176,3 +5176,17 @@
   alternatives_rejected: 'Option B (liveness-only via _process_alive): higher codebase
     fit but violates the identity-verification acceptance criteria.'
   issue: FEAT-2619
+- id: TEST-208
+  type: rule
+  timestamp: '2026-07-14T20:00:20Z'
+  category: testing
+  labels:
+  - extracted
+  - global
+  rationale: sorted(frozenset, key=len) is only stable within same-length groups;
+    items of equal key retain frozenset iteration order, which varies per-process
+    under PYTHONHASHSEED, causing non-deterministic output and flaky tests.
+  rule: When sorting/joining items from a set or frozenset for output that must be
+    stable across process runs, add a determinist
+  enforcement: advisory
+  issue: BUG-2639
