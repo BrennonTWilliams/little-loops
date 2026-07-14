@@ -1423,22 +1423,28 @@ ll-issues ep EPIC-1773 --format markdown         # EPIC progress as markdown
 
 #### `ll-issues clusters` / `ll-issues cl`
 
-Visualize issue dependency clusters as box diagrams. Walks all relationship types across active issues by default and renders each connected component as a vertically stacked box diagram with arrows.
+Visualize issue dependency clusters. Walks all relationship types across active issues by default and renders each connected component. The default `tree` layout draws an indented, multi-root dependency tree (`├──`/`└──` connectors) in which **every** edge is shown — hub/parent hierarchies (e.g. one EPIC with many `parent:` children) render with the hub at the root and depth shown naturally, and DAG cross-edges or cycle back-edges appear as `⤷` cross-references rather than being demoted to a trailing skip-edge list.
 
 **Flags:**
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--layout {tree,list,boxes}` | `tree` | Diagram layout. `tree` (default): indented multi-root dependency tree with every edge shown inline. `list`: one line per issue with edge annotations (compact). `boxes`: legacy vertical box-stack with arrows between consecutive boxes and a trailing skip-edge list. An explicit `--layout` overrides `--compact`. |
+| `--compact` / `--summary` | off | Alias for `--layout list`. |
 | `--edges SET` | `all` | Relationship types to follow. Aliases: `all` (all types), `blocking` (`blocked_by`+`blocks` only — legacy behaviour), `hard` (`blocked_by`+`blocks`+`depends_on`). Or a comma-separated list of: `blocked_by,blocks,depends_on,relates_to,parent`. |
 | `--status SET` | `active` | Issue statuses to include. Aliases: `active` (`open`/`in_progress`/`blocked`), `+deferred` (active + deferred), `all` (everything except cancelled). Or a comma-separated list of canonical status values. |
+| `--cluster N` | — | Render only the Nth cluster (1-indexed). |
+| `--limit N` | — | Render at most N clusters; the footer reports how many were suppressed. |
 | `--include-orphans` | off | Include 1-issue clusters (isolated issues with no relationships). |
 | `--min-connections N` | 0 | Only show clusters where at least one issue has N or more connections. |
-| `--json` / `-j` | off | Output as JSON array. Each element has `cluster_index`, `issue_count`, `issues`, and `edges` (with `relationship` values: `blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent`). |
+| `--json` / `-j` | off | Output as JSON array. Each element has `cluster_index`, `issue_count`, `issues`, and `edges` (with `relationship` values: `blocked_by`, `blocks`, `depends_on`, `relates_to`, `parent`). Output is identical across all `--layout` values. |
 
 **Examples:**
 
 ```bash
-ll-issues clusters                          # All relationship types, active issues
+ll-issues clusters                          # Indented dependency tree (default), active issues
+ll-issues clusters --layout list            # Compact one-line-per-issue view
+ll-issues clusters --layout boxes           # Legacy vertical box-stack
 ll-issues clusters --edges=blocking         # Legacy view: blocked_by/blocks only
 ll-issues clusters --status=+deferred       # Include deferred issues
 ll-issues clusters --status=all             # All statuses except cancelled

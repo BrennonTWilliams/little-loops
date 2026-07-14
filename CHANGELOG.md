@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ll-issues clusters` graph-aware tree layout** — the default rendering is now
+  an indented, multi-root dependency tree (`├──`/`└──` connectors) in which every
+  edge appears in the primary layout; hub/parent hierarchies show depth naturally
+  and DAG cross-edges / cycle back-edges render as `⤷` cross-references instead of
+  being demoted to a trailing skip-edge list. Adds `--layout {tree,list,boxes}`
+  (`tree` default; `list` is the compact renderer, aliased by `--compact`; `boxes`
+  is the legacy box-stack); `--json` output is unchanged (FEAT-2337, EPIC-2370).
+
 - **CodeQuery system** — a pluggable structural code-query provider protocol with
   a grep/AST fallback provider that needs no index day-one, plus the `ll-code`
   CLI (`status`/`callers-of`/`callees-of`/`importers-of`/`defines`/`references`/

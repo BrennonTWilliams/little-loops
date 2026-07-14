@@ -460,12 +460,24 @@ Examples:
             help="Render at most N clusters; the footer reports how many were suppressed",
         )
         cl.add_argument(
+            "--layout",
+            choices=["tree", "list", "boxes"],
+            default=None,
+            dest="layout",
+            help=(
+                "Diagram layout: tree (default, indented multi-root dependency tree "
+                "with every edge shown), list (one line per issue with edge "
+                "annotations), boxes (legacy vertical box-stack). "
+                "An explicit --layout overrides --compact."
+            ),
+        )
+        cl.add_argument(
             "--compact",
             "--summary",
             action="store_true",
             default=False,
             dest="compact",
-            help="One line per issue with edge annotations instead of a 4-line box",
+            help="Alias for --layout list (one line per issue with edge annotations)",
         )
         cl.add_argument("--json", "-j", action="store_true", help="Output as JSON array")
         cl.add_argument(
