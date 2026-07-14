@@ -242,7 +242,25 @@ _Added by `/ll:refine-issue` — concrete references derived from direct source 
 
 **Open** | Created: 2026-07-05 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2511** (MCP tool-call
+telemetry) explicitly plans to widen this issue's same `tool_events` v19
+migration in a single batch. Verified against current code
+(`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
+(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
+v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done) — this
+issue's "bump 18→19" Integration Map text is stale; the actual next-available
+slot at implementation time should be read from `SCHEMA_VERSION` directly
+rather than assumed. ENH-2511 has been given `depends_on: [ENH-2497]` so this
+issue lands first and ENH-2511's `mcp_server`/`mcp_tool`/`mcp_outcome`/
+`latency_ms` columns are added to the same migration block this issue creates
+(one shared `ALTER TABLE tool_events` batch), not a second competing one.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-14T00:22:08 - `33e15d2a-429d-48f8-8998-aca5080acdd5.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:16:27 - `84c84b8b-bd4f-4743-8789-7aa8fa03818a.jsonl`
 - audit - 2026-07-06 - Corrected agent count: `agents/*.md` contains 9 agent definitions, not ~15.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

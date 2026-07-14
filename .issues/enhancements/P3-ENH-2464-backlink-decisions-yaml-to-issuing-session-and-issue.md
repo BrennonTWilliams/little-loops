@@ -391,7 +391,27 @@ These are the two paths `/ll:decide-issue` should resolve between. The existing 
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Integration Map
+assumes it is the sole claimant of the next schema-version slot ("bump
+`SCHEMA_VERSION = 18` → `19`"). At least ten other active EPIC-2457 siblings
+(ENH-2463, ENH-2465, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496,
+ENH-2497, ENH-2498, ENH-2511) independently make the same "18→19" claim in
+their own Integration Maps — they cannot all be v19. Verified against current
+code (`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
+(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
+v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done). At
+implementation time, read the live `SCHEMA_VERSION` constant to determine the
+actual next-available slot rather than trusting this issue's stale "19"
+literal; each child lands its own migration at whatever version is open when
+it is implemented (no coordinated release; per EPIC-2457's own "no shared
+helper module is required" scope note).
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T07:13:46 - `545040c5-e94c-459c-892a-62e85637299c.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:14:46 - `a2f712f0-e5cb-481f-b11e-ebec85b401f1.jsonl`
 - audit - 2026-07-06 - Fixed Sources ref: `correction_retirements` is a table in `session_store.py` (v13, ENH-2046), not a module. Verified the three capture-bridge skills (`decide-issue`, `tradeoff-review-issues`, `go-no-go`) and `scripts/little_loops/decisions.py` exist.

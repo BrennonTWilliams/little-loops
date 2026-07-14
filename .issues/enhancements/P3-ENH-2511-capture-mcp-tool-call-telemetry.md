@@ -8,6 +8,7 @@ discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+depends_on: [ENH-2497]
 labels:
   - enhancement
   - history-db
@@ -177,5 +178,26 @@ mcp_tool=NULL, mcp_outcome=NULL, latency_ms=NULL`.
 
 **Open** | Created: 2026-07-06 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and **ENH-2497**
+both propose additive `ALTER TABLE tool_events ADD COLUMN ...` migrations
+against the *same* target schema version and explicitly plan to land as one
+batched migration (this issue's own text: "Overlaps ENH-2497 explicitly noted
+in the user's gap list" / "Coordinate with ENH-2497's `agent_type` column
+... single migration batch"). Verified against current code
+(`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
+(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
+v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done) — neither
+issue's stale "bump 18→19" Integration Map text is current. `depends_on:
+[ENH-2497]` has been added to this issue's frontmatter so ENH-2497 is
+implemented first (its `agent_type` column lands), and this issue's migration
+is authored as an *addition to that same migration block* rather than a
+second independent `tool_events` ALTER — avoiding two competing migrations
+racing for the same next-available schema version.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-14T00:21:42 - `33e15d2a-429d-48f8-8998-aca5080acdd5.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

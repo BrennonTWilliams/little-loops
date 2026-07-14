@@ -273,7 +273,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-07-05 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Integration Map
+assumes it is the sole claimant of the next schema-version slot ("bump
+`SCHEMA_VERSION = 18` → `19`"). At least ten other active EPIC-2457 siblings
+(ENH-2463, ENH-2464, ENH-2465, ENH-2492, ENH-2493, ENH-2494, ENH-2496,
+ENH-2497, ENH-2498, ENH-2511) independently make the same "18→19" claim in
+their own Integration Maps — they cannot all be v19. Verified against current
+code (`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
+(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
+v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done). At
+implementation time, read the live `SCHEMA_VERSION` constant to determine the
+actual next-available slot rather than trusting this issue's stale "19"
+literal; each child lands its own migration at whatever version is open when
+it is implemented (no coordinated release; per EPIC-2457's own "no shared
+helper module is required" scope note). Note also that **ENH-2509** (worktree
+lifecycle events) is an intentional, already-coordinated widening of this
+issue's `session_lifecycle_events` table — not a conflict.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:57:52 - `f072a647-96ed-4b8d-bdc1-936243abf1c4.jsonl`
 - audit - 2026-07-06 - Corrected "only post-tool-use writes to history.db": the `user-prompt-check.sh` → `user_prompt_submit.py` path also writes (corrections + skill events). Core claim stands — no session-*lifecycle* hook writes to the DB. Fixed sweep_stale_refs path.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
