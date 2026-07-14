@@ -3,8 +3,9 @@ id: ENH-2634
 title: audit-issue-conflicts ignores positional EPIC argument; always scans full backlog
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-14T00:22:18Z'
+completed_at: '2026-07-14T02:47:23Z'
 discovered_date: 2026-07-14
 discovered_by: capture-issue
 relates_to:
@@ -240,6 +241,7 @@ _Added by `/ll:refine-issue`:_
   for this issue's scoping.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-14T02:47:23 - `ede330da-d2ce-4145-ba37-0ba7c2d053a4.jsonl`
 - `/ll:refine-issue` - 2026-07-14T02:32:40 - `a822510e-834e-45a1-84d2-bab591a111bd.jsonl`
 - `/ll:wire-issue` - 2026-07-14T00:38:34 - `b93a45e7-4dc4-4669-8b86-f4f503426c69.jsonl`
 - `/ll:refine-issue` - 2026-07-14T00:28:18 - `621ca141-d10e-4326-b2c3-52c93473a7ab.jsonl`

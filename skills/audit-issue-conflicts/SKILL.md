@@ -2,7 +2,7 @@
 name: audit-issue-conflicts
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 disable-model-invocation: true
-argument-hint: "[--auto] [--dry-run] [--cross-theme]"
+argument-hint: "[EPIC-NNNN] [--auto] [--dry-run] [--cross-theme]"
 model: sonnet
 allowed-tools:
   - Read
@@ -13,6 +13,9 @@ allowed-tools:
   - Bash(git:*)
   - Bash(ll-issues:*)
 arguments:
+  - name: epic_id
+    description: "Optional positional EPIC-NNNN (bare NNNN accepted). When set, scopes the audit to that EPIC's transitive children plus the EPIC file itself, instead of the full backlog."
+    required: false
   - name: flags
     description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes), --cross-theme (add Phase 2b cross-batch fingerprint sweep to catch conflicts spanning thematic groups)"
     required: false
@@ -47,39 +50,102 @@ if ARGUMENTS contains "--dry-run": DRY_RUN = true
 if ARGUMENTS contains "--cross-theme": CROSS_THEME = true
 ```
 
+### Positional EPIC scope (optional)
+
+Parse an optional positional argument that scopes the audit to a single EPIC's
+transitive children. The token is any `$ARGUMENTS` word that does **not** start
+with `--`. When present, normalize and validate it into `SCOPE_EPIC`; when
+absent, leave `SCOPE_EPIC` empty (preserving today's full-backlog behavior).
+
+```bash
+SCOPE_EPIC=""
+for tok in $ARGUMENTS; do
+    case "$tok" in
+        --*) continue ;;                       # flags handled above
+        *)
+            # Normalize: accept EPIC-NNNN or bare NNNN (case-insensitive).
+            up=$(printf '%s' "$tok" | tr '[:lower:]' '[:upper:]')
+            case "$up" in
+                EPIC-*) SCOPE_EPIC="$up" ;;
+                *[!0-9]*)
+                    echo "ERROR: positional argument '$tok' is not an EPIC id (expected EPIC-NNNN or a bare number)."
+                    exit 1
+                    ;;
+                *) SCOPE_EPIC="EPIC-$up" ;;      # bare digits → EPIC-NNNN
+            esac
+            # Validate the EPIC resolves to an existing EPIC file.
+            if ! ll-issues list --type EPIC --json \
+                 | python3 -c "import json,sys; ids={i['id'] for i in json.load(sys.stdin)}; sys.exit(0 if '$SCOPE_EPIC' in ids else 1)"; then
+                echo "ERROR: '$SCOPE_EPIC' is not a valid EPIC (no matching EPIC file found)."
+                exit 1
+            fi
+            break
+            ;;
+    esac
+done
+```
+
 Log the active mode:
 - `--auto` → "Running in auto-apply mode: all recommendations will be applied without prompting."
 - `--dry-run` → "Running in dry-run mode: conflict report will be output, no files will be modified."
 - `--cross-theme` → "Cross-theme sweep enabled: Phase 2b will check for conflicts spanning thematic batch boundaries."
 - neither → "Running in interactive mode: each recommendation will require approval."
+- `SCOPE_EPIC` set → "Scoped to $SCOPE_EPIC: auditing only its transitive children (plus the EPIC file)."
 
 ---
 
 ## Phase 1: Load Issues
 
-Collect all active issue files:
+Collect the active issue files to audit. When `SCOPE_EPIC` is set (from Phase 0),
+restrict the set to that EPIC's **transitive** children (reusing the
+cycle-guarded resolution in `ll-issues list --parent`, transitive since
+ENH-2481) plus the EPIC file itself. Otherwise load the full active backlog.
 
 ```bash
 declare -a ISSUE_FILES
 declare -i TERMINAL_COUNT=0
-for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
-    [ -d "$dir" ] || continue
-    for f in "$dir"*.md; do
+
+if [[ -n "$SCOPE_EPIC" ]]; then
+    # Scoped mode: transitive children of SCOPE_EPIC (plus the EPIC file).
+    # --status all + in-extractor filter (the bare default drops in_progress /
+    # blocked children, and --status takes a single value, not a CSV list).
+    while IFS= read -r f; do
         [ -f "$f" ] || continue
-        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
-        case "${status:-open}" in
-            open|in_progress|blocked) ISSUE_FILES+=("$f") ;;
-            *) TERMINAL_COUNT=$((TERMINAL_COUNT + 1)) ;;
-        esac
+        ISSUE_FILES+=("$f")
+    done < <(
+        ll-issues list --parent "$SCOPE_EPIC" --status all --json | python3 -c "
+import json, sys
+active = {'open', 'in_progress', 'blocked'}
+for i in json.load(sys.stdin):
+    if (i.get('status') or 'open') in active and i.get('path'):
+        print(i['path'])
+"
+    )
+    # Append the EPIC file itself so it is fingerprinted alongside its children.
+    EPIC_PATH=$(ll-issues path "$SCOPE_EPIC" 2>/dev/null)
+    [ -f "$EPIC_PATH" ] && ISSUE_FILES+=("$EPIC_PATH")
+    echo "Scoped to $SCOPE_EPIC: ${#ISSUE_FILES[@]} issues (transitive children + EPIC file)"
+else
+    # Unscoped mode: full active backlog. epics/ is included so EPIC files are
+    # also fingerprinted (ENH-2634).
+    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements,epics}/; do
+        [ -d "$dir" ] || continue
+        for f in "$dir"*.md; do
+            [ -f "$f" ] || continue
+            status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
+            case "${status:-open}" in
+                open|in_progress|blocked) ISSUE_FILES+=("$f") ;;
+                *) TERMINAL_COUNT=$((TERMINAL_COUNT + 1)) ;;
+            esac
+        done
     done
-done
+    echo "Found ${#ISSUE_FILES[@]} active issues (excluded $TERMINAL_COUNT terminal issues)"
+fi
 
 if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
     echo "No active issues found"
     exit 0
 fi
-
-echo "Found ${#ISSUE_FILES[@]} active issues (excluded $TERMINAL_COUNT terminal issues)"
 ```
 
 For each file, parse from the filename:
@@ -98,49 +164,16 @@ Then read the file to extract:
 
 Batch issues **3–5 per Task call**. Spawn all batch Task calls in a **single message** (parallel).
 
-For each batch, use this prompt template:
-
-```
-Analyze the following issues for semantic conflicts.
-
-You are looking for four conflict types:
-
-1. **Requirement conflicts** — Issue A requires X, Issue B requires not-X (contradictory requirements)
-2. **Objective conflicts** — Two issues solve the same problem but with different approaches (duplicated goal)
-3. **Architecture conflicts** — Incompatible technical approaches (e.g., sync vs async, different data models, conflicting API shapes)
-4. **Scope overlap** — Issues that partially duplicate each other's scope (overlapping but not identical)
-
-For EACH pair of issues in this batch, determine if a conflict exists.
-
-Issues to analyze (read each full file before reasoning):
-
-[For each issue in the batch:]
-- **File**: [path]
-- **ID**: [ISSUE-ID]
-- **Type**: [BUG/FEAT/ENH/EPIC]
-- **Priority**: [P0-P5]
-- **Title**: [title]
-- **Summary excerpt**: [first 300 chars of summary]
-
-Return a structured list of conflicts found. For each conflict:
-
-- conflict_type: requirement | objective | architecture | scope
-- severity: high | medium | low
-  - high: directly contradictory, will cause implementation failures if both proceed
-  - medium: significant overlap or incompatibility requiring coordination
-  - low: minor duplication or loose coupling concern
-- issues: [LIST of affected ISSUE-IDs, e.g. ["FEAT-100", "FEAT-200"]]
-- description: [1-2 sentence explanation of the specific conflict]
-- recommendation: merge | deprecate | split | add_dependency | update_scope
-  - merge: consolidate both into one issue (one closes, scope absorbed)
-  - deprecate: one issue is superseded, should be closed
-  - split: issues should be explicitly scoped to avoid overlap
-  - add_dependency: issues can coexist but need blocked_by ordering
-  - update_scope: scope notes should be added to clarify boundaries
-- proposed_change: [specific action, e.g., "Close FEAT-200, add its auth-caching scope to FEAT-100"]
-
-If no conflicts exist among this batch, return: []
-```
+For each batch, look for four conflict types — `requirement` (Issue A requires X,
+Issue B requires not-X), `objective` (two issues solve the same problem
+differently), `architecture` (incompatible technical approaches), and `scope`
+(partial scope overlap) — and, for each pair, emit structured records with
+`conflict_type`, `severity` (high/medium/low), `issues`, `description`,
+`recommendation` (merge/deprecate/split/add_dependency/update_scope), and
+`proposed_change`. The full Task prompt template (per-issue input block, severity
+rubric, recommendation glossary) lives in the companion file
+[conflict-detection-prompt.md](conflict-detection-prompt.md); use it verbatim as
+the batch prompt.
 
 Wait for **all batch agents** to complete before proceeding.
 
@@ -261,53 +294,10 @@ Apply **all** recommendations without prompting. For each conflict, execute the 
 
 ### Interactive Mode (default)
 
-For each conflict, present an `AskUserQuestion` prompt with options shaped by recommendation type.
-
-**merge / deprecate** conflicts:
-
-```yaml
-questions:
-  - question: "[SEVERITY] conflict: [ISSUE-A] vs [ISSUE-B] — [description]. Apply recommendation?"
-    header: "[ISSUE-A] vs [ISSUE-B]"
-    multiSelect: false
-    options:
-      - label: "Yes, apply — [proposed_change summary]"
-        description: "[specific action, e.g., merge scope into ISSUE-A, close ISSUE-B]"
-      - label: "No, keep both as-is"
-        description: "Leave both issues unchanged"
-      - label: "Add dependency instead"
-        description: "Add blocked_by frontmatter to link them without closing either"
-```
-
-**add_dependency** conflicts:
-
-```yaml
-questions:
-  - question: "Add dependency link: [ISSUE-A] should depend on [ISSUE-B]. Which field?"
-    header: "[ISSUE-A]"
-    multiSelect: false
-    options:
-      - label: "blocked_by (hard stop)"
-        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start (wave-gated)"
-      - label: "depends_on (soft ordering)"
-        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent"
-      - label: "No, skip"
-        description: "Leave both issues unchanged"
-```
-
-**split / update_scope** conflicts:
-
-```yaml
-questions:
-  - question: "Scope overlap: [ISSUE-A] vs [ISSUE-B] — [description]. Add scope note?"
-    header: "[ISSUE-A] vs [ISSUE-B]"
-    multiSelect: false
-    options:
-      - label: "Yes, append scope clarification note"
-        description: "Adds a ## Scope Boundary note to each issue clarifying their split"
-      - label: "No, keep as-is"
-        description: "Leave both issues unchanged"
-```
+For each conflict, present an `AskUserQuestion` prompt with options shaped by
+recommendation type. The exact question/option templates for each recommendation
+type (**merge / deprecate**, **add_dependency**, **split / update_scope**) live
+in the companion file [interactive-prompts.md](interactive-prompts.md).
 
 ---
 
@@ -470,6 +460,12 @@ All changes staged in {{config.issues.base_dir}}/
 ```bash
 # Interactive mode: review each conflict and approve/reject
 /ll:audit-issue-conflicts
+
+# Scope the audit to a single EPIC's transitive children (plus the EPIC file)
+/ll:audit-issue-conflicts EPIC-2457
+
+# Scoped + auto-apply (bare NNNN is normalized to EPIC-NNNN)
+/ll:audit-issue-conflicts 2457 --auto
 
 # Auto-apply all recommendations without prompting
 /ll:audit-issue-conflicts --auto

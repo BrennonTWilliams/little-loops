@@ -88,10 +88,11 @@ ISSUE REFINEMENT
     Recommends implement, update, or close/defer for each issue
     Args: issue-ids - comma-separated IDs to filter (e.g., "BUG-123,FEAT-456"); omit to scan all
 
-/ll:audit-issue-conflicts [flags]
-    Scan all open issues for conflicting requirements, objectives, or
-    architectural decisions — outputs a ranked conflict report
-    Flags: --auto (non-interactive), --dry-run (report only)
+/ll:audit-issue-conflicts [EPIC-NNNN] [flags]
+    Scan open issues for conflicting requirements, objectives, or
+    architectural decisions — outputs a ranked conflict report. Pass an
+    EPIC-NNNN to scope the scan to that EPIC's transitive children.
+    Flags: --auto (non-interactive), --dry-run (report only), --cross-theme
 
 /ll:ready-issue [issue_id]
     Validate issue file for accuracy and auto-correct problems

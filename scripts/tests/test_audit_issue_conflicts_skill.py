@@ -108,3 +108,44 @@ class TestAuditIssueConflictsSkillExists:
         phase6_text = content[phase6_start:]
         assert "SKIPPED_INACTIVE_COUNT" in phase6_text, "Phase 6 must tally skipped inactive writes"
         assert "Skipped (target not active)" in phase6_text, "Phase 6 must label the skip category"
+
+
+class TestAuditIssueConflictsEpicScoping:
+    """Verify the optional positional EPIC-scoping argument (ENH-2634)."""
+
+    def _phase(self, start_header: str, end_header: str) -> str:
+        content = SKILL_FILE.read_text()
+        return content[content.index(start_header) : content.index(end_header)]
+
+    def test_argument_hint_documents_epic_positional(self) -> None:
+        """Frontmatter argument-hint must document the optional [EPIC-NNNN] positional."""
+        content = SKILL_FILE.read_text()
+        # Only inspect the YAML frontmatter block (between the first two '---').
+        fm_end = content.index("\n---", content.index("---") + 3)
+        frontmatter = content[:fm_end]
+        assert "EPIC-NNNN" in frontmatter, "argument-hint must document [EPIC-NNNN]"
+
+    def test_phase0_parses_scope_epic_positional(self) -> None:
+        """Phase 0 must parse the positional argument into SCOPE_EPIC."""
+        phase0 = self._phase("## Phase 0", "## Phase 1")
+        assert "SCOPE_EPIC" in phase0, "Phase 0 must bind a SCOPE_EPIC variable"
+
+    def test_phase0_aborts_on_non_epic_argument(self) -> None:
+        """Phase 0 must abort with a clear message when the positional is not a valid EPIC."""
+        phase0 = self._phase("## Phase 0", "## Phase 1")
+        assert "not an EPIC" in phase0 or "not a valid EPIC" in phase0, (
+            "Phase 0 must abort with a clear message on a non-EPIC positional"
+        )
+
+    def test_phase1_scopes_via_parent(self) -> None:
+        """Phase 1 must scope to the EPIC's transitive children via ll-issues list --parent."""
+        phase1 = self._phase("## Phase 1", "## Phase 2")
+        assert "SCOPE_EPIC" in phase1, "Phase 1 must branch on SCOPE_EPIC"
+        assert "--parent" in phase1, "Phase 1 must use ll-issues list --parent for scoping"
+
+    def test_phase1_glob_includes_epics(self) -> None:
+        """Phase 1's unscoped load glob must include the epics/ directory."""
+        phase1 = self._phase("## Phase 1", "## Phase 2")
+        assert "bugs,features,enhancements,epics" in phase1, (
+            "Phase 1 glob must include epics/ so EPIC files are fingerprinted"
+        )
