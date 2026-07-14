@@ -7,9 +7,9 @@ status: open
 labels: [loops, fsm, epic-branches, merge-coordinator]
 discovered_date: "2026-07-14"
 discovered_by: manual
-parent: EPIC-2575
 relates_to:
 - BUG-2614
+- EPIC-2575
 ---
 
 # BUG-2637: merge_epic_branch reads final-child status from the base tree, so the run that completes an EPIC can never auto-merge
