@@ -10,9 +10,9 @@ discovered_by: capture-issue
 relates_to:
 - ENH-1801
 - ENH-1802
-confidence_score: 95
-outcome_confidence: 82
-score_complexity: 21
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 22
 score_test_coverage: 22
 score_ambiguity: 23
 score_change_surface: 20
@@ -217,6 +217,20 @@ _Added by `/ll:refine-issue`:_
   `prompt-across-issues.yaml`), then optionally append the EPIC file's own path.
   When unset, keep the existing glob (but add `epics/` to it). This satisfies
   every AC while reusing tested, transitive resolution.
+- **CORRECTION — `--status` does not accept a comma-separated list** (verified
+  2026-07-13): `ll-issues list --parent EPIC-2457 --status open,in_progress,blocked
+  --json` exits **2** (argparse usage error). `--status` is a single-choice enum
+  (`{open,in_progress,blocked,deferred,done,cancelled,all}`); it takes exactly one
+  value. The comma form in the "Recommended implementation shape" above will not
+  run. Use one of instead:
+  - `ll-issues list --parent "$SCOPE_EPIC" --status all --json`, then filter to
+    `open|in_progress|blocked` inside the `python3 -c` id/path extractor
+    (recommended — one CLI call, mirrors `prompt-across-issues.yaml`), **or**
+  - three separate `--status open` / `--status in_progress` / `--status blocked`
+    calls unioned in the extractor.
+  The default (`--status open` when omitted) would silently drop `in_progress`
+  and `blocked` children, so an explicit `--status all` + in-extractor filter is
+  the correct shape.
 
 ## Related Issues
 
@@ -226,6 +240,7 @@ _Added by `/ll:refine-issue`:_
   for this issue's scoping.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-14T02:32:40 - `a822510e-834e-45a1-84d2-bab591a111bd.jsonl`
 - `/ll:wire-issue` - 2026-07-14T00:38:34 - `b93a45e7-4dc4-4669-8b86-f4f503426c69.jsonl`
 - `/ll:refine-issue` - 2026-07-14T00:28:18 - `621ca141-d10e-4326-b2c3-52c93473a7ab.jsonl`
 - `/ll:capture-issue` - 2026-07-14T00:22:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
