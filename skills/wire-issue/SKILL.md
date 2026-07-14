@@ -12,6 +12,7 @@ allowed-tools:
   - Bash(wc:*)
   - Bash(git:*)
   - Bash(ll-issues:*)
+  - Bash(ll-code:*)
   - Agent
 metadata:
   short-description: Use when a refined issue is missing integration points or wiring in the implemen
@@ -123,6 +124,12 @@ EXISTING_WIRING:
 ## Phase 3.5: Static Coupling Layer
 
 Run `ll-issues decisions list --type=coupling --format=json 2>/dev/null`. Skip silently if unavailable or if no entries match `files_to_modify`. Infer change archetype from the issue title (`add-cli-command`, `add-config-key`, `add-event-type`, …) and load that bundle via `--archetype`; merge results. Collect matched `then_check` targets into `MUST_AUDIT` (tier: `hard`→blocking in agent prompts + Implementation Steps; `soft`→advisory; `fyi`→report only). Prepend `MUST_AUDIT` to Phase 4 agent prompts. Full procedure in [static-coupling-layer.md](static-coupling-layer.md).
+
+---
+
+## Phase 3.6: Graph-Accelerated Discovery
+
+Seed Phase 4 candidates (callers, importers, impacted files) from `ll-code --json` before manual tracing, then confirm each hit with one targeted Grep at its `path:line`. Three safety rules, verbatim: **(1) silent fallback** — if `ll-code --json status` reports `available: false` or a query exits `2`, skip and run the current Phase 4 flow (zero regression); **(2) confirm-before-map** — every positive hit is a hint, verified by one Grep before it enters the Integration Map; **(3) never trust negatives** — exit `1` ("no callers") is never trusted alone, run the current exploratory pass for that target. If `freshness == "stale"`, treat all candidates as leads and widen confirmation. Confirmed candidates feed Phase 4 Agent 1's "Already-known callers:" and "Key symbols to trace:" slots. Full procedure in [graph-discovery-layer.md](graph-discovery-layer.md).
 
 ---
 
@@ -445,20 +452,13 @@ WIRE ISSUE: {{ISSUE_ID}}
 
 ### Added to Dependent Files
 - `path/to/caller.py` — calls `affected_fn()` in `handle_request()`
-...
-
 ### Added to Files to Modify
 - `plugin.json` — registration entry needed
-...
-
 ### Added to Documentation
 - `docs/api.md` — describes changed interface under section "API Reference"
-...
-
 ### Added to Tests
 - `tests/test_affected.py` — update for new behavior
 - `tests/test_new.py` — new test file needed
-...
 
 ## IMPLEMENTATION STEPS CHANGES
 - [N] new steps added to Wiring Phase

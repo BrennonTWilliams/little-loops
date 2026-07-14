@@ -30,6 +30,8 @@ EXPECTED_COMPANIONS = [
     SKILLS_DIR / "review-loop" / "reference.md",
     SKILLS_DIR / "manage-issue" / "templates.md",
     SKILLS_DIR / "wire-issue" / "learning-targets.md",
+    SKILLS_DIR / "wire-issue" / "static-coupling-layer.md",
+    SKILLS_DIR / "wire-issue" / "graph-discovery-layer.md",
 ]
 
 

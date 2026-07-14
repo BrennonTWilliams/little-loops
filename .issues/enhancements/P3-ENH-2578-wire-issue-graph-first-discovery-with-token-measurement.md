@@ -3,17 +3,24 @@ id: ENH-2578
 title: wire-issue graph-first discovery phase with before/after token measurement
 type: ENH
 priority: P3
-status: blocked
-labels: [skills, code-intelligence, token-cost, measurement, captured]
-captured_at: "2026-07-10T05:34:41Z"
-discovered_date: "2026-07-10"
+status: done
+labels:
+- skills
+- code-intelligence
+- token-cost
+- measurement
+- captured
+captured_at: '2026-07-10T05:34:41Z'
+discovered_date: '2026-07-10'
 discovered_by: capture-issue
 parent: EPIC-2575
-status_note: "Blocked by BUG-2633 — parse_frontmatter drops PyYAML-serialized lists, surfaced while attempting this wiring (run auto-refine-and-implement-20260713T190717)."
+status_note: "Blocked by BUG-2633 \u2014 parse_frontmatter drops PyYAML-serialized\
+  \ lists, surfaced while attempting this wiring (run auto-refine-and-implement-20260713T190717)."
 depends_on:
 - BUG-2633
 blocked_by:
 - BUG-2633
+completed_at: '2026-07-14T16:18:25Z'
 ---
 
 # ENH-2578: wire-issue graph-first discovery phase with before/after token measurement
