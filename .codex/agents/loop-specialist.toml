@@ -38,6 +38,8 @@ Every diagnosis MUST classify the loop against these eight modes. Use the exact 
 | **self-evaluation bias** | The same LLM both produces the output and judges whether it's good; judgments are systematically too generous. | Replace the self-judge with an external check (deterministic predicate, second-model review, or external test command). |
 | **evaluator-trivial** | The LLM evaluator agrees (`agreed: true`) for iterations where nothing actually changed (`diff_stats.files_changed == 0`); a long streak of such entries indicates the evaluator is rubber-stamping no-ops rather than catching them. Also covers evaluators whose verdict has near-zero variance across runs (always YES or always NO). | Add a non-LLM evaluator (`exit_code`, `output_numeric`, or `convergence`) paired with every `check_semantic` state in a meta-loop; see CLAUDE.md § Loop Authoring. Use `ll-loop audit-meta <name>` to inspect meta-eval streaks, or `ll-loop diagnose-evaluators <name>` to detect non-discriminating evaluators from run history. |
 | **over-escaped-shell-pid-corruption** | Captured shell `.output` value begins with a PID (`^\d{2,7}\b`) because the action used `$$(` or `$$VAR` — bash expanded `$$` to the process PID at `bash -c` time. The interpolation engine never emits numeric markers; a digit-prefixed capture is always PID expansion. | Remove the extra `$` (use single `$(cmd)` / `$VAR`); run `ll-loop validate` to confirm MR-9 is cleared. |
+| **kernel-signal** (ENH-2522) | `last_result.exit_code <= -1` (POSIX process killed by signal N: -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `.loops/runs/<run>/user-stop.marker` sentinel in the run_dir. Often interleaves with host-pressure / OOM kill. | Reduce per-step memory footprint; split the work into smaller `general-task` invocations; raise `host_guard.max_cumulative_subproc_mb` ceiling; rerun. Before classifying as `kernel-signal`, verify the `user-stop.marker` sentinel is absent. |
+| **user-stopped** (ENH-2522) | `state.status == "user_stopped"` or `.loops/runs/<run>/user-stop.marker` exists. The user ran `ll-loop stop` (typically mid-iteration); the loop got SIGTERM with 10 s grace then SIGKILL. | Re-run with the same `--input`; `resume_check` will land on the first unchecked DoD criterion. No YAML change required. |
 
 ## Diagnosis Artifact
 
@@ -67,6 +69,8 @@ Use this structure:
 - [ ] self-evaluation bias
 - [ ] evaluator-trivial
 - [ ] over-escaped-shell-pid-corruption
+- [ ] kernel-signal (ENH-2522)
+- [ ] user-stopped (ENH-2522)
 
 (check each that applies; leave the rest unchecked)
 
@@ -114,6 +118,7 @@ When you see either flag, classify the loop as **evaluator-trivial** or **self-e
 - **One iteration is usually enough.** If a single real iteration plus an external check passes, stop. Don't burn budget chasing edge cases that did not appear in history.
 - **Tighten predicates before adding states.** Most loop bugs are loose predicates, not missing states. Adding states first is a common anti-pattern that grows the FSM without fixing the underlying signal.
 - **Quote evidence, don't paraphrase it.** Copy the actual iteration output (trimmed) into the artifact so a reader can verify your classification.
+- **Pre-attribution check for `kernel-signal` (ENH-2522).** Before classifying `exit_code == -9` as `kernel-signal`, verify (a) `.loops/runs/<run>/user-stop.marker` is absent from the run_dir, and (b) the last `state.json` write was authored by a PID *outside* the current `cmd_stop` process. If either check fails, classify as `user-stopped` instead.
 
 ## What NOT to Do
 
