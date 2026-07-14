@@ -30,11 +30,22 @@ STATUS_SYNONYMS: dict[str, str] = {
 def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]:
     """Extract YAML frontmatter from content.
 
-    Looks for content between opening and closing '---' markers.
-    Parses a subset of YAML: simple ``key: value`` pairs, YAML block
-    sequences (``key:`` followed by ``- item`` lines), and block scalars
-    (``key: |`` or ``key: >`` followed by indented lines). Nested
-    structures are not supported and will emit a ``logging.WARNING``.
+    Looks for content between opening and closing '---' markers and parses it
+    with ``yaml.load`` (``BaseLoader``), so any valid YAML frontmatter is
+    supported — including PyYAML's own serialized output (block sequences whose
+    long items wrap across physical lines, block scalars, flow lists, and
+    unicode escapes). ``BaseLoader`` resolves every scalar to a *string*, which
+    preserves this function's historical ``coerce_types=False`` contract (values
+    stay strings rather than being coerced to int/bool/datetime by ``safe_load``).
+
+    Empty values (``key:``, ``null``, ``~``) normalize to ``None``. Post-loading,
+    ``status`` synonyms are canonicalized (see :data:`STATUS_SYNONYMS`) and, when
+    ``coerce_types`` is True, bare digit scalars are coerced to ``int``.
+
+    If the frontmatter is not valid YAML, falls back to a permissive line-based
+    scan (top-level ``key: value`` pairs and single-line ``- item`` sequences),
+    which emits a ``logging.WARNING`` for orphaned list items.
+
     Returns empty dict if no frontmatter found.
 
     Args:
@@ -53,6 +64,47 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
 
     frontmatter_text = content[4 : 3 + end_match.start()]
 
+    try:
+        loaded = yaml.load(frontmatter_text, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        loaded = None
+
+    if not isinstance(loaded, dict):
+        # Invalid YAML or a non-mapping document: fall back to the permissive
+        # line-based scan (preserves the orphaned-list-item warning contract).
+        return _parse_frontmatter_lines(frontmatter_text, coerce_types=coerce_types)
+
+    result: dict[str, Any] = {}
+    for raw_key, value in loaded.items():
+        key = str(raw_key)
+        if isinstance(value, str):
+            # YAML block scalars (``|``/``>``) clip a trailing newline; the
+            # historical parser stripped it entirely. Match that contract
+            # (a no-op for single-line scalars, which never end in "\n").
+            value = value.rstrip("\n")
+            if value.lower() in ("null", "~", ""):
+                result[key] = None
+            elif coerce_types and value.isdigit():
+                result[key] = int(value)
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+    if "status" in result and isinstance(result["status"], str):
+        result["status"] = STATUS_SYNONYMS.get(result["status"], result["status"])
+    return result
+
+
+def _parse_frontmatter_lines(frontmatter_text: str, *, coerce_types: bool) -> dict[str, Any]:
+    """Line-based fallback parser for frontmatter that is not valid YAML.
+
+    Handles top-level ``key: value`` pairs, single-line block sequences
+    (``key:`` followed by ``- item`` lines), block scalars (``|``/``>``), and
+    inline flow arrays (``[a, b, c]``). Orphaned ``- item`` lines emit a
+    ``logging.WARNING``. This mirrors the historical hand-rolled behavior and
+    exists so genuinely malformed frontmatter degrades the same way it always
+    has, rather than silently returning ``{}``.
+    """
     result: dict[str, Any] = {}
     current_list_key: str | None = None
     lines = frontmatter_text.split("\n")
@@ -132,10 +184,10 @@ def parse_skill_frontmatter(text: str) -> dict[str, str]:
     pairs only, block scalars are not resolved in that path.
 
     This is the canonical SKILL.md frontmatter parser. Prefer it over the
-    general ``parse_frontmatter`` for SKILL.md files: ``parse_frontmatter``
-    deliberately drops block scalars (logs a warning, sets value to
-    ``None``) which loses the description body for skills that use
-    ``description: |``.
+    general ``parse_frontmatter`` for SKILL.md files: it stringifies scalar
+    values (bools/ints) and returns a flat ``dict[str, str]``, which is the
+    shape SKILL.md consumers expect. (``parse_frontmatter`` now resolves block
+    scalars natively via YAML, but returns a richer ``dict[str, Any]``.)
     """
     if not text.startswith("---"):
         return {}

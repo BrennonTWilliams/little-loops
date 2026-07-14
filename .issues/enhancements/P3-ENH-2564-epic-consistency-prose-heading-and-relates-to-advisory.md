@@ -1,7 +1,7 @@
 ---
 type: ENH
 id: ENH-2564
-title: epic-consistency recognizes ### FEAT-NNN prose headings and downgrades relates_to membership to advisory
+title: "epic-consistency recognizes ### FEAT-NNN prose headings and downgrades relates_to membership to advisory"
 priority: P3
 status: done
 created: 2026-07-09

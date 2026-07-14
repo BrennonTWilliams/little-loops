@@ -5958,7 +5958,7 @@ def parse_frontmatter(
 ) -> dict[str, Any]
 ```
 
-Extract YAML frontmatter from content between opening and closing `---` markers. Parses simple `key: value` pairs.
+Extract YAML frontmatter from content between opening and closing `---` markers. Parses it with `yaml.load` (`BaseLoader`), so any valid YAML is supported — including PyYAML's own serialized output (block sequences whose long items wrap across physical lines, block scalars, flow lists, and `\uXXXX` escapes). `BaseLoader` resolves every scalar to a string, preserving the `coerce_types=False` contract (values stay strings rather than being coerced to int/bool/datetime). Empty values (`key:`, `null`, `~`) normalize to `None`; `status` synonyms are canonicalized. Malformed YAML falls back to a permissive line-based scan that warns on orphaned `- item` lines.
 
 **Parameters:**
 - `content` - File content to parse
@@ -5983,7 +5983,7 @@ def parse_skill_frontmatter(text: str) -> dict[str, str]
 
 Extract flat `key: value` pairs from SKILL.md frontmatter. Uses `yaml.safe_load` so YAML block scalars (e.g. `description: |`) are resolved to their string content instead of the indicator literal `"|"`. Non-string scalar values are stringified; nested structures are dropped. Falls back to a permissive line-based scan if the frontmatter is not valid YAML (e.g. unquoted colons in values).
 
-Prefer this over `parse_frontmatter` for SKILL.md files: `parse_frontmatter` deliberately drops block scalars (logs a warning and sets the value to `None`), which loses the description body for skills that use `description: |`.
+Prefer this over `parse_frontmatter` for SKILL.md files: it stringifies scalar values (bools/ints) and returns a flat `dict[str, str]`, the shape SKILL.md consumers expect. (`parse_frontmatter` now resolves block scalars natively via YAML, but returns a richer `dict[str, Any]`.)
 
 **Parameters:**
 - `text` - Full SKILL.md file content (including the `---` delimited frontmatter block).

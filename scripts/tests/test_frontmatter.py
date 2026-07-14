@@ -136,10 +136,10 @@ class TestParseFrontmatter:
         assert "(run.py" not in result
 
     def test_block_scalar_empty(self) -> None:
-        """Block scalar with no indented lines stores empty string."""
+        """Block scalar with no body normalizes to None (empty values → None)."""
         content = "---\ndescription: |\nkey: value\n---\n\n"
         result = parse_frontmatter(content)
-        assert result["description"] == ""
+        assert result["description"] is None
         assert result["key"] == "value"
 
     def test_block_sequence_parsed_as_list(self) -> None:
@@ -213,6 +213,77 @@ class TestParseFrontmatter:
         content = '---\ntitle: "My Issue"\n---\n\n'
         result = parse_frontmatter(content)
         assert result["title"] == "My Issue"
+
+    def test_pyyaml_wrapped_list_items_parsed(self) -> None:
+        """BUG-2633: PyYAML serializes long list items across wrapped physical
+        lines with a leading-space continuation; the parser must read them as a
+        single list without dropping items or emitting warnings."""
+        import yaml
+
+        long_item = (
+            "ENH-693 with a very long descriptive tail that exceeds eighty "
+            "characters and forces PyYAML to wrap the block-sequence item"
+        )
+        data = {"relates_to": [long_item, "BUG-836", "BUG-1258"]}
+        dumped = yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+        # Sanity: the dump really does wrap (has a bare continuation line).
+        assert "\n  " in dumped
+        content = f"---\n{dumped}---\n\n# Body\n"
+        result = parse_frontmatter(content)
+        assert result["relates_to"] == [long_item, "BUG-836", "BUG-1258"]
+
+    def test_pyyaml_wrapped_list_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """BUG-2633: valid PyYAML block sequences must not trip the
+        'Unsupported YAML list syntax' warning branch."""
+        import yaml
+
+        long_item = "x" * 90
+        dumped = yaml.safe_dump({"relates_to": [long_item, "ENH-057"]}, default_flow_style=False)
+        content = f"---\n{dumped}---\n\n"
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            result = parse_frontmatter(content)
+        assert result["relates_to"] == [long_item, "ENH-057"]
+        assert "Unsupported YAML list syntax" not in caplog.text
+
+    def test_unicode_escape_decoded(self) -> None:
+        """BUG-2633: PyYAML emits \\uXXXX escapes for non-ASCII; they must be
+        decoded, not left as literal backslash sequences."""
+        content = '---\ntitle: "Pi Adapter \\u2014 Wire Tests"\n---\n\n'
+        result = parse_frontmatter(content)
+        assert result["title"] == "Pi Adapter — Wire Tests"
+
+
+class TestParseFrontmatterCorpus:
+    """BUG-2633 golden guard: real issue-frontmatter fixtures parse cleanly."""
+
+    def _fixture_files(self) -> list:
+        from pathlib import Path
+
+        fixtures = Path(__file__).parent / "fixtures" / "issues"
+        return sorted(fixtures.glob("*.md")) if fixtures.is_dir() else []
+
+    def test_fixtures_parse_without_list_warnings(self, caplog: pytest.LogCaptureFixture) -> None:
+        """No fixture with valid frontmatter should trip the list-syntax warning
+        or raise — the concrete symptom BUG-2633 reported."""
+        files = self._fixture_files()
+        if not files:
+            pytest.skip("no issue fixtures present")
+        with caplog.at_level("WARNING", logger="little_loops.frontmatter"):
+            for path in files:
+                parse_frontmatter(path.read_text(), coerce_types=True)
+        assert "Unsupported YAML list syntax" not in caplog.text
+
+    def test_fixtures_scalars_stay_strings_without_coerce(self) -> None:
+        """coerce_types=False contract: scalar values are never coerced to
+        int/bool/datetime (BaseLoader keeps them as strings)."""
+        import datetime
+
+        for path in self._fixture_files():
+            result = parse_frontmatter(path.read_text())
+            for key, value in result.items():
+                assert not isinstance(value, bool | int | float | datetime.date), (
+                    f"{path.name}: {key}={value!r} was coerced from a string"
+                )
 
 
 class TestParseSkillFrontmatter:

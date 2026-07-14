@@ -2,8 +2,9 @@
 id: BUG-2633
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: 2026-07-14 00:12:04+00:00
+completed_at: '2026-07-14T01:31:02Z'
 discovered_date: 2026-07-14
 discovered_by: capture-issue
 relates_to:
@@ -275,7 +276,39 @@ _Added by `/ll:confidence-check` on 2026-07-14_
   running it against the highest-fanout callers (`sync.py`, `issue_lifecycle.py`)
   before the broader suite.
 
+## Resolution
+
+_Resolved 2026-07-14 via `/ll:manage-issue`._
+
+Rewrote `parse_frontmatter()` to be **`yaml.load(..., Loader=yaml.BaseLoader)`-first**
+with the historical line-based scan retained as a `YAMLError` fallback (extracted
+to `_parse_frontmatter_lines`). `BaseLoader` was chosen over `safe_load` because it
+resolves every scalar to a **string**, preserving the `coerce_types=False` contract
+(values stay strings rather than being coerced to int/bool/datetime) while still
+parsing PyYAML's own output correctly — wrapped block-sequence items, `\uXXXX`
+escapes, flow lists, and block scalars.
+
+**Validation (golden-equivalence, Step 1):** compared old vs new across all ~1600
+`.issues/**` files + 20 fixtures under both `coerce_types` settings. Every divergence
+was an **improvement** — wrapped list/title items recovered in full, `—` decoded,
+inline flow-list inner quotes stripped. **Zero regressions** (no `None`/list loss).
+
+**Contract refinements (documented):**
+- Empty values (`key:`, `null`, `~`, and empty block scalars) normalize uniformly to
+  `None`. `test_block_scalar_empty` updated (was `""`).
+- Block-scalar trailing newline is stripped to match the prior contract
+  (`value.rstrip("\n")`).
+- One malformed fixture (`ENH-2564`, unquoted `#` in `title:`) was quoted, since
+  YAML-correct parsing now treats ` #` as a comment.
+
+**Files:** `scripts/little_loops/frontmatter.py` (rewrite + fallback + docstrings),
+`scripts/tests/test_frontmatter.py` (wrapped-list, unicode, corpus golden tests),
+`docs/reference/API.md` (both stale doc entries), `.issues/.../ENH-2564` (quote fix).
+Full suite: **14887 passed, 36 skipped**; ruff + mypy clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-14T01:30:20Z - `4c543f5a-a89a-4026-a3bb-82f808ce9096.jsonl`
+- `/ll:ready-issue` - 2026-07-14T01:18:31 - `ce4ebc82-ccad-4bfe-b14a-7ced99437ab4.jsonl`
 - `/ll:confidence-check` - 2026-07-14T00:35:00 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:wire-issue` - 2026-07-14T00:21:38 - `2314f375-7ee7-43eb-8eea-3a80f925de17.jsonl`
 - `/ll:refine-issue` - 2026-07-14T00:16:39 - `e06448c4-fd2c-4a12-b427-6a28ee594989.jsonl`
@@ -284,4 +317,4 @@ _Added by `/ll:confidence-check` on 2026-07-14_
 ---
 
 ## Status
-open
+done
