@@ -47,7 +47,7 @@ def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
             ["cmd_status", "cmd_stop", "cmd_resume", "cmd_monitor"],
         ),
         ("little_loops.cli.loop.next_loop", ["cmd_next_loop"]),
-        ("little_loops.cli.loop.queue", ["cmd_queue_list"]),
+        ("little_loops.cli.loop.queue", ["cmd_queue_list", "cmd_queue_remove"]),
         ("little_loops.cli.loop.run", ["cmd_run"]),
         ("little_loops.cli.loop.testing", ["cmd_test", "cmd_simulate"]),
     ]
@@ -1096,3 +1096,36 @@ class TestMainLoopQueueDispatch:
             result = main_loop()
 
         assert result == 1
+
+    def test_queue_remove_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """'ll-loop queue remove <id>' dispatches to cmd_queue_remove (FEAT-2619)."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "queue", "remove", "abcd1234"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_queue_remove"].assert_called_once()
+        assert mocks["cmd_queue_remove"].call_args[0][0].id == "abcd1234"
+
+    def test_queue_remove_flags_forwarded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--force and --json are parsed and forwarded to cmd_queue_remove."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "queue", "remove", "abcd1234", "--force", "--json"]
+        ):
+            result = main_loop()
+
+        assert result == 0
+        ns = mocks["cmd_queue_remove"].call_args[0][0]
+        assert ns.force is True
+        assert ns.json is True

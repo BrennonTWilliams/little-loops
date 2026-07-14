@@ -2,8 +2,9 @@
 id: FEAT-2619
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: 2026-07-12 19:49:49+00:00
+completed_at: '2026-07-14T18:52:26Z'
 discovered_date: 2026-07-12
 discovered_by: scope-epic
 parent: EPIC-2616
@@ -300,6 +301,8 @@ decides PID-recycling risk is acceptable, re-scope the AC and B becomes the winn
   `remove` deletes the file itself, so graceful is sufficient.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-14T18:52:03Z - `f79c9a04-b051-43b9-95ec-546a2b44986d.jsonl`
+- `/ll:ready-issue` - 2026-07-14T18:41:30 - `565cf34b-8a5f-4b9d-937b-76e57f098269.jsonl`
 - `/ll:confidence-check` - 2026-07-14T00:00:00 - `14e1fc30-e29c-4918-a27d-edb58d9915e6.jsonl`
 - `/ll:wire-issue` - 2026-07-14T18:25:04 - `08a60504-d18d-46d8-9c71-a478563b2ca9.jsonl`
 - `/ll:decide-issue` - 2026-07-14T18:19:56 - `1137dcde-a149-4da9-8770-bce1682be284.jsonl`

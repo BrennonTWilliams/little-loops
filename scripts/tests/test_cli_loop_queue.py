@@ -352,6 +352,178 @@ class TestReadQueueEntries:
         assert [e["id"] for e in entries] == [good_id]
 
 
+class TestQueueRemoveCommand:
+    """cmd_queue_remove verifies PID identity, signals the waiter, and deletes its entry (FEAT-2619)."""
+
+    @staticmethod
+    def _remove_args(entry_id: str, *, force: bool = False, json: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(id=entry_id, force=force, json=json)
+
+    @staticmethod
+    def _write_entry(queue_dir: Path, entry_id: str, pid: object) -> Path:
+        import json as _json
+
+        queue_dir.mkdir(exist_ok=True)
+        path = queue_dir / f"{entry_id}.json"
+        path.write_text(
+            _json.dumps(
+                {
+                    "id": entry_id,
+                    "loopName": "test-loop",
+                    "enqueuedAt": "2026-05-02T10:00:00+00:00",
+                    "context": {"pid": pid},
+                }
+            )
+        )
+        return path
+
+    def test_deletes_target_leaves_others(self, tmp_path: Path) -> None:
+        """Removes the target entry and leaves sibling entries untouched."""
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        target_id = str(uuid.uuid4())
+        survivor_id = str(uuid.uuid4())
+        target = self._write_entry(queue_dir, target_id, 99999999)  # dead PID
+        survivor = self._write_entry(queue_dir, survivor_id, 99999999)
+
+        rc = cmd_queue_remove(self._remove_args(target_id), tmp_path)
+
+        assert rc == 0
+        assert not target.exists()
+        assert survivor.exists()
+
+    def test_unknown_id_returns_nonzero_without_signaling(self, tmp_path: Path) -> None:
+        """Unknown id prints a friendly message, returns 1, and signals nothing."""
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        (tmp_path / ".queue").mkdir()
+        with patch("little_loops.cli.loop.queue.os.kill") as mock_kill:
+            rc = cmd_queue_remove(self._remove_args("does-not-exist"), tmp_path)
+
+        assert rc == 1
+        mock_kill.assert_not_called()
+
+    def test_ambiguous_prefix_returns_nonzero(self, tmp_path: Path) -> None:
+        """A short-id prefix matching multiple entries is rejected as ambiguous."""
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        a = self._write_entry(queue_dir, "abcdef01-1111-2222-3333-444444444444", 99999999)
+        b = self._write_entry(queue_dir, "abcdef01-5555-6666-7777-888888888888", 99999999)
+
+        rc = cmd_queue_remove(self._remove_args("abcdef01"), tmp_path)
+
+        assert rc == 1
+        # Ambiguous match deletes nothing.
+        assert a.exists()
+        assert b.exists()
+
+    def test_identity_gate_blocks_signal_but_still_deletes(self, tmp_path: Path) -> None:
+        """When identity cannot be verified, the waiter is not signaled but the file is deleted."""
+        import os
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        entry_id = str(uuid.uuid4())
+        target = self._write_entry(queue_dir, entry_id, os.getpid())  # live PID
+
+        with (
+            patch("little_loops.cli.loop.queue.psutil.Process", side_effect=Exception("no")),
+            patch("little_loops.cli.loop.queue.os.kill") as mock_kill,
+        ):
+            rc = cmd_queue_remove(self._remove_args(entry_id), tmp_path)
+
+        assert rc == 0
+        mock_kill.assert_not_called()
+        assert not target.exists()
+
+    def test_force_signals_without_identity_check(self, tmp_path: Path) -> None:
+        """--force sends SIGTERM to the live tracked PID even when identity is unverifiable."""
+        import os
+        import signal
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        entry_id = str(uuid.uuid4())
+        pid = os.getpid()
+        target = self._write_entry(queue_dir, entry_id, pid)
+
+        with patch("little_loops.cli.loop.queue.os.kill") as mock_kill:
+            rc = cmd_queue_remove(self._remove_args(entry_id, force=True), tmp_path)
+
+        assert rc == 0
+        # os.kill is the shared module object, so _process_alive's (pid, 0) probe
+        # also hits the mock; assert the SIGTERM delivery is among the calls.
+        mock_kill.assert_any_call(pid, signal.SIGTERM)
+        assert not target.exists()
+
+    def test_verified_identity_signals_waiter(self, tmp_path: Path) -> None:
+        """A live PID whose cmdline marks it an ll-loop waiter is signaled with SIGTERM."""
+        import os
+        import signal
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        entry_id = str(uuid.uuid4())
+        pid = os.getpid()
+        target = self._write_entry(queue_dir, entry_id, pid)
+
+        fake_proc = MagicMock()
+        fake_proc.cmdline.return_value = ["python", "-m", "little_loops.cli.loop", "run", "x"]
+        with (
+            patch("little_loops.cli.loop.queue.psutil.Process", return_value=fake_proc),
+            patch("little_loops.cli.loop.queue.os.kill") as mock_kill,
+        ):
+            rc = cmd_queue_remove(self._remove_args(entry_id), tmp_path)
+
+        assert rc == 0
+        mock_kill.assert_any_call(pid, signal.SIGTERM)
+        assert not target.exists()
+
+    def test_json_output_shape(self, tmp_path: Path, capsys) -> None:
+        """--json emits an object with id/removed/signaled/identityVerified/pid keys."""
+        import json as _json
+        import uuid
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        queue_dir = tmp_path / ".queue"
+        entry_id = str(uuid.uuid4())
+        self._write_entry(queue_dir, entry_id, 99999999)  # dead PID → no signal
+
+        rc = cmd_queue_remove(self._remove_args(entry_id, json=True), tmp_path)
+
+        assert rc == 0
+        payload = _json.loads(capsys.readouterr().out)
+        assert payload["id"] == entry_id
+        assert payload["removed"] is True
+        assert payload["signaled"] is False
+        assert "identityVerified" in payload
+        assert payload["pid"] == 99999999
+
+    def test_json_unknown_id_error(self, tmp_path: Path, capsys) -> None:
+        """--json on an unknown id emits an error object and returns 1."""
+        import json as _json
+
+        from little_loops.cli.loop.queue import cmd_queue_remove
+
+        (tmp_path / ".queue").mkdir()
+        rc = cmd_queue_remove(self._remove_args("nope-nope-nope", json=True), tmp_path)
+
+        assert rc == 1
+        payload = _json.loads(capsys.readouterr().out)
+        assert "error" in payload
+
+
 class TestCmdRunTransportWiring:
     """Tests for FEAT-1323: cmd_run wires transports onto the executor's EventBus."""
 

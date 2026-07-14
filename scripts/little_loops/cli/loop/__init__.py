@@ -36,7 +36,7 @@ def main_loop() -> int:
         )
         from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
         from little_loops.cli.loop.next_loop import cmd_next_loop
-        from little_loops.cli.loop.queue import cmd_queue_list
+        from little_loops.cli.loop.queue import cmd_queue_list, cmd_queue_remove
         from little_loops.cli.loop.run import cmd_run
         from little_loops.cli.loop.testing import cmd_simulate, cmd_test
         from little_loops.config import BRConfig
@@ -898,6 +898,25 @@ Examples:
             action="store_true",
             help="Emit queue entries as a JSON array",
         )
+        queue_remove_parser = queue_subs.add_parser(
+            "remove",
+            help="Cancel a queued waiter by id (verify identity, signal, delete entry)",
+        )
+        queue_remove_parser.add_argument(
+            "id",
+            help="Queue entry id (full uuid or 8+-char prefix)",
+        )
+        queue_remove_parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Signal the tracked PID even if its identity cannot be verified",
+        )
+        queue_remove_parser.add_argument(
+            "-j",
+            "--json",
+            action="store_true",
+            help="Emit the removal result as a JSON object",
+        )
 
         args = parser.parse_args(argv)
 
@@ -955,6 +974,8 @@ Examples:
         elif args.command == "queue":
             if getattr(args, "queue_command", None) == "list":
                 return cmd_queue_list(args, loops_dir)
+            if getattr(args, "queue_command", None) == "remove":
+                return cmd_queue_remove(args, loops_dir)
             args._queue_parser.print_help()
             return 1
         else:
