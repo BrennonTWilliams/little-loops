@@ -685,7 +685,20 @@ Each line is `<short id (first 8 chars)>  <loopName>  pid=<pid>  alive  <YYYY-MM
 |------|-------|-------------|
 | `--json` | `-j` | Emit the queue as a JSON array (one object per entry, using the [entry schema](#queue-entries-loopsqueue)); an empty queue emits `[]`. Exit code is `0` in all cases. |
 
-**Bare `ll-loop queue` (no subcommand):** invoking `ll-loop queue` without `list` prints the `queue` subparser help and exits with code `1`.
+#### `ll-loop queue remove <id>`
+
+Cancel a queued waiter: signal its process (SIGTERM) and delete its `.loops/.queue/<uuid>.json` [entry](#queue-entries-loopsqueue). This is the way to abandon a loop that is blocked waiting on a scope lock via `ll-loop run --queue` — the counterpart to the read-only `ll-loop queue list`.
+
+The `<id>` argument accepts either a full uuid **or** an 8+-character prefix (the short id shown by `ll-loop queue list`). Before signaling, `remove` runs a psutil identity check confirming the entry's `context.pid` is really a live `ll-loop` waiter; if the check fails, the entry file is still deleted but no signal is sent (pass `--force` to signal anyway). The entry file is **always** deleted whether or not the signal landed, because the waiter's `atexit` cleanup does not fire on SIGTERM. `remove` never touches the running lock-holder — that PID lives in a separate `.running/` namespace.
+
+**Exit codes:** `0` on success (entry deleted); `1` when the `<id>` matches no entry **or** is an ambiguous prefix matching more than one entry.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--force` | | Bypass the psutil identity check and signal the tracked pid unconditionally. |
+| `--json` | `-j` | Emit the result as a JSON object: `{"id", "removed", "signaled", "identityVerified", "pid"}`. |
+
+**Bare `ll-loop queue` (no subcommand):** invoking `ll-loop queue` without a subcommand prints the `queue` subparser help and exits with code `1`.
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 

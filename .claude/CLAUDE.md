@@ -194,7 +194,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-action` - Invoke any ll skill as a one-shot command with JSON-structured output
 - `ll-artifact` - Generate self-contained human-facing HTML artifacts; `policy-builder` emits a `file://`-safe visual builder for policy-router / rubric loop YAML (stamps design-token CSS vars + grammar spec + skill catalog at generation time)
 - `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
-- `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline; `edit-routes` renders routing as an editable decision table; `queue list` lists pending run-queue entries and prunes dead-PID files as a side effect)
+- `ll-loop` - Execute FSM-based automation loops (`promote-baseline` promotes latest run output as comparator baseline; `edit-routes` renders routing as an editable decision table; `queue list` lists pending run-queue entries and prunes dead-PID files as a side effect; `queue remove <id>` cancels a queued waiter — SIGTERMs its process (psutil identity-checked unless `--force`) and deletes its `.queue/<uuid>.json` entry)
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-logs` - Discover, extract, sequence, and tail Claude Code session logs (`discover` / `extract` / `sequences` / `stats` / `tail` / `dead-skills` / `scan-failures` / `diff` / `eval-export` / `loop-fleet` subcommands; writes `logs/index.md`)
 - `ll-messages` - Extract user messages from Claude Code logs

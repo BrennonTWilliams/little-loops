@@ -843,6 +843,7 @@ check_stall:
 | `ll-loop list` | List loops as a compact name grid (public tier only by default); `-l/--long` for the detailed per-row layout; `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
 | `ll-loop status <name>` | Current state and iteration count (`--json` for paths and PIDs) |
 | `ll-loop queue list` | List pending run-queue entries (loops waiting on a scope lock via `--queue`); prunes dead-PID entries as a side effect (`-j/--json` for a JSON array) |
+| `ll-loop queue remove <id>` | Cancel a queued waiter by full uuid or 8+-char prefix: SIGTERM its process (psutil identity-checked unless `--force`) and delete its entry; exit `1` on unknown/ambiguous id (`-j/--json` for a JSON result) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
 | `ll-loop history <name>` | Show history; pass `run_id` for a specific archived run; `--tail`, `--event`, `--state`, `--since`, `--verbose`, `--full`, `--json` |
@@ -1136,7 +1137,7 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 **Stall detector fires even though the loop is making progress.** This is the BUG-1674 false positive: a `check`→`work` ping-pong where `work` has no evaluator is invisible to the detector. Add `progress_paths` under `circuit.repeated_failure` listing the files `work` writes — see [Stall Detector](#stall-detector-circuit-repeated-failure).
 
-**Scope conflict error.** Another loop holds a lock on overlapping paths. Find it with `ll-loop list --running` and stop it, or re-run with `--queue` to wait.
+**Scope conflict error.** Another loop holds a lock on overlapping paths. Find it with `ll-loop list --running` and stop it, or re-run with `--queue` to wait. If you queued a waiter and want to abandon it, inspect the queue with `ll-loop queue list` and cancel the entry with `ll-loop queue remove <id>`.
 
 **LLM evaluator errors.** Claude CLI auth or network issue. Ensure the `claude` CLI is authenticated, or use `--no-llm` to fall back to deterministic evaluators.
 

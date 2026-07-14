@@ -146,6 +146,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "ll-loop queue list", "ENH-2629"),
     (".claude/CLAUDE.md", "queue list", "ENH-2629"),
     ("docs/guides/LOOPS_GUIDE.md", "ll-loop queue list", "ENH-2629"),
+    ("docs/reference/CLI.md", "ll-loop queue remove", "ENH-2630"),
+    (".claude/CLAUDE.md", "queue remove", "ENH-2630"),
+    ("docs/guides/LOOPS_GUIDE.md", "ll-loop queue remove", "ENH-2630"),
 ]
 
 
