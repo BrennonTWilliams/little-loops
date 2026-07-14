@@ -529,6 +529,32 @@ states:
           cfg,
           status_filter={"open", "in_progress", "blocked", "done", "cancelled", "deferred"},
       )
+      # BUG-2637: the run that completes the FINAL child wrote `status: done`
+      # inside the epic-branch worktree — that status lives only on the epic
+      # branch tip, not on the base working tree find_issues() just scanned. So
+      # the all-done gate reads the completing child as still `open` and never
+      # merges. Union the epic-branch-tip `done` set over the base status before
+      # counting, mirroring finalize's `git grep -lE '^status: *done' <branch>`
+      # tip-read idiom (ENH-2609) in this same file.
+      import re
+
+      tip_done: set[str] = set()
+      try:
+          tip = subprocess.run(
+              ["git", "grep", "-lE", r"^status: *done", epic_branch, "--", ".issues"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if tip.returncode in (0, 1):
+              for line in tip.stdout.splitlines():
+                  m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
+                  if m:
+                      tip_done.add(m.group(0))
+      except Exception:
+          pass
+      for iss in all_issues:
+          if iss.issue_id in tip_done:
+              iss.status = "done"
+
       prog = compute_epic_progress(epic_id, all_issues)
       if prog is None:
           print("skipped")

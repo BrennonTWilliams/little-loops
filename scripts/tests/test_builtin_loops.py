@@ -2984,9 +2984,35 @@ class TestMergeEpicBranchConfigReadShell:
         test_cmd: str | None = None,
         seed_verdict: str | None = None,
         seed_sha: str | None = None,
+        branch_statuses: dict[str, str] | None = None,
     ) -> tuple[subprocess.CompletedProcess, Path]:
         self._setup_repo(tmp_path)
         self._write_issues(tmp_path, child_statuses)
+        # BUG-2637: model a child whose `done` status was committed on the epic
+        # branch tip but not on the base working tree. Commit the base (open)
+        # issue tree to main so the working tree is stable, then commit the
+        # `branch_statuses` variant onto the epic branch tip.
+        if branch_statuses is not None:
+            subprocess.run(["git", "add", ".issues"], cwd=tmp_path, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "issues base"], cwd=tmp_path, check=True
+            )
+            subprocess.run(
+                ["git", "checkout", "-q", self._EPIC_BRANCH], cwd=tmp_path, check=True
+            )
+            # Descend the epic branch from the base issue tree so the tip's
+            # `done` override is a clean 3-way merge back to base (no phantom
+            # add/add conflict on files that only ever changed on the branch).
+            subprocess.run(
+                ["git", "merge", "-q", "--no-edit", "main"], cwd=tmp_path, check=True
+            )
+            self._write_issues(tmp_path, branch_statuses)
+            subprocess.run(["git", "add", ".issues"], cwd=tmp_path, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "--allow-empty", "-m", "epic tip statuses"],
+                cwd=tmp_path, check=True,
+            )
+            subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
 
         (tmp_path / ".ll").mkdir(exist_ok=True)
         config: dict = {
@@ -3142,6 +3168,36 @@ class TestMergeEpicBranchConfigReadShell:
         )
         assert result.returncode == 0, result.stderr
         assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "verify_failed"
+
+    # --- BUG-2637: final-child status lives only on the epic-branch tip --------
+
+    def test_merges_when_final_child_done_only_on_branch_tip(self, tmp_path: Path) -> None:
+        """The run that completes the FINAL child writes `status: done` inside
+        the epic-branch worktree, so the base working tree still reads `open`.
+        merge_epic_branch must read the child status from the epic-branch tip
+        (unioned over base) and merge, not report held_open (BUG-2637)."""
+        result, run_dir = self._run(
+            tmp_path,
+            # base working tree: the completing child still reads `open`
+            child_statuses={"FEAT-010": "done", "FEAT-020": "open"},
+            # epic-branch tip: the completing child is `done`
+            branch_statuses={"FEAT-010": "done", "FEAT-020": "done"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merged"
+        assert self._EPIC_BRANCH not in self._branches(tmp_path)
+
+    def test_held_open_when_sibling_open_on_both_base_and_tip(self, tmp_path: Path) -> None:
+        """A genuinely-open sibling — open on both the base tree and the epic
+        branch tip — must still report held_open even with the tip-read (AC-3)."""
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done", "FEAT-020": "open"},
+            branch_statuses={"FEAT-010": "done", "FEAT-020": "open"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "held_open"
+        assert self._EPIC_BRANCH in self._branches(tmp_path)
 
 
 class TestAutodevLoop:
