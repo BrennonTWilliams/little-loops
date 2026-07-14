@@ -2194,6 +2194,7 @@ class TestAutoRefineAndImplementLoop:
         issue_set: tuple[str, ...] = (),
         verify_verdict: str | None = None,
         verify_returncode: str | None = None,
+        inflight: str | None = None,
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -2254,12 +2255,26 @@ class TestAutoRefineAndImplementLoop:
             "".join(f"DU-{i}\n" for i in range(decision_unresolved))
         )
         (run_dir / f"{p}-errored.txt").write_text("".join(f"ID-{i}\n" for i in range(errored)))
+        # BUG-2636: seed the autodev-inflight sentinel so finalize's
+        # INFLIGHT_UNRESOLVED signal (and the phantom verdict it can trigger) is
+        # exercisable. Absent by default → INFLIGHT_UNRESOLVED=0.
+        if inflight is not None:
+            (run_dir / "autodev-inflight").write_text(inflight)
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
-        assert result.returncode == 0, f"finalize action failed: {result.stderr}"
-        return json.loads((run_dir / "summary.json").read_text())
+        summary = json.loads((run_dir / "summary.json").read_text())
+        # BUG-2636: finalize routes the FSM terminal on the real verdict — a
+        # `phantom` run exits non-zero (→ the `incomplete` terminal, rendered as
+        # not-success by ll-loop) while every other verdict exits 0 (→ `done`).
+        # summary.json is written before the routing exit, so it is always readable.
+        expected_rc = 1 if summary["verdict"] == "phantom" else 0
+        assert result.returncode == expected_rc, (
+            f"finalize exit {result.returncode} != {expected_rc} for "
+            f"verdict={summary['verdict']}: {result.stderr}"
+        )
+        return summary
 
     def test_finalize_verdict_table(self, data: dict, tmp_path: Path) -> None:
         """Shell-execution regression (ENH-2385/2376): the verdict reflects real
@@ -2552,6 +2567,76 @@ class TestAutoRefineAndImplementLoop:
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         assert summary["decision_unresolved"] == 0, f"expected decision_unresolved=0, got {summary}"
+
+    def test_finalize_stale_inflight_counts_as_unresolved(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2636: an issue left in the autodev-inflight sentinel — dispatched
+        but never landed in any passed/skipped/gate-blocked ledger — must surface
+        as inflight_unresolved=1 (the exact hole that let run 20260713T190717 leave
+        ENH-2578 in-flight yet report verdict=no-op / green "done")."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, issue_set=("ENH-2578",), inflight="ENH-2578"
+        )
+        assert summary["inflight_unresolved"] == 1, (
+            f"expected inflight_unresolved=1, got {summary}"
+        )
+        # Closed nothing + an unresolved in-flight issue ⇒ phantom, not no-op.
+        assert summary["verdict"] == "phantom", (
+            f"stale inflight must escalate the verdict to phantom, got {summary}"
+        )
+
+    def test_finalize_inflight_not_counted_when_issue_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2636: a sentinel that merely lingered after its issue actually
+        closed (via either closure path) is NOT unresolved — finalize must exclude
+        it, so a fully successful run is never mislabeled phantom."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1",),
+            issue_set=("FEAT-1",),
+            inflight="FEAT-1",
+        )
+        assert summary["inflight_unresolved"] == 0, (
+            f"a closed issue's lingering sentinel must not count, got {summary}"
+        )
+        assert summary["verdict"] == "success", f"expected success, got {summary}"
+
+    def test_finalize_zero_inflight_unresolved_by_default(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2636: with no sentinel present, inflight_unresolved must be 0 and
+        present (never omitted) in summary.json."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        assert summary["inflight_unresolved"] == 0, f"expected 0, got {summary}"
+
+    def test_finalize_phantom_routes_to_incomplete_terminal(self, data: dict) -> None:
+        """BUG-2636: finalize routes the FSM terminal on the real verdict —
+        on_yes→done (progress / benign no-op) and on_no→incomplete (phantom, exit
+        non-zero). ll-loop derives success from the terminal state NAME, so a
+        phantom run must land on a terminal != `done`."""
+        state = data["states"].get("finalize", {})
+        assert state.get("on_yes") == "done", "finalize must route success/no-op to done"
+        assert state.get("on_no") == "incomplete", (
+            "finalize must route a phantom (non-zero exit) to the incomplete terminal"
+        )
+        # shell_exit fragment supplies exit-code evaluation; a bare `next` would
+        # ignore the routing entirely.
+        assert state.get("fragment") == "shell_exit", (
+            "finalize must use the shell_exit fragment so its exit code selects the terminal"
+        )
+        assert "next" not in state, "finalize must not keep an unconditional next: done"
+        incomplete = data["states"].get("incomplete", {})
+        assert incomplete.get("terminal") is True, "incomplete must be a terminal state"
 
     def test_finalize_skipped_breakdown_aggregates_by_reason(
         self, data: dict, tmp_path: Path

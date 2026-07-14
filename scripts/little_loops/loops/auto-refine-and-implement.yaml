@@ -718,6 +718,24 @@ states:
       cat "$RUN_DIR/$P-completed-now.txt" "$RUN_DIR/$P-done-now.txt" 2>/dev/null \
         | grep '[^[:space:]]' | sort -u > "$RUN_DIR/$P-closed-now-union.txt"
 
+      # BUG-2636: INFLIGHT_UNRESOLVED — a still-set autodev-inflight sentinel at
+      # finalize time means the sub-loop reached its terminal (or was cut off by a
+      # step/time cap, or an env-abort path) with an issue mid-implementation that
+      # never landed in passed/skipped/gate-blocked. It is invisible to every
+      # ledger above, so a dispatched-but-abandoned issue would misread as a
+      # benign no-op (observed: run 20260713T190717 left ENH-2578 in-flight yet
+      # reported verdict=no-op / "done"). Count it as its own signal (mirrors
+      # ENH-2404 gate_blocked / BUG-2595 decision_unresolved), but only when the
+      # in-flight issue did NOT actually close via either path — an issue that
+      # closed while its sentinel merely lingered is not unresolved.
+      INFLIGHT_ID=$(cat "$RUN_DIR/autodev-inflight" 2>/dev/null | tr -d '[:space:]' || true)
+      INFLIGHT_UNRESOLVED=0
+      if [ -n "$INFLIGHT_ID" ] \
+         && ! grep -qxF "$INFLIGHT_ID" "$RUN_DIR/$P-closed-now-union.txt" 2>/dev/null; then
+        INFLIGHT_UNRESOLVED=1
+        printf '%s\n' "$INFLIGHT_ID" > "$RUN_DIR/$P-inflight-unresolved.txt"
+      fi
+
       # NOT_CLOSED: issues autodev passed refinement and ran ll-auto on that did
       # NOT close via either path (e.g. ll-auto refused to close, or a plan
       # awaits approval). Derived as autodev-passed − closed-now-union, so a
@@ -784,7 +802,7 @@ states:
           | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
       fi
       if [ "$INPUT_SIZE" -gt 0 ]; then
-        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
+        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED + $INFLIGHT_UNRESOLVED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
       else
         PARKED_RATE=0.0
       fi
@@ -825,23 +843,51 @@ states:
         VERDICT=partial-with-errors
       elif [ "$CLOSED" -gt 0 ]; then
         VERDICT=partial
-      elif [ "$ERR" -gt 0 ] || [ "$NOT_CLOSED" -gt 0 ]; then
-        # Attempted work but closed nothing — not a benign no-op.
+      elif [ "$ERR" -gt 0 ] || [ "$NOT_CLOSED" -gt 0 ] || [ "$INFLIGHT_UNRESOLVED" -gt 0 ]; then
+        # Attempted work but closed nothing — not a benign no-op. BUG-2636: a
+        # dispatched issue left in-flight counts here, so it can no longer hide as
+        # a no-op.
         VERDICT=phantom
       else
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
-    action_type: shell
-    next: done
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
+
+      # BUG-2636: route the FSM terminal on the REAL outcome, not just "reached the
+      # end". `ll-loop` derives success purely from the terminal state's NAME —
+      # any terminal != `done` renders orange and surfaces this state's stdout as
+      # the failure reason (cli/loop/_helpers.py `_is_success`). Previously
+      # finalize unconditionally routed to `done`, so a phantom run (attempted
+      # work, closed nothing, left issues parked/not-closed/in-flight/errored)
+      # reported green "done" — the exact mis-signal behind run 20260713T190717.
+      # success/partial/partial-with-errors (real progress) and a genuine
+      # empty-backlog no-op stay `done`; only `phantom` diverts to `incomplete`.
+      case "$VERDICT" in
+        phantom) exit 1 ;;
+        *) exit 0 ;;
+      esac
+    fragment: shell_exit
+    on_yes: done
+    on_no: incomplete
+    on_error: incomplete
 
   done:
+    terminal: true
+
+  incomplete:
+    # BUG-2636: non-success terminal for phantom runs. Reached only when finalize
+    # exits non-zero (verdict=phantom) or errors. Its own stdout is redundant with
+    # the failure reason `ll-loop` already surfaces from finalize's non-zero
+    # action_complete, but a terminal message keeps standalone/log readers honest.
+    action: |
+      echo "auto-refine-and-implement: incomplete — see summary.json verdict (phantom): dispatched work closed nothing (parked / not-closed / in-flight / errored). Re-run after resolving blockers."
+    action_type: shell
     terminal: true
