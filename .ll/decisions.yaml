@@ -5151,3 +5151,28 @@
   alternatives_rejected: 'Option B: structured verify.json (nested-JSON-in-printf;
     build pattern is population-of-one, % corruption risk, MR-10 exposure)'
   issue: ENH-2631
+- id: ARCHITECTURE-152
+  type: decision
+  timestamp: '2026-07-14T16:53:26Z'
+  category: architecture
+  labels: []
+  rationale: Mirrors the in-file finalize tip-read precedent; parse_frontmatter accepts
+    raw blobs; union option has no existing primitive.
+  rule: Read epic-child status from the epic-branch tip (git-show/git-grep), replacing
+    the base-tree scan
+  scope: issue
+  alternatives_rejected: Union base-tree ⊕ epic-branch-tip status (7/12; needs new
+    union primitive + IssueInfo-from-blob)
+  issue: BUG-2637
+- id: ARCHITECTURE-153
+  type: decision
+  timestamp: '2026-07-14T18:19:56Z'
+  category: architecture
+  labels: []
+  rationale: Only option satisfying the AC 'verify identity, not just liveness'; psutil
+    already a declared dep. Guard in try/except with refuse-and-still-delete fallback.
+  rule: psutil identity verification before signaling queued waiter (Option A)
+  scope: issue
+  alternatives_rejected: 'Option B (liveness-only via _process_alive): higher codebase
+    fit but violates the identity-verification acceptance criteria.'
+  issue: FEAT-2619

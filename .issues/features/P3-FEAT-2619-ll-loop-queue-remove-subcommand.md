@@ -3,14 +3,22 @@ id: FEAT-2619
 type: FEAT
 priority: P3
 status: open
-captured_at: 2026-07-12T19:49:49Z
+captured_at: 2026-07-12 19:49:49+00:00
 discovered_date: 2026-07-12
 discovered_by: scope-epic
 parent: EPIC-2616
-depends_on: [ENH-2617]
-decision_needed: true
-learning_tests_required: [psutil]
+depends_on:
+- ENH-2617
+decision_needed: false
+learning_tests_required:
+- psutil
 size: Very Large
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # `ll-loop queue remove <id>` subcommand
@@ -132,6 +140,31 @@ delete the `{id}.json` file itself regardless of whether the signal was delivere
   (`ll-loop queue remove <id>` → `cmd_queue_remove`, model on
   `test_queue_list_routes_to_handler` line 1058) and id-forwarding assertion.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `os.kill` mocking precedent — `scripts/tests/test_concurrency.py:193-233`
+  (`test_stale_lock_eperm_treated_as_alive` / `test_stale_lock_esrch_treated_as_dead`)
+  is the canonical idiom: `patch("os.kill", side_effect=OSError(errno.ESRCH, ...))`
+  as a context manager, distinguishing ESRCH (dead) vs EPERM (alive). Follow this
+  when asserting the SIGTERM target + identity gate in `TestQueueRemoveCommand`. For
+  pure dead-PID cases needing no `os.kill` assertion, the `pid: 99999999` sentinel
+  idiom (`test_cli_loop_queue.py:202-239`, `TestReadQueueEntries`) is simpler.
+  [Agent 3 finding]
+- Delete-and-assert-others fixture idiom — `TestReadQueueEntries.test_dead_pid_entries_are_pruned`
+  (`test_cli_loop_queue.py:299-333`): each test builds its own `tmp_path/".queue"`
+  inline, writes two `{uuid}.json` entries (target + survivor), captures the target
+  `Path` handle before the call, then asserts `not target.exists()` alongside a
+  positive assertion the survivor is untouched. Mirror this exactly in
+  `TestQueueRemoveCommand`. [Agent 3 finding]
+- **No test breakage** — no existing test enumerates the `queue` subcommand list or
+  snapshots `ll-loop queue --help`; `test_queue_no_subcommand_prints_help`
+  (`test_cli_loop_dispatch.py:1087`) asserts only `return == 1`. Adding `remove` is
+  additive-only from the suite's perspective. [Agent 3 finding]
+- `scripts/tests/test_wiring_cli_registry.py` — `DOC_STRINGS_PRESENT` (lines 146-148)
+  pins doc-string needles for `ll-loop queue list` only; it will **not** fail when
+  `remove` ships without docs (docs owned by ENH-2630), so it is not a gate for this
+  issue — but it is the exact mechanism ENH-2630 must extend with parallel
+  `queue remove` needles. FYI only; do not edit here. [Agent 2 finding]
+
 ### Documentation
 - Owned by ENH-2620 (docs for the whole `queue` family). No doc edits in this issue.
 
@@ -161,6 +194,11 @@ The queue entry stores only `pid`, and PIDs recycle, so a bare
 `os.kill(pid, SIGTERM)` risks signaling an unrelated recycled process. Two
 viable ways to satisfy "verify the tracked PID's identity, not just liveness":
 
+> **Selected:** Option A (psutil identity verification) — the only option that
+> satisfies the issue's own acceptance wording ("verify the tracked PID's
+> identity, not just liveness"); guard psutil in try/except with a
+> refuse-and-still-delete fallback since the codebase has no psutil precedent.
+
 **Option A**: **psutil cmdline verification.** Before signaling, load
 `psutil.Process(pid)` and confirm the process is a live `ll-loop` invocation
 (e.g. `"ll-loop"` / `little_loops.cli.loop` appears in `.cmdline()`, or the
@@ -179,6 +217,45 @@ explicit acceptance wording ("verify the tracked PID's identity (not just
 liveness)"), and `psutil` is already a first-class dependency. Guard the psutil
 lookup in try/except (NoSuchProcess/AccessDenied) and fall back to refusing the
 signal (file still deleted) so a permission error never mis-kills.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-14.
+
+**Selected**: Option A — psutil identity verification
+
+**Reasoning**: Option B scores higher on raw codebase fit (it reuses the
+widely-called `_process_alive` helper — 14+ call sites — and the existing
+"check-liveness → signal/delete" idiom with zero new imports), but it directly
+contradicts FEAT-2619's own Summary and Acceptance Criteria, which explicitly
+require verifying the tracked PID's **identity, not just liveness**. Option A is
+the only option that meets that binding constraint. `psutil>=5.9` is already a
+declared dependency (`scripts/pyproject.toml:113`), so no new package is added —
+only a first in-package import. The codebase has no psutil precedent (`host_guard.py`
+deliberately shells out to `vm_stat`/`/proc/meminfo` instead), so the check must be
+guarded in try/except (NoSuchProcess/AccessDenied) with a refuse-and-still-delete
+fallback, and new test-mocking scaffolding for `psutil.Process` is expected.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — psutil identity | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+| B — liveness-only | 3/3 | 3/3 | 3/3 | 1/3 | 10/12 |
+
+**Key evidence**:
+- Option A: `psutil` is declared but unused in `little_loops` runtime code (reuse
+  score 0); `host_guard.py:1-7` explicitly avoids psutil for a similar
+  process-inspection need. Higher-effort path, but the only one satisfying the AC.
+- Option B: Reuses `_process_alive` (`fsm/concurrency.py:56-68`) and the stale-lock
+  reaping idiom (`_helpers.py:193`) with zero new deps (reuse score 2) — but the
+  issue's own research notes state it "does not actually satisfy the summary's 'not
+  just liveness' wording," and it would require dropping the planned identity-gate
+  test case.
+
+**Note**: B is the higher-fit option and would be preferable if the AC were relaxed
+to liveness-only. The selection honors the issue as currently scoped; if a maintainer
+decides PID-recycling risk is acceptable, re-scope the AC and B becomes the winner.
 
 ## Implementation Steps
 
@@ -223,5 +300,9 @@ signal (file still deleted) so a permission error never mis-kills.
   `remove` deletes the file itself, so graceful is sufficient.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-14T00:00:00 - `14e1fc30-e29c-4918-a27d-edb58d9915e6.jsonl`
+- `/ll:wire-issue` - 2026-07-14T18:25:04 - `08a60504-d18d-46d8-9c71-a478563b2ca9.jsonl`
+- `/ll:decide-issue` - 2026-07-14T18:19:56 - `1137dcde-a149-4da9-8770-bce1682be284.jsonl`
+- `/ll:refine-issue` - 2026-07-14T18:13:56 - `14902c7a-7cda-4d08-b928-c321adbfde4e.jsonl`
 - `/ll:scope-epic` - 2026-07-12T19:49:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8999ce06-5d43-4dd5-bc03-841f57c28bf2.jsonl`
 - `/ll:refine-issue` - 2026-07-13T19:15:00 - session JSONL unavailable

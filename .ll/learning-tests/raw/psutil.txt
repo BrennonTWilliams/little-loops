@@ -1,0 +1,6 @@
+cmdline: ['/Users/brennon/miniforge3/bin/python3', '-c', 'import time; time.sleep(5)']
+cmdline_type: <class 'list'>
+create_time: 1784053954.672372
+create_time_type: <class 'float'>
+NoSuchProcess: raised as expected: process PID not found (pid=34918)
+is_running_self: True
