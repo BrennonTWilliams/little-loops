@@ -5205,3 +5205,15 @@
   alternatives_rejected: Option B — re-diagnose a residual uncovered edge (no evidence
     found of a second import route bypassing PYTHONPATH)
   issue: BUG-2640
+- id: ARCHITECTURE-155
+  type: decision
+  timestamp: '2026-07-15T00:01:22Z'
+  category: architecture
+  labels: []
+  rationale: Reuses proven splitlines()[-N:] and stderr+stdout idioms; tool-agnostic
+    vs pytest-coupled grep. 11/12 vs 5/12.
+  rule: 'Option A: line-tail of combined stdout+stderr for verify-detail.txt'
+  scope: issue
+  alternatives_rejected: 'Option B: grep FAILED/ERROR/summary markers (no precedent,
+    pytest-specific, fragile for non-pytest test_cmd)'
+  issue: ENH-2641
