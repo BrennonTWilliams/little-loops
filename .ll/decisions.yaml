@@ -5217,3 +5217,16 @@
   alternatives_rejected: 'Option B: grep FAILED/ERROR/summary markers (no precedent,
     pytest-specific, fragile for non-pytest test_cmd)'
   issue: ENH-2641
+- id: ARCHITECTURE-156
+  type: decision
+  timestamp: '2026-07-14T23:09:49Z'
+  category: architecture
+  labels: []
+  rationale: format_epic_tree() already implements the needed tree idiom and generalizes
+    cleanly to multi-root; satisfies the no-edge-demoted acceptance criteria for hub
+    topologies that Options B/C only partially address.
+  rule: Indented dependency tree (Option A) as default clusters layout
+  scope: issue
+  alternatives_rejected: Option B (adjacency-grouped list, retained as --layout list);
+    Option C (hybrid by size, subsumed by explicit --layout flag)
+  issue: FEAT-2337

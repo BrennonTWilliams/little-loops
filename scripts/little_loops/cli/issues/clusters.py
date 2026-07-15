@@ -9,7 +9,16 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, warning
+from little_loops.cli.output import (
+    BOX_BL,
+    BOX_ML,
+    BOX_V,
+    PRIORITY_COLOR,
+    TYPE_COLOR,
+    colorize,
+    print_json,
+    warning,
+)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -166,6 +175,86 @@ def _render_cluster_compact(
             line += f"  {annotations}"
         lines.append(_colorize_ids(line))
     return lines
+
+
+def _render_cluster_tree(
+    ordered_ids: list[str],
+    issues_map: dict[str, IssueInfo],
+    edges: list[tuple[str, str, str]],
+) -> list[str]:
+    """Render a cluster as a multi-root indented dependency tree (FEAT-2337).
+
+    Generalizes ``dependency_mapper.formatting.format_epic_tree``'s single-root
+    ``├──``/``└──`` connector idiom to the cluster's multi-root case. Every edge
+    in ``edges`` appears in the primary layout — either as a tree branch or, when
+    both endpoints are already placed (DAG cross-edge / cycle back-edge), as a
+    ``⤷`` cross-reference annotation under the node. Nothing is demoted to a
+    trailing skip-edge list, so hub topologies keep all their structure.
+
+    Roots are chosen by descending degree (the hub heuristic from
+    ``_cluster_header``), tie-broken by topo order, so an EPIC with many
+    ``parent`` children renders with the hub at the root and depth shown
+    naturally. Cycles terminate safely via the ``visited`` set.
+    """
+    adj: dict[str, set[str]] = {id_: set() for id_ in ordered_ids}
+    # frozenset pair → (from_id, to_id, relationship) for annotation lookup
+    rel_of: dict[frozenset[str], tuple[str, str, str]] = {}
+    for from_id, to_id, rel in edges:
+        if from_id in adj and to_id in adj:
+            adj[from_id].add(to_id)
+            adj[to_id].add(from_id)
+            rel_of[frozenset({from_id, to_id})] = (from_id, to_id, rel)
+
+    order_index = {id_: i for i, id_ in enumerate(ordered_ids)}
+
+    def _annot(parent: str, child: str) -> str:
+        """Colored relationship label with a direction arrow relative to *parent*."""
+        from_id, _to_id, rel = rel_of[frozenset({parent, child})]
+        arrow = "→" if from_id == parent else "←"
+        return f"{arrow} {colorize(rel, EDGE_COLOR.get(rel, '37'))}"
+
+    def _node_label(iid: str) -> str:
+        issue = issues_map[iid]
+        return f"[{issue.priority}] {iid}  {issue.title}"
+
+    visited: set[str] = set()
+    rendered_edges: set[frozenset[str]] = set()
+    lines: list[str] = []
+
+    def _walk(node: str, child_prefix: str) -> None:
+        neigh = sorted(adj[node], key=lambda x: order_index[x])
+        children = [c for c in neigh if c not in visited]
+        cross = [
+            c
+            for c in neigh
+            if c in visited and frozenset({node, c}) not in rendered_edges
+        ]
+
+        for c in cross:
+            rendered_edges.add(frozenset({node, c}))
+            lines.append(f"{child_prefix}⤷ {_annot(node, c)} {c}")
+
+        for c in children:
+            visited.add(c)
+            rendered_edges.add(frozenset({node, c}))
+
+        for i, c in enumerate(children):
+            is_last = i == len(children) - 1
+            connector = BOX_BL if is_last else BOX_ML
+            extension = "    " if is_last else BOX_V + "   "
+            lines.append(f"{child_prefix}{connector}── {_node_label(c)}  {_annot(node, c)}")
+            _walk(c, child_prefix + extension)
+
+    while True:
+        unvisited = [id_ for id_ in ordered_ids if id_ not in visited]
+        if not unvisited:
+            break
+        root = min(unvisited, key=lambda x: (-len(adj[x]), order_index[x]))
+        visited.add(root)
+        lines.append(_node_label(root))
+        _walk(root, "")
+
+    return [_colorize_ids(ln) for ln in lines]
 
 
 def _print_legend(present_types: set[str]) -> None:
@@ -534,7 +623,14 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
     width = terminal_width()
     box_w = max(20, min(_MAX_BOX_WIDTH, width - _BOX_MARGIN * 2 - 4))
     total_issues = sum(len(comp) for _, comp in indexed)
-    compact: bool = getattr(args, "compact", False)
+
+    # Layout resolution (FEAT-2337): --layout {tree,list,boxes} with tree as the
+    # new default. --compact/--summary is retained as an alias for --layout list
+    # (the ENH-2336 compact renderer) so there is a single compact path; an
+    # explicit --layout wins over --compact.
+    layout: str | None = getattr(args, "layout", None)
+    if layout is None:
+        layout = "list" if getattr(args, "compact", False) else "tree"
 
     # Build blocked_by map from IssueInfo for topo sort ordering
     blocked_by_map: dict[str, set[str]] = {
@@ -573,11 +669,13 @@ def cmd_clusters(config: BRConfig, args: argparse.Namespace) -> int:
         if cd.has_cycle:
             warning("cycle detected — using fallback layout")
 
-        if compact:
+        if layout == "list":
             body_lines = _render_cluster_compact(cd.ordered_ids, issues_map, cd.edges)
-        else:
+        elif layout == "boxes":
             edge_map: dict[tuple[str, str], str] = {(f, t): r for f, t, r in cd.edges}
             body_lines = _render_cluster_diagram(cd.ordered_ids, issues_map, edge_map, box_w)
+        else:  # tree (default)
+            body_lines = _render_cluster_tree(cd.ordered_ids, issues_map, cd.edges)
         print("\n".join(body_lines))
         print()
 

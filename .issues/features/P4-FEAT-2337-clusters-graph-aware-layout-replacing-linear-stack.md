@@ -3,8 +3,10 @@ id: FEAT-2337
 title: 'll-issues clusters: replace linear box-stack with a graph-aware layout'
 type: FEAT
 priority: P4
-status: open
+status: done
+decision_needed: false
 captured_at: '2026-06-26T23:56:00Z'
+completed_at: '2026-07-14T23:25:56Z'
 discovered_date: '2026-06-26'
 discovered_by: capture-issue
 relates_to:
@@ -19,6 +21,12 @@ labels:
 - clusters
 - output-styling
 parent: EPIC-2370
+confidence_score: 92
+outcome_confidence: 78
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # FEAT-2337: `ll-issues clusters` — graph-aware layout to replace the linear box-stack
@@ -74,6 +82,92 @@ Pick one as the new default (tree is the strongest candidate for these DAGs), an
 consider exposing `--layout {tree,list,boxes}` so callers can choose. Coordinate the
 default with ENH-2336's `--compact` so the two compact paths don't diverge.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The three approaches above map to these concrete implementation options:
+
+**Option A — Indented dependency tree (recommended default).**
+> **Selected:** Option A — reuses `format_epic_tree()`'s existing tree-renderer
+> pattern, generalizes cleanly to multi-root, and is the only option that
+> satisfies the "no edge relegated to a trailing list" acceptance criterion for
+> hub topologies; `--layout list`/`boxes` are retained as explicit alternates.
+
+A near-identical
+renderer already exists: `dependency_mapper/formatting.py:252` `format_epic_tree()`
+draws `├──`/`└──` connectors (from `cli/output.py:54-61` — `BOX_ML`=`├`, `BOX_BL`=`└`,
+`BOX_V`=`│`), carries an `extension` indent forward for annotation sub-lines, and is
+cycle-tolerant (falls back to insertion order for nodes not covered by topo sort). It
+is **single-root** (one EPIC → children), so it must be generalized to clusters'
+**multi-root** case. Root selection can reuse the hub heuristic already computed at
+`clusters.py:122` (`hub = min(cd.ids, key=lambda id_: (-len(neighbours.get(id_, set())), id_))`)
+plus a "no incoming edge" pass (see `dependency_mapper/formatting.py`'s chain-builder
+~lines 100-249 for the root-detection idiom: roots = nodes not in the set of edge
+targets). Caveat: `_topo_sort_cluster` (`clusters.py:265`) returns only
+`(result, has_cycle)` — its internal blocker→blocked `adj` map is **not** exposed, so a
+tree renderer must rebuild adjacency from `cd.edges`/`edge_map` or extend
+`_topo_sort_cluster`'s return signature.
+
+**Option B — Adjacency-grouped compact list.** ENH-2336 **already shipped**
+`_render_cluster_compact()` (`clusters.py:139-168`), wired to `--compact`/`--summary`
+(`__init__.py:462-469`) and dispatched at `clusters.py:576-580`. Per the Scope Boundary
+note, `--layout list` must alias/extend this single renderer rather than fork a second
+one. Note `_cluster_edges` (`clusters.py:302`) dedups to **one edge per unordered pair**
+(frozenset key + `_EDGE_PRIORITY`), so a graph-complete list form may need the raw
+per-issue edges rather than the deduped `cd.edges`.
+
+**Option C — Hybrid by size.** Keep `_render_cluster_diagram` (`clusters.py:352`) for
+small clusters (≤ ~5 nodes) and auto-switch to tree/list above the threshold; lowest
+risk since it preserves current output for the common small-cluster case.
+
+**Recommended**: Option A (tree) as the new default, with `--layout {tree,list,boxes}`
+where `list` aliases the existing ENH-2336 compact renderer (Option B) and `boxes` is
+the legacy `_render_cluster_diagram`. This satisfies the Scope Boundary's
+single-compact-path requirement while keeping the richer tree as default.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-14.
+
+**Selected**: Option A — Indented dependency tree (recommended default)
+
+**Reasoning**: `format_epic_tree()` (`dependency_mapper/formatting.py:252`) already
+implements the exact `├──`/`└──` connector idiom needed and just requires
+generalizing from single-root to multi-root using the existing hub heuristic
+(`clusters.py:122`); this directly satisfies the "every edge in the primary
+layout, no false adjacency" acceptance criteria that Options B and C only
+partially address. Option B (already-shipped `_render_cluster_compact`) is
+retained as `--layout list` per the Scope Boundary note rather than competing
+as the default, and Option C's size-based hybrid is subsumed by exposing
+`--layout {tree,list,boxes}` directly instead of an implicit threshold.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| A — Indented tree | 2/3 | 2/3 | 3/3 | 2/3 | 9/12 |
+| B — Adjacency-grouped list | 3/3 | 3/3 | 3/3 | 1/3 | 10/12 |
+| C — Hybrid by size | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
+
+**Key evidence**:
+- Option A: near-identical renderer already exists (`format_epic_tree`), but is
+  single-root and needs generalization; `_topo_sort_cluster` doesn't expose its
+  `adj` map, so adjacency must be rebuilt from `cd.edges` (`clusters.py:265`).
+- Option B: already shipped and wired (`clusters.py:139-168`, ENH-2336) with the
+  highest raw score, but alone doesn't solve the hub-topology "graph rendered as
+  boxes" problem the issue exists to fix — it's the compact companion, not the
+  primary default.
+- Option C: lowest risk but doesn't eliminate the core linear-stack weakness for
+  large hub clusters — it only bounds where it applies.
+
+Note: Option B scores highest on the 4-dimension rubric (it already exists and
+is low-risk), but the rubric does not capture the issue's core requirement —
+"no edge silently demoted to a trailing list" for hub topologies — which only
+Option A satisfies as the *default* rendering path. Option A is selected as
+default per the issue's own stated Acceptance Criteria; B remains available via
+`--layout list`.
+
 ## Implementation Steps
 
 1. Audit `_render_cluster_diagram` and `_topo_sort_cluster` in `clusters.py`; map all call sites and understand cycle-detection output.
@@ -112,6 +206,55 @@ default with ENH-2336's `--compact` so the two compact paths don't diverge.
   if boxes are retained for small clusters).
 - Tests under `scripts/tests/`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Files to Modify**
+- `scripts/little_loops/cli/issues/clusters.py` — add `_render_cluster_tree()` alongside
+  `_render_cluster_diagram()` (`clusters.py:352`) and `_render_cluster_compact()`
+  (`clusters.py:139-168`); extend the render dispatch at `clusters.py:576-580` (currently
+  branches only on `compact: bool`). May need to extend `_topo_sort_cluster()`
+  (`clusters.py:265`) to return its internal `adj` map, or rebuild adjacency from
+  `cd.edges`.
+- `scripts/little_loops/cli/issues/__init__.py:440-492` — clusters subparser; add
+  `--layout {tree,list,boxes}` enum-choice flag. Precedent for `choices=[...], default=`:
+  `__init__.py:503-509` (`refine-status --format`). `--compact`/`--summary` live at
+  `__init__.py:462-469` and must stay compatible (alias `--compact` → `--layout list`).
+
+**Reusable Code (Similar Patterns)**
+- `scripts/little_loops/dependency_mapper/formatting.py:252` — `format_epic_tree()`,
+  the canonical `├──`/`└──` indented-tree renderer to model on (single-root; generalize
+  to multi-root). Multi-root chain-builder in the same file (~lines 100-249) shows
+  root-detection + fan-out handling.
+- `scripts/little_loops/cli/output.py:54-61` — `BOX_H/V/TL/TR/BL/BR/ML/MR` connector
+  constants.
+- `scripts/little_loops/cli/issues/clusters.py:122` — hub/max-degree node selection,
+  reusable as tree root heuristic.
+- `scripts/little_loops/dependency_graph.py` — `topological_sort()` (line 301, raises on
+  cycle) and `detect_cycles()` (line 355, DFS three-color returning full cycle paths) if
+  richer cycle handling than `_topo_sort_cluster`'s tolerant `has_cycle` flag is wanted.
+
+**Dependent / Insulated Paths**
+- `--json` branch is fully independent of layout (`clusters.py:510-531`) — it already
+  emits complete `edges: [{from,to,relationship}]` and is untouched by rendering choice,
+  so the "JSON unchanged" AC is satisfied by construction.
+
+**Tests**
+- `scripts/tests/test_issues_cli.py` — existing clusters suite (26+ tests incl.
+  `test_clusters_renders_skip_level_edges_for_fan_out`, `test_clusters_no_arrows_between_independent_roots`,
+  `test_clusters_json_suppresses_box_diagram`). Add hub-topology, multi-root, cyclic, and
+  per-`--layout`-value cases here.
+- `scripts/tests/test_deps_cli.py` — `TestDepsTree` is the model for tree-output
+  assertions: `patch.object(sys, "argv", [...])` + `main()` + `capsys.readouterr()`,
+  asserting `"├── " in captured.out` / `"└── " in captured.out`.
+
+**Documentation**
+- `docs/reference/CLI.md:1424-1447` — `ll-issues clusters` flag table; document
+  `--layout` and its default here (also missing the ENH-2336 `--cluster`/`--limit`/`--compact`
+  flags in this snapshot).
+- `CHANGELOG.md` — add a concrete versioned entry on ship.
+
 ## Impact
 
 - **Priority**: P4 — Largest-effort item and the command is functional today; the
@@ -127,6 +270,37 @@ default with ENH-2336's `--compact` so the two compact paths don't diverge.
 **Open** | Created: 2026-06-26 | Priority: P4
 
 
+## Resolution
+
+Implemented Option A (indented multi-root dependency tree) as the new default
+layout for `ll-issues clusters`, with `--layout {tree,list,boxes}`.
+
+- `_render_cluster_tree()` (`scripts/little_loops/cli/issues/clusters.py`) builds
+  undirected adjacency from `cd.edges`, roots each connected component at its
+  highest-degree (hub) node — tie-broken by topo order — and walks it with the
+  `├──`/`└──` connector idiom generalized from `format_epic_tree()`. Every edge is
+  rendered in the primary layout: tree branches for the spanning tree and `⤷`
+  cross-references for DAG cross-edges / cycle back-edges (deduped via a
+  `rendered_edges` set so each edge prints exactly once). Cycles terminate safely
+  via the `visited` set; the existing `has_cycle` warning is unchanged.
+- `--layout` added in `cli/issues/__init__.py` (`choices=[tree,list,boxes]`,
+  default `tree`). `--compact`/`--summary` is now an alias for `--layout list`
+  (single compact path per the Scope Boundary / ENH-2336); an explicit `--layout`
+  overrides `--compact`. `list` dispatches the existing `_render_cluster_compact`,
+  `boxes` the legacy `_render_cluster_diagram`.
+- `--json` output is untouched (independent code path) and asserted identical
+  across all `--layout` values.
+- Tests: new `TestIssuesCLIClustersTreeLayout` (tree-default, all-hub-edges,
+  boxes/list/compact equivalence, explicit-layout-override, multi-root, DAG
+  cross-edge, cycle-termination, JSON-unchanged). Pre-existing box-layout tests
+  updated to opt into `--layout boxes`. Docs: `docs/reference/CLI.md` flag table +
+  `CHANGELOG.md`.
+
+Verification: `ruff check`, `mypy` clean on changed files; full suite
+`14943 passed` (one pre-existing, unrelated failure in
+`test_worktree_utils.py::...test_falsy_src_dir_leaves_pythonpath_uninjected`,
+confirmed failing on clean HEAD).
+
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): The `--layout list` compact rendering path in this issue and ENH-2336's `--compact`/`--summary` flag produce functionally equivalent one-line-per-issue output. To prevent two diverging compact renderers, this issue must extend or supersede ENH-2336's renderer rather than building a second one. Preferred resolution: when FEAT-2337 ships, make `--compact` an alias for `--layout list` so there is a single compact rendering path with one owner. This is why this issue declares `depends_on: ENH-2336` — ENH-2336 must ship the compact renderer first, and FEAT-2337 absorbs it. Related issue: ENH-2336.
@@ -134,3 +308,6 @@ default with ENH-2336's `--compact` so the two compact paths don't diverge.
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-06-27T22:09:56 - `60b514f4-3db2-4641-831b-e2895943cc2b.jsonl`
 - `/ll:format-issue` - 2026-06-27T01:46:26 - `d17000fe-362f-45af-a322-565b1890ad14.jsonl`
+- `/ll:refine-issue` - 2026-07-14T18:08:24 - `session-66390`
+- `/ll:decide-issue` - 2026-07-14T18:04:17 - `session-66390`
+- `/ll:manage-issue` - 2026-07-14T23:25:21 - `session-66390`

@@ -4235,12 +4235,14 @@ class TestIssuesCLIClusters:
         issues_dir_with_deps: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """clusters renders box-drawing characters for issues with dependencies."""
+        """clusters --layout boxes renders box-drawing characters for dependencies."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "boxes", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -4770,13 +4772,16 @@ class TestIssuesCLIClusters:
 
         BUG-020 blocks both BUG-021 and BUG-022. The consecutive grid can only show
         BUG-020→BUG-021; the BUG-020→BUG-022 edge is non-consecutive and must appear
-        as a skip-edge annotation line below the diagram.
+        as a skip-edge annotation line below the diagram. Skip-edge demotion is a
+        --layout boxes artifact (the tree default shows all edges inline).
         """
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "boxes", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -4797,6 +4802,236 @@ class TestIssuesCLIClusters:
             "No annotation line found containing both BUG-020 and BUG-022 "
             "(skip-level edge BUG-020→BUG-022 must appear as annotation)"
         )
+
+
+class TestIssuesCLIClustersTreeLayout:
+    """Tests for the FEAT-2337 indented tree layout (default) and --layout flag."""
+
+    def test_tree_is_default_and_shows_all_hub_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default layout is the tree; every hub edge appears inline, no skip-edge dump.
+
+        BUG-020 blocks BUG-021 and BUG-022. In the box layout BUG-020→BUG-022 was
+        demoted to a trailing skip-edge line. The tree must render both edges in
+        the primary layout with ├──/└── connectors and no ` → ` skip-edge block.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+
+        assert "├── " in out or "└── " in out, "Tree connectors must be present by default"
+        assert "BUG-020" in out and "BUG-021" in out and "BUG-022" in out
+        # Both fan-out edges are tree branches; neither is relegated to a
+        # `SRC → DST rel` skip-edge annotation line (the box-layout artifact).
+        skip_lines = [
+            ln
+            for ln in out.splitlines()
+            if "BUG-020" in ln and "BUG-022" in ln and " → " in ln
+        ]
+        assert not skip_lines, f"No edge may be demoted to a skip-edge list: {skip_lines}"
+        # No box borders in the default tree layout.
+        assert "┌─" not in out and "└─────" not in out
+
+    def test_layout_boxes_restores_legacy_stack(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--layout boxes renders the legacy box-stack with the skip-edge annotation."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "boxes", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "┌─" in out, "boxes layout must draw box borders"
+        # Legacy behavior: BUG-020→BUG-022 is a skip-edge annotation line.
+        assert any(
+            "BUG-020" in ln and "BUG-022" in ln and "→" in ln for ln in out.splitlines()
+        )
+
+    def test_layout_list_matches_compact(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--layout list and --compact produce identical output (single compact path)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        def _capture(extra: list[str]) -> str:
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "clusters", *extra, "--config", str(temp_project_dir)],
+            ):
+                from little_loops.cli import main_issues
+
+                assert main_issues() == 0
+            return capsys.readouterr().out
+
+        list_out = _capture(["--layout", "list"])
+        compact_out = _capture(["--compact"])
+        assert list_out == compact_out
+        assert "┌─" not in list_out
+
+    def test_explicit_layout_overrides_compact(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """An explicit --layout wins over --compact (--layout boxes + --compact = boxes)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "clusters",
+                "--compact",
+                "--layout",
+                "boxes",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "┌─" in out, "explicit --layout boxes must override --compact"
+
+    def test_tree_multi_root(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_multi_root: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Multi-parent shared child: both blocked_by edges appear as tree branches.
+
+        BUG-010 and BUG-011 both block BUG-012 with no edge between the roots.
+        BUG-012 is the hub (degree 2), so it roots the tree and both blocked_by
+        edges render as ├──/└── branches — neither is dropped.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "BUG-010" in out and "BUG-011" in out and "BUG-012" in out
+        # Both blocked_by edges are rendered (two annotated branches).
+        assert out.count("blocked_by") >= 2, "Both shared-child edges must be shown"
+
+    def test_tree_cross_edge_shown_for_dag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A DAG cross-edge (triangle) is rendered as a ⤷ cross-reference, not dropped.
+
+        BUG-201 blocks BUG-202 and BUG-203; BUG-202 also blocks BUG-203. The
+        BUG-202→BUG-203 edge closes a triangle: BUG-203 is already placed as a
+        branch of BUG-201, so the extra edge appears as a ⤷ cross-reference.
+        """
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (issues_base / "completed").mkdir(parents=True)
+        (issues_base / "deferred").mkdir(parents=True)
+        (bugs_dir / "P0-BUG-201-apex.md").write_text(
+            "# BUG-201: Apex\n\n## Summary\nA.\n\n## Blocks\n- BUG-202\n- BUG-203\n"
+        )
+        (bugs_dir / "P1-BUG-202-mid.md").write_text(
+            "# BUG-202: Mid\n\n## Summary\nB.\n\n## Blocked By\n- BUG-201\n\n## Blocks\n- BUG-203\n"
+        )
+        (bugs_dir / "P2-BUG-203-sink.md").write_text(
+            "# BUG-203: Sink\n\n## Summary\nC.\n\n## Blocked By\n- BUG-201\n- BUG-202\n"
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        out = capsys.readouterr().out
+        assert "⤷" in out, "DAG cross-edge closing the triangle must be shown, not dropped"
+        # All three nodes and all three edges are represented in the primary layout.
+        assert out.count("BUG-203") >= 2, "sink appears as a branch and a cross-reference"
+
+    def test_tree_cycle_terminates(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_cycle: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A cyclic cluster renders (terminates) and warns; both nodes appear."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        with patch.object(
+            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+        captured = capsys.readouterr()
+        assert "BUG-101" in captured.out and "BUG-102" in captured.out
+        assert "cycle" in (captured.out + captured.err).lower()
+
+    def test_layout_json_unchanged(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_fan_out: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--layout does not affect --json output (JSON contract preserved)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        def _json(extra: list[str]) -> Any:
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "clusters", "--json", *extra, "--config", str(temp_project_dir)],
+            ):
+                from little_loops.cli import main_issues
+
+                assert main_issues() == 0
+            return json.loads(capsys.readouterr().out)
+
+        assert _json([]) == _json(["--layout", "boxes"]) == _json(["--layout", "tree"])
 
 
 @pytest.fixture
@@ -5052,7 +5287,9 @@ class TestIssuesCLIClustersLegendAndHeader:
         monkeypatch.setenv("NO_COLOR", "1")
 
         with patch.object(
-            sys, "argv", ["ll-issues", "clusters", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "clusters", "--layout", "boxes", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
