@@ -390,8 +390,18 @@ class TestVerifyEpicBranchBeforeMerge:
 
         assert (ok, message, returncode) == (True, None, None)
 
-    def test_falsy_src_dir_leaves_pythonpath_uninjected(self, tmp_path: Path) -> None:
-        """BUG-2629: src_dir=None (default) preserves prior behavior — no injection."""
+    def test_falsy_src_dir_leaves_pythonpath_uninjected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2629: src_dir=None (default) preserves prior behavior — no injection.
+
+        Hermetic against the epic-merge verify gate: that gate injects the
+        worktree's ``scripts/`` at PYTHONPATH[0] before running the suite, and
+        the child subprocess here inherits ``os.environ``. Clearing PYTHONPATH
+        first ensures we assert the gate's *own* (non-)behavior, not a leaked
+        parent env (self-contamination false-negative).
+        """
+        monkeypatch.delenv("PYTHONPATH", raising=False)
         repo = self._repo_with_epic_branch(tmp_path)
         logger = Logger(verbose=False)
         git_lock = GitLock(logger)
