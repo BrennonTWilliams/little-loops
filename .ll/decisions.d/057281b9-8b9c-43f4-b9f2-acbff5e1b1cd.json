@@ -1,0 +1,12 @@
+{
+  "id": "e7117b9c-8297-4d1f-9645-c072ca9b505b",
+  "type": "decision",
+  "timestamp": "2026-07-15T23:31:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Heredoc already imports worktree_utils; direct import avoids a CLI process-spawn and parallel surface. FEAT-2652 then touches only the resolver.",
+  "rule": "FSM checkout_epic_branch imports resolve_epic_base directly (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: thin ll-issues epic-base CLI subcommand shelled out from the FSM state",
+  "issue": "ENH-2656"
+}

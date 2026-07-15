@@ -8,6 +8,7 @@ allowed-tools:
   - Glob
   - Grep
   - Write(scripts/tests/spike/**)
+  - Write(.ll/spikes/**)
   - Edit(scripts/tests/spike/**)
   - Edit(.issues/**)
   - Bash(ll-issues:*)
@@ -122,7 +123,27 @@ and `exit 0`. (Same exclusion heuristic as confidence-check Phase 4.10 /
 
 ## Phase 3: Plan
 
-Write `<run-artifacts>/spike-<ISSUE-ID>.md` in the shape defined by
+Resolve the plan-doc artifact directory, then write
+`<artifacts-dir>/spike-<ISSUE-ID>.md` there:
+
+- **Inside an FSM loop**, the loop-run startup injects `${context.run_dir}`
+  (`scripts/little_loops/cli/loop/run.py`), propagated to nested slash-command
+  child contexts (`scripts/little_loops/fsm/executor.py`). Use it verbatim:
+  `<artifacts-dir>` = `${context.run_dir}`.
+- **Interactively** (a bare `/ll:spike <ISSUE-ID>` — no `fsm.context`, so no
+  `run_dir`), fall back to the standardized, git-tracked `.ll/spikes/` directory.
+  Never write the plan doc to `thoughts/` or the repo root. Create it on demand
+  first (mirroring the `.ll/learning-tests/` convention in `/ll:explore-api`):
+
+  ```bash
+  mkdir -p .ll/spikes/
+  ```
+
+  so `<artifacts-dir>` = `.ll/spikes/`. The directory is curated evidence paired
+  with the issue's committed `## Spike Results` section, so it is **git-tracked**
+  (no `.gitignore` entry — it reuses the `!/.ll/` un-ignore).
+
+Write the plan in the shape defined by
 [plan-template.md](plan-template.md). Every mandatory section is required:
 **Context** (why confidence was low), **Approach**, **Critical files**,
 **Implementation** (package layout under `scripts/tests/spike/<slug>/` + API

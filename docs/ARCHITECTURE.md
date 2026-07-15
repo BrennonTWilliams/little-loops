@@ -1436,6 +1436,24 @@ Slug derivation uses `little_loops.issue_parser.slugify()` (lowercase, strip non
 
 The `raw/` subdirectory is created on demand by `/ll:explore-api` — `write_record()` does not auto-create it. Files in `raw/` are the unedited output of the proof script; they are evidence, not summaries.
 
+### Spike Plan Docs — Storage Layout
+
+```
+.ll/spikes/
+├── spike-<ISSUE-ID>.md    # one plan doc per interactive /ll:spike run
+└── ...
+```
+
+The `/ll:spike` skill (`skills/spike/SKILL.md` Phase 3) writes its plan doc to a
+resolved artifact directory: `${context.run_dir}` when running inside an FSM loop
+(injected by `scripts/little_loops/cli/loop/run.py`, propagated to child contexts
+by `scripts/little_loops/fsm/executor.py`), and the standardized `.ll/spikes/`
+directory when invoked interactively (no `run_dir` exists). The skill body
+`mkdir -p .ll/spikes/` on demand — nothing pre-creates it. Plan docs are **curated
+evidence** paired with the issue's committed `## Spike Results` section, so
+`.ll/spikes/` is git-tracked via the `!/.ll/` un-ignore (no `.gitignore` entry),
+mirroring `.ll/learning-tests/` and `.ll/decisions.d/` (ENH-2655).
+
 ### CLI Surface
 
 `ll-learning-tests` (`scripts/little_loops/cli/learning_tests.py`) is intentionally narrow: it owns reads and stale-marking, but not writes.

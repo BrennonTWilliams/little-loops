@@ -106,3 +106,29 @@ class TestSpikeSkillContract:
     def test_suppresses_external_api_to_explore_api(self) -> None:
         """A risk factor naming an external API routes to /ll:explore-api, not a spike."""
         assert "/ll:explore-api" in SKILL_FILE.read_text()
+
+
+class TestSpikePlanDocLocation:
+    """Phase 3 must define where the plan doc lands (ENH-2655)."""
+
+    def test_resolves_both_run_dir_and_ll_spikes(self) -> None:
+        """<run-artifacts> must resolve to run_dir (loop) or .ll/spikes/ (interactive)."""
+        text = SKILL_FILE.read_text()
+        assert "${context.run_dir}" in text, (
+            "SKILL.md Phase 3 must document the FSM-loop run_dir resolution"
+        )
+        assert ".ll/spikes/" in text, (
+            "SKILL.md Phase 3 must document the interactive .ll/spikes/ fallback"
+        )
+
+    def test_placeholder_resolved(self) -> None:
+        """The undefined <run-artifacts> placeholder must be resolved away."""
+        assert "<run-artifacts>" not in SKILL_FILE.read_text(), (
+            "SKILL.md must not leave the undefined <run-artifacts> placeholder"
+        )
+
+    def test_allowed_tools_grants_ll_spikes_write(self) -> None:
+        """The interactive plan-doc write to .ll/spikes/ must be permitted."""
+        assert "Write(.ll/spikes/**)" in SKILL_FILE.read_text(), (
+            "allowed-tools must grant Write(.ll/spikes/**) for the interactive write"
+        )

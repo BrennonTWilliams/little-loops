@@ -2,11 +2,18 @@
 id: ENH-2655
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-07-15T23:07:23Z"
+status: done
+captured_at: '2026-07-15T23:07:23Z'
+completed_at: '2026-07-15T23:54:20Z'
 discovered_date: 2026-07-15
 discovered_by: capture-issue
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-2655: Standardize a `.ll/` artifact directory for `/ll:spike` plan docs
@@ -206,12 +213,12 @@ _These touchpoints were identified by wiring analysis and must be included:_
 
 ## Acceptance Criteria
 
-- [ ] `<run-artifacts>` is explicitly defined in `skills/spike/SKILL.md` with both
+- [x] `<run-artifacts>` is explicitly defined in `skills/spike/SKILL.md` with both
   the loop (`run_dir`) and interactive (`.ll/…`) resolutions.
-- [ ] Interactive `/ll:spike <ID>` writes its plan doc under `.ll/`, never
+- [x] Interactive `/ll:spike <ID>` writes its plan doc under `.ll/`, never
   `thoughts/` or repo root.
-- [ ] The FSM-loop path (`${context.run_dir}`) is unchanged.
-- [ ] `allowed-tools` permits writing to the new location.
+- [x] The FSM-loop path (`${context.run_dir}`) is unchanged.
+- [x] `allowed-tools` permits writing to the new location.
 
 ## Out of Scope
 
@@ -225,6 +232,7 @@ _These touchpoints were identified by wiring analysis and must be included:_
 | `skills/spike/SKILL.md` | Defines `<run-artifacts>` use site (line 125) and code-location rules |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-15T23:25:09 - `6c540f7a-bb19-4d27-b451-c8f12038547f.jsonl`
 - `/ll:wire-issue` - 2026-07-15T23:22:36 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:decide-issue` - 2026-07-15T23:16:55 - `7285c640-59d1-431f-84f9-29111bbcaa9d.jsonl`
 - `/ll:refine-issue` - 2026-07-15T23:12:55 - `f1f13942-9501-4084-bb65-11325b5a6c0c.jsonl`
