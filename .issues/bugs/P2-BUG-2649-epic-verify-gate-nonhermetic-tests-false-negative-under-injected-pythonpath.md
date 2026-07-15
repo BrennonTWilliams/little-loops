@@ -11,6 +11,12 @@ relates_to:
 - BUG-2640
 - BUG-2614
 decision_needed: false
+confidence_score: 87
+outcome_confidence: 81
+score_complexity: 20
+score_test_coverage: 24
+score_ambiguity: 15
+score_change_surface: 22
 ---
 
 # BUG-2649: Epic verify gate false-negatives on two non-hermetic tests under injected PYTHONPATH
@@ -290,12 +296,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 1. After fixing/quarantining Test 2 and adding the Test 1 regression, run `scripts/tests/test_orchestrator.py::TestEpicBranchVerifyGate` and the `held_open`/`verify_verdict` assertions in `scripts/tests/test_builtin_loops.py` to confirm the gate's caller path and FSM-side verdict vocabulary are unperturbed.
 2. Only if adding the optional `LL_VERIFY_GATE` env marker: document it in `docs/reference/API.md:3336–3364`'s existing env-build prose (mirror the `LL_NON_INTERACTIVE` set/read idiom); leave `config-schema.json` and `.ll/ll-config.json` untouched (internal subprocess-env detail, not a config field).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-15_
+
+**Readiness Score**: 87/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 81/100 → HIGH CONFIDENCE
+
+### Concerns
+- Test 2's root cause is explicitly acknowledged as "genuinely undetermined" in the issue's own research findings — the original "conftest resolves to main vs worktree" theory was investigated and disproved (`project_root` is `__file__`-anchored and path-collected, so it already resolves to the worktree under the gate). Since no concrete reproduction of the flake mechanism exists and the research notes state switching to a rootdir-anchored fixture "is unlikely to change Test 2's behavior," committing to the quarantine fallback (AC #2's second option) rather than continuing to chase the root cause is the pragmatic path — flag this as a decision point before implementation starts, not something to resolve mid-implementation.
+
 ## Status
 
 - **Current Status**: open
 - **Blockers**: None
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-15T19:15:00 - `58ab2ec2-644e-4fdd-84bd-51abddc42a7a.jsonl`
 - `/ll:wire-issue` - 2026-07-15T19:05:33 - `1e72aa60-fb3f-42de-95f2-db5e48012c1d.jsonl`
 - `/ll:refine-issue` - 2026-07-15T18:55:42 - `3990f0fc-673f-4cb1-8647-3039d1efb245.jsonl`
 - `/ll:capture-issue` - 2026-07-15T18:46:48Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b6561fde-933e-4543-855c-bc7b305d5f5f.jsonl`
