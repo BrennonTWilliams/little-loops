@@ -5230,3 +5230,17 @@
   alternatives_rejected: Option B (adjacency-grouped list, retained as --layout list);
     Option C (hybrid by size, subsumed by explicit --layout flag)
   issue: FEAT-2337
+- id: ARCHITECTURE-157
+  type: decision
+  timestamp: '2026-07-15T02:38:02Z'
+  category: architecture
+  labels: []
+  rationale: Only option removing both the ARCHITECTURE-NNN id collision and the shared-list-tail
+    git merge conflict; reuses the tested .queue/<uuid>.json write + glob-union pattern.
+  rule: 'Option A: append-only fragment files (.ll/decisions.d/<uuid>.json) with directory-union
+    read'
+  scope: issue
+  alternatives_rejected: B (uuid ids only) and D (atomic/namespaced alloc) leave the
+    merge conflict unresolved; C (git merge driver) has zero repo footprint and needs
+    brittle per-worktree git config.
+  issue: BUG-2642

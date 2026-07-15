@@ -21,6 +21,7 @@ score_test_coverage: 20
 score_ambiguity: 18
 score_change_surface: 13
 size: Very Large
+completed_at: '2026-07-15T14:20:22Z'
 ---
 
 # BUG-2642: Concurrent `.ll/decisions.yaml` appends collide on ARCHITECTURE-NNN id and block EPIC merges
@@ -441,3 +442,13 @@ _Added by `/ll:confidence-check` on 2026-07-14_
 - `/ll:decide-issue` - 2026-07-15T02:38:03 - `e9655459-9230-48dc-8037-23646a30a6af.jsonl`
 - `/ll:refine-issue` - 2026-07-15T02:33:51 - `cdf638ed-77f6-4e7d-bf02-35f33fa437d7.jsonl`
 - `/ll:capture-issue` - 2026-07-15T02:26:46Z - session: sprint-refine-and-implement EPIC-2370 review
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-15
+- **Decomposed into**: BUG-2644, BUG-2645, BUG-2646, BUG-2647
+
+Work for BUG-2642 is now carried by its child issues; this parent was closed by rn-decompose.

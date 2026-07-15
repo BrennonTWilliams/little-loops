@@ -2,7 +2,13 @@
 discovered_date: 2025-01-15
 discovered_by: manual_review
 status: done
-completed_at: 2026-02-13T00:00:00Z
+completed_at: 2026-02-13 00:00:00+00:00
+confidence_score: 95
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 14
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-072: capture_issue has incomplete "View Existing/Completed" flow specification

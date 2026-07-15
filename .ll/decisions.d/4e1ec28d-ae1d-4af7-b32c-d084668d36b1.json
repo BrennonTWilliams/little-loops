@@ -1,0 +1,12 @@
+{
+  "id": "95894d11-c00e-4b6b-83a5-118659d583cc",
+  "type": "decision",
+  "timestamp": "2026-07-15T15:39:53Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "_fragments_dir() is the single source of truth used by all 5 call sites; no use case for the fragment dir to diverge from log_path. Option B would add a competing source of truth and a new schema surface with no driving requirement.",
+  "rule": "Keep .ll/decisions.d/ fragment dir derived from decisions.log_path via _fragments_dir(); no independent config key",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: add a fragment_dir property to the decisions schema block + DecisionsConfig and thread it through _fragments_dir()",
+  "issue": "BUG-2647"
+}

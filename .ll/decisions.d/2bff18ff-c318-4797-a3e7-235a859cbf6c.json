@@ -1,0 +1,12 @@
+{
+  "id": "88494135-98ab-4c06-81cf-79da3d8d7514",
+  "type": "decision",
+  "timestamp": "2026-07-15T14:53:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Preserves append-only/merge-clean fragment property (BUG-2642 fix); reuses atomic_write_json/_fragments_dir. Option B routes via save_decisions() which wipes frag_dir and reintroduces the BUG-2642 collision surface.",
+  "rule": "Option A \u2014 fragment-targeted update_entry() primitive",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 route both call sites through save_decisions() (status quo; wipes fragments)",
+  "issue": "BUG-2645"
+}
