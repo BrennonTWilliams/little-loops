@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -30,6 +31,7 @@ __all__ = [
     "ResponseMetadata",
     "CommandRecord",
     "ExampleRecord",
+    "encode_project_path",
     "get_project_folder",
     "extract_user_messages",
     "extract_commands",
@@ -353,6 +355,17 @@ def _detect_error_message(content: list) -> str | None:
     return None
 
 
+def encode_project_path(path_str: str) -> str:
+    """Encode a filesystem path the way hosts encode it under their session dirs.
+
+    Each non-alphanumeric character (slash, dot, underscore, etc.) maps 1:1
+    to a single "-" — consecutive specials are NOT collapsed, matching
+    Claude Code's on-disk project-folder naming (e.g. a `/.worktrees/`
+    segment becomes `--worktrees`, two dashes for the two special chars).
+    """
+    return re.sub(r"[^a-zA-Z0-9]", "-", path_str)
+
+
 def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> Path | None:
     """Map current directory to the host's session-log project folder.
 
@@ -376,10 +389,11 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     if host is None:
         host = os.environ.get("LL_HOOK_HOST", "claude-code")
 
-    # Convert path to dash-separated format
-    # /home/user/foo/bar -> -home-user-foo-bar
+    # Convert path to dash-separated format, matching Claude Code's on-disk
+    # scheme: every non-alphanumeric char (not just "/") maps 1:1 to "-".
+    # /home/user/.worktrees -> -home-user--worktrees (each special char its own dash)
     path_str = str(cwd.resolve())
-    encoded_path = path_str.replace("/", "-")
+    encoded_path = encode_project_path(path_str)
 
     if host == "claude-code":
         return _get_claude_project_folder(encoded_path)

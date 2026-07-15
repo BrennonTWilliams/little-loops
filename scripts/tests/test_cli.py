@@ -2974,9 +2974,11 @@ class TestMainLogsIntegration:
             claude_projects = home / ".claude" / "projects"
             claude_projects.mkdir(parents=True)
 
+            from little_loops.user_messages import encode_project_path
+
             project_path = home / "workdir"
             project_path.mkdir()
-            encoded = str(project_path).replace("/", "-")
+            encoded = encode_project_path(str(project_path))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir()
             jsonl_file = proj_dir / "session.jsonl"

@@ -1,9 +1,10 @@
 ---
 id: BUG-2648
 type: bug
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-15T18:22:18Z'
+completed_at: '2026-07-15T19:32:59Z'
 discovered_date: 2026-07-15
 discovered_by: capture-issue
 confidence_score: 98
@@ -263,16 +264,46 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A cwd containing `.worktrees/` resolves to the correct
+- [x] A cwd containing `.worktrees/` resolves to the correct
       `~/.claude/projects/…` folder.
-- [ ] `ll-issues append-log` succeeds (writes the entry) when run from a worktree
+- [x] `ll-issues append-log` succeeds (writes the entry) when run from a worktree
       checkout that has a live session JSONL.
-- [ ] Regression test asserts `get_project_folder` maps a dotted path
+- [x] Regression test asserts `get_project_folder` maps a dotted path
       (e.g. `.worktrees/…`) to the dash-collapsed folder name, using a tmp fake
       `~/.claude/projects` layout.
-- [ ] Non-worktree (dotless) paths continue to resolve as before.
+- [x] Non-worktree (dotless) paths continue to resolve as before.
+
+## Resolution
+
+Extracted the inline `path_str.replace("/", "-")` at `user_messages.py:382` into a
+shared `encode_project_path()` function using `re.sub(r"[^a-zA-Z0-9]", "-", path_str)`.
+Verified against real on-disk Claude Code project folders (e.g.
+`...little-loops--worktrees-verify-epic-2370-...`) that a `/.worktrees/` segment
+produces a **double** dash — each special character maps 1:1 to `-`, consecutive
+specials are not collapsed into one (an earlier collapsing-regex draft was disproven
+by this evidence and corrected before landing).
+
+All 23 production/test call sites of the old `.replace("/", "-")` encoding were
+updated in lockstep to call `encode_project_path()`:
+- `scripts/little_loops/user_messages.py:382` (the sole production encoder)
+- `scripts/tests/test_user_messages.py` (7 fixtures + new AC#3 regression tests +
+  fixed the hardcoded `test_path_conversion_format` assertion)
+- `scripts/tests/test_session_log.py` (2 fixtures)
+- `scripts/tests/test_ll_logs.py` (11 fixtures + new dotted-worktree `TestDiscover`
+  round-trip test)
+- `scripts/tests/test_cli.py` (1 fixture)
+
+Documented the encoding contract (1:1 char mapping, no collapsing) and the
+`discover_all_projects` decode-side lossiness rationale in `docs/reference/API.md`.
+
+All dotless paths encode identically under the old and new schemes, so this is a
+zero-behavior-change fix for every non-worktree cwd — the fix only changes behavior
+for cwds containing a dot, underscore, or other previously-unhandled special
+character.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-15T19:32:06Z - `e8cab475-60e8-4c9a-b65c-3d55c395e5b4.jsonl`
+- `/ll:ready-issue` - 2026-07-15T19:19:46 - `ecab109b-6602-4a9a-802e-f2c23b65aab1.jsonl`
 - `/ll:ready-issue` - 2026-07-15T19:16:31 - `d698cd17-40d5-475a-ba31-0894f5d6c374.jsonl`
 - `/ll:confidence-check` - 2026-07-15T19:06:52 - `1e72aa60-fb3f-42de-95f2-db5e48012c1d.jsonl`
 - `/ll:wire-issue` - 2026-07-15T19:02:44 - `379b1176-e84b-4b88-9179-893332f09ceb.jsonl`

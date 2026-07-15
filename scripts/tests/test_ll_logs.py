@@ -42,6 +42,7 @@ from little_loops.cli.logs import (
     main_logs,
 )
 from little_loops.session_store import ensure_db
+from little_loops.user_messages import encode_project_path
 
 
 class TestArgumentParsing:
@@ -90,7 +91,7 @@ class TestDiscover:
         project_path = home / subpath
         project_path.mkdir(parents=True, exist_ok=True)
 
-        encoded = str(project_path).replace("/", "-")
+        encoded = encode_project_path(str(project_path))
         proj_dir = claude_projects / encoded
         proj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -130,6 +131,39 @@ class TestDiscover:
                 claude_projects,
                 home,
                 "myproject",
+                [
+                    {
+                        "type": "queue-operation",
+                        "operation": "enqueue",
+                        "content": "/ll:manage-issue bug fix",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "sessionId": "abc123",
+                    }
+                ],
+            )
+
+            with (
+                patch("sys.argv", ["ll-logs", "discover"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [line.strip() for line in captured.out.strip().splitlines()]
+        assert str(project_path) in lines
+
+    def test_discover_finds_project_with_dotted_worktree_subpath(self, capsys) -> None:
+        """discover still finds a project whose cwd contains a `.worktrees/` segment."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "cards/.worktrees/20260715-subloop-epic",
                 [
                     {
                         "type": "queue-operation",
@@ -364,7 +398,7 @@ class TestDiscover:
 
             project_path = home / "agentproject"
             project_path.mkdir(exist_ok=True)
-            encoded = str(project_path).replace("/", "-")
+            encoded = encode_project_path(str(project_path))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir(exist_ok=True)
 
@@ -404,7 +438,7 @@ class TestDiscover:
 
             project_path = home / "jsonproject"
             project_path.mkdir(exist_ok=True)
-            encoded = str(project_path).replace("/", "-")
+            encoded = encode_project_path(str(project_path))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir(exist_ok=True)
 
@@ -445,7 +479,7 @@ class TestDiscover:
 
             project_path = home / "shortflagproject"
             project_path.mkdir(exist_ok=True)
-            encoded = str(project_path).replace("/", "-")
+            encoded = encode_project_path(str(project_path))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir(exist_ok=True)
 
@@ -815,7 +849,7 @@ class TestSequences:
         project_path = home / subpath
         project_path.mkdir(parents=True, exist_ok=True)
 
-        encoded = str(project_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(project_path.resolve()))
         proj_dir = claude_projects / encoded
         proj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1384,7 +1418,7 @@ class TestChainResultPMI:
 
             project_path = Path(tmpdir) / "home" / "myproject"
             project_path.mkdir(parents=True, exist_ok=True)
-            encoded = str(project_path.resolve()).replace("/", "-")
+            encoded = encode_project_path(str(project_path.resolve()))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir(parents=True, exist_ok=True)
             jsonl_file = proj_dir / "session.jsonl"
@@ -1444,7 +1478,7 @@ class TestExtract:
         project_path.mkdir(parents=True, exist_ok=True)
 
         # Use .resolve() to match get_project_folder() which also calls .resolve()
-        encoded = str(project_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(project_path.resolve()))
         proj_dir = claude_projects / encoded
         proj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1721,7 +1755,7 @@ class TestExtract:
             session_id = "agent-session"
             project_path = home / "agentproject"
             project_path.mkdir(parents=True, exist_ok=True)
-            encoded = str(project_path.resolve()).replace("/", "-")
+            encoded = encode_project_path(str(project_path.resolve()))
             proj_dir = claude_projects / encoded
             proj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2353,7 +2387,7 @@ class TestScanFailures:
         project_path = home / subpath
         project_path.mkdir(parents=True, exist_ok=True)
 
-        encoded = str(project_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(project_path.resolve()))
         proj_dir = claude_projects / encoded
         proj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3293,7 +3327,7 @@ class TestEvalExport:
         fake_cwd = tmpdir / "cwd"
         fake_cwd.mkdir(parents=True, exist_ok=True)
         (home / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
-        encoded = str(fake_cwd.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(fake_cwd.resolve()))
         (home / ".claude" / "projects" / encoded).mkdir(parents=True, exist_ok=True)
         return home, fake_cwd
 
@@ -3530,7 +3564,7 @@ class TestEvalExportRoundTrip:
     ) -> Path:
         project_path = home / subpath
         project_path.mkdir(parents=True, exist_ok=True)
-        encoded = str(project_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(project_path.resolve()))
         proj_dir = claude_projects / encoded
         proj_dir.mkdir(parents=True, exist_ok=True)
         with open(proj_dir / "session.jsonl", "w") as f:

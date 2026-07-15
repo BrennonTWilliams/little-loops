@@ -14,6 +14,7 @@ from little_loops.session_log import (
     get_current_session_jsonl,
     parse_session_log,
 )
+from little_loops.user_messages import encode_project_path
 
 
 class TestGetCurrentSessionJsonl:
@@ -313,7 +314,7 @@ class TestSessionLogHostAware:
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = codex_dir / encoded
         project_dir.mkdir(parents=True)
         session_file = project_dir / "codex-session.jsonl"
@@ -345,7 +346,7 @@ class TestSessionLogHostAware:
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = codex_dir / encoded
         project_dir.mkdir(parents=True)
         session_file = project_dir / "codex-session.jsonl"

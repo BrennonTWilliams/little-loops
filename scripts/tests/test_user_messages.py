@@ -26,6 +26,7 @@ from little_loops.user_messages import (
     _detect_error_message,
     _extract_response_metadata,
     build_examples,
+    encode_project_path,
     extract_commands,
     extract_user_messages,
     get_project_folder,
@@ -91,10 +92,38 @@ class TestGetProjectFolder:
         test_path = Path("/Users/test/my-project")
         expected_encoded = "-Users-test-my-project"
 
-        # Verify encoding logic (extracted from function)
         path_str = str(test_path.resolve())
-        encoded_path = path_str.replace("/", "-")
+        encoded_path = encode_project_path(path_str)
         assert encoded_path == expected_encoded
+
+    def test_path_conversion_dotted_segment_double_dash(self) -> None:
+        """A dotted segment (e.g. `/.worktrees/`) maps to a double dash, not a literal dot."""
+        test_path = Path("/Users/test/cards/.worktrees/20260715-subloop")
+        expected_encoded = "-Users-test-cards--worktrees-20260715-subloop"
+
+        path_str = str(test_path.resolve())
+        encoded_path = encode_project_path(path_str)
+        assert encoded_path == expected_encoded
+
+    def test_dotted_worktree_cwd_resolves_to_dash_collapsed_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC#3: a cwd containing `.worktrees/` resolves to the correct
+        `~/.claude/projects/…` folder, which collapses "/." into "--" rather
+        than keeping the literal dot.
+        """
+        fake_home = tmp_path / "home"
+        claude_dir = fake_home / ".claude" / "projects"
+        worktree_cwd = tmp_path / "cards" / ".worktrees" / "20260715-subloop-epic"
+        worktree_cwd.mkdir(parents=True)
+        encoded = encode_project_path(str(worktree_cwd.resolve()))
+        project_dir = claude_dir / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(worktree_cwd)
+
+        result = get_project_folder(host="claude-code")
+        assert result == project_dir
 
     # --- Host-aware tests (ENH-1945) ---
 
@@ -104,7 +133,7 @@ class TestGetProjectFolder:
         """host="claude-code" probes ~/.claude/projects/<encoded>."""
         fake_home = tmp_path / "home"
         claude_dir = fake_home / ".claude" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = claude_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -119,7 +148,7 @@ class TestGetProjectFolder:
         """host="codex" probes ~/.codex/projects/<encoded>."""
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = codex_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -134,7 +163,7 @@ class TestGetProjectFolder:
         """host="opencode" probes ~/.opencode/projects/<encoded>."""
         fake_home = tmp_path / "home"
         oc_dir = fake_home / ".opencode" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = oc_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -149,7 +178,7 @@ class TestGetProjectFolder:
         """host="pi" probes ~/.pi/projects/<encoded>."""
         fake_home = tmp_path / "home"
         pi_dir = fake_home / ".pi" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = pi_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -165,7 +194,7 @@ class TestGetProjectFolder:
         monkeypatch.setenv("LL_HOOK_HOST", "codex")
         fake_home = tmp_path / "home"
         codex_dir = fake_home / ".codex" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = codex_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -181,7 +210,7 @@ class TestGetProjectFolder:
         monkeypatch.delenv("LL_HOOK_HOST", raising=False)
         fake_home = tmp_path / "home"
         claude_dir = fake_home / ".claude" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = claude_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -216,7 +245,7 @@ class TestGetProjectFolder:
         """Calling without host param is backward-compatible (defaults to claude-code)."""
         fake_home = tmp_path / "home"
         claude_dir = fake_home / ".claude" / "projects"
-        encoded = str(tmp_path.resolve()).replace("/", "-")
+        encoded = encode_project_path(str(tmp_path.resolve()))
         project_dir = claude_dir / encoded
         project_dir.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)

@@ -2827,6 +2827,14 @@ project_folder = get_project_folder(host="codex")
 
 Each helper returns the ``Path`` if the directory exists, or ``None`` otherwise.
 
+**Encoding rule:** ``encode_project_path(path_str: str) -> str`` (also exported from
+``little_loops.user_messages``) maps every non-alphanumeric character — slashes, dots,
+underscores, hyphens — 1:1 to a single ``-``. Consecutive special characters are **not**
+collapsed: a cwd segment like ``/.worktrees/`` (slash followed by dot) encodes to
+``--worktrees`` (two dashes), matching Claude Code's on-disk project-folder naming. This
+matters for git worktree checkouts (``ll-parallel`` / ``ll-sprint`` / subloop epics),
+whose paths always contain a dotted ``.worktrees/`` segment.
+
 ### discover_all_projects
 
 ```python
@@ -2862,7 +2870,12 @@ projects = discover_all_projects(logger, host="codex")
 
 **Implementation:** Uses the same four-way host dispatch as ``get_project_folder()``.
 Decodes project directory names back to absolute paths by preferring the ``cwd`` field
-from JSONL records first, then falling back to string-replacing ``-`` with ``/``.
+from JSONL records first, then falling back to string-replacing ``-`` with ``/``. The
+fallback decode is inherently lossy — the encode side (``encode_project_path()``) maps
+dots, underscores, and hyphens all onto the same ``-``, so a bare reverse-replace can't
+reconstruct the original path exactly. This is why the ``cwd``-from-JSONL preference
+exists: it is the only exact source of the original path, and the round trip only holds
+because that field is checked first.
 Filters to directories that contain ll-relevant JSONL records via ``_has_ll_activity()``.
 Returns an empty list for unknown host identifiers.
 
