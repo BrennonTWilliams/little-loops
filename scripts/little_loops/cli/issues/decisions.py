@@ -324,9 +324,14 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
         return _cmd_extract_from_completed(config, args, path)
 
     if sub == "promote":
-        from little_loops.decisions import DecisionEntry, RuleEntry, load_decisions, save_decisions
+        from little_loops.decisions import (
+            DecisionEntry,
+            RuleEntry,
+            load_decisions,
+            update_entry,
+        )
 
-        return _cmd_promote(args, path, load_decisions, save_decisions, RuleEntry, DecisionEntry)
+        return _cmd_promote(args, path, load_decisions, update_entry, RuleEntry, DecisionEntry)
 
     print(f"Unknown subcommand: {sub!r}", file=sys.stderr)
     return 1
@@ -882,18 +887,16 @@ def _cmd_extract_from_completed(config, args, path) -> int:
     return 0
 
 
-def _cmd_promote(args, path, load_decisions, save_decisions, RuleEntry, DecisionEntry) -> int:
+def _cmd_promote(args, path, load_decisions, update_entry, RuleEntry, DecisionEntry) -> int:
     entry_id = args.entry_id
     enforcement = getattr(args, "enforcement", "required")
 
     entries = load_decisions(path)
 
     target = None
-    idx = None
-    for i, e in enumerate(entries):
+    for e in entries:
         if e.id == entry_id:
             target = e
-            idx = i
             break
 
     if target is None:
@@ -919,8 +922,9 @@ def _cmd_promote(args, path, load_decisions, save_decisions, RuleEntry, Decision
         issue=target.issue,
     )
 
-    entries[idx] = rule
-    save_decisions(entries, path)
+    # Persist via the fragment-update primitive so only the one file backing the
+    # promoted entry is rewritten (no fragment-dir compaction) — BUG-2645.
+    update_entry(entry_id, lambda _entry: rule, path)
 
     if enforcement == "required":
         _cmd_sync(path)

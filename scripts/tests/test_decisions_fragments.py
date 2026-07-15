@@ -16,10 +16,13 @@ import pytest
 import yaml
 
 from little_loops.decisions import (
+    DecisionEntry,
     RuleEntry,
     add_entry,
     load_decisions,
     save_decisions,
+    set_outcome,
+    update_entry,
 )
 
 
@@ -107,6 +110,107 @@ class TestSaveCompactsFragments:
         data = yaml.safe_load(decisions_path.read_text())
         assert [e["id"] for e in data] == ["F-001"]
         assert [e.id for e in load_decisions(decisions_path)] == ["F-001"]
+
+
+class TestUpdateEntry:
+    """BUG-2645: fragment-targeted in-place mutation must not clear siblings."""
+
+    def test_updates_only_the_backing_fragment(self, decisions_path: Path) -> None:
+        add_entry(DecisionEntry(id="D-001", rationale="d"), decisions_path)
+        add_entry(RuleEntry(id="R-002", rule="r"), decisions_path)
+        frag_dir = _frag_dir(decisions_path)
+        # Snapshot the sibling fragment (the one we are NOT mutating).
+        sibling = next(
+            f for f in frag_dir.glob("*.json") if json.loads(f.read_text())["id"] == "R-002"
+        )
+        sibling_before = sibling.read_bytes()
+
+        def mutate(entry):
+            entry.rationale = "changed"
+            return entry
+
+        update_entry("D-001", mutate, decisions_path)
+
+        # Sibling fragment byte-identical; no compaction, flat file never created.
+        assert sibling.read_bytes() == sibling_before
+        assert not decisions_path.exists()
+        assert len(list(frag_dir.glob("*.json"))) == 2
+        loaded = {e.id: e for e in load_decisions(decisions_path)}
+        assert loaded["D-001"].rationale == "changed"
+
+    def test_flat_file_only_entry_rewrites_flat_without_clearing_fragments(
+        self, decisions_path: Path
+    ) -> None:
+        decisions_path.write_text(
+            "entries:\n  - id: FLAT-001\n    type: rule\n    rule: old\n", encoding="utf-8"
+        )
+        add_entry(RuleEntry(id="FRAG-001", rule="pending"), decisions_path)
+
+        update_entry("FLAT-001", lambda e: RuleEntry(id="FLAT-001", rule="new"), decisions_path)
+
+        # Flat entry updated; the pending fragment survives (not compacted away).
+        data = yaml.safe_load(decisions_path.read_text())
+        assert [e["id"] for e in data] == ["FLAT-001"]
+        assert data[0]["rule"] == "new"
+        assert len(list(_frag_dir(decisions_path).glob("*.json"))) == 1
+        assert {e.id for e in load_decisions(decisions_path)} == {"FLAT-001", "FRAG-001"}
+
+    def test_missing_id_raises_keyerror(self, decisions_path: Path) -> None:
+        add_entry(RuleEntry(id="R-001", rule="r"), decisions_path)
+        with pytest.raises(KeyError):
+            update_entry("NOPE", lambda e: e, decisions_path)
+
+    def test_mutate_exception_writes_nothing(self, decisions_path: Path) -> None:
+        add_entry(RuleEntry(id="R-001", rule="orig"), decisions_path)
+        frag = next(_frag_dir(decisions_path).glob("*.json"))
+        before = frag.read_bytes()
+
+        def boom(entry):
+            raise TypeError("nope")
+
+        with pytest.raises(TypeError):
+            update_entry("R-001", boom, decisions_path)
+        assert frag.read_bytes() == before
+
+
+class TestSetOutcomeFragmentIsolation:
+    """BUG-2645: set_outcome mutates a single fragment, leaving siblings intact."""
+
+    def test_set_outcome_isolates_fragment(self, decisions_path: Path) -> None:
+        add_entry(DecisionEntry(id="DEC-001", rationale="try X"), decisions_path)
+        add_entry(RuleEntry(id="SIB-002", rule="r"), decisions_path)
+        frag_dir = _frag_dir(decisions_path)
+        sibling = next(
+            f for f in frag_dir.glob("*.json") if json.loads(f.read_text())["id"] == "SIB-002"
+        )
+        sibling_before = sibling.read_bytes()
+
+        set_outcome("DEC-001", "success", "2026-07-15", path=decisions_path)
+
+        assert sibling.read_bytes() == sibling_before
+        assert not decisions_path.exists()  # no compaction to the flat file
+        assert len(list(frag_dir.glob("*.json"))) == 2
+        loaded = {e.id: e for e in load_decisions(decisions_path)}
+        assert loaded["DEC-001"].outcome is not None
+        assert loaded["DEC-001"].outcome.result == "success"
+
+    def test_set_outcome_missing_id_raises_keyerror(self, decisions_path: Path) -> None:
+        with pytest.raises(KeyError):
+            set_outcome("GONE", "success", "2026-07-15", path=decisions_path)
+
+    def test_set_outcome_refuses_overwrite_without_force(self, decisions_path: Path) -> None:
+        add_entry(DecisionEntry(id="DEC-001", rationale="d"), decisions_path)
+        set_outcome("DEC-001", "success", "2026-07-15", path=decisions_path)
+        with pytest.raises(ValueError):
+            set_outcome("DEC-001", "failure", "2026-07-16", path=decisions_path)
+        set_outcome("DEC-001", "failure", "2026-07-16", path=decisions_path, force=True)
+        loaded = {e.id: e for e in load_decisions(decisions_path)}
+        assert loaded["DEC-001"].outcome.result == "failure"
+
+    def test_set_outcome_non_decision_raises_typeerror(self, decisions_path: Path) -> None:
+        add_entry(RuleEntry(id="RULE-001", rule="r"), decisions_path)
+        with pytest.raises(TypeError):
+            set_outcome("RULE-001", "success", "2026-07-15", path=decisions_path)
 
 
 @pytest.mark.integration

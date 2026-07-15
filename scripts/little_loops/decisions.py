@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -374,6 +375,58 @@ def add_entry(entry: AnyEntry, path: Path | None = None) -> None:
     atomic_write_json(frag_dir / f"{uuid.uuid4()}.json", entry.to_dict())
 
 
+def update_entry(
+    entry_id: str,
+    mutate: Callable[[AnyEntry], AnyEntry],
+    path: Path | None = None,
+) -> None:
+    """Update a single decision entry in place, preserving fragment isolation.
+
+    The in-place counterpart to the append-only ``add_entry()``. Locates the
+    entry whose ``id`` matches *entry_id*, applies *mutate* to it, and persists
+    **only** the one file that backs it: the matching ``.ll/decisions.d/*.json``
+    fragment (rewritten via ``atomic_write_json``) if the entry lives there, else
+    the flat file (sibling fragments left intact). Unlike ``save_decisions()`` it
+    never rewrites the whole log nor clears the fragment directory, so it does not
+    reintroduce the BUG-2642 merge-collision window (BUG-2645).
+
+    Fragments are searched first, in filename order (matching ``_load_fragments``
+    tie-breaking); malformed fragments are skipped like ``_load_fragments()``.
+    Raises ``KeyError`` if no entry with *entry_id* exists in either source. Any
+    exception raised by *mutate* (e.g. a guard violation) propagates before any
+    write occurs.
+    """
+    resolved = _resolve_path(path)
+    frag_dir = _fragments_dir(resolved)
+    if frag_dir.exists():
+        for f in sorted(frag_dir.glob("*.json"), key=lambda p: p.name):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                entry = _entry_from_dict(data)
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+                continue
+            if entry.id == entry_id:
+                atomic_write_json(f, mutate(entry).to_dict())
+                return
+    if resolved.exists():
+        raw = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+        if raw:
+            flat = raw if isinstance(raw, list) else raw.get("entries", [])
+            flat_entries = [_entry_from_dict(e) for e in flat]
+            for i, entry in enumerate(flat_entries):
+                if entry.id == entry_id:
+                    flat_entries[i] = mutate(entry)
+                    content = yaml.dump(
+                        [e.to_dict() for e in flat_entries],
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
+                    atomic_write(resolved, content)
+                    return
+    raise KeyError(f"No entry with id {entry_id!r}")
+
+
 def list_entries(
     path: Path | None = None,
     *,
@@ -412,20 +465,24 @@ def set_outcome(
     *,
     force: bool = False,
 ) -> None:
-    """Set the outcome on a decision entry; refuses to overwrite without force=True."""
-    entries = load_decisions(path)
-    for entry in entries:
-        if entry.id == entry_id:
-            if not isinstance(entry, DecisionEntry):
-                raise TypeError(f"Entry {entry_id!r} is not a DecisionEntry (got {entry.type!r})")
-            if entry.outcome is not None and not force:
-                raise ValueError(
-                    f"Entry {entry_id!r} already has an outcome. Use force=True to overwrite."
-                )
-            entry.outcome = DecisionOutcome(result=result, measured_at=measured_at, notes=notes)
-            save_decisions(entries, path)
-            return
-    raise KeyError(f"No entry with id {entry_id!r}")
+    """Set the outcome on a decision entry; refuses to overwrite without force=True.
+
+    Mutates only the single fragment (or flat-file entry) backing *entry_id* via
+    ``update_entry()`` — sibling fragments are untouched, so a concurrent append
+    on another branch never collides (BUG-2645).
+    """
+
+    def mutate(entry: AnyEntry) -> AnyEntry:
+        if not isinstance(entry, DecisionEntry):
+            raise TypeError(f"Entry {entry_id!r} is not a DecisionEntry (got {entry.type!r})")
+        if entry.outcome is not None and not force:
+            raise ValueError(
+                f"Entry {entry_id!r} already has an outcome. Use force=True to overwrite."
+            )
+        entry.outcome = DecisionOutcome(result=result, measured_at=measured_at, notes=notes)
+        return entry
+
+    update_entry(entry_id, mutate, path)
 
 
 def load_coupling_entries(

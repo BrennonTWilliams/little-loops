@@ -3,7 +3,7 @@ id: BUG-2642
 title: Concurrent `.ll/decisions.yaml` appends collide on ARCHITECTURE-NNN id and
   block EPIC merges
 type: BUG
-status: open
+status: done
 priority: P2
 discovered_date: '2026-07-15'
 discovered_by: capture-issue
@@ -202,6 +202,29 @@ Decided by `/ll:decide-issue` on 2026-07-14.
   (lines 384–435): for Option C, or to add a `.ll/decisions.yaml`-specific
   auto-resolve/retry before the blanket `merge --abort`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/verify_decisions.py` — `_run()` (~line 60) catches only
+  `(yaml.YAMLError, KeyError, ValueError)`; a directory-union reader over
+  `.ll/decisions.d/*.json` must either normalize `json.JSONDecodeError` into a caught
+  type or this except clause must broaden, or the three-tier gate silently stops
+  catching malformed fragments. Also resolves `_DEFAULT_LOG_PATH` singularly — must
+  validate the whole fragment directory [Agent 2 finding].
+- `hooks/scripts/check-decisions-yaml.sh` — path-match guard (~lines 80–89) only fires
+  on Write/Edit to `.ll/decisions.yaml` exactly; fragment writes under `.ll/decisions.d/`
+  bypass the PreToolUse gate entirely. Needs a second path pattern + a Write-only
+  (no Edit diff) staging path for write-once fragments [Agent 2 finding].
+- `.pre-commit-config.yaml` — `ll-verify-decisions` hook entry `files: ^\.ll/decisions\.yaml$`
+  (~lines 8–12) won't match new fragment files; add `^\.ll/decisions\.d/.*\.json$` (or make
+  the validator directory-aware) so fragments are validated pre-commit [Agent 2 finding].
+- `scripts/little_loops/config-schema.json` — `decisions` block (~lines 568–585) declares
+  only `log_path` + `auto_generate`; if `.ll/decisions.d/` needs independent configuration
+  (vs. derived from `log_path` parent), add a schema property + matching `DecisionsConfig`
+  fields in `scripts/little_loops/config/core.py` / `config/features.py` [Agent 2 finding].
+- `.gitignore` (~lines 126–130) — the `!/.ll/` un-ignore already tracks a new
+  `.ll/decisions.d/` subdir (no new rule strictly needed), but the explanatory comment
+  ("`.ll/decisions.yaml` is a curated, committed artifact") goes stale once storage splits
+  across a file + a directory; update it [Agent 2 finding].
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/decisions.py` — `_cmd_list`, `generate` (via
   `generate_from_completed`), `sync`, `promote`, `suggest-rules` all read through
@@ -215,6 +238,30 @@ Decided by `/ll:decide-issue` on 2026-07-14.
   state (the loop where `merge_failed` surfaces).
 - `hooks/scripts/check-decisions-yaml.sh` — pre-commit / PreToolUse validator that
   inspects candidate `.ll/decisions.yaml` writes (ENH-2592).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`scripts/little_loops/decisions.py` — `set_outcome()` (~line 346)**: bypasses
+  `add_entry()` entirely — does `load_decisions()` → mutate one entry in place →
+  `save_decisions(entries, path)` (~line 366). **Hard compat break under Option A**:
+  `save_decisions()` can no longer be "the" write path for an *existing* entry once
+  entries live in per-uuid fragments. Needs a targeted fragment-update (or legacy-file)
+  primitive, not just append-a-fragment [Agent 2 finding].
+- **`scripts/little_loops/cli/issues/decisions.py` — `_cmd_promote()` (~line 891)**:
+  same pattern — indexes and overwrites the full list (`entries[idx] = rule` ~line 928)
+  then `save_decisions(entries, path)`. Assumes a single flat writable list; **same hard
+  compat break** as `set_outcome` [Agent 2 finding].
+- `scripts/little_loops/cli/logs.py` — imports `decisions` to add entries from completed
+  issues (goes through `add_entry`) [Agent 1 finding].
+- `scripts/little_loops/cli/__init__.py` (imports `main_verify_decisions`),
+  `scripts/little_loops/cli/issues/__init__.py` (imports `add_decisions_parser`,
+  `cmd_decisions`) — CLI dispatchers; no logic change but confirm imports still resolve
+  [Agent 1 finding].
+- `hooks/hooks.json` (~lines 57–61) — registers `check-decisions-yaml.sh` as the
+  PreToolUse Write|Edit hook; if the hook's path matcher gains a fragment pattern the
+  registration matcher may also need widening [Agent 1 finding].
+- `scripts/little_loops/cli/verify_decisions.py` `_DEFAULT_LOG_PATH` (~line 35) and
+  `pyproject.toml` (~line 90, `ll-verify-decisions` console-script entry) — validator
+  surface that must accept the directory layout [Agent 1/2 finding].
 
 ### Similar Patterns (reuse)
 - `scripts/little_loops/cli/loop/run.py` ~line 357 + `cli/loop/_helpers.py`
@@ -237,11 +284,95 @@ Decided by `/ll:decide-issue` on 2026-07-14.
   `threading.Barrier(2)` in-process allocator-race test (idiom from
   `scripts/tests/test_concurrency.py`).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- **Reuse template for the new directory-union reader tests**:
+  `scripts/tests/test_cli_loop_queue.py::TestReadQueueEntries` (lines 260–352) covers
+  `read_queue_entries()` with exactly the four cases to mirror — missing dir → `[]`,
+  empty dir → `[]`, multi-fragment merge-sorted, malformed fragment skipped. Plus a
+  BUG-2642-specific *fifth* case with no queue precedent: two fragments with duplicate/
+  colliding `id` must not silently overwrite in the merged result. Fragment-write helper
+  to copy: `TestQueueRemoveCommand._write_entry` (~line 358) [Agent 3 finding].
+- **Gate tests to update (three-tier gate, will break on fragment path)**:
+  `scripts/tests/test_decisions_yaml_gate.py`,
+  `scripts/tests/test_decisions_yaml_pre_commit_gate.py`,
+  `scripts/tests/test_check_decisions_yaml_hook.py` — each keyed to the single-file
+  `.ll/decisions.yaml` assumption; need cases for `.ll/decisions.d/*.json` writes
+  [Agent 1/3 finding].
+- **`scripts/tests/test_wire_issue_static_layer.py`** — 18 `save_decisions(...)` call
+  sites (lines 113, 129, 137, …) plus its `decisions_path` fixture round-trip through the
+  flat single-file shape; break unless `save_decisions` stays a working compaction/rewrite
+  primitive [Agent 3 finding].
+- **`scripts/tests/test_decisions.py` — legacy-format assertions to update**: line 164
+  `assert isinstance(data, list)` (asserts bare-list YAML root), lines 126/135/144
+  (raw `entries:\n  - ...` corruption fixtures fed to `load_decisions()`),
+  `test_save_decisions_preserves_unmodeled_keys` (~line 197),
+  `test_save_decisions_does_not_strip_unrelated_entry_extras` (~line 210) — corruption
+  coverage must be re-expressed as `.ll/decisions.d/*.json` fragments once the union path
+  lands [Agent 2/3 finding].
+- `scripts/tests/test_cli_decisions.py` — `test_add_decision`/`test_add_exception`
+  currently assert only `result == 0` (no id-format literal), but `test_add_coupling_id_prefix`
+  (~line 769) and any id-generation call-signature change need review [Agent 3 finding].
+
 ### Documentation
 - `docs/guides/DECISIONS_LOG_GUIDE.md` — storage-layout / id-scheme change.
 - `docs/development/MERGE-COORDINATOR.md`, `docs/ARCHITECTURE.md`,
   `docs/reference/API.md` — if the merge path or decisions API changes.
 - `.claude/CLAUDE.md` — the `ll-issues` / `ll-verify-decisions` surface notes.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — documents `check-decisions-yaml.sh`, whose
+  staging/validation design is keyed to Write/Edit on the literal `.ll/decisions.yaml`
+  path; update for the fragment-write path [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md` — documents the `decisions.log_path` config key
+  (default `.ll/decisions.yaml`); note the derived/added `.ll/decisions.d/` directory
+  [Agent 2 finding].
+- `docs/reference/CLI.md`, `docs/reference/COMMANDS.md` — `ll-issues decisions` flag
+  surface / storage-file references [Agent 2 finding].
+- `CONTRIBUTING.md` — references the decisions.yaml validation / pre-commit flow
+  [Agent 2 finding].
+- `CHANGELOG.md` — user-facing storage-format change needs an entry (concrete
+  `## [X.Y.Z]` section, not `[Unreleased]`) [Agent 2 finding].
+- Skill/command bodies that frame `.ll/decisions.yaml` as a single `cat`/`grep`-able file
+  (`skills/decide-issue/SKILL.md`, `skills/capture-issue/SKILL.md`, `skills/go-no-go/SKILL.md`,
+  `skills/wire-issue/static-coupling-layer.md`, `commands/verify-issues.md`,
+  `commands/ready-issue.md`) — lower risk; scan for singular-file framing that breaks until
+  fragments are compacted [Agent 2 finding].
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` (~lines 568–585) — `decisions` block; add a
+  `fragment_dir` (or equivalent) property only if `.ll/decisions.d/` must be independently
+  configurable rather than derived from `log_path`'s parent [Agent 2 finding].
+- `scripts/little_loops/config/core.py` (`DecisionsConfig` dataclass) +
+  `scripts/little_loops/config/features.py` — mirror any new schema key [Agent 2 finding].
+- `scripts/tests/test_config_schema.py` — update if the `decisions` schema block changes
+  [Agent 2 finding].
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the
+Option A implementation beyond the primary read/write layer:_
+
+1. Add a **fragment-update primitive** for in-place entry mutation — `set_outcome()`
+   (`decisions.py` ~line 346) and `_cmd_promote()` (`cli/issues/decisions.py` ~line 891)
+   both `load → mutate one entry → save_decisions(full_list)`. Decide whether they rewrite
+   the owning fragment or the legacy flat file; `save_decisions` can no longer mean
+   "rewrite the whole log" for a single-entry change.
+2. Extend the **PreToolUse + pre-commit gates** to the fragment path —
+   `hooks/scripts/check-decisions-yaml.sh` path guard, `hooks/hooks.json` matcher, and
+   `.pre-commit-config.yaml` `files:` regex all target `.ll/decisions.yaml` only; fragment
+   writes bypass validation until each learns `.ll/decisions.d/*.json`.
+3. Preserve the **corruption-detection contract** in `cli/verify_decisions.py` `_run()` —
+   catch/normalize `json.JSONDecodeError` for fragments so ENH-2590/2591/2592 gates still
+   exit 1 on a bad fragment.
+4. Migration/compaction of the pre-existing flat `entries:` list into fragments (or a
+   dual-read that unions legacy file + fragment dir), keeping `load_decisions()` back-compat
+   for `test_decisions.py`'s legacy-format fixtures.
+5. Update the breaking tests: `test_wire_issue_static_layer.py` (18 `save_decisions`
+   sites), the three gate tests, and `test_decisions.py` bare-list/`entries:` assertions.
 
 ## Impact
 
@@ -279,11 +410,33 @@ _Added by `/ll:confidence-check` on 2026-07-14_
   for pre-existing flat-list entries are not fully specified in the issue —
   left to implementation-time design.
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-07-15
+- **Reason**: Issue too large for single session (score 11/11, Very Large)
+
+### Decomposed Into
+- BUG-2644: Add append-only fragment storage (write + directory-union read)
+  for `.ll/decisions.yaml`
+- BUG-2645: Add a fragment-update primitive for in-place decision mutation
+  (`set_outcome`, `_cmd_promote`)
+- BUG-2646: Extend decisions validation gates (PreToolUse, pre-commit,
+  `ll-verify-decisions`) to the fragment path
+- BUG-2647: Update docs and config schema for `.ll/decisions.d/` fragment
+  storage
+
 ## Status
 
-**Open** | Created: 2026-07-15 | Priority: P2
+**Done** | Created: 2026-07-15 | Priority: P2
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-07-15T00:00:00 - `1e8c4ff4-aeb1-4a0e-ae31-59bf29c066dd.jsonl`
+- `/ll:confidence-check` - 2026-07-15T00:00:00 - `0e53aa1b-9f72-435e-a930-79ed44b15eb2.jsonl`
+- `/ll:wire-issue` - 2026-07-15T14:14:31 - `564935a6-96ae-42cb-a383-eb7f37bf10d8.jsonl`
+- `/ll:refine-issue` - 2026-07-15T14:06:57 - `da55691a-bfd1-4299-800e-9ae32ee2a324.jsonl`
 - `/ll:confidence-check` - 2026-07-14T00:00:00 - `f8f6ee6c-782e-4e4f-9f42-2985a2df8c9f.jsonl`
 - `/ll:decide-issue` - 2026-07-15T02:38:03 - `e9655459-9230-48dc-8037-23646a30a6af.jsonl`
 - `/ll:refine-issue` - 2026-07-15T02:33:51 - `cdf638ed-77f6-4e7d-bf02-35f33fa437d7.jsonl`
