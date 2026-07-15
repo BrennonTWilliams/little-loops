@@ -665,8 +665,10 @@ states:
   triage_outcome_failure:
     # Diagnose why outcome_confidence failed before routing to size-review.
     # decision_needed=true (authoritative flag) OR low score_ambiguity (≤10,
-    # proxy) routes to run_decide. Otherwise → check_missing_artifacts to test
-    # for absent files/wiring gaps before falling through to size-review.
+    # proxy) routes to run_decide. Otherwise → check_spike_needed (ENH-2640) to
+    # test for an unproven internal mechanism before check_missing_artifacts /
+    # size-review. Decide-first ordering: an unresolved design decision must be
+    # settled before spiking an approach.
     # on_error falls back to detect_children safely.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
@@ -675,8 +677,58 @@ states:
       sys.exit(0 if (int(d.get('score_ambiguity') or 25) <= 10 or d.get('decision_needed') == 'true') else 1)"
     fragment: shell_exit
     on_yes: run_decide
-    on_no: check_missing_artifacts
+    on_no: check_spike_needed
     on_error: detect_children
+
+  check_spike_needed:
+    # ENH-2640: an outcome-confidence failure caused by a zero-precedent internal
+    # mechanism (spike_needed:true, set by /ll:confidence-check Phase 4.10) fits
+    # none of the decide/wire/size-review remedies and would thrash into
+    # autodev-skipped.txt. Route it to run_spike to prove the mechanism first.
+    # Predicate is a two-field condition (spike_needed AND NOT spike_attempted)
+    # that ll-issues check-flag can't express in one call, so mirror
+    # triage_outcome_failure's inline-python idiom reading show --json. The
+    # spike_attempted guard makes this a one-shot: a completed-or-attempted spike
+    # never re-runs. On no match, fall through to check_missing_artifacts,
+    # preserving the existing wire/size-review chain.
+    action: |
+      ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+    fragment: shell_exit
+    on_yes: run_spike
+    on_no: check_missing_artifacts
+    on_error: check_missing_artifacts
+
+  run_spike:
+    # ENH-2640: prove the unproven internal mechanism via /ll:spike --auto before
+    # attempting implementation. A spike proves a mechanism (it does not edit
+    # integration points like run_wire, so it routes directly to the confidence
+    # rerun with no run_refine interposition). /ll:spike writes spike_attempted/
+    # spike_completed to frontmatter, arming the check_spike_needed one-shot
+    # guard. rate_limit_max_wait_seconds is capped tighter than the fragment
+    # default given the rn-refine long-run history (ENH-2565).
+    fragment: with_rate_limit_handling
+    action: "/ll:spike ${captured.input.output} --auto"
+    action_type: slash_command
+    rate_limit_max_wait_seconds: 14400
+    next: rerun_confidence_after_spike
+    on_error: rerun_confidence_after_spike
+    on_rate_limit_exhausted: done
+
+  rerun_confidence_after_spike:
+    # ENH-2640: after run_spike proves (or attempts) the mechanism, frontmatter
+    # scores still hold pre-spike values. Re-run confidence-check so
+    # enqueue_or_skip evaluates fresh scores — mirrors rerun_confidence_after_wire
+    # (a spike is a repair action like wiring, not a decision resolution, so it
+    # does not get a dedicated recheck state like the decide path).
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output}"
+    action_type: slash_command
+    next: enqueue_or_skip
+    on_error: enqueue_or_skip
+    on_rate_limit_exhausted: done
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true, route to run_wire so

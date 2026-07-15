@@ -202,6 +202,32 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["labels"] == "foo, bar"
 
+    def test_spike_flags_surfaced_as_bool_strings(self, tmp_path: Path) -> None:
+        """ENH-2640: spike_needed/spike_attempted/spike_completed surface as
+        lowercased boolean strings for autodev's check_spike_needed gate."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\nspike_needed: true\nspike_attempted: true\n"
+            "spike_completed: false\n---\n# ENH-5099: T\n",
+            "P3-ENH-5099-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["spike_needed"] == "true"
+        assert fields["spike_attempted"] == "true"
+        assert fields["spike_completed"] == "false"
+
+    def test_spike_flags_absent_are_none(self, tmp_path: Path) -> None:
+        """ENH-2640: absent spike flags surface as None (predicate reads != 'true')."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\n---\n# ENH-5100: T\n",
+            "P3-ENH-5100-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["spike_needed"] is None
+        assert fields["spike_attempted"] is None
+        assert fields["spike_completed"] is None
+
     def test_learning_tests_as_list(self, tmp_path: Path) -> None:
         """learning_tests_required as a list produces comma-joined string."""
         path, config = self._write_issue(

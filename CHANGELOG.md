@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--plan-only`, `--plan <file>`, `--force`. External-API risks are suppressed and
   routed to `/ll:explore-api` instead. Consumed downstream by ENH-2568's autodev
   routing (FEAT-2567, EPIC-2570).
+- **autodev spike-remediation branch** — `autodev.yaml`'s `triage_outcome_failure`
+  now routes an outcome-confidence failure caused by an unproven internal
+  mechanism (`spike_needed: true`, set by `/ll:confidence-check` Phase 4.10)
+  through three new states: `check_spike_needed` (predicate `spike_needed AND
+  NOT spike_attempted`, a one-shot guard read from `ll-issues show --json`),
+  `run_spike` (`/ll:spike --auto`), and `rerun_confidence_after_spike`
+  (`/ll:confidence-check`, re-scoring before `enqueue_or_skip`). Inserted between
+  the decide and missing-artifacts branches so an unproven mechanism is proven
+  rather than mis-routed into decompose/size-review. `ll-issues show --json` now
+  surfaces `spike_needed`/`spike_attempted`/`spike_completed`
+  (ENH-2640, EPIC-2570).
 
 ## [1.144.0] - 2026-07-14
 

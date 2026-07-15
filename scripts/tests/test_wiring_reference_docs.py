@@ -23,6 +23,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/ISSUE_TEMPLATE.md", "`completed_at`", "FEAT-1172"),
     ("docs/reference/ISSUE_TEMPLATE.md", "status", "FEAT-1172"),
     ("docs/reference/ISSUE_TEMPLATE.md", "spike_needed", "ENH-2569"),
+    ("docs/reference/ISSUE_TEMPLATE.md", "spike_attempted", "ENH-2640"),
     ("docs/reference/API.md", "`little_loops.hooks`", "FEAT-1459"),
     ("docs/reference/API.md", "### LLHookEvent", "FEAT-1459"),
     ("docs/reference/API.md", "### LLHookResult", "FEAT-1459"),

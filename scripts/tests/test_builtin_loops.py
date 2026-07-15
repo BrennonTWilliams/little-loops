@@ -3272,6 +3272,9 @@ class TestAutodevLoop:
             "run_wire",
             "run_refine",
             "rerun_confidence_after_wire",
+            "check_spike_needed",
+            "run_spike",
+            "rerun_confidence_after_spike",
             "implement_current",
             "done",
         }
@@ -3879,14 +3882,66 @@ class TestAutodevLoop:
             f"triage_outcome_failure.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
         )
 
-    def test_triage_outcome_failure_on_no_routes_to_check_missing_artifacts(
+    def test_triage_outcome_failure_on_no_routes_to_check_spike_needed(self, data: dict) -> None:
+        """ENH-2640: triage_outcome_failure.on_no (not a decision) must route to the
+        check_spike_needed gate, which falls through to check_missing_artifacts on no match."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("on_no") == "check_spike_needed", (
+            f"triage_outcome_failure.on_no should be 'check_spike_needed', got {state.get('on_no')!r}"
+        )
+
+    def test_check_spike_needed_falls_through_to_check_missing_artifacts(
         self, data: dict
     ) -> None:
-        """triage_outcome_failure.on_no (not a decision) must route to check_missing_artifacts gate."""
-        state = data["states"].get("triage_outcome_failure", {})
+        """ENH-2640: check_spike_needed.on_no must preserve the existing wire/size-review
+        chain by falling through to check_missing_artifacts."""
+        state = data["states"].get("check_spike_needed", {})
         assert state.get("on_no") == "check_missing_artifacts", (
-            f"triage_outcome_failure.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
+            f"check_spike_needed.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
         )
+        assert state.get("on_error") == "check_missing_artifacts", (
+            f"check_spike_needed.on_error should be 'check_missing_artifacts', got {state.get('on_error')!r}"
+        )
+
+    def test_check_spike_needed_routes_to_run_spike(self, data: dict) -> None:
+        """ENH-2640: check_spike_needed.on_yes (spike_needed AND NOT spike_attempted) → run_spike."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("on_yes") == "run_spike", (
+            f"check_spike_needed.on_yes should be 'run_spike', got {state.get('on_yes')!r}"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"check_spike_needed.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_spike_needed_predicate_reads_both_flags(self, data: dict) -> None:
+        """ENH-2640: predicate must be a two-field condition (spike_needed AND NOT
+        spike_attempted) so an attempted spike never re-runs."""
+        action = data["states"].get("check_spike_needed", {}).get("action", "")
+        assert "spike_needed" in action, "check_spike_needed must read spike_needed"
+        assert "spike_attempted" in action, (
+            "check_spike_needed must read spike_attempted for the one-shot guard"
+        )
+
+    def test_run_spike_action_and_routing(self, data: dict) -> None:
+        """ENH-2640: run_spike invokes /ll:spike --auto and routes to the confidence rerun."""
+        state = data["states"].get("run_spike", {})
+        assert "/ll:spike" in state.get("action", ""), "run_spike must invoke /ll:spike"
+        assert "--auto" in state.get("action", ""), "run_spike must pass --auto"
+        assert state.get("action_type") == "slash_command"
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "rerun_confidence_after_spike"
+        assert state.get("on_error") == "rerun_confidence_after_spike"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
+        """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip
+        (mirrors rerun_confidence_after_wire, not the decide path's recheck state)."""
+        state = data["states"].get("rerun_confidence_after_spike", {})
+        assert "/ll:confidence-check" in state.get("action", "")
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "enqueue_or_skip"
+        assert state.get("on_error") == "enqueue_or_skip"
+        assert state.get("on_rate_limit_exhausted") == "done"
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
         """triage_outcome_failure.on_error must fall back safely to detect_children."""

@@ -370,6 +370,57 @@ class TestCheckDecisionBeforeSizeReviewStructural:
         )
 
 
+class TestSpikeTriageStructural:
+    """ENH-2640: structural assertions on the spike-remediation triad
+    (check_spike_needed / run_spike / rerun_confidence_after_spike).
+
+    Mirrors ``TestCheckDecisionBeforeSizeReviewStructural`` for the sibling gate
+    introduced by the triage_outcome_failure spike-branch routing.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_spike_states_exist(self, data: dict[str, Any]) -> None:
+        states = data.get("states", {})
+        for name in ("check_spike_needed", "run_spike", "rerun_confidence_after_spike"):
+            assert name in states, f"{name} state missing from autodev.yaml (ENH-2640)"
+
+    def test_check_spike_needed_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:
+        """Predicate must be spike_needed AND NOT spike_attempted (two-field one-shot)."""
+        action = data["states"]["check_spike_needed"].get("action", "")
+        assert "spike_needed" in action, "check_spike_needed must read spike_needed"
+        assert "spike_attempted" in action, (
+            "check_spike_needed must read spike_attempted for the one-shot guard"
+        )
+        assert data["states"]["check_spike_needed"].get("fragment") == "shell_exit"
+
+    def test_check_spike_needed_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["check_spike_needed"]
+        assert state.get("on_yes") == "run_spike"
+        assert state.get("on_no") == "check_missing_artifacts"
+        assert state.get("on_error") == "check_missing_artifacts"
+
+    def test_run_spike_invokes_spike_skill(self, data: dict[str, Any]) -> None:
+        state = data["states"]["run_spike"]
+        assert "/ll:spike" in state.get("action", "")
+        assert "--auto" in state.get("action", "")
+        assert state.get("action_type") == "slash_command"
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "rerun_confidence_after_spike"
+        assert state.get("on_error") == "rerun_confidence_after_spike"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_spike_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["rerun_confidence_after_spike"]
+        assert "/ll:confidence-check" in state.get("action", "")
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "enqueue_or_skip"
+        assert state.get("on_error") == "enqueue_or_skip"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+
 class TestCheckDecisionBeforeSizeReviewRouting:
     """BUG-2519: FSMExecutor-driven assertion on the gate's error-fallthrough.
 
