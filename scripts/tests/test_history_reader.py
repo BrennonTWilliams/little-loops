@@ -271,6 +271,23 @@ class TestSearch:
         result = search("", db=db)
         assert result == []
 
+    def test_search_hyphenated_id_matches(self, tmp_path: Path) -> None:
+        """A hyphenated issue ID must match literally, not be parsed as an FTS
+        column-filter/negation operator (BUG-2651)."""
+        db = tmp_path / "test.db"
+        record_correction(db, "sess-1", "Fixed BUG-490 in the parser", "user")
+        result = search("BUG-490", kind="correction", db=db)
+        assert len(result) >= 1
+        assert "BUG-490" in result[0].content
+
+    def test_search_hyphenated_id_unfiltered(self, tmp_path: Path) -> None:
+        """Same fix must apply to the kind-less MATCH branch (BUG-2651)."""
+        db = tmp_path / "test.db"
+        record_correction(db, "sess-2", "Notes about ENH-2589 rollout", "user")
+        result = search("ENH-2589", db=db)
+        assert len(result) >= 1
+        assert "ENH-2589" in result[0].content
+
 
 class TestRelatedIssueEvents:
     """Issue-centric event queries."""

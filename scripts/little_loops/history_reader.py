@@ -52,7 +52,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-from little_loops.session_store import DEFAULT_DB_PATH, ensure_db
+from little_loops.session_store import DEFAULT_DB_PATH, ensure_db, fts_phrase
 
 logger = logging.getLogger(__name__)
 
@@ -359,26 +359,30 @@ def search(
 ) -> list[SearchResult]:
     """FTS5 full-text search with optional *kind* filter (tool, file, issue, loop, correction, message).
 
-    Returns BM25-ranked results. Gracefully handles invalid FTS5 query syntax.
+    Returns BM25-ranked results. The *query* is matched as a literal FTS5 phrase
+    (see :func:`little_loops.session_store.fts_phrase`), so hyphenated issue IDs
+    (e.g. ``BUG-490``) match rather than being parsed as operators (BUG-2651).
+    Gracefully handles invalid FTS5 query syntax.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
     if conn is None:
         return []
+    phrase = fts_phrase(query)
     try:
         if kind:
             rows = conn.execute(
                 "SELECT content, kind, ref, anchor, ts, bm25(search_index) AS score "
                 "FROM search_index WHERE search_index MATCH ? AND kind = ? "
                 "ORDER BY score LIMIT ?",
-                (query, kind, limit),
+                (phrase, kind, limit),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT content, kind, ref, anchor, ts, bm25(search_index) AS score "
                 "FROM search_index WHERE search_index MATCH ? "
                 "ORDER BY score LIMIT ?",
-                (query, limit),
+                (phrase, limit),
             ).fetchall()
     except sqlite3.OperationalError as exc:
         logger.warning("history_reader: invalid FTS5 query %r: %s", query, exc)

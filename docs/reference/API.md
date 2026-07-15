@@ -6980,7 +6980,7 @@ def search(
 FTS5 full-text search with optional *kind* filter.
 
 **Parameters:**
-- `query` — FTS5 query string (BM25-ranked results)
+- `query` — search string, matched as a literal FTS5 phrase (BM25-ranked results). The query is quoted via `fts_phrase()`, so hyphenated issue IDs (e.g. `BUG-490`) and other FTS5 operator characters match literally instead of being parsed as expressions (BUG-2651).
 - `kind` — optional filter: `tool`, `file`, `issue`, `loop`, `correction`, `message`
 - `limit` — maximum number of rows to return (default: 10)
 - `db` — path to the SQLite database (default: `.ll/history.db`)

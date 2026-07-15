@@ -414,6 +414,15 @@ class TestSearch:
         transport.close()
         assert len(search(db, query="loopname", limit=2)) == 2
 
+    def test_search_hyphenated_id_matches(self, tmp_path: Path) -> None:
+        """Hyphenated issue IDs must match literally, not raise ValueError
+        via FTS operator parsing (BUG-2651)."""
+        db = tmp_path / "session.db"
+        record_correction(db, "sess-h1", "Fixed BUG-490 in the parser", "user")
+        results = search(db, query="BUG-490")
+        assert results
+        assert "BUG-490" in results[0]["content"]
+
 
 class TestRecent:
     """The recent() query helper."""

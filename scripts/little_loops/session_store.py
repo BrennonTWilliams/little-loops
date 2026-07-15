@@ -1419,6 +1419,18 @@ def record_test_run_event(
 # ---------------------------------------------------------------------------
 
 
+def fts_phrase(query: str) -> str:
+    """Wrap *query* as an FTS5 quoted phrase so operator characters (``-``, ``*``,
+    ``:``, ``"`` …) are matched literally (BUG-2651).
+
+    Hyphenated issue IDs (e.g. ``BUG-490``) are otherwise parsed by FTS5 as a
+    column-filter/negation expression and raise ``no such column``. Escaping the
+    embedded double-quotes (``"`` → ``""``) and wrapping the whole string in
+    double-quotes turns any input into a single literal phrase.
+    """
+    return '"' + query.replace('"', '""') + '"'
+
+
 def search(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -1429,7 +1441,8 @@ def search(
 
     Each result dict carries ``content``, ``kind``, ``ref``, ``anchor`` (a
     file:line-style pointer where available), ``ts`` and a numeric ``score``
-    (lower BM25 score = better match).
+    (lower BM25 score = better match). The *query* is matched as a literal FTS5
+    phrase (see :func:`fts_phrase`), so hyphenated IDs match rather than raise.
     """
     conn = connect(db)
     try:
@@ -1437,7 +1450,7 @@ def search(
             "SELECT content, kind, ref, anchor, ts, bm25(search_index) AS score "
             "FROM search_index WHERE search_index MATCH ? "
             "ORDER BY score LIMIT ?",
-            (query, limit),
+            (fts_phrase(query), limit),
         ).fetchall()
     except sqlite3.OperationalError as exc:
         raise ValueError(f"invalid FTS query {query!r}: {exc}") from exc
