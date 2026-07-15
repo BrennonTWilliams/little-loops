@@ -1,11 +1,23 @@
 ---
 discovered_commit: 6f81ca029f3c40a05520d5f1d8536fdd0a8723cc
 discovered_branch: main
-discovered_date: 2026-07-15T00:00:00Z
+discovered_date: 2026-07-15 00:00:00+00:00
 discovered_by: capture-issue
 status: open
-relates_to: [ENH-2653, BUG-2651]
-labels: [epic-branches, parallel, worktree, sprint]
+relates_to:
+- ENH-2653
+- BUG-2651
+labels:
+- epic-branches
+- parallel
+- worktree
+- sprint
+confidence_score: 96
+outcome_confidence: 72
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 15
 ---
 
 # FEAT-2652: Per-EPIC base-branch declaration + sprint-creation validation
@@ -130,6 +142,175 @@ front with a clear error instead of a silent degrade.
 - Pairs with ENH-2653 (`ready-issue` should also learn the target branch so its
   symbol checks run against the right tree).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Where the base_branch field hangs off (no new type needed):**
+- `IssueInfo` (`scripts/little_loops/issue_parser.py:551`) is the *single*
+  dataclass used for every issue type including EPICs — there is no `EpicInfo`
+  subclass. Add a `base_branch: str | None = None` field here (dataclass
+  currently ends at `status: str = "open"`).
+- Frontmatter alias precedent (`base_branch` / `target_branch`): follow the
+  `parent` / `parent_issue` pattern in `IssueParser.parse_file()`
+  (`issue_parser.py:844-864`) — check the canonical key first, fall back to the
+  alias only when absent, and `logger.warning` naming both keys. Document both
+  names on the field's docstring (as `parent`'s docstring does at line 578).
+
+**Fork seam (worker_pool.py):**
+- The hardcoded fork is `_ensure_epic_branch()` at `worker_pool.py:1739`
+  (`["branch", branch, self.parallel_config.base_branch]`). The method
+  (1707-1743) already does local (`rev-parse --verify`) then remote
+  (`ls-remote --heads`) existence checks before creating — thread the EPIC's
+  declared base in as the fork point here.
+- `_resolve_branch_targets()` (`worker_pool.py:1615-1641`) is where the EPIC
+  ancestor is resolved and the branch name built; it calls `_ensure_epic_branch`.
+- `_load_epic_slug()` (`worker_pool.py:1682-1705`) is the exact precedent for a
+  new `_load_epic_base_branch(epic_id)` helper — it globs `P?-{epic_id}-*.md`,
+  parses via `IssueParser`, and falls back to a default on parse failure.
+
+**Second, independent base derivation to keep in sync (orchestrator.py):**
+- The FEAT-2562 comparison-base block (`orchestrator.py:435-464`) **re-derives**
+  the EPIC branch name independently (`base = f"{prefix}{epic_id.lower()}-{slug}"`)
+  rather than reading a stored value, and uses it as the diff base for
+  `git rev-list --count {base}..{branch}`. A per-EPIC base override must be
+  applied here too or the comparison base will diverge from the fork base.
+
+**Sprint-dispatch validation seam (hard-stop precedent):**
+- Insert the base-existence check in `scripts/little_loops/cli/sprint/run.py`
+  right after `issue_infos = manager.load_issue_infos(...)` (line 351), mirroring
+  the existing `_run_learning_gate_preflight()` gate
+  (`run.py:166-230`, called at 367-369). That gate returns an `int` exit code
+  (0 pass / 1 block), logs `logger.error` naming the blocking cause, and the
+  caller early-`return`s **before** the worker pool is constructed (line 625) —
+  exactly the "abort dispatch, name the missing branch, no `partial`" shape the
+  AC requires. Use this return-code style at the CLI level, not a raised
+  `RuntimeError`.
+
+**Reusable ref-existence primitive:**
+- `worktree_utils.setup_worktree()` (`worktree_utils.py:111-118`) already does
+  `git rev-parse --verify <base_branch>` and raises `RuntimeError` on
+  non-resolution — the closer template for "validate ref, hard-stop on missing."
+  All git calls in these paths go through `GitLock.run([...], cwd=, timeout=)`
+  (`parallel/git_lock.py:28-60`); do not add bare `subprocess.run(["git",...])`.
+
+**New-code gaps (no existing precedent):**
+- The optional "spot-check cited symbols resolve on the base" step has **no**
+  analog: `git show <ref>:<file>` (blob-at-ref read) is used nowhere in
+  `scripts/little_loops/`. This is net-new code following the
+  `GitLock.run([...])` + `.returncode`/`.stdout` convention.
+- `epic-sections.json` has **no frontmatter-only field entries** today — every
+  entry is a markdown `##` section schema. Documenting `base_branch` there
+  (per Implementation Step 1) introduces a new category; the natural existing
+  home for frontmatter-key docs is the `IssueInfo` docstring. Consider whether
+  the schema entry is worth the precedent, or document in the docstring only.
+
+**Test targets:**
+- No direct Python unit test of `_ensure_epic_branch` exists today; coverage is
+  indirect via the loop-YAML mirroring test
+  `test_builtin_loops.py:test_checkout_epic_branch_reuses_ensure_epic_branch_shape`
+  (line 2097). New tests should land in `scripts/tests/test_worker_pool.py`
+  (fork behavior) and `scripts/tests/test_cli_sprint.py` /
+  `test_sprint_integration.py` (dispatch validation abort).
+- Parent EPIC: `EPIC-2451` (per-epic integration-branch strategy). Related
+  hardcoded-base bug: `BUG-2323`.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/worker_pool.py:360` — a **second** call site of
+  `_resolve_branch_targets()` (outside the primary 1637-1640 chain). Any signature
+  change to thread the declared base must preserve this call too [Agent 2 finding].
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — the FSM
+  `checkout_epic_branch` state is a **third, independent** base-branch derivation
+  path (mirrors `_ensure_epic_branch`'s `rev-parse`/`ls-remote`/`git branch <name>
+  <base>` shape inline). If the fork point becomes per-EPIC, this state's shell
+  action must read the declared base too, or it diverges from the Python fork
+  [Agent 1 + Agent 3 finding].
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — sprint entry
+  loop that dispatches through the orchestrator; confirm it surfaces the new
+  hard-stop abort rather than swallowing it [Agent 1 finding].
+- `IssueInfo` is consumed read-only by ~35 CLI/consumer sites (issues/*.py,
+  `sync.py`, `dependency_graph.py`, `learning_tests/extractor.py`,
+  `hooks/sweep_stale_refs.py`). Additive field is safe, but any consumer doing
+  strict frontmatter-key validation or `dataclasses.fields()`/`asdict()` snapshotting
+  could reject/expose the new key — spot-check `sync.py` and the parser fuzz tests
+  [Agent 2 finding].
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` (~462-495) — states the EPIC branch "forks from and merges
+  back to `parallel.base_branch`"; this global claim becomes conditionally false
+  [Agent 2 finding].
+- `docs/development/MERGE-COORDINATOR.md` (~149-165) — merge-target decision + 4-step
+  lifecycle assumes merge-back to the global base; needs a per-EPIC-base caveat
+  [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md` (~370-374) — documents `base_branch` as the
+  single global setting and `epic_branches.merge_to_base_on_complete`; add the
+  per-EPIC override + interaction note [Agent 2 finding].
+- `docs/guides/SPRINT_GUIDE.md` (~308-352) — "What changes when per-EPIC branches
+  are enabled" describes fork from `parallel.base_branch`; add the frontmatter
+  override + new dispatch-validation/hard-stop behavior [Agent 2 finding].
+- `docs/reference/API.md` — enumerates `IssueInfo` dataclass fields; add
+  `base_branch` entry [Agent 1 finding].
+- `config-schema.json` inline `description` strings for `epic_branches` (~412-414)
+  and `merge_to_base_on_complete` (~426-429) assert unconditional-global-base
+  semantics — same caveat as the prose docs [Agent 2 finding].
+- `commands/create-sprint.md` / `skills/ll-create-sprint/SKILL.md` /
+  `skills/scope-epic/SKILL.md` — user-facing text on sprint dispatch + EPIC
+  scoping; mention the new `base_branch:` field and validation gate [Agent 1 finding].
+- `CHANGELOG.md` — release note for the new opt-in field [Agent 1 finding].
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_worker_pool.py::TestResolveBranchTargets` (lines 3448-3604)
+  — **likely to break**: all 5 tests build issues with a fixed attribute set and
+  assert exact branch tuples. Add `base_branch=None` defaults to the `_make_issue_file`
+  helper (line 3425) and each mock issue so the no-field path still resolves to
+  `parallel.base_branch` [Agent 3 finding].
+- `scripts/tests/test_issue_parser.py` — mimic the `parent`/`parent_issue` alias
+  precedent: `test_parse_parent_from_frontmatter` (1881) for the happy path and
+  `test_parse_parent_issue_alias_emits_warning` (1903) for the `target_branch`
+  alias + warning [Agent 3 finding].
+- `scripts/tests/test_sprint_integration.py::TestSprintPreflightGate` (1932) — the
+  exact template for the new dispatch gate: happy-path (ref exists → 0), abort-on-
+  missing-ref (→ 1, hard stop, **not** `partial`), skip-flag bypass, disabled-config
+  skip; follows `_run_learning_gate_preflight`'s return-code shape [Agent 3 finding].
+- `scripts/tests/test_cli_loop_worktree.py::test_base_branch_invalid_raises_runtime_error`
+  (292) — closest ref-existence pattern (mock `git_lock.run`, branch on
+  `"--verify" in args`, return non-zero + stderr, assert on the failure) [Agent 3 finding].
+- `scripts/tests/test_builtin_loops.py` — `test_checkout_epic_branch_reuses_ensure_epic_branch_shape`
+  (2097) and `..._gated_on_epic_scope_and_config` (2083) assert literal substrings
+  (`'"branch", branch, base'`, `rev-parse`, `ls-remote`) in the loop YAML; **likely
+  to break** if the fork-point arg changes [Agent 3 finding].
+- `scripts/tests/test_orchestrator.py` — covers the FEAT-2562 comparison-base block
+  (orchestrator.py:435-464); per-EPIC base threading there needs matching test
+  updates [Agent 2 finding].
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the
+implementation:_
+
+6. Update the **second** `_resolve_branch_targets()` call site at
+   `worker_pool.py:360` in lockstep with the primary chain (signature parity).
+7. Thread the declared base into the FSM `checkout_epic_branch` state in
+   `auto-refine-and-implement.yaml` (third derivation path) so the loop's inline
+   fork matches the Python fork; verify `sprint-refine-and-implement.yaml` surfaces
+   the hard-stop.
+8. Update `test_worker_pool.py::TestResolveBranchTargets` + `_make_issue_file`
+   helper for the new `base_branch` field (no-field path preserved).
+9. Add parser tests mirroring the `parent`/`parent_issue` alias pair for
+   `base_branch`/`target_branch`; add a `TestSprintPreflightGate`-style gate test
+   class for the dispatch validation.
+10. Sync the `test_builtin_loops.py` substring assertions if the fork-point arg
+    changes; update `test_orchestrator.py` for the comparison-base threading.
+11. Update the doc network (ARCHITECTURE, MERGE-COORDINATOR, CONFIGURATION,
+    SPRINT_GUIDE, API), the `config-schema.json` inline descriptions, the sprint/
+    epic skills+command, and CHANGELOG.
+
 ## Impact
 
 High. This is the root cause of the wrong-base false-negative class. Without it,
@@ -137,7 +318,25 @@ any EPIC whose children reference unmerged-branch symbols will keep silently
 degrading to `partial` and holding merges open, and the only diagnosis path is
 reading per-issue transcripts. Backward-compatible (opt-in field).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-15_
+
+**Readiness Score**: 96/100 → PROCEED
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Outcome Risk Factors
+- Three independent base-branch derivation paths must stay in lockstep — deep per-site complexity: `worker_pool.py`'s `_ensure_epic_branch()`/`_resolve_branch_targets()` (two call sites), `orchestrator.py`'s FEAT-2562 comparison-base re-derivation, and the FSM `checkout_epic_branch` state in `auto-refine-and-implement.yaml`. Missing any one leaves a stale global-base assumption.
+- Several test files assert literal substrings/exact tuples (`test_builtin_loops.py`'s `checkout_epic_branch` shape tests, `test_worker_pool.py::TestResolveBranchTargets`) that are likely to break and require synchronized updates alongside the implementation, not just additive coverage.
+
 ## Status
 
 open — captured from consumer-project run findings. Root-cause fix; pairs with
 ENH-2653 (guardrail) and BUG-2651 (independent triage bug surfaced in same run).
+
+
+## Session Log
+- `/ll:decide-issue` - 2026-07-15T23:17:31 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
+- `/ll:confidence-check` - 2026-07-15T23:20:00 - `7285c640-59d1-431f-84f9-29111bbcaa9d.jsonl`
+- `/ll:wire-issue` - 2026-07-15T23:14:48 - `58678dfa-9825-4b94-9e6a-4216d0846bde.jsonl`
+- `/ll:refine-issue` - 2026-07-15T23:09:39 - `d59da632-f9e0-4c3a-b52b-fd5930e8885f.jsonl`
