@@ -143,6 +143,7 @@ class TestBuiltinLoopFiles:
             "adopt-third-party-api",
             "integrate-sdk",
             "proof-first-task",
+            "spike-gate",
             "cli-anything-bootstrap",
             "adversarial-redesign",
             "migrate-sdk-version",
@@ -3321,6 +3322,9 @@ class TestAutodevLoop:
             "run_wire",
             "run_refine",
             "rerun_confidence_after_wire",
+            "check_spike_needed",
+            "run_spike",
+            "rerun_confidence_after_spike",
             "implement_current",
             "done",
         }
@@ -3928,14 +3932,66 @@ class TestAutodevLoop:
             f"triage_outcome_failure.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
         )
 
-    def test_triage_outcome_failure_on_no_routes_to_check_missing_artifacts(
+    def test_triage_outcome_failure_on_no_routes_to_check_spike_needed(self, data: dict) -> None:
+        """ENH-2640: triage_outcome_failure.on_no (not a decision) must route to the
+        check_spike_needed gate, which falls through to check_missing_artifacts on no match."""
+        state = data["states"].get("triage_outcome_failure", {})
+        assert state.get("on_no") == "check_spike_needed", (
+            f"triage_outcome_failure.on_no should be 'check_spike_needed', got {state.get('on_no')!r}"
+        )
+
+    def test_check_spike_needed_falls_through_to_check_missing_artifacts(
         self, data: dict
     ) -> None:
-        """triage_outcome_failure.on_no (not a decision) must route to check_missing_artifacts gate."""
-        state = data["states"].get("triage_outcome_failure", {})
+        """ENH-2640: check_spike_needed.on_no must preserve the existing wire/size-review
+        chain by falling through to check_missing_artifacts."""
+        state = data["states"].get("check_spike_needed", {})
         assert state.get("on_no") == "check_missing_artifacts", (
-            f"triage_outcome_failure.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
+            f"check_spike_needed.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
         )
+        assert state.get("on_error") == "check_missing_artifacts", (
+            f"check_spike_needed.on_error should be 'check_missing_artifacts', got {state.get('on_error')!r}"
+        )
+
+    def test_check_spike_needed_routes_to_run_spike(self, data: dict) -> None:
+        """ENH-2640: check_spike_needed.on_yes (spike_needed AND NOT spike_attempted) → run_spike."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("on_yes") == "run_spike", (
+            f"check_spike_needed.on_yes should be 'run_spike', got {state.get('on_yes')!r}"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"check_spike_needed.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+
+    def test_check_spike_needed_predicate_reads_both_flags(self, data: dict) -> None:
+        """ENH-2640: predicate must be a two-field condition (spike_needed AND NOT
+        spike_attempted) so an attempted spike never re-runs."""
+        action = data["states"].get("check_spike_needed", {}).get("action", "")
+        assert "spike_needed" in action, "check_spike_needed must read spike_needed"
+        assert "spike_attempted" in action, (
+            "check_spike_needed must read spike_attempted for the one-shot guard"
+        )
+
+    def test_run_spike_action_and_routing(self, data: dict) -> None:
+        """ENH-2640: run_spike invokes /ll:spike --auto and routes to the confidence rerun."""
+        state = data["states"].get("run_spike", {})
+        assert "/ll:spike" in state.get("action", ""), "run_spike must invoke /ll:spike"
+        assert "--auto" in state.get("action", ""), "run_spike must pass --auto"
+        assert state.get("action_type") == "slash_command"
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "rerun_confidence_after_spike"
+        assert state.get("on_error") == "rerun_confidence_after_spike"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
+        """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip
+        (mirrors rerun_confidence_after_wire, not the decide path's recheck state)."""
+        state = data["states"].get("rerun_confidence_after_spike", {})
+        assert "/ll:confidence-check" in state.get("action", "")
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "enqueue_or_skip"
+        assert state.get("on_error") == "enqueue_or_skip"
+        assert state.get("on_rate_limit_exhausted") == "done"
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
         """triage_outcome_failure.on_error must fall back safely to detect_children."""
@@ -7400,6 +7456,155 @@ class TestProofFirstTaskLoop:
         assert state.get("terminal") is True, (
             f"impl_failed.terminal should be True, got {state.get('terminal')!r}"
         )
+
+
+class TestSpikeGateLoop:
+    """Tests that spike-gate.yaml has correct structure and routing (ENH-2641)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "spike-gate.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_description_is_nonempty(self, data: dict) -> None:
+        """Loop must have a non-empty description."""
+        assert data.get("description"), "spike-gate must have a non-empty description"
+
+    def test_category_is_gate(self, data: dict) -> None:
+        """spike-gate is a gate loop, matching proof-first-task/assumption-firewall."""
+        assert data.get("category") == "gate", (
+            f"category should be 'gate', got {data.get('category')!r}"
+        )
+
+    def test_top_level_template_keys(self, data: dict) -> None:
+        """Top-level keys mirror the proof-first-task gate template."""
+        assert data.get("initial") == "check_issue_file"
+        assert data.get("max_steps") == 150
+        assert data.get("timeout") == 7200
+        assert data.get("on_handoff") == "spawn"
+        assert "lib/common.yaml" in data.get("import", [])
+
+    def test_context_declares_issue_id_and_impl_loop(self, data: dict) -> None:
+        """Context must declare issue_id (the spike/check-flag handle) and impl_loop."""
+        ctx = data.get("context", {})
+        assert "issue_id" in ctx, f"context must declare 'issue_id', got {list(ctx.keys())}"
+        assert "task" in ctx, f"context must declare 'task', got {list(ctx.keys())}"
+        assert ctx.get("impl_loop") == "general-task", (
+            f"impl_loop default should be 'general-task', got {ctx.get('impl_loop')!r}"
+        )
+
+    def test_check_issue_file_uses_shell_exit_and_skips_when_absent(self, data: dict) -> None:
+        """No issue_id → skip the gate and run the impl loop directly (proof-first parity)."""
+        state = data["states"].get("check_issue_file", {})
+        assert state.get("fragment") == "shell_exit", (
+            f"check_issue_file.fragment should be 'shell_exit', got {state.get('fragment')!r}"
+        )
+        assert state.get("on_yes") == "check_spike_needed", (
+            f"check_issue_file.on_yes should be 'check_spike_needed', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "run_impl", (
+            f"check_issue_file.on_no should be 'run_impl', got {state.get('on_no')!r}"
+        )
+
+    def test_check_spike_needed_gates_on_flag(self, data: dict) -> None:
+        """check_spike_needed uses check-flag; no spike_needed → skip to run_impl."""
+        state = data["states"].get("check_spike_needed", {})
+        assert state.get("fragment") == "shell_exit"
+        assert "check-flag" in state.get("action", "")
+        assert "spike_needed" in state.get("action", "")
+        assert state.get("on_yes") == "check_spike_completed", (
+            f"check_spike_needed.on_yes should be 'check_spike_completed', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "run_impl", (
+            f"check_spike_needed.on_no should be 'run_impl', got {state.get('on_no')!r}"
+        )
+
+    def test_check_spike_completed_short_circuits(self, data: dict) -> None:
+        """Already-proven spike (spike_completed:true) short-circuits straight to run_impl."""
+        state = data["states"].get("check_spike_completed", {})
+        assert state.get("fragment") == "shell_exit"
+        assert "spike_completed" in state.get("action", "")
+        assert state.get("on_yes") == "run_impl", (
+            f"check_spike_completed.on_yes should be 'run_impl', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "gate", (
+            f"check_spike_completed.on_no should be 'gate', got {state.get('on_no')!r}"
+        )
+
+    def test_gate_runs_spike_check_via_slash_command(self, data: dict) -> None:
+        """gate invokes /ll:spike --check as a slash command, evaluated by exit code."""
+        state = data["states"].get("gate", {})
+        assert state.get("action_type") == "slash_command", (
+            f"gate.action_type should be 'slash_command', got {state.get('action_type')!r}"
+        )
+        action = state.get("action", "")
+        assert "/ll:spike" in action and "--check" in action, (
+            f"gate.action should invoke '/ll:spike ... --check', got {action!r}"
+        )
+        assert state.get("evaluate", {}).get("type") == "exit_code", (
+            f"gate.evaluate.type should be 'exit_code', got {state.get('evaluate')!r}"
+        )
+
+    def test_gate_routing(self, data: dict) -> None:
+        """Pass → run_impl; fail → run_spike_auto (one remediation); error → blocked."""
+        state = data["states"].get("gate", {})
+        assert state.get("on_yes") == "run_impl", (
+            f"gate.on_yes should be 'run_impl', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "run_spike_auto", (
+            f"gate.on_no should be 'run_spike_auto', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "blocked", (
+            f"gate.on_error should be 'blocked', got {state.get('on_error')!r}"
+        )
+
+    def test_run_spike_auto_runs_auto_then_rechecks(self, data: dict) -> None:
+        """run_spike_auto invokes /ll:spike --auto once, then routes to recheck."""
+        state = data["states"].get("run_spike_auto", {})
+        assert state.get("action_type") == "slash_command"
+        action = state.get("action", "")
+        assert "/ll:spike" in action and "--auto" in action, (
+            f"run_spike_auto.action should invoke '/ll:spike ... --auto', got {action!r}"
+        )
+        assert state.get("next") == "recheck", (
+            f"run_spike_auto.next should be 'recheck', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "blocked"
+
+    def test_recheck_blocks_on_persistent_failure(self, data: dict) -> None:
+        """recheck re-runs --check; still failing → blocked, passing → run_impl."""
+        state = data["states"].get("recheck", {})
+        assert state.get("action_type") == "slash_command"
+        assert "--check" in state.get("action", "")
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_yes") == "run_impl", (
+            f"recheck.on_yes should be 'run_impl', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "blocked", (
+            f"recheck.on_no should be 'blocked', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "blocked"
+
+    def test_run_impl_uses_dynamic_loop(self, data: dict) -> None:
+        """run_impl delegates to the caller-supplied impl_loop with the task as input."""
+        state = data["states"].get("run_impl", {})
+        assert state.get("loop") == "${context.impl_loop}", (
+            f"run_impl.loop should be '${{context.impl_loop}}', got {state.get('loop')!r}"
+        )
+        assert "input" in state.get("with", {}), (
+            f"run_impl.with must bind 'input', got {list(state.get('with', {}).keys())}"
+        )
+        assert state.get("on_success") == "done"
+        assert state.get("on_failure") == "impl_failed"
+        assert state.get("on_error") == "impl_failed"
+
+    def test_terminals_are_terminal(self, data: dict) -> None:
+        """done / blocked / impl_failed must all be terminal."""
+        for name in ("done", "blocked", "impl_failed"):
+            state = data["states"].get(name, {})
+            assert state.get("terminal") is True, f"{name}.terminal should be True"
 
 
 class TestAdoptThirdPartyApiLoop:

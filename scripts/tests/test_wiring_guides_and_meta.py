@@ -19,7 +19,7 @@ import pytest
 
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
-    ("README.md", "67 skills", "FEAT-1287"),
+    ("README.md", "68 skills", "FEAT-1287"),
     ("CONTRIBUTING.md", "39 skill definitions", "FEAT-1287"),
     ("CONTRIBUTING.md", "explore-api/", "FEAT-1287"),
     ("docs/ARCHITECTURE.md", "## Learning Test Registry", "FEAT-1287"),

@@ -1,0 +1,91 @@
+name: spike-gate
+category: gate
+description: Opt-in wrapper that gates any implementation loop on /ll:spike --check — proves an issue's unproven internal mechanism before delegating to a caller-specified impl loop. When no issue_id is given, or the issue does not carry spike_needed (or already carries spike_completed), it skips the gate and runs the impl loop directly. On a failing check it runs /ll:spike --auto once and re-checks before blocking.
+initial: check_issue_file
+max_steps: 150
+timeout: 7200
+on_handoff: spawn
+import:
+  - lib/common.yaml
+
+context:
+  task: ""
+  issue_file: ""
+  issue_id: ""
+  impl_loop: "general-task"
+
+states:
+
+  # The spike gate keys off issue_id (the handle /ll:spike and ll-issues check-flag
+  # both resolve). issue_file is retained in context for caller parity with
+  # proof-first-task and future file-based consumers. No issue_id → nothing to gate,
+  # run the impl loop directly (proof-first-task check_issue_file.on_no parity).
+  check_issue_file:
+    fragment: shell_exit
+    action: test -n "${context.issue_id}"
+    on_yes: check_spike_needed
+    on_no: run_impl
+
+  # spike_needed is written by /ll:confidence-check Phase 4.10 when a zero-precedent
+  # internal mechanism drags outcome confidence down. Absent → no spike to gate on.
+  check_spike_needed:
+    fragment: shell_exit
+    action: ll-issues check-flag ${context.issue_id} spike_needed
+    on_yes: check_spike_completed
+    on_no: run_impl
+
+  # A spike already proven (spike_completed:true, written by /ll:spike) short-circuits
+  # the gate — re-running would be wasted work. Otherwise run the check.
+  check_spike_completed:
+    fragment: shell_exit
+    action: ll-issues check-flag ${context.issue_id} spike_completed
+    on_yes: run_impl
+    on_no: gate
+
+  # /ll:spike --check runs the spike's AC suite read-only: exit 0 = ACs pass (gate
+  # passes → impl), exit 1 = ACs fail or no spike package (attempt to prove it),
+  # 2+ = error (skills/spike/SKILL.md:221-234).
+  gate:
+    action: "/ll:spike ${context.issue_id} --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_yes: run_impl
+    on_no: run_spike_auto
+    on_error: blocked
+
+  # One remediation attempt: /ll:spike --auto proves the mechanism autonomously and
+  # writes spike_attempted/spike_completed (SKILL.md:190,199), then re-check.
+  run_spike_auto:
+    action: "/ll:spike ${context.issue_id} --auto"
+    action_type: slash_command
+    next: recheck
+    on_error: blocked
+
+  # Re-run the read-only check after the auto attempt. Still failing → the approach
+  # is disproven; block rather than implement against an unproven mechanism.
+  recheck:
+    action: "/ll:spike ${context.issue_id} --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_yes: run_impl
+    on_no: blocked
+    on_error: blocked
+
+  run_impl:
+    loop: "${context.impl_loop}"
+    with:
+      input: "${context.task}"
+    on_success: done
+    on_failure: impl_failed
+    on_error: impl_failed
+
+  done:
+    terminal: true
+
+  blocked:
+    terminal: true
+
+  impl_failed:
+    terminal: true

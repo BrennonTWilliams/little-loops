@@ -328,7 +328,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`, `scope-epic`, `create-epics-from-unparented`
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
-**Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`
+**Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`, `spike`
 **Scanning & Analysis**: `find-dead-code`, `explore-api`
 **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`

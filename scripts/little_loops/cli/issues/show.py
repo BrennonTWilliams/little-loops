@@ -185,6 +185,13 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     completed_at = frontmatter.get("completed_at")
     decision_needed_raw = frontmatter.get("decision_needed")
     missing_artifacts_raw = frontmatter.get("missing_artifacts")
+    # ENH-2640: spike-remediation flags read by autodev's check_spike_needed
+    # (spike_needed set by /ll:confidence-check Phase 4.10; spike_attempted/
+    # spike_completed written by /ll:spike). Surfaced as lowercased boolean
+    # strings via `show --json`, mirroring the decision_needed pattern.
+    spike_needed_raw = frontmatter.get("spike_needed")
+    spike_attempted_raw = frontmatter.get("spike_attempted")
+    spike_completed_raw = frontmatter.get("spike_completed")
     implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
     learning_tests_raw = frontmatter.get("learning_tests_required")
 
@@ -364,6 +371,16 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         else (str(missing_artifacts_raw).lower() if missing_artifacts_raw is not None else None),
         "implementation_order_risk": str(implementation_order_risk_raw).lower()
         if implementation_order_risk_raw is not None
+        else None,
+        # ENH-2640: spike-remediation flags for autodev check_spike_needed
+        "spike_needed": str(spike_needed_raw).lower()
+        if spike_needed_raw is not None
+        else None,
+        "spike_attempted": str(spike_attempted_raw).lower()
+        if spike_attempted_raw is not None
+        else None,
+        "spike_completed": str(spike_completed_raw).lower()
+        if spike_completed_raw is not None
         else None,
         "learning_tests_required": ", ".join(str(t) for t in learning_tests_raw)
         if learning_tests_raw

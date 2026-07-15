@@ -1,0 +1,3 @@
+interface:
+  display_name: "Spike"
+  short_description: "Use when asked to prove an unproven internal mechanism with an isolated code spi"

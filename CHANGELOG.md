@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.146.0] - 2026-07-15
+
+### Added
+
+- **`/ll:spike` skill** — retires concentrated technical risk on an issue by
+  planning, implementing, and verifying a **code spike** (a standalone library +
+  test class proving a novel *internal* mechanism in isolation) before the real
+  integration point is touched. Reads the issue's `### Outcome Risk Factors`,
+  writes a plan in the `plan-template.md` shape (Context, Approach, Critical files,
+  Implementation, AC→test table with a mandatory regression-guard test,
+  Verification, Out of Scope, Promotion), builds the spike under
+  `scripts/tests/spike/<slug>/`, runs the AC suite plus named regression suites,
+  and on success appends `## Spike Results` and sets `spike_completed: true` /
+  `spike_attempted: true` so re-running `/ll:confidence-check` recovers the
+  outcome-confidence points the unproven mechanism cost. A failed spike is also
+  signal (writes `## Spike Findings`, routes to `/ll:decide-issue` /
+  `/ll:issue-size-review`). Flags: `--auto`, `--check` (FSM exit-code evaluator),
+  `--plan-only`, `--plan <file>`, `--force`. External-API risks are suppressed and
+  routed to `/ll:explore-api` instead. Consumed downstream by ENH-2568's autodev
+  routing (FEAT-2567, EPIC-2570).
+- **autodev spike-remediation branch** — `autodev.yaml`'s `triage_outcome_failure`
+  now routes an outcome-confidence failure caused by an unproven internal
+  mechanism (`spike_needed: true`, set by `/ll:confidence-check` Phase 4.10)
+  through three new states: `check_spike_needed` (predicate `spike_needed AND
+  NOT spike_attempted`, a one-shot guard read from `ll-issues show --json`),
+  `run_spike` (`/ll:spike --auto`), and `rerun_confidence_after_spike`
+  (`/ll:confidence-check`, re-scoring before `enqueue_or_skip`). Inserted between
+  the decide and missing-artifacts branches so an unproven mechanism is proven
+  rather than mis-routed into decompose/size-review. `ll-issues show --json` now
+  surfaces `spike_needed`/`spike_attempted`/`spike_completed`
+  (ENH-2640, EPIC-2570).
+
+## [1.145.0] - 2026-07-15
+
+### Added
+
+- **`spike_needed` frontmatter flag** — `/ll:confidence-check` gains Phase 4.10,
+  which sets `spike_needed: true` when the Phase 4.5 Outcome Risk Factors describe
+  an unproven **internal** mechanism (signal phrases like "no precedent" / "no
+  existing test exercises") and the score condition holds (`score_test_coverage`
+  <= 10 or Criterion A Depth Moderate/Deep). Risk factors naming an external API
+  surface are suppressed and routed to `/ll:explore-api` instead; issues already
+  carrying `spike_attempted`/`spike_completed` are never re-flagged. This turns the
+  ad-hoc "you should spike this" advice into a machine-readable routing signal and
+  a base-rate measurement for the spike lattice (ENH-2569, EPIC-2570).
+
 ## [1.144.0] - 2026-07-15
 
 ### Changed
