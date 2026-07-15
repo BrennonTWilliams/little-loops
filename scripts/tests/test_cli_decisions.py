@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import UTC
 from pathlib import Path
@@ -373,7 +374,8 @@ class TestDecisionsCLIAdd:
             result = main_issues()
 
         assert result == 0
-        assert decisions_path.exists()
+        # BUG-2644: adds land as a fragment under .ll/decisions.d/, not the flat file.
+        assert len(load_decisions(decisions_path)) == 1
 
     def test_add_decision(
         self,
@@ -690,7 +692,7 @@ class TestDecisionsCLICoupling:
             result = main_issues()
 
         assert result == 0
-        assert decisions_path.exists()
+        # BUG-2644: adds land as fragments, not the flat file; assert via the union read.
         entries = load_decisions(decisions_path)
         assert len(entries) == 1
         entry = entries[0]
@@ -772,7 +774,7 @@ class TestDecisionsCLICoupling:
         sample_config: dict[str, Any],
         decisions_path: Path,
     ) -> None:
-        """auto-generated coupling IDs use COUPLING- prefix."""
+        """auto-generated IDs are uuid-shaped (BUG-2644: no cross-branch count collision)."""
         with patch.object(
             sys,
             "argv",
@@ -799,7 +801,7 @@ class TestDecisionsCLICoupling:
             main_issues()
 
         entries = load_decisions(decisions_path)
-        assert entries[0].id.startswith("COUPLING-")
+        assert re.match(r"^[0-9a-f-]{36}$", entries[0].id)
 
     def test_list_coupling_type_filter(
         self,

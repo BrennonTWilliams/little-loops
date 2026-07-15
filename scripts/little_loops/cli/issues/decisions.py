@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -428,17 +429,11 @@ def _cmd_add(
             print("Error: --then-check is required for type 'coupling'", file=sys.stderr)
             return 1
 
-    # Generate an ID if not provided
+    # Generate an ID if not provided. Use a uuid rather than a "count on disk + 1"
+    # counter so two divergent branches never mint the same id (BUG-2642/BUG-2644).
     entry_id = getattr(args, "entry_id", None)
     if not entry_id:
-        existing = list_entries(path=path, type=entry_type)
-        prefix = {
-            "rule": args.category.upper() if args.category else "RULE",
-            "decision": args.category.upper() if args.category else "DEC",
-            "exception": args.category.upper() + "-EX" if args.category else "EX",
-            "coupling": "COUPLING",
-        }[entry_type]
-        entry_id = f"{prefix}-{len(existing) + 1:03d}"
+        entry_id = str(uuid.uuid4())
 
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     labels = [lbl.strip() for lbl in args.label.split(",")] if getattr(args, "label", None) else []
@@ -857,9 +852,8 @@ def _cmd_extract_from_completed(config, args, path) -> int:
                 total_skipped += 1
                 continue
 
-            existing_rules_typed = list_entries(path, type="rule")
-            cat_prefix = category[:4].upper()
-            entry_id = f"{cat_prefix}-{len(existing_rules_typed) + 1:03d}"
+            # uuid id: avoids cross-branch collisions on a shared count (BUG-2644).
+            entry_id = str(uuid.uuid4())
 
             entry = RuleEntry(
                 id=entry_id,

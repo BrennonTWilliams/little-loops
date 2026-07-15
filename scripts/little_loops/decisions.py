@@ -6,6 +6,8 @@ decisions, team-enforced rules, and exceptions stored in `.ll/decisions.yaml`.
 
 from __future__ import annotations
 
+import json
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -15,13 +17,48 @@ if TYPE_CHECKING:
 
 import yaml
 
-from little_loops.file_utils import atomic_write
+from little_loops.file_utils import atomic_write, atomic_write_json
 
 _DEFAULT_LOG_PATH = Path(".ll") / "decisions.yaml"
 
 
 def _resolve_path(path: Path | None) -> Path:
     return path if path is not None else Path.cwd() / _DEFAULT_LOG_PATH
+
+
+def _fragments_dir(log_path: Path) -> Path:
+    """Derive the append-only fragment directory from the flat-file *log_path*.
+
+    ``.ll/decisions.yaml`` → ``.ll/decisions.d`` (sibling directory). Derived
+    rather than hardcoded so a custom ``decisions.log_path`` still lands its
+    fragments in a matching sibling dir (BUG-2644).
+    """
+    return log_path.with_suffix(".d")
+
+
+def _load_fragments(frag_dir: Path) -> list[AnyEntry]:
+    """Read every ``*.json`` fragment in *frag_dir*, skipping malformed ones.
+
+    Mirrors ``cli/loop/_helpers.py::read_queue_entries()`` malformed-skip
+    semantics: a bad fragment (unparseable JSON, missing ``id``, unknown
+    ``type``, or unreadable) is silently skipped rather than propagating an
+    uncaught error out of ``load_decisions()``. Entries are returned sorted by
+    ``(timestamp, filename)`` for a stable, deterministic union order. Two
+    fragments carrying the same ``id`` are both preserved (no dict-keyed
+    overwrite) so a colliding id surfaces in the merged result (BUG-2642).
+    """
+    if not frag_dir.exists():
+        return []
+    parsed: list[tuple[str, str, AnyEntry]] = []
+    for f in frag_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            entry = _entry_from_dict(data)
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError, OSError):
+            continue
+        parsed.append((data.get("timestamp", ""), f.name, entry))
+    parsed.sort(key=lambda t: (t[0], t[1]))
+    return [entry for _, _, entry in parsed]
 
 
 @dataclass
@@ -282,20 +319,34 @@ def _entry_from_dict(data: dict[str, Any]) -> AnyEntry:
 
 
 def load_decisions(path: Path | None = None) -> list[AnyEntry]:
-    """Load all decision log entries from YAML; returns empty list if file absent."""
+    """Load all decision log entries as one logical log (flat file ∪ fragments).
+
+    Presents the legacy flat ``entries:`` list (or bare top-level list) *plus*
+    every ``.ll/decisions.d/*.json`` fragment as a single merged list. The flat
+    file is still parsed strictly (malformed YAML / missing ``id`` / unknown
+    ``type`` raise, preserving ENH-2589 corruption gating); malformed *fragments*
+    are skipped (BUG-2644). Returns an empty list when neither source exists.
+    """
     resolved = _resolve_path(path)
-    if not resolved.exists():
-        return []
-    raw = resolved.read_text(encoding="utf-8")
-    data = yaml.safe_load(raw)
-    if not data:
-        return []
-    entries = data if isinstance(data, list) else data.get("entries", [])
-    return [_entry_from_dict(e) for e in entries]
+    legacy: list[AnyEntry] = []
+    if resolved.exists():
+        data = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+        if data:
+            entries = data if isinstance(data, list) else data.get("entries", [])
+            legacy = [_entry_from_dict(e) for e in entries]
+    return legacy + _load_fragments(_fragments_dir(resolved))
 
 
 def save_decisions(entries: list[AnyEntry], path: Path | None = None) -> None:
-    """Atomically persist decision log entries to YAML."""
+    """Atomically persist entries to the flat YAML file and compact fragments.
+
+    Rewrites the whole flat file (the pre-BUG-2644 behavior). Because ``entries``
+    is normally the *union* view (flat ∪ fragments) obtained from
+    ``load_decisions()``, any fragments are now folded into the flat file, so the
+    fragment directory is cleared afterward to keep a subsequent load from
+    double-counting. This makes ``save_decisions()`` the compaction point;
+    ordinary appends go through ``add_entry()`` and never rewrite the flat file.
+    """
     resolved = _resolve_path(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     content = yaml.dump(
@@ -305,13 +356,22 @@ def save_decisions(entries: list[AnyEntry], path: Path | None = None) -> None:
         allow_unicode=True,
     )
     atomic_write(resolved, content)
+    frag_dir = _fragments_dir(resolved)
+    if frag_dir.exists():
+        for f in frag_dir.glob("*.json"):
+            f.unlink(missing_ok=True)
 
 
 def add_entry(entry: AnyEntry, path: Path | None = None) -> None:
-    """Append a new entry to the decisions log."""
-    entries = load_decisions(path)
-    entries.append(entry)
-    save_decisions(entries, path)
+    """Append a new entry as its own fragment file (append-only, no rewrite).
+
+    Writes one ``.ll/decisions.d/<uuid>.json`` fragment rather than rewriting the
+    whole flat file, so concurrent appends from divergent branches never touch
+    the same file region and merge cleanly (BUG-2642 / BUG-2644).
+    """
+    resolved = _resolve_path(path)
+    frag_dir = _fragments_dir(resolved)
+    atomic_write_json(frag_dir / f"{uuid.uuid4()}.json", entry.to_dict())
 
 
 def list_entries(
