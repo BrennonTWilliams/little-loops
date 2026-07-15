@@ -19,6 +19,7 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import (
     cleanup_worktree,
     detect_default_branch,
+    format_verify_detail,
     merge_epic_branch_to_base,
     open_pr_for_epic_branch,
     setup_worktree,
@@ -489,3 +490,47 @@ class TestOpenPrForEpicBranch:
                 repo_path=tmp_path,
                 logger=logger,
             )
+
+
+class TestFormatVerifyDetail:
+    """format_verify_detail() (ENH-2641): the verify gate must preserve the
+    diagnostic *tail* (pytest FAILED / short-summary lines) of a failed command
+    rather than a first-500-char prefix that leading stderr warnings crowd out
+    (BUG-2640)."""
+
+    def _pytest_streams(self) -> tuple[str, str]:
+        # pytest-benchmark / xdist warnings go to stderr; the FAILED / short
+        # summary block goes to stdout at the tail. Reproduces BUG-2640's shape.
+        stderr = "\n".join(f"PytestBenchmarkWarning: bench line {i}" for i in range(60))
+        stdout = (
+            "collected 9 items\n\n"
+            + "\n".join(f"test_issues_cli.py::test_case_{i} FAILED" for i in range(9))
+            + "\n\n=== short test summary info ===\n"
+            + "\n".join(f"FAILED test_issues_cli.py::test_case_{i}" for i in range(9))
+            + "\n9 failed, 100 passed in 71.02s\n"
+        )
+        return stdout, stderr
+
+    def test_failure_summary_survives_leading_warnings(self) -> None:
+        stdout, stderr = self._pytest_streams()
+        detail = format_verify_detail(stdout, stderr)
+
+        assert "short test summary info" in detail
+        assert "9 failed, 100 passed" in detail
+        assert "FAILED test_issues_cli.py::test_case_8" in detail
+
+    def test_result_is_bounded(self) -> None:
+        stdout, stderr = self._pytest_streams()
+        detail = format_verify_detail(stdout, stderr, max_lines=40, max_chars=2000)
+
+        assert len(detail) <= 2000
+        assert len(detail.splitlines()) <= 40
+
+    def test_stdout_only_failure_preserved(self) -> None:
+        # No stderr: the whole tail comes from stdout.
+        detail = format_verify_detail("line1\nline2\nFAILED foo\n", "")
+        assert "FAILED foo" in detail
+
+    def test_empty_streams_return_empty(self) -> None:
+        assert format_verify_detail(None, None) == ""
+        assert format_verify_detail("", "   ") == ""

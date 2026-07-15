@@ -375,7 +375,11 @@ states:
           if returncode is not None:
               (run_dir / 'verify-returncode.txt').write_text(str(returncode))
           if detail:
-              (run_dir / 'verify-detail.txt').write_text(detail[:500])
+              # ENH-2641: `detail` is already a bounded line-tail (produced by
+              # format_verify_detail below / worktree_utils on the epic path);
+              # write it verbatim rather than re-clipping its head to 500 chars,
+              # which was dropping the pytest FAILED/summary lines.
+              (run_dir / 'verify-detail.txt').write_text(detail)
           print(verdict)
           raise SystemExit(0)
 
@@ -391,6 +395,11 @@ states:
       branch_file = run_dir / 'epic-branch-name.txt'
       epic_branch = branch_file.read_text().strip() if branch_file.exists() else ''
 
+      # ENH-2641: capture the diagnostic line-tail of combined stderr+stdout so
+      # the pytest FAILED/short-summary lines (written to stdout at the tail)
+      # survive rather than being crowded out by leading stderr warnings.
+      from little_loops.worktree_utils import format_verify_detail
+
       if not epic_branch:
           for cmd in (test_cmd, lint_cmd):
               if not cmd:
@@ -399,7 +408,7 @@ states:
                   shlex.split(cmd), capture_output=True, text=True
               )
               if result.returncode != 0:
-                  detail = (result.stderr or result.stdout or '').strip()
+                  detail = format_verify_detail(result.stdout, result.stderr)
                   emit(classify(result.returncode), result.returncode, detail)
           emit('passed', 0)
 

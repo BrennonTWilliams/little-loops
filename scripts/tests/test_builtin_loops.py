@@ -2955,6 +2955,26 @@ class TestVerifyStateConfigReadShell:
         assert self._run(tmp_path, test_cmd="true") == "passed"
         assert not (tmp_path / "run" / "verify-detail.txt").exists()
 
+    def test_detail_keeps_failure_summary_past_leading_warnings(self, tmp_path: Path) -> None:
+        """ENH-2641: when leading stderr warnings precede the stdout FAILED
+        summary (the BUG-2640 shape), verify-detail.txt must retain the summary
+        tail, not just the warnings. A first-500-char prefix of `stderr or
+        stdout` would keep only the warnings and drop the FAILED lines."""
+        # 60 stderr warning lines, then a stdout FAILED/summary block, then exit 1.
+        cmd = (
+            "sh -c '"
+            "for i in $(seq 1 60); do echo PytestBenchmarkWarning line $i >&2; done; "
+            "echo \"=== short test summary info ===\"; "
+            "echo \"FAILED test_issues_cli.py::test_case_1\"; "
+            "echo \"1 failed, 100 passed in 71.02s\"; "
+            "exit 1'"
+        )
+        assert self._run(tmp_path, test_cmd=cmd) == "failed"
+        detail = (tmp_path / "run" / "verify-detail.txt").read_text()
+        assert "short test summary info" in detail
+        assert "FAILED test_issues_cli.py::test_case_1" in detail
+        assert "1 failed, 100 passed" in detail
+
     def test_failed_when_lint_cmd_fails(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, test_cmd="true", lint_cmd="false") == "failed"
 

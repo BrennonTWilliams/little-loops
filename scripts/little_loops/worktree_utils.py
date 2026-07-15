@@ -242,6 +242,35 @@ def _is_ll_branch(branch_name: str) -> bool:
     )
 
 
+def format_verify_detail(
+    stdout: str | None,
+    stderr: str | None,
+    *,
+    max_lines: int = 40,
+    max_chars: int = 2000,
+) -> str:
+    """Capture the diagnostic *tail* of a failed verify command (ENH-2641).
+
+    The epic-merge verify gate previously recorded a first-500-char prefix of
+    ``stderr or stdout``. pytest-benchmark / xdist emit ``PytestBenchmarkWarning``
+    banners to **stderr**, while pytest's ``=== short test summary info ===`` /
+    ``FAILED …`` lines go to **stdout** at the tail. The old capture preferred a
+    non-empty stderr and clipped its head, so the surviving artifact held only
+    warnings and dropped the real failure summary (BUG-2640).
+
+    Combine both streams in ``stderr + stdout`` order (matching the
+    ``merge_coordinator.py`` idiom) so stdout — carrying the failure summary —
+    lands at the tail, then keep the last ``max_lines`` lines bounded to
+    ``max_chars`` (mirrors the ``splitlines()[-N:]`` scrollback cap in
+    ``cli/loop/_helpers.py``).
+    """
+    combined = "\n".join(s for s in (stderr or "", stdout or "") if s.strip())
+    tail = "\n".join(combined.splitlines()[-max_lines:]).strip()
+    if len(tail) > max_chars:
+        tail = tail[-max_chars:].strip()
+    return tail
+
+
 def verify_epic_branch_before_merge(
     epic_id: str,
     epic_branch: str,
@@ -343,7 +372,7 @@ def verify_epic_branch_before_merge(
                 env=env,
             )
             if result.returncode != 0:
-                detail = (result.stderr or result.stdout or "").strip()[:500]
+                detail = format_verify_detail(result.stdout, result.stderr)
                 message = f"{label}_cmd failed (exit {result.returncode}): {detail}"
                 logger.warning(f"EPIC {epic_id}: {message}")
                 return False, message, result.returncode
