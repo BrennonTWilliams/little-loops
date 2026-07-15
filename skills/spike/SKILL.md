@@ -231,7 +231,8 @@ When `CHECK_MODE` is true, run as an FSM loop evaluator with **no writes**:
 
 This integrates with FSM `evaluate: type: exit_code` routing (0=pass, 1=fail,
 2+=error). `--check` implies `AUTO_MODE=true` and performs no frontmatter or
-issue-body writes.
+issue-body writes. The `spike-gate.yaml` wrapper loop (ENH-2641) consumes this
+exit-code contract to gate any implementation loop on a proven internal mechanism.
 
 ## Auto Mode Behavior
 

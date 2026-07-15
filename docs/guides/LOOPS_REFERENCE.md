@@ -162,6 +162,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `oracles/enumerate-and-prove` | Oracle sub-loop shared by `adopt-third-party-api` and `integrate-sdk` — parses a tagged `ENUMERATE_JSON` line from LLM output, extracts and validates the targets list, flattens to a comma-joined string, and proves each target via `ready-to-implement-gate`; eliminates duplicated parse → flatten → prove state chains; invoked via `loop: oracles/enumerate-and-prove` with `with:` context passthrough (ENH-1873) |
 | `learning-tests-audit` | Registry health audit — scans the Learning Test Registry for stale records via a three-phase detection pipeline (installed-package enumeration → LLM-assisted package classification → PyPI/npm registry release-date comparison), bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report (newly stale, already stale, refuted, open TODOs). Run at sprint start to surface registry maintenance items before they cause integration drift. |
 | `proof-first-task` | Opt-in wrapper that gates any implementation loop on the Learning-Test Registry — when a caller supplies `targets_csv` (the registered `learning_tests_required` list), proves that list directly via `ready-to-implement-gate`; otherwise falls back to `assumption-firewall`, which extracts external-API assumptions from the issue file and proves each. Either path then delegates to a caller-specified impl loop (default `general-task`). When no `issue_file` is given, skips the gate and runs the impl loop directly. |
+| `spike-gate` | Opt-in wrapper that gates any implementation loop on `/ll:spike --check` — the internal-mechanism analogue of `proof-first-task`. When the issue carries `spike_needed` (set by `/ll:confidence-check` Phase 4.10) and not yet `spike_completed`, runs the read-only spike check; on failure runs `/ll:spike --auto` once and re-checks before routing `blocked`. Skips the gate (delegates straight to the caller-specified impl loop, default `general-task`) when no `issue_id` is given, `spike_needed` is unset, or `spike_completed` is already true. |
 | `migrate-sdk-version` | SDK migration helper — re-proves stale learning-test records after a dependency bump, classifying each as still-valid, needs-upgrade, or refuted, and producing a triage report |
 
 Run:
@@ -180,6 +181,10 @@ ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent stri
 # Scaffold a proof-backed SDK integration (auto-detects existing usage vs. greenfield)
 ll-loop run integrate-sdk --context target="anthropic" --context goal="streaming completions with tool use"
 # Scans for existing imports → enumerates surfaces → proves each → scaffolds src/integrations/anthropic.py
+
+# Gate an implementation loop on a proven internal mechanism before implementing
+ll-loop run spike-gate --context issue_id="ENH-2565" --context impl_loop="rn-implement" --context task="implement ENH-2565"
+# Checks spike_needed/spike_completed → runs /ll:spike --check → on fail /ll:spike --auto + re-check → delegates to impl_loop
 ```
 
 ### Research & Knowledge

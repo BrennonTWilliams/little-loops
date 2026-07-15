@@ -359,6 +359,7 @@ Dozens of loops ship with little-loops, grouped by purpose:
 | Routing & orchestration | `loop-router`, `loop-composer`, `goal-cluster` |
 | General-purpose | `general-task`, `rn-build`, `dataset-curation` |
 | API adoption | `adopt-third-party-api`, `assumption-firewall`, `integrate-sdk` |
+| Risk-reduction gates | `proof-first-task`, `spike-gate`, `ready-to-implement-gate` |
 | Research & knowledge | `deep-research`, `apply-research`, `rn-plan` |
 | Issue management | `rn-implement`, `recursive-refine`, `autodev`, `auto-refine-and-implement` |
 | Code quality | `dead-code-cleanup`, `docs-sync`, `test-coverage-improvement` |
