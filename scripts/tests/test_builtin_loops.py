@@ -3759,10 +3759,19 @@ class TestAutodevLoop:
         )
 
     def test_enqueue_or_skip_on_no_routes_to_recheck_after_size_review(self, data: dict) -> None:
-        """enqueue_or_skip.on_no (no children) must route to recheck_after_size_review (BUG-1230)."""
+        """enqueue_or_skip.on_no (no children) routes through the decide-path spike
+        gate before recheck_after_size_review (BUG-1230 skip path, now gated by
+        BUG-2654's check_spike_needed_before_skip which itself falls through to
+        recheck_after_size_review on no match)."""
         state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_no") == "recheck_after_size_review", (
-            f"enqueue_or_skip.on_no should be 'recheck_after_size_review', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_spike_needed_before_skip", (
+            f"enqueue_or_skip.on_no should be 'check_spike_needed_before_skip', "
+            f"got {state.get('on_no')!r}"
+        )
+        gate = data["states"].get("check_spike_needed_before_skip", {})
+        assert gate.get("on_no") == "recheck_after_size_review", (
+            "the spike gate must preserve the BUG-1230 leaf-skip by falling through "
+            "to recheck_after_size_review on no match"
         )
 
     def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
@@ -3992,6 +4001,43 @@ class TestAutodevLoop:
         assert state.get("next") == "enqueue_or_skip"
         assert state.get("on_error") == "enqueue_or_skip"
         assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_enqueue_or_skip_on_no_routes_to_decide_path_spike_gate(self, data: dict) -> None:
+        """BUG-2654: enqueue_or_skip.on_no (no children) must route through the
+        decide-path spike gate before any low_readiness skip, so a spike_needed
+        issue arriving via the decide/size-review path gets its one shot at run_spike."""
+        state = data["states"].get("enqueue_or_skip", {})
+        assert state.get("on_no") == "check_spike_needed_before_skip", (
+            f"enqueue_or_skip.on_no should be 'check_spike_needed_before_skip', "
+            f"got {state.get('on_no')!r}"
+        )
+
+    def test_decide_path_spike_gate_routes_to_run_spike(self, data: dict) -> None:
+        """BUG-2654: check_spike_needed_before_skip.on_yes (spike_needed AND NOT
+        spike_attempted) must reach run_spike (AC 1)."""
+        state = data["states"].get("check_spike_needed_before_skip", {})
+        assert state.get("on_yes") == "run_spike", (
+            f"check_spike_needed_before_skip.on_yes should be 'run_spike', got {state.get('on_yes')!r}"
+        )
+        assert state.get("fragment") == "shell_exit"
+        action = state.get("action", "")
+        assert "spike_needed" in action and "spike_attempted" in action, (
+            "gate predicate must read both spike flags for the one-shot guard (AC 2)"
+        )
+
+    def test_decide_path_spike_gate_falls_through_to_low_readiness_skip(self, data: dict) -> None:
+        """BUG-2654: on no match, the decide-path gate must preserve the existing
+        low_readiness leaf-skip by falling through to recheck_after_size_review —
+        NOT the triage-path check_missing_artifacts fall-through (AC 3)."""
+        state = data["states"].get("check_spike_needed_before_skip", {})
+        assert state.get("on_no") == "recheck_after_size_review", (
+            f"check_spike_needed_before_skip.on_no should be 'recheck_after_size_review', "
+            f"got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "recheck_after_size_review", (
+            f"check_spike_needed_before_skip.on_error should be 'recheck_after_size_review', "
+            f"got {state.get('on_error')!r}"
+        )
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
         """triage_outcome_failure.on_error must fall back safely to detect_children."""

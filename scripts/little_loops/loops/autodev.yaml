@@ -804,8 +804,34 @@ states:
       fi
     fragment: shell_exit
     on_yes: dequeue_next
-    on_no: recheck_after_size_review
+    on_no: check_spike_needed_before_skip
     on_error: dequeue_next
+
+  check_spike_needed_before_skip:
+    # BUG-2654: the decide path (recheck_after_decide.on_no → snap_and_size_review
+    # → run_size_review → enqueue_or_skip) and the no-decide size-review path both
+    # funnel through enqueue_or_skip before any low_readiness skip, but neither
+    # ever visits triage_outcome_failure's check_spike_needed gate. A
+    # spike_needed:true issue was therefore skipped as low_readiness with its spike
+    # remedy structurally bypassed. Interpose this decide-path-specific spike gate
+    # on the no-children skip edge so a pending spike gets its one shot before the
+    # recheck_after_size_review low_readiness write. Predicate is identical to
+    # check_spike_needed (spike_needed AND NOT spike_attempted); only the no-match
+    # fall-through differs — on_no → recheck_after_size_review keeps the leaf-skip
+    # semantics identical to the pre-fix behaviour (vs. check_spike_needed's
+    # triage-path check_missing_artifacts fall-through). The spike_attempted
+    # one-shot guard prevents a double-fire across the triage and decide paths and
+    # is what lets the post-spike re-entry (rerun_confidence_after_spike.next →
+    # enqueue_or_skip → here) fall through cleanly to the skip write.
+    action: |
+      ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+    fragment: shell_exit
+    on_yes: run_spike
+    on_no: recheck_after_size_review
+    on_error: recheck_after_size_review
 
   recheck_after_size_review:
     # BUG-1230: size-review declined to decompose the issue (leaf-sized or

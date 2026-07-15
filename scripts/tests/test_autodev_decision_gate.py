@@ -421,6 +421,55 @@ class TestSpikeTriageStructural:
         assert state.get("on_rate_limit_exhausted") == "done"
 
 
+class TestDecidePathSpikeGate:
+    """BUG-2654: the decide/size-review skip path must give a pending spike its
+    one shot at run_spike before writing low_readiness.
+
+    ENH-2640 wired check_spike_needed only onto triage_outcome_failure.on_no.
+    An issue routed down the decide path (or the no-decide size-review path)
+    funnels through enqueue_or_skip → recheck_after_size_review and skips as
+    low_readiness without ever visiting the spike gate. This gate closes that
+    class by interposing check_spike_needed_before_skip on enqueue_or_skip.on_no.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_gate_state_exists(self, data: dict[str, Any]) -> None:
+        assert "check_spike_needed_before_skip" in data.get("states", {}), (
+            "check_spike_needed_before_skip missing from autodev.yaml (BUG-2654)"
+        )
+
+    def test_enqueue_or_skip_routes_to_spike_gate(self, data: dict[str, Any]) -> None:
+        """The no-children skip edge must reach the spike gate, not skip directly."""
+        state = data["states"]["enqueue_or_skip"]
+        assert state.get("on_no") == "check_spike_needed_before_skip", (
+            "enqueue_or_skip.on_no must route through the spike gate before "
+            "recheck_after_size_review (BUG-2654)"
+        )
+
+    def test_gate_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:
+        """Predicate must be spike_needed AND NOT spike_attempted (one-shot)."""
+        state = data["states"]["check_spike_needed_before_skip"]
+        action = state.get("action", "")
+        assert "spike_needed" in action
+        assert "spike_attempted" in action, (
+            "gate must read spike_attempted for the one-shot guard (AC 2)"
+        )
+        assert state.get("fragment") == "shell_exit"
+
+    def test_gate_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["check_spike_needed_before_skip"]
+        assert state.get("on_yes") == "run_spike", "spike match must reach run_spike (AC 1)"
+        # No-match must preserve the leaf-skip regression (AC 3): fall through to
+        # the existing low_readiness write, NOT the triage-path check_missing_artifacts.
+        assert state.get("on_no") == "recheck_after_size_review", (
+            "no-match must fall through to the existing low_readiness skip (AC 3)"
+        )
+        assert state.get("on_error") == "recheck_after_size_review"
+
+
 class TestCheckDecisionBeforeSizeReviewRouting:
     """BUG-2519: FSMExecutor-driven assertion on the gate's error-fallthrough.
 
