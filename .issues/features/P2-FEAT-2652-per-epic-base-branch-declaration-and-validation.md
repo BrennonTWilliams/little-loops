@@ -14,12 +14,12 @@ labels:
 - parallel
 - worktree
 - sprint
-confidence_score: 96
-outcome_confidence: 72
-score_complexity: 17
-score_test_coverage: 22
-score_ambiguity: 18
-score_change_surface: 15
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 18
 spike_attempted: true
 spike_completed: true
 ---
@@ -219,6 +219,64 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Parent EPIC: `EPIC-2451` (per-epic integration-branch strategy). Related
   hardcoded-base bug: `BUG-2323`.
 
+### Post-ENH-2656 Update (re-refine 2026-07-15)
+
+_Added by `/ll:refine-issue` — the `depends_on: ENH-2656` precursor has now landed
+(commit `5e780e7c`). Several anchors above were written pre-ENH-2656 and are now
+STALE. The implementation scope collapses dramatically. This addendum supersedes
+the "three/four independent derivation paths must stay in lockstep" framing in
+**Current Behavior**, **Confidence Check Notes → Outcome Risk Factors**, and the
+per-path bullets in **Codebase Research Findings** above._
+
+**The single seam now exists — extend ONE function body:**
+- ENH-2656 added `resolve_epic_base(epic_id, base_branch)` and
+  `resolve_epic_branch_name(epic_id, prefix, slug)` to
+  `scripts/little_loops/worktree_utils.py:65-107`. `resolve_epic_base` returns
+  `base_branch` verbatim today and its docstring **explicitly reserves itself as
+  the FEAT-2652 seam**: _"FEAT-2652 extends **only this function** to prefer a
+  per-EPIC `base_branch:` declaration ... no caller changes required, retiring
+  the four hand-synced derivation paths this resolver consolidates."_ The
+  `epic_id` param is already accepted (unused today) precisely so the per-EPIC
+  lookup needs no signature change.
+- **Implementation reduces to**: (1) add `base_branch: str | None = None` to
+  `IssueInfo` + alias parse; (2) extend `resolve_epic_base`'s body to look up the
+  EPIC's declared `base_branch` by `epic_id` and prefer it over the passed
+  default; (3) add the sprint-dispatch validation gate. Steps 2/6/7/10 of the
+  original Implementation Steps / Wiring Phase (threading the base through
+  `_ensure_epic_branch`, the second call site, the FSM state, the
+  `test_builtin_loops` substring assertions) are **already done by ENH-2656** —
+  do not re-thread them.
+
+**STALE anchors (corrected):**
+- ⚠ **Current Behavior** claims `_ensure_epic_branch()` (~1739) "hardcodes the
+  fork point" via `["branch", branch, self.parallel_config.base_branch]`. No
+  longer true. The method is now `_ensure_epic_branch(self, branch, base)`
+  (`worker_pool.py:1713`); the fork reads the `base` **parameter**. The caller
+  `_resolve_branch_targets()` (`worker_pool.py:1615-1647`) resolves the base via
+  `resolve_epic_base(epic_id, self.parallel_config.base_branch)` at line 1645 and
+  passes it in at 1646.
+- ⚠ **orchestrator.py** re-derivation moved from an inline `f"{prefix}..."` to a
+  `resolve_epic_branch_name()` call (`orchestrator.py:462-466`). This site needs
+  only the branch **name** (it diffs against the already-created EPIC branch), so
+  it does **not** call `resolve_epic_base` and needs **no** per-EPIC-base wiring.
+- ⚠ **FSM `checkout_epic_branch`** state now imports both resolvers directly
+  (`auto-refine-and-implement.yaml:180-184, 226-228`) — no longer an independent
+  path; it inherits the override automatically once `resolve_epic_base` is
+  extended.
+- ✓ Still accurate: the second `_resolve_branch_targets()` call site at
+  `worker_pool.py:360` (pass-through — inherits the change, no edit).
+
+**Reduced-scope test targets:**
+- `scripts/tests/test_worktree_utils.py::TestResolveEpicBase` (added by ENH-2656)
+  is now the primary unit-test home for the per-EPIC override — extend it with
+  "declared base preferred over default" / "no field falls back to default" cases
+  rather than adding fork tests in `test_worker_pool.py`.
+- Sprint-dispatch gate: still `test_sprint_integration.py::TestSprintPreflightGate`
+  shape (unchanged by ENH-2656).
+- The `test_builtin_loops.py` substring assertions were already converted by
+  ENH-2656 to resolver import/call checks — the "likely to break" warning above
+  no longer applies.
+
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -366,6 +424,8 @@ ENH-2653 (guardrail) and BUG-2651 (independent triage bug surfaced in same run).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-15T23:59:00 - `35707e3e-676f-4f72-b932-da80a7362563.jsonl`
+- `/ll:refine-issue` - 2026-07-15T23:55:52 - `80f3560e-5b13-43a5-8a20-af13c7fc2332.jsonl`
 - `/ll:spike` - 2026-07-15T23:22:40 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:decide-issue` - 2026-07-15T23:17:31 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:confidence-check` - 2026-07-15T23:20:00 - `7285c640-59d1-431f-84f9-29111bbcaa9d.jsonl`
