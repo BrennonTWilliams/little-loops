@@ -18,6 +18,8 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 spike_needed: true
+spike_attempted: true
+spike_completed: true
 size: Very Large
 ---
 
@@ -270,13 +272,33 @@ _Added by `/ll:confidence-check` on 2026-07-15_
 - The stress-loop repro harness required by Option A (a bounded fixed-repeat loop wrapping a nested test-runner subprocess call through the gate) has zero precedent in `scripts/tests/`, per the issue's own decision rationale — an unproven internal mechanism that risks tripping the suite's documented CPU-starvation/beachball constraint (`conftest.py:14-27`) if not carefully bounded.
 - Option A is explicitly time-boxed with a fallback to Option B, but no concrete time-box duration or exit criterion is specified in the issue — a minor operational gap to resolve during implementation, not a re-opened design decision.
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-07-15_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|-----------------------------------|-----------|--------|
+| Stress-loop harness (fixed-repeat loop wrapping a nested test-runner call through the gate) has zero precedent | `TestHarnessReproducesGateCheckoutPath::test_harness_reproduces_gate_checkout_path` | ✓ pass |
+| Harness could trip the suite's CPU-starvation/beachball constraint if unbounded | `TestBoundedLoopStaysWithinCaps::test_bounded_loop_stays_within_worker_and_iteration_caps` | ✓ pass |
+| Isolation: harness stays outside production worktree-lifecycle internals | `TestBoundedLoopStaysWithinCaps::test_spike_does_not_import_production_worktree_module_source` | ✓ pass |
+| Baseline: gate behavior with a genuinely present needle, no flake observed in a bounded run | `TestNeedlePresentEveryIteration::test_needle_present_on_every_iteration_absent_the_flake` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/epic_verify_gate_doc_flake/`
+**Verification**: 4 spike tests pass; 9 existing `TestVerifyEpicBranchBeforeMerge` regression tests still pass.
+**Promotion**: fold `repro_harness.py` into `test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge` as the AC #1 repro (or promote to `scripts/little_loops/spike/epic_verify_gate_doc_flake/`) in a separate PR, once Option A's real stress run (against the actual `test_string_present_in_doc` subset, at 50-200x) is scoped.
+
+**Note**: this spike proves the harness *shape* is sound (real checkout, real xdist subprocess, bounded workers/iterations) — it does not itself root-cause the target flake. In this bounded run (5 iterations, 2 workers, real needle present) the gate never false-negatived, consistent with the issue's own framing that the flake is rare. AC #1's actual root-cause work should reuse this harness at a larger iteration count against the real `test_string_present_in_doc` subset.
+
 ## Status
 
 - **Current Status**: open
-- **Blockers**: Hard to reproduce; needs a repro harness before root cause can be pinned.
+- **Blockers**: Hard to reproduce; needs a repro harness before root cause can be pinned. Spike (above) proves the harness shape is safe to scale up; the large-iteration stress run against the real test subset is still outstanding.
 
 
 ## Session Log
+- `/ll:spike` - 2026-07-15T23:05:48 - `d59da632-f9e0-4c3a-b52b-fd5930e8885f.jsonl`
 - `/ll:confidence-check` - 2026-07-15T21:30:00 - `1deac22a-60df-46af-ada9-522d80f31d9a.jsonl`
 - `/ll:decide-issue` - 2026-07-15T21:26:38 - `43bce135-0aac-4b02-aacf-e32bc2d59f3d.jsonl`
 - `/ll:refine-issue` - 2026-07-15T21:22:37 - `f60725d0-9039-4e70-b3b5-74971495ea6d.jsonl`
