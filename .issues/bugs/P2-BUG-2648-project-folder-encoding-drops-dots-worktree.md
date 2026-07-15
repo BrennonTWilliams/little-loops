@@ -33,6 +33,37 @@ lay out isolated checkouts. An autodev FSM subloop running in
 
 > The ll-issues append-log failed to resolve a session JSONL
 
+## Current Behavior
+
+`get_project_folder()` encodes the cwd with `path_str.replace("/", "-")`
+(slash-only), so a cwd containing a dotted path segment — most commonly a
+`.worktrees/` checkout used by `ll-parallel` / `ll-sprint` / subloop epics —
+produces an encoded folder name that does not match the folder Claude Code
+actually created on disk (which collapses `.` along with `/` into `-`). The
+`.exists()` probe in `_get_claude_project_folder` fails, so
+`get_project_folder()` silently returns `None` even though a live session
+JSONL exists under the correctly-encoded folder.
+
+## Expected Behavior
+
+`get_project_folder()` should encode the cwd using the same rule Claude Code
+(and the other supported hosts) use on disk — collapsing all non-alphanumeric
+characters, not just `/`, into `-` — so dotted cwds (including `.worktrees/`
+checkouts) resolve to the correct existing session-log folder.
+
+## Steps to Reproduce
+
+1. `cd` into a git worktree checkout whose path contains a dotted segment,
+   e.g. `<repo>/.worktrees/20260715-125040-subloop-epic-epic-495-…`, with a
+   live Claude Code session already running there.
+2. Clear `CLAUDE_SESSION_ID` (it can mask the bug by bypassing folder
+   encoding) and call `get_project_folder()`, or run
+   `ll-issues append-log <issue-path> <command>` from that cwd.
+3. Observe `get_project_folder()` returns `None` (`ll-issues append-log`
+   prints `Warning: could not resolve session JSONL; entry not written.` and
+   exits 1), even though `~/.claude/projects/<correctly-encoded-folder>`
+   exists with the live session JSONL.
+
 ## Root Cause
 
 **File**: `scripts/little_loops/user_messages.py`
@@ -153,7 +184,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` — `### get_project_folder` section (~lines 2774–2820):
+- `docs/reference/API.md` — `### get_project_folder` section (~lines 2786–2830):
   authoritative external description of the encoding contract; its example
   (`my-project`, dotless) stays correct, but the section does **not** state the
   dot-handling rule at all — add it so the contract is documented. [Agent 2 finding]
@@ -242,6 +273,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] Non-worktree (dotless) paths continue to resolve as before.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-15T19:16:31 - `d698cd17-40d5-475a-ba31-0894f5d6c374.jsonl`
 - `/ll:confidence-check` - 2026-07-15T19:06:52 - `1e72aa60-fb3f-42de-95f2-db5e48012c1d.jsonl`
 - `/ll:wire-issue` - 2026-07-15T19:02:44 - `379b1176-e84b-4b88-9179-893332f09ceb.jsonl`
 - `/ll:refine-issue` - 2026-07-15T18:56:08 - `3990f0fc-673f-4cb1-8647-3039d1efb245.jsonl`
