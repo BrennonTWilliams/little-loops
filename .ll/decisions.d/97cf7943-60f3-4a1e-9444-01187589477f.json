@@ -1,0 +1,12 @@
+{
+  "id": "27f21d92-b9af-4c1c-a242-8476e9304611",
+  "type": "decision",
+  "timestamp": "2026-07-15T21:26:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing gate-driving test scaffolding and yields the concrete AC #1 reproduction; Option B's request.config.rootpath re-anchor has zero precedent and per BUG-2649 would not change behavior. Time-boxed, with B as fallback.",
+  "rule": "Option A \u2014 Repro-then-fix: build a fixed-repeat stress harness in TestVerifyEpicBranchBeforeMerge to reproduce the doc-wiring flake before removing the LL_VERIFY_GATE quarantine",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 Prove-cannot-recur + defensive fix (re-anchor project_root to request.config.rootpath and/or add settle-check, then remove quarantine)",
+  "issue": "BUG-2650"
+}
