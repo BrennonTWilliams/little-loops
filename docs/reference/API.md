@@ -3358,7 +3358,15 @@ the worktree's `<worktree>/<src_dir>` onto `PYTHONPATH` so branch-only modules r
 to the worktree — defeating editable-install `.pth` shadowing that would otherwise
 resolve `import little_loops.<new_module>` to the main checkout and false-fail
 collection (BUG-2629). When `src_dir` is falsy (default `None`), no injection occurs,
-preserving prior behavior for non-editable / non-Python setups. On the `ll-parallel` path, a failure blocks
+preserving prior behavior for non-editable / non-Python setups. Independent of
+`src_dir`, the verify subprocess always carries `LL_VERIFY_GATE="1"` in its
+environment (BUG-2649, mirroring the `LL_NON_INTERACTIVE` marker idiom): tests
+that are non-deterministic under the gate's non-standard invocation (injected
+`PYTHONPATH` + parallel-xdist worktree) detect it via
+`os.environ.get("LL_VERIFY_GATE") == "1"` and quarantine themselves
+(`pytest.mark.skipif`) rather than false-negative a genuinely mergeable branch —
+the assertions still run under the standard `python -m pytest scripts/tests/`
+invocation off the gate. On the `ll-parallel` path, a failure blocks
 the merge/PR-open (the branch is NOT added to `_merged_epic_branches`, so it is retried
 on the next completion event), and the message is recorded in
 `ParallelOrchestrator.epic_branch_verify_failures` (EPIC ID → message), which

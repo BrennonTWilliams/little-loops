@@ -512,6 +512,70 @@ class TestVerifyEpicBranchBeforeMerge:
 
         assert (ok, message, returncode) == (True, None, None)
 
+    def test_falsy_src_dir_does_not_inject_under_ambient_pythonpath(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2649 regression: with ``src_dir`` falsy the gate must inject *nothing*
+        onto PYTHONPATH even when the caller already has an ambient PYTHONPATH set —
+        exactly the epic-merge verify-gate condition, where the outer suite runs with
+        ``PYTHONPATH=<worktree>/scripts`` prepended.
+
+        The child asserts its first PYTHONPATH entry is the caller's *ambient* marker
+        verbatim (not a gate-prepended entry). A regression of the ``if src_dir:``
+        guard — prepending regardless of ``src_dir`` — would push a different entry to
+        the front, the child would exit 1, and this test would fail. Deterministic:
+        the marker is a fixed absolute path, not a basename check that a leaked
+        ``scripts`` entry could satisfy.
+        """
+        ambient = str(tmp_path / "ambient_marker")
+        monkeypatch.setenv("PYTHONPATH", ambient)
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = (
+            "import os,sys; "
+            "p=os.environ.get('PYTHONPATH','').split(os.pathsep)[0]; "
+            f"sys.exit(0 if p=={ambient!r} else 1)"
+        )
+
+        ok, message, returncode = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message, returncode) == (True, None, None)
+
+    def test_verify_gate_marker_set_in_child_env(self, tmp_path: Path) -> None:
+        """BUG-2649: the test/lint subprocess always carries ``LL_VERIFY_GATE=1`` so
+        gate-sensitive tests can quarantine themselves deterministically."""
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        check = "import os,sys; sys.exit(0 if os.environ.get('LL_VERIFY_GATE')=='1' else 1)"
+
+        ok, message, returncode = verify_epic_branch_before_merge(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            verify_before_merge=True,
+            repo_path=repo,
+            worktree_base=repo / ".worktrees",
+            test_cmd=f"python3 -c {shlex.quote(check)}",
+            lint_cmd=None,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert (ok, message, returncode) == (True, None, None)
+
     def test_worktree_setup_failure_returns_false_with_message(self, tmp_path: Path) -> None:
         """A branch that doesn't exist fails worktree setup, not the test_cmd."""
         repo = _init_repo(tmp_path / "repo")

@@ -318,6 +318,12 @@ def verify_epic_branch_before_merge(
             (default), no injection occurs — preserving prior behavior for
             non-editable / non-Python setups.
 
+    The test/lint subprocess always runs with ``LL_VERIFY_GATE="1"`` in its
+    environment (BUG-2649), independent of ``src_dir``, so tests that are
+    non-deterministic under the gate's non-standard invocation (injected
+    ``PYTHONPATH`` + parallel-xdist worktree) can detect and quarantine
+    themselves rather than false-negative a genuinely mergeable branch.
+
     Returns:
         ``(ok, message, returncode)``. ``(True, None, None)`` if the gate
         passed (or was disabled). ``(False, message, returncode)`` if worktree
@@ -349,12 +355,18 @@ def verify_epic_branch_before_merge(
         logger.warning(f"EPIC {epic_id}: {message}")
         return False, message, None
 
-    env: dict[str, str] | None = None
+    # Always build a child env so the verify-gate marker can be set (BUG-2649):
+    # tests whose result is non-deterministic under the gate's non-standard
+    # invocation (injected PYTHONPATH + parallel xdist worktree) detect it via
+    # ``os.environ.get("LL_VERIFY_GATE") == "1"`` and quarantine themselves,
+    # instead of sniffing PYTHONPATH. Mirrors the ``LL_NON_INTERACTIVE`` marker
+    # idiom (host_runner.py / session_start.py).
+    env: dict[str, str] = os.environ.copy()
+    env["LL_VERIFY_GATE"] = "1"
     if src_dir:
         # Prepend the worktree's source dir to PYTHONPATH so branch-only modules
         # resolve here, not via the editable-install .pth pointing at the main
         # checkout (BUG-2629). .pth entries land on sys.path after PYTHONPATH.
-        env = os.environ.copy()
         worktree_src = str(worktree_path / src_dir)
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = os.pathsep.join(p for p in (worktree_src, existing) if p)

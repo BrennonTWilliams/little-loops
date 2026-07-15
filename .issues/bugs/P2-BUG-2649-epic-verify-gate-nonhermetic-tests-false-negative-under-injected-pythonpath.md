@@ -2,8 +2,9 @@
 id: BUG-2649
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-15T18:46:48Z'
+completed_at: '2026-07-15T19:46:27Z'
 discovered_date: 2026-07-15
 discovered_by: capture-issue
 relates_to:
@@ -306,12 +307,54 @@ _Added by `/ll:confidence-check` on 2026-07-15_
 ### Concerns
 - Test 2's root cause is explicitly acknowledged as "genuinely undetermined" in the issue's own research findings — the original "conftest resolves to main vs worktree" theory was investigated and disproved (`project_root` is `__file__`-anchored and path-collected, so it already resolves to the worktree under the gate). Since no concrete reproduction of the flake mechanism exists and the research notes state switching to a rootdir-anchored fixture "is unlikely to change Test 2's behavior," committing to the quarantine fallback (AC #2's second option) rather than continuing to chase the root cause is the pragmatic path — flag this as a decision point before implementation starts, not something to resolve mid-implementation.
 
+## Resolution
+
+_Resolved by `/ll:manage-issue` on 2026-07-15._
+
+**Test 1 (AC #1) — already hermetic on `main`; regression guard added.** The
+`monkeypatch.delenv("PYTHONPATH")` scrub landed on `main` in `7bac68f3` before
+this bug was captured (the EPIC-2570 gate ran a stale branch tip that predated
+it). Added two explicit regression tests in
+`test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge`:
+- `test_falsy_src_dir_does_not_inject_under_ambient_pythonpath` — pre-sets an
+  ambient `PYTHONPATH=<abs>/ambient_marker` and asserts the child's `PYTHONPATH[0]`
+  is that marker *verbatim* (the gate injects nothing when `src_dir` is falsy).
+  Deterministic and immune to a leaked `scripts` entry; regressing the `if
+  src_dir:` guard would push a different entry to the front and fail it.
+- `test_verify_gate_marker_set_in_child_env` — asserts the child always carries
+  `LL_VERIFY_GATE=1`.
+
+**Test 2 (AC #2) — quarantined under the gate condition (root cause deferred).**
+Per the issue's own research (the "conftest resolves to main vs worktree" theory
+was disproved; `project_root` already resolves to the worktree root under the
+gate; a rootdir-anchored fixture would not change behavior) and the confidence-check
+decision point, the pragmatic path was quarantine, not chasing an unreproducible
+flake. `verify_epic_branch_before_merge` now always sets `LL_VERIFY_GATE="1"` in
+the test/lint child env (mirroring the `LL_NON_INTERACTIVE` idiom), and
+`test_string_present_in_doc` skips when that marker is `"1"`. Off the gate — under
+the standard `python -m pytest scripts/tests/` — all 150 cases still run (verified:
+150 passed normally, 150 skipped under the marker). Root-cause follow-up tracked
+by **BUG-2650**.
+
+**AC #3 / #4** — full suite green on `main`: `15046 passed, 36 skipped`. lint,
+mypy clean.
+
+Changed:
+- `scripts/little_loops/worktree_utils.py` — always build the child `env`, set
+  `LL_VERIFY_GATE="1"`; docstring note.
+- `scripts/tests/test_worktree_utils.py` — two regression tests.
+- `scripts/tests/test_wiring_skills_and_commands.py` — `LL_VERIFY_GATE` skipif on
+  `test_string_present_in_doc`; fixed a non-f-string assertion message.
+- `docs/reference/API.md` — document the marker.
+- `.issues/bugs/…BUG-2650…` — tracked root-cause follow-up.
+
 ## Status
 
-- **Current Status**: open
+- **Current Status**: done
 - **Blockers**: None
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-15T19:45:43Z - `61773fdf-a5b0-449b-b869-beeecf0f813b.jsonl`
 - `/ll:confidence-check` - 2026-07-15T19:15:00 - `58ab2ec2-644e-4fdd-84bd-51abddc42a7a.jsonl`
 - `/ll:wire-issue` - 2026-07-15T19:05:33 - `1e72aa60-fb3f-42de-95f2-db5e48012c1d.jsonl`
 - `/ll:refine-issue` - 2026-07-15T18:55:42 - `3990f0fc-673f-4cb1-8647-3039d1efb245.jsonl`
