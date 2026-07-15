@@ -2990,7 +2990,7 @@ class TestMergeEpicBranchConfigReadShell:
 
     _EPIC_BRANCH = "epic/epic-42-my-epic-title"
 
-    def _setup_repo(self, tmp_path: Path) -> None:
+    def _setup_repo(self, tmp_path: Path, *, conflict: bool = False) -> None:
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
         subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
@@ -3003,7 +3003,16 @@ class TestMergeEpicBranchConfigReadShell:
         (tmp_path / "feature.txt").write_text("epic work\n")
         subprocess.run(["git", "add", "feature.txt"], cwd=tmp_path, check=True)
         subprocess.run(["git", "commit", "-q", "-m", "epic work"], cwd=tmp_path, check=True)
+        if conflict:
+            # ENH-2643: force a real merge-back conflict — diverging edits to the
+            # same file on the epic branch and on main (mirrors test_worktree_utils
+            # test_conflicting_merge_returns_false_and_aborts).
+            (tmp_path / "README.md").write_text("epic version\n")
+            subprocess.run(["git", "commit", "-q", "-am", "epic README"], cwd=tmp_path, check=True)
         subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
+        if conflict:
+            (tmp_path / "README.md").write_text("main version\n")
+            subprocess.run(["git", "commit", "-q", "-am", "main README"], cwd=tmp_path, check=True)
 
     def _write_issues(self, tmp_path: Path, child_statuses: dict[str, str]) -> None:
         subdir = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
@@ -3033,8 +3042,9 @@ class TestMergeEpicBranchConfigReadShell:
         seed_verdict: str | None = None,
         seed_sha: str | None = None,
         branch_statuses: dict[str, str] | None = None,
+        conflict: bool = False,
     ) -> tuple[subprocess.CompletedProcess, Path]:
-        self._setup_repo(tmp_path)
+        self._setup_repo(tmp_path, conflict=conflict)
         self._write_issues(tmp_path, child_statuses)
         # BUG-2637: model a child whose `done` status was committed on the epic
         # branch tip but not on the base working tree. Commit the base (open)
@@ -3122,6 +3132,25 @@ class TestMergeEpicBranchConfigReadShell:
         ).stdout
         assert "epic work" in log
         assert (tmp_path / "feature.txt").exists()
+        # ENH-2643: a clean merge leaves no failure-diagnostic artifacts behind.
+        assert not (run_dir / "merge-detail.txt").exists()
+        assert not (run_dir / "merge-returncode.txt").exists()
+
+    def test_merge_failed_persists_diagnostic_artifacts(self, tmp_path: Path) -> None:
+        """ENH-2643: a real merge-back conflict emits `merge_failed` AND persists
+        merge-detail.txt / merge-returncode.txt / merge-conflicts.txt under run_dir,
+        mirroring the verify gate's verify-detail.txt pair."""
+        result, run_dir = self._run(
+            tmp_path,
+            child_statuses={"FEAT-010": "done", "FEAT-020": "done"},
+            conflict=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "epic-merge-verdict.txt").read_text().strip() == "merge_failed"
+        assert self._EPIC_BRANCH in self._branches(tmp_path)
+        assert (run_dir / "merge-detail.txt").exists()
+        assert (run_dir / "merge-returncode.txt").read_text().strip() != "0"
+        assert "README.md" in (run_dir / "merge-conflicts.txt").read_text()
 
     def test_held_open_when_child_not_done(self, tmp_path: Path) -> None:
         result, run_dir = self._run(

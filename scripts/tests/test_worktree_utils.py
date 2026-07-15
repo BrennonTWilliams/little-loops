@@ -261,6 +261,91 @@ class TestMergeEpicBranchToBase:
         status = _git(repo, "status", "--porcelain").stdout
         assert status == ""  # merge --abort left a clean tree, not a conflicted one
 
+    def test_conflict_with_run_dir_persists_diagnostic_artifacts(self, tmp_path: Path) -> None:
+        """ENH-2643: on merge failure, persist merge-detail/returncode/conflicts under run_dir."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / "README.md").write_text("epic version\n")
+        _git(repo, "commit", "-am", "epic edits README")
+        _git(repo, "checkout", "main")
+        (repo / "README.md").write_text("main version\n")
+        _git(repo, "commit", "-am", "main edits README")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        ok = merge_epic_branch_to_base(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            base_branch="main",
+            repo_path=repo,
+            logger=logger,
+            git_lock=git_lock,
+            run_dir=run_dir,
+        )
+
+        assert ok is False
+        assert (run_dir / "merge-returncode.txt").exists()
+        assert (run_dir / "merge-detail.txt").exists()
+        conflicts = run_dir / "merge-conflicts.txt"
+        assert conflicts.exists()
+        assert "README.md" in conflicts.read_text()
+        # returncode is the non-zero `git merge` exit
+        assert run_dir / "merge-returncode.txt"
+        assert (run_dir / "merge-returncode.txt").read_text().strip() != "0"
+        # tree left clean after --abort
+        assert _git(repo, "status", "--porcelain").stdout == ""
+
+    def test_conflict_without_run_dir_writes_nothing(self, tmp_path: Path) -> None:
+        """ENH-2643: omitting run_dir (the orchestrator caller) persists no artifact."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / "README.md").write_text("epic version\n")
+        _git(repo, "commit", "-am", "epic edits README")
+        _git(repo, "checkout", "main")
+        (repo / "README.md").write_text("main version\n")
+        _git(repo, "commit", "-am", "main edits README")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        ok = merge_epic_branch_to_base(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            base_branch="main",
+            repo_path=repo,
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert ok is False
+        # no run_dir → nothing written anywhere under the repo
+        assert not (repo / "merge-detail.txt").exists()
+        assert not (repo / "merge-returncode.txt").exists()
+
+    def test_success_with_run_dir_writes_no_artifacts(self, tmp_path: Path) -> None:
+        """ENH-2643: a clean merge leaves the diagnostic artifacts absent."""
+        repo = self._repo_with_epic_branch(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        ok = merge_epic_branch_to_base(
+            "EPIC-1",
+            "epic/epic-1-integration",
+            base_branch="main",
+            repo_path=repo,
+            logger=logger,
+            git_lock=git_lock,
+            run_dir=run_dir,
+        )
+
+        assert ok is True
+        assert not (run_dir / "merge-detail.txt").exists()
+        assert not (run_dir / "merge-returncode.txt").exists()
+        assert not (run_dir / "merge-conflicts.txt").exists()
+
 
 class TestVerifyEpicBranchBeforeMerge:
     """verify_epic_branch_before_merge() (BUG-2614: extracted from

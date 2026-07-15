@@ -389,6 +389,7 @@ def merge_epic_branch_to_base(
     repo_path: Path,
     logger: Logger,
     git_lock: GitLock,
+    run_dir: Path | None = None,
 ) -> bool:
     """Merge ``epic_branch`` into ``base_branch`` then delete it (FEAT-2449, BUG-2614).
 
@@ -405,6 +406,18 @@ def merge_epic_branch_to_base(
         repo_path: Path to the repository, checked out on ``base_branch``.
         logger: Logger instance.
         git_lock: Thread-safe git lock for serializing repo operations.
+        run_dir: When non-``None``, the per-run directory to persist a
+            merge-failure diagnostic into (ENH-2643). On failure — *before*
+            ``git merge --abort`` discards the conflict state — three flat-text
+            artifacts are written, mirroring the verify gate's
+            ``verify-detail.txt`` / ``verify-returncode.txt`` pair:
+            ``merge-returncode.txt`` (the failing ``git merge`` exit code),
+            ``merge-detail.txt`` (the bounded ``stderr + stdout`` tail via
+            ``format_verify_detail``), and ``merge-conflicts.txt`` (the
+            conflicted-path list from ``git diff --name-only --diff-filter=U``).
+            When ``None`` (the parallel-orchestrator caller, which has no
+            per-run ``run_dir``), nothing is persisted — behavior is otherwise
+            unchanged.
 
     Returns:
         True if the merge succeeded (and the branch was deleted), False on
@@ -428,6 +441,19 @@ def merge_epic_branch_to_base(
             return True
         else:
             logger.warning(f"EPIC {epic_id} integration branch merge failed: {result.stderr}")
+            if run_dir is not None:
+                # ENH-2643: persist the failure detail before `merge --abort`
+                # discards the conflict state, mirroring the verify gate's
+                # verify-detail.txt / verify-returncode.txt artifacts.
+                conflicts = git_lock.run(
+                    ["diff", "--name-only", "--diff-filter=U"],
+                    cwd=repo_path,
+                    timeout=10,
+                )
+                detail = format_verify_detail(result.stdout, result.stderr)
+                (run_dir / "merge-returncode.txt").write_text(str(result.returncode))
+                (run_dir / "merge-detail.txt").write_text(detail)
+                (run_dir / "merge-conflicts.txt").write_text(conflicts.stdout or "")
             git_lock.run(["merge", "--abort"], cwd=repo_path, timeout=10)
             return False
     except Exception as e:  # noqa: BLE001 — never let completion crash the caller

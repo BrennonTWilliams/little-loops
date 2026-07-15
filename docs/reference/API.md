@@ -3364,6 +3364,18 @@ run. It falls back to invoking the gate only when the verdict is missing,
 non-`passed`, or the SHA is stale, so the binding gate still cannot merge a
 failing tip.
 
+ENH-2643: `merge_epic_branch_to_base` accepts an optional keyword-only
+`run_dir: Path | None = None`. On the FSM loop path the `merge_epic_branch` state
+threads `run_dir=$RUN_DIR` through, so a merge *failure* — before `git merge
+--abort` discards the conflict state — persists three flat-text diagnostic
+artifacts under the run dir, mirroring the verify gate's `verify-detail.txt`
+pair: `merge-returncode.txt` (the failing `git merge` exit code),
+`merge-detail.txt` (the bounded `stderr + stdout` tail via `format_verify_detail`),
+and `merge-conflicts.txt` (the conflicted-path list from `git diff --name-only
+--diff-filter=U`). A clean merge writes none of them. The `ll-parallel`
+orchestrator wrapper has no per-run `run_dir` and omits the kwarg (defaults to
+`None` → nothing persisted), so its behavior is unchanged.
+
 ### WorkerResult
 
 Result from a worker processing an issue.

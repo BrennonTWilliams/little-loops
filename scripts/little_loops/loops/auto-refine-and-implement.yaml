@@ -656,6 +656,7 @@ states:
               repo_path=repo,
               logger=logger,
               git_lock=lock,
+              run_dir=run_dir,  # ENH-2643: persist merge-detail on failure
           )
           print("merged" if merged else "merge_failed")
       PYEOF
