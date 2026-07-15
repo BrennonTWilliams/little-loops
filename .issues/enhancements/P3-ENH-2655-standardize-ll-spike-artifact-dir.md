@@ -60,6 +60,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   plan-doc write is denied.
 - `.gitignore` — add (or deliberately omit) a `.ll/spikes/` line depending on the
   track-vs-ignore decision below.
+- `skills/spike/plan-template.md` — co-located plan-doc shape referenced from Phase 3
+  and the `## Related` section. Cross-check only: confirm it hardcodes no directory
+  assumptions (it defines *what* goes in the file, not *where*). [Agent 2 finding]
 
 ### Resolution Rule (to document in SKILL.md Phase 3)
 `run_dir` is injected only by the FSM loop-run startup path
@@ -92,6 +95,23 @@ exist. Fallback needed only for the interactive branch.
   `allowed-tools` grants `Write(.ll/spikes/**)`.
 - `scripts/tests/test_builtin_loops.py` (`TestSpikeGateLoop`) — no change expected;
   used to confirm the loop path is untouched.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_spike_skill.py` — **new regression-guard test**: assert the
+  literal placeholder `<run-artifacts>` **no longer** appears in `SKILL_FILE.read_text()`
+  once Phase 3 resolves it. Follows the exact `test_sets_spike_completed_flag` (line
+  97-98) substring-`in` idiom against `SKILL_FILE.read_text()`. Guards the fix from
+  silently reverting. No existing test references `<run-artifacts>` today (grep of
+  `scripts/tests/` returns zero hits), so this is net-new, not an update. [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py:202-204` — advisory only: asserts
+  `spike` is listed in `commands/help.md` and `.claude/CLAUDE.md`. This ENH changes
+  neither listing, so no update needed — flagged so the implementer confirms the
+  catalog listings stay untouched (a stray edit to the one-line spike description
+  would trip it). [Agent 1 finding]
+- Note: no existing structural test covers `skills/explore-api/SKILL.md`'s
+  `.ll/learning-tests/` convention (no `test_explore_api*.py`), so `test_spike_skill.py`
+  is the *only* precedent for skill-markdown-content assertions — model new tests on it,
+  not on a learning-tests test. [Agent 3 finding]
 
 ### Documentation
 - `docs/ARCHITECTURE.md` — add a `### Storage Layout` subsection for `.ll/spikes/`
@@ -171,6 +191,19 @@ one-line `Write(.ll/spikes/**)` allowed-tools grant.
   `run_dir` to the child skill context, so no loop change is required).
 - Add the `.ll/spikes/` `### Storage Layout` subsection to `docs/ARCHITECTURE.md`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included:_
+
+- Add a **regression-guard** test to `scripts/tests/test_spike_skill.py` asserting the
+  literal `<run-artifacts>` placeholder is gone from `SKILL.md` (alongside the positive
+  `.ll/spikes/` + `${context.run_dir}` assertions already planned above).
+- Cross-check `skills/spike/plan-template.md` for hardcoded directory assumptions
+  (expected: none — it defines doc shape, not location).
+- Confirm `scripts/tests/test_wiring_skills_and_commands.py:202-204` still passes
+  unchanged (the spike catalog listing in `commands/help.md` / `.claude/CLAUDE.md`
+  is untouched by this ENH).
+
 ## Acceptance Criteria
 
 - [ ] `<run-artifacts>` is explicitly defined in `skills/spike/SKILL.md` with both
@@ -192,6 +225,7 @@ one-line `Write(.ll/spikes/**)` allowed-tools grant.
 | `skills/spike/SKILL.md` | Defines `<run-artifacts>` use site (line 125) and code-location rules |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-15T23:22:36 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:decide-issue` - 2026-07-15T23:16:55 - `7285c640-59d1-431f-84f9-29111bbcaa9d.jsonl`
 - `/ll:refine-issue` - 2026-07-15T23:12:55 - `f1f13942-9501-4084-bb65-11325b5a6c0c.jsonl`
 - `/ll:capture-issue` - 2026-07-15T23:07:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d207819-80f4-4de9-af1a-ed38c3beaa7b.jsonl`

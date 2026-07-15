@@ -459,9 +459,11 @@ class ParallelOrchestrator:
                     parent_map = build_parent_map(all_issues)
                     epic_id = find_nearest_epic_ancestor(issue_info, parent_map)
                     if epic_id is not None:
+                        from little_loops.worktree_utils import resolve_epic_branch_name
+
                         slug = self.worker_pool._load_epic_slug(epic_id)
                         prefix = self.parallel_config.epic_branches.prefix
-                        base = f"{prefix}{epic_id.lower()}-{slug}"
+                        base = resolve_epic_branch_name(epic_id, prefix, slug)
 
             # Check commits ahead of base (epic branch for EPIC children, base_branch otherwise)
             result = self._git_lock.run(

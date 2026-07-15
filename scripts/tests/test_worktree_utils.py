@@ -22,6 +22,8 @@ from little_loops.worktree_utils import (
     format_verify_detail,
     merge_epic_branch_to_base,
     open_pr_for_epic_branch,
+    resolve_epic_base,
+    resolve_epic_branch_name,
     setup_worktree,
     verify_epic_branch_before_merge,
 )
@@ -693,3 +695,40 @@ class TestFormatVerifyDetail:
     def test_empty_streams_return_empty(self) -> None:
         assert format_verify_detail(None, None) == ""
         assert format_verify_detail("", "   ") == ""
+
+
+class TestResolveEpicBase:
+    """resolve_epic_base(epic_id, base_branch) — the FEAT-2652 seam (ENH-2656).
+
+    Post-ENH the resolver has no per-EPIC override: it returns the passed
+    ``base_branch`` verbatim for any EPIC id. This unit test pins that fallback
+    contract so FEAT-2652 can extend the body red-first without touching callers.
+    """
+
+    def test_returns_base_branch_verbatim(self) -> None:
+        assert resolve_epic_base("EPIC-2451", "main") == "main"
+
+    def test_returns_non_main_base(self) -> None:
+        # No override today -> whatever default the caller resolved is returned.
+        assert resolve_epic_base("EPIC-9999", "develop") == "develop"
+
+    def test_epic_id_does_not_affect_result(self) -> None:
+        assert resolve_epic_base("EPIC-1", "release") == resolve_epic_base(
+            "EPIC-2", "release"
+        )
+
+
+class TestResolveEpicBranchName:
+    """resolve_epic_branch_name(epic_id, prefix, slug) — single-sourced branch
+    name format ``<prefix><epic-id-lower>-<slug>`` (ENH-2656)."""
+
+    def test_formats_name(self) -> None:
+        assert (
+            resolve_epic_branch_name("EPIC-2451", "epic/", "my-epic-title")
+            == "epic/epic-2451-my-epic-title"
+        )
+
+    def test_lowercases_epic_id(self) -> None:
+        assert resolve_epic_branch_name("EPIC-42", "epic/", "x").startswith(
+            "epic/epic-42-"
+        )

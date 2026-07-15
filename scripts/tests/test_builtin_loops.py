@@ -2094,6 +2094,22 @@ class TestAutoRefineAndImplementLoop:
             "Option A must not literally `git checkout` the epic branch"
         )
 
+    def test_checkout_epic_branch_imports_and_calls_resolver(self, data: dict) -> None:
+        """ENH-2656 Option B: the heredoc must import the shared resolvers from
+        worktree_utils and derive name+base through them (not re-derive inline),
+        so FEAT-2652 touches only resolve_epic_base()."""
+        action = data["states"].get("checkout_epic_branch", {}).get("action", "")
+        assert "resolve_epic_base" in action, (
+            "must import/call resolve_epic_base (ENH-2656 Option B), not re-derive base inline"
+        )
+        assert "resolve_epic_branch_name" in action, (
+            "must derive the branch name via resolve_epic_branch_name (ENH-2656)"
+        )
+        # The name is single-sourced now — no inline f-string format of the branch.
+        assert 'f"{epic_cfg.prefix}' not in action, (
+            "branch name must come from resolve_epic_branch_name, not an inline f-string"
+        )
+
     def test_checkout_epic_branch_reuses_ensure_epic_branch_shape(self, data: dict) -> None:
         """Must mirror WorkerPool._ensure_epic_branch's idempotency checks (local
         rev-parse, then remote ls-remote) before creating the branch."""

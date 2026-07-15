@@ -7,6 +7,8 @@ status: open
 relates_to:
 - ENH-2653
 - BUG-2651
+depends_on:
+- ENH-2656
 labels:
 - epic-branches
 - parallel
@@ -18,6 +20,8 @@ score_complexity: 17
 score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 15
+spike_attempted: true
+spike_completed: true
 ---
 
 # FEAT-2652: Per-EPIC base-branch declaration + sprint-creation validation
@@ -329,6 +333,32 @@ _Added by `/ll:confidence-check` on 2026-07-15_
 - Three independent base-branch derivation paths must stay in lockstep — deep per-site complexity: `worker_pool.py`'s `_ensure_epic_branch()`/`_resolve_branch_targets()` (two call sites), `orchestrator.py`'s FEAT-2562 comparison-base re-derivation, and the FSM `checkout_epic_branch` state in `auto-refine-and-implement.yaml`. Missing any one leaves a stale global-base assumption.
 - Several test files assert literal substrings/exact tuples (`test_builtin_loops.py`'s `checkout_epic_branch` shape tests, `test_worker_pool.py::TestResolveBranchTargets`) that are likely to break and require synchronized updates alongside the implementation, not just additive coverage.
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-07-15_
+
+Proves the one net-new, no-precedent mechanism in this issue: the optional
+"spot-check that a sample of the EPIC's children's cited symbols resolve on the
+declared base" step (`git show <ref>:<path>` blob-at-ref read — used nowhere in
+`scripts/little_loops/` today).
+
+**Retired risks**
+
+| Risk | Proven by | Result |
+|------|-----------|--------|
+| Reading a file's content at an arbitrary ref via `GitLock.run(["show", f"{ref}:{path}"])` + `.returncode`/`.stdout` | `test_reads_blob_present_on_ref` | ✓ pass |
+| A missing path-at-ref returns non-zero (not an exception) → classifiable as "symbol absent on base" | `test_missing_path_at_ref_returns_nonzero`, `test_missing_path_on_base_but_present_on_feature` | ✓ pass |
+| A nonexistent ref returns non-zero cleanly | `test_nonexistent_ref_returns_nonzero` | ✓ pass |
+| Routes git through `GitLock` (no bare subprocess) — AST regression guard | `test_uses_gitlock_no_bare_subprocess` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/git_show_blob_at_ref/`
+**Verification**: 5 tests pass (`python -m pytest scripts/tests/spike/git_show_blob_at_ref/ -v`).
+**Promotion**: move to `scripts/little_loops/spike/git_show_blob_at_ref/` in a separate PR.
+
+The dominant fan-out-drift risk (four independent base derivations) is addressed
+structurally by the precursor **ENH-2656** (single source-of-truth EPIC base
+resolver), which this issue now `depends_on`.
+
 ## Status
 
 open — captured from consumer-project run findings. Root-cause fix; pairs with
@@ -336,6 +366,7 @@ ENH-2653 (guardrail) and BUG-2651 (independent triage bug surfaced in same run).
 
 
 ## Session Log
+- `/ll:spike` - 2026-07-15T23:22:40 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:decide-issue` - 2026-07-15T23:17:31 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`
 - `/ll:confidence-check` - 2026-07-15T23:20:00 - `7285c640-59d1-431f-84f9-29111bbcaa9d.jsonl`
 - `/ll:wire-issue` - 2026-07-15T23:14:48 - `58678dfa-9825-4b94-9e6a-4216d0846bde.jsonl`

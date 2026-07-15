@@ -62,6 +62,51 @@ def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> s
     return "main"
 
 
+def resolve_epic_base(epic_id: str, base_branch: str) -> str:
+    """Return the fork base for an EPIC integration branch (ENH-2656).
+
+    Single source of truth for the EPIC fork point. Today it returns
+    ``base_branch`` verbatim (no per-EPIC override), so routing every fork site
+    through it is a pure, behavior-preserving refactor: each caller passes the
+    default base it already resolved (``parallel.base_branch``, or the FSM's
+    ``base_branch or detect_default_branch(...)``) and gets it back unchanged.
+
+    FEAT-2652 extends **only this function** to prefer a per-EPIC ``base_branch:``
+    declaration over ``base_branch`` — no caller changes required, retiring the
+    four hand-synced derivation paths this resolver consolidates.
+
+    Args:
+        epic_id: The EPIC issue id (e.g. ``"EPIC-2451"``). Unused today; present
+            so FEAT-2652 can look up the EPIC's declared base without a signature
+            change.
+        base_branch: The default fork base the caller resolved.
+
+    Returns:
+        The branch to fork the EPIC integration branch from.
+    """
+    return base_branch
+
+
+def resolve_epic_branch_name(epic_id: str, prefix: str, slug: str) -> str:
+    """Return the EPIC integration branch name (ENH-2656).
+
+    Single source of truth for the ``<prefix><epic-id-lower>-<slug>`` format that
+    was previously hand-written at three sites (``worker_pool._resolve_branch_targets``,
+    ``orchestrator._inspect_worktree``, and the ``checkout_epic_branch`` FSM
+    heredoc). Deduplicating it removes the drift risk when the fork point becomes
+    conditional under FEAT-2652.
+
+    Args:
+        epic_id: The EPIC issue id (e.g. ``"EPIC-2451"``); lower-cased into the name.
+        prefix: The ``epic_branches.prefix`` config value (e.g. ``"epic/"``).
+        slug: The EPIC title slug (or the EPIC id lower-cased as a fallback).
+
+    Returns:
+        The integration branch name, e.g. ``"epic/epic-2451-my-title"``.
+    """
+    return f"{prefix}{epic_id.lower()}-{slug}"
+
+
 def setup_worktree(
     repo_path: Path,
     worktree_path: Path,

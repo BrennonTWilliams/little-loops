@@ -177,7 +177,11 @@ states:
 
       from little_loops.config import BRConfig
       from little_loops.issue_parser import IssueParser, slugify
-      from little_loops.worktree_utils import detect_default_branch
+      from little_loops.worktree_utils import (
+          detect_default_branch,
+          resolve_epic_base,
+          resolve_epic_branch_name,
+      )
 
       scope = """${context.scope}""".strip()
       run_dir = Path("""${context.run_dir}""")
@@ -216,8 +220,12 @@ states:
                       slug = slugify(info.title)
                   break
 
-      branch = f"{epic_cfg.prefix}{epic_id.lower()}-{slug}"
-      base = cfg.parallel.base_branch or detect_default_branch(Path.cwd())
+      # ENH-2656: single-sourced name/base derivation. resolve_epic_base returns
+      # the passed default today; FEAT-2652 extends only that function to honor a
+      # per-EPIC base_branch: declaration.
+      branch = resolve_epic_branch_name(epic_id, epic_cfg.prefix, slug)
+      default_base = cfg.parallel.base_branch or detect_default_branch(Path.cwd())
+      base = resolve_epic_base(epic_id, default_base)
 
       def _git(args: list[str]) -> subprocess.CompletedProcess:
           return subprocess.run(["git", *args], capture_output=True, text=True)

@@ -1634,10 +1634,16 @@ class WorkerPool:
         epic_id = self._find_nearest_epic_ancestor(issue)
         if epic_id is None:
             return (base, base)
+        from little_loops.worktree_utils import (
+            resolve_epic_base,
+            resolve_epic_branch_name,
+        )
+
         slug = self._load_epic_slug(epic_id)
         prefix = self.parallel_config.epic_branches.prefix
-        branch = f"{prefix}{epic_id.lower()}-{slug}"
-        self._ensure_epic_branch(branch)
+        branch = resolve_epic_branch_name(epic_id, prefix, slug)
+        epic_base = resolve_epic_base(epic_id, self.parallel_config.base_branch)
+        self._ensure_epic_branch(branch, epic_base)
         return (branch, branch)
 
     def _find_nearest_epic_ancestor(self, issue: IssueInfo) -> str | None:
@@ -1704,14 +1710,17 @@ class WorkerPool:
                         return slugify(info.title)
         return epic_id.lower()
 
-    def _ensure_epic_branch(self, branch: str) -> None:
-        """Lazily create ``branch`` off ``base_branch`` if it does not exist yet.
+    def _ensure_epic_branch(self, branch: str, base: str) -> None:
+        """Lazily create ``branch`` off ``base`` if it does not exist yet.
 
         Sequence (idempotent via ``self._epic_branches_created``):
         1. In-memory cache hit -> return.
         2. Local branch check (``git rev-parse --verify <branch>``) -> exists.
         3. Remote branch check (``git ls-remote --heads <remote> <branch>``).
         4. Create (``git branch <branch> <base>``).
+
+        ``base`` is the EPIC fork base resolved via
+        ``worktree_utils.resolve_epic_base`` (ENH-2656).
         """
         if branch in self._epic_branches_created:
             return
@@ -1734,9 +1743,9 @@ class WorkerPool:
         if r.stdout and r.stdout.strip():
             self._epic_branches_created.add(branch)
             return
-        # 3. Create off base_branch
+        # 3. Create off the resolved EPIC fork base
         self._git_lock.run(
-            ["branch", branch, self.parallel_config.base_branch],
+            ["branch", branch, base],
             cwd=self.repo_path,
             timeout=30,
         )
