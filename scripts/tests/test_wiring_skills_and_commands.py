@@ -198,6 +198,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("commands/ready-issue.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
     ("commands/verify-issues.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
     ("skills/improve-claude-md/SKILL.md", "[ -f .ll/decisions.yaml ]", "BUG-2423"),
+    # /ll:spike skill registration (FEAT-2567)
+    ("commands/help.md", "spike", "FEAT-2567"),
+    (".claude/CLAUDE.md", "spike", "FEAT-2567"),
 ]
 
 
