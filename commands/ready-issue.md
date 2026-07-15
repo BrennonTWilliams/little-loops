@@ -187,10 +187,13 @@ Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict mus
 #### Decisions Gate
 Gate on the decisions log so its **absence** is the only clean skip; a query
 **failure** must surface as a WARN row, never as a silent clean pass (BUG-2423). Run
-without `|| true` and branch on the exit status — do **not** blackhole stderr:
+without `|| true` and branch on the exit status — do **not** blackhole stderr. The
+log is hybrid storage — a legacy `.ll/decisions.yaml` flat file and/or
+`.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted
+install has only the fragment dir):
 
 ```bash
-if [ -f .ll/decisions.yaml ]; then
+if [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; then
     required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only --format json)
     if [ $? -ne 0 ]; then
         echo "⚠ [DECISIONS] required-rule query failed — gate did NOT run" >&2   # → WARN row, not PASS
@@ -205,13 +208,13 @@ fi
 ```
 
 - If the required-rule query **fails** (non-zero exit): WARN row in VALIDATION table — `Decisions | WARN | required-rule query failed — gate did not run` (do **not** emit a PASS; the gate did not run).
-- If `.ll/decisions.yaml` is absent, or the query succeeds with no rules: SKIPPED/PASS (decisions log is opt-in; gracefully skip entirely).
+- If the decisions log is absent (no `.ll/decisions.yaml` **and** no `.ll/decisions.d/`), or the query succeeds with no rules: SKIPPED/PASS (decisions log is opt-in; gracefully skip entirely).
 - If rules present, for each required rule check if this issue's proposed solution conflicts:
   - If an exception entry has `rule_ref` matching this rule's ID and `issue` matching this issue's ID: suppress the violation
   - If violation found and not suppressed: FAIL row in VALIDATION table: `Decisions | FAIL | Rule <ID>: <rule text> violated`
   - If no violation: PASS row: `Decisions | PASS | All required rules satisfied`
   - If exception suppresses the violation: PASS row: `Decisions | PASS | Rule <ID> suppressed by exception <exception_id>`
-- Absent `.ll/decisions.yaml` is never an error — governance is opt-in.
+- An absent decisions log (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`) is never an error — governance is opt-in.
 
 #### Metadata
 - [ ] Priority prefix in filename

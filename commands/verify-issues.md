@@ -70,8 +70,12 @@ ll-issues list --json --status all | \
    `|| true` so a command failure surfaces instead of masquerading as "no rules"
    (BUG-2423) — do **not** blackhole stderr:
 
+   The decisions log is hybrid storage — a legacy `.ll/decisions.yaml` flat file
+   and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh,
+   never-compacted install has only the fragment dir):
+
    ```bash
-   if [ -f .ll/decisions.yaml ]; then
+   if [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; then
        required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only)
        if [ $? -ne 0 ]; then
            echo "⚠ [DECISIONS] required-rule query failed — decisions check did NOT run" >&2
@@ -85,7 +89,8 @@ ll-issues list --json --status all | \
    If output is non-empty, check whether the issue's proposed solution conflicts with
    any active required rule. Suppress violations where a matching exception entry
    (`rule_ref` = rule ID) exists. Assign verdict `DECISIONS_VIOLATION` if a
-   non-suppressed violation is found. Absent `.ll/decisions.yaml` is a graceful skip.
+   non-suppressed violation is found. An absent decisions log (no `.ll/decisions.yaml`
+**and** no `.ll/decisions.d/`) is a graceful skip.
 
 #### C. Determine Verdict
 

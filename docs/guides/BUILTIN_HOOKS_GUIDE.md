@@ -52,7 +52,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
-| **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` from Claude-side Write/Edit | **yes** | on |
+| **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
 | **PostToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
 | **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash output to a scratch file | **yes** | off |
@@ -200,7 +200,7 @@ It allows edits to existing files and anything outside `.issues/`. Always on; us
 
 **Hook:** `check-decisions-yaml.sh` (bash + Python)
 
-On `Write`/`Edit` of `.ll/decisions.yaml`, stages the candidate content in a temporary config root and runs `ll-verify-decisions` (ENH-2589) against it. For `Write`, the candidate is `tool_input.content`; for `Edit`, it is the post-edit result reconstructed from `old_string` → `new_string` (with optional `replace_all`). Validating the **candidate** — not the current on-disk file — is what makes this belt effective: a `Write` that's about to corrupt the file passes against the still-valid existing file and slips past the validator otherwise.
+On `Write`/`Edit` of either `.ll/decisions.yaml` or a `.ll/decisions.d/*.json` fragment (decisions storage is hybrid — a legacy flat file plus append-only per-entry fragments), stages the candidate content in a temporary config root and runs `ll-verify-decisions` (ENH-2589) against it. For `Write`, the candidate is `tool_input.content`; for `Edit`, it is the post-edit result reconstructed from `old_string` → `new_string` (with optional `replace_all`). Validating the **candidate** — not the current on-disk file — is what makes this belt effective: a `Write` that's about to corrupt the file passes against the still-valid existing file and slips past the validator otherwise.
 
 Corruption (any `yaml.YAMLError`/`KeyError`/`ValueError` caught by `ll-verify-decisions`) emits the validator's single-line `ERROR:` on stderr and exits 2 (host-level block). Clean candidates exit 0 and let the host write through. Non-target paths and non-`Write`/`Edit` tools early-exit 0.
 
@@ -278,7 +278,7 @@ This pairs with [Session Handoff](SESSION_HANDOFF.md).
 
 **Hook:** `issue-completion-log.sh`
 
-On `Write` of an issue `.md` whose frontmatter is `status: done`, appends a session-log entry to the issue file for historical traceability, then fires `ll-issues decisions extract-from-completed --issue <ID> --min-confidence 0.8` in a background subshell to mine the closed issue for generalizable rules and append them to `.ll/decisions.yaml`. The extraction runs asynchronously (fire-and-forget), so the hook exits immediately regardless of LLM latency. Always on; silent. Never blocks.
+On `Write` of an issue `.md` whose frontmatter is `status: done`, appends a session-log entry to the issue file for historical traceability, then fires `ll-issues decisions extract-from-completed --issue <ID> --min-confidence 0.8` in a background subshell to mine the closed issue for generalizable rules and append them to the decisions log as `.ll/decisions.d/*.json` fragments (append-only; folded into `.ll/decisions.yaml` on compaction). The extraction runs asynchronously (fire-and-forget), so the hook exits immediately regardless of LLM latency. Always on; silent. Never blocks.
 
 ### Duplicate issue-ID cleanup (TOCTOU race guard, exit 2)
 

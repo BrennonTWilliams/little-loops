@@ -125,7 +125,9 @@ _Archive/
 
 # Nested .ll/ directories (e.g. .issues/epics/.ll/) — ignore at any depth,
 # but keep the repo-root .ll/ tracked (its noisy files are ignored individually
-# above; .ll/decisions.yaml is a curated, committed artifact).
+# above; the decisions log is a curated, committed artifact — both the legacy
+# .ll/decisions.yaml flat file and the .ll/decisions.d/*.json append-only
+# fragments, which the !/.ll/ un-ignore already tracks).
 **/.ll/
 !/.ll/
 .ll/.fuse_hidden*

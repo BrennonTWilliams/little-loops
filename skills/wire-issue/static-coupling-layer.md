@@ -4,7 +4,7 @@ Loaded by `/ll:wire-issue` Phase 3.5. Added by FEAT-1736.
 
 ## Overview
 
-Query `.ll/decisions.yaml` for `coupling` entries before spawning agents. Matching entries inject `then_check` targets as `MUST_AUDIT` into Phase 4 agent prompts, shifting known coupling patterns from per-run re-discovery to a project-maintained knowledge base.
+Query the decisions log for `coupling` entries before spawning agents. Matching entries inject `then_check` targets as `MUST_AUDIT` into Phase 4 agent prompts, shifting known coupling patterns from per-run re-discovery to a project-maintained knowledge base. The log is hybrid storage (a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments); querying via `ll-issues decisions list` reads both tiers, so no file-presence gate is needed here.
 
 ## Procedure
 
@@ -12,7 +12,7 @@ Query `.ll/decisions.yaml` for `coupling` entries before spawning agents. Matchi
 # Load all coupling entries
 COUPLING_JSON=$(ll-issues decisions list --type=coupling --format=json 2>/dev/null)
 
-# If empty or decisions.yaml absent, skip to Phase 4 (no error)
+# If empty or the decisions log is absent, skip to Phase 4 (no error)
 [ -z "$COUPLING_JSON" ] || [ "$COUPLING_JSON" = "[]" ] && proceed_to_phase_4
 
 # Infer archetype from issue title (add-cli-command, add-config-key, add-event-type, ...)
@@ -35,7 +35,7 @@ ARCHETYPE_JSON=$(ll-issues decisions list --type=coupling --archetype="${INFERRE
 Prepend to each Phase 4 agent prompt when MUST_AUDIT is non-empty:
 
 ```
-STATIC LAYER — MUST_AUDIT (from coupling rules in .ll/decisions.yaml):
+STATIC LAYER — MUST_AUDIT (from coupling rules in the decisions log):
   HARD (blocking — must change together):
     - <path1>
   SOFT (should update):

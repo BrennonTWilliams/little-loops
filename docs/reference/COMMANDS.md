@@ -242,7 +242,7 @@ Resolve multi-option implementation decisions by gathering codebase evidence for
 
 **Frontmatter write-back**: Sets `decision_needed: false` after annotating the winning option. In `--auto` mode when no formal `Option A / Option B` blocks are found (Phase 3b), also scans all sections for inline provisional decision language (`(e.g., ...)`, `TBD`, `"must be replaced with"`) and, if a single clear approach is identifiable, locks it in and sets `decision_needed: false` without user interaction. If no clear winner can be inferred, exits cleanly without prompting. Idempotent — skips annotation write if a `### Decision Rationale` section already exists.
 
-**Decisions log:** When decisions log is enabled, appends a `decision` entry to `.ll/decisions.yaml`. Silently skipped if `.ll/decisions.yaml` is absent.
+**Decisions log:** When decisions log is enabled, appends a `decision` entry to the log (as an append-only `.ll/decisions.d/*.json` fragment). Silently skipped if the log is absent (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`).
 
 ### `/ll:wire-issue`
 Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.
@@ -271,7 +271,7 @@ Evaluate active issues for utility vs complexity trade-offs and recommend which 
 **Arguments:**
 - `issues` (optional): Comma-separated issue IDs to filter (e.g., `BUG-123,FEAT-456`). If omitted, scans all active issues.
 
-**Decisions log:** When decisions log is enabled, appends a `decision` entry to `.ll/decisions.yaml`. Silently skipped if `.ll/decisions.yaml` is absent.
+**Decisions log:** When decisions log is enabled, appends a `decision` entry to the log (as an append-only `.ll/decisions.d/*.json` fragment). Silently skipped if the log is absent (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`).
 
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
 
@@ -358,7 +358,7 @@ The reason appears inline in verdict output (`NO-GO ✗ (CLOSE)`), batch summari
 
 **Findings write-back:** After rendering a verdict, go-no-go checks whether the judge's output references specific files or functions not already in the issue body. If significant new information is found, it offers to insert a `## Go/No-Go Findings` section into the issue file (before `## Session Log`). In `--auto` mode the write happens without prompting; in `--check` mode writes are skipped entirely.
 
-**Decisions log:** When decisions log is enabled, appends a `decision` entry to `.ll/decisions.yaml`. Silently skipped if `.ll/decisions.yaml` is absent.
+**Decisions log:** When decisions log is enabled, appends a `decision` entry to the log (as an append-only `.ll/decisions.d/*.json` fragment). Silently skipped if the log is absent (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`).
 
 **Trigger keywords:** "go no go", "should I implement", "adversarial review", "worth implementing", "debate this issue"
 

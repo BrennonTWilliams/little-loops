@@ -39,6 +39,24 @@ Record implementation choices, enforce team rules, and prevent automation from p
 
 The log serves two purposes: **institutional memory** (settled choices stay queryable via `ll-issues decisions list`) and **automation gating** (`ll-auto` and `ll-parallel` will not implement an issue while `decision_needed: true` is set — see [The Automation Workflow](#the-automation-workflow)).
 
+### Storage Layout
+
+Storage is **hybrid**. New entries are written as append-only per-entry
+fragments under `.ll/decisions.d/<uuid4>.json` (one file per entry, added via
+`atomic_write_json`), which sidesteps the concurrent-append id collisions that
+blocked EPIC merges (BUG-2642). A legacy `.ll/decisions.yaml` flat file may also
+exist. Both tiers are read as a union — `ll-issues decisions list` and
+`load_decisions()` merge the flat file with all `*.json` fragments (sorted by
+timestamp), so you should query through the CLI rather than `cat`/`grep`-ing a
+single file. A **fresh install therefore has only `.ll/decisions.d/`** and no
+`.ll/decisions.yaml` until a compaction runs. Compaction (`save_decisions()`)
+folds every fragment back into the flat file and deletes the fragment directory.
+
+Because a never-compacted install has no flat file, presence gates must accept
+**either** tier — e.g. `[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]`, or
+simply gate on `ll-issues decisions list` returning entries. Gating on the flat
+file alone silently skips governance on fresh installs.
+
 ---
 
 ## The Four Entry Types
@@ -282,7 +300,14 @@ ll-issues decisions add \
   --issue FEAT-700
 ```
 
-Entry IDs are auto-generated based on category (e.g., `ARCHITECTURE-005`, `TESTING-002`). Override with `--id` if you need a specific ID.
+Entry IDs are auto-generated as a random UUID4 (e.g.
+`4e1ec28d-ae1d-4af7-b32c-d084668d36b1`). Override with `--entry-id` if you need a
+specific ID. The older count-based scheme (`ARCHITECTURE-005`, `TESTING-002`) was
+retired in BUG-2642 — sequential ids collided when concurrent EPIC-branch appends
+minted the same `{category}-{count+1}` value; UUID4s never collide, which is what
+makes per-entry fragment files (see [Storage Layout](#storage-layout)) safe to
+merge. Historical entries below that still carry `ARCHITECTURE-NNN` ids predate
+the change; they remain valid.
 
 **List all entries with filtering:**
 
@@ -485,19 +510,24 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 | Key | Default | Description |
 |-----|---------|-------------|
 | `decisions.enabled` | `false` | Feature gate; the log still works when false, but automation gating on `decision_needed` requires this to be true |
-| `decisions.log_path` | `".ll/decisions.yaml"` | Path to the decisions YAML file |
+| `decisions.log_path` | `".ll/decisions.yaml"` | Path to the legacy flat file. The per-entry fragment directory is **derived** from this — always `log_path`'s sibling with a `.d` suffix (`.ll/decisions.d/`) — and is not independently configurable (BUG-2647, Option A) |
 | `decisions.auto_generate` | `[]` | Issue type prefixes to auto-generate entries from when `ll-issues decisions generate` runs (e.g., `["FEAT", "ENH"]` skips BUG entries) |
 
 ---
 
 ## Load-Time Validation
 
-`.ll/decisions.yaml` is gated by `ll-verify-decisions` (ENH-2589) at three
-transport layers, listed in order of when they fire:
+Both storage tiers — the flat `.ll/decisions.yaml` and the
+`.ll/decisions.d/*.json` fragments — are gated by `ll-verify-decisions`
+(ENH-2589) at three transport layers, listed in order of when they fire.
+`ll-verify-decisions` re-globs the fragment directory in a strict second pass
+(bypassing the read path's silent skip), so a single malformed fragment fails the
+gate:
 
 1. **Git pre-commit hook** (ENH-2590) — `repo: local` block in
    `.pre-commit-config.yaml` invokes `ll-verify-decisions` on staged changes
-   to `.ll/decisions.yaml`. Blocks `git commit` on any `yaml.YAMLError`,
+   to `.ll/decisions.yaml` or `.ll/decisions.d/*.json` (matched by
+   `^\.ll/decisions(\.yaml|\.d/.*\.json)$`). Blocks `git commit` on any `yaml.YAMLError`,
    missing required field, or unknown entry-type discriminator. Active after
    `pre-commit install`.
 2. **Pytest CI belt** (ENH-2591) — wraps the same validator as a
@@ -507,8 +537,8 @@ transport layers, listed in order of when they fire:
 3. **Claude Code `PreToolUse` hook** (ENH-2592,
    [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh))
    — blocks the corruption in the editor session, before the file is even
-   written. Fires on `Write`/`Edit` of `.ll/decisions.yaml` with
-   `timeout: 5`. The hook stages the **candidate content**
+   written. Fires on `Write`/`Edit` of either `.ll/decisions.yaml` or a
+   `.ll/decisions.d/*.json` fragment with `timeout: 5`. The hook stages the **candidate content**
    (`tool_input.content` for Write, or the post-Edit result reconstructed
    from `old_string` → `new_string`) in a temporary `<tmp>/.ll/decisions.yaml`
    and runs `ll-verify-decisions --config-root <tmp>` against it —

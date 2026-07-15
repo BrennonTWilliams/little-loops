@@ -51,7 +51,8 @@ scripts/        # Python package (little_loops)
                 #   hooks/prompts/optimize-prompt-hook.md
                 #   hooks/adapters/codex/hooks.json
 .issues/        # Issue tracking (bugs/, features/, enhancements/, epics/)
-.ll/decisions.yaml # Decisions and rules log (opt-in; managed by `ll-issues decisions`)
+.ll/decisions.yaml # Decisions and rules log — legacy flat file (opt-in; managed by `ll-issues decisions`)
+.ll/decisions.d/   # Append-only per-entry decision fragments (`<uuid4>.json`); folded into decisions.yaml on compaction. A fresh install has only this dir. Presence gates must accept either.
 thoughts/       # Plans and research documents
 docs/           # Architecture, API, troubleshooting
 ```
@@ -211,7 +212,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)
 - `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines (exit 1 if any violations)
 - `ll-verify-triggers` - Validate skill description trigger accuracy against should-fire/should-not-fire phrasings (exit 1 if below threshold or collisions)
-- `ll-verify-decisions` - Validate `.ll/decisions.yaml` by loading it through `load_decisions()` and failing on YAML parse errors, missing required fields, or unknown entry-type discriminators (exit 1 on any caught corruption; ENH-2589, gates the pre-commit hook ENH-2590, pytest CI gate ENH-2591, and Claude Code PreToolUse hook ENH-2592)
+- `ll-verify-decisions` - Validate the decisions log — both the legacy `.ll/decisions.yaml` flat file (via `load_decisions()`) and each `.ll/decisions.d/*.json` fragment (via a strict second-pass re-glob that bypasses the read path's silent skip) — failing on YAML/JSON parse errors, missing required fields, or unknown entry-type discriminators (exit 1 on any caught corruption; ENH-2589, gates the pre-commit hook ENH-2590, pytest CI gate ENH-2591, and Claude Code PreToolUse hook ENH-2592)
 - `ll-verify-kinds` - Assert every `CREATE TABLE` in `session_store._MIGRATIONS` is registered in `_KIND_TABLE` or explicitly listed as kindless (exit 1 on any unregistered table; ENH-2581)
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, sections, anchor-sweep, fingerprint, format-check, epic-progress, epic-consistency, decisions (list, add, outcome, generate, sync, suggest-rules, promote))

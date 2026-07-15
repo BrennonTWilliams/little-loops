@@ -400,10 +400,10 @@ After writing findings (or skipping), stage the updated issue file:
 git add "[issue-file-path]"
 ```
 
-Append a decision entry to the log (silent no-op when `decisions.yaml` is absent or when `CHECK_MODE` is true):
+Append a decision entry to the log (silent no-op when the decisions log is absent or when `CHECK_MODE` is true). Storage is hybrid — a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted install has only the fragment dir):
 
 ```bash
-if [ "$CHECK_MODE" != "true" ] && [ -f .ll/decisions.yaml ]; then
+if [ "$CHECK_MODE" != "true" ] && { [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; }; then
     ll-issues decisions add \
       --type=decision \
       --category="implementation" \

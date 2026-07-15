@@ -785,19 +785,20 @@ Per-project config only needs an `artifacts` block to override the default outpu
 
 ### `decisions`
 
-Decisions and rules log configuration (FEAT-1891). When enabled, architectural decisions and project rules are persisted to a YAML log for traceability.
+Decisions and rules log configuration (FEAT-1891). When enabled, architectural decisions and project rules are persisted to a log for traceability. Storage is **hybrid**: new entries are append-only per-entry fragments under `.ll/decisions.d/*.json`, folded into the legacy `.ll/decisions.yaml` flat file on compaction (BUG-2642). Reads union both tiers; a fresh install has only the fragment directory. The fragment directory is **derived** from `log_path` (its `.d`-suffixed sibling) and is not independently configurable (BUG-2647).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the decisions log feature. |
-| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file. |
+| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the legacy flat file; the derived fragment directory is its `.d`-suffixed sibling (`.ll/decisions.d/`). |
 | `auto_generate` | `list[str]` | `[]` | Issue type prefixes that filter which issue types are processed when running `ll-issues decisions generate`. Empty list processes all types. Example: `["FEAT", "ENH"]` skips BUG entries. |
 
 **Integrity gate (ENH-2591).** The local test suite
 (`python -m pytest scripts/tests/`) is this project's CI per `.claude/CLAUDE.md`.
 A pytest belt at [`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py)
-shells out to `ll-verify-decisions` against the live `.ll/decisions.yaml`
-(positive case) and an OTHE-203 corrupted `tmp_path` fixture (negative
+shells out to `ll-verify-decisions` against the live decisions log — both the
+flat `.ll/decisions.yaml` and the `.ll/decisions.d/*.json` fragments, which the
+validator re-globs in a strict second pass (positive case) and an OTHE-203 corrupted `tmp_path` fixture (negative
 case), so any YAML parse error, missing required field, or unknown
 entry-type discriminator fails the local suite — closing the
 `git commit --no-verify` and non-hook edit paths that the pre-commit
@@ -807,8 +808,8 @@ hook (ENH-2590) alone cannot cover. The gate skips gracefully when
 **Claude-side host belt (ENH-2592).** A sibling belt at
 [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh)
 runs as a Claude Code `PreToolUse` hook on every `Write`/`Edit` of
-`.ll/decisions.yaml`, blocking (host-level exit 2) corruption before the
-file is even written. It validates the *candidate* content
+`.ll/decisions.yaml` or a `.ll/decisions.d/*.json` fragment, blocking
+(host-level exit 2) corruption before the file is even written. It validates the *candidate* content
 (`tool_input.content` for Write, `old_string → new_string` reconstruction
 for Edit), staged in a temp config root, against the same `ll-verify-decisions`
 binary. Only this host-layer belt fires for Claude-driven writes inside the

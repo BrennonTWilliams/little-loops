@@ -754,9 +754,9 @@ flowchart TB
 | Skills | `commands/refine-issue.md` etc. | Call `ll-history-context` for agent context injection |
 | `session_start` hook | `hooks/session_start.py` | Ambient consumer: injects `<project_context>` block at session start (opt-in, ENH-1907) |
 
-### Decisions Log: `.ll/decisions.yaml`
+### Decisions Log: `.ll/decisions.yaml` + `.ll/decisions.d/`
 
-`.ll/decisions.yaml` is the per-project decisions and rules persistence layer — a YAML file managed by `ll-issues decisions` subcommands and the `decisions.py` data layer. It stores three entry types:
+The decisions log is the per-project decisions and rules persistence layer, managed by `ll-issues decisions` subcommands and the `decisions.py` data layer. Storage is **hybrid** (BUG-2642): new entries are written as append-only per-entry fragments under `.ll/decisions.d/<uuid4>.json` (UUID4 ids, so concurrent EPIC-branch appends never collide), and a legacy `.ll/decisions.yaml` flat file may also exist. `load_decisions()` reads the union of both tiers; `save_decisions()` (compaction) folds every fragment into the flat file and deletes the fragment directory. A fresh install has only `.ll/decisions.d/`. It stores three entry types:
 
 | Entry Type | Purpose |
 |-----------|---------|
@@ -765,11 +765,11 @@ flowchart TB
 | `exception` | One-time exceptions to existing rules; suppress false-positive violations in `/ll:ready-issue` and `/ll:verify-issues` |
 | `coupling` | Wire-issue static layer: maps `if_changed` glob patterns to `then_check` audit targets; `tier` (hard/soft/fyi) controls how matches are injected into agent prompts; optional `archetype` groups rules into named bundles (e.g., `add-cli-command`) |
 
-**Opt-in**: Absent `.ll/decisions.yaml` is never an error — all integrations gracefully skip when the file is missing. Enable the feature by adding a `decisions:` block to `.ll/ll-config.json`.
+**Opt-in**: An absent decisions log (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`) is never an error — all integrations gracefully skip when it is missing. Presence gates must accept **either** tier (`[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]`); gating on the flat file alone silently skips governance on never-compacted installs. Enable the feature by adding a `decisions:` block to `.ll/ll-config.json`.
 
-**Integrity transports**: the YAML schema and load semantics are gated by
-`ll-verify-decisions` (ENH-2589) at three transport-layer integrations,
-listed in firing order:
+**Integrity transports**: the schema and load semantics of both tiers (flat file
+and `.ll/decisions.d/*.json` fragments) are gated by `ll-verify-decisions`
+(ENH-2589) at three transport-layer integrations, listed in firing order:
 
 1. **Claude Code `PreToolUse` hook** (ENH-2592,
    [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh))

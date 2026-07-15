@@ -216,7 +216,7 @@ Controls the decisions and rules log. See [CONFIGURATION.md → `decisions`](CON
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `False` | Enable the decisions log feature. When `False`, all integrations gracefully skip. |
-| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the decisions log file, relative to the project root. |
+| `log_path` | `str` | `".ll/decisions.yaml"` | Path to the legacy flat decisions file, relative to the project root. The append-only fragment directory is derived as its `.d`-suffixed sibling (`.ll/decisions.d/`); reads union both tiers. |
 | `auto_generate` | `list[str]` | `[]` | Issue type prefixes to include during `ll-issues decisions generate` (e.g., `["FEAT", "ENH"]`). Empty list (default) generates entries for all completed issue types. |
 
 #### Methods

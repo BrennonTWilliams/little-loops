@@ -1695,7 +1695,7 @@ Manage rules, decisions, and exceptions log.
 | `sync` | Sync active rules to `.ll/ll.local.md` |
 | `suggest-rules` | Analyze decision entries and surface candidates ready for promotion to rules |
 | `promote <ID>` | Convert a `decision` entry into an enforced `rule` (rewrites entry in-place; auto-syncs when `--enforcement required`) |
-| `extract-from-completed` | Extract rules from completed issues via LLM; appends `RuleEntry` records to `decisions.yaml` with deduplication |
+| `extract-from-completed` | Extract rules from completed issues via LLM; appends `RuleEntry` records to the decisions log as `.ll/decisions.d/*.json` fragments with deduplication |
 
 **`list` flags:**
 
@@ -1742,11 +1742,11 @@ Manage rules, decisions, and exceptions log.
 
 | Flag | Description |
 |------|-------------|
-| `--from` | Source to generate from: `completed` (default). Scans issue type directories (`.issues/bugs/`, `.issues/features/`, `.issues/enhancements/`, `.issues/epics/`) for files with `status: done` frontmatter, skips entries already present in `.ll/decisions.yaml`, and appends new `decision` entries for each issue not yet logged. |
+| `--from` | Source to generate from: `completed` (default). Scans issue type directories (`.issues/bugs/`, `.issues/features/`, `.issues/enhancements/`, `.issues/epics/`) for files with `status: done` frontmatter, skips entries already present in the decisions log (both `.ll/decisions.yaml` and `.ll/decisions.d/*.json` fragments), and appends new `decision` entries (as fragments) for each issue not yet logged. |
 
 **`sync` flags:**
 
-No additional flags. Reads active required rules from `.ll/decisions.yaml` and writes them to the `## Active Rules` section in `.ll/ll.local.md`. Creates `.ll/ll.local.md` if absent. Silently skips when `.ll/decisions.yaml` does not exist.
+No additional flags. Reads active required rules from the decisions log (both `.ll/decisions.yaml` and `.ll/decisions.d/*.json` fragments) and writes them to the `## Active Rules` section in `.ll/ll.local.md`. Creates `.ll/ll.local.md` if absent. Silently skips when the decisions log is absent (neither tier present).
 
 **`suggest-rules` flags:**
 
@@ -2842,7 +2842,7 @@ ll-verify-design-tokens -C /path/to/root         # Discover under a specific pro
 
 ### ll-verify-decisions
 
-Validate `.ll/decisions.yaml` by loading it through `load_decisions()` and asserting no YAML syntax errors, missing required fields, or unknown entry-type discriminators. Gates the three transport-layer corruption checks (ENH-2589): the pre-commit hook (ENH-2590), the pytest CI gate (ENH-2591), and the Claude Code `PreToolUse` hook (ENH-2592) all delegate to this binary and rely on its exit-code contract.
+Validate the decisions log by loading `.ll/decisions.yaml` through `load_decisions()` **and** re-globbing the derived `.ll/decisions.d/*.json` fragment directory in a strict second pass (bypassing the read path's silent skip of malformed fragments), asserting no YAML/JSON syntax errors, missing required fields, or unknown entry-type discriminators in either tier. Gates the three transport-layer corruption checks (ENH-2589): the pre-commit hook (ENH-2590), the pytest CI gate (ENH-2591), and the Claude Code `PreToolUse` hook (ENH-2592) all delegate to this binary and rely on its exit-code contract.
 
 The validator catches three corruption classes:
 
@@ -2854,13 +2854,13 @@ The validator catches three corruption classes:
 
 | Flag | Description |
 |------|-------------|
-| `--config-root` | Project root whose `.ll/decisions.yaml` to validate (default: cwd). Equivalent to `BRConfig.project_root`. |
+| `--config-root` | Project root whose decisions log (`.ll/decisions.yaml` + `.ll/decisions.d/`) to validate (default: cwd). Equivalent to `BRConfig.project_root`. |
 
 **Exit codes:** `0` = loadable via `load_decisions()` and schema-clean; `1` = any caught `yaml.YAMLError`/`KeyError`/`ValueError`, with a single-line `ERROR: <path>: <ExcType>: <msg>` on stderr.
 
 **Examples:**
 ```bash
-ll-verify-decisions                       # Validate .ll/decisions.yaml from cwd
+ll-verify-decisions                       # Validate .ll/decisions.yaml + .ll/decisions.d/ from cwd
 ll-verify-decisions --config-root /repo   # Validate under a specific project root
 ```
 

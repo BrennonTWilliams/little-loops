@@ -414,10 +414,10 @@ USE Edit tool to replace the entire --- block with the updated block
 
 **Idempotency**: if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`.
 
-Append a decision entry to the log (silent no-op when `decisions.yaml` is absent):
+Append a decision entry to the log (silent no-op when the decisions log is absent). Storage is hybrid — a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted install has only the fragment dir):
 
 ```bash
-if [ -f .ll/decisions.yaml ]; then
+if [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; then
     ll-issues decisions add \
       --type=decision \
       --category="architecture" \

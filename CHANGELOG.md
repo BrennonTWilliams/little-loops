@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.144.0] - 2026-07-15
+
+### Changed
+
+- **Decisions log now uses hybrid append-only fragment storage** — new decision,
+  rule, exception, and coupling entries are written as one append-only file per
+  entry under `.ll/decisions.d/<uuid4>.json` (UUID4 ids) instead of appending to
+  the single `.ll/decisions.yaml` flat file. This eliminates the concurrent-append
+  id collision that blocked EPIC-branch merges when two branches minted the same
+  count-based `ARCHITECTURE-NNN` id (BUG-2642). Reads union both tiers
+  (`load_decisions()` / `ll-issues decisions list` merge the flat file with all
+  fragments); compaction (`save_decisions()`) folds every fragment back into the
+  flat file and deletes the fragment directory. A **fresh install now has only
+  `.ll/decisions.d/`** until the first compaction — query through
+  `ll-issues decisions list` rather than `cat`/`grep`-ing a single file. The
+  fragment directory is derived from `decisions.log_path` (its `.d`-suffixed
+  sibling) and is not independently configurable. `ll-verify-decisions`, the
+  pre-commit hook, the pytest gate, and the Claude Code `PreToolUse` hook all
+  validate both tiers (BUG-2644/2645/2646/2647).
+
+### Fixed
+
+- **Decisions governance no longer silently skipped on fresh installs** —
+  `/ll:capture-issue`, `/ll:decide-issue`, `/ll:go-no-go`, `/ll:verify-issues`,
+  and `/ll:ready-issue` gated their decisions-log step on `[ -f .ll/decisions.yaml ]`,
+  which skipped governance entirely on any never-compacted install (where entries
+  live only in `.ll/decisions.d/*.json`). The gates now accept either tier
+  (`[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]`) (BUG-2647).
+
 ## [1.143.0] - 2026-07-13
 
 ### Added

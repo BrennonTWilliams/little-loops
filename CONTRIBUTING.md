@@ -135,9 +135,12 @@ pre-commit run gitleaks --all-files
 ### Decisions YAML Validation (ll-verify-decisions)
 
 Every `git commit` also runs the `ll-verify-decisions` repo-local hook
-against staged changes to `.ll/decisions.yaml` (ENH-2590). The hook loads
-the file through [`load_decisions()`](docs/reference/API.md) and blocks the
-commit on any `yaml.YAMLError`, missing required field, or unknown entry
+against staged changes to the decisions log — both the legacy
+`.ll/decisions.yaml` flat file and the append-only `.ll/decisions.d/*.json`
+fragments (matched by `^\.ll/decisions(\.yaml|\.d/.*\.json)$`) (ENH-2590). The
+hook loads the flat file through [`load_decisions()`](docs/reference/API.md) and
+re-globs each fragment in a strict pass, blocking the commit on any
+`yaml.YAMLError`/JSON parse error, missing required field, or unknown entry
 discriminator. The same `pre-commit install` activation above wires this
 hook in alongside gitleaks — no extra setup is needed.
 
@@ -145,7 +148,7 @@ The validator is installed alongside the package via
 `pip install -e "./scripts[dev]"`. To smoke-test the hook manually:
 
 ```bash
-pre-commit run ll-verify-decisions --files .ll/decisions.yaml
+pre-commit run ll-verify-decisions --files .ll/decisions.yaml .ll/decisions.d/*.json
 ```
 
 > **Note**: `git commit --no-verify` and non-hook edit paths bypass this
