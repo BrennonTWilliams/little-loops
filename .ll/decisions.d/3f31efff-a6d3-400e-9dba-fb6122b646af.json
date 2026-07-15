@@ -1,0 +1,12 @@
+{
+  "id": "1ce8b00f-0045-4fab-ae09-5da1d69b27aa",
+  "type": "decision",
+  "timestamp": "2026-07-15T23:16:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Plan doc is curated evidence paired with committed ## Spike Results; mirrors .ll/learning-tests/ and .ll/decisions.d/; zero new infra.",
+  "rule": "Track .ll/spikes/ (Option A): interactive spike plan docs live in git-tracked .ll/spikes/ via the !/.ll/ un-ignore",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: gitignore .ll/spikes/ as regenerable scratch (weaker fit \u2014 creates asymmetric audit trail vs committed results section)",
+  "issue": "ENH-2655"
+}
