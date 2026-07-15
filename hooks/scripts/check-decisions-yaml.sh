@@ -6,7 +6,9 @@
 # Validates the candidate content of a Write/Edit operation against
 # ll-verify-decisions (ENH-2589) BEFORE Claude mutates disk. Catches
 # agent-induced corruption at the host layer, complementing the pre-commit
-# hook (ENH-2590) and pytest CI gate (ENH-2591).
+# hook (ENH-2590) and pytest CI gate (ENH-2591). Covers both the flat
+# .ll/decisions.yaml file and append-only .ll/decisions.d/*.json fragments
+# (BUG-2646).
 #
 # Exit semantics (Claude Code PreToolUse contract — see
 # hooks/adapters/claude-code/pre-tool-use.sh:7-13):
@@ -82,16 +84,28 @@ if tool_name not in ('Write', 'Edit'):
     sys.exit(0)
 
 # Accept absolute paths ending in /.ll/decisions.yaml and the bare relative
-# form. Reject anything else (including paths inside repo subtrees that
+# form, plus append-only fragment files under .ll/decisions.d/*.json
+# (BUG-2646). Reject anything else (including paths inside repo subtrees that
 # merely contain a .ll/ segment — those are not the log file).
-if not (file_path.endswith('/.ll/decisions.yaml') or file_path == '.ll/decisions.yaml'):
+is_flat = file_path.endswith('/.ll/decisions.yaml') or file_path == '.ll/decisions.yaml'
+is_fragment = file_path.endswith('.json') and (
+    '/.ll/decisions.d/' in file_path or file_path.startswith('.ll/decisions.d/')
+)
+if not (is_flat or is_fragment):
     print('skip:not-decisions-yaml')
     sys.exit(0)
 
 work_dir = os.environ['WORK_DIR']
 ll_dir = os.path.join(work_dir, '.ll')
 os.makedirs(ll_dir, exist_ok=True)
-candidate_path = os.path.join(ll_dir, 'decisions.yaml')
+if is_fragment:
+    # Stage the candidate as a fragment so the validator's strict fragment
+    # pass (BUG-2646) sees it as .ll/decisions.d/<name>.json, not a flat file.
+    frag_dir = os.path.join(ll_dir, 'decisions.d')
+    os.makedirs(frag_dir, exist_ok=True)
+    candidate_path = os.path.join(frag_dir, os.path.basename(file_path))
+else:
+    candidate_path = os.path.join(ll_dir, 'decisions.yaml')
 
 if tool_name == 'Write':
     content = tool_input.get('content') or ''

@@ -25,6 +25,7 @@ own subsystem and rely on its exit-code contract.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -53,12 +54,27 @@ def _run(log_path: Path) -> tuple[int, str | None]:
     with a single-line error message pointing at the file path (caller emits it
     to stderr).
     """
-    from little_loops.decisions import load_decisions
+    from little_loops.decisions import _entry_from_dict, _fragments_dir, load_decisions
 
     try:
         load_decisions(log_path)
     except (yaml.YAMLError, KeyError, ValueError) as exc:
         return 1, f"ERROR: {log_path}: {type(exc).__name__}: {exc}"
+
+    # Strict fragment pass (BUG-2646). load_decisions() silently *skips*
+    # malformed .ll/decisions.d/*.json fragments (BUG-2644), so a bad fragment
+    # never raises through the block above. Re-parse each fragment strictly —
+    # deliberately NOT via the swallowing _load_fragments() path — so invalid
+    # JSON / missing id / unknown type escapes as exit 1, mirroring the
+    # corruption gating load_decisions() still applies to the flat file.
+    frag_dir = _fragments_dir(log_path)
+    if frag_dir.exists():
+        for frag in sorted(frag_dir.glob("*.json")):
+            try:
+                data = json.loads(frag.read_text(encoding="utf-8"))
+                _entry_from_dict(data)
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, AttributeError) as exc:
+                return 1, f"ERROR: {frag}: {type(exc).__name__}: {exc}"
     return 0, None
 
 

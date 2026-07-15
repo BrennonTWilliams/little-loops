@@ -84,10 +84,19 @@ def _write_config(repo: Path) -> None:
         "        name: Validate .ll/decisions.yaml\n"
         "        language: system\n"
         "        entry: ll-verify-decisions\n"
-        "        files: ^\\.ll/decisions\\.yaml$\n"
+        "        files: ^\\.ll/decisions(\\.yaml|\\.d/.*\\.json)$\n"
         "        pass_filenames: false\n",
         encoding="utf-8",
     )
+
+
+def _write_fragment(repo: Path, name: str, body: str) -> Path:
+    """Write a ``.ll/decisions.d/<name>`` fragment to *repo* and return its path."""
+    frag_dir = repo / ".ll" / "decisions.d"
+    frag_dir.mkdir(parents=True, exist_ok=True)
+    frag_path = frag_dir / name
+    frag_path.write_text(body, encoding="utf-8")
+    return frag_path
 
 
 def _write_decisions(repo: Path, body: str) -> Path:
@@ -202,5 +211,77 @@ def test_pre_commit_passes_clean_file(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, (
         "pre-commit hook should pass on a clean decisions.yaml, but exit "
+        f"was {proc.returncode}. stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fragment-path gates (BUG-2646): .ll/decisions.d/*.json must be matched by
+# the widened files: pattern and validated by the strict fragment pass.
+# ---------------------------------------------------------------------------
+
+VALID_FRAGMENT = '{"id": "R-001", "type": "rule", "rule": "Use atomic writes"}'
+MALFORMED_FRAGMENT = "{not valid json"
+
+
+def test_pre_commit_config_files_pattern_matches_fragments() -> None:
+    """The repo-root config's ``files:`` pattern matches fragment paths (BUG-2646)."""
+    config_path = Path(__file__).resolve().parents[2] / ".pre-commit-config.yaml"
+    text = config_path.read_text(encoding="utf-8")
+    assert "\\.d/" in text, (
+        ".pre-commit-config.yaml files: pattern must match .ll/decisions.d/*.json fragments"
+    )
+
+
+def test_pre_commit_blocks_malformed_fragment(tmp_path: Path) -> None:
+    """`pre-commit run --files .ll/decisions.d/<uuid>.json` must exit non-zero on a bad fragment."""
+    pre_commit = _pre_commit_available()
+    if pre_commit is None:
+        pytest.skip("pre-commit not installed; pre-commit gate runs wherever it is available")
+    if _validator_available() is None:
+        pytest.skip('ll-verify-decisions not installed; run pip install -e "./scripts[dev]"')
+
+    _init_git_repo(tmp_path)
+    _write_config(tmp_path)
+    frag = _write_fragment(tmp_path, "bad.json", MALFORMED_FRAGMENT)
+    rel = frag.relative_to(tmp_path).as_posix()
+    subprocess.run(["git", "add", rel], cwd=str(tmp_path), check=True, capture_output=True)
+
+    proc = subprocess.run(
+        [pre_commit, "run", "--files", rel],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode != 0, (
+        "pre-commit hook should fail on a malformed fragment, but exit was 0. "
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )
+
+
+def test_pre_commit_passes_valid_fragment(tmp_path: Path) -> None:
+    """`pre-commit run --files .ll/decisions.d/<uuid>.json` must exit 0 on a valid fragment."""
+    pre_commit = _pre_commit_available()
+    if pre_commit is None:
+        pytest.skip("pre-commit not installed; pre-commit gate runs wherever it is available")
+    if _validator_available() is None:
+        pytest.skip('ll-verify-decisions not installed; run pip install -e "./scripts[dev]"')
+
+    _init_git_repo(tmp_path)
+    _write_config(tmp_path)
+    frag = _write_fragment(tmp_path, "good.json", VALID_FRAGMENT)
+    rel = frag.relative_to(tmp_path).as_posix()
+    subprocess.run(["git", "add", rel], cwd=str(tmp_path), check=True, capture_output=True)
+
+    proc = subprocess.run(
+        [pre_commit, "run", "--files", rel],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, (
+        "pre-commit hook should pass on a valid fragment, but exit "
         f"was {proc.returncode}. stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     )

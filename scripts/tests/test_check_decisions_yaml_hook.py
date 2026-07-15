@@ -270,6 +270,64 @@ def test_hook_allows_non_target_path(tmp_path: Path) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Fragment-path gates (BUG-2646): .ll/decisions.d/*.json Write candidates
+# must be recognized and validated via the strict fragment pass.
+# ---------------------------------------------------------------------------
+
+VALID_FRAGMENT = '{"id": "R-001", "type": "rule", "rule": "Use atomic writes"}'
+MALFORMED_FRAGMENT = "{not valid json"
+
+
+def _fragment_path(tmp_path: Path, name: str = "2bff18ff.json") -> Path:
+    """Return an (uncreated) fragment path under tmp_path/.ll/decisions.d/."""
+    return tmp_path / ".ll" / "decisions.d" / name
+
+
+def test_hook_recognizes_decisions_d_fragment_path(tmp_path: Path, validator: str | None) -> None:
+    """A Write to .ll/decisions.d/<uuid>.json is recognized (not skipped as off-path).
+
+    Uses a valid fragment so recognition → validation → allow (exit 0). The
+    counterpoint test_hook_allows_non_target_path proves a non-fragment .json
+    path is skipped; this proves a fragment path is NOT skipped.
+    """
+    if validator is None:
+        pytest.skip(f"{CLI} not installed; run `pip install -e ./scripts[dev]`")
+
+    (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+    frag = _fragment_path(tmp_path)
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(frag), "content": VALID_FRAGMENT},
+    }
+    result = _invoke_hook(payload, cwd=tmp_path)
+    assert result.returncode == 0, (
+        f"Hook should allow a valid fragment Write with exit 0, got {result.returncode}. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def test_hook_blocks_malformed_fragment_write(tmp_path: Path, validator: str | None) -> None:
+    """Write of a malformed .ll/decisions.d/<uuid>.json fragment must block (exit 2)."""
+    if validator is None:
+        pytest.skip(f"{CLI} not installed; run `pip install -e ./scripts[dev]`")
+
+    (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+    frag = _fragment_path(tmp_path)
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(frag), "content": MALFORMED_FRAGMENT},
+    }
+    result = _invoke_hook(payload, cwd=tmp_path)
+    assert result.returncode == 2, (
+        f"Hook should block a malformed fragment Write with exit 2, got {result.returncode}. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    assert "ERROR" in result.stderr, (
+        f"Hook stderr should surface the validator ERROR on block; got {result.stderr!r}"
+    )
+
+
 def test_hook_allows_non_write_edit_tools(tmp_path: Path) -> None:
     """Tools other than Write/Edit exit 0 without invoking the validator."""
     (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)

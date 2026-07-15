@@ -9,5 +9,5 @@ repos:
         name: Validate .ll/decisions.yaml
         language: system
         entry: ll-verify-decisions
-        files: ^\.ll/decisions\.yaml$
+        files: ^\.ll/decisions(\.yaml|\.d/.*\.json)$
         pass_filenames: false

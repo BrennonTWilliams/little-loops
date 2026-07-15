@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ import pytest
 from little_loops.decisions import (
     DecisionEntry,
     RuleEntry,
+    add_entry,
     save_decisions,
 )
 
@@ -191,6 +193,102 @@ class TestMainVerifyDecisions:
 
         with (
             patch("sys.argv", ["ll-verify-decisions", "--config-root", str(clean_root)]),
+            patch("builtins.print"),
+        ):
+            assert main_verify_decisions() == 0
+
+
+# ---------------------------------------------------------------------------
+# Fragment strict-pass tests (BUG-2646)
+#   load_decisions() silently skips malformed .ll/decisions.d/*.json fragments
+#   (BUG-2644), so the validator must run a *strict* fragment pass that lets
+#   parse/schema errors escape as exit 1. This is the exact counterpoint to
+#   test_decisions_fragments.py::TestDirectoryUnionRead::test_malformed_fragment_skipped.
+# ---------------------------------------------------------------------------
+
+
+def _frag_dir(tmp_path: Path) -> Path:
+    return tmp_path / ".ll" / "decisions.d"
+
+
+def _write_fragment(tmp_path: Path, name: str, payload: dict | str) -> Path:
+    frag_dir = _frag_dir(tmp_path)
+    frag_dir.mkdir(parents=True, exist_ok=True)
+    p = frag_dir / name
+    text = payload if isinstance(payload, str) else json.dumps(payload)
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+class TestMainVerifyDecisionsFragments:
+    """The strict fragment pass — mirrors TestMainVerifyDecisions shape."""
+
+    def test_valid_fragment_passes(self, tmp_path: Path) -> None:
+        """A well-formed fragment (via add_entry) → exit 0."""
+        from little_loops.cli.verify_decisions import main_verify_decisions
+
+        _make_project(tmp_path)
+        add_entry(RuleEntry(id="NAMING-001", rule="r"), tmp_path / ".ll" / "decisions.yaml")
+        with (
+            patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]),
+            patch("builtins.print"),
+        ):
+            assert main_verify_decisions() == 0
+
+    def test_malformed_json_fragment_blocks(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Unparseable JSON fragment → exit 1 (NOT silently skipped)."""
+        from little_loops.cli.verify_decisions import main_verify_decisions
+
+        _make_project(tmp_path)
+        _write_fragment(tmp_path, "bad.json", "{not json")
+        with patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]):
+            ret = main_verify_decisions()
+        captured = capsys.readouterr()
+        assert ret == 1
+        assert "ERROR" in captured.err
+        assert "bad.json" in captured.err
+
+    def test_missing_id_fragment_blocks(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Fragment missing required ``id`` → exit 1."""
+        from little_loops.cli.verify_decisions import main_verify_decisions
+
+        _make_project(tmp_path)
+        _write_fragment(tmp_path, "noid.json", {"type": "rule", "rule": "r"})
+        with patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]):
+            ret = main_verify_decisions()
+        captured = capsys.readouterr()
+        assert ret == 1
+        assert "ERROR" in captured.err
+
+    def test_unknown_type_fragment_blocks(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Fragment with an unknown ``type`` discriminator → exit 1."""
+        from little_loops.cli.verify_decisions import main_verify_decisions
+
+        _make_project(tmp_path)
+        _write_fragment(tmp_path, "badtype.json", {"id": "X", "type": "nope"})
+        with patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]):
+            ret = main_verify_decisions()
+        captured = capsys.readouterr()
+        assert ret == 1
+        assert "ERROR" in captured.err
+        assert "Unknown entry type" in captured.err
+
+    def test_clean_flat_file_plus_valid_fragment_passes(self, tmp_path: Path) -> None:
+        """Flat file and fragment both valid → exit 0 (positive control)."""
+        from little_loops.cli.verify_decisions import main_verify_decisions
+
+        _make_project(tmp_path)
+        decisions_path = tmp_path / ".ll" / "decisions.yaml"
+        save_decisions([RuleEntry(id="R-001", rule="Use atomic writes")], decisions_path)
+        _write_fragment(tmp_path, "ok.json", {"id": "OK-1", "type": "rule", "rule": "r"})
+        with (
+            patch("sys.argv", ["ll-verify-decisions", "--config-root", str(tmp_path)]),
             patch("builtins.print"),
         ):
             assert main_verify_decisions() == 0
