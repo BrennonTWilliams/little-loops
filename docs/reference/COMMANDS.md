@@ -180,6 +180,8 @@ Validate issue file for accuracy and auto-correct problems.
 
 **Learning Test Gate:** When the issue contains a `learning_tests_required` frontmatter field, each declared target is checked against the learning test registry (`ll-learning-tests check`). Proven targets emit a PASS row in the VALIDATION table; stale targets emit a WARN. For `missing` or `refuted` targets, the skill **auto-invokes** `/ll:explore-api "<target>"` inline, then re-checks the registry. If the target is now proven, the gate passes; if it is still missing or refuted after exploration, readiness is blocked with `❌ Unproven assumption: "<target>"`. Issues without `learning_tests_required` are unaffected.
 
+**Branch-transparent symbol existence (ENH-2653):** Before deciding a cited symbol is missing, the verifier reports the inspected branch and worktree (`## INSPECTED_BRANCH`) so every "symbol not found" claim is falsifiable — a `Symbol Existence` row of `NOT_READY` no longer means "missing everywhere," only "missing on the branch named here." When a symbol is absent and the issue is an EPIC child (or the EPIC declares a `base_branch:`/`target_branch:`, see FEAT-2652), the verifier downgrades the finding to a `WARN` ("symbols not on inspected branch `<X>`; EPIC target base may differ") instead of a hard `NOT_READY`, since the symbol may simply live on a different base than the one currently checked out. If the EPIC declares no target base, that absence of a declared base is itself flagged as a readiness concern.
+
 ### `/ll:verify-issues`
 Verify all issue files against current codebase state.
 
