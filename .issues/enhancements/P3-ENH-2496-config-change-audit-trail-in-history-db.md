@@ -8,7 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: false
+decision_needed: true
 labels:
   - enhancement
   - history-db
@@ -205,6 +205,94 @@ _Added by `/ll:refine-issue` — anchor references populated from codebase analy
   (bump stated schema version from 14 to 19) and `:49-60+` (add a
   "when was my config last flipped?" query recipe).
 
+### Codebase Research Findings (auto-refine 2026-07-16)
+
+_Added by `/ll:refine-issue --auto` — second-pass research; supersedes prior anchor line numbers, captures drift, and surfaces a design choice for the implementer._
+
+#### Anchor drift (since 2026-07-07 first-pass)
+
+Many line numbers captured in the prior `### Codebase Research Findings` block have drifted (typically +100 to +800 lines) due to subsequent additions: v19 `raw_events` migration (ENH-2581), v20 `usage_events` migration (ENH-2461), unified DB-path resolution helpers (ENH-2623), FTS5 phrase helper (BUG-2651), and several new `record_*` / read functions. Correct anchors:
+
+- `session_store.py:207` — `SCHEMA_VERSION = 20` (prior pass said 102; the constant moved and its value is **20**, not 18).
+- `session_store.py:61-93` — `__all__` (33 entries, not 28 at lines 60-87).
+- `session_store.py:209-222` — `VALID_KINDS` (**rename**: no underscore prefix; the prior pass's `_VALID_KINDS` reference is wrong).
+- `session_store.py:223-236` — `_KIND_TABLE` (was 119-130).
+- `session_store.py:333-625` — `_MIGRATIONS` (extends to 625, not 545).
+- `session_store.py:646-669` — v18 `test_run_events` block (was 521-544).
+- `session_store.py:768-778` — `_split_sql_statements()` (used by `_apply_migrations`).
+- `session_store.py:798-832` — `_apply_migrations()` (was 609-645).
+- `session_store.py:1001-1051` — `record_issue_snapshot()` (was 816-866).
+- `session_store.py:1222-1272` — `record_commit_event()` (was 1041-1091).
+- `session_store.py:1462-1484` — `recent()` dispatcher (was 1268-1289).
+- `session_store.py:1629-1635` — `_hash_args()` (was 1439-1445).
+- `history_reader.py:125` — `CommitEvent` dataclass (was 124).
+- `history_reader.py:139` — `RunEvent` dataclass (was 138); new `pass_rate` property at lines 156-161.
+- `history_reader.py:256-262` — `_connect_readonly()` (was 235).
+- `history_reader.py:353-392` — `search()` (was 332-367).
+- `history_reader.py:651-686` — `recent_commit_events()` (was 524-559).
+- `cli/session.py:99-127` — `search_parser` and `recent_parser` reference `VALID_KINDS` **dynamically** via `choices=list(VALID_KINDS)` (was 88-141). Adding `"config"` to the constant propagates automatically; **no per-list edit is required**.
+- `cli/session.py:430-468` — `recent` dispatcher (was 386-424).
+- `hooks/session_start.py:103-112` — `merged_config` lifecycle (defined at 103, rebinds at 111, completes at 112). The `record_config_snapshot` call must live **INSIDE** the `if config_path is not None:` block (opens at line 118) to inherit the missing-project skip.
+- `hooks/session_start.py:153-181` — backfill subprocess is spawned here; the `record_config_snapshot` call must **precede** this so the row lands synchronously before the hook exits.
+- `hooks/session_start.py:88, 119, 137, 160, 188` — actual `contextlib.suppress(Exception)` call sites (prior pass's 170 was a misread; 160 and 188 are additional sites).
+- `tests/test_session_store.py:3758-3830` — `TestRecordIssueSnapshot` (was 2942-3012).
+- `tests/test_session_store.py:4235-4284` — `TestRecordCommitEvent` (was 3416-3464).
+- `tests/test_session_store.py:4362-4433` — `TestRecordTestRunEvent` (was 3549+).
+
+#### Doc anchor corrections (prior pass)
+
+The prior pass's doc anchors are wrong:
+
+- `docs/ARCHITECTURE.md:612-635` is the "Components" table, **NOT** the schema versions table. The schema versions table is at **lines 655-680** (closing prose at 678-680).
+- `docs/reference/API.md:6975-6984` is the **body** of the `search()` function definition (line 6975 is the `kind: str | None = None` parameter), NOT an import listing.
+- `docs/reference/API.md:7005-7048` spans three distinct function blocks (`find_session_for_issue_transition`, `recent_skill_events`, `summarize_skills`).
+- `docs/reference/CLI.md:2208, 2264` are in `ll-messages` and `ll-logs sequences` flag tables, **NOT** in `session_store` / `record_commit` / `--kind config` context.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:51` says "Current schema version: 18" but `SCHEMA_VERSION = 20`. The per-version table at lines 53-74 is accurate. The implementer should bump line 51 to **20** (or **21** at implementation time).
+
+#### New code/conventions since prior pass
+
+- `session_store.py:100-114` — `_is_default_shaped()` (ENH-2623).
+- `session_store.py:117-141` — `_config_db_path()` (ENH-2623).
+- `session_store.py:144` — `_resolve_db_path()` (ENH-2623, unified DB-path resolution). New `record_*` functions should prefer this over reading `DEFAULT_DB_PATH` directly.
+- `session_store.py:244-255` — `_KINDLESS_TABLES` frozenset (ENH-2581). `config_snapshots` must **NOT** be added here (it needs a `_KIND_TABLE` entry).
+- `session_store.py:258` — `_LOOP_EVENT_TYPES` frozenset.
+- `session_store.py:1422-1431` — `fts_phrase()` helper (BUG-2651) for safer FTS5 query construction.
+- `session_store.py:973` — `record_skill_event()`.
+- `session_store.py:3248-3272` — `record_retirement()` (newest `record_*` writer).
+- `session_store.py:680-708` — v19 `raw_events` migration (ENH-2581) is the **most recent** schema precedent and uses `ALTER TABLE` follow-ups after `CREATE TABLE`.
+- `session_store.py:718-733` — v20 `usage_events` migration (ENH-2461) is the simplest precedent (`CREATE TABLE` + two `CREATE INDEX` statements, no UNIQUE, no follow-up ALTER).
+
+#### Hash-gating design choice
+
+The prior pass proposed an explicit-SELECT-then-INSERT approach for `record_config_snapshot`. Repo-wide search confirms **no existing precedent** uses this pattern — every hash-gated `record_*` function uses `INSERT OR IGNORE` on a UNIQUE column with `cursor.rowcount`-gated `_index()` calls. The implementer has two viable paths:
+
+**Option A**: Explicit-SELECT-first (as currently specified in `## Proposed Solution`)
+
+Read the latest `config_hash` via `SELECT config_hash FROM config_snapshots ORDER BY id DESC LIMIT 1`; if equal, return without writing.
+
+- Pro: idempotency is independent of schema; callable "unconditionally" without INSERT.
+- Con: divergent from existing 23+ `INSERT OR IGNORE` call sites in `session_store.py`; adds a SELECT round-trip per `session_start`.
+
+**Option B**: `INSERT OR IGNORE` on a UNIQUE index (matches `record_commit_event` precedent at lines 1222-1272)
+
+Add `CREATE UNIQUE INDEX IF NOT EXISTS idx_config_snapshots_hash ON config_snapshots(config_hash)` to the migration; use `INSERT OR IGNORE` and gate `_index()` on `cursor.rowcount`.
+
+- Pro: idiomatic, matches existing pattern, fewer moving parts.
+- Con: requires a UNIQUE constraint in the schema; cannot be called "unconditionally" with the same safety argument — though the call still short-circuits via the rowcount.
+
+**Recommended**: Option B — matches the 23+ `INSERT OR IGNORE` precedent at `session_store.py` lines 443, 487, 517, 704, 705, 1036, 1254, 1320, 1575, 1700, 1759, 2018, 2051, 2156, 2412, 2420, 2436, 2573, 2663, 2707, 3087. Implementer should add `CREATE UNIQUE INDEX idx_config_snapshots_hash ON config_snapshots(config_hash)` to the v21 migration and gate `_index()` on `cursor.rowcount`.
+
+#### Other pattern clarifications
+
+- **Read API for `ConfigSnapshot` dataclass** — the codebase uses `_row_to_dataclass(row, T)` helper (`history_reader.py:273-277`), not `from_row` classmethods. There are zero `from_row` classmethods anywhere in `history_reader.py`.
+- **Dataclass style** — bare `@dataclass` (no `frozen=True`); `SectionProvider` is the only `frozen=True` in the file and is not an event row.
+- **FTS5 content** — `search_index` is a virtual FTS5 table; multi-line content is tokenized by `unicode61` on Unicode whitespace. Convention is `[:512]` truncation per row (lines 304, 959, 1263, 1337, 1406, 1997, 2057, 2154); `_backfill_snapshots` is the only exception. For a full merged-config JSON, the implementer should **truncate to 512 chars** to match precedent.
+- **Forward-stub `config` parameter** — `record_commit_event`'s `config: dict | None = None` parameter is **explicitly NOT used** (docstring: "forward-compatibility stub for an `analytics.capture.commits` gate; it is accepted but not yet used"). Only `write_file_event` (916-925) and `record_correction` (949-958) honor real `analytics.capture.{file_events,corrections}` gates via `AnalyticsCaptureConfig.from_dict(...)`. For ENH-2496, `record_config_snapshot` operates on the merged config **itself**, so it should NOT take a `config` parameter (it IS the config).
+- **`config_at(ts)` lookup** — the prior spec's `WHERE ts <= ? ORDER BY ts DESC LIMIT 1` is brittle because `_now()` has 1-second resolution; multiple rows can share a `ts`. The robust pattern (matching `recent_commit_events` lines 678-680) is `ORDER BY ts DESC, id DESC LIMIT 1` — `id` is the tiebreaker.
+- **Schema slot** — at implementation time, **read the live `SCHEMA_VERSION` constant**. It is currently **20** (v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done, v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done). The implementer bumps to whatever version is open when ENH-2496 lands (likely **21**). The existing `## Scope Boundary` note at the bottom of the file already flags this conflict.
+- **CLI `--kind config`** — once `"config"` is added to `VALID_KINDS`, both `search_parser` (cli/session.py:103) and `recent_parser` (cli/session.py:118) reference it dynamically. **No per-list edit is required**; the prior pass's claim that both parsers need a hand-edit is wrong.
+- **Wiring position** — the `record_config_snapshot` call inside `session_start.py` should live INSIDE the existing `if config_path is not None:` block (line 118+) **and** before the backfill subprocess spawn at lines 153-181, so the row lands synchronously before the hook exits. Use `with contextlib.suppress(Exception):` as the wrapper.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (uncaptured surfaces)
@@ -292,6 +380,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T15:27:21 - `66c5d53d-135e-4749-a39f-400ab8f96c42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:10:17 - `0e87c489-48ca-489b-8c2a-14ba92f190fd.jsonl`
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

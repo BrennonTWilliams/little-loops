@@ -82,6 +82,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Configuration
 - `.ll/ll-config.json` — `analytics.capture.loop_runs` flag (defaults to `true` per "permissive default" pattern at `session_store.py:738`); gate the transport-layer write
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` (gap-analysis pass, 2026-07-16) — anchor refresh against current code. The Integration Map line numbers above have drifted; use the current anchors below and the [Scope Boundary](#scope-boundary) note (SCHEMA_VERSION is now **20**, not 18/19)._
+
+**Behavioral corrections (not just line drift):**
+
+- ⚠ **Constant is `VALID_KINDS`, not `_VALID_KINDS`.** Every reference above/below (Integration Map, Proposed Solution, Implementation Steps 2) to `_VALID_KINDS` should read `VALID_KINDS` — a public name exported in `__all__` (`session_store.py:64`), defined as a tuple at `session_store.py:209`. The validation gate lives at `session_store.py:1473`.
+- ⚠ **CLI `--kind` choices are now auto-derived — the "add `loop_run` to the `choices=[...]` list" step is a NO-OP.** `cli/session.py:103` and `:115` both use `choices=list(VALID_KINDS)` (imported at `cli/session.py:45`). Adding `"loop_run"` to `VALID_KINDS` automatically flows into both `search --kind` and `recent --kind`. This supersedes the Integration Map bullet for `cli/session.py:88-141` and the first bullet of Implementation Step 9. Only the `ll-loop runs` subcommand and `ll-loop history --summary` remain as real CLI work.
+
+**Current authoritative anchors (replace the drifted line numbers above):**
+
+| Symbol | Was cited | Current |
+|--------|-----------|---------|
+| `SCHEMA_VERSION` (value `20`) | `session_store.py:102` | `session_store.py:207` |
+| `_MIGRATIONS` list | `session_store.py:208-545` | `session_store.py:333` |
+| `VALID_KINDS` tuple | `session_store.py:104` (`_VALID_KINDS`) | `session_store.py:209` |
+| `_KIND_TABLE` | `session_store.py:119` | `session_store.py:223` |
+| `_LOOP_EVENT_TYPES` | `session_store.py:133` | `session_store.py:258` (`"loop_complete"` at `:262`) |
+| `record_commit_event` (shape to copy) | `session_store.py:1041` | `session_store.py:1222` |
+| `record_test_run_event` (shape to copy) | — | `session_store.py:1352` |
+| `SQLiteTransport.send` `loop_complete` branch | `session_store.py:1353` | `session_store.py:1543` (`if event_type == "loop_complete"`) |
+| `summarize_skills` (rollup model) | `history_reader.py:472` | `history_reader.py:497` |
+| `recent_commit_events` (reader model) | `history_reader.py:524` | `history_reader.py:651` |
+| `FSMExecutor._finish()` | `fsm/executor.py:2269` | `fsm/executor.py:2415` |
+| `_emit("loop_complete", payload)` | `fsm/executor.py:2278` | `fsm/executor.py:2424` |
+| archive-time `run_id` derivation | `fsm/persistence.py:494` | `fsm/persistence.py:518` |
+
+The `record_test_run_event` at `session_store.py:1352` (v18/ENH-2459) is now the most-recent additive-writer precedent alongside `record_commit_event` — model `record_loop_run_summary` on either.
+
 ## Expected Behavior
 
 - `loop_runs` table exists with columns: `id`, `run_id` (UNIQUE), `loop_name`, `started_at`, `ended_at`, `final_state`, `iterations`, `terminated_by`, `error`, `evaluator_score REAL`, `diagnostics_path`, `head_sha`, `branch`.
@@ -89,6 +118,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `ll-session recent --kind loop_run` returns rows; `ll-session search --fts "<loop_name>" --kind loop_run` returns matches.
 - `ll-loop history --summary` (new flag, optionally) prints a table from `loop_runs` instead of (or in addition to) the event stream.
 - Diagnostic artifact linkage: when `loop-specialist` writes a `.loops/diagnostics/<loop>-<ts>.md`, update the matching `loop_runs.diagnostics_path` column.
+- _Known v1 coverage gap (per Gap Q + Gap R):_ runs that exit via handoff (`_handle_handoff()`) or force-archive (`PersistentExecutor.archive_run_only()` at `fsm/persistence.py:839-895`) do not call `_finish()` and therefore write no `loop_runs` row. Hard process kills — `SystemExit`, `KeyboardInterrupt` escaping configured handlers, and other `BaseException` paths — also skip `_finish()` (no `finally` block in `FSMExecutor.run()`). Reconciler follow-on issues (Decision G2 + G3) will close this gap.
 
 ## Proposed Solution
 
@@ -147,16 +177,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 The proposed solution is sound, but the research surfaced three decision points that an implementer should resolve before writing code. Each has multiple viable options:
 
 **Decision A — Producer wiring (one row per run)**
+
+> **Selected:** Option A1 — per the stated recommendation. Side-effect of existing `loop_complete` keeps the transport-layer fan-out pattern intact and lets JSONL backfill auto-populate `loop_runs`.
+
 - **Option A1**: Side-effect of existing `loop_complete` event — modify `SQLiteTransport.send()` at `session_store.py:1353` to also write `loop_runs` when `event_type == "loop_complete"`. Pros: no new event type, no `_LOOP_EVENT_TYPES` change, single ingest path. Cons: conflates per-transition and per-run semantics in one branch.
 - **Option A2**: New `loop_run_summary` event — emit from `fsm/executor.py:_finish()` at line 2278 alongside `loop_complete`; add `"loop_run_summary"` to `_LOOP_EVENT_TYPES` at `session_store.py:133`. Pros: clean separation; can be re-emitted on backfill without side effects. Cons: two emits per run; more code surface.
 - **Recommendation**: Option A1. Matches the existing transport-layer "fan-out" pattern (one event → multiple table writes); the JSONL backfill reader at `_backfill_loops:1586` would automatically populate `loop_runs` from historical `loop_complete` events with no additional backfill code.
 
 **Decision B — `evaluator_score` extraction**
+
+> **Selected:** Option B1 — per the stated recommendation. Defer score extraction to a follow-on; `loop_runs.evaluator_score` is nullable.
+
 - **Option B1**: Defer (start with `NULL`) — `loop_runs.evaluator_score` is nullable; document a follow-up issue. Cheapest; matches ENH-2476's nullable-final-score pattern. Cons: no aggregate-score trend until the follow-on lands.
 - **Option B2**: New accumulator — add `self._evaluator_scores: list[float]` to `FSMExecutor.__init__`, updated inside `_evaluate()` when `state.evaluate.type == "output_numeric"` returns a numeric `details["value"]`. Pros: precise. Cons: invasive; one more mutable on the executor; risks drift between accumulator and event-stream-derived scores.
 - **Option B3**: Post-hoc from `summary.json` — `persistence.py:archive_run()` already copies `run_dir/summary.json` to the archive (line 509); `_finish()` can read it before archiving. Pros: reuses an existing artifact; no executor change. Cons: depends on every loop writing `summary.json`, which is not yet universal.
 
 **Decision C — `diagnostics_path` observation**
+
+> **Selected:** Option C1 — per the stated recommendation. Best-effort glob at `_finish()` keeps v1 wiring trivial; `loop_runs.diagnostics_path` is nullable so C2/C3 follow-ons slot in cleanly.
+
 - **Option C1**: Best-effort glob at `_finish()` — after `_emit("loop_complete", ...)`, glob `.loops/diagnostics/<loop-name>-*` and record the newest match. Pros: zero new wiring; works retroactively. Cons: racy (agent may still be writing); assumes the agent already finished.
 - **Option C2**: Sub-agent-stop hook — emit a `diagnostic_written` event from a hook watching the `.loops/diagnostics/` directory; route to `loop_runs.diagnostics_path` via `SQLiteTransport`. Pros: clean; mirrors the existing `record_correction` agent→DB ingestion pattern. Cons: requires hook plumbing.
 - **Option C3**: Skip on v1 — make `diagnostics_path` nullable; document a follow-up. Pros: ships the row + read API immediately. Cons: the headline use case ("link the run row to the diagnostic artifact") is incomplete until the hook lands.
@@ -189,6 +228,112 @@ The proposed solution is sound, but the research surfaced three decision points 
 **Gap L — Public API parity with `record_*` family**: `record_loop_run_summary()` should accept a `config: dict | None = None` parameter (forward-compat stub matching `record_commit_event` and `record_test_run_event`) so the `analytics.capture.loop_runs` gate can be honored without API churn later.
 
 **Gap M — FTS5 `kind` discriminator**: When calling `_index()` from `record_loop_run_summary()`, use `kind="loop_run"` (must match the new `_VALID_KINDS` entry) and `ref=run_id` / `anchor=loop_name` — mirroring `record_test_run_event` (`kind="test_run"`, `ref=head_sha`, `anchor=branch`).
+
+---
+
+**Pass-3 findings** (added by `/ll:refine-issue --auto`, 2026-07-16) — three behavioral refutations of the prior Gap K/Pass-2 claims and four new gaps surfaced by codebase-analyzer + pattern-finder against live source state. Implementation Steps 5 and 9, and Expected Behavior, are affected — see also the addenda appended there.
+
+**Refutations of prior-pass claims:**
+
+- ⚠ **Gap N — `_finish()` does NOT emit `loop_name`.** The Gap K claim that `_emit("loop_complete", payload)` propagates `loop_name` via `self.fsm.name` is **false**. Verified at `fsm/executor.py:2124-2132`: `_emit()` only adds `event` and `ts`. Only `loop_start` explicitly supplies `{"loop": self.fsm.name}` at `executor.py:389-393`. On the `loop_complete` path, `SQLiteTransport.send()` reads `event.get("loop_name", "")` and gets `""`. **Implication**: a transport-side fan-out cannot populate `loop_runs.loop_name`. The producer-side `record_loop_run_summary()` call from `_finish()` must receive `loop_name` as a direct arg from `self.fsm.name` (Decision D2). The transport-side write path becomes the backfill / historical-replay path only (see Gap P).
+- ⚠ **Gap O — `_finish()` emits `final_state`; transport reads `outcome`.** At `session_store.py:1543-1544`, the `loop_complete` branch sets `state = event.get("outcome", state)`. The current `_finish()` payload uses the key `final_state` (per BUG-2304), so `final_state` does NOT reach `loop_events.state`. **Implication**: a transport-side fan-out keyed off `final_state` would silently write `None`. The producer-side `record_loop_run_summary()` call from `_finish()` with the local `final_state` is the correct wiring (matches Implementation Step 5's "with the locals" phrasing exactly).
+- ⚠ **Gap P — JSONL backfill refutation.** The Pass-2 claim that "extending `SQLiteTransport.send()` would automatically make historical `.loops/.history/*/events.jsonl` replay populate `loop_runs`" is **false**. Current backfill paths: session JSONL → `raw_events` only via `_backfill_raw_events()` (`session_store.py:2700-2756`); loop backfill reads state JSON via `_backfill_loops()` (lines 1776-1807) and inserts synthetic `transition="backfill"` rows directly. `rebuild()` (lines 2838-2898) explicitly excludes `loop_events` from materialization (commented at lines 2818-2823). **Implication**: historical `.loops/.history/*/events.jsonl` archives will NOT populate `loop_runs` retroactively. Backfill is a separate follow-on (Decision F).
+
+**New behavioral facts:**
+
+- ⚠ **Gap Q — Handoff + force-archive paths skip `_finish()`.** `PersistentExecutor.archive_run_only()` at `fsm/persistence.py:839-895` writes final state and archives without calling `_finish()` and therefore emits no `loop_complete`. The handoff path (`_handle_handoff()`) similarly builds `ExecutionResult` directly. **Implication**: ~5–10% of runs (forced shutdowns, handoffs) will have no `loop_runs` row even with the producer-side wiring. Document as known v1 coverage gap; close via Decision G follow-on.
+- ⚠ **Gap R — `_finish()` is not guaranteed for `BaseException` paths.** `FSMExecutor.run()` catches `except Exception` at `executor.py:729-738` but has no `finally` that guarantees `_finish()`. Hard process kills, `SystemExit`, `KeyboardInterrupt` escaping configured handlers, and other `BaseException` subclasses do NOT receive a guaranteed `_finish()` call. Smaller, separate coverage gap from Q; both should be documented.
+- ⚠ **Gap S — `loop-specialist` filenames do NOT encode the FSM archive run_id.** The artifact filename is `.loops/diagnostics/<loop-name>-<UTC-ts>.md` per `agents/loop-specialist.md:75`. The FSM archive run_id is a different identifier (`<compact-ts>-<loop-name>`, e.g. `20260702T101530-rn-implement`). The agent→DB wiring cannot extract `run_id` from the artifact filename; the agent must receive `run_id` as a separate input. **Practical v1**: defer DB linkage (Option C3, "Skip on v1") until an upstream caller can supply `run_id`.
+- ⚠ **Gap T — Line 991 staleness for the skill_events completion-UPDATE pattern.** Cited line 991 is `record_skill_event()`'s initial insert area. The actual completion `UPDATE` lives in `skill_event_context()` at `session_store.py:1164-1180`, which updates by numeric row `id` (not by `run_id`). For `update_loop_run_diagnostics(run_id, path)`, the equivalent is `UPDATE loop_runs SET diagnostics_path=? WHERE run_id=?` — the structural pattern is right; only the lookup key differs (textual UNIQUE `run_id` vs. numeric primary `id`).
+
+**New decision points (Pass-3):**
+
+**Decision D — `loop_name` propagation into `loop_runs` (see Gap N)**
+
+> **Selected:** Option D2 — per the stated recommendation. `self.fsm.name` is already in scope at `_finish()`; direct arg-pass avoids touching the event contract.
+
+**Option D1**: Modify `_finish()` payload to include `"loop": self.fsm.name` (mirror `loop_start` at `executor.py:389-393`). Fixes the transport-side `loop_name` gap once for all `loop_complete` consumers. Small event-shape change.
+
+**Option D2**: Pass `loop_name` as a separate direct arg to `record_loop_run_summary()` from `_finish()` (bypass the event). Smallest blast radius; no event-shape change. Requires `_finish()` to import the writer.
+
+**Option D3**: Drop `loop_name` from the row; use `run_id` only and cross-join to `loop_events` for loop_name on read. Simpler schema; costlier queries.
+
+**Recommended**: Option D2. `self.fsm.name` is already in scope at `_finish()`; direct arg-pass is the smallest change and avoids touching the event contract.
+
+**Decision E — `started_at` population (see Gap N)**
+
+**Option E1**: Add `started_at` to `_finish()` payload (mirror BUG-2304 shape). Explicit, in-band. Event-shape change.
+
+**Option E2**: `record_loop_run_summary()` derives `started_at` via `SELECT MIN(ts) FROM loop_events WHERE loop_name=? AND transition='loop_start'`. No event change. Extra DB hit per write.
+
+**Option E3**: `_finish()` passes `started_at` as a direct arg from `self.started_at` (set at `executor.py:339`). Zero DB hit, zero event change. Couples to D2.
+
+**Recommended**: Option E3 (paired with D2 — both are direct-arg-pass from `_finish()`).
+
+**Decision F — Backfill strategy for historical runs (see Gap P)**
+
+**Option F1**: No backfill — `loop_runs` covers only post-migration runs.
+
+**Option F2**: One-shot migration that scans `.loops/.history/*/state.json`, parses `started_at` / `iterations` / `final_state` per file, and calls `record_loop_run_summary()` per file. Idempotent via UNIQUE on `run_id`.
+
+**Option F3**: Periodic reconciler that runs on each `ll-session backfill` invocation. Lifecycle / scheduling overhead.
+
+**Recommended**: Option F2 as a follow-on issue, not part of ENH-2463 v1.
+
+**Decision G — Reconciler for handoff / force-archive / hard-kill gaps (see Gaps Q + R)**
+
+**Option G1**: Accept the gap; document in Expected Behavior.
+
+**Option G2**: Extend `PersistentExecutor.archive_run_only()` and `_handle_handoff()` to call `record_loop_run_summary()` directly. Closes most gaps. Requires the writer import in those paths.
+
+**Option G3**: Periodic background scanner that reads `.loops/.history/*/state.json` and backfills missing rows. Covers all gaps. Scheduling overhead.
+
+**Recommended**: G1 as the v1 known gap (documented in Expected Behavior addendum); G2 + G3 as follow-on issues.
+
+**Pattern disambiguation — `record_commit_event` is the right model for `record_loop_run_summary`**
+
+Among the two additive-writer precedents, `record_commit_event` (`session_store.py:1222-1272`) is the right model:
+
+- Returns `bool` (`cursor.rowcount`-driven)
+- Uses `INSERT OR IGNORE` on UNIQUE constraint
+- Gates `_index()` on `cursor.rowcount` (avoids double-indexing)
+- Has the `config: dict | None = None` forward-compat stub
+
+`record_test_run_event` (`session_store.py:1352-1414`) is the wrong model:
+
+- Returns `None` (no UNIQUE constraint)
+- Plain INSERT (always indexes)
+- No idempotency
+
+Since `loop_runs.run_id` is UNIQUE, `record_commit_event` is the closer fit. **Note**: Gap M's mirror reference to `record_test_run_event` for the `_index(kind="loop_run", ref=run_id, anchor=loop_name)` row shape is still correct, but the surrounding INSERT pattern (UNIQUE-key idempotency, `cursor.rowcount` gating, `bool` return) should follow `record_commit_event`.
+
+**Active `analytics.capture.*` gate pattern (for the future `loop_runs` config key)**
+
+Currently `write_file_event` at `session_store.py:920-925` is the ONLY writer that actively honors the gate:
+
+```python
+if config is not None:
+    from little_loops.config.features import AnalyticsCaptureConfig
+    capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+    if not capture.file_events:
+        return
+```
+
+`AnalyticsCaptureConfig` is at `config/features.py:528-558` with fields `skills`, `cli_commands`, `corrections`, `file_events`, `usage_events`, `correction_patterns`. For ENH-2463 v1, accept `config: dict | None = None` as a forward-compat stub (matching `record_commit_event`); adding `loop_runs: bool = True` to the dataclass + wiring the gate inside `record_loop_run_summary` is a clean follow-on (mirrors how `file_events` was added).
+
+**Agent→DB ingestion precedent for `update_loop_run_diagnostics`**
+
+The closest pattern for an external caller invoking a session-store writer is `record_head_commit()` in `scripts/little_loops/hooks/post_commit.py`. For the `loop-specialist` diagnostic-artifact step, the equivalent wiring is:
+
+1. After writing `.loops/diagnostics/<loop-name>-<UTC-ts>.md`, invoke (via CLI or in-process call) `update_loop_run_diagnostics(run_id, artifact_path)`.
+2. `run_id` is supplied to the agent as an input parameter (per Gap S — not derivable from the artifact filename).
+3. Failure is best-effort (logged, not raised).
+
+Per Decisions G/S, v1 should defer this wiring; it requires an upstream caller that knows the archive `run_id`.
+
+**`ll-loop runs` subcommand registration mechanics**
+
+The `known_subcommands` set at `cli/loop/__init__.py:54-86` must include `"runs"` so the implicit-`run` pre-parser (line 92) doesn't shadow it. Handler imports are at lines 25-41; dispatch is at lines 936-983. The `_list_archived_runs()` helper at `cli/loop/info.py:884-963` is the existing on-disk run-listing shape (currently reads `state.json` directly); `cmd_runs` for ENH-2463 sources its data from `recent_loop_runs()` instead — same rendering shape, different data source. Add `cmd_runs` to the `info.py` import group.
 
 ## Acceptance Criteria
 
@@ -274,6 +419,8 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T14:29:26 - `6a56187c-bd1e-41fd-bb6f-3e87d47a557a.jsonl`
+- `/ll:refine-issue` - 2026-07-16T14:09:47 - `62d957fd-b2f2-451b-85fc-3f142b5e5e6b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:22:36 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T07:05:11 - `af395362-9221-4c5e-9038-fca90275d34a.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:06:36 - `6c59385b-d02b-4ef9-8cb4-4a48daafa67d.jsonl`

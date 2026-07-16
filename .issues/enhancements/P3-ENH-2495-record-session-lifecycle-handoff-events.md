@@ -251,6 +251,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - The **`session_end` row** is currently unspecified in the issue — consider whether the SessionEnd/SessionStart fallback in `sweep_stale_refs.handle()` should always emit a `session_end` row (even with zero findings) to make session-churn queryable. Defer to implementer.
 - **Idempotency**: lifecycle events don't need a UNIQUE key — two sweeps per session at the same UTC second are improbable — so plain `INSERT` (per `record_correction` / `record_skill_event`) is acceptable.
 
+### Stale Reference Audit
+
+_Added by `/ll:refine-issue` — verifying the Integration Map's anchors against the current codebase (post-2026-07-07 baseline):_
+
+- **`VALID_KINDS` is a `tuple`, not a `frozenset`** — the existing "Codebase Research Findings" item stating "**_VALID_KINDS is a `frozenset`** validated inside `recent()` at line 1278" is wrong. At line 209 it's `VALID_KINDS: tuple[str, ...] = (...)` (no leading underscore, no `frozenset`). `recent()` validates it via `if kind not in VALID_KINDS: raise ValueError(...)` and indexes `_KIND_TABLE[kind]` for the SQL — so adding `"session_lifecycle"` to both `VALID_KINDS` and `_KIND_TABLE` is still the gate, but the constant is `VALID_KINDS` (no underscore) and the type is `tuple`.
+- **`record_commit_event` is at line 1222** (not line 1041 as the Integration Map says); **`record_test_run_event` is at line 1352** (not line 1171). The function bodies are unchanged in shape but the anchors in the Integration Map and Implementation Steps (e.g., "after `record_test_run_event` (line 1171)") have drifted. The implementer should grep for the actual line at implementation time, not trust the literal anchor.
+- **CLI `choices` lists are NOT duplicated** — both `search_parser.add_argument("--kind", choices=list(VALID_KINDS), ...)` (line 103) and `recent_parser.add_argument("--kind", choices=list(VALID_KINDS), ...)` (line 115) call `list(VALID_KINDS)` directly. There is exactly **one** update point: `VALID_KINDS` in `session_store.py`. The earlier refine-pass note that "both must be updated; otherwise `ll-session recent --kind session_lifecycle` will reject the kind" overstates the work — adding to `VALID_KINDS` once propagates to both parsers automatically.
+- **`__all__` block ends at line 93** (29 entries; "SkillEventCompletion", "resolve_history_db", "record_retirement", "list_retirements" are the last three, added since the prior refine pass). Add `"record_session_lifecycle_event"` after `"record_test_run_event"` at line 86 — that anchor is still accurate.
+- **`session_id` is available on `LLHookEvent`** (see `scripts/little_loops/hooks/types.py:44`, `session_id: str | None = None`). The handlers `sweep_stale_refs.handle()` and `pre_compact.handle()` don't currently extract it from `event.session_id`; the implementer should add `session_id=event.session_id` to each `record_session_lifecycle_event(...)` call. This is what makes the rows correlate to the `issue_sessions` / ENH-2462 linkage — without it, the new table is row-isolated from session attribution.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (issue↔session linkage / lifecycle)
@@ -295,6 +305,7 @@ lifecycle events) is an intentional, already-coordinated widening of this
 issue's `session_lifecycle_events` table — not a conflict.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T15:15:18 - `165a14ee-791b-4c16-a333-4b3b4da4a314.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:57:52 - `f072a647-96ed-4b8d-bdc1-936243abf1c4.jsonl`
 - audit - 2026-07-06 - Corrected "only post-tool-use writes to history.db": the `user-prompt-check.sh` → `user_prompt_submit.py` path also writes (corrections + skill events). Core claim stands — no session-*lifecycle* hook writes to the DB. Fixed sweep_stale_refs path.

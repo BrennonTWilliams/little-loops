@@ -149,6 +149,82 @@ Bump `SCHEMA_VERSION`. Add `"review_event"` to `_VALID_KINDS` and
 - `ll-history audit-velocity [--since 30d]` (optional follow-on) —
   rollup of P0/P1/P2 findings per week per skill.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Current `SCHEMA_VERSION` is 20** (verified live at `scripts/little_loops/session_store.py:207`). The actual next-version slot is whatever is open at implementation time per the EPIC-2457 "no coordinated release" convention noted in the Scope Boundary section.
+- **No local implementation exists for `/code-review` or `/simplify`** — these are host-provided Claude Code slash commands with no `scripts/little_loops/` Python entry point. Wiring them requires either a future local CLI wrapper (e.g. `scripts/little_loops/cli/code_review.py`) or accepting that they remain un-persisted. The issue should call this gap out explicitly rather than silently skipping them.
+- **Severity-bucket mismatch** — the proposed `severity_counts = {p0, p1, p2, info}` does not match any existing producer's taxonomy. Current outputs use Error/Warning/Suggestion (`skills/review-loop/SKILL.md:236-246`), Critical/High/Medium/Low mapped to P1–P5 (`commands/audit-architecture.md:169-182`), Critical/Warning/Suggestion + Info (`skills/audit-claude-config/SKILL.md:191-215`), high/med/low (`skills/audit-docs/SKILL.md:95-103`), and a verdict-only family of `met | phantom | honest-failure | partial | degraded` (`skills/audit-loop-run/SKILL.md:295-306`). Each producer needs an explicit mapping into the new p0/p1/p2/info schema (see Implementation Step 5).
+- **Best-effort guard lives at the call site**, not inside `record_review_event`. The producer raises on `sqlite3.Error`; the caller wraps in `contextlib.suppress(Exception)` (canonical pattern at `scripts/little_loops/pytest_history_plugin.py:118-121`). The `skill_event_context` helper at `session_store.py:1108-1182` is an alternative internal-swallow pattern (per EPIC-1707) — use the former for new wiring.
+- **Producers are markdown-driven** — none of the 9 audit/review skills has a Python `main()`. Wiring is a markdown directive at each skill's "Final Report" / "Phase 7" / "Summary" section, e.g. "After producing the final report, call `review_events.record(...)`."
+- **Refused-path precedent** — the pre-flight gate at `skills/audit-loop-run/SKILL.md:81-94` checks for `events.jsonl`/`state.json` and emits "Run '<id>-<name>' not found or empty — refusing to audit." (`SKILL.md:96-108`). The existing `autodev-bug2501-kill-analysis.md` (2026-07-07) is exactly the kind of refused audit this issue would persist with `verdict="refused"`, `severity_counts={"p0":0,...}`, `findings_count=0`.
+- **`head_sha`/`branch` capture** — use `_git_output(*args)` at `scripts/little_loops/pytest_history_plugin.py:61-74` (or the `_git(*args)` precedent at `scripts/little_loops/hooks/post_commit.py:27-41`). The `git_utils.py:get_head_sha()` referenced in older issue docs does NOT exist (per ENH-2493 anchor refresh).
+- **ll-verify-kinds gate** — `scripts/little_loops/cli/verify_kinds.py:38-47` exits 1 if `review_events` is created in `_MIGRATIONS` but missing from `_KIND_TABLE`. Both registrations are mandatory, not optional.
+- **Sibling prior art**: ENH-2493 (`.issues/enhancements/P3-ENH-2493-persist-harness-eval-outcomes-into-history-db.md`) for `harness_events` (executor side); ENH-2504 (`.issues/enhancements/P3-ENH-2504-persist-verification-verdict-outcomes-into-history-db.md`) for `verdict_events` (verifier side). `review_events` is the reviewer-side third leg.
+
+## Implementation Steps
+
+1. **Schema migration** — Append a v21 entry to `_MIGRATIONS` in `scripts/little_loops/session_store.py:333-734` (model after `usage_events` v20 at lines 709-733). Bump `SCHEMA_VERSION = 20 → 21` (line 207). Add `"review"` to `VALID_KINDS` (lines 209-222) and `"review": "review_events"` to `_KIND_TABLE` (lines 223-236) so `ll-session recent --kind review` works and `ll-verify-kinds` (`cli/verify_kinds.py:38-47`) does not fail.
+2. **Producer helper** — Implement `record_review_event(db_path, *, ts, reviewer_skill, target_kind=None, target_id=None, severity_counts=None, findings_count=0, findings_json_summary=None, verdict=None, session_id=None, head_sha=None, branch=None, config=None) -> None` at `scripts/little_loops/session_store.py` (mirror `record_test_run_event` lines 1352-1414). Use plain `INSERT` (each review is a distinct row), JSON-encode `severity_counts` + `findings_json_summary`, write an FTS5 summary of `reviewer_skill + target_id + verdict`.
+3. **Centralized call helper** — Add `scripts/little_loops/review_events.py` exporting `record(skill, target, severity_counts, findings, verdict, *, artifact_path=None)` wrapping `record_review_event` with `contextlib.suppress(Exception)` best-effort guard (canonical pattern from `scripts/little_loops/pytest_history_plugin.py:118-121`). Capture `head_sha`/`branch` via `_git_output(*args)` from `pytest_history_plugin.py:61-74` (note: `git_utils.py:get_head_sha()` referenced in older issues does NOT exist).
+4. **Read API** — In `scripts/little_loops/history_reader.py`: add `ReviewEvent` dataclass (mirror `RunEvent` lines 138-161), add `recent_review_events(reviewer_skill=None, target_id=None, since=None, limit=50)` (mirror `recent_test_runs` lines 689-725), add `review_velocity(since=None)` weekly rollup (mirror `aggregate_usage` lines 596-648). Wrap in `_connect_readonly` + `try/except sqlite3.Error: return []` for graceful degradation.
+5. **Wire producers** — Add a markdown directive at the final-report injection point of each skill, calling `review_events.record(...)`. Concrete anchors:
+   - `skills/review-epic/SKILL.md:207-277` (final report) + early-exit gates (`:42-59`, `:69-97`)
+   - `skills/review-loop/SKILL.md:368-382` (summary) + `:386-403` (artifact path)
+   - `commands/audit-architecture.md:93-163` (recommendations) — map Critical/High/Medium/Low → p0/p1/p2/info per the existing priority table at `:169-182`
+   - `skills/audit-claude-config/SKILL.md:419-422` (Phase 7 report) — map Critical/Warning/Suggestion → p0/p1/p2; map exit code 0/1/2 → verdict pass/warn/fail (`:425-432`)
+   - `skills/audit-docs/SKILL.md:125-127` (Phase 4 report) — map high/med/low → p1/p2/info (subagent contract at `:95-103`)
+   - `skills/audit-loop-run/SKILL.md:81-108` (refused path: `verdict="refused"`, all-zero counts) + `:418-428` (normal completion)
+   - `commands/review-sprint.md:304-345` (final output); derive verdict from health-check counts (`:311-316`)
+   - **Skip `code-review` and `simplify`** — built-in Claude Code slash commands with NO local implementation under `scripts/little_loops/`. Document this gap; wire only if a local CLI wrapper is added.
+6. **JSONL export parity** — Add `("review_events", "ts")` to `_EXPORT_TABLE_MAP` and `"review_event"` to `_EXPORT_DEFAULT_TABLES` in `session_store.py:3303-3329` so `ll-session export --tables review_event` works.
+7. **Tests** — Add `TestRecordReviewEvent` to `scripts/tests/test_session_store.py` (mirror `TestRecordTestRunEvent` lines 4362-4415) covering round-trip, severity_counts JSON round-trip, refused verdict path, DB-absent graceful degradation. Add `test_recent_kind_review_outputs_row` to `test_ll_session.py:1086-1097`. Add parameterized-filter test in `test_history_reader.py:1459`. Update `SCHEMA_VERSION` assertions at `test_session_store.py:1372, 1817` and `test_assistant_messages.py:88`.
+8. **Verification** — Run `python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py scripts/tests/test_ll_session.py scripts/tests/test_verify_kinds.py -v`, then `python -m pytest scripts/tests/` for the full suite. Confirm `ll-verify-kinds` exits 0.
+9. **Documentation** — Append v21 row to `docs/ARCHITECTURE.md:670-678`. Add `ReviewEvent` + `record_review_event` to Public API list in `docs/reference/API.md:6847-6848, 7286-7287, 7346+`. Add `ll-session recent --kind review` example to `docs/reference/CLI.md:2507-2519`.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/session_store.py` — append v21 migration block to `_MIGRATIONS` (lines 333-734), bump `SCHEMA_VERSION` 20→21 (line 207), register `"review"` in `VALID_KINDS` (lines 209-222) and `_KIND_TABLE` (lines 223-236), implement `record_review_event()` modeled after `record_test_run_event` (lines 1352-1414), update `_EXPORT_TABLE_MAP` and `_EXPORT_DEFAULT_TABLES` (lines 3303-3329)
+- `scripts/little_loops/history_reader.py` — add `ReviewEvent` dataclass (model after `RunEvent` lines 138-161), `recent_review_events()` (model after `recent_test_runs` lines 689-725), `review_velocity()` weekly rollup (model after `aggregate_usage` lines 596-648)
+- `scripts/little_loops/review_events.py` (new) — centralize `record(skill, target, severity_counts, findings, verdict, *, artifact_path=None)` wrapping `session_store.record_review_event` + head_sha/branch capture via `_git_output(*args)`
+- `scripts/little_loops/cli/session.py` — extend `--kind` choices (auto via `VALID_KINDS`), add `review_event` to `--tables` choices (lines 218-245)
+
+### Dependent Files (Producer Skills to Wire)
+- `skills/review-epic/SKILL.md` — emit row at final report (`:207-277`) and at early-exit gates (`:42-59`, `:69-97`)
+- `skills/review-loop/SKILL.md` — emit row at summary (`:368-382`) with artifact path (`:386-403`)
+- `commands/audit-architecture.md` — emit row after final report (`:93-163`); map Critical/High/Medium/Low → p0/p1/p2/info per existing priority table (`:169-182`)
+- `skills/audit-claude-config/SKILL.md` — emit row after Phase 7 final report (`:419-422`); map Critical/Warning/Suggestion → p0/p1/p2; map exit code 0/1/2 → verdict pass/warn/fail (`:425-432`)
+- `skills/audit-docs/SKILL.md` — emit row after Phase 4 final report (`:125-127`); map high/med/low → p1/p2/info (subagent contract: `:95-103`)
+- `skills/audit-loop-run/SKILL.md` — two paths: refused pre-flight gate (`:81-108` → `verdict="refused"`, all-zero counts) and normal completion (`:418-428`)
+- `commands/review-sprint.md` — emit row after final output (`:304-345`); derive verdict from health-check counts (`:311-316`)
+- `code-review` / `simplify` — NO local implementation exists under `scripts/little_loops/`; built-in Claude Code slash commands. Skip wiring unless a local wrapper is added.
+
+### Tests
+- `scripts/tests/test_session_store.py:4362-4415` — `TestRecordTestRunEvent` round-trip + JSON + FTS template
+- `scripts/tests/test_session_store.py:3891-3911` — `_bootstrap_schema_at(db, version)` helper for v20→v21 upgrade test
+- `scripts/tests/test_history_reader.py:1459` — `test_recent_test_runs_and_pass_rate` parameterized-filter template
+- `scripts/tests/test_ll_session.py:1086-1097` — `test_recent_kind_test_run_outputs_row` CLI smoke template
+- `scripts/tests/test_verify_kinds.py:21` — `test_clean_state_returns_zero` (fails if `review_events` table is created without `_KIND_TABLE` entry)
+- `scripts/tests/test_assistant_messages.py:88` — second `SCHEMA_VERSION` assertion site
+
+### Documentation
+- `docs/ARCHITECTURE.md:670-678` — schema-versions table (add v21 row)
+- `docs/reference/API.md:6847-6848, 7286-7287, 7346+` — Public API list (add `ReviewEvent` + `record_review_event`)
+- `docs/reference/CLI.md:2507-2519` — expand `--kind` examples to include `review`
+
+### Configuration (Optional)
+- `scripts/little_loops/config-schema.json` — `analytics.capture.review_events` toggle (parity only; ENH-2459 `test_run_events` shipped ungated)
+
+### Similar Patterns
+- `scripts/little_loops/session_store.py:1352` — `record_test_run_event` is the closest prior-art template (kwarg-only, non-idempotent, FTS summary)
+- `scripts/little_loops/pytest_history_plugin.py:61-74` — `_git_output(*args)` helper for head_sha/branch (canonical replacement for nonexistent `git_utils.py`)
+- `scripts/little_loops/pytest_history_plugin.py:118-121` — `contextlib.suppress(Exception)` best-effort wrap pattern at the producer call site
+- `scripts/little_loops/session_store.py:1108-1182` — `skill_event_context` alternative internal-swallow pattern (per EPIC-1707)
+- `skills/audit-loop-run/SKILL.md:295-306` — explicit verdict family table to mirror in `verdict` column
+- `autodev-bug2501-kill-analysis.md` (2026-07-07) — concrete audit artifact this issue would persist as a row
+
 ## Acceptance Criteria
 
 - Schema migration lands; `review_events` exists; `SCHEMA_VERSION`
@@ -214,5 +290,6 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T17:24:12 - `87fa8022-e8fb-4ea8-b84d-6b3b28ffb434.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:56 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -268,7 +268,170 @@ migration at whatever version is open when it is implemented (no coordinated
 release; per EPIC-2457's own "no shared helper module is required" scope
 note).
 
+## Refinement Addendum (2026-07-16 — re-verified post-2026-07-07)
+
+_Added by `/ll:refine-issue` — three-agent codebase verification
+(codebase-locator / codebase-analyzer / codebase-pattern-finder). All findings
+below are additive and supplement the existing Implementation Steps and
+Integration Map without rewriting them; cross-reference the prior sections
+when reading._
+
+### 1. Schema-version state confirmed (carries forward)
+
+Direct read of `scripts/little_loops/session_store.py:207` confirms
+`SCHEMA_VERSION = 20`. The audit-issue-conflicts Scope Boundary above
+already notes this — ENH-2466's migration will land at **v21** (not v19) at
+implementation time. Cross-check the live constant then; do not lock to a
+specific number in code.
+
+### 2. CRITICAL — `--kind` choices propagate automatically (Implementation Step 8 is stale)
+
+Both CLI parsers already use `choices=list(VALID_KINDS)` at runtime, not a
+hardcoded literal list:
+
+- `scripts/little_loops/cli/session.py:99-106` — `search_parser.add_argument("--kind", choices=list(VALID_KINDS), …)`
+- `scripts/little_loops/cli/session.py:112-118` — `recent_parser.add_argument("--kind", choices=list(VALID_KINDS), …)`
+
+Implication: **adding `"learning_test"` to `VALID_KINDS` is sufficient to make
+`ll-session search --kind learning_test` and `ll-session recent --kind learning_test`
+work — no edit to literal `choices=[…]` lists is needed.** Implementation
+Step 8 above is therefore wrong; the only CLI-side action required is adding
+the new kind to `VALID_KINDS` (session_store.py:209-222) and `_KIND_TABLE`
+(session_store.py:223-236) in lockstep.
+
+### 3. `VALID_KINDS` + `_KIND_TABLE` actual shape
+
+- `VALID_KINDS` is a **tuple** (not a frozenset as some prior prose implied)
+  at session_store.py:209-222 with 12 entries in priority order:
+  `("tool", "file", "issue", "loop", "correction", "message", "skill", "cli",
+  "snapshot", "commit", "test_run", "usage")`. Append `"learning_test"` as a
+  13th entry.
+- `_KIND_TABLE` is a plain dict at session_store.py:223-236 mapping each
+  kind to its table name. Append `"learning_test": "learning_test_events"`.
+
+### 4. ll-verify-kinds gate (CI-enforced) dependency — NOT optional
+
+ENH-2581 added `scripts/little_loops/cli/verify_kinds.py` which scans every
+`CREATE TABLE` in `_MIGRATIONS` and asserts each is registered in
+`_KIND_TABLE` OR explicitly listed in `_KINDLESS_TABLES`
+(session_store.py:244-255). The gate is enforced via `python -m pytest
+scripts/tests/test_verify_kinds.py` and will fail PR CI if the migration
+block is added without one of those two registrations. Because
+`learning_test_events` is a queryable event stream (it WILL be filtered by
+`--kind learning_test`), it must go in `_KIND_TABLE` — not in
+`_KINDLESS_TABLES` (which is reserved for support/structural tables like
+`meta`, `search_index`, `raw_events`, `sessions`).
+
+### 5. Registry shape correction (Proposed Solution `## Schema migration` block needs adjustment)
+
+Sample file (`.ll/learning-tests/anthropic.md`) shows the frontmatter-only
+shape with no body section:
+
+```yaml
+---
+target: anthropic                       # the canonical identity (slugified for filename)
+date: '2026-07-07'                      # ISO date — single field, not split
+status: proven                          # proven | refuted | stale
+assertions:
+- claim: <string>
+  result: pass | fail | untested
+- ...
+raw_output_path: .ll/learning-tests/raw/anthropic.txt
+---
+```
+
+The Proposed Solution column list (`id, target, status, assertions, captured_at, last_proved_at`)
+needs adjustment:
+
+- `id TEXT UNIQUE` → should be derived from `slugify(record.target)`, not the issue ID. Two records can share the same `target` over time (re-proves), but in practice the file stem is the natural key.
+- `captured_at` + `last_proved_at` (split) → a single `date` field exists; mirror it once and let re-proves UPSERT it (or use a composite `(record_id, ts)` UNIQUE if history of transitions matters).
+- `assertions_json` → keep, but the JSON shape is `[{"claim": str, "result": "pass"|"fail"|"untested"}, …]`, not flat strings. Validate against `scripts/little_loops/learning_tests/__init__.py:26-41` `Assertion` dataclass before insertion.
+- `LearningTestRecord` dataclass at `learning_tests/__init__.py:44-71` has only five fields (`target, date, status, assertions, raw_output_path`) — match the SQL columns to these.
+
+### 6. Anchor-refresh: implementation-step line numbers have drifted
+
+Significant drift has accumulated since the 2026-07-07 prior refine pass.
+Re-pin when implementing:
+
+| Item | Prior claim | Current location |
+|------|-------------|------------------|
+| `record_issue_snapshot` | session_store.py:816-866 | 1001-1051 |
+| `record_commit_event` | session_store.py:1041-1091 | 1222-1272 |
+| `_backfill_snapshots` | session_store.py:1538-1583 | 1728-1773 |
+| `_index()` | session_store.py:705 | 890-903 |
+| `recent()` def | session_store.py:1268 (referenced as call site) | 1462-1484 |
+| `commit_events` SQL block | session_store.py:505-520 | 631-645 (v17) |
+| `test_run_events` SQL block (v18) | session_store.py:524-544 | 650-669 |
+| `backfill()` orchestrator | session_store.py:2441 | 2924-2980 |
+| `counts` dict init | session_store.py:2462 | 2951-2957 |
+| `__all__` entries | 28 entries | 32 entries at 61-93 |
+| `SCHEMA_VERSION` | session_store.py:102 | 207 |
+| `VALID_KINDS` | session_store.py:104 (frozenset) | 209-222 (tuple) |
+| `_KIND_TABLE` | session_store.py:130 | 223-236 |
+| `_KINDLESS_TABLES` | (newly noted) | 244-255 |
+| `cli/learning_tests.py:cmd_prove` | 48-72 | 48-72 ✓ unchanged |
+| `cli/learning_tests.py:cmd_mark_stale` | 84 | 84 ✓ unchanged |
+| `cli/learning_tests.py:cmd_orphans` | 96 | 96 ✓ unchanged |
+| `cli/learning_tests.py:main_learning_tests` | 143-145 | 143-145 ✓ unchanged |
+| `cli/session.py:search_parser --kind` | 92-103 (hardcoded) | 99-106 (dynamic `list(VALID_KINDS)`) |
+| `cli/session.py:recent_parser --kind` | 113-127 (hardcoded) | 112-118 (dynamic `list(VALID_KINDS)`) |
+| `cli/issues/set_status.py` direct-call precedent | 60-66 | 73-80 |
+| `learning_tests/__init__.py:_read_frontmatter_yaml` | 82 | 82 ✓ unchanged |
+| `hooks/session_start.py:ensure_db` | 122 | 122 ✓ unchanged |
+| `history_reader.py:recent_commit_events` | 524-559 | 651-686 |
+| `history_reader.py` dataclass block | 67-189 | 67-243 |
+| `history_reader.py` Public API docstring | 1-42 | 1-42 ✓ unchanged |
+| `test_session_store.py:TestSchemaV14` | 2872 | 3688 |
+| `test_session_store.py:TestRecordIssueSnapshot` | 2942 | 3758 |
+| `test_session_store.py:TestBackfillSnapshots` | 3015 | 3831 |
+| `test_session_store.py:_bootstrap_schema_at` | 3075 | 3891 |
+| `test_session_store.py:test_all_tables_created` tuple | 60 (8-table tuple) | 90-106 (tuple still only 8 entries; missing `commit_events`, `test_run_events`, `raw_events`, `usage_events`, and future `learning_test_events`) |
+
+> ⚠ Anchor warnings: Implementation Step 9's instruction to "update legacy `assert SCHEMA_VERSION == 18` literals to `19`" should instead be `20` (or "to N+1 where N is the live `SCHEMA_VERSION` at implementation time"). The file currently holds several `assert SCHEMA_VERSION == 20` literals at lines 1372, 1817, 1932, 1984, 2080, 3658, 3699.
+
+### 7. New producer-pattern precedents surfaced (not previously listed)
+
+- **`scripts/little_loops/pytest_history_plugin.py:118-144`** — pytest plugin
+  `_record()` wrapping `record_test_run_event()` in
+  `contextlib.suppress(Exception)`, with local import and
+  `resolve_history_db()` resolution. Closest precedent for graceful skip when
+  no DB exists.
+- **`scripts/little_loops/hooks/post_commit.py:44-82`** — `record_head_commit()`
+  helper around `record_commit_event()`. Useful shape for the
+  `record_learning_test_event()` wrapper if a hook-side watcher is added.
+- **`record_correction` (session_store.py:940-970)** — adds a `config=None`
+  forward-compatibility stub for `analytics.capture.corrections` gating
+  (ENH-1841). Mirror in `record_learning_test_event()` for symmetry with the
+  rest of the family.
+
+### 8. New table-add precedent to mirror (replaces v18 `test_run_events` at session_store.py:524-544)
+
+The most-recently-added table block is **v20 `usage_events` /
+ENH-2461** at session_store.py:709-733. Use it as the closer-to-current
+template rather than the v18 block originally cited. The v20 block's
+docstring pattern (cites parent issue ID, documents parser-vs-live-writer
+contract, names a forward-compat `state` column reserved for a future per-state
+writer) is the established convention.
+
+### 9. Tests now live where the prior claims put them
+
+The added test classes for `record_test_run_event` and `record_commit_event`
+provide the cleanest test templates (test_session_store.py:4235-4359 for
+commit, 4362-4432 for test_run). Mirror their shape for
+`TestRecordLearningTestEvent` and `TestBackfillLearningTests`. The
+`test_v14_db_upgrades_gains_test_run_events` pattern (test_session_store.py
+near 4380) is the exact upgrade-test shape to mirror with
+`_bootstrap_schema_at(db, N)` where N is the prior schema version.
+
+### 10. Note: implementation of ENH-2466 must remain best-effort
+
+EPIC-1707 graceful-degradation contract is non-negotiable: writes are wrapped
+in `try/except Exception: pass` (or `contextlib.suppress(Exception)`); reads
+return `[]`/`None` on missing DB. New `record_learning_test_event()` and
+`_backfill_learning_test_events()` must conform.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T14:56:29 - `e00bc985-f84c-4584-9c06-8e2a01e24509.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:54 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:35:03 - `984dde16-4d04-4519-aaa2-e9d51aefdda9.jsonl`
 - audit - 2026-07-06 - Confirmed `docs/guides/LEARNING_TESTS_GUIDE.md` exists (removed "(if exists)" hedge) and `.ll/learning-tests/*.md` registry files are present.

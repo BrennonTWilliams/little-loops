@@ -46,11 +46,22 @@ ends that.
   (verdict_events).** Different table, complementary signal: 2505 says
   "the handoff_needed event happened"; 2506 says "the hook that
   detected it ran in 12ms with exit code 0."
-- **Trivial producer.** Extend the existing `cli_event_context`
-  precedent (the post-tool-use wrap pattern at
-  `session_store.py:870-908`) to a generic `hook_event_context(...)`
+- **Trivial producer.** Extend the existing `skill_event_context`
+  precedent (the best-effort pattern at
+  `session_store.py:1109-1182`) to a generic `hook_event_context(...)`
   that wraps any hook handler. Every existing `LLHookResult` producer
   drops in for free.
+
+  > ⚠ Codebase Research Findings (added by `/ll:refine-issue`): The issue
+  > originally cited `cli_event_context` at `session_store.py:870-908`,
+  > but that function is now at `session_store.py:1055-1091` and is **not**
+  > the right precedent — it is **not** best-effort (it raises on a
+  > missing DB). `skill_event_context` at `session_store.py:1109-1182`
+  > is the right model: it tolerates DB-absent / DB-locked failures
+  > (EPIC-1707 graceful-degradation contract — same constraint that
+  > applies to hook handlers) and uses a mutable `SkillEventCompletion`
+  > handle so the caller can set `exit_code` post-hoc. Use
+  > `skill_event_context` as the structural model, not `cli_event_context`.
 
 ## Current Behavior
 
@@ -120,15 +131,46 @@ Bump `SCHEMA_VERSION`. Add `"hook_event"` to `_VALID_KINDS` and
   the row with `duration_ms = int((monotonic() - started_at) * 1000)`,
   `exit_code=<caller's exit code>`, and stderr from a captured buffer.
 - Wrap each existing `handle()` in the host-agnostic Python handlers
-  (`scripts/little_loops/hooks/post_tool_use.py:handle`,
-  `user_prompt_submit.py:handle`, `pre_compact.py:handle`,
-  `sweep_stale_refs.py:handle`, `session_start.py:handle`,
-  `stop.py:handle` if present) with the new context manager. Bash hooks
-  (`hooks/scripts/*.sh`) shell out to a one-liner that calls
-  `record_hook_event` after the bash script runs.
+  with the new context manager. Verified handler anchors (as of
+  v1.147.0):
+  - `scripts/little_loops/hooks/post_tool_use.py:137` — PostToolUse (the
+    one whose `with contextlib.suppress(Exception):` block at line 158
+    is the canonical inner-swallow pattern)
+  - `scripts/little_loops/hooks/user_prompt_submit.py:61` — UserPromptSubmit
+  - `scripts/little_loops/hooks/pre_tool_use.py` — PreToolUse (NEW — not
+    in the original issue; `hooks/hooks.json` registers PreToolUse for
+    `Write|Edit`, `Bash`, and several dedicated matchers)
+  - `scripts/little_loops/hooks/pre_compact.py:84` — PreCompact
+  - `scripts/little_loops/hooks/sweep_stale_refs.py:141` — SessionStart
+    secondary (stale-refs sweep)
+  - `scripts/little_loops/hooks/session_start.py:75` — SessionStart primary
+  - `scripts/little_loops/hooks/post_commit.py` — PostToolUse (additional
+    producer for issue-auto-commit; NEW)
+  - `scripts/little_loops/hooks/edit_batch_nudge.py` — PostToolUse
+    (`Edit|Write|MultiEdit` matcher — NEW)
+  - `scripts/little_loops/hooks/pre_compact_handoff.py` — PreCompact
+    secondary (NEW)
+  - `scripts/little_loops/hooks/learning_tests_gate.py`,
+    `install_learning_gate.py` — PreToolUse / PostToolUse (NEW, gated by
+    `analytics.capture.skills`)
+
+  There is **no** `scripts/little_loops/hooks/stop.py` — the `Stop`
+  hook is bash-only in this codebase (`hooks/scripts/context-handoff-sentinel.sh`
+  and `hooks/scripts/session-cleanup.sh` per `hooks/hooks.json:177-198`).
+  Capture Stop/SessionEnd via a small bash wrapper that calls
+  `record_hook_event` from a new `hooks/scripts/record-hook-event.sh`
+  shim — pattern follows the existing `post-tool-use.sh` adapter
+  (`hooks/adapters/claude-code/post-tool-use.sh`). All other bash hooks
+  under `hooks/scripts/*.sh` (scratch-pad, scratch-cleanup,
+  user-prompt-check, context-monitor, etc.) likewise emit via the shim.
 - Backfill: a `_backfill_hook_events` (sibling to
-  `_backfill_tool_events` at `session_store.py:1620`) walks JSONL for
-  hook events emitted by Claude Code host and reconstructs rows.
+  `_backfill_tool_events` at `session_store.py:1836` — note: the issue's
+  cited `session_store.py:1620` is stale; the function has moved as
+  more migrations landed) walks JSONL for hook events emitted by the
+  Claude Code host and reconstructs rows. Iterate via the same
+  `_iter_events(source)` helper that
+  `_backfill_tool_events` / `_backfill_usage_events` already use, so
+  the `rebuild()` path picks up the backfill for free.
 
 ### Read API
 
@@ -144,6 +186,246 @@ Bump `SCHEMA_VERSION`. Add `"hook_event"` to `_VALID_KINDS` and
 - `ll-session recent --kind hook_event`.
 - `ll-session hook-health [--since 7d]` (optional follow-on) — rollup
   of fires / failures / p95 duration per event_name.
+
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase analysis._
+
+### Files to Modify
+
+- `scripts/little_loops/session_store.py` — append v21 migration block
+  to `_MIGRATIONS` (line 333 onward) creating `hook_events` + 3 indexes;
+  add `"hook_event": "hook_events"` to `_KIND_TABLE` (line 223);
+  add `record_hook_event(...)` and `hook_event_context(...)` next to
+  `skill_event_context` (line 1109) so they share the same best-effort
+  pattern; add `_backfill_hook_events` next to
+  `_backfill_usage_events` (line 1878) reusing `_iter_events`
+- `scripts/little_loops/hooks/post_tool_use.py:137` — wrap `handle()` in
+  `hook_event_context` (preserve the existing `contextlib.suppress` at
+  line 158; the new context is best-effort outer wrap)
+- `scripts/little_loops/hooks/user_prompt_submit.py:61` — wrap `handle()`
+- `scripts/little_loops/hooks/pre_compact.py:84` — wrap `handle()`
+- `scripts/little_loops/hooks/sweep_stale_refs.py:141` — wrap `handle()`
+- `scripts/little_loops/hooks/session_start.py:75` — wrap `handle()`
+- `scripts/little_loops/hooks/pre_tool_use.py` — wrap `handle()`
+- `scripts/little_loops/hooks/post_commit.py` — wrap `handle()`
+- `scripts/little_loops/hooks/edit_batch_nudge.py` — wrap `handle()`
+- `scripts/little_loops/hooks/pre_compact_handoff.py` — wrap `handle()`
+- `scripts/little_loops/hooks/learning_tests_gate.py`,
+  `install_learning_gate.py` — wrap `handle()`
+- `scripts/little_loops/hooks/__init__.py` (`_dispatch_table`,
+  lines 74-99) — add a single outer wrap around each registered handler
+  so the same context manager applies to every host-agnostic Python
+  handler (alternative: wrap each module's `handle()` individually — see
+  Implementation Steps for the trade-off)
+- `scripts/little_loops/history_reader.py` — add `recent_hook_events`,
+  `hook_failure_rate`, `hook_latency_p95` next to existing
+  `recent_*` helpers (look for `recent_tool_events` /
+  `recent_skill_events` as precedent)
+- `scripts/little_loops/cli/session.py` — register `"hook_event"` in
+  the `--kind` argument's `choices=` list so `ll-session recent
+  --kind hook_event` works
+- `scripts/little_loops/cli/session.py` — add `hook-health`
+  subcommand (optional follow-on, gated by `--since`)
+- `scripts/little_loops/templates/API.md` — add entry to
+  `ll-history-context`, `ll-session` for the new `--kind` and
+  subcommand
+- `hooks/scripts/record-hook-event.sh` (NEW) — bash shim that calls
+  `python -m little_loops.cli.session record-hook-event "$@"` so bash
+  hooks (Stop, SessionEnd, scratch-cleanup, etc.) can emit rows; the
+  shim is invoked from each existing bash hook after its main body
+  exits, capturing `$?` as `exit_code`
+- `hooks/adapters/claude-code/{stop,session-end}-adapter.sh` (NEW) —
+  bash wrappers for the adapter layer, mirroring the
+  `post-tool-use.sh` pattern
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/cli/session.py` — dispatcher for `ll-session`
+  recent / hook-health (the new `--kind hook_event` and aggregate
+  subcommand land here)
+- `scripts/little_loops/cli/__init__.py`, `cli/history.py` — register
+  any new commands if the subcommand split is reused
+- `scripts/little_loops/cli/backfill_worker.py` — wire
+  `_backfill_hook_events` into the backfill orchestrator so
+  `ll-session rebuild` and `backfill --rebuild` pick it up
+
+### Similar Patterns
+
+- `session_store.py:1109` `skill_event_context` — best-effort
+  `@contextmanager` with mutable `SkillEventCompletion` handle (the
+  right structural model for `hook_event_context`)
+- `session_store.py:1055` `cli_event_context` — eager
+  `@contextmanager` (NOT best-effort; do NOT mirror)
+- `session_store.py:1836` `_backfill_tool_events` — sibling
+  `_backfill_hook_events` should iterate the same `_iter_events`
+  helper so `rebuild()` picks it up
+- `session_store.py:1878` `_backfill_usage_events` — most-recent
+  sibling backfill, useful for the precise INSERT shape (column list,
+  `_index()` FTS call shape)
+- `scripts/little_loops/hooks/post_tool_use.py:158` — the canonical
+  inner `with contextlib.suppress(Exception):`; preserve it inside the
+  new outer `hook_event_context`
+
+### Tests
+
+- `scripts/tests/test_session_store.py` — extend
+  `TestEnsureDb.test_all_tables_created` to assert `"hook_events"` is
+  in the table list (currently asserts 8 tables at line 96-106);
+  bump that assertion to include `"hook_events"`
+- `scripts/tests/test_session_store.py` — add a `TestHookEvents`
+  class covering: (a) migration adds the table, (b) `record_hook_event`
+  inserts a row, (c) `hook_event_context` writes `exit_code`/`duration_ms`
+  on clean exit and on raised exception, (d) DB-absent /
+  DB-locked does NOT raise (best-effort contract)
+- `scripts/tests/test_hook_post_tool_use.py` — add a fixture that
+  captures `hook_events` rows around a `handle()` call and asserts
+  one row is inserted
+- `scripts/tests/test_hook_user_prompt_submit.py`,
+  `test_hook_session_start.py` — same fixture pattern
+- `scripts/tests/test_hooks_integration.py` — extend with a
+  multi-event rollup test: trigger 3 fires, 1 failure → assert
+  `hook_failure_rate("PostToolUse")` returns ≈0.33
+- (NEW) `scripts/tests/test_history_reader_hook.py` — direct tests
+  for `recent_hook_events`, `hook_failure_rate`, `hook_latency_p95`
+  using an in-memory or temp SQLite fixture
+
+### Documentation
+
+- `docs/ARCHITECTURE.md` — schema versions table; bump v20→v21 entry
+  to mention `hook_events` (ENH-2506)
+- `docs/reference/API.md` — `session_store` section: add
+  `record_hook_event` / `hook_event_context` / `_backfill_hook_events`;
+  `hooks` section: note the new telemetry wrap on every `handle()`
+- `docs/reference/CLI.md` — `ll-session recent --kind` values table;
+  `ll-session hook-health` subcommand entry
+- `docs/claude-code/hooks-reference.md` — update the hook-intent
+  banner per the `reference_dispatch_table_usage_banner` memory
+  (`scripts/little_loops/hooks/__init__.py:_USAGE` line 50-54)
+- `docs/development/TROUBLESHOOTING.md` — add the "hook didn't fire"
+  debug section pointing to `ll-session recent --kind hook_event`
+
+### Configuration
+
+- `.ll/ll-config.json` → `analytics.capture` keys: gate the new
+  producer on a new `analytics.capture.hooks` flag (parallel to
+  `analytics.capture.file_events` / `analytics.capture.skills`),
+  defaulting to `true`. The `skill_event_context` config parameter is
+  a forward-compat stub; reuse the same `config: dict | None` shape.
+
+## Implementation Steps
+
+_Added by `/ll:refine-issue` — concrete step ordering that mirrors the
+existing migration / wrap pattern._
+
+1. **Schema migration (session_store.py)**:
+   1.1. Append a new entry to `_MIGRATIONS` (after the v20 usage_events
+   block at line 718) with the `hook_events` CREATE TABLE + 3 CREATE
+   INDEX statements from the Proposed Solution. Comment it `# v21
+   (ENH-2506): hook_events — …` following the v18/v19/v20 convention
+   (note: `SCHEMA_VERSION = 20` at line 207 — the issue's "Bump
+   `SCHEMA_VERSION`" instruction lands this at v21).
+   1.2. Add `"hook_event": "hook_events"` to `_KIND_TABLE` (line 223).
+   1.3. Verify `ll-verify-kinds` passes (gates unregistered CREATE
+   TABLE statements per ENH-2581).
+
+2. **Producer (session_store.py)**:
+   2.1. Add `record_hook_event(db_path, *, ts, session_id, event_name,
+   matcher, script, exit_code, duration_ms, stderr_preview=None,
+   head_sha=None, branch=None)` modeled on `record_tool_event` /
+   `record_skill_event` — single-row INSERT with FTS5 `_index()` call.
+   2.2. Add `@contextmanager def hook_event_context(db_path, session_id,
+   event_name, matcher, script)` modeled on `skill_event_context`
+   (lines 1109-1182) — best-effort, mutable completion handle so the
+   caller can set `exit_code` and `stderr_preview` post-hoc. Use
+   `time.monotonic()` for the duration (the existing
+   `cli_event_context` / `skill_event_context` use `time.time()` —
+   monotonic is the correct choice for "elapsed time of this hook fire"
+   and matches the issue's specification).
+
+3. **Bash shim** (NEW):
+   3.1. Write `hooks/scripts/record-hook-event.sh` — captures `$?`,
+   `$STDERR_PREVIEW` (first 512 bytes), `$MATCHER`,
+   `$EVENT_NAME`, calls the Python entry point. Mirrors the existing
+   `post-tool-use.sh` adapter pattern (no new adapter is needed — the
+   shim is invoked from each bash hook directly).
+   3.2. Wrap each bash hook entry point in `hooks/hooks.json` to
+   invoke the shim after the existing body. Specifically: add a second
+   command after each existing bash hook under `PostToolUse`, `Stop`,
+   `SessionEnd`, `PreCompact`, `UserPromptSubmit`, `SessionStart`
+   that invokes the shim with the right `event_name` and `matcher`.
+   (Trade-off — see the Decision-Point below.)
+
+4. **Python wrap (each handler)**:
+   4.1. Edit each `handle()` function listed in the Integration Map to
+   wrap its body in `with hook_event_context(...):` at the outermost
+   level (so the context still records `exit_code` even when the
+   handler raises). Where a handler is itself gated by
+   `analytics.enabled` (e.g. `post_tool_use.py:151`), the wrap goes
+   *outside* the gate so a no-config run still produces telemetry.
+
+5. **Read API (history_reader.py)**:
+   5.1. `recent_hook_events(event_name=None, exit_code=None, since=None,
+   limit=50)` — copy the shape of `recent_tool_events` /
+   `recent_skill_events`. Use `_connect_readonly` (line ~220) and
+   `_stale_cutoff` (line ~1397) for consistency with peer functions.
+   5.2. `hook_failure_rate(event_name, since=None)` — single SQL with
+   `AVG(CASE WHEN exit_code != 0 THEN 1.0 ELSE 0.0 END)`.
+   5.3. `hook_latency_p95(event_name, since=None)` — SQL aggregate.
+
+6. **CLI surface (cli/session.py)**:
+   6.1. Add `"hook_event"` to the `--kind` argument's `choices=` tuple
+   in `recent` subcommand.
+   6.2. Add `hook-health` subcommand with `--since` argument
+   (default 7d), printing per-event_name fires / failures / p95.
+
+7. **Tests** (per Integration Map → Tests):
+   7.1. Bump `test_session_store.py::TestEnsureDb::test_all_tables_created`
+   to include `"hook_events"` in the expected table set.
+   7.2. Add `TestHookEvents` class with the 4 cases listed.
+   7.3. Add the `hook_events` capture fixture to each existing
+   `test_hook_*.py` file.
+   7.4. (NEW) `test_history_reader_hook.py`.
+   7.5. Run `python -m pytest scripts/tests/ -v --tb=short` and
+   confirm all green.
+
+8. **Backfill (session_store.py)**:
+   8.1. Add `_backfill_hook_events(conn, source)` mirroring
+   `_backfill_usage_events` (line 1878). Iterate `_iter_events(source)`,
+   filter on `record.get("type") == "hook_fire"` (the synthetic shape
+   — verify against the live JSONL shape during implementation), and
+   INSERT into `hook_events`.
+   8.2. Wire `_backfill_hook_events` into the backfill orchestrator
+   in `cli/backfill_worker.py` so `rebuild()` invokes it.
+
+9. **Verification**: `ruff check scripts/`, `ruff format scripts/`,
+   `python -m mypy scripts/little_loops/`, and `python -m pytest
+   scripts/tests/`. Per `.claude/CLAUDE.md`, the pytest suite is the
+   project's only CI gate — do not add GitHub Actions workflows.
+
+### Decision-Point (Implementation Steps §3)
+
+The bash shim wiring has two viable shapes:
+
+**Option A** — add a second command per `hooks/hooks.json` entry that
+invokes the shim. Pros: zero changes to existing bash bodies (no
+behavioral risk to shipped hooks); a single `hooks.json` edit is the
+only required change per hook. Cons: every entry now has two
+commands (visual noise); bash hooks that exit early (e.g. on missing
+config) still emit a row, so the "fires / failures" rollup includes
+early-exit hooks.
+
+**Option B** — modify each bash script to call the shim inline at the
+end (or via a trap). Pros: only fires that actually reached the shim
+get recorded (cleaner signal); one edit per script. Cons: every bash
+script needs a behavioural review; trap placement must respect
+existing exit-code semantics in scripts that already set `exit $?` at
+the end.
+
+**Recommended**: Option A for v1 (lower risk, matches the existing
+"two commands" shape under PostToolUse for `context-monitor.sh` +
+`session-capture.sh`); revisit with Option B in a follow-on if
+"fires that reached the shim" becomes the preferred signal.
 
 ## Acceptance Criteria
 
@@ -209,5 +491,6 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T16:16:11 - `a12fca84-5e71-48ec-aff1-8ea85e8c0067.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

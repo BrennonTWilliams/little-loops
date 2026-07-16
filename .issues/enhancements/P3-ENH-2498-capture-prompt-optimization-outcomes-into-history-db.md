@@ -174,6 +174,60 @@ or write it with `mode=NULL` — document the choice in the AC.
   `analytics.capture.prompt_opt` gate is added (out of scope — the top-level
   `analytics.enabled` gate is the lighter precedent the siblings follow).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — current-code reconciliation from the 2026-07-16 research pass:_
+
+- **Schema slot and migration anchors have moved.** `scripts/little_loops/session_store.py:207`
+  currently reports `SCHEMA_VERSION = 20`; v19 is `raw_events` and v20 is `usage_events`,
+  so this issue's migration must be the next live slot (v21 unless another migration lands
+  first). The preceding line-number references for `_MIGRATIONS`, `_VALID_KINDS`,
+  `_KIND_TABLE`, `recent()`, `record_commit_event()`, `record_test_run_event()`,
+  `_backfill_skill_events()`, `backfill()`, `backfill_incremental()`, and
+  `_EXPORT_TABLE_MAP` are historical and must be re-anchored before implementation.
+- **ENH-2581 changed the backfill contract.** `session_store.py:2824-2898` wipes and
+  re-materializes JSONL-derived tables from `raw_events` via `_iter_events()`; the current
+  `backfill()` at `session_store.py:2924-2980` ingests raw lines only, and
+  `backfill_incremental()` at `session_store.py:2983-3031` uses the single
+  `last_raw_event_ts` watermark. Register the new producer in `_REBUILD_TABLES`,
+  `_REBUILD_SEARCH_KINDS`, and `rebuild()`; do **not** add the removed per-table
+  `_PROMPT_OPT_KEY` watermark or assume `backfill()` directly materializes cache rows.
+- **The CLI choices are data-driven.** Both `ll-session` argparse `--kind` choices at
+  `scripts/little_loops/cli/session.py:99-118` use `list(VALID_KINDS)`. Adding
+  `"prompt_opt"` to `session_store.VALID_KINDS` and `_KIND_TABLE` is the runtime/CLI
+  registration point; only the CLI documentation and any stale module docstrings need
+  separate edits.
+- **The analytics capture contract is currently top-level only.**
+  `AnalyticsCaptureConfig` has no `prompt_opt_events` field, so the existing codebase
+  supports `analytics.enabled` for this producer but not a dedicated
+  `analytics.capture.prompt_opt` switch. The current AC wording about both gates should
+  be implemented as the top-level gate unless the implementation deliberately expands
+  `config/features.py` and `config-schema.json` as additional scope.
+- **The earliest branches cannot be captured with a resolved mode.**
+  `user_prompt_submit.handle()` at `:72-97` returns for an empty prompt or missing config
+  before `mode` is read and before the existing analytics block can run. Preserve the
+  explicit decision in the implementation: skip those rows, or write a best-effort row
+  with `mode=NULL`; do not claim unconditional per-prompt coverage when analytics is
+  disabled or config is absent. The remaining bypass inventory is `disabled`, `prefix`,
+  `slash`, `hash`, `question`, `short`, `no_template`, and `template_error`, followed by
+  the offered return at `:130-135`.
+- **Outcome reconstruction has an evidence limitation.**
+  `scripts/little_loops/hooks/prompts/optimize-prompt-hook.md:45-65` emits an
+  `ORIGINAL:`/`ENHANCED:` diff only for `confirm=true`, while `confirm=false` emits only
+  a short `[ll:autoprompt] Enhanced with:` note. The hook's rendered stdout is injected
+  as `additionalContext`; the ordinary JSONL user event still contains the original
+  prompt. Therefore `_backfill_prompt_opt()` can populate `optimized_text` and
+  `accepted` only when a transcript fixture contains a parseable enhancement and a
+  deterministic correlation to the live offer. Otherwise those columns must remain NULL;
+  the acceptance criterion should not imply that every historical offer has a recoverable
+  before→after text delta.
+- **Backfill row matching needs an explicit invariant.** The live offer row is not
+  identified by a transcript field, so the implementation must define a bounded
+  `session_id`/timestamp correlation (and idempotent update behavior) before writing
+  `optimized_*` fields. The fixture should exercise both a parseable `ENHANCED:` response
+  and an unparseable/auto-apply response to prove that best-effort enrichment does not
+  fabricate acceptance.
+
 ## Proposed Solution
 
 ### Split the capture: offer (live) vs. outcome (backfill)
@@ -186,6 +240,32 @@ concerns honestly, mirroring how ENH-2495 treats advisory hooks:
    the user/model accepted it live in the transcript; a `_backfill_prompt_opt`
    pass (invoked by `ll-session backfill`) fills `optimized_len`,
    `optimized_text`, and an `accepted` heuristic. Never blocks the live path.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — implementation constraints from the current backfill and hook paths:_
+
+- Keep the live writer best-effort and call it inside the existing
+  `feature_enabled(config, "analytics.enabled")` block with
+  `contextlib.suppress(Exception)`, matching `record_correction()` and
+  `record_skill_event()` in `user_prompt_submit.py:78-94`. The recorder itself should
+  follow the keyword-only writer/FTS pattern used by `record_test_run_event()`;
+  `recent()` already dispatches generically from `_KIND_TABLE`.
+- The `_backfill_prompt_opt()` implementation must accept the shared
+  `list[Path] | sqlite3.Cursor` source shape used by `_iter_events()`. It should be
+  invoked during `rebuild()` after raw-event ingestion, and its table/search kind must
+  be included in the rebuild wipe lists so repeated rebuilds do not leave stale rows or
+  duplicate FTS entries. A separate prompt-specific watermark would conflict with the
+  current single-`last_raw_event_ts` design.
+- `optimized_text` should be indexed only after a parseable transcript match; the live
+  offer index can contain a short mode/bypass summary. Backfill updates must be
+  idempotent, bounded to the matched offer row, and leave `accepted=NULL` when the
+  transcript does not provide enough evidence. This is more precise than treating all
+  assistant responses as accepted optimizations.
+- The prompt template has two materially different signals: `confirm=true` includes the
+  full `ENHANCED:` candidate, while `confirm=false` includes only a summary. Tests and
+  docs should state which signal the heuristic consumes and should include a fixture for
+  each path rather than asserting universal recovery of the optimized prompt.
 
 ### Schema migration
 
@@ -262,6 +342,25 @@ Bump `SCHEMA_VERSION`. Add `"prompt_opt"` to `_VALID_KINDS` and
 9. Docs: `docs/ARCHITECTURE.md` schema row, `docs/reference/API.md`,
    `docs/reference/CLI.md`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete sequencing corrections:_
+
+1. Before writing the migration, re-read `session_store.py:207` and append after the
+   live migration list; the next slot is currently v21, not the historical v19 cited
+   above. Register the table in `_KIND_TABLE` and keep it out of `_KINDLESS_TABLES` so
+   the `ll-verify-kinds` invariant remains satisfied.
+2. Implement the live producer and hook wiring before the backfill parser, then add
+   `_backfill_prompt_opt()` to `rebuild()`'s raw-event replay path, `_REBUILD_TABLES`,
+   and `_REBUILD_SEARCH_KINDS`. Do not wire it as a direct cache-table write in
+   `backfill()` or introduce a per-table watermark.
+3. Define and test the transcript correlation/acceptance contract before asserting
+   `optimized_text` or `accepted`: `ENHANCED:` is available only in the confirm-diff
+   path, while auto-apply produces a summary without the full replacement prompt.
+4. Add a CLI parser test for both `recent --kind prompt_opt` and `search --kind prompt_opt`,
+   but do not add a second argparse choices list—the choices already derive from
+   `VALID_KINDS`.
+
 ## Sources
 
 - `scripts/little_loops/hooks/user_prompt_submit.py` — the producer (renders
@@ -327,6 +426,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T15:47:11 - `fd81b1d4-3269-4fb1-aa37-7a65417fe3e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:29:53 - `396f134c-5bb3-4cf3-988f-e98b42e96ee1.jsonl`
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

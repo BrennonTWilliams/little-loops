@@ -8,6 +8,7 @@ discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+decision_needed: true
 labels:
   - enhancement
   - history-db
@@ -160,6 +161,33 @@ No new table. Widen ENH-2495's existing `session_lifecycle_events`:
   runner
 - `scripts/little_loops/cli/cleanup_worktrees.py` — orphan sweeper
 
+### Codebase Research Findings — Stale Reference Audit
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-16):_
+
+The following references in the Sources list above are **stale** and must
+be corrected before implementation begins:
+
+- **`scripts/little_loops/cli/cleanup_worktrees.py` does not exist.**
+  Per BUG-2324 and `commands/cleanup-worktrees.md`, orphan cleanup is
+  delegated to `ll-parallel --cleanup-orphans`, which calls
+  `ParallelOrchestrator._cleanup_orphaned_worktrees` at
+  `scripts/little_loops/parallel/orchestrator.py:274`. Update the
+  producer wiring target accordingly.
+- **`scripts/little_loops/cli/loop/_helpers.py` is a layout/display
+  helper module** that does not import or call worktree functions. The
+  actual worktree-mode loop runner is `cmd_run()` in
+  `scripts/little_loops/cli/loop/run.py:416-504`. Update the producer
+  wiring target accordingly.
+- **ENH-2495 (the parent table this widens) is not yet implemented.**
+  `SCHEMA_VERSION = 20` (v17=commit_events/ENH-2458, v18=test_run_events/
+  ENH-2459, v19=raw_events/ENH-2581, v20=usage_events/ENH-2461).
+  ENH-2495's plan still references "v19"; the next open migration slot
+  is **v21**. There is currently no `session_lifecycle_events` table,
+  no `record_session_lifecycle_event` function, and no
+  `recent_lifecycle_events` or `worktree_summary` reader. ENH-2509
+  cannot land independently — see Decision Point below.
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -172,5 +200,185 @@ No new table. Widen ENH-2495's existing `session_lifecycle_events`:
 
 **Open** | Created: 2026-07-06 | Priority: P3
 
+## Implementation Steps
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-16):_
+
+### Phase 1 — Pre-requisite (ENH-2495-absorbed work)
+
+1. Append migration **v21** to `_MIGRATIONS` at
+   `scripts/little_loops/session_store.py:333` creating
+   `session_lifecycle_events` table with the ENH-2495 schema (event,
+   detail JSON, head_sha, branch) plus
+   `idx_lifecycle_event`/`idx_lifecycle_session` indexes. Bump
+   `SCHEMA_VERSION = 20 → 21` at line 207.
+2. Add `"session_lifecycle"` to `VALID_KINDS` at
+   `session_store.py:209-222` and the matching
+   `"session_lifecycle": "session_lifecycle_events"` entry to
+   `_KIND_TABLE` at `session_store.py:223-236`.
+3. Implement `record_session_lifecycle_event(db_path, *, session_id,
+   event, detail=None, head_sha=None, branch=None, ts=None)` in
+   `session_store.py`. Mirror the modern internal-suppress pattern from
+   `skill_event_context()` at line 1108
+   (`try/except sqlite3.Error: logger.warning(...)` inside the
+   recorder). Use `_index(...)` at line 705 for FTS. Add to `__all__`
+   at line 60-87.
+4. Implement `recent_lifecycle_events(*, event=None, limit=20,
+   db=DEFAULT_DB_PATH)` and `worktree_summary(issue_id=None, since=None,
+   db=DEFAULT_DB_PATH)` in `scripts/little_loops/history_reader.py`.
+   Mirror `recent_commit_events` (line 651) and `summarize_skills`
+   (line 497). `worktree_summary` uses
+   `json_extract(detail, '$.issue_id')` GROUP BY with
+   `COUNT(*) FILTER (WHERE event = ...)`.
+
+### Phase 2 — Producer wiring (the ENH-2509 work)
+
+5. In `scripts/little_loops/parallel/worker_pool.py`, wrap
+   `_setup_worktree` (line 684) to emit
+   `record_session_lifecycle_event(event="worktree_create", detail=
+   {"worktree_path": ..., "branch": ..., "issue_id": ..., "parent_sha":
+   baseline_head_sha})` on success. Available context: `issue.issue_id`
+   (caller), `branch_name` (caller), `worktree_path` (caller),
+   `baseline_head_sha` (line 373).
+6. Same file, `_cleanup_worktree` (line 756): emit
+   `event="worktree_delete"` after `cleanup_worktree()` returns
+   successfully. Also pass through `WorkerPool.cleanup_all_worktrees`
+   at line 1818 (looped).
+7. In `scripts/little_loops/parallel/merge_coordinator.py`, after
+   `_finalize_merge` (line 1030) succeeds and before
+   `_cleanup_worktree` (line 1066) runs, emit
+   `event="worktree_merge"` carrying the merge target branch.
+8. In `scripts/little_loops/parallel/orchestrator.py`,
+   `_merge_pending_worktrees` (lines 552-627): after `git merge --no-ff`
+   (line 592-602) succeeds, emit `event="worktree_merge"` with the
+   merged branch info; after `git worktree remove` (line 607-611),
+   emit `event="worktree_delete"`.
+9. Same file, `_cleanup_orphaned_worktrees` (line 274): after each
+   orphan is removed (around line 353), emit
+   `event="worktree_delete", session_id=None, detail={"worktree_path":
+   ..., "branch": ..., "reason": "orphan_cleanup"}`. Skip emission on
+   `dry_run=True` paths (line 318-327) — no op was performed.
+10. In `scripts/little_loops/cli/loop/run.py`, after `setup_worktree`
+    at line 448 inside `cmd_run()`: emit `event="worktree_create",
+    detail={"worktree_path": ..., "branch": ..., "loop_name": ...,
+    "parent_sha": _base_commit}`.
+11. Same file, `_cleanup_worktree_on_exit` closure (line 460), after
+    `cleanup_worktree(...)` at line 493: emit
+    `event="worktree_delete", detail={"worktree_path": ...,
+    "branch": ..., "loop_name": ...}`.
+
+### Phase 3 — Tests
+
+12. In `scripts/tests/test_session_store.py`, add
+    `TestRecordSessionLifecycleEvent` (round-trip, FTS searchability,
+    event distinctness, db-upgrade gains table) — mirror
+    `TestRecordTestRunEvent` at line 4362.
+13. In `scripts/tests/test_history_reader.py`, add
+    `TestRecentLifecycleEvents` (filter by event value) and
+    `TestWorktreeSummary` (per-issue rollup, since filter, empty DB).
+14. In `scripts/tests/test_ll_session.py`, add
+    `test_recent_subcommand_session_lifecycle_accepted` and
+    `test_recent_kind_session_lifecycle_outputs_row` — mirror lines 78
+    and 1075.
+15. In `scripts/tests/test_worker_pool.py`, add
+    `TestWorktreeProducerWiring` asserting `worktree_create` row
+    written on setup, `worktree_delete` on cleanup; pass `db_path=
+    tmp_path / "history.db"` and verify graceful DB-absent
+    degradation.
+16. In `scripts/tests/test_cli_loop_worktree.py`, add
+    `TestLoopWorktreeProducerWiring` covering lines 416-504 of
+    `cmd_run`.
+17. In `scripts/tests/test_orchestrator.py`, add
+    `TestOrphanCleanupProducerWiring` asserting
+    `event="worktree_delete"` rows with `session_id=None`.
+
+### Phase 4 — CLI follow-on (optional)
+
+18. Add `ll-session worktree-summary [--since 7d]` subcommand to
+    `scripts/little_loops/cli/session.py` mirroring the
+    `skill-stats` shape (subprocess invocation of internal
+    `worktree_summary()` helper).
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-16):_
+
+### Producer Wiring Targets (Verified Locations)
+
+| Producer | File | Anchor | Event |
+|----------|------|--------|-------|
+| Worker setup | `scripts/little_loops/parallel/worker_pool.py` | `_setup_worktree` (line 684) | `worktree_create` |
+| Worker cleanup (post-merge) | same | `_cleanup_worktree` (line 756) | `worktree_delete` |
+| All-workers cleanup | same | `cleanup_all_worktrees` (line 1818) | `worktree_delete` (looped) |
+| Merge finalize | `scripts/little_loops/parallel/merge_coordinator.py` | `_finalize_merge` (line 1030) + `_cleanup_worktree` (line 1066) | `worktree_merge` then `worktree_delete` |
+| Pending-merge resume | `scripts/little_loops/parallel/orchestrator.py` | `_merge_pending_worktrees` (lines 552-627) | `worktree_merge` (line 592-602) then `worktree_delete` (line 607-611) |
+| Orphan sweep | same | `_cleanup_orphaned_worktrees` (line 274) | `worktree_delete` (`session_id=None`, skip on dry-run) |
+| Loop create | `scripts/little_loops/cli/loop/run.py` | `cmd_run` `--worktree` branch (line 448) | `worktree_create` |
+| Loop cleanup | same | `_cleanup_worktree_on_exit` (line 460, calls cleanup at 493) | `worktree_delete` |
+| EPIC integration merge (optional) | `scripts/little_loops/worktree_utils.py` | `merge_epic_branch_to_base` (line 486) | `worktree_merge` |
+
+### Context Availability at Each Site
+
+| Producer | `session_id` | `issue_id` | `parent_sha` |
+|----------|--------------|------------|--------------|
+| `WorkerPool` create/cleanup | None (parallel not wrapped in `cli_event_context`) | `issue.issue_id` | `baseline_head_sha` (worker_pool.py:373) |
+| `MergeCoordinator` finalize | None | `result.issue_id` | Not available |
+| Orchestrator pending-merge | None | `info.issue_id` | Not available |
+| Orchestrator orphan sweep | None (orphans belong to past sessions) | Recoverable from path regex `worker-([a-z]+-\d+)-\d{8}-\d{6}` (worktree_utils.py:432) | Not recoverable |
+| Loop create/cleanup | None (loop CLI not wrapped in `cli_event_context`) | None — use `loop_name` | `_base_commit` (loop/run.py:436-446) |
+
+**Insight**: `session_id` is `None` for ALL worktree producer sites today
+(none are wrapped in `cli_event_context`). This confirms ENH-2509's
+stated expectation that worktree rows will have `session_id=NULL`.
+Orphan rows remain useful for inventory even without attribution.
+
+### Patterns to Follow
+
+- **Recorder shape** — mirror `record_test_run_event` at
+  `session_store.py:1352`: keyword-only args, JSON-in-column for
+  `detail`, FTS index via `_index(...)` at line 705.
+- **Best-effort contract (modern)** — internal
+  `try/except sqlite3.Error: logger.warning(...)` inside the recorder
+  (`skill_event_context` at `session_store.py:1108-...`). Call sites do
+  NOT need their own `contextlib.suppress`.
+- **Reader shape** — `_connect_readonly` + `try/except sqlite3.Error →
+  return []` pattern (`history_reader.py:256-277`). Never raises.
+- **CLI `--kind session_lifecycle`** — `cli/session.py:103,115` use
+  `choices=list(VALID_KINDS)`; adding the kind in `VALID_KINDS`
+  propagates to both `recent` and `search` parsers automatically.
+- **Per-op `dry_run=True`** — orphan cleanup (orchestrator.py:318-327)
+  MUST NOT emit a recorder row; no op was performed.
+- **GitLock** — every `git worktree add`/`remove` in parallel goes
+  through `self._git_lock.run(...)`. The recorder is not a git op and
+  does not need the lock; place it after the git call returns
+  successfully.
+
+### Decision Point — ENH-2495 Coordination
+
+The research uncovered a real coordination issue: this issue assumes
+ENH-2495 (the parent table) is already in place, but it is not. Three
+viable resolutions:
+
+**Option A**: Co-implement — expand ENH-2509's PR to absorb ENH-2495's
+schema, recorder, and reader work (Phase 1 of the Implementation Steps
+above). Single coordinated change; both ship together. Larger diff but
+no blocking dependency.
+
+**Option B**: Wait — block ENH-2509 until ENH-2495 lands first.
+Sequential, but ENH-2509's wiring sites have nothing to call in the
+interim and the worktree history gap persists.
+
+**Option C**: Land ENH-2509 first as the *first* lifecycle-events
+consumer — implement the full schema in this issue's scope, then
+ENH-2495 widens further with the handoff/compaction/sweep/end events.
+Reverses the parent/child ordering but matches the actual dependency
+graph.
+
+**Recommended**: Option A — co-implement. The widening is
+conceptually cleanest when both halves land together; the diff is
+small (one migration + one recorder + one new column entry), and it
+avoids the cross-issue review burden of split landings.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:refine-issue` - 2026-07-16T16:48:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

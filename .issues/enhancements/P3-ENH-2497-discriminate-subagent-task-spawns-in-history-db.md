@@ -107,6 +107,20 @@ _Added by `/ll:refine-issue` — based on direct reading of `session_store.py`, 
 - **No `recent_tool_events()` function exists today** — confirmed by reading `history_reader.py:1-1336` in full. The reference at issue line 95 ("Extend `recent_tool_events()` (if present)…") is speculative; the actual greenfield implementation is `recent_tool_events(agent_type=...)` in `history_reader.py`, returning rows from the existing table. Compatible with the generic `recent(kind="tool")` helper.
 - **Live `result_size` quirk**: the column is currently set to `bytes_out` (response size) at `post_tool_use.py:175`. Out of scope for this issue but worth noting if a follow-on fixes the column to actually be the response size — independent change.
 
+### Current-tree verification (2026-07-16)
+
+_Added by `/ll:refine-issue` — verified against the current working tree; existing findings above are preserved:_
+
+- **Migration slot must be dynamic**: `session_store.py:207` currently declares `SCHEMA_VERSION = 20`, and `_MIGRATIONS` begins at `session_store.py:333`; the current v20 entry is near `session_store.py:709-733`. The implementation must append the `agent_type` migration after the current last entry (v21 at the time of this pass), not hard-code the historical 18→19 transition. ENH-2511 and ENH-2505 remain coordination constraints for this schema work.
+- **Backfill anchors have moved**: `_backfill_tool_events()` is currently `session_store.py:1836-1875`, with `args = block.get("input", {})` and the eight-column insert around `:1859-1865`; the older `:1620-1664` references in this issue are stale line anchors, although the described data flow remains correct.
+- **Live and backfill FTS are asymmetric**: `_backfill_tool_events()` calls `_index()` around `session_store.py:1866-1873`, but `post_tool_use.handle()` has no `_index()` call after its live insert (`post_tool_use.py:158-180`). The FTS acceptance criterion therefore requires an explicit live indexing change and a live-path test; adding only the column will not make `ll-session search --fts "loop-specialist"` find newly captured spawns.
+- **Read surface remains the existing `tool` kind**: `session_store.py:224` maps `"tool"` to `tool_events`, and `session_store.py:1462-1484` implements the generic `recent()` query with `SELECT *`. No `VALID_KINDS` or dedicated `agent_spawn` kind change is needed for option (A); `cli/session.py:378-387` and `:430-453` already expose FTS search and recent tool rows.
+- **Reader helpers are greenfield**: `history_reader.py:466-528` (`recent_skill_events()` / `summarize_skills()`) are the closest templates. There is no existing `recent_tool_events()`, `agent_usage()`, or `ToolEvent` dataclass; if a dataclass is added, `_row_to_dataclass()` at `history_reader.py:273-277` safely handles both pre-migration rows (column absent) and migrated rows (NULL).
+- **CLI anchors differ from the older notes**: `_aggregate_tool_events()` is at `cli/ctx_stats.py:118-139`; the JSON `skill_health` analogue is at `:455-471`, while the text renderer spans `:346-435`. The issue's `:354-377` and `:504-525` references should be treated as stale guidance, not implementation locations.
+- **Existing tests provide the exact fixtures**: the schema bootstrap helper is `scripts/tests/test_session_store.py:3891-3911`, the v15 nullable-column migration pattern is `:3914-3967`, and the index/`EXPLAIN QUERY PLAN` pattern is in `TestSchemaV16IssueSessionId` around `:4036-4196`. `scripts/tests/test_hook_post_tool_use.py:100-237` covers analytics-gated live writes and best-effort failures but currently has no `Task`/`subagent_type` case; `scripts/tests/test_history_reader.py:1395-1635` is the reader/aggregation fixture pattern.
+- **Documentation is also behind the current schema**: `docs/ARCHITECTURE.md` lists schema history through v20, and `docs/reference/API.md` still contains a `SCHEMA_VERSION` example of 19. The implementation pass should add the new migration row after reconciling those existing v19/v20 references rather than documenting an isolated 19 entry.
+- **No configuration or hook-dispatch changes are required**: the `analytics.enabled` gate and `contextlib.suppress(Exception)` best-effort envelope in `post_tool_use.py:151-180` already cover this field, and `hooks/__init__.py:52-56` already lists the existing `post_tool_use` intent.
+
 ## Proposed Solution
 
 Two viable shapes; **prefer (A)** for minimal schema churn.
@@ -260,6 +274,7 @@ issue lands first and ENH-2511's `mcp_server`/`mcp_tool`/`mcp_outcome`/
 (one shared `ALTER TABLE tool_events` batch), not a second competing one.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T15:36:00 - `5d02fdfe-927a-4f1f-aa0e-5f159a6cee91.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:22:08 - `33e15d2a-429d-48f8-8998-aca5080acdd5.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:16:27 - `84c84b8b-bd4f-4743-8789-7aa8fa03818a.jsonl`
 - audit - 2026-07-06 - Corrected agent count: `agents/*.md` contains 9 agent definitions, not ~15.

@@ -371,6 +371,180 @@ Frontmatter already carries `decision_needed: true` (line 11). The Proposed Solu
 
 These are the two paths `/ll:decide-issue` should resolve between. The existing "Open question surfaced by research" subsection at the bottom of the Codebase Research Findings already names this choice explicitly.
 
+### Codebase Research Findings — Re-verified Anchors (2026-07-16 third pass)
+
+_Added by `/ll:refine-issue --auto` (gap-analysis, additive-only) — anchor reconciliation against current `main`. All 2026-07-07 line anchors have drifted; use symbolic navigation, not the literal ranges above._
+
+**Current anchors (re-resolved against live `main`):**
+
+| Symbol | 2026-07-07 claim | Current line | Note |
+|--------|------------------|--------------|------|
+| `session_store.SCHEMA_VERSION` | 102 (`= 18`) | **207 (`= 20`)** | next open slot is **v21**; read the live constant |
+| `session_store.VALID_KINDS` | `_VALID_KINDS` @ 104 | **`VALID_KINDS` @ 209** | **renamed** (underscore dropped, now exported tuple) — append `"decision"` here |
+| `session_store._KIND_TABLE` | 119 | **223** | append `"decision": "decision_events"` |
+| `session_store.record_issue_snapshot` | 820–866 | **1001+** | dual-write model for the DB mirror |
+| `session_store.record_retirement` | 2735–2759 | **3248** | `INSERT OR REPLACE` idempotency template |
+| `session_store.list_retirements` | 2762–2783 | **3275** | tolerant-read template |
+| `decisions.RuleEntry` | 50–95 | **89** | |
+| `decisions.DecisionEntry` | 98–148 | **140** | |
+| `decisions.ExceptionEntry` | 151–192 | **196** | |
+| `decisions.CouplingEntry` | 195–250 | **243** | still exists → Option B (below) still live |
+| `decisions.add_entry` | 298–302 | **366** | |
+| `history_reader._connect_readonly` | 235–249 | **256** | |
+| `history_reader._row_to_dataclass` | 252–256 | **273** | |
+| `history_reader.related_issue_events` | 370–404 | **395** | template for `find_decisions_for_issue` |
+| `history_reader.find_session_for_issue_transition` | 407–438 | **432** | template for `find_decisions_for_session` |
+| `history_reader.sessions_for_issue` | 601–637 | **728** | |
+| `cli/issues/decisions.py --issue` | 98 | **99** | slot `--source-session` / `--source-issue-id` alongside |
+| `cli/issues/decisions.py cmd_decisions` | 265 | **266** | |
+| `cli/issues/decisions.py _cmd_list` | 334–382 | **340** | |
+| `cli/issues/decisions.py _cmd_add` | 408–499 | **414** | |
+
+**Scope reduction (was 3 CLI edit sites, now 1) — supersedes Implementation Step 4 / 9 CLI guidance:**
+
+> ⚠ The 2026-07-07 pass claimed `cli/session.py` has **two hardcoded** `--kind`
+> `choices=[...]` lists that must both be extended. This is **no longer true.**
+> Both `search_parser` (line **103**) and `recent_parser` (line **115**) now use
+> `choices=list(VALID_KINDS)` — derived from the single `VALID_KINDS` tuple. So
+> `--kind decision` lights up automatically once `"decision"` is appended to
+> `session_store.VALID_KINDS` (line 209). **No `cli/session.py` edit is required.**
+> The three-place checklist in "`ll-session recent --kind decision` validation
+> path" collapses to two places (`VALID_KINDS` + `_KIND_TABLE`).
+
+**`assert SCHEMA_VERSION == N` test sites (now 7, all `== 20`):**
+
+`git grep -n "SCHEMA_VERSION == 20" scripts/tests/test_session_store.py` →
+lines **1372, 1817, 1932, 1984, 2080, 3658, 3699**. The earlier "6 sites at
+`== 18`" list is fully stale. On bump to v21, update all 7 (or refactor to a
+symbolic `SCHEMA_VERSION - 1`-style assertion to end the recurring drift).
+
+**Still-unimplemented (issue remains valid):** `grep -rn decision_events
+scripts/little_loops/` returns nothing — the `decision_events` table, mirror
+helper, and read API do not yet exist. Core deliverable is untouched.
+
+**`decision_needed: true` — options unchanged:** `CouplingEntry` still present
+(now line 243) and still carries `issue`, so Option A (3 dataclasses) vs
+Option B (add `CouplingEntry` → 4) remains the open `/ll:decide-issue` choice.
+
+### Codebase Research Findings — Re-verified Anchors (2026-07-16 fourth pass)
+
+_Added by `/ll:refine-issue --auto` (gap-analysis, additive-only) — anchor reconciliation against current `main` plus new findings from `_KINDLESS_TABLES`, `update_entry`, and the runtime `recent()` validator._
+
+**Verified anchor drift since the third pass (within ≤5 lines, no action needed):**
+
+| File | Third-pass claim | Current line | Drift | Status |
+|------|------------------|--------------|-------|--------|
+| `scripts/little_loops/decisions.py` `RuleEntry` | 88 (claimed 50–95) | 89 | +1 | ✓ stable |
+| `scripts/little_loops/decisions.py` `DecisionEntry` | 140 (claimed 98–148) | 140 | exact | ✓ stable |
+| `scripts/little_loops/decisions.py` `ExceptionEntry` | 196 (claimed 151–192) | 196 | exact | ✓ stable |
+| `scripts/little_loops/decisions.py` `CouplingEntry` | 243 (claimed 195–250) | 243 | exact | ✓ stable |
+| `scripts/little_loops/decisions.py` `add_entry` | 366 | 366 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `SCHEMA_VERSION = 20` | 207 | 207 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `VALID_KINDS` (was `_VALID_KINDS`) | 209 | 209 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `_KIND_TABLE` | 223 | 223 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `_index()` | 890 | 890 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `record_issue_snapshot` | 1001+ | 1001 | exact | ✓ stable |
+| `scripts/little_loops/session_store.py` `record_commit_event` | (NEW) | 1222 | — | ✓ NEW FINDING |
+| `scripts/little_loops/session_store.py` `recent()` validator | (NEW) | 1462 | — | ✓ NEW FINDING |
+| `scripts/little_loops/session_store.py` `SQLiteTransport` class | (NEW) | 1506 | — | ✓ NEW FINDING |
+| `scripts/little_loops/session_store.py` `record_retirement` | 3248 | 3248 | exact | ✓ stable |
+| `scripts/little_loops/decisions.py` `update_entry` | (NEW) | 378 | — | ✓ NEW FINDING |
+| `scripts/little_loops/history_reader.py` `_connect_readonly` | 256 | 256 | exact | ✓ stable |
+| `scripts/little_loops/history_reader.py` `_row_to_dataclass` | 273 | 273 | exact | ✓ stable |
+| `scripts/little_loops/history_reader.py` `related_issue_events` | 395 | 395 | exact | ✓ stable |
+| `scripts/little_loops/history_reader.py` `find_session_for_issue_transition` | 432 | 432 | exact | ✓ stable |
+| `scripts/little_loops/cli/issues/decisions.py` `_cmd_list` | 340 | 340 | exact | ✓ stable |
+| `scripts/little_loops/cli/issues/decisions.py` `_cmd_add` | 414 | 414 | exact | ✓ stable |
+| `scripts/little_loops/cli/issues/decisions.py` `_cmd_extract_from_completed` | 694 | 694 | exact | ✓ stable |
+| `scripts/little_loops/cli/issues/decisions.py` `_cmd_promote` | 890 | 890 | exact | ✓ stable |
+| `scripts/little_loops/cli/session.py` `search_parser` `--kind choices` | 103 | 103 | exact | ✓ stable |
+| `scripts/little_loops/cli/session.py` `recent_parser` `--kind choices` | 115 | 115 | exact | ✓ stable |
+
+**New findings the third pass missed (none of these invalidate prior Implementation Steps, but each sharpens the recipe):**
+
+1. **`_KINDLESS_TABLES` registry (lines 244-255)** — `scripts/little_loops/session_store.py` defines a `frozenset({"meta", "search_index", "sessions", "assistant_messages", "summary_nodes", "summary_spans", "raw_events", "correction_retirements"})` for tables that intentionally have no `_KIND_TABLE` entry. The block comment at lines 238-243 explicitly cites `ll-verify-kinds` (ENH-2581) as the gate that enforces "every other CREATE TABLE in `_MIGRATIONS` has a `_KIND_TABLE` entry." **Implication for ENH-2464:** `decision_events` MUST be added to `_KIND_TABLE` (line 223) — it is a queryable kind, not infrastructure. Do NOT add it to `_KINDLESS_TABLES`; doing so will cause `ll-verify-kinds` to fail post-implementation. The closest analog `correction_retirements` is intentionally kindless; `decision_events` is intentionally NOT.
+
+2. **`record_commit_event()` is the closer FTS-indexed precedent (lines 1222-1272)** — replaces `record_retirement` as the template for `record_decision_event`. Reason: `record_commit_event` does the full write-then-FTS-index sequence (`INSERT OR IGNORE` keyed on a UNIQUE `commit_sha`, then `_index(conn, content=..., kind="commit", ref=commit_sha, anchor=..., ts=ts)`, then `conn.commit()`), where `record_retirement` does NOT call `_index` (correction_retirements is a kindless registry table — no FTS row). The new `record_decision_event` should mirror `record_commit_event`'s shape because `decision_events` IS a queryable kind (per finding 1) and the FTS row must be created so `ll-session search --fts "<rationale>"` works.
+
+3. **`_index()` signature (line 890)** — `def _index(conn, *, content, kind, ref, anchor, ts)` — five keyword-only args. The `kind` arg goes into the `search_index.kind` column which is `UNINDEXED` (per FTS5 schema at lines 377-383) — so FTS5 does not index it, but `_KIND_TABLE` lookups still work. For `record_decision_event`, the call shape is `_index(conn, content=f"{decision_id} {rule} {rationale}".strip(), kind="decision", ref=decision_id, anchor=category or "", ts=ts)`.
+
+4. **`recent()` runtime validator (line 1462)** — `if kind not in VALID_KINDS: raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(VALID_KINDS)}")`. Confirms the third-pass claim that just appending `"decision"` to `VALID_KINDS` (line 209) is sufficient — `ll-session recent --kind decision` will pass this check, then `_KIND_TABLE["decision"]` resolves to `decision_events`, and `_connect_readonly` reads from there.
+
+5. **`SQLiteTransport.send()` (lines 1506-...; specifically 1567-1607 region)** — the runtime path that emits `issue.*` events. It picks up `event.get("session_id") or event.get("sessionId")` and writes it to the authoritative `issue_events.session_id` column (ENH-2462, v16). For ENH-2464, this is NOT the right hook to add the decision-event write — `SQLiteTransport` only knows about FSM event types, not CLI captures. The correct producer hook is `_cmd_add()` at `scripts/little_loops/cli/issues/decisions.py:414`, called by the `add` subparser dispatch at line 293 (`cmd_decisions`). No new event-bus plumbing is needed; the DB write is a direct `record_decision_event(...)` call wrapped in `contextlib.suppress(Exception)`.
+
+6. **`add_entry()` writes fragment files, NOT a flat-file rewrite (lines 366-375)** — per BUG-2642/BUG-2644. The path is `decisions.d/<uuid4>.json` written via `atomic_write_json`. This matters for `_cmd_extract_from_completed` (which constructs the `RuleEntry` at line 863 with `issue=issue.issue_id`) — the new `source_session_id` / `source_issue_id` fields on that constructed entry must be passed through to `add_entry()` via the dataclass instance, NOT as separate kwargs (current signature takes only `entry, path`). Confirms the third-pass Implementation Step 1 design ("new fields live on the passed dataclass instance").
+
+7. **`update_entry()` (line 378) replaces in-place copy** — the third pass at line 209 (under "Dependent Files") describes `_cmd_promote` as "converts `DecisionEntry` → `RuleEntry` in place, copying `target.issue` to `rule.issue` at line 920." This is stale. Per BUG-2645, `_cmd_promote` now uses `update_entry()` (line 927) which rewrites the single backing fragment. The new `source_session_id` / `source_issue_id` fields are preserved automatically by the round-trip pattern (`from_dict` → mutate → `update_entry` → `to_dict`), so no special copy logic is needed. Implementation Step 6 should be updated accordingly: **no explicit field-copy step in `_cmd_promote`**; just rely on `update_entry` round-trip.
+
+8. **`_EXPORT_TABLE_MAP["commit_event"] = ("commit_events", "ts")` (line 3313 region)** — the export-tooling table map. For `decision_events`, a parallel entry `_EXPORT_TABLE_MAP["decision"] = ("decision_events", "ts")` should be added. This keeps `ll-session export` output consistent across kinds. (Optional; not strictly required for the core deliverable.)
+
+9. **`_backfill_sessions()` precedent (lines 2640-2668)** — `INSERT OR IGNORE` keyed on `session_id` PRIMARY KEY; the closest precedent for `_backfill_decision_events` if backfill is desired. Confirms the third-pass recipe at line 265: `_backfill_decision_events()` walks `.ll/decisions.yaml` on first migration; registered via `backfill()` `counts` dict at `scripts/little_loops/session_store.py:2951-2957`.
+
+**`assert SCHEMA_VERSION == N` test sites — still 7, all `== 20`:**
+
+`grep -n 'SCHEMA_VERSION == 20' scripts/tests/test_session_store.py` → lines **1372, 1817, 1932, 1984, 2080, 3658, 3699** (unchanged from third pass; verified live).
+
+**Skill capture-bridge anchors — third pass also has stale claims, not just 2026-07-07:**
+
+The third-pass table at lines 311-316 of this issue still lists skill-bridge anchors from the 2026-07-07 pass. Current live anchors (verified by the analyzer pass):
+
+| File | Third-pass claim | Current line |
+|------|------------------|--------------|
+| `skills/decide-issue/SKILL.md` `ll-issues decisions add` block | 415–428 | **310** (block at 308) |
+| `skills/go-no-go/SKILL.md` `ll-issues decisions add` block | 403–416 | **421** (block at 419) |
+| `skills/capture-issue/SKILL.md` `ll-issues decisions add` block | 308–319 | **297** (block at 295) |
+| `skills/improve-claude-md/SKILL.md` `ll-issues decisions add` block | 277–282 | **407** (block at 405) |
+| `commands/tradeoff-review-issues.md` Close/Defer site | 294–303 | **277** (block at 276; **unconditional** — no `[ -f .ll/decisions.yaml ]` guard; regression vs. sibling skills) |
+| `commands/tradeoff-review-issues.md` Update site | 346–355 | **349** (block at 348; guarded) |
+
+> Implementation note: when extending each call site to thread `--source-session="$SESSION_ID"`, navigate by block (the `\`\`\`bash` fence + the `ll-issues decisions add` line), not by literal line number. The tradeoff-review-issues Close/Defer site is **unconditional** — when adding `--source-session`, also add the `[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]` guard for consistency with the sibling skills (the existing `TestTradeoffReviewDecisionsBridge` test at `scripts/tests/test_feat1896_skill_bridges.py:125-166` does not currently assert for the guard, so this is an opportunity to extend that test class in the same pass).
+
+**Test class line drift:**
+
+| Class | Third-pass claim | Current line |
+|-------|------------------|--------------|
+| `TestLoadDecisions` (`test_decisions.py`) | 75 | 75 ✓ stable |
+| `TestSaveDecisions` (`test_decisions.py`) | (NEW) | 151 |
+| `TestAddEntry` (`test_decisions.py`) | 146 | **226** (+80) |
+| `TestListEntries` (`test_decisions.py`) | (NEW) | 244 |
+| `TestResolveActive` (`test_decisions.py`) | (NEW) | 290 |
+| `TestSetOutcome` (`test_decisions.py`) | (NEW) | 317 |
+| `TestSyncToLocalMd` (`test_decisions.py`) | (NEW) | 386 |
+| `TestGenerateFromCompleted` (`test_decisions.py`) | (NEW) | 584 |
+| `TestCouplingEntry` (`test_decisions.py`) | (NEW) | 810 |
+| `TestDecisionsCLIList` (`test_cli_decisions.py`) | 127 | 127 ✓ stable |
+| `TestDecisionsCLIAdd` (`test_cli_decisions.py`) | 342 | 342 ✓ stable |
+| `TestDecisionsCLICoupling` (`test_cli_decisions.py`) | (NEW) | 639 |
+| `TestDecisionsCLIGenerate` (`test_cli_decisions.py`) | (NEW) | 962 |
+| `TestDecisionsCLINoSubcommand` (`test_cli_decisions.py`) | (NEW) | 1013 |
+| `TestDecisionsCLIPromote` (`test_cli_decisions.py`) | (NEW) | 1040 |
+| `TestDecisionsCLISuggestRules` (`test_cli_decisions.py`) | (NEW) | 1317 |
+| `TestExtractFromCompleted` (`test_cli_decisions.py`) | (NEW) | 1553 |
+| `TestRecordIssueSnapshot` (`test_session_store.py`) | 2942 | **3758** (+816) |
+| `TestRecordCommitEvent` (`test_session_store.py`) | (NEW, NEW PRECEDENT) | 4235 |
+| `TestSchemaV20UsageEvents` (`test_session_store.py`) | (NEW, ENH-2461) | 3221 |
+| `TestSchemaV16IssueSessionId` (`test_session_store.py`) | 3218 | **4036** (+818) |
+| `TestNewEventReaders` (`test_history_reader.py`) | 1378 | **1395** (+17) |
+| `TestUsageEventReaders` (`test_history_reader.py`) | (NEW, ENH-2461) | 1548 |
+| `TestCaptureIssueDecisionsBridge` (`test_feat1896_skill_bridges.py`) | 168 | 168 ✓ stable |
+| `TestTradeoffReviewDecisionsBridge` (`test_feat1896_skill_bridges.py`) | (NEW) | 125 |
+
+The new `TestRecordCommitEvent` at line 4235 is the closest precedent for the new `TestRecordDecisionEvent` (it covers `record` round-trip + FTS indexing + idempotency via UNIQUE column, exactly the shape needed). Use it as the model, not `TestRecordIssueSnapshot`.
+
+**Still-unimplemented (issue remains valid):** `grep -rn decision_events scripts/little_loops/` returns nothing — confirmed live. The `decision_events` table, mirror helper, and read API do not yet exist. Core deliverable is untouched. The `_KIND_TABLE` and `_KINDLESS_TABLES` registries confirm this is a fresh gap (no partial migration has been merged).
+
+**`decision_needed: true` confirmed (frontmatter unchanged):** `CouplingEntry` still present at line 243 and still carries `issue: str | None`. Option A (3 dataclasses) vs Option B (add `CouplingEntry` → 4) remains the open `/ll:decide-issue` choice. No frontmatter write needed (idempotency: value already correct).
+
+**Implementation Step updates derived from new findings:**
+
+- Step 1: confirmed — new fields on the passed dataclass instance, not as `add_entry()` kwargs.
+- Step 5: replace the "model on `record_retirement`" recipe with "model on `record_commit_event` (lines 1222-1272)" — `record_decision_event` must call `_index()` for FTS visibility. Add `decision_events` row + index in the same `conn.commit()`.
+- Step 5 (continued): register `"decision": "decision_events"` in `_KIND_TABLE` (line 223). Do NOT add to `_KINDLESS_TABLES` (lines 244-255) — the table IS a queryable kind.
+- Step 6: the `_cmd_promote` field-copy concern is obsolete (line 920 no longer does in-place copy; `update_entry()` at line 927 round-trips all fields automatically). Drop the explicit copy step.
+- Step 6 (continued): when extending `commands/tradeoff-review-issues.md` Close/Defer site (line 277) to add `--source-session`, also add the `[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]` guard for sibling-skill consistency. Extend `TestTradeoffReviewDecisionsBridge` to assert the guard.
+- Step 8 (new, optional): add `_EXPORT_TABLE_MAP["decision"] = ("decision_events", "ts")` near line 3313 for export-tooling parity.
+- Step 9 (CLI): confirmed — `--kind decision` lights up via `choices=list(VALID_KINDS)` at lines 103 and 115 of `cli/session.py`. No `cli/session.py` edit needed beyond what's already in the third-pass Implementation Step 9.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — recommendations §2 row 6 ("`decisions.yaml` content — Partial"), §3 ranked recommendation #7
@@ -411,6 +585,8 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T14:40:07 - `ea5d084b-1c5c-442a-875a-55dfbf608ccc.jsonl`
+- `/ll:refine-issue` - 2026-07-16T14:12:00 - `0e80f55f-c0ba-48db-8154-89fc3934107b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T07:13:46 - `545040c5-e94c-459c-892a-62e85637299c.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:14:46 - `a2f712f0-e5cb-481f-b11e-ebec85b401f1.jsonl`

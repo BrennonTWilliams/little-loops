@@ -146,6 +146,56 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 8. **Docs** — add v19 row to `docs/ARCHITECTURE.md` schema-versions table at `:612-635`. Add `recent_harness_events` / `harness_pass_rate` blocks to `docs/reference/API.md:6723-6767` and `record_harness_event` block to `:6980-7048`. Update `--kind` flag tables in `docs/reference/CLI.md:2245, 2253` and add example at `:2280-2282`.
 9. **Run the gate** — `python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py scripts/tests/test_ll_session.py scripts/tests/test_cli_harness.py -v` (per the project's CI policy: `python -m pytest scripts/tests/` *is* CI). Verify `harness_events` appears in `sqlite_master` after `ensure_db(db)` in the upgrade test.
 
+### Codebase Research Findings — Anchor Refresh (2026-07-16)
+
+_Added by `/ll:refine-issue` — corrects stale anchors verified against current `main` at refinement time:_
+
+- **`SCHEMA_VERSION` is now 20, not 18.** Verified at `scripts/little_loops/session_store.py:207` — current value is `SCHEMA_VERSION = 20`. The existing Implementation Steps say "bump `SCHEMA_VERSION = 18 → 19`" but the next free slot when this issue lands is **20 → 21**. The earlier Scope Boundary note already flagged this; this subsection pins the precise landing version. The migration comment should be `# v21 (ENH-2493): harness_events — persisted ll-harness / eval outcomes …`.
+- **Symbol name correction: `VALID_KINDS` (no underscore, tuple, not frozenset).** Verified at `session_store.py:209-222`:
+  ```python
+  VALID_KINDS: tuple[str, ...] = (
+      "tool", "file", "issue", "loop", "correction", "message",
+      "skill", "cli", "snapshot", "commit", "test_run", "usage",
+  )
+  ```
+  Appending `"harness"` here automatically extends the `--kind` choices in `cli/session.py` — both `search` and `recent` subparsers bind to `list(VALID_KINDS)` (verified at `cli/session.py:102-106` and `:113-118`).
+- **`__all__` lines 61-93** (32 exports — confirmed). Add `"record_harness_event"` to this list before implementation.
+- **`_KIND_TABLE` lines 223-236.** Add `"harness": "harness_events"` here.
+- **`record_test_run_event()` is at lines 1352-1414, not 1171-1233.** Earlier anchors in this issue (line 128, 130, 131) are off by ~180 lines because subsequent migrations (v19 raw_events/ENH-2581, v20 usage_events/ENH-2461) and other additions grew the file. Place `record_harness_event()` directly after `record_test_run_event()` at line 1414, before the next public symbol.
+- **No `harness_events` reference anywhere yet.** Confirmed: `grep -rn "harness_events\|record_harness" scripts/little_loops/` returns zero matches.
+- **`git_utils.py` does NOT exist** — the prior Integration Map (`scripts/little_loops/git_utils.py:get_head_sha()` / `get_current_branch()`) is a stale anchor. The actual file is `scripts/little_loops/git_operations.py` and neither helper exists there. The canonical helper is `_git_output(*args) -> str | None` at `scripts/little_loops/pytest_history_plugin.py:61-74`. **Recommended path**: replicate the 14-line `_git_output` helper locally in `cli/harness.py` (private), or factor it into a new `scripts/little_loops/git_utils.py` if more than one consumer needs it (post-MVP; keep scope small for v21).
+- **`recent_test_runs()` is at `history_reader.py:689-725`, not 562-598** (file grew by ~125 lines since the original anchors). Mirror `recent_harness_events()` immediately after it.
+- **`RunEvent` dataclass is at `history_reader.py:138-161`** (anchor close, prior estimates held). Place `HarnessEvent` dataclass right after.
+- **`history_reader.py` has no `__all__`** — prior Integration Map guess ("Lines 1-42 — module docstring Public API list") was about the docstring, not an `__all__` list. Update only the module docstring Public API list.
+- **`summarize_skills()` is at `history_reader.py:497-546`** and returns `list[dict]`, not a dataclass. `harness_pass_rate(target, since)` can either return `list[dict]` (consistent) or a typed `@dataclass` (cleaner). Recommend `dict` for v1 to mirror existing pattern.
+- **`cli_event_context` does NOT swallow `sqlite3.Error` (pre-existing issue).** Per `session_store.py:1054-1091`, the existing `__exit__` does `conn.commit()` without a `try/except`, so a missing/locked DB raises into the wrapped harness CLI body. The newer `skill_event_context` (`session_store.py:1108-1195`) wraps in `try/except sqlite3.Error` per EPIC-1707. **The harness call site MUST wrap `record_harness_event(...)` in `contextlib.suppress(Exception)`** (mirroring `pytest_history_plugin.py:118-121`) so that "DB absent/locked does not change the harness exit code" (Acceptance Criterion) holds. This is a hard requirement — `cli_event_context` cannot be relied on for graceful degradation.
+- **DSL per-task vs aggregate row linkage**: The current Implementation Step says "emit one row per DslTask" but does not specify how per-task rows link back to the aggregate row. **`cmd_prompt` only returns an `int rc`** (verified at `harness.py:380-399`); `RunnerResult` (`harness.py:25-33`) is local to `cmd_skill/cmd_cmd/cmd_cmd/cmd_mcp/cmd_prompt` and not returned. Two viable strategies:
+
+  **Option A** — Aggregate-first then per-task: write the aggregate `harness_event` row first to capture `lastrowid`, then collect per-task results in memory inside the `for task_file in task_files:` loop, then write each per-task row with `parent_id=<lastrowid>`. Matches `record_commit_event`'s `INSERT OR IGNORE` idempotency model (per-task insert is straightforward once you have the parent id).
+
+  **Option B** — Collect-then-bulk-write: append each per-task outcome to a list inside the loop, write the aggregate row at the end, then write all per-task rows with `parent_id` populated. Two passes over DB but no transient FK-style ordering issue.
+
+  **Recommended**: Option A — single pass, parent_id known immediately, matches `record_commit_event` precedent. The aggregate row uses `parent_id=NULL` and `target=str(path)` (the file or directory); per-task rows use `target=task_file.name`, `runner="dsl-task"` (distinct from aggregate's `runner="dsl"`), `parent_id=aggregate_row.lastrowid`. Schema must include a nullable `parent_id INTEGER` column (FK would be overkill for SQLite — leave as plain column with no constraint, matching `record_commit_event`'s `parent_sha` precedent).
+
+  This decision adds **a `parent_id` column to the proposed schema** (not in the original SQL block above). Trade-off: simple, queryable (`SELECT * FROM harness_events WHERE parent_id IS NOT NULL` for per-task rows); cost is one extra nullable column.
+
+- **Schema column extensions for richer `EvaluationResult.details` capture** (per `fsm/evaluators.py:48-58` and `evaluate_llm_structured`): the proposed SQL has only `semantic_verdict` + `semantic_passed`, but `EvaluationResult.details` includes `confidence`, `confident`, `reason`, `evidence`, `evidence_coerced`, `llm_model`, `llm_latency_ms`, `llm_prompt` (truncated 500 chars), `llm_raw_output` (truncated 500 chars). Add these columns to make `--semantic` eval runs fully queryable:
+  ```sql
+  semantic_prompt TEXT,            -- args.semantic (input to evaluate_llm_structured)
+  semantic_confidence REAL,        -- eval_result.details["confidence"]
+  semantic_reason TEXT,            -- eval_result.details["reason"]
+  semantic_evidence TEXT,          -- eval_result.details["evidence"]
+  semantic_model TEXT,             -- eval_result.details["llm_model"]
+  ```
+  All nullable; `_evaluate_and_report()` has access to all of them at `:215` (only when `args.semantic is not None`).
+
+- **`_evaluate_and_report()` does NOT return `passed`/`eval_result` to callers** (verified at `harness.py:192-252`): both are locals, and all `cmd_*` runners return only the int exit code. Two threading strategies:
+  - **(a)** Change `_evaluate_and_report` signature to return `(rc, EvalReport)` where `EvalReport` is a small dataclass with `passed: bool`, `verdict: str | None`, `eval_result: EvaluationResult | None`. Each caller `cmd_skill/cmd_cmd/cmd_mcp/cmd_prompt` writes a `harness_event` row using the dataclass fields.
+  - **(b)** Attach fields to the mutable `args: argparse.Namespace` inside `_evaluate_and_report` (`args.__dict__["_harness_eval"] = EvalReport(...)`) before the final `return rc`. Hackier but smaller diff.
+  **Recommended**: (a) — explicit, type-safe, no global mutation. Add a tiny `@dataclass EvalReport` near `RunnerResult` at `harness.py:25-33` with three fields (`passed: bool`, `verdict: str | None`, `eval_result: EvaluationResult | None`).
+- **Test class anchors (verified)**: `TestRecordTestRunEvent` at `scripts/tests/test_session_store.py:4362`; `_bootstrap_schema_at(db, version)` helper at `scripts/tests/test_session_store.py:3891`; `TestNewEventReaders` at `scripts/tests/test_history_reader.py:1395`; `test_recent_test_runs_and_pass_rate` at `scripts/tests/test_history_reader.py:1459`; `TestSkillStatsAndNewKinds` at `scripts/tests/test_ll_session.py:1040`; `TestHarnessEventPersistence` does not exist yet (create new in `test_cli_harness.py` after `TestCmdDsl` ends ~line 940+). Shared helpers in `test_cli_harness.py:25-75` (`FakeRunner`, `_make_completed`, `_make_namespace`, `_llm_verdict`) are reusable for new tests.
+- **`LlLoop` row pattern mirrors `record_test_run_event` exactly**: `connect(db_path)` → `INSERT` → `_index(conn, kind="harness", ref=target or "", anchor=runner or "", content=<summary>[:512], ts=ts)` → `conn.commit()` → `finally: conn.close()`. The recorder raises; the caller wraps in `contextlib.suppress(Exception)`. This matches the AC's "best-effort, DB absent/locked does not change exit code" guarantee.
+
 ## Implementation Steps
 
 1. Schema migration for `harness_events`; bump `SCHEMA_VERSION`.
@@ -255,6 +305,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T15:04:04 - `74755637-ff93-4bca-bf37-d7f6bf2012f5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:41:19 - `b56869a4-8510-44e9-9ae9-aea10bc8d02d.jsonl`
 - audit - 2026-07-06 - Corrected function reference: pass/fail logic lives in `_evaluate_and_report()` at `harness.py:192` (there is no `_evaluate()` at `:197`); `main_harness` is at `:450` with the `cli_event_context` wrap at `:452`.

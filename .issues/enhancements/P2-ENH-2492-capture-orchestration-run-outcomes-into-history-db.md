@@ -959,6 +959,106 @@ flush blocks, additional flush sites, and `_EXPORT_TABLE_MAP` wiring:_
     Without this test, the `_EXPORT_TABLE_MAP` edit (step 14) can regress
     silently.
 
+### Codebase Research Findings (Anchor Drift Verification — 2026-07-16, pass 6)
+
+_Added by `/ll:refine-issue --auto` (6th pass, same-day) — focused re-verification
+after the 5th pass shipped. The 5th pass's verification already recorded all
+material drifts through that point; this pass is a no-net-new-findings
+confirmation, plus one minor line-number update that the 5th pass did not pin._
+
+- **Material drift on `cli/sprint/run.py` (~+95 lines since the 4th/5th pass
+  citations)**. The 5th pass cited `wave_label=f"Wave {wave_num}/{total_waves}"`
+  at `run.py:629`. Current HEAD has this composition at **`run.py:724`**
+  (`ParallelOrchestrator(wave_label=…)` is invoked there). The other two sites
+  that compose the same wave label string are now at `run.py:671` (the
+  warning path) and `run.py:674, 792, 796` (the completed-logging paths), all
+  of which use the same `f"Wave {wave_num}/{total_waves}"` template. The
+  ~95-line jump is most likely an artifact of the same ENH-2581 work that
+  widened `_EXPORT_TABLE_MAP` (the file gained an unrelated sprint/state
+  block above the wave loop). Re-locate every `run.py` citation by the
+  function name (`_cmd_sprint_run`, `_run_issue_with_wall_clock_timeout`,
+  `ParallelOrchestrator(...)` call site) rather than the line number when
+  implementing — concrete line numbers from prior passes have all moved
+  inside this file but the function-level structure is unchanged.
+- **Minor drift on `parallel/orchestrator.py` (+2–4 lines since the 5th pass)**:
+  `_on_worker_complete` def now at **line 969** (5th pass cited 967);
+  `self._interrupted_issues.append(result.issue_id)` at **line 984**
+  (5th pass cited 980); `self.wave_label = wave_label` at **line 109**
+  (unchanged). Within normal noise band; the 5th pass's "re-locate by name"
+  guidance still applies.
+- **`state.py:26` is correct** for `class ProcessingState` (the 4th pass's
+  off-by-one note that said `:26` should be `:25` appears to have been
+  re-corrected by subsequent edits — re-verify before quoting in a commit,
+  but `:26` matches HEAD today). `mark_completed` at `state.py:188` and
+  `mark_failed` at `state.py:203` match the 3rd pass's citations exactly
+  (no drift).
+- **`record_orchestration_run` is still unimplemented** — confirmed by a
+  negative grep across `scripts/little_loops/` and `docs/`. The `Issue`
+  is therefore still actionable; the 5th pass's `_EXPORT_TABLE_MAP`
+  dict-shape finding (at `session_store.py:3304`) and `SCHEMA_VERSION = 20`
+  finding (at `session_store.py:207`) both still hold on HEAD.
+- **`decision_needed` is correctly `false`**: only the `wave TEXT` vs
+  split-columns alternative remains from prior passes, and `/ll:decide-issue`
+  on 2026-07-11 already selected `wave TEXT` with rationale recorded under
+  `## Decision Rationale`. No new options were introduced by this pass.
+
+---
+
+
+
+_Added by `/ll:refine-issue --auto` (5th pass) — re-verified against current HEAD.
+Two **material** drifts since the 2026-07-11 pass that change the implementation,
+not just line numbers:_
+
+- **`SCHEMA_VERSION` is now `20`, not `18` (`session_store.py:207`)**. The v17
+  (`commit_events`), v18 (`test_run_events`), v19 (`raw_events`/ENH-2581), and v20
+  (`usage_events`/ENH-2461) slots are all taken. **The next-open slot is v21.**
+  Every "18→19" / "bump to 19" / `SCHEMA_VERSION = 19` literal in this issue's
+  Integration Map, Proposed Solution, and Implementation Steps is stale — treat
+  them as "append a new `_MIGRATIONS` entry at the current next-open index and
+  bump `SCHEMA_VERSION` to whatever is live at implementation time" (the Scope
+  Boundary note already records this; this finding pins the concrete current
+  value). The `TestOrchestrationSchema` upgrade test must `_bootstrap_schema_at(db, 20)`
+  and assert the v21 upgrade, not v18→v19.
+
+- **`_EXPORT_TABLE_MAP` moved AND changed shape — step 14's code block is now
+  wrong (`session_store.py:3304-3316`)**. It is no longer the tuple-list at
+  `2791-2814`; it is now a `dict[str, tuple[str, str]]` keyed on the export
+  type-name, with a **2-tuple** value `(table_name, timestamp_col)`. The correct
+  addition is:
+
+  ```python
+  # in _EXPORT_TABLE_MAP (session_store.py:3304):
+  "orchestration_run": ("orchestration_runs", "ended_at"),
+  ```
+
+  **NOT** the 3-tuple `("orchestration_run", "orchestration_runs", "ended_at")`
+  that Implementation Step 14 currently shows — that form no longer matches the
+  dict schema and would be a bug. Additionally, `_EXPORT_DEFAULT_TABLES` is now a
+  **separate list** (`session_store.py:3318-3329`) of type-name strings; add
+  `"orchestration_run"` there too if orchestration rows should appear in the
+  default (no-`--tables`) export, mirroring `commit_event` / `test_run_event` /
+  `usage_event` which are all present in both structures.
+
+- **`session_store.py` record-fn anchors drifted ~180 lines** (unrelated
+  ENH-2461/ENH-2581 code landed above them): `record_commit_event` now at
+  **line 1222** (issue cites 1041-1091), `record_test_run_event` at **line 1352**
+  (issue cites 1171-1233). Re-locate by name before quoting lines in a commit.
+  `record_usage_event` (v20/ENH-2461) is a newer sibling to also model against —
+  it is the most recent `record_*_event` and reflects the current house style.
+
+- **`parallel/orchestrator.py` — minor further drift, control flow unchanged**:
+  `wave_label` assignment at **line 109** (matches last pass); `_on_worker_complete`
+  at **line 969**; `self._pr_ready_branches[result.issue_id] = branch_state` at
+  **line 1104**; `_open_pr_for_branch` def at **line 1176**, its docstring
+  reference to `_on_worker_complete` at **line 1232**. All within a few lines of
+  the 4th pass's numbers — no structural change; re-locate by name as before.
+
+- **No new schema-slot conflict**: no other EPIC-2457 sibling has landed a v21
+  migration; the next-open slot is uncontested at this moment, but read the live
+  `SCHEMA_VERSION` at implementation time per the Scope Boundary note (siblings
+  land in whatever order they're implemented).
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 gap surface (execution outcomes)
@@ -1001,6 +1101,8 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T14:18:50 - `ec721603-845a-43dc-9920-57ba425890cc.jsonl`
+- `/ll:refine-issue` - 2026-07-16T14:08:02 - `4bc98e28-d432-4a7a-ab1f-dcf602e3157c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:decide-issue` - 2026-07-11T18:09:15 - `37898a30-ea4e-4972-91db-a694a29a9e31.jsonl`
 - `/ll:refine-issue` - 2026-07-11T18:00:48 - `626e1d2e-171d-437d-99d2-c692ad2d4a44.jsonl`

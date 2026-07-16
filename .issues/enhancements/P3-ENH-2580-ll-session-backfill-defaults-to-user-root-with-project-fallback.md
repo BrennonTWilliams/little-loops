@@ -13,6 +13,8 @@ labels:
   - history-db
   - backfill
   - captured
+decision_needed: true
+decision_context: "Subprocess argv shape — see Proposed Solution Codebase Research Findings. Option A: stage merged JSONL list into a temp dir (zero worker signature change). Option B: extend worker signature to accept multiple --jsonl=path pairs (cleaner argv, more code change). Recommended: Option A for v1."
 ---
 
 # ENH-2580: ll-session backfill defaults to user-root with project fallback
@@ -66,14 +68,75 @@ empty?" confusion.
   `payload["transcript_path"]` (ENH-1945, the host's per-session
   transcript) over `get_project_folder(cwd)`. There is no concept
   of "user-root discovery" in this code path.
-- `scripts/little_loops/cli/logs.py:142` uses
-  `resolve_host()` to find `~/.claude/projects/<host>/` and
-  iterates the directories inside it. This is the model for
-  user-root discovery.
+- `scripts/little_loops/cli/logs.py:137-199` defines
+  `discover_all_projects()`, which iterates
+  `~/.claude/projects/` (or the per-host equivalent) and is
+  the model for user-root discovery. **Note**: the file reads
+  `LL_HOOK_HOST` directly via `os.environ.get("LL_HOOK_HOST",
+  "claude-code")` (`cli/logs.py:161`) and does **not** call
+  `host_runner.resolve_host()`; the new helper should use
+  `resolve_host().name` to align with all other call sites
+  (`session_store.py:2689`, `cli/loop/_helpers.py:2016`,
+  `subprocess_utils.py:328`, `cli/action.py:155`,
+  `cli/doctor.py:141`).
 - The hardcoded `claude-code` host in the `recent --kind` and
   `search --kind` argparse lists is unrelated; the host
   resolution is via `LL_HOOK_HOST` env var and
   `host_runner.resolve_host()`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`cli/logs.py:142` reference is off by ~5 lines** — the
+  relevant function is `discover_all_projects()` at
+  `scripts/little_loops/cli/logs.py:137-199`. The
+  `_extract_cwd_from_project()` helper at `cli/logs.py:110-134`
+  already provides the JSONL-based `cwd` extraction the new
+  helper needs (it returns `Path(cwd)` from the first record
+  with a non-empty `cwd` string and skips `agent-*.jsonl`).
+- **`_iter_projects` does not exist** in the codebase. The
+  proposed solution refers to it, but the only iteration helper
+  in `cli/logs.py` is `discover_all_projects()` itself. The new
+  helper should be modeled on it (host-root dispatch +
+  per-directory JSONL inspection) rather than introducing a
+  parallel `_iter_projects` symbol.
+- **`cwd_to_user_dir` does not exist** as a generic reverse
+  mapping. `encode_project_path()` at `user_messages.py:358-366`
+  performs a *forward* mapping (`/foo/bar` → `-foo-bar`), but it
+  is **lossy for paths containing hyphens** (the
+  `discover_all_projects()` docstring calls this out: a path
+  like `/Users/foo/little-loops` cannot be unambiguously
+  recovered from `-Users-foo-little-loops`). The new helper
+  must iterate `~/.claude/projects/<host>/*/` and filter by
+  reading `cwd` from JSONL — not by encoding the current `cwd`
+  and probing a single directory. This is exactly what
+  `_extract_cwd_from_project()` was built for.
+- **Subprocess argv shape is a real decision point.** The
+  current `backfill_worker.py:36-38` accepts a single
+  `<db_path> <jsonl_or_dir>` positional pair, then either
+  globs a directory or uses a single file. The new helper
+  returns `list[Path]` (potentially many JSONL files from
+  multiple user-root directories merged with the project-root
+  fallback). Two viable resolutions:
+
+  **Option A**: Stage discovered files into a temp directory
+  (symlinks or hardlinks into the user's session dirs) and
+  pass that single dir to the existing worker. **Zero worker
+  signature change**; uses the worker's existing
+  `path_arg.is_dir()` glob path.
+
+  **Option B**: Extend the worker to accept multiple
+  positional `--jsonl=path` arguments (or `nargs="*"` after
+  the db path), updating both `main()` and the
+  `session_start.py` argv construction at lines 153-159.
+  Cleaner argv; requires touching the worker.
+
+  **Recommended**: Option A for v1 — keeps the worker
+  contract stable (the `--rebuild` ad-hoc-flag precedent at
+  `backfill_worker.py:24` argues against extending argv
+  shape), and the temp-dir staging can be reused by any
+  future caller that needs multi-file discovery.
 
 ## Expected Behavior
 
@@ -162,6 +225,117 @@ list is deduplicated by absolute path.
 7. Tests in `scripts/tests/test_cli_logs.py` (new
    `TestResolveUserRootSessions`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 1 (new helper)**: Place the helper alongside
+  `discover_all_projects()` at `cli/logs.py:137-199`. It should
+  use `resolve_host().name` (not `os.environ.get` directly) and
+  delegate cwd extraction to the existing
+  `_extract_cwd_from_project()` at `cli/logs.py:110-134` (skip
+  `agent-*.jsonl`, return on first valid `cwd` record, fail
+  silently on `OSError`/`JSONDecodeError`). Filter by
+  `cwd == cwd.resolve()` (or `cwd.is_relative_to(target)` for
+  descendant match — per the issue's `--strict-cwd` opt-out).
+- **Step 2 (worker)**: `backfill_worker.py:22` (`main()`) needs
+  to accept a `--project-only` flag with the same ad-hoc
+  detection pattern as `--rebuild` (`"--project-only" in args`,
+  line 24). When set, skip the new helper. When unset, call the
+  helper first, then fall back to the existing
+  `path_arg.is_dir()` glob. Per Option A above, stage the
+  merged list into a temp dir under `tempfile.TemporaryDirectory`
+  before passing to `backfill_incremental()`.
+- **Step 3 (argparse)**: `cli/session.py:139-183` is the actual
+  `backfill` subparser (the issue's `session.py:150` reference
+  is inside `--extract-decisions`). Add the flag at line 167
+  (after `--snapshots`) with `action="store_true",
+  default=False, dest="project_only"`, and consume it in the
+  dispatch block at `session.py:470-562`. The naming aligns
+  with the `--existing-only` pattern at `cli/logs.py:1980-1984`.
+- **Step 4 (SessionStart)**: The current subprocess argv is at
+  `session_start.py:153-159`. The new three-step discovery
+  produces either a single file (transcript_path) or a temp
+  dir (Option A staging). Update the `_backfill_path` logic at
+  `session_start.py:141-147` accordingly. The `--rebuild` flag
+  construction at `session_start.py:160-172` is orthogonal and
+  stays.
+- **Steps 6-7 (tests)**: Mirror `TestBackfillSnapshotsFlag` at
+  `test_ll_session.py:897-929` (newer model) rather than
+  `TestBackfillSinceFlag` at `test_ll_session.py:513-570`. Both
+  patterns are valid but `TestBackfillSnapshotsFlag` uses
+  cleaner mock boundaries (patches `backfill_snapshots`
+  directly). The test file is
+  `scripts/tests/test_ll_session.py` (not split — there is no
+  `test_cli_logs.py`; the `cli/logs.py` tests live in
+  `scripts/tests/test_ll_logs.py`).
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/logs.py` — add
+  `resolve_user_root_sessions(host, cwd)` alongside
+  `discover_all_projects()` at line 137; reuse
+  `_extract_cwd_from_project()` at line 110.
+- `scripts/little_loops/cli/backfill_worker.py` — extend
+  `main()` at line 22 with `--project-only` ad-hoc flag
+  detection (mirrors `--rebuild` at line 24); add Option A
+  temp-dir staging when helper is called.
+- `scripts/little_loops/cli/session.py` — add `--project-only`
+  to `backfill_parser` at line 167 (between `--snapshots` and
+  `--max-sessions`); consume in dispatch block at
+  `cli/session.py:470-562`.
+- `scripts/little_loops/hooks/session_start.py` — replace the
+  single-path logic at `session_start.py:141-147` with
+  three-step discovery; update argv construction at
+  `session_start.py:153-159`.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/messages.py` — uses
+  `get_project_folder` (same forward map; no change needed).
+- `scripts/little_loops/cli/loop/_helpers.py:2016` — uses
+  `resolve_host().name` (same pattern the new helper should
+  follow).
+- `scripts/little_loops/session_store.py:2689` — uses
+  `resolve_host().name` for event-kind dispatch.
+
+### Similar Patterns
+- `scripts/little_loops/cli/logs.py:137-199` —
+  `discover_all_projects()` is the canonical user-root
+  discovery pattern (host dispatch + JSONL cwd extraction).
+- `scripts/little_loops/cli/logs.py:110-134` —
+  `_extract_cwd_from_project()` is the canonical
+  embedded-cwd extractor.
+- `scripts/little_loops/cli/logs.py:1980` — `--existing-only`
+  flag pattern (positive-scope opt-out naming; same shape as
+  the new `--project-only`).
+
+### Tests
+- `scripts/tests/test_ll_session.py` — existing
+  `TestBackfillSinceFlag` (line 513) and
+  `TestBackfillSnapshotsFlag` (line 897); add
+  `TestBackfillProjectOnly` mirroring the snapshots pattern.
+- `scripts/tests/test_ll_logs.py` — add
+  `TestResolveUserRootSessions` for the new helper.
+- `scripts/tests/test_hook_session_start.py` — add
+  three-step discovery coverage for the SessionStart subprocess.
+
+### Documentation
+- `docs/reference/API.md#little_loopscli_logs` — document
+  `resolve_user_root_sessions()`.
+- `docs/reference/CLI.md#ll-session-backfill` — document
+  `--project-only`.
+- `docs/ARCHITECTURE.md` — update the session-start flow
+  diagram to show the three-step discovery.
+
+### Configuration
+- No new config keys required. `analytics.auto_collect.enabled`
+  remains orthogonal (per AC).
+
+_Added by `/ll:refine-issue` — Integration Map section
+populated from codebase research; the original issue had no
+Integration Map._
+
 ## Impact
 
 - **Priority**: P3.
@@ -211,4 +385,5 @@ are ingested into. After ENH-2581 lands, this child is a
 ~1-day implementation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-16T17:31:04 - `8fa2ea39-9ae6-4c89-90c1-a8a949c1dbde.jsonl`
 - `/ll:capture-issue` - 2026-07-08T00:00:00Z - fourth-pass expansion of EPIC-2457
