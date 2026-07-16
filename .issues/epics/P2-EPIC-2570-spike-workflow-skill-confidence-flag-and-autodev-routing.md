@@ -1,13 +1,24 @@
 ---
 id: EPIC-2570
-title: Spike Workflow — Skill, Confidence Flag & Autodev Routing
+title: "Spike Workflow \u2014 Skill, Confidence Flag & Autodev Routing"
 type: EPIC
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-10
 discovered_by: link-epics
-labels: [epic, skills, confidence, autodev, risk-reduction, captured]
-relates_to: [FEAT-2567, ENH-2569, ENH-2568, BUG-2654]
+labels:
+- epic
+- skills
+- confidence
+- autodev
+- risk-reduction
+- captured
+relates_to:
+- FEAT-2567
+- ENH-2569
+- ENH-2568
+- BUG-2654
+completed_at: '2026-07-16T00:53:11Z'
 ---
 
 # EPIC-2570: Spike Workflow — Skill, Confidence Flag & Autodev Routing

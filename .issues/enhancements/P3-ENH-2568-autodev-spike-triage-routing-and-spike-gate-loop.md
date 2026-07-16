@@ -3,7 +3,7 @@ id: ENH-2568
 title: autodev spike triage routing + spike-gate wrapper loop
 type: ENH
 priority: P3
-status: open
+status: cancelled
 labels: [fsm, loops, autodev, confidence, risk-reduction, captured]
 captured_at: "2026-07-10T01:34:59Z"
 discovered_date: "2026-07-10"
@@ -131,10 +131,40 @@ No rn-* loop edits in this issue. Adoption = documentation: `sprint-refine-and-i
 - **BUG-1491** — rerun-confidence-after-remediation precedent.
 - **ENH-1415 / BUG-1277 / BUG-2513** — prior triage-lattice extensions this mirrors.
 
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-15):_
+
+**This issue's entire proposed scope has already been implemented via its two decomposed children — both `done`. ENH-2568 is effectively superseded and should be closed (`done` or `cancelled: superseded-by-children`), not implemented.**
+
+Decomposition (both `parent: EPIC-2570`, both `status: done`):
+
+- **ENH-2640** — autodev triage spike-branch routing. Commits `e92ed3af` (route unproven-mechanism outcome failures to spike remediation) + `33e6d515` (route decide-path skip through spike gate). Delivered exactly the Proposed Solution §1 states.
+- **ENH-2641** — `spike-gate.yaml` wrapper loop. Commit `175f0c00`. Delivered Proposed Solution §2.
+
+Verification of each proposed artifact against current code:
+
+- `scripts/little_loops/loops/autodev.yaml` — the three proposed states **already exist**: `check_spike_needed` (line 683, predicate `spike_needed AND NOT spike_attempted` via `ll-issues show --json`), `run_spike` (line 704, `action: "/ll:spike ${captured.input.output} --auto"`, `next: rerun_confidence_after_spike`), `rerun_confidence_after_spike` (line 720, byte-for-byte mirror of `rerun_confidence_after_wire`). `triage_outcome_failure.on_no → check_spike_needed` is wired (line 680).
+- Defense-in-depth parity (Proposed §1 last bullet) was **also delivered**: `check_spike_needed_before_skip` (line 810) interposes a decide-path-specific spike gate on the no-children skip edge (ENH-2640 fix `33e6d515`).
+- `scripts/little_loops/loops/spike-gate.yaml` — **exists** (91 lines, `category: gate`); chains `check_issue_file → check_spike_needed → check_spike_completed → gate (/ll:spike --check) → run_spike_auto → recheck → run_impl` (delegates to `${context.impl_loop}`), mirroring `proof-first-task.yaml`.
+- Tests — `TestSpikeGateLoop` (13 tests) + autodev spike-state assertions land in `scripts/tests/test_builtin_loops.py`; also covered in `test_autodev_decision_gate.py`, `test_confidence_check_skill.py`, `test_spike_skill.py`, `test_show.py`.
+- Docs — spike-gate registered in `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/guides/LOOPS_GUIDE.md`; back-referenced from `skills/spike/SKILL.md`. The `spike_needed`/`spike_attempted`/`spike_completed` flags are set by `skills/confidence-check/SKILL.md` (ENH-2569, landed).
+
+> ⚠ Stale anchors — the line numbers cited in this issue's Current Behavior / Similar Patterns predate the ENH-2640 insertion and no longer resolve:
+> - `triage_outcome_failure` — cited `autodev.yaml:615-629`, now **665–681**.
+> - `run_wire`/`run_refine`/`rerun_confidence_after_wire` — cited `365-401`, now **406–442**.
+> - `check_missing_artifacts` — cited `631-639`, now **733–741**.
+
+**Recommended next step**: `/ll:ready-issue ENH-2568` will likely close this as already-satisfied; alternatively set `status: done` (or `cancelled`) with a note pointing to ENH-2640 + ENH-2641. No implementation work remains.
+
 ## Status
 
-**Open** | Created: 2026-07-10 | Priority: P3
+**Cancelled: superseded-by-children** | Created: 2026-07-10 | Priority: P3
+
+Superseded by **ENH-2640** (autodev triage spike-branch routing) and **ENH-2641** (spike-gate.yaml wrapper loop), both `done`. Codebase research (`/ll:refine-issue`, 2026-07-15) confirmed every proposed artifact — states, loop file, tests, docs — already exists in the delivered children. No implementation work remains; `/ll:wire-issue` was not run since there is nothing left to wire.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16 - cancelled as superseded, skipped wiring pass
+- `/ll:refine-issue` - 2026-07-16T00:37:18 - `ecf443b9-e4d3-4815-8f02-627ac9461b6d.jsonl`
 
 - `/ll:capture-issue` - 2026-07-10T01:34:59Z - `manual capture via Claude Cowork session`
