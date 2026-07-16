@@ -2240,6 +2240,7 @@ class TestAutoRefineAndImplementLoop:
         verify_verdict: str | None = None,
         verify_returncode: str | None = None,
         inflight: str | None = None,
+        queue: tuple[str, ...] = (),
     ) -> dict:
         """Execute finalize against ground-truth completed/ + done dirs; return summary.json.
 
@@ -2305,6 +2306,11 @@ class TestAutoRefineAndImplementLoop:
         # exercisable. Absent by default → INFLIGHT_UNRESOLVED=0.
         if inflight is not None:
             (run_dir / "autodev-inflight").write_text(inflight)
+        # ENH-2657: seed autodev-queue.txt with residual (undrained) IDs so
+        # finalize's ABANDONED signal (and the incomplete-abandoned verdict it
+        # triggers) is exercisable. Absent/empty by default → abandoned=0.
+        if queue:
+            (run_dir / "autodev-queue.txt").write_text("".join(f"{i}\n" for i in queue))
         action = data["states"]["finalize"].get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("${captured.issue_set.output}", ",".join(issue_set))
@@ -2314,7 +2320,7 @@ class TestAutoRefineAndImplementLoop:
         # `phantom` run exits non-zero (→ the `incomplete` terminal, rendered as
         # not-success by ll-loop) while every other verdict exits 0 (→ `done`).
         # summary.json is written before the routing exit, so it is always readable.
-        expected_rc = 1 if summary["verdict"] == "phantom" else 0
+        expected_rc = 1 if summary["verdict"] in ("phantom", "incomplete-abandoned") else 0
         assert result.returncode == expected_rc, (
             f"finalize exit {result.returncode} != {expected_rc} for "
             f"verdict={summary['verdict']}: {result.stderr}"
@@ -2645,6 +2651,67 @@ class TestAutoRefineAndImplementLoop:
         )
         assert summary["inflight_unresolved"] == 0, (
             f"a closed issue's lingering sentinel must not count, got {summary}"
+        )
+        assert summary["verdict"] == "success", f"expected success, got {summary}"
+
+    def test_finalize_abandoned_queue_counts_and_diverts_terminal(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2657: a non-empty residual autodev-queue.txt at finalize (autodev hit
+        its timeout/max_steps mid-drain) must surface as abandoned>0, fold into
+        parked_rate, and divert off the green `done` terminal via the
+        incomplete-abandoned verdict — even when the run closed something (the exact
+        18-of-27 case from EPIC-058 that rendered green `partial`)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1",),
+            issue_set=("FEAT-1", "ENH-2", "ENH-3", "ENH-4"),
+            queue=("ENH-2", "ENH-3", "ENH-4"),
+        )
+        assert summary["abandoned"] == 3, f"expected abandoned=3, got {summary}"
+        assert summary["parked_rate"] > 0, f"abandoned must lift parked_rate, got {summary}"
+        # Verdict names the abandonment (Option B) and diverts to incomplete even
+        # though CLOSED > 0 — the whole point of the ENH.
+        assert summary["verdict"] == "incomplete-abandoned", (
+            f"an abandoned queue must not render as green partial, got {summary}"
+        )
+        assert (run_dir / "auto-refine-and-implement-abandoned.txt").exists(), (
+            "abandoned artifact listing the residual IDs must be written"
+        )
+
+    def test_finalize_empty_queue_is_unaffected(self, data: dict, tmp_path: Path) -> None:
+        """ENH-2657: a run that fully drained its queue (empty/absent
+        autodev-queue.txt) is unchanged — abandoned=0 and the same verdict as today."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data, run_dir, closed=("FEAT-1", "FEAT-2"), passed=("FEAT-1", "FEAT-2")
+        )
+        assert summary["abandoned"] == 0, f"empty queue must report abandoned=0, got {summary}"
+        assert summary["verdict"] == "success", f"drained run unaffected, got {summary}"
+
+    def test_finalize_abandoned_zero_when_residual_all_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2657 late-close race: residual queue entries that actually closed
+        (present in the closed-now union) must NOT count as abandoned — the
+        comm -23 subtraction holds."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            closed=("FEAT-1",),
+            passed=("FEAT-1",),
+            issue_set=("FEAT-1",),
+            queue=("FEAT-1",),
+        )
+        assert summary["abandoned"] == 0, (
+            f"a residual entry that actually closed must not count, got {summary}"
         )
         assert summary["verdict"] == "success", f"expected success, got {summary}"
 

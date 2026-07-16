@@ -3,17 +3,25 @@ id: ENH-2657
 title: Detect an abandoned autodev queue in finalize (silent work loss on timeout)
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-16
-captured_at: "2026-07-16T00:00:00Z"
+captured_at: '2026-07-16T00:00:00Z'
 discovered_by: capture-issue
+completed_at: '2026-07-16T13:53:57Z'
+decision_needed: false
 labels:
-  - enhancement
-  - loops
-  - autodev
-  - finalize
-  - observability
-  - captured
+- enhancement
+- loops
+- autodev
+- finalize
+- observability
+- captured
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # ENH-2657: Detect an abandoned autodev queue in finalize (silent work loss on timeout)
@@ -116,19 +124,133 @@ and — like `phantom` (BUG-2636) — keep an abandoned-queue run off the green
    abandoned.
 5. Update the `incomplete` terminal message to mention the abandoned count.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — verified against current `auto-refine-and-implement.yaml` and `autodev.yaml` (2026-07-16):_
+
+**Verified anchors (line numbers refreshed — the `Sources` refs had drifted):**
+
+- `finalize` state: `auto-refine-and-implement.yaml:676-925`; action shell body
+  `689-920`. Local vars: `RUN_DIR="${context.run_dir}"` (`:689`),
+  `P=auto-refine-and-implement` (`:690`), and the counter
+  `count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" ...; }` (`:691`) — a
+  blank-line-skipping line count, exactly what the abandoned read needs.
+- Closed-now union file: `$RUN_DIR/$P-closed-now-union.txt` (built ~`:763`). This
+  is the correct file for the `comm -23` subtraction in the Proposed Solution
+  (step 1) — it is the full closed set, not just the since-baseline diff
+  (`CLOSED` at `:756` uses `$P-closed-union.txt`, a different, narrower file). Use
+  `-closed-now-union.txt` for the abandoned subtraction, per the AC's late-close
+  guard.
+- `PARKED_RATE` numerator (`:849`):
+  `$SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED + $INFLIGHT_UNRESOLVED`
+  over denominator `$INPUT_SIZE`. Add `$ABANDONED` here.
+- summary.json printf: `:899`; human-readable echo: `:905-906`. Both must gain the
+  new field.
+- Verdict logic: `:883-896` (INFLIGHT_UNRESOLVED already gates `phantom` at
+  `:890`, from BUG-2636). Terminal routing: `case "$VERDICT" in phantom) exit 1
+  ;; *) exit 0 ;; esac` at `:917-920`; `exit 1`→`on_no: incomplete`, `exit
+  0`→`on_yes: done` (`:922-923`). `incomplete` terminal message: `:935`.
+- `autodev.yaml` confirmed: queue seeded from `${context.input}` (`:50`),
+  `dequeue_next` pops via `head -1`/`tail -n +2` (`:80-85`), empty-queue exit →
+  `on_no: done` (`:70,:80-81`), `max_steps: 500` (`:18`), `timeout: 28800`
+  (`:19`).
+
+**Precedent to mirror (INFLIGHT_UNRESOLVED / BUG-2636)** — the abandoned counter
+is a direct generalization of the single-sentinel guard. Follow its five touch
+points verbatim: (1) count computation, (2) `:849` numerator, (3) `:899` printf,
+(4) `:905` echo, (5) `:890` verdict gate. This keeps the diff minimal and the
+accounting symmetric.
+
+**Verdict-branch decision (Proposed Solution step 4) — recommendation:**
+
+> **Selected:** Option B — dedicated `incomplete-abandoned` verdict; the only
+> shape that surfaces abandonment on a `CLOSED > 0` run, matching the
+> codebase's own most recent compound-verdict precedent (`partial-with-errors`,
+> ENH-2376).
+
+**Option A**: Fold `ABANDONED > 0` into the existing `phantom`/exit-1 path (add
+`ABANDONED` to the `:890` no-closure disjunction). Minimal diff, reuses the
+proven exit-1→`incomplete` route; but a run with `CLOSED > 0` *and* an abandoned
+queue would still be labeled `partial`, not `phantom`, so the verdict string
+alone wouldn't flag abandonment.
+
+**Option B**: Add a dedicated `incomplete-abandoned` verdict that also exits 1 →
+`incomplete`, set whenever `ABANDONED > 0` regardless of `CLOSED`. Slightly more
+code, but the verdict string itself names the abandonment (better operator
+signal, matches the "not just incomplete, misleading" motivation).
+
+**Recommended**: Option B — the whole point of the ENH is that a green/partial
+label on an 18-of-27-abandoned run is misleading. A distinct verdict string that
+survives `CLOSED > 0` is what makes the abandonment visible without reading the
+artifact. Both routes satisfy the AC (`_is_success` name check on `incomplete`);
+B additionally satisfies the "verdict/terminal is misleading" motivation.
+
+**Test model** — extend `scripts/tests/test_builtin_loops.py`. The closest
+existing pattern is `test_finalize_stale_inflight_counts_as_unresolved`
+(`:2616-2628`, BUG-2636), which drives the `_run_finalize` helper
+(`:2225-2243`). That helper seeds ledger files (`autodev-passed.txt`,
+`autodev-skipped.txt`, `autodev-gate-blocked.txt`,
+`autodev-decision-unresolved.txt`) and the `autodev-inflight` sentinel, runs the
+finalize shell in a temp dir, and returns parsed summary.json. Add a sibling
+seeding a non-empty `autodev-queue.txt` (residual IDs) and assert
+`summary["abandoned"] == N`, `summary["parked_rate"] > 0`, and the
+verdict/terminal is non-green (`incomplete`). Add companion cases for the
+empty-queue (unaffected, `abandoned: 0`) and late-close-race
+(residual-all-closed → `abandoned: 0`) ACs — the `_run_finalize` `closed=`/
+`passed=` params already support seeding those.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option B — dedicated `incomplete-abandoned` verdict
+
+**Reasoning**: Both options reuse identical infrastructure (the `count()`
+helper, `PARKED_RATE` numerator, summary.json printf/echo, and the
+`_run_finalize` test harness) — the choice is purely about which verdict
+branch carries the signal. Option A is structurally inert for the issue's own
+motivating scenario: the `elif` chain at `:883-897` checks `CLOSED > 0`
+branches (`success`/`partial-with-errors`/`partial`) before the `phantom`
+branch is ever reached, so a run that closed 1 issue and abandoned 18 (the
+exact case in the Motivation section) would still render `partial`, not
+`phantom`, no matter what's OR'd into the `:890` disjunction. The codebase's
+own most recent precedent for a compound "closed-something + secondary-signal"
+verdict — `partial-with-errors` (ENH-2376) — was implemented as a new,
+distinct verdict string rather than folded into an existing bucket, and
+neither option's downstream consumers (`ll-loop`'s terminal-name-only
+`_is_success` check, `sprint-refine-and-implement.yaml`'s pass-through
+`read_outcome`) branch on the verdict string's literal value, so Option B adds
+no new consumer-side infrastructure either.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A (fold into `phantom`) | 2/3 | 3/3 | 2/3 | 2/3 | 9/12 |
+| Option B (dedicated `incomplete-abandoned`) | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+
+**Key evidence**:
+- Option A: verbatim repeat of the BUG-2636 `INFLIGHT_UNRESOLVED` disjunction
+  pattern with zero new infrastructure, but semantically inert for any
+  `CLOSED > 0` abandoned run — the exact scenario the issue was captured from.
+- Option B: matches ENH-2376's `partial-with-errors` precedent for compound
+  verdicts; requires two explicit touch points (the `case "$VERDICT"`
+  terminal-routing statement at `:917-920` and the `_run_finalize` test
+  helper's `expected_rc` check) beyond the shared five-point ledger pattern.
+
 ## Acceptance Criteria
 
-- [ ] `finalize` reads `autodev-queue.txt`; a non-empty residual queue produces
+- [x] `finalize` reads `autodev-queue.txt`; a non-empty residual queue produces
       `abandoned > 0` in summary.json and an
       `auto-refine-and-implement-abandoned.txt` artifact listing the IDs.
-- [ ] The abandoned count is included in the `parked_rate` numerator.
-- [ ] A run that abandoned ≥1 dispatched issue does NOT route to the green `done`
+- [x] The abandoned count is included in the `parked_rate` numerator.
+- [x] A run that abandoned ≥1 dispatched issue does NOT route to the green `done`
       terminal (renders as `incomplete` per `ll-loop`'s `_is_success` name check).
-- [ ] A run that fully drained its queue (empty `autodev-queue.txt`) is
+- [x] A run that fully drained its queue (empty `autodev-queue.txt`) is
       unaffected: same verdict/terminal as today, `abandoned: 0`.
-- [ ] A run where the residual queue entries all actually closed (late-close
+- [x] A run where the residual queue entries all actually closed (late-close
       race) reports `abandoned: 0` (the closed-now-union subtraction holds).
-- [ ] Test coverage in `scripts/tests/test_builtin_loops.py` (or a finalize-
+- [x] Test coverage in `scripts/tests/test_builtin_loops.py` (or a finalize-
       focused test) simulating a non-empty `autodev-queue.txt` at finalize and
       asserting the verdict/terminal + summary.json field.
 
@@ -153,7 +275,31 @@ and — like `phantom` (BUG-2636) — keep an abandoned-queue run off the green
 
 ## Status
 
-open — captured 2026-07-16 from the EPIC-058 sprint-refine run analysis.
+done — implemented 2026-07-16 (Option B).
+
+## Resolution
+
+Implemented in `auto-refine-and-implement.yaml` finalize (Option B, per the
+decide-issue selection). Five shared touch points mirror the BUG-2636
+`INFLIGHT_UNRESOLVED` precedent, plus the two Option-B-specific points:
+
+1. `ABANDONED` reads residual `autodev-queue.txt`, subtracts the closed-now union
+   (`comm -23`) to hold against a late-close race, and writes the residual IDs to
+   `auto-refine-and-implement-abandoned.txt`.
+2. `ABANDONED` folded into the `PARKED_RATE` numerator.
+3. `"abandoned":%s` added to the summary.json printf and the human-readable echo.
+4. New `incomplete-abandoned` verdict — set whenever `ABANDONED > 0`, taking
+   precedence over every `CLOSED > 0` bucket so an 18-of-27-abandoned run no
+   longer renders as green `partial`.
+5. `incomplete-abandoned` joins `phantom` on the `exit 1 → incomplete` terminal
+   route; the `incomplete` terminal message names the abandoned count and points
+   at the artifact.
+
+Tests: `test_finalize_abandoned_queue_counts_and_diverts_terminal`,
+`test_finalize_empty_queue_is_unaffected`,
+`test_finalize_abandoned_zero_when_residual_all_closed` in
+`scripts/tests/test_builtin_loops.py` (TDD red→green). Full suite green
+(15096 passed); `ll-loop validate auto-refine-and-implement` passes.
 
 ## Impact
 
@@ -175,6 +321,9 @@ open — captured 2026-07-16 from the EPIC-058 sprint-refine run analysis.
   configurable, and any change to `autodev`'s own drain/step budget.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-16T13:53:05 - implemented Option B (finalize abandoned-queue signal + incomplete-abandoned verdict)
+- `/ll:decide-issue` - 2026-07-16T13:45:09 - `2bcf269c-0ef8-46e0-8318-65e28e8e6867.jsonl`
+- `/ll:refine-issue` - 2026-07-16T13:41:52 - `e8d423c5-f164-4257-9937-91797e1531ab.jsonl`
 
 - 2026-07-16: Captured from forensic analysis of `ll-marketing` run
   `sprint-refine-and-implement-20260715T182217`. Confirmed 18 issues left in

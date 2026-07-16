@@ -780,6 +780,24 @@ states:
         printf '%s\n' "$INFLIGHT_ID" > "$RUN_DIR/$P-inflight-unresolved.txt"
       fi
 
+      # ENH-2657: ABANDONED — autodev drains a unified depth-first queue
+      # (autodev-queue.txt under the run_dir) one issue at a time and exits to its own
+      # `done` only when the queue is empty. If it hits timeout (28800s) or
+      # max_steps (500) mid-drain it terminates with a NON-EMPTY queue — those
+      # issues were dispatched but never refined/implemented/parked, and appear
+      # in none of the ledgers above (observed: EPIC-058 run left 18 of 27
+      # undrained, summary reported closed=1 and routed green). Count the residual
+      # queue as its own signal. Subtract the closed-now union so a late-closing
+      # race (an issue that actually closed while still lingering in the queue
+      # file) does not double-count as abandoned.
+      : > "$RUN_DIR/$P-abandoned.txt"
+      if [ -s "$RUN_DIR/autodev-queue.txt" ]; then
+        grep '[^[:space:]]' "$RUN_DIR/autodev-queue.txt" | sort -u \
+          | comm -23 - "$RUN_DIR/$P-closed-now-union.txt" \
+          > "$RUN_DIR/$P-abandoned.txt" 2>/dev/null || true
+      fi
+      ABANDONED=$(count $P-abandoned.txt)
+
       # NOT_CLOSED: issues autodev passed refinement and ran ll-auto on that did
       # NOT close via either path (e.g. ll-auto refused to close, or a plan
       # awaits approval). Derived as autodev-passed − closed-now-union, so a
@@ -846,7 +864,7 @@ states:
           | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
       fi
       if [ "$INPUT_SIZE" -gt 0 ]; then
-        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED + $INFLIGHT_UNRESOLVED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
+        PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED + $INFLIGHT_UNRESOLVED + $ABANDONED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
       else
         PARKED_RATE=0.0
       fi
@@ -880,7 +898,14 @@ states:
 
       # Verdict reflects real closure. A run is only 'success' when it closed
       # something and left nothing parked (no skips, no not-closed, no crash).
-      if [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
+      # ENH-2657: an abandoned queue takes precedence over every closed>0 bucket —
+      # a run that closed 1 and abandoned 18 is misleading as `partial`, so it
+      # gets its own compound verdict (Option B, mirroring ENH-2376's
+      # partial-with-errors) that names the abandonment and diverts to incomplete
+      # regardless of CLOSED. A genuinely drained queue leaves ABANDONED=0.
+      if [ "$ABANDONED" -gt 0 ]; then
+        VERDICT=incomplete-abandoned
+      elif [ "$CLOSED" -gt 0 ] && [ "$ERR" -eq 0 ] && [ "$SKIP" -eq 0 ] && [ "$NOT_CLOSED" -eq 0 ]; then
         VERDICT=success
       elif [ "$CLOSED" -gt 0 ] && [ "$ERR" -gt 0 ]; then
         # ENH-2376: closed something AND crashed — distinct from a clean partial.
@@ -896,14 +921,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s abandoned=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
 
       # BUG-2636: route the FSM terminal on the REAL outcome, not just "reached the
       # end". `ll-loop` derives success purely from the terminal state's NAME —
@@ -914,8 +939,10 @@ states:
       # reported green "done" — the exact mis-signal behind run 20260713T190717.
       # success/partial/partial-with-errors (real progress) and a genuine
       # empty-backlog no-op stay `done`; only `phantom` diverts to `incomplete`.
+      # ENH-2657: incomplete-abandoned joins phantom on the exit-1 → incomplete
+      # route so an abandoned-queue run never renders green `done`.
       case "$VERDICT" in
-        phantom) exit 1 ;;
+        phantom|incomplete-abandoned) exit 1 ;;
         *) exit 0 ;;
       esac
     fragment: shell_exit
@@ -931,7 +958,12 @@ states:
     # exits non-zero (verdict=phantom) or errors. Its own stdout is redundant with
     # the failure reason `ll-loop` already surfaces from finalize's non-zero
     # action_complete, but a terminal message keeps standalone/log readers honest.
+    # ENH-2657: also reached on verdict=incomplete-abandoned — autodev hit its
+    # timeout/max_steps mid-drain and left issues in autodev-queue.txt that were
+    # never refined/implemented/parked. The abandoned count and the residual-ID
+    # artifact are in summary.json / auto-refine-and-implement-abandoned.txt so a
+    # re-run to drain the remainder is obvious.
     action: |
-      echo "auto-refine-and-implement: incomplete — see summary.json verdict (phantom): dispatched work closed nothing (parked / not-closed / in-flight / errored). Re-run after resolving blockers."
+      echo "auto-refine-and-implement: incomplete — see summary.json verdict. phantom: dispatched work closed nothing (parked / not-closed / in-flight / errored). incomplete-abandoned: autodev abandoned N issues left in autodev-queue.txt at timeout/max_steps (see the 'abandoned' count and auto-refine-and-implement-abandoned.txt); re-run to drain the remainder. Re-run after resolving blockers."
     action_type: shell
     terminal: true
