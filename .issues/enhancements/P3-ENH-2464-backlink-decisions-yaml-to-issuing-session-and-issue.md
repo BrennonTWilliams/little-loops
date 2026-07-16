@@ -8,7 +8,7 @@ discovered_date: 2026-07-02
 captured_at: "2026-07-02T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - decisions
@@ -369,6 +369,8 @@ Frontmatter already carries `decision_needed: true` (line 11). The Proposed Solu
 - **Option A (3 dataclasses)**: extend `RuleEntry` + `DecisionEntry` + `ExceptionEntry` only (matches original issue scope).
 - **Option B (4 dataclasses)**: also extend `CouplingEntry` at `scripts/little_loops/decisions.py:195-250` because it also has `issue: str | None` and follows the same round-trip pattern.
 
+> **Selected:** Option B (4 dataclasses) — per the stated recommendation; `CouplingEntry` shares the single `_cmd_add` write path and DB mirror, so provenance fields must extend to it to avoid accidental NULL provenance on coupling rows.
+
 These are the two paths `/ll:decide-issue` should resolve between. The existing "Open question surfaced by research" subsection at the bottom of the Codebase Research Findings already names this choice explicitly.
 
 ### Codebase Research Findings — Re-verified Anchors (2026-07-16 third pass)
@@ -535,6 +537,12 @@ The new `TestRecordCommitEvent` at line 4235 is the closest precedent for the ne
 
 **`decision_needed: true` confirmed (frontmatter unchanged):** `CouplingEntry` still present at line 243 and still carries `issue: str | None`. Option A (3 dataclasses) vs Option B (add `CouplingEntry` → 4) remains the open `/ll:decide-issue` choice. No frontmatter write needed (idempotency: value already correct).
 
+> **Recommended**: Option B (4 dataclasses) — extend `source_session_id` /
+> `source_issue_id` to `CouplingEntry` as well. It shares the single `_cmd_add`
+> write path and DB mirror, so omitting it would leave coupling rows with NULL
+> provenance by accident, not design; `wire-issue` is session/issue-scoped so
+> the fields are meaningful, and the edit is the same ~4-line round-trip pattern.
+
 **Implementation Step updates derived from new findings:**
 
 - Step 1: confirmed — new fields on the passed dataclass instance, not as `add_entry()` kwargs.
@@ -585,6 +593,8 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T18:40:25 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
+- `/ll:decide-issue` - 2026-07-16T18:32:14 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:40:07 - `ea5d084b-1c5c-442a-875a-55dfbf608ccc.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:12:00 - `0e80f55f-c0ba-48db-8154-89fc3934107b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`

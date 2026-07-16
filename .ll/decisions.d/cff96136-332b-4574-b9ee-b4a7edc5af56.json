@@ -1,0 +1,14 @@
+{
+  "id": "ac305413-7ef9-4570-ab0b-e20b98915fc5",
+  "type": "rule",
+  "timestamp": "2026-07-16T18:34:50Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "BUG-2659 root cause: the Skill tool rejects ALL invocations when this flag is set, including user-typed `/ll:` slash commands. The audit-issue-conflicts skill had no CLI wrapper or other dispatch path, so the flag made it entirely unreachable.",
+  "rule": "Never set `disable-model-invocation: true` on a skill that has no alternate user-reachable entry point (CLI wrapper, par",
+  "enforcement": "advisory",
+  "issue": "BUG-2659"
+}

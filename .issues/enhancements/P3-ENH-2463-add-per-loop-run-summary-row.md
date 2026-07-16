@@ -13,7 +13,7 @@ labels:
   - history-db
   - loops
   - captured
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-2463: Add per-loop-run summary row to history.db
@@ -262,6 +262,8 @@ The proposed solution is sound, but the research surfaced three decision points 
 
 **Decision E — `started_at` population (see Gap N)**
 
+> **Selected:** Option E3 — per the stated recommendation. Pass `self.started_at` as a direct arg from `_finish()` (paired with D2); zero DB hit, zero event change.
+
 **Option E1**: Add `started_at` to `_finish()` payload (mirror BUG-2304 shape). Explicit, in-band. Event-shape change.
 
 **Option E2**: `record_loop_run_summary()` derives `started_at` via `SELECT MIN(ts) FROM loop_events WHERE loop_name=? AND transition='loop_start'`. No event change. Extra DB hit per write.
@@ -272,6 +274,8 @@ The proposed solution is sound, but the research surfaced three decision points 
 
 **Decision F — Backfill strategy for historical runs (see Gap P)**
 
+> **Selected:** Option F2 — per the stated recommendation. One-shot migration scanning `.loops/.history/*/state.json`; idempotent via UNIQUE on `run_id`. Filed as a follow-on issue (not part of ENH-2463 v1).
+
 **Option F1**: No backfill — `loop_runs` covers only post-migration runs.
 
 **Option F2**: One-shot migration that scans `.loops/.history/*/state.json`, parses `started_at` / `iterations` / `final_state` per file, and calls `record_loop_run_summary()` per file. Idempotent via UNIQUE on `run_id`.
@@ -281,6 +285,8 @@ The proposed solution is sound, but the research surfaced three decision points 
 **Recommended**: Option F2 as a follow-on issue, not part of ENH-2463 v1.
 
 **Decision G — Reconciler for handoff / force-archive / hard-kill gaps (see Gaps Q + R)**
+
+> **Selected:** Option G1 — per the stated recommendation. Document v1 coverage gap in Expected Behavior; G2 + G3 filed as follow-on issues.
 
 **Option G1**: Accept the gap; document in Expected Behavior.
 
@@ -419,6 +425,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T18:28:35 - `ed09a07d-067d-44ac-b1ad-ad826ab00704.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:29:26 - `6a56187c-bd1e-41fd-bb6f-3e87d47a557a.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:09:47 - `62d957fd-b2f2-451b-85fc-3f142b5e5e6b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:22:36 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
