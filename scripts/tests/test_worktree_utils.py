@@ -602,6 +602,96 @@ class TestVerifyEpicBranchBeforeMerge:
         # ENH-2631: no command ran (setup failed first) — returncode is None.
         assert returncode is None
 
+    # BUG-2650: root-cause + regression guard for the doc-string flake ---------
+    #
+    # The AC #1 harness. `test_string_present_in_doc`
+    # (test_wiring_skills_and_commands.py) false-negatived exactly once, under
+    # the epic-merge verify gate, on `(".claude/CLAUDE.md", "spike", FEAT-2567)`
+    # (EPIC-2570, 2026-07-15). BUG-2649 quarantined it behind `LL_VERIFY_GATE`.
+    #
+    # Root cause (documented in the issue): the gate reads a
+    # `project_root`-anchored doc via a freshly `git worktree add`-checked-out
+    # tree, in an xdist subprocess. `git worktree add` is *synchronous* — the
+    # tree is fully materialized when it returns — and the read resolves off the
+    # path-collected `conftest.py`, not `cwd`/`PYTHONPATH`. So the read is
+    # deterministic; a 60x stress probe of this exact path (present needle, 2
+    # xdist workers) produced 0 false-negatives. The lone historical failure was
+    # a genuinely stale EPIC-integration tip (FEAT-2567's `.claude/CLAUDE.md`
+    # edit not yet merged onto the tip at gate time), a branch-ordering property,
+    # not a nondeterministic read. This test is the committed (bounded) guard:
+    # the gate must never false-negative on a present needle.
+    #
+    # Deliberately NOT `no_parallel`: that marker makes a test *skip* under the
+    # suite's default `-n logical` (workers skip it; the controller runs none), so
+    # it would be dormant in the CI command. Instead the nested pytest runs
+    # *serially* (`-n 0`) — a single short-lived subprocess, no xdist fan-out
+    # stacked on the 7 workers — so the guard runs in CI while staying within the
+    # beachball constraint (conftest.py:14-53). The xdist dimension is not
+    # load-bearing for this read path: each gate subprocess reads the
+    # `project_root` doc independently, with no cross-worker sharing (per the
+    # BUG-2649/refine analysis), so serial nesting reproduces the same
+    # checkout->read mechanism.
+    _GATE_READ_STRESS_ITERATIONS = 3
+
+    def _repo_with_doc_needle(self, tmp_path: Path, needle: str = "spike") -> Path:
+        """EPIC branch carrying a `project_root`-anchored doc + presence test,
+        mirroring the real `.claude/CLAUDE.md` / `scripts/tests/` layout the gate
+        reads."""
+        repo = _init_repo(tmp_path / "repo")
+        _git(repo, "checkout", "-b", "epic/epic-1-integration")
+        (repo / ".claude").mkdir()
+        (repo / ".claude" / "CLAUDE.md").write_text(f"marker: {needle}\n")
+        tests_dir = repo / "scripts" / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_doc_presence.py").write_text(
+            "from pathlib import Path\n\n"
+            "def test_doc_needle_present():\n"
+            "    project_root = Path(__file__).parent.parent.parent\n"
+            "    content = (project_root / '.claude/CLAUDE.md').read_text()\n"
+            f"    assert {needle!r} in content\n"
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "add doc needle + presence test")
+        _git(repo, "checkout", "main")
+        (repo / ".worktrees").mkdir()
+        return repo
+
+    def test_gate_read_is_deterministic_on_present_needle(self, tmp_path: Path) -> None:
+        """BUG-2650: the gate's checkout -> subprocess -> project_root read never
+        false-negatives when the needle is genuinely present on the tip.
+
+        Faithfully reproduces the flake's mechanism: a `.claude/CLAUDE.md` needle
+        read via a `project_root`-anchored presence test, run against a freshly
+        checked-out worktree through the real gate, looped to catch a transient.
+        Green across the loop is the determinism proof AC #1 accepts; the one-time
+        60x probe (documented in the issue) corroborates it.
+        """
+        repo = self._repo_with_doc_needle(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        test_cmd = (
+            "python -m pytest -n 0 -p no:cacheprovider -o addopts= "
+            "scripts/tests/test_doc_presence.py"
+        )
+
+        for i in range(self._GATE_READ_STRESS_ITERATIONS):
+            ok, message, returncode = verify_epic_branch_before_merge(
+                "EPIC-1",
+                "epic/epic-1-integration",
+                verify_before_merge=True,
+                repo_path=repo,
+                worktree_base=".worktrees",
+                test_cmd=test_cmd,
+                lint_cmd=None,
+                logger=logger,
+                git_lock=git_lock,
+                src_dir="scripts",
+            )
+            assert ok is True, (
+                f"gate false-negatived on a present needle at iteration {i}: "
+                f"{message} (exit {returncode})"
+            )
+
 
 class TestOpenPrForEpicBranch:
     """open_pr_for_epic_branch() (BUG-2614: extracted from
@@ -714,9 +804,7 @@ class TestResolveEpicBase:
 
     def test_epic_id_does_not_affect_result(self) -> None:
         # No repo_path -> no per-EPIC lookup; both return the passed default.
-        assert resolve_epic_base("EPIC-1", "release") == resolve_epic_base(
-            "EPIC-2", "release"
-        )
+        assert resolve_epic_base("EPIC-1", "release") == resolve_epic_base("EPIC-2", "release")
 
     @staticmethod
     def _write_epic(tmp_path: Path, epic_id: str, *, base_branch: str | None) -> None:
@@ -730,10 +818,7 @@ class TestResolveEpicBase:
     def test_declared_base_preferred_over_default(self, tmp_path: Path) -> None:
         """A per-EPIC base_branch: declaration wins over the passed default."""
         self._write_epic(tmp_path, "EPIC-2451", base_branch="refactor/tableau")
-        assert (
-            resolve_epic_base("EPIC-2451", "main", tmp_path)
-            == "refactor/tableau"
-        )
+        assert resolve_epic_base("EPIC-2451", "main", tmp_path) == "refactor/tableau"
 
     def test_no_field_falls_back_to_default(self, tmp_path: Path) -> None:
         """An EPIC that declares no base_branch keeps the passed default."""
@@ -762,6 +847,4 @@ class TestResolveEpicBranchName:
         )
 
     def test_lowercases_epic_id(self) -> None:
-        assert resolve_epic_branch_name("EPIC-42", "epic/", "x").startswith(
-            "epic/epic-42-"
-        )
+        assert resolve_epic_branch_name("EPIC-42", "epic/", "x").startswith("epic/epic-42-")

@@ -6,7 +6,6 @@ All original assertions from 31 source files preserved as parametrized cases.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -205,16 +204,14 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
 ]
 
 
-@pytest.mark.skipif(
-    os.environ.get("LL_VERIFY_GATE") == "1",
-    reason="BUG-2649: quarantined under the epic-merge verify gate. This "
-    "project_root doc read is non-deterministic under the gate's injected "
-    "PYTHONPATH + parallel-xdist worktree invocation (observed as a lone "
-    "false-negative on the EPIC-2570 run; passes in isolation and on merged "
-    "main). Root cause undetermined — tracked by BUG-2650. The assertion is "
-    "still fully exercised by the standard `python -m pytest scripts/tests/` "
-    "run, so coverage is unchanged off the gate.",
-)
+# BUG-2650: the LL_VERIFY_GATE skipif quarantine (added by BUG-2649) is removed.
+# Root-cause: the gate's checkout -> xdist-subprocess -> project_root read is
+# deterministic (git worktree add is synchronous; the read resolves off the
+# path-collected conftest, not cwd/PYTHONPATH). A 60x stress probe of that exact
+# path produced 0 false-negatives; the lone historical failure was a stale
+# EPIC-integration tip, not a nondeterministic read. Guarded by
+# test_worktree_utils.py::TestVerifyEpicBranchBeforeMerge
+# ::test_gate_read_is_deterministic_on_present_needle.
 @pytest.mark.parametrize("doc_rel, needle, issue_id", DOC_STRINGS_PRESENT)
 def test_string_present_in_doc(
     project_root: Path, doc_rel: str, needle: str, issue_id: str

@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surfaces `spike_needed`/`spike_attempted`/`spike_completed`
   (ENH-2640, EPIC-2570).
 
+### Fixed
+
+- **Doc-wiring string test flake root-caused (BUG-2650)** — removed the
+  `LL_VERIFY_GATE` skipif quarantine (BUG-2649) on `test_string_present_in_doc`
+  (`test_wiring_skills_and_commands.py`). The epic-merge verify gate reads a
+  `project_root`-anchored doc via a freshly `git worktree add`-checked-out tree in
+  a test subprocess; `git worktree add` is synchronous and the read resolves off
+  the path-collected `conftest.py` (not `cwd`/`PYTHONPATH`), so the read is
+  deterministic. A 60× stress probe of that exact path produced 0 false-negatives;
+  the lone historical failure was a genuinely stale EPIC-integration tip, not a
+  nondeterministic read. Added a committed regression guard
+  (`TestVerifyEpicBranchBeforeMerge::test_gate_read_is_deterministic_on_present_needle`)
+  that loops the real gate's checkout→subprocess→read path and asserts it never
+  false-negatives on a present needle.
+
 ## [1.145.0] - 2026-07-15
 
 ### Added

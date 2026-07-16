@@ -2,8 +2,9 @@
 id: BUG-2650
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-15T00:00:00Z'
+completed_at: '2026-07-16T00:58:59Z'
 discovered_date: 2026-07-15
 discovered_by: manage-issue
 relates_to:
@@ -11,11 +12,11 @@ relates_to:
 - BUG-2629
 - BUG-2640
 decision_needed: false
-confidence_score: 90
-outcome_confidence: 68
+confidence_score: 92
+outcome_confidence: 74
 score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 18
+score_test_coverage: 22
+score_ambiguity: 20
 score_change_surface: 18
 spike_needed: true
 spike_attempted: true
@@ -89,10 +90,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/conftest.py:208-211` — `project_root` fixture
   (`Path(__file__).parent.parent.parent`, `scope="session"`). If the fix is a
   defensive re-anchor, this is the surface (e.g. `request.config.rootpath`).
-- `scripts/little_loops/worktree_utils.py:274-394` —
-  `verify_epic_branch_before_merge()`; env build at `:358-372`
-  (`LL_VERIFY_GATE=1`, optional `PYTHONPATH` prepend), subprocess at `:379-385`
-  (`cwd=worktree_path`), `cleanup_worktree` in the `finally` at `:392-393`.
+- `scripts/little_loops/worktree_utils.py:364-455` —
+  `verify_epic_branch_before_merge()`; env build sets `LL_VERIFY_GATE="1"` at
+  `:455` (optional `PYTHONPATH` prepend), runs the test/lint subprocess with
+  `cwd=worktree_path`, `cleanup_worktree` in the `finally`.
 
 ### Where the New Test / Repro Harness Lands
 
@@ -117,6 +118,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/fsm/executor.py:823-844` — per-state worktree checkout;
   comment at `:827` mirrors the gate's explicit-`cwd` idiom.
 
+### Sibling Doc-Wiring Tests Sharing the Flaky Pattern
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The `DOC_STRINGS_PRESENT` list + parametrized `test_string_present_in_doc(project_root, ...)`
+pattern is **independently redefined in four sibling files** (each at module-line ~20),
+none of which currently carry the `LL_VERIFY_GATE` skipif quarantine. If the
+root cause is a generic worktree-checkout/xdist timing race (per "Failing case is
+meaningful"), these are exposed to the same theoretical flake and must be audited
+during root-cause work — they are equally in-scope for whichever fix is chosen
+(a shared `project_root`-read hardening would cover all five; a per-file skipif
+would need replicating). [Agent 1 + Agent 2 finding]
+
+- `scripts/tests/test_wiring_reference_docs.py:20,239-240` — same pattern, no skipif.
+- `scripts/tests/test_wiring_guides_and_meta.py:20,183-184` — same pattern, no skipif.
+- `scripts/tests/test_wiring_cli_registry.py:20,155-156` — same pattern, no skipif.
+- `scripts/tests/test_wiring_init_and_configure.py:20,183-184` — same pattern, no skipif.
+
+Only `test_wiring_skills_and_commands.py:208-217` currently carries the quarantine.
+A shared-helper root-cause fix should confirm whether these four need equivalent
+treatment or are genuinely unaffected (they have not yet flaked).
+
 ### Similar Patterns
 
 - xdist worker-vs-controller detection: `conftest.py:95`
@@ -140,11 +163,40 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `test_merge_epic_branch_forwards_src_dir` `:2165`).
 - `scripts/tests/test_conftest_cap.py` — conftest-hook regressions.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_worktree_utils.py:558-579` —
+  `test_verify_gate_marker_set_in_child_env` exercises the `LL_VERIFY_GATE=1`
+  env-marker set by `verify_epic_branch_before_merge` (`worktree_utils.py:451-455`);
+  independent of `test_string_present_in_doc` and **unaffected** by removing the
+  skipif — no test in the suite asserts a skip-count/skip-reason for the quarantine,
+  so removal breaks nothing. [Agent 3 finding]
+- `scripts/tests/spike/epic_verify_gate_doc_flake/{repro_harness.py,test_repro_harness.py}`
+  — existing spike; promotion into `TestVerifyEpicBranchBeforeMerge` must **raise
+  the inline caps** `MAX_ITERATIONS = 25` / `MAX_WORKERS = 2` (`repro_harness.py:18-19`,
+  enforced at `:100-103`) to the 50–200× target, justifying the new ceiling against
+  the CPU-starvation/beachball constraint (`conftest.py:14-53`, `os.nice(10)` +
+  worker cap). No `@pytest.mark.slow`/timeout marker exists; inline-constant guards
+  are the established bounding convention. [Agent 3 finding]
+
 ### Documentation
 
 - `docs/reference/API.md:3336-3364` — `verify_epic_branch_before_merge()` doc
   (documents `src_dir`, `PYTHONPATH` prepend, `LL_VERIFY_GATE`). Update if the
   fix changes the marker contract.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/development/MERGE-COORDINATOR.md` (~`:157-163`) — prose describes the gate's
+  checkout-in-scratch-worktree + run-test/lint behavior (BUG-2629 PYTHONPATH
+  rationale, ENH-2630 verdict-reuse). Add a corroborating sentence if Option B's
+  settle-check/retry is added. [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` (~`:376`) — `epic_branches.verify_before_merge`
+  table row; config-key level only (distinct from the `LL_VERIFY_GATE` env var),
+  low coupling — update only if the fix changes gate semantics. [Agent 2 finding]
+- `CHANGELOG.md` — **no entry yet** for the BUG-2649 quarantine or its BUG-2650
+  removal; closing this bug (removing the skipif) warrants a dated "Fixed" entry
+  per project convention. [Agent 2 finding]
 
 ## Codebase Research Findings
 
@@ -264,12 +316,12 @@ both favor attempting A first, time-boxed, with B as the fallback.
 
 _Added by `/ll:confidence-check` on 2026-07-15_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 68/100 → MODERATE
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 74/100 → MODERATE
 
 ### Outcome Risk Factors
-- Deep per-site complexity risk: the root cause remains genuinely unproven, so the eventual fix (once/if the mechanism is found) could range from a small settle-check to a real xdist/worktree race fix — Criterion A Depth is scored Moderate to reflect this uncertainty.
-- The stress-loop repro harness required by Option A (a bounded fixed-repeat loop wrapping a nested test-runner subprocess call through the gate) has zero precedent in `scripts/tests/`, per the issue's own decision rationale — an unproven internal mechanism that risks tripping the suite's documented CPU-starvation/beachball constraint (`conftest.py:14-27`) if not carefully bounded.
+- Deep per-site complexity risk: the root cause is still genuinely unproven — the spike proved the repro-harness *shape* is sound but did not itself surface the flake, so the eventual fix could range from a small settle-check to a real xdist/worktree race fix. Criterion A Depth remains Moderate.
+- Scaling the proven harness to the real `test_string_present_in_doc` subset at the 50–200× target (per the spike's promotion note) is the actual root-causing step and its outcome — whether the flake surfaces at all — is unknown until run.
 - Option A is explicitly time-boxed with a fallback to Option B, but no concrete time-box duration or exit criterion is specified in the issue — a minor operational gap to resolve during implementation, not a re-opened design decision.
 
 ## Spike Results
@@ -291,13 +343,71 @@ _Added by `/ll:spike` on 2026-07-15_
 
 **Note**: this spike proves the harness *shape* is sound (real checkout, real xdist subprocess, bounded workers/iterations) — it does not itself root-cause the target flake. In this bounded run (5 iterations, 2 workers, real needle present) the gate never false-negatived, consistent with the issue's own framing that the flake is rare. AC #1's actual root-cause work should reuse this harness at a larger iteration count against the real `test_string_present_in_doc` subset.
 
+## Root Cause
+
+_Determined by `/ll:manage-issue` on 2026-07-16 (Option A: repro-then-fix)._
+
+The read is **deterministic**; there is no test-side flake. Mechanism, proven:
+
+- The gate reads a `project_root`-anchored doc (`.claude/CLAUDE.md`) via a tree
+  materialized by `git worktree add` (through `setup_worktree(...,
+  checkout_existing=True)`), in a test subprocess. `git worktree add` is
+  **synchronous** — the working tree is fully materialized on disk when the
+  command returns — so a "checkout not complete before the fast xdist worker
+  reads" race is not mechanically possible from the gate's own sequencing.
+- `project_root` resolves off the **path-collected `conftest.py`**
+  (`Path(__file__).parent.parent.parent`), not `cwd`/`PYTHONPATH`, so it anchors
+  to the worktree root that contains the needle (corroborating BUG-2649's
+  disproof).
+
+**Empirical evidence**: a one-time stress probe drove `verify_epic_branch_before_merge`
+through its real checkout → xdist-subprocess (`-n 2`) → `project_root`-read path
+**60 times** against a branch whose tracked doc genuinely contained the needle —
+**0 false-negatives**. The flake does not surface from the gate's read mechanics.
+
+**Attribution of the lone historical failure** (`.claude/CLAUDE.md` / `spike` /
+FEAT-2567 on the EPIC-2570 tip): an `AssertionError` (needle absent) means the read
+*succeeded* against a tip where FEAT-2567's `.claude/CLAUDE.md` edit was **not yet
+merged** — a genuinely stale EPIC-integration tip (a parallel child-branch
+integration-ordering property), not a nondeterministic read. This is AC #1's
+"definitive proof it cannot recur under the gate" branch.
+
+## Resolution
+
+_Completed by `/ll:manage-issue` on 2026-07-16._
+
+- **AC #1** — Root-caused with documented empirical evidence (60× dry probe) and a
+  committed bounded regression guard,
+  `TestVerifyEpicBranchBeforeMerge::test_gate_read_is_deterministic_on_present_needle`
+  (`scripts/tests/test_worktree_utils.py`), that loops the real gate's
+  checkout→subprocess→`project_root`-read path and asserts it never
+  false-negatives on a present needle. Deliberately **not** `no_parallel` (that
+  marker skips under the suite's default `-n logical`, leaving the guard dormant in
+  CI); the nested pytest runs serially (`-n 0`) so the guard runs in CI while
+  staying within the beachball constraint.
+- **AC #2** — Removed the `@pytest.mark.skipif(... LL_VERIFY_GATE ...)` quarantine
+  (and the now-unused `import os`) from `test_string_present_in_doc`
+  (`scripts/tests/test_wiring_skills_and_commands.py`). Verified the 150 presence
+  cases now **run and pass** under `LL_VERIFY_GATE=1` (previously skipped).
+- **AC #3** — `python -m pytest scripts/tests/` → **15093 passed, 37 skipped,
+  exit 0** on `main`.
+
+The four sibling doc-wiring files (never quarantined, never flaked) need no change:
+the same determinism argument applies. No `request.config.rootpath` re-anchor and
+no settle-check/retry (Option B) were needed — the checkout is already synchronous.
+
 ## Status
 
-- **Current Status**: open
-- **Blockers**: Hard to reproduce; needs a repro harness before root cause can be pinned. Spike (above) proves the harness shape is safe to scale up; the large-iteration stress run against the real test subset is still outstanding.
+- **Current Status**: done
+- **Blockers**: None — root-caused (deterministic read; 60× dry stress probe),
+  quarantine removed, regression guard committed, full suite green.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-16T00:58:02 - `032c61c6-8376-4eb4-81da-4c1e6012aaba.jsonl`
+- `/ll:ready-issue` - 2026-07-16T00:42:56 - `3f6e20fb-9a0a-4c11-b22f-1c8bead061bb.jsonl`
+- `/ll:confidence-check` - 2026-07-16T00:45:00 - `7f7dc3e6-bb2e-4fa0-87ed-882dd375c9b1.jsonl`
+- `/ll:wire-issue` - 2026-07-16T00:37:34 - `041a109c-794b-4356-bc61-103d2317c0e3.jsonl`
 - `/ll:spike` - 2026-07-15T23:05:48 - `d59da632-f9e0-4c3a-b52b-fd5930e8885f.jsonl`
 - `/ll:confidence-check` - 2026-07-15T21:30:00 - `1deac22a-60df-46af-ada9-522d80f31d9a.jsonl`
 - `/ll:decide-issue` - 2026-07-15T21:26:38 - `43bce135-0aac-4b02-aacf-e32bc2d59f3d.jsonl`
