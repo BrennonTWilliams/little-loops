@@ -375,9 +375,7 @@ class TestSpikeNeededFlagWriteBack:
         text = self._phase_text()
         assert "explore-api" in text and (
             "third-party" in text.lower() or "external" in text.lower()
-        ), (
-            "Phase 4.10 must document the external-API suppression rule (advise /ll:explore-api)"
-        )
+        ), "Phase 4.10 must document the external-API suppression rule (advise /ll:explore-api)"
 
     def test_score_condition_documented(self) -> None:
         text = self._phase_text()

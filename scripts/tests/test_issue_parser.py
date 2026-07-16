@@ -1940,9 +1940,7 @@ class TestDependencyParsing:
         epics_dir = tmp_path / ".issues" / "epics"
         epics_dir.mkdir(parents=True, exist_ok=True)
         issue_file = epics_dir / "P1-EPIC-001-test.md"
-        issue_file.write_text(
-            "---\nbase_branch: refactor/tableau\n---\n# EPIC-001: Test\n"
-        )
+        issue_file.write_text("---\nbase_branch: refactor/tableau\n---\n# EPIC-001: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)
@@ -1950,9 +1948,7 @@ class TestDependencyParsing:
 
         assert info.base_branch == "refactor/tableau"
 
-    def test_parse_target_branch_alias_emits_warning(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_parse_target_branch_alias_emits_warning(self, tmp_path: Path, caplog: Any) -> None:
         """Deprecated target_branch: alias populates base_branch and warns."""
         import json
         import logging
@@ -1967,9 +1963,7 @@ class TestDependencyParsing:
         epics_dir = tmp_path / ".issues" / "epics"
         epics_dir.mkdir(parents=True, exist_ok=True)
         issue_file = epics_dir / "P1-EPIC-002-test.md"
-        issue_file.write_text(
-            "---\ntarget_branch: refactor/tableau\n---\n# EPIC-002: Test\n"
-        )
+        issue_file.write_text("---\ntarget_branch: refactor/tableau\n---\n# EPIC-002: Test\n")
 
         config = BRConfig(tmp_path)
         parser = IssueParser(config)

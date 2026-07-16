@@ -2613,21 +2613,15 @@ class TestAutoRefineAndImplementLoop:
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         assert summary["decision_unresolved"] == 0, f"expected decision_unresolved=0, got {summary}"
 
-    def test_finalize_stale_inflight_counts_as_unresolved(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_stale_inflight_counts_as_unresolved(self, data: dict, tmp_path: Path) -> None:
         """BUG-2636: an issue left in the autodev-inflight sentinel — dispatched
         but never landed in any passed/skipped/gate-blocked ledger — must surface
         as inflight_unresolved=1 (the exact hole that let run 20260713T190717 leave
         ENH-2578 in-flight yet report verdict=no-op / green "done")."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        summary = self._run_finalize(
-            data, run_dir, issue_set=("ENH-2578",), inflight="ENH-2578"
-        )
-        assert summary["inflight_unresolved"] == 1, (
-            f"expected inflight_unresolved=1, got {summary}"
-        )
+        summary = self._run_finalize(data, run_dir, issue_set=("ENH-2578",), inflight="ENH-2578")
+        assert summary["inflight_unresolved"] == 1, f"expected inflight_unresolved=1, got {summary}"
         # Closed nothing + an unresolved in-flight issue ⇒ phantom, not no-op.
         assert summary["verdict"] == "phantom", (
             f"stale inflight must escalate the verdict to phantom, got {summary}"
@@ -2654,9 +2648,7 @@ class TestAutoRefineAndImplementLoop:
         )
         assert summary["verdict"] == "success", f"expected success, got {summary}"
 
-    def test_finalize_zero_inflight_unresolved_by_default(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_zero_inflight_unresolved_by_default(self, data: dict, tmp_path: Path) -> None:
         """BUG-2636: with no sentinel present, inflight_unresolved must be 0 and
         present (never omitted) in summary.json."""
         run_dir = tmp_path / "run"
@@ -2981,9 +2973,9 @@ class TestVerifyStateConfigReadShell:
         cmd = (
             "sh -c '"
             "for i in $(seq 1 60); do echo PytestBenchmarkWarning line $i >&2; done; "
-            "echo \"=== short test summary info ===\"; "
-            "echo \"FAILED test_issues_cli.py::test_case_1\"; "
-            "echo \"1 failed, 100 passed in 71.02s\"; "
+            'echo "=== short test summary info ==="; '
+            'echo "FAILED test_issues_cli.py::test_case_1"; '
+            'echo "1 failed, 100 passed in 71.02s"; '
             "exit 1'"
         )
         assert self._run(tmp_path, test_cmd=cmd) == "failed"
@@ -3069,23 +3061,18 @@ class TestMergeEpicBranchConfigReadShell:
         # `branch_statuses` variant onto the epic branch tip.
         if branch_statuses is not None:
             subprocess.run(["git", "add", ".issues"], cwd=tmp_path, check=True)
-            subprocess.run(
-                ["git", "commit", "-q", "-m", "issues base"], cwd=tmp_path, check=True
-            )
-            subprocess.run(
-                ["git", "checkout", "-q", self._EPIC_BRANCH], cwd=tmp_path, check=True
-            )
+            subprocess.run(["git", "commit", "-q", "-m", "issues base"], cwd=tmp_path, check=True)
+            subprocess.run(["git", "checkout", "-q", self._EPIC_BRANCH], cwd=tmp_path, check=True)
             # Descend the epic branch from the base issue tree so the tip's
             # `done` override is a clean 3-way merge back to base (no phantom
             # add/add conflict on files that only ever changed on the branch).
-            subprocess.run(
-                ["git", "merge", "-q", "--no-edit", "main"], cwd=tmp_path, check=True
-            )
+            subprocess.run(["git", "merge", "-q", "--no-edit", "main"], cwd=tmp_path, check=True)
             self._write_issues(tmp_path, branch_statuses)
             subprocess.run(["git", "add", ".issues"], cwd=tmp_path, check=True)
             subprocess.run(
                 ["git", "commit", "-q", "--allow-empty", "-m", "epic tip statuses"],
-                cwd=tmp_path, check=True,
+                cwd=tmp_path,
+                check=True,
             )
             subprocess.run(["git", "checkout", "-q", "main"], cwd=tmp_path, check=True)
 
@@ -3118,7 +3105,9 @@ class TestMergeEpicBranchConfigReadShell:
             if seed_sha == "MATCH":
                 seed_sha = subprocess.run(
                     ["git", "rev-parse", "--verify", self._EPIC_BRANCH],
-                    cwd=tmp_path, capture_output=True, text=True,
+                    cwd=tmp_path,
+                    capture_output=True,
+                    text=True,
                 ).stdout.strip()
             (run_dir / "verify-sha.txt").write_text(seed_sha + "\n")
 
@@ -3965,9 +3954,7 @@ class TestAutodevLoop:
             f"triage_outcome_failure.on_no should be 'check_spike_needed', got {state.get('on_no')!r}"
         )
 
-    def test_check_spike_needed_falls_through_to_check_missing_artifacts(
-        self, data: dict
-    ) -> None:
+    def test_check_spike_needed_falls_through_to_check_missing_artifacts(self, data: dict) -> None:
         """ENH-2640: check_spike_needed.on_no must preserve the existing wire/size-review
         chain by falling through to check_missing_artifacts."""
         state = data["states"].get("check_spike_needed", {})

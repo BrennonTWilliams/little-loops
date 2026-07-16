@@ -373,9 +373,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         if implementation_order_risk_raw is not None
         else None,
         # ENH-2640: spike-remediation flags for autodev check_spike_needed
-        "spike_needed": str(spike_needed_raw).lower()
-        if spike_needed_raw is not None
-        else None,
+        "spike_needed": str(spike_needed_raw).lower() if spike_needed_raw is not None else None,
         "spike_attempted": str(spike_attempted_raw).lower()
         if spike_attempted_raw is not None
         else None,

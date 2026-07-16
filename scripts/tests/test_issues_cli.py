@@ -4835,9 +4835,7 @@ class TestIssuesCLIClustersTreeLayout:
         # Both fan-out edges are tree branches; neither is relegated to a
         # `SRC → DST rel` skip-edge annotation line (the box-layout artifact).
         skip_lines = [
-            ln
-            for ln in out.splitlines()
-            if "BUG-020" in ln and "BUG-022" in ln and " → " in ln
+            ln for ln in out.splitlines() if "BUG-020" in ln and "BUG-022" in ln and " → " in ln
         ]
         assert not skip_lines, f"No edge may be demoted to a skip-edge list: {skip_lines}"
         # No box borders in the default tree layout.
@@ -4864,9 +4862,7 @@ class TestIssuesCLIClustersTreeLayout:
         out = capsys.readouterr().out
         assert "┌─" in out, "boxes layout must draw box borders"
         # Legacy behavior: BUG-020→BUG-022 is a skip-edge annotation line.
-        assert any(
-            "BUG-020" in ln and "BUG-022" in ln and "→" in ln for ln in out.splitlines()
-        )
+        assert any("BUG-020" in ln and "BUG-022" in ln and "→" in ln for ln in out.splitlines())
 
     def test_layout_list_matches_compact(
         self,

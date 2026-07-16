@@ -224,11 +224,7 @@ def _render_cluster_tree(
     def _walk(node: str, child_prefix: str) -> None:
         neigh = sorted(adj[node], key=lambda x: order_index[x])
         children = [c for c in neigh if c not in visited]
-        cross = [
-            c
-            for c in neigh
-            if c in visited and frozenset({node, c}) not in rendered_edges
-        ]
+        cross = [c for c in neigh if c in visited and frozenset({node, c}) not in rendered_edges]
 
         for c in cross:
             rendered_edges.add(frozenset({node, c}))

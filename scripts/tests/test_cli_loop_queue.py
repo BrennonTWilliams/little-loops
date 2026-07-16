@@ -356,7 +356,9 @@ class TestQueueRemoveCommand:
     """cmd_queue_remove verifies PID identity, signals the waiter, and deletes its entry (FEAT-2619)."""
 
     @staticmethod
-    def _remove_args(entry_id: str, *, force: bool = False, json: bool = False) -> argparse.Namespace:
+    def _remove_args(
+        entry_id: str, *, force: bool = False, json: bool = False
+    ) -> argparse.Namespace:
         return argparse.Namespace(id=entry_id, force=force, json=json)
 
     @staticmethod

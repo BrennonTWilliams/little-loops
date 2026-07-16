@@ -63,9 +63,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
         ranked = all_issues[:count] if count else all_issues
     else:
         issues = [
-            i
-            for i in find_issues(config, skip_blocked=True)
-            if not i.issue_id.startswith("EPIC-")
+            i for i in find_issues(config, skip_blocked=True) if not i.issue_id.startswith("EPIC-")
         ]
         if not issues:
             all_active = [i for i in find_issues(config) if not i.issue_id.startswith("EPIC-")]

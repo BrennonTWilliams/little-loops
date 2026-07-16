@@ -34,9 +34,7 @@ class TestReadyIssueBranchTransparency:
 
     def test_detached_head_guard_mentioned(self) -> None:
         text = self._content().lower()
-        assert "detached" in text, (
-            "branch-report step must guard against detached HEAD (ENH-2653)"
-        )
+        assert "detached" in text, "branch-report step must guard against detached HEAD (ENH-2653)"
 
     def test_inspected_branch_in_output_format(self) -> None:
         assert "## INSPECTED_BRANCH" in self._content(), (
