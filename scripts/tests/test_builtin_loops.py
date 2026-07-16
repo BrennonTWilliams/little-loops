@@ -1835,6 +1835,22 @@ class TestPromptAcrossIssuesLoop:
         assert "--parent" in init_action
         assert "i.get('parent') == parent" not in init_action
 
+    def test_init_supports_ids_filter(self, data: dict) -> None:
+        """context.ids must default to '' and init action must branch on it (ENH-2658).
+
+        When ``context.ids`` is set (comma-separated), the init action must
+        bypass the ``ll-issues list`` call and write the parsed IDs directly
+        to ``pending.txt`` — overriding ``type``/``parent`` filters.
+        """
+        assert data.get("context", {}).get("ids") == ""
+        init_action = data["states"].get("init", {}).get("action", "")
+        assert "${context.ids}" in init_action or "context.ids" in init_action
+        # The branch must write pending.txt directly when ids is set,
+        # bypassing ll-issues list.
+        assert "tr ',' '\\n'" in init_action or "tr \",\" \"\\n\"" in init_action, (
+            "init action must split ids on commas into pending.txt (ENH-2658)"
+        )
+
     def test_mr3_no_loops_tmp_writes(self, data: dict) -> None:
         """No state writes to .loops/tmp/ (MR-3: per-instance run_dir isolation,
         ENH-2500). The pending list lives under ${context.run_dir}/pending.txt,

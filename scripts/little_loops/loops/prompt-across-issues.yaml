@@ -11,12 +11,15 @@ description: |
   Optionally scope the sweep to an epic's full subtree with --context parent=EPIC-NNN
   (transitive: grandchildren nested under an intermediate FEAT/ENH are included).
   Both filters may be combined: --context type=ENH --context parent=EPIC-1773.
+  Optionally sweep a hand-picked comma-separated list with --context ids=ID1,ID2,...
+  which overrides type/parent (whitespace-trimmed, empties dropped).
 
   Usage:
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}"
     ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --quick"
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context type=BUG
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context parent=EPIC-1773
+    ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context ids=ENH-1,ENH-2,ENH-3
 
   Non-interactive skills:
     Skills auto-detect automation context via the LL_NON_INTERACTIVE env var that
@@ -38,6 +41,9 @@ context:
             # to open issues of that type. Empty (default) = all open issues.
   parent: ""  # Optional: EPIC-NNN. When set, restricts sweep to the parent's full
               # transitive subtree (grandchildren via done intermediates included).
+  ids: ""  # Optional: comma-separated issue IDs (e.g. ENH-2463,ENH-2464).
+           # When set, overrides type/parent and processes exactly these IDs
+           # (whitespace-trimmed, empties dropped). Bypasses ll-issues list.
 
 states:
 
@@ -57,6 +63,12 @@ states:
         echo "ERROR: input prompt is required. Usage: ll-loop run prompt-across-issues \"<prompt>\""
         exit 1
       fi
+      if [ -n "${context.ids}" ]; then
+        # Explicit ID list overrides type/parent filters (ENH-2658).
+        echo "${context.ids}" | tr ',' '\n' \
+          | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+          | grep -v '^$' > "${context.run_dir}/pending.txt"
+      else
       TYPE_ARG=""
       if [ -n "${context.type}" ]; then
         TYPE_ARG="--type ${context.type}"
@@ -71,6 +83,7 @@ states:
       for i in issues:
           print(i['id'])
       " > "${context.run_dir}/pending.txt"
+      fi
       COUNT=$(wc -l < "${context.run_dir}/pending.txt" | tr -d ' ')
       echo "Found $${COUNT} issues to process"
     fragment: shell_exit

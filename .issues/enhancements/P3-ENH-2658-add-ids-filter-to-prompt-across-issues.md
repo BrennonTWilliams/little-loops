@@ -3,19 +3,26 @@ id: ENH-2658
 title: Add `ids` filter to prompt-across-issues loop
 type: enhancement
 priority: P3
-status: open
-captured_at: "2026-07-16T18:24:41Z"
+status: done
+captured_at: '2026-07-16T18:24:41Z'
+completed_at: '2026-07-16T18:55:35Z'
 discovered_date: 2026-07-16
 discovered_by: capture-issue
 labels:
-  - enhancement
-  - loops
-  - fsm
-  - prompt-across-issues
-  - captured
+- enhancement
+- loops
+- fsm
+- prompt-across-issues
+- captured
 relates_to:
-  - ENH-1643
-  - EPIC-1853
+- ENH-1643
+- EPIC-1853
+confidence_score: 90
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2658: Add `ids` filter to prompt-across-issues loop
@@ -113,6 +120,20 @@ Also update the YAML header `## description` block to document the new usage:
 
 `${context.ids}` content is alphanumeric + commas only (no shell metacharacters), so MR-11 is satisfied — bare interpolation in the shell action is safe.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**MR-11 clarification**: The lint's `_UNSAFE_CONTEXT_INTERP_RE` (`scripts/little_loops/fsm/validation.py:139-141`) only flags `${context.(input|goal|description|task|prompt|query|topic)}`. `ids` is outside this regex entirely, so MR-11 passes by virtue of the regex scope, not because the content is known-safe. The issue's safety rationale ("alphanumeric + commas only") is correct in practice for typical use, but a hostile caller could pass `ids=ENH-1;rm -rf /`. The host CLI's slash-command parser will reject the malformed token, so impact is bounded — but the lint exemption is by-regex, not by-content.
+
+**Edge case — `wc -l` under-count**: The proposed `tr ',' '\n' | sed | grep > pending.txt` chain does NOT guarantee a trailing newline. If `pending.txt` ends without `\n`, `wc -l` under-counts by 1, so the "Found N issues to process" log is off-by-one. **Pre-existing latent quirk** — the current `python3 -c "... print(i['id'])"` branch has the same issue. Not a regression. If desired, append `printf '\n' >> "${context.run_dir}/pending.txt"` after the redirect, but doing so is out of scope for the minimal change.
+
+**Empty-input branch routing**: The current `init` has `on_yes: discover` and `on_error: diagnose_error` but no `on_no`. Empty input → `grep` exit 1 → verdict `no` → dead-end (since `shell_exit` fragment routes exit 1 to `no` and there's no `on_no`). This is a pre-existing latent edge case, not introduced by this change.
+
+**Why `init` is the only state that needs editing**: `discover` (lines 80-92) and `advance` (lines 120-133) only read/mutate `pending.txt`; they never re-source or filter the queue. So branching at `init` is the single, sufficient insertion point. No downstream state references `${context.type}` or `${context.parent}`.
+
+**What `discover` does on empty `pending.txt`**: `if [ ! -s ... ]; then exit 1; fi` → verdict `no` → `done`. So if `ids=,,` (all empty after trim), `pending.txt` is 0 bytes and the loop terminates cleanly without an error diagnostic — matches today's "zero matches" semantics.
+
 ## Integration Map
 
 ### Files to Modify
@@ -129,12 +150,98 @@ Also update the YAML header `## description` block to document the new usage:
 - `scripts/tests/test_builtin_loops.py` — add a prompt-across-issues test case for the `ids` filter asserting pending.txt contains exactly the supplied IDs in order.
 - Regression test: when `ids=""`, the existing `type`/`parent` paths produce the same output as before the change.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_fragments.py:1010` — existing built-in-loop migration smoke test includes `prompt-across-issues.yaml`; confirm it remains valid after the YAML change (Agent 1/3 finding).
+
 ### Documentation
 - `docs/guides/LOOPS_REFERENCE.md` — add the `ids` example to the prompt-across-issues usage section.
 - The loop YAML header `## description` block lists usage examples; add the `ids` example there.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/README.md:36` — mirrors the built-in loop catalog description for `prompt-across-issues`; add the `--context ids=ENH-1,ENH-2` usage and override semantics alongside the existing `type`/`parent` filters (Agent 1/2 finding).
+
 ### Configuration
 - N/A — no config schema change.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Verified file anchors** (from `scripts/little_loops/loops/prompt-across-issues.yaml`):
+
+| Block | Lines | Anchor |
+|-------|-------|--------|
+| `description:` header (existing usage examples) | 1–25 | update with `ids=` example |
+| `context:` block | 36–40 | add `ids: ""` here |
+| `init` state body | 44–78 | branch on `${context.ids}` |
+| `discover` state (consumes pending.txt) | 80–92 | unchanged — exits 1 → `done` on empty |
+| `advance` state (mutates pending.txt) | 120–133 | unchanged |
+| `diagnose_error` state (reads pending.txt) | 138–149 | unchanged |
+
+**Precedent — ENH-1643 actual implementation shape** (`scripts/little_loops/loops/prompt-across-issues.yaml:60–73`):
+
+```sh
+TYPE_ARG=""
+if [ -n "${context.type}" ]; then
+  TYPE_ARG="--type ${context.type}"
+fi
+PARENT_ARG=""
+if [ -n "${context.parent}" ]; then
+  PARENT_ARG="--parent ${context.parent}"
+fi
+ll-issues list $TYPE_ARG $PARENT_ARG --json | python3 -c "
+import json, sys
+issues = json.load(sys.stdin)
+for i in issues:
+    print(i['id'])
+" > "${context.run_dir}/pending.txt"
+```
+
+The current `init` action is the exact template the proposed `ids` branch builds on.
+
+**Test class location** — `scripts/tests/test_builtin_loops.py:1723-1903`:
+
+```python
+class TestPromptAcrossIssuesLoop:
+    """Structural tests for the prompt-across-issues FSM loop."""
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "prompt-across-issues.yaml"  # line 1726
+    # test_init_supports_type_filter (1817)
+    # test_init_supports_parent_filter (1823)
+    # test_mr3_no_loops_tmp_writes (1838)
+    # test_diagnose_error_prompt_uses_run_dir (1852)
+    # test_scope_declared (1876)
+    # test_init_writes_under_run_dir (1891)
+    # test_advance_writes_under_run_dir (1898)
+```
+
+New `test_init_supports_ids_filter` should slot in alongside `test_init_supports_parent_filter` (line 1823). All existing tests in this class are **structural** (parse YAML and string-match), not behavioral — none asserts actual `pending.txt` content.
+
+**`--context` parser API** (`scripts/little_loops/cli/loop/run.py:164-168`):
+
+```python
+for kv in getattr(args, "context", None) or []:
+    if "=" not in kv:
+        raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
+    key, _, value = kv.partition("=")
+    fsm.context[key.strip()] = value.strip()
+```
+
+The whole RHS (including `,`) becomes a single string; the loop is responsible for splitting. No CLI change needed.
+
+**`ll-issues list` does NOT have an `--ids` flag** (`scripts/little_loops/cli/issues/__init__.py:168-260`). The change is purely loop-side; no `list_cmd.py` or argparse edit needed.
+
+**FSM lint pass/fail matrix for the proposed shell body:**
+
+| Rule | Verdict | Why |
+|------|---------|-----|
+| MR-3 (no `.loops/tmp/`) | PASS | writes only to `${context.run_dir}/pending.txt` |
+| MR-7 (no unescaped `${...:-...}`) | PASS | uses `[ -n "${context.ids}" ]` guard, no defaults |
+| MR-9 (no over-escaped `$$VAR`) | PASS | only `$${COUNT}` brace-escape |
+| MR-10 (no parse-swallow) | PASS | `python3 -c json.load` body, but explicit `on_error: diagnose_error` exempts it |
+| MR-11 (no unsafe user-context interpolation) | PASS-by-regex | `ids` is not in the regex's user-controlled set `{input,goal,description,task,prompt,query,topic}` (`scripts/little_loops/fsm/validation.py:139-141`) |
+| MR-1, MR-2, MR-4, MR-5, MR-6, policy-table | N/A | loop is not a meta-loop, no LLM judges, no policy rules |
+
+**Trust-boundary caveat (not enforced by lint)**: `${context.ids}` interpolated bare into `echo "${context.ids}"` carries shell metacharacters through. A user passing `--context ids=ENH-1;rm -rf /` would write the full string as one line into `pending.txt`; downstream `prepare_prompt`'s `sed "s/{issue_id}/$ISSUE_ID/g"` substitutes it verbatim, then `execute` invokes the host CLI with the malformed ID. The host CLI rejects the malformed slash command, so the practical impact is "silently fails this issue and retries exhaust to `advance`" — same as a non-existent ID today. No code-level fix needed, but document `ids` as a trusted input (or use `${context.ids:shell}` for paranoid callers — the `:shell` suffix shlex-quotes at interpolation time, `scripts/little_loops/fsm/interpolation.py:248-250`).
 
 ## Implementation Steps
 
@@ -144,6 +251,33 @@ Also update the YAML header `## description` block to document the new usage:
 4. Run `ll-loop validate prompt-across-issues` to confirm FSM schema and lint compliance (MR-7, MR-11).
 5. Add a unit test in `scripts/tests/test_builtin_loops.py` exercising the new filter.
 6. Verify the empty `ids=""` case preserves existing behavior via a regression test.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/little_loops/loops/README.md:36` — mirror the `ids` filter usage and its precedence over `type`/`parent` in the built-in loop catalog.
+8. Run the existing `scripts/tests/test_fsm_fragments.py` migration smoke test in addition to the targeted `TestPromptAcrossIssuesLoop` tests to confirm the edited YAML still loads through the shared fragment path.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete anchors for each step:_
+
+1. **Add `ids: ""` to context** — insert at `scripts/little_loops/loops/prompt-across-issues.yaml:36-40` (between existing `parent: ""` and the `states:` block).
+2. **Branch `init` action** — modify the bash body at lines 49-75. Insert the new `if [ -n "${context.ids}" ]` branch BEFORE the existing `TYPE_ARG=""` block; preserve the existing `else` path verbatim.
+3. **Update `description:` block** — at lines 1-25. Mirror the ENH-1643/ENH-2481 pattern: append the `ids=` example after the existing `type=`/`parent=` examples.
+4. **Run validation** — `python -m pytest scripts/tests/test_builtin_loops.py::TestPromptAcrossIssuesLoop -v` to confirm lint passes for the new shell body.
+5. **Add test** — insert `test_init_supports_ids_filter` in `TestPromptAcrossIssuesLoop` at `scripts/tests/test_builtin_loops.py` immediately after `test_init_supports_parent_filter` (line 1823). Model after the parent filter test:
+   ```python
+   def test_init_supports_ids_filter(self, data: dict) -> None:
+       """context.ids must default to '' and init action must reference it."""
+       assert data.get("context", {}).get("ids") == ""
+       init_action = data["states"].get("init", {}).get("action", "")
+       assert "${context.ids}" in init_action or "context.ids" in init_action
+   ```
+6. **Regression test for empty `ids=""`** — the existing `test_init_supports_type_filter` (line 1817) and `test_init_supports_parent_filter` (line 1823) implicitly cover this (they assert the empty-default + reference pattern); no separate regression test needed beyond confirming they continue to pass. The `else` branch in `init` is byte-identical to today's behavior when `ids=""`.
+
+**Test pattern clarification**: All tests in `TestPromptAcrossIssuesLoop` (lines 1723-1903) are **structural** — they parse YAML and string-match. None asserts actual `pending.txt` content. Adding a behavioral pending.txt-content test would be a **new pattern** in this class; the closest analog is `scripts/tests/test_issues_cli.py:1027-1101` (`test_list_parent_includes_transitive_grandchild`), which drives `ll-issues list --parent` through `main_issues()` and asserts the JSON output. For `ids` (which bypasses `ll-issues list` entirely), the structural test pattern above is sufficient and matches the established convention.
 
 ## Impact
 
@@ -174,6 +308,11 @@ Also update the YAML header `## description` block to document the new usage:
 `enhancement`, `loops`, `fsm`, `prompt-across-issues`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-16T19:52:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40c440ca-03ff-4f11-a01a-225e717b7326.jsonl`
+- `/ll:ready-issue` - 2026-07-16T18:48:56 - `e9a522b5-830d-4d2d-a26c-969fb931fc25.jsonl`
+- `/ll:confidence-check` - 2026-07-16T18:45:55Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/36c176b3-fc23-48e6-8efd-c053ad01d68e.jsonl`
+- `/ll:wire-issue` - 2026-07-16T18:41:10 - `7aa34832-f60a-4fcc-a759-a72ba8469b10.jsonl`
+- `/ll:refine-issue` - 2026-07-16T18:34:49 - `b36d4bfb-6b73-4ce8-866d-00e7df088fe8.jsonl`
 
 - `/ll:capture-issue` - 2026-07-16T18:24:41Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c0f165e-7365-4933-89f9-474cf4409fae.jsonl`
 
