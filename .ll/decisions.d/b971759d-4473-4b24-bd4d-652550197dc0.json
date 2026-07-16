@@ -1,0 +1,12 @@
+{
+  "id": "bff9fcf6-65d3-41b2-b9f5-ef17859cfa07",
+  "type": "decision",
+  "timestamp": "2026-07-16T18:29:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Selected by /ll:decide-issue --auto. All 7 sub-decisions had clear Recommendation/Recommended markers in the issue; locked each via Phase 3b Pattern D. A1 keeps the transport-layer fan-out intact and lets historical JSONL backfill populate loop_runs. B1/C1 keep nullable columns; B2/C2/C3 deferred to follow-ons. D2/E3 pair as direct-arg-pass from FSMExecutor._finish() \u2014 smallest blast radius, no event-shape change. F2/G1 deferred per explicit 'not part of v1' guidance in the recommendations.",
+  "rule": "v1 = A1 (loop_complete side-effect) + B1 (defer evaluator_score) + C1 (best-effort glob diagnostics_path) + D2 (loop_name direct arg) + E3 (started_at direct arg); F2 (one-shot state.json backfill) and G1 (document handoff/BaseException coverage gap) as follow-on",
+  "scope": "issue",
+  "alternatives_rejected": "A2 (new loop_run_summary event); B2 (executor accumulator); B3 (post-hoc summary.json read); C2 (sub-agent-stop hook); C3 (skip on v1); D1 (_finish() payload loop key); D3 (drop loop_name from row); E1 (started_at in payload); E2 (SELECT MIN(ts) from loop_events); F1 (no backfill); F3 (periodic reconciler); G2 (extend PersistentExecutor); G3 (background scanner)",
+  "issue": "ENH-2463"
+}

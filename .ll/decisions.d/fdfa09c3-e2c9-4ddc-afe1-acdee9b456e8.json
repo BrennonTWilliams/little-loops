@@ -1,0 +1,14 @@
+{
+  "id": "1640d076-012c-40c1-a7df-40308a38aff7",
+  "type": "rule",
+  "timestamp": "2026-07-16T18:34:50Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "Verified by BUG-2659: grepping scripts/little_loops/**/*.py for `audit-issue-conflicts` found no CLI wrapper, and the skill's `allowed-tools` was purely prompt-driven \u2014 yet the flag was still set to true. The flag is a blunt instrument that needs pre-flight verification.",
+  "rule": "Before adding `disable-model-invocation: true` to a skill's frontmatter, audit its dispatch surface (slash command, CLI ",
+  "enforcement": "advisory",
+  "issue": "BUG-2659"
+}

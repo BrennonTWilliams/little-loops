@@ -1,0 +1,14 @@
+{
+  "id": "5c5426f0-9ba8-4525-9b43-5f3042ac9048",
+  "type": "rule",
+  "timestamp": "2026-07-16T18:34:50Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "Non-obvious Skill-tool behavior confirmed by BUG-2659 reproduction. The slash command dispatcher routes through the same Skill-tool surface, so the flag blocks user invocation identically. Important to remember when reasoning about skill reachability.",
+  "rule": "Treat `disable-model-invocation` as gating ALL Skill tool calls (including user-typed `/ll:` slash commands), not just m",
+  "enforcement": "advisory",
+  "issue": "BUG-2659"
+}
