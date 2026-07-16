@@ -160,6 +160,56 @@ If line numbers are outdated but an Anchor field exists:
 3. Update line references automatically
 4. Note in CORRECTIONS_MADE: `[line_drift] Updated line N -> M using anchor 'function_name'`
 
+#### Symbol Existence Gate (Branch-Aware)
+
+Before deciding that a cited symbol is missing, **name the branch you inspected**.
+The verifier reads files in the current working directory, so its
+"symbol not found" claim is only meaningful relative to a specific branch — and
+inside an EPIC worktree forked from the wrong base, a symbol that genuinely
+exists on the EPIC's intended base can read as absent, producing a false
+`NOT_READY` (ENH-2653).
+
+1. **Report the inspected branch.** Run the detached-HEAD-safe idiom (mirrors
+   `worktree_utils.detect_default_branch`) and record both the branch and the
+   worktree root:
+
+   ```bash
+   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+   # Detached HEAD reports the literal "HEAD"; fall back to the short SHA so the
+   # output still names *something* falsifiable.
+   if [ "$BRANCH" = "HEAD" ]; then
+       BRANCH="detached@$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+   fi
+   WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null || echo "unknown")
+   echo "Inspected branch: $BRANCH (worktree: $WORKTREE)"
+   ```
+
+   Every symbol-existence claim in your output **must name `$BRANCH`** (e.g.
+   "symbol `Tableau` not found on inspected branch `epic/foo`"), never the bare
+   phrase "the current branch". Emit the branch in the `## INSPECTED_BRANCH`
+   output section.
+
+2. **Downgrade suspected base-branch mismatches to a concern, not a rejection.**
+   When a cited symbol is absent on `$BRANCH`, ask whether it could live on a
+   different base before rejecting. Use the three-state
+   `PASS | WARN | NOT_READY` shape (mirror the Learning-Test Gate WARN-vs-block
+   split above):
+   - **PASS** — all cited symbols exist on `$BRANCH`.
+   - **WARN** (base-branch mismatch suspected) — the symbol is absent on
+     `$BRANCH`, **and** the issue is an EPIC child (`parent:` climbs to an
+     `EPIC-` ancestor) or the EPIC declares a `base_branch:` (see FEAT-2652)
+     that differs from `$BRANCH`. Emit
+     `Symbol Existence | WARN | symbols not on inspected branch <BRANCH>; EPIC target base may differ`
+     plus a `## CONCERNS` bullet. **Do not set NOT_READY for this case** — a
+     wrong-base absence is a concern the human resolves by re-basing, not a hard
+     block.
+   - If the EPIC declares **no** target base, raise the WARN concern
+     "EPIC declared no target_branch — assuming cwd `$BRANCH` is authoritative"
+     rather than silently trusting `cwd`.
+   - **NOT_READY** — the symbol is absent on `$BRANCH` and there is no plausible
+     alternate base (not an EPIC child, no differing declared base). Only then is
+     the absence a genuine blocker.
+
 #### Dependency Status
 - [ ] If `## Blocked By` section exists:
   - Check each referenced issue ID
@@ -309,6 +359,9 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 ## VALIDATED_FILE
 [REQUIRED for ALL verdicts - Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
 
+## INSPECTED_BRANCH
+[REQUIRED for ALL verdicts - The branch and worktree the symbol-existence checks ran against, e.g., `epic/tableau (worktree: /path/to/wt)`. Naming this makes every "symbol not found" claim falsifiable (ENH-2653).]
+
 ## BLOCKED_BY
 [Only include this section if verdict is BLOCKED]
 - [ISSUE-ID]: [Path to active issue file, e.g., .issues/features/P2-FEAT-555-description.md]
@@ -376,6 +429,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 | Sections | PASS | All required present |
 | Blockers | PASS/BLOCKED | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
 | Learning Tests | PASS/WARN/NOT_READY | "All targets proven" or "Stale: target-name" or "Unproven: target-name" |
+| Symbol Existence | PASS/WARN/NOT_READY | "All symbols on branch `epic/foo`" or "symbols not on inspected branch `epic/foo`; EPIC target base may differ" (WARN = suspected base-branch mismatch, not a block — ENH-2653) |
 
 ## CONCERNS
 - [List any issues that couldn't be auto-corrected]
