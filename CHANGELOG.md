@@ -5,6 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.147.0] - 2026-07-15
+
+### Added
+
+- **`ll-loop queue list`** — lists pending run-queue entries and prunes dead-PID
+  files as a side effect (FEAT-2618, ENH-2629).
+- **`ll-loop queue remove <id>`** — cancels a queued waiter: SIGTERMs its process
+  (psutil identity-checked unless `--force`) and deletes its `.queue/<uuid>.json`
+  entry (FEAT-2619, ENH-2617).
+
+### Fixed
+
+- **Epic verify gate false-negative from editable-install path shadowing** — the
+  gate imported main-tree `little_loops` instead of the branch's source because
+  an editable install pins an absolute path, silently blocking merges for any
+  branch touching source (BUG-2629).
+- **`parse_frontmatter` rejects PyYAML-serialized lists** — emitted spurious
+  "Unsupported YAML list syntax" warnings on frontmatter written by PyYAML's
+  own dumper (BUG-2633).
+- **`auto-refine-and-implement` reports false "done"** — the loop reported green
+  when a dispatched issue was actually still in-flight (BUG-2636).
+- **`merge_epic_branch` reads stale child status** — read the final child's
+  status from the base tree rather than the EPIC branch tip, so the run that
+  actually completes an EPIC could never auto-merge (BUG-2637).
+- **`ll-issues next-issues` leaks EPIC ids into the implementable backlog** —
+  caused autodev to attempt refining an EPIC as if it were a leaf issue
+  (BUG-2638).
+- **`_OP_ALT` operator ordering non-deterministic** — caused a flaky
+  `edit-routes` test (BUG-2639).
+- **`get_project_folder` encoding drops dots** — broke session resolution in
+  worktrees whose paths contained dots (BUG-2648).
+- **`ll-history-context <ID>` silently empty for hyphenated issue IDs** — FTS5
+  parsed the `-NNN` suffix as a column filter instead of matching the literal
+  id (BUG-2651).
+
+### Changed
+
+- **`wire-issue` graph-first discovery phase** — adds before/after token
+  measurement to the graph-accelerated discovery path (ENH-2578).
+- **`--json-schema` gated on `structured_output` host capability** — avoids
+  requesting structured output from hosts that don't support it
+  (ENH-2627).
+- **`merge_epic_branch` reuses the verify verdict** — avoids re-running the
+  full suite a second time when the verify state already ran it (ENH-2630).
+- **Verify gate surfaces failure exit code and `collection_error` verdict** —
+  previously discarded the failure message and exit code (ENH-2631).
+- **`audit-issue-conflicts` scoped to a positional EPIC argument** — previously
+  always scanned the full backlog even when a specific EPIC was given
+  (ENH-2634).
+- **`next-issue --include-blocked` reports pending `depends_on` prerequisites**
+  (ENH-2635).
+- **`verify-detail.txt` no longer truncates the real failure** (ENH-2641).
+- **`ready-issue` names the branch it checked** — no longer rejects on a
+  suspected base-branch mismatch without saying which branch it inspected
+  (ENH-2653).
+- **Standardized `.ll/` artifact directory for `/ll:spike` plan docs**
+  (ENH-2655).
+- **Single source-of-truth EPIC base-branch resolver** — consolidates base/name
+  resolution logic used by `ll-parallel` (ENH-2656).
+
 ## [1.146.0] - 2026-07-15
 
 ### Added
@@ -4193,6 +4253,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
+[1.147.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.143.0...v1.147.0
 [1.143.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.142.0...v1.143.0
 [1.142.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.141.0...v1.142.0
 [1.141.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.140.0...v1.141.0
