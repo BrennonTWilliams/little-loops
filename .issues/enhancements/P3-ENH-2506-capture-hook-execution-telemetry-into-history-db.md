@@ -38,6 +38,21 @@ ends that.
   strangely." With per-fire rows, every hook invocation becomes a
   queryable point: which matcher matched, which script ran, what exit
   code it returned, how long it took, what stderr it produced.
+
+> **Architectural Note — live-write only; NOT a raw_events parser
+> (ARCHITECTURE-144 scope).** ARCHITECTURE-144 (`.ll/decisions.yaml`,
+> ENH-2581) named this issue among those "turned into event_type parser
+> tasks over raw_events." That does not apply here: the Claude Code host
+> does **not** write hook execution results (exit code, duration, stderr)
+> into the session transcript JSONL, so `raw_events` carries no hook
+> telemetry to parse. Hook telemetry is genuinely out-of-band, exactly
+> like ENH-2507's context-pressure readings. Therefore `hook_events` is a
+> **live-write-only** table: `record_hook_event` / `hook_event_context`
+> is the only producer, it is **excluded from `rebuild()`'s
+> `_REBUILD_TABLES`** (a wipe would be unrecoverable), and there is **no
+> `_backfill_hook_events` parser** — the earlier spec's backfill bullet is
+> retracted below because its data source does not exist. This is a
+> documented, justified pattern deviation.
 - **EPIC-1707 deliberately deferred this.** ENH-2495 added lifecycle
   *events* (handoff_needed, compaction, sweep) but not lifecycle
   *telemetry* (the fires that produced them). This issue fills the
@@ -163,14 +178,14 @@ Bump `SCHEMA_VERSION`. Add `"hook_event"` to `_VALID_KINDS` and
   (`hooks/adapters/claude-code/post-tool-use.sh`). All other bash hooks
   under `hooks/scripts/*.sh` (scratch-pad, scratch-cleanup,
   user-prompt-check, context-monitor, etc.) likewise emit via the shim.
-- Backfill: a `_backfill_hook_events` (sibling to
-  `_backfill_tool_events` at `session_store.py:1836` — note: the issue's
-  cited `session_store.py:1620` is stale; the function has moved as
-  more migrations landed) walks JSONL for hook events emitted by the
-  Claude Code host and reconstructs rows. Iterate via the same
-  `_iter_events(source)` helper that
-  `_backfill_tool_events` / `_backfill_usage_events` already use, so
-  the `rebuild()` path picks up the backfill for free.
+- Backfill: **none** (retracted). An earlier draft proposed a
+  `_backfill_hook_events` parser walking JSONL, but the Claude Code host
+  does not emit hook execution results into the transcript, so there is
+  nothing to parse — see the Architectural Note above. `hook_events` is
+  live-write-only and must be **excluded from `rebuild()`'s
+  `_REBUILD_TABLES`** (mirroring `context_pressure_events`/ENH-2507 and
+  the `test_run_events`/`cli_events` live-only tables ENH-2581's
+  `rebuild()` deliberately leaves untouched).
 
 ### Read API
 
@@ -198,8 +213,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   add `"hook_event": "hook_events"` to `_KIND_TABLE` (line 223);
   add `record_hook_event(...)` and `hook_event_context(...)` next to
   `skill_event_context` (line 1109) so they share the same best-effort
-  pattern; add `_backfill_hook_events` next to
-  `_backfill_usage_events` (line 1878) reusing `_iter_events`
+  pattern; **do not add a `_backfill_hook_events`** (no transcript source
+  — see Architectural Note) and ensure `hook_events` is left out of
+  `rebuild()`'s `_REBUILD_TABLES`
 - `scripts/little_loops/hooks/post_tool_use.py:137` — wrap `handle()` in
   `hook_event_context` (preserve the existing `contextlib.suppress` at
   line 158; the new context is best-effort outer wrap)
@@ -246,9 +262,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   subcommand land here)
 - `scripts/little_loops/cli/__init__.py`, `cli/history.py` — register
   any new commands if the subcommand split is reused
-- `scripts/little_loops/cli/backfill_worker.py` — wire
-  `_backfill_hook_events` into the backfill orchestrator so
-  `ll-session rebuild` and `backfill --rebuild` pick it up
+- `scripts/little_loops/cli/backfill_worker.py` — **no change** (no
+  `_backfill_hook_events` to wire; hook telemetry is live-write-only, see
+  Architectural Note)
 
 ### Similar Patterns
 
@@ -257,12 +273,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   right structural model for `hook_event_context`)
 - `session_store.py:1055` `cli_event_context` — eager
   `@contextmanager` (NOT best-effort; do NOT mirror)
-- `session_store.py:1836` `_backfill_tool_events` — sibling
-  `_backfill_hook_events` should iterate the same `_iter_events`
-  helper so `rebuild()` picks it up
-- `session_store.py:1878` `_backfill_usage_events` — most-recent
-  sibling backfill, useful for the precise INSERT shape (column list,
-  `_index()` FTS call shape)
+- `session_store.py:1878` `_backfill_usage_events` — useful only for the
+  precise live-`INSERT` shape (column list, `_index()` FTS call shape);
+  **not** as a backfill template — `hook_events` has no backfill path
+  (see Architectural Note). Contrast the live-only recorders
+  `record_test_run_event` / `record_context_pressure_event` (ENH-2507),
+  which are the correct structural model here.
 - `scripts/little_loops/hooks/post_tool_use.py:158` — the canonical
   inner `with contextlib.suppress(Exception):`; preserve it inside the
   new outer `hook_event_context`
