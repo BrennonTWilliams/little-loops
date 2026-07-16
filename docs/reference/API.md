@@ -660,6 +660,7 @@ class IssueInfo:
     duplicate_of: str | None = None        # Issue ID this duplicates; set when closing a duplicate
     discovered_by: str | None = None       # Source command/workflow that created this issue
     epic: str | None = None                # Epic issue ID this child belongs to (e.g., "EPIC-001")
+    base_branch: str | None = None         # For EPIC issues, the fork base for the integration branch; from frontmatter `base_branch:` or alias `target_branch:`; None means fall back to `parallel.base_branch` (FEAT-2652)
     product_impact: ProductImpact | None = None  # Product impact assessment
     effort: int | None = None              # Effort estimate (1=low, 2=medium, 3=high)
     impact: int | None = None              # Impact estimate (1=low, 2=medium, 3=high)

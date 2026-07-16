@@ -1926,6 +1926,82 @@ class TestDependencyParsing:
         assert any("parent_issue" in r.message for r in caplog.records)
         assert any("deprecated" in r.message for r in caplog.records)
 
+    def test_parse_base_branch_from_frontmatter(self, tmp_path: Path) -> None:
+        """base_branch: frontmatter key is parsed into IssueInfo.base_branch."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        epics_dir = tmp_path / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = epics_dir / "P1-EPIC-001-test.md"
+        issue_file.write_text(
+            "---\nbase_branch: refactor/tableau\n---\n# EPIC-001: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.base_branch == "refactor/tableau"
+
+    def test_parse_target_branch_alias_emits_warning(
+        self, tmp_path: Path, caplog: Any
+    ) -> None:
+        """Deprecated target_branch: alias populates base_branch and warns."""
+        import json
+        import logging
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        epics_dir = tmp_path / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = epics_dir / "P1-EPIC-002-test.md"
+        issue_file.write_text(
+            "---\ntarget_branch: refactor/tableau\n---\n# EPIC-002: Test\n"
+        )
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            info = parser.parse_file(issue_file)
+
+        assert info.base_branch == "refactor/tableau"
+        assert any("target_branch" in r.message for r in caplog.records)
+        assert any("deprecated" in r.message for r in caplog.records)
+
+    def test_base_branch_absent_is_none(self, tmp_path: Path) -> None:
+        """No base_branch/target_branch key leaves base_branch as None."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P2-BUG-001-test.md"
+        issue_file.write_text("---\nstatus: open\n---\n# BUG-001: Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.base_branch is None
+
     def test_parse_depends_on_from_frontmatter(self, tmp_path: Path) -> None:
         """depends_on: YAML list in frontmatter is parsed into IssueInfo.depends_on."""
         import json

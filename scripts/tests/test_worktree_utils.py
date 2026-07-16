@@ -713,9 +713,42 @@ class TestResolveEpicBase:
         assert resolve_epic_base("EPIC-9999", "develop") == "develop"
 
     def test_epic_id_does_not_affect_result(self) -> None:
+        # No repo_path -> no per-EPIC lookup; both return the passed default.
         assert resolve_epic_base("EPIC-1", "release") == resolve_epic_base(
             "EPIC-2", "release"
         )
+
+    @staticmethod
+    def _write_epic(tmp_path: Path, epic_id: str, *, base_branch: str | None) -> None:
+        epics_dir = tmp_path / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        fm = f"base_branch: {base_branch}\n" if base_branch else ""
+        (epics_dir / f"P1-{epic_id}-thing.md").write_text(
+            f"---\nstatus: open\n{fm}---\n# {epic_id}: Thing\n"
+        )
+
+    def test_declared_base_preferred_over_default(self, tmp_path: Path) -> None:
+        """A per-EPIC base_branch: declaration wins over the passed default."""
+        self._write_epic(tmp_path, "EPIC-2451", base_branch="refactor/tableau")
+        assert (
+            resolve_epic_base("EPIC-2451", "main", tmp_path)
+            == "refactor/tableau"
+        )
+
+    def test_no_field_falls_back_to_default(self, tmp_path: Path) -> None:
+        """An EPIC that declares no base_branch keeps the passed default."""
+        self._write_epic(tmp_path, "EPIC-2451", base_branch=None)
+        assert resolve_epic_base("EPIC-2451", "main", tmp_path) == "main"
+
+    def test_missing_epic_file_falls_back_to_default(self, tmp_path: Path) -> None:
+        """No matching EPIC file on disk -> the passed default is returned."""
+        (tmp_path / ".issues").mkdir()
+        assert resolve_epic_base("EPIC-9999", "develop", tmp_path) == "develop"
+
+    def test_none_repo_path_skips_lookup(self, tmp_path: Path) -> None:
+        """repo_path=None short-circuits even when a declaring EPIC exists."""
+        self._write_epic(tmp_path, "EPIC-2451", base_branch="refactor/tableau")
+        assert resolve_epic_base("EPIC-2451", "main") == "main"
 
 
 class TestResolveEpicBranchName:

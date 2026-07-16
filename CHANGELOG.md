@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-EPIC base branch (FEAT-2652)** — EPIC issues may declare an optional `base_branch:` (alias `target_branch:`) frontmatter field; its integration branch forks from that ref instead of the global `parallel.base_branch`. `ll-sprint` dispatch hard-stops if a declared base does not exist (local or remote), rather than degrading dependent children to a false `partial`.
 - **`/ll:spike` skill** — retires concentrated technical risk on an issue by
   planning, implementing, and verifying a **code spike** (a standalone library +
   test class proving a novel *internal* mechanism in isolation) before the real

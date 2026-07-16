@@ -464,7 +464,12 @@ from and merges back to `parallel.base_branch`. When
 single run), the `WorkerPool` resolves each issue's nearest ancestor EPIC and
 routes all children of that EPIC onto one shared `epic/<EPIC-ID>-<slug>`
 integration branch — both as fork point and merge target — via
-`WorkerResult.epic_branch`. The `MergeCoordinator` merges the EPIC branch back
+`WorkerResult.epic_branch`. That integration branch forks from
+`parallel.base_branch` by default, but an EPIC may declare a `base_branch:`
+(alias `target_branch:`) frontmatter field to fork from a different ref; if a
+declared base does not resolve locally or on remote, `ll-sprint` dispatch
+hard-stops rather than degrading dependent children to a false `partial`
+(FEAT-2652). The `MergeCoordinator` merges the EPIC branch back
 to the base branch once the EPIC's last child completes
 (`epic_branches.merge_to_base_on_complete`), optionally opening a PR
 (`epic_branches.open_pr`). Standalone (parentless) issues keep the per-worker

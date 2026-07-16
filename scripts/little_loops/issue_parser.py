@@ -576,6 +576,9 @@ class IssueInfo:
         milestone: Sprint or milestone name this issue is assigned to; None if unassigned
         status: Issue lifecycle status read from frontmatter; defaults to "open"
         parent: Parent issue ID (e.g., EPIC-123); populated from frontmatter `parent:` or deprecated `parent_issue:`
+        base_branch: For EPIC issues, the branch its integration branch forks from; populated from
+            frontmatter `base_branch:` or alias `target_branch:`. None means fall back to the global
+            `parallel.base_branch` (FEAT-2652).
         depends_on: List of issue IDs this issue depends on (soft prerequisite)
         relates_to: List of related issue IDs; populated from frontmatter `relates_to:` or deprecated `related:`
         duplicate_of: Issue ID that this issue duplicates
@@ -589,6 +592,7 @@ class IssueInfo:
     blocked_by: list[str] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
     parent: str | None = None
+    base_branch: str | None = None
     depends_on: list[str] = field(default_factory=list)
     relates_to: list[str] = field(default_factory=list)
     duplicate_of: str | None = None
@@ -849,6 +853,14 @@ class IssueParser:
             )
             parent = alias_val
 
+        base_branch = frontmatter.get("base_branch")
+        if base_branch is None and (alias_val := frontmatter.get("target_branch")):
+            logger.warning(
+                "%s: deprecated frontmatter key 'target_branch' — rename to 'base_branch'",
+                issue_path.name,
+            )
+            base_branch = alias_val
+
         duplicate_of = frontmatter.get("duplicate_of")
 
         relates_to: list[str] = []
@@ -928,6 +940,7 @@ class IssueParser:
             blocked_by=blocked_by,
             blocks=blocks,
             parent=parent,
+            base_branch=base_branch,
             depends_on=depends_on,
             relates_to=relates_to,
             duplicate_of=duplicate_of,

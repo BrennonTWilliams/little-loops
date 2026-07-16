@@ -2,8 +2,9 @@
 discovered_commit: 6f81ca029f3c40a05520d5f1d8536fdd0a8723cc
 discovered_branch: main
 discovered_date: 2026-07-15 00:00:00+00:00
+completed_at: '2026-07-16T00:12:12Z'
 discovered_by: capture-issue
-status: open
+status: done
 relates_to:
 - ENH-2653
 - BUG-2651
@@ -423,7 +424,39 @@ open — captured from consumer-project run findings. Root-cause fix; pairs with
 ENH-2653 (guardrail) and BUG-2651 (independent triage bug surfaced in same run).
 
 
+## Resolution
+
+_Implemented by `/ll:manage-issue` on 2026-07-16._
+
+Scope collapsed to the single ENH-2656 seam as the addendum predicted:
+
+- **`IssueInfo.base_branch`** (`issue_parser.py`) — new optional field, parsed
+  from frontmatter `base_branch:` with a deprecated `target_branch:` alias
+  (`logger.warning`, mirroring the `parent`/`parent_issue` precedent).
+- **`resolve_epic_base()`** (`worktree_utils.py`) — extended (the reserved seam)
+  to prefer an EPIC's declared `base_branch` via a new `_load_epic_base_branch()`
+  helper modeled on `_load_epic_slug`. The per-EPIC lookup is gated on a new
+  optional `repo_path` arg, so the original two-arg contract (and its pure unit
+  tests) stays verbatim-fallback. The two callers — `worker_pool`
+  `_resolve_branch_targets` and the FSM `checkout_epic_branch` state — now pass
+  `repo_path`/`config`; no other threading needed (ENH-2656 already consolidated
+  the four derivation paths).
+- **`_run_epic_base_preflight()`** (`cli/sprint/run.py`) — new dispatch gate run
+  after the learning-gate preflight. For each sprint issue whose nearest EPIC
+  ancestor declares a `base_branch`, it asserts the ref exists (local or remote)
+  and **hard-stops (returns 1, aborts dispatch)** on a missing base rather than
+  degrading dependent children to a false `partial`.
+
+**AC coverage**: optional field + alias parsed and documented ✓; declared base
+forks the integration branch, absent field preserves `parallel.base_branch` ✓;
+missing declared base aborts dispatch (not `partial`) ✓; wrong-base is a hard
+stop ✓. Tests: `TestResolveEpicBase` (declared/fallback/missing/none-repo),
+parser alias tests, and `TestEpicBasePreflightGate` (abort/pass/noop/disabled).
+Full suite: 15086 passed, 36 skipped; ruff + mypy clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-16T00:10:39 - `1dae327b-0f27-43ba-8253-33be94db48ab.jsonl`
+- `/ll:ready-issue` - 2026-07-15T23:59:53 - `fd7938ff-80c9-47e3-b79a-947e5930d833.jsonl`
 - `/ll:confidence-check` - 2026-07-15T23:59:00 - `35707e3e-676f-4f72-b932-da80a7362563.jsonl`
 - `/ll:refine-issue` - 2026-07-15T23:55:52 - `80f3560e-5b13-43a5-8a20-af13c7fc2332.jsonl`
 - `/ll:spike` - 2026-07-15T23:22:40 - `d6eae4b5-b439-4617-9ac1-9a6b401a46c6.jsonl`

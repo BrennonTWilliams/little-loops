@@ -401,7 +401,7 @@
         },
         "base_branch": {
           "type": "string",
-          "description": "Base branch targeted by PR creation when open_pr_for_feature_branches is true. Also used as the rebase target for worktree updates. When absent, auto-detected at startup (origin/HEAD, then current branch, then 'main'); an explicit value overrides auto-detection.",
+          "description": "Base branch targeted by PR creation when open_pr_for_feature_branches is true. Also used as the rebase target for worktree updates. When absent, auto-detected at startup (origin/HEAD, then current branch, then 'main'); an explicit value overrides auto-detection. An individual EPIC may override this global base for its own integration branch via a per-EPIC 'base_branch:' (alias 'target_branch:') issue-frontmatter field (FEAT-2652).",
           "default": "main"
         },
         "remote_name": {
@@ -411,7 +411,7 @@
         },
         "epic_branches": {
           "type": "object",
-          "description": "Per-EPIC integration branch configuration, honored by ll-parallel/ll-sprint and the auto-refine-and-implement FSM loop (FEAT-2447; BUG-2614 wired the FSM path's merge-back). When enabled, children of a single EPIC coalesce onto a shared epic/<EPIC-ID>-<slug> branch instead of the default per-worker parallel/<id>-<timestamp> branch.",
+          "description": "Per-EPIC integration branch configuration, honored by ll-parallel/ll-sprint and the auto-refine-and-implement FSM loop (FEAT-2447; BUG-2614 wired the FSM path's merge-back). When enabled, children of a single EPIC coalesce onto a shared epic/<EPIC-ID>-<slug> branch instead of the default per-worker parallel/<id>-<timestamp> branch. The EPIC branch forks from base_branch by default, but an individual EPIC may override that fork point via a per-EPIC 'base_branch:' (alias 'target_branch:') issue-frontmatter field (FEAT-2652).",
           "properties": {
             "enabled": {
               "type": "boolean",

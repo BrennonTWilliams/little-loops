@@ -319,6 +319,7 @@ When a multi-issue wave is dominated by children of a single EPIC, running each 
 
 - All children of an EPIC share one integration branch (named `epic/<EPIC-ID>-<slug>`, e.g. `epic/EPIC-2451-per-epic-integration-branch-strategy`)
 - Each child forks from that branch (not from `parallel.base_branch`) and merges back into it, so intermediate conflicts surface at the EPIC branch instead of at the base
+- The EPIC integration branch itself forks from `parallel.base_branch` by default, but the EPIC issue may declare a `base_branch:` (alias `target_branch:`) frontmatter field to fork from a different ref; `ll-sprint` dispatch validates it up front and hard-stops if the declared base does not exist (local or remote), rather than degrading dependent children to a false `partial` (FEAT-2652)
 - When the last EPIC child completes, the orchestrator opens a single EPIC-level merge/PR from `epic/<EPIC-ID>-<slug>` into the base branch — one PR per EPIC instead of one per child
 - If any child fails the EPIC is **not** merged; the partial-failure gate holds the EPIC branch open until the failing child is rerun or removed
 - Standalone (parentless) issues follow the previous per-worker behavior — `epic_branches` only affects children that share a `parent:` EPIC

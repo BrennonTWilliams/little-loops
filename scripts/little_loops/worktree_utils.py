@@ -62,29 +62,74 @@ def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> s
     return "main"
 
 
-def resolve_epic_base(epic_id: str, base_branch: str) -> str:
-    """Return the fork base for an EPIC integration branch (ENH-2656).
+def resolve_epic_base(
+    epic_id: str,
+    base_branch: str,
+    repo_path: Path | None = None,
+    config: object | None = None,
+) -> str:
+    """Return the fork base for an EPIC integration branch (ENH-2656, FEAT-2652).
 
-    Single source of truth for the EPIC fork point. Today it returns
-    ``base_branch`` verbatim (no per-EPIC override), so routing every fork site
-    through it is a pure, behavior-preserving refactor: each caller passes the
-    default base it already resolved (``parallel.base_branch``, or the FSM's
-    ``base_branch or detect_default_branch(...)``) and gets it back unchanged.
+    Single source of truth for the EPIC fork point. When the EPIC declares a
+    per-EPIC ``base_branch:`` (alias ``target_branch:``) in its frontmatter, that
+    ref is preferred; otherwise the caller's default ``base_branch`` is returned
+    verbatim (backward-compatible — no field means today's behavior).
 
-    FEAT-2652 extends **only this function** to prefer a per-EPIC ``base_branch:``
-    declaration over ``base_branch`` — no caller changes required, retiring the
-    four hand-synced derivation paths this resolver consolidates.
+    The per-EPIC lookup is gated on ``repo_path``: when it is ``None`` the
+    function short-circuits to ``base_branch`` without touching disk, so callers
+    that cannot (or need not) scan ``.issues/`` — and pure unit tests — keep the
+    original two-arg contract.
 
     Args:
-        epic_id: The EPIC issue id (e.g. ``"EPIC-2451"``). Unused today; present
-            so FEAT-2652 can look up the EPIC's declared base without a signature
-            change.
+        epic_id: The EPIC issue id (e.g. ``"EPIC-2451"``).
         base_branch: The default fork base the caller resolved.
+        repo_path: Repository root to scan for the EPIC's issue file. When
+            ``None``, no lookup is performed and ``base_branch`` is returned.
+        config: An optional ``BRConfig`` for the ``IssueParser``. Built from
+            ``repo_path`` when omitted.
 
     Returns:
-        The branch to fork the EPIC integration branch from.
+        The branch to fork the EPIC integration branch from — the EPIC's declared
+        ``base_branch`` when present, else the passed ``base_branch``.
     """
-    return base_branch
+    if repo_path is None:
+        return base_branch
+    declared = _load_epic_base_branch(epic_id, repo_path, config)
+    return declared or base_branch
+
+
+def _load_epic_base_branch(
+    epic_id: str,
+    repo_path: Path,
+    config: object | None = None,
+) -> str | None:
+    """Return the EPIC's declared ``base_branch``, or ``None`` (FEAT-2652).
+
+    Globs ``.issues/*/P?-<epic_id>-*.md`` (mirroring
+    ``WorkerPool._load_epic_slug``), parses the first match via ``IssueParser``,
+    and returns its ``base_branch`` frontmatter value. Returns ``None`` when the
+    file is missing, malformed, or declares no base.
+    """
+    from little_loops.issue_parser import IssueParser
+
+    if config is None:
+        from little_loops.config import BRConfig
+
+        config = BRConfig(repo_path)
+    issues_base = repo_path / ".issues"
+    if not issues_base.is_dir():
+        return None
+    parser = IssueParser(config)  # type: ignore[arg-type]
+    for category_dir in sorted(issues_base.iterdir()):
+        if not category_dir.is_dir():
+            continue
+        for issue_file in sorted(category_dir.glob(f"P?-{epic_id}-*.md")):
+            try:
+                info = parser.parse_file(issue_file)
+            except Exception:  # noqa: BLE001 — skip malformed files
+                continue
+            return info.base_branch
+    return None
 
 
 def resolve_epic_branch_name(epic_id: str, prefix: str, slug: str) -> str:

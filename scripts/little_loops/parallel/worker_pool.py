@@ -1642,7 +1642,12 @@ class WorkerPool:
         slug = self._load_epic_slug(epic_id)
         prefix = self.parallel_config.epic_branches.prefix
         branch = resolve_epic_branch_name(epic_id, prefix, slug)
-        epic_base = resolve_epic_base(epic_id, self.parallel_config.base_branch)
+        epic_base = resolve_epic_base(
+            epic_id,
+            self.parallel_config.base_branch,
+            self.repo_path,
+            self.br_config,
+        )
         self._ensure_epic_branch(branch, epic_base)
         return (branch, branch)
 

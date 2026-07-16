@@ -220,12 +220,12 @@ states:
                       slug = slugify(info.title)
                   break
 
-      # ENH-2656: single-sourced name/base derivation. resolve_epic_base returns
-      # the passed default today; FEAT-2652 extends only that function to honor a
-      # per-EPIC base_branch: declaration.
+      # ENH-2656: single-sourced name/base derivation. FEAT-2652: resolve_epic_base
+      # honors a per-EPIC base_branch: declaration (passed repo_path + cfg enable
+      # the .issues lookup), falling back to default_base when the EPIC declares none.
       branch = resolve_epic_branch_name(epic_id, epic_cfg.prefix, slug)
       default_base = cfg.parallel.base_branch or detect_default_branch(Path.cwd())
-      base = resolve_epic_base(epic_id, default_base)
+      base = resolve_epic_base(epic_id, default_base, Path.cwd(), cfg)
 
       def _git(args: list[str]) -> subprocess.CompletedProcess:
           return subprocess.run(["git", *args], capture_output=True, text=True)

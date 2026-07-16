@@ -2025,3 +2025,107 @@ class TestSprintPreflightGate:
 
         assert result == 0
         mock_sub.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# FEAT-2652: Per-EPIC base-branch dispatch pre-flight gate
+# ---------------------------------------------------------------------------
+
+
+def _epic_base_config(tmp_path: Path, *, epic_branches_enabled: bool = True) -> BRConfig:
+    """BRConfig rooted at tmp_path with parallel.epic_branches toggled."""
+    issues_dir = tmp_path / ".issues"
+    for category in ["bugs", "features", "enhancements", "epics"]:
+        (issues_dir / category).mkdir(parents=True, exist_ok=True)
+    config_dir = tmp_path / ".ll"
+    config_dir.mkdir(exist_ok=True)
+    config_data = {
+        "project": {"name": "test-project"},
+        "issues": {"base_dir": ".issues"},
+        "parallel": {"epic_branches": {"enabled": epic_branches_enabled}},
+    }
+    with open(config_dir / "ll-config.json", "w") as f:
+        json.dump(config_data, f)
+    return BRConfig(tmp_path)
+
+
+def _write_epic_file(tmp_path: Path, epic_id: str, *, base_branch: str | None) -> None:
+    fm = f"base_branch: {base_branch}\n" if base_branch else ""
+    (tmp_path / ".issues" / "epics" / f"P1-{epic_id}-thing.md").write_text(
+        f"---\nstatus: open\n{fm}---\n# {epic_id}: Thing\n"
+    )
+
+
+class TestEpicBasePreflightGate:
+    """FEAT-2652: declared-base existence gate at sprint dispatch."""
+
+    def _logger(self) -> Logger:
+        return Logger(verbose=False, use_color=False)
+
+    def _child(self, tmp_path: Path, issue_id: str, parent: str) -> IssueInfo:
+        path = tmp_path / ".issues" / "enhancements" / f"P2-{issue_id}-c.md"
+        path.write_text(f"---\nparent: {parent}\n---\n# {issue_id}: Child\n")
+        return IssueInfo(
+            path=path,
+            issue_type="enhancements",
+            priority="P2",
+            issue_id=issue_id,
+            title="Child",
+            parent=parent,
+        )
+
+    def test_missing_declared_base_aborts(self, tmp_path: Path) -> None:
+        """Declared base that resolves nowhere → hard stop (return 1)."""
+        from little_loops.cli.sprint.run import _run_epic_base_preflight
+
+        config = _epic_base_config(tmp_path)
+        _write_epic_file(tmp_path, "EPIC-500", base_branch="refactor/tableau")
+        child = self._child(tmp_path, "ENH-501", "EPIC-500")
+
+        with patch("little_loops.cli.sprint.run._ref_exists", return_value=False):
+            result = _run_epic_base_preflight([child], config, self._logger())
+
+        assert result == 1
+
+    def test_existing_declared_base_passes(self, tmp_path: Path) -> None:
+        """Declared base that exists → gate passes (return 0)."""
+        from little_loops.cli.sprint.run import _run_epic_base_preflight
+
+        config = _epic_base_config(tmp_path)
+        _write_epic_file(tmp_path, "EPIC-500", base_branch="refactor/tableau")
+        child = self._child(tmp_path, "ENH-501", "EPIC-500")
+
+        with patch("little_loops.cli.sprint.run._ref_exists", return_value=True) as m:
+            result = _run_epic_base_preflight([child], config, self._logger())
+
+        assert result == 0
+        m.assert_called_once()
+        assert m.call_args[0][0] == "refactor/tableau"
+
+    def test_no_declared_base_noop(self, tmp_path: Path) -> None:
+        """EPIC without base_branch → no ref check, gate passes."""
+        from little_loops.cli.sprint.run import _run_epic_base_preflight
+
+        config = _epic_base_config(tmp_path)
+        _write_epic_file(tmp_path, "EPIC-500", base_branch=None)
+        child = self._child(tmp_path, "ENH-501", "EPIC-500")
+
+        with patch("little_loops.cli.sprint.run._ref_exists") as m:
+            result = _run_epic_base_preflight([child], config, self._logger())
+
+        assert result == 0
+        m.assert_not_called()
+
+    def test_disabled_epic_branches_skips(self, tmp_path: Path) -> None:
+        """epic_branches.enabled=False → gate is a no-op even with a bad base."""
+        from little_loops.cli.sprint.run import _run_epic_base_preflight
+
+        config = _epic_base_config(tmp_path, epic_branches_enabled=False)
+        _write_epic_file(tmp_path, "EPIC-500", base_branch="refactor/tableau")
+        child = self._child(tmp_path, "ENH-501", "EPIC-500")
+
+        with patch("little_loops.cli.sprint.run._ref_exists", return_value=False) as m:
+            result = _run_epic_base_preflight([child], config, self._logger())
+
+        assert result == 0
+        m.assert_not_called()

@@ -296,6 +296,7 @@ Write the EPIC first, then each child in order. Call `ll-issues next-id` **immed
    - Run `ll-issues sections epic` to get section definitions.
    - Use `variant="full"` with `scripts/little_loops/issue_template.py:assemble_issue_markdown()`.
    - Frontmatter must include: `id: EPIC-NNN`, `type: EPIC`, `priority: [PRIORITY]`, `status: open`, `captured_at` (ISO 8601 UTC via `date -u +"%Y-%m-%dT%H:%M:%SZ"`), `discovered_date` (date-only), `discovered_by: scope-epic`, `relates_to: []`.
+   - An EPIC may optionally declare a `base_branch:` (alias `target_branch:`) frontmatter field to fork its integration branch from a ref other than the global `parallel.base_branch`; `ll-sprint` dispatch validates it and hard-stops if the declared base does not exist (FEAT-2652). Omit it unless a non-default base is needed.
    - `## Summary`: the EPIC summary from decomposition.
    - `## Children`: placeholder section (will be populated in Phase 5).
 

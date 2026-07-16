@@ -567,6 +567,8 @@ ll-sprint run sprint-1 --max-workers 8
 ll-sprint run sprint-1 --dry-run
 ```
 
+When per-EPIC integration branches are active, an EPIC may declare an optional `base_branch:` (alias `target_branch:`) frontmatter field to fork its branch from a non-default ref; `ll-sprint run` dispatch validates it and hard-stops if the declared base does not exist (local or remote) rather than degrading dependent children to a false `partial` (FEAT-2652).
+
 ## Integration
 
 Sprint execution uses `ParallelOrchestrator` from `parallel/orchestrator.py` with dependency-aware wave scheduling. Issues are grouped into waves based on their `blocked_by` dependencies, and each wave is executed in parallel.

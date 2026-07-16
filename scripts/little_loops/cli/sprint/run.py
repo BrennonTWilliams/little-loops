@@ -230,6 +230,95 @@ def _run_learning_gate_preflight(
     return 0
 
 
+def _run_epic_base_preflight(
+    issue_infos: list[IssueInfo],
+    config: BRConfig,
+    logger: Logger,
+) -> int:
+    """Validate per-EPIC declared base branches before dispatch (FEAT-2652).
+
+    For each sprint issue whose nearest EPIC ancestor declares a ``base_branch:``
+    frontmatter field, assert that ref exists (local or remote). A missing ref is
+    a **hard stop**: dispatch aborts with an error naming the branch, rather than
+    forking off a wrong/absent base and degrading every dependent child to a
+    false ``NOT_READY`` / ``partial`` verdict.
+
+    Returns:
+        0 if all declared bases exist or none are declared / the feature is off;
+        1 if any declared base ref is missing (aborts dispatch).
+    """
+    if not config.parallel.epic_branches.enabled:
+        return 0
+
+    from little_loops.issue_parser import IssueParser
+    from little_loops.issue_progress import find_nearest_epic_ancestor
+
+    repo_root = config.project_root
+    issues_base = repo_root / config.issues.base_dir
+    if not issues_base.is_dir():
+        return 0
+
+    # Build {issue_id: parent} map and {epic_id: base_branch} map from disk.
+    parser = IssueParser(config)
+    parent_map: dict[str, str | None] = {}
+    epic_base: dict[str, str | None] = {}
+    for category_dir in issues_base.iterdir():
+        if not category_dir.is_dir():
+            continue
+        for issue_file in category_dir.glob("*.md"):
+            try:
+                info = parser.parse_file(issue_file)
+            except Exception:  # noqa: BLE001 — skip malformed files
+                continue
+            parent_map[info.issue_id] = info.parent
+            if info.base_branch:
+                epic_base[info.issue_id] = info.base_branch
+
+    if not epic_base:
+        return 0
+
+    # Collect the declared bases actually reachable from the sprint issues.
+    declared: dict[str, list[str]] = {}
+    for info in issue_infos:
+        epic_id = find_nearest_epic_ancestor(info, parent_map)
+        if epic_id and (base := epic_base.get(epic_id)):
+            declared.setdefault(base, []).append(epic_id)
+
+    remote = config.parallel.remote_name
+    for base, epic_ids in declared.items():
+        if _ref_exists(base, repo_root, remote):
+            continue
+        epics = ", ".join(sorted(set(epic_ids)))
+        logger.error(
+            f"EPIC base-branch pre-flight FAILED — sprint aborted: declared base "
+            f"'{base}' (EPIC {epics}) does not exist locally or on remote "
+            f"'{remote}'. Create/fetch the branch or fix the EPIC's base_branch: "
+            f"field before dispatching."
+        )
+        return 1
+
+    return 0
+
+
+def _ref_exists(ref: str, repo_root: Path, remote: str) -> bool:
+    """Return True if ``ref`` resolves locally or as a remote head (FEAT-2652)."""
+    local = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    if local.returncode == 0:
+        return True
+    heads = subprocess.run(
+        ["git", "ls-remote", "--heads", remote, ref],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    return bool(heads.stdout and heads.stdout.strip())
+
+
 def _cmd_sprint_run(
     args: argparse.Namespace,
     manager: SprintManager,
@@ -367,6 +456,12 @@ def _cmd_sprint_run(
     preflight_result = _run_learning_gate_preflight(args, issue_infos, config, logger)
     if preflight_result != 0:
         return preflight_result
+
+    # Per-EPIC base-branch pre-flight gate (FEAT-2652) — hard-stop on a missing
+    # declared base rather than degrading dependent children to a false partial.
+    epic_base_result = _run_epic_base_preflight(issue_infos, config, logger)
+    if epic_base_result != 0:
+        return epic_base_result
 
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
     from little_loops.dependency_mapper import gather_all_issue_ids
