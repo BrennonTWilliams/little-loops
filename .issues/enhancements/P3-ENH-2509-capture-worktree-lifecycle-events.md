@@ -8,7 +8,7 @@ discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -134,6 +134,27 @@ No new table. Widen ENH-2495's existing `session_lifecycle_events`:
   ENH-2495); no new `--kind` value.
 - `ll-session worktree-summary [--since 7d]` (optional follow-on) —
   per-issue worktree op counts.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option A — Co-implement
+
+**Reasoning**: ENH-2495's shared lifecycle foundation is still absent, while the needed migration, recorder, reader, and tests closely mirror established patterns in `session_store.py` and `history_reader.py`. Co-implementing the foundation and both producer families in one coordinated change avoids Option B's unscheduled wait and Option C's split ownership/review burden while keeping the broader write surface best-effort and directly testable.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — Co-implement | 2/3 | 2/3 | 3/3 | 2/3 | 9/12 |
+| Option B — Wait | 3/3 | 1/3 | 3/3 | 1/3 | 8/12 |
+| Option C — Land ENH-2509 first | 2/3 | 1/3 | 3/3 | 1/3 | 7/12 |
+
+**Key evidence**:
+- **Option A**: The shared recorder/reader can mirror `record_commit_event`, `record_test_run_event`, and `recent_commit_events`; the worktree and lifecycle producer sites are already enumerated. It is a moderate but coordinated diff with no new abstraction.
+- **Option B**: The repository has clear prerequisite-first precedents and would maximize direct reuse after ENH-2495 lands, but neither issue records a formal dependency or schedule, so waiting prolongs the observability gap and increases drift across two reviews.
+- **Option C**: Existing migration, recorder, reader, and test scaffolding makes the approach feasible, but no widening split has landed as code and this option assigns most of ENH-2495's shared foundation to ENH-2509 while retaining a later cross-issue follow-up.
 
 ## Acceptance Criteria
 
@@ -364,6 +385,8 @@ schema, recorder, and reader work (Phase 1 of the Implementation Steps
 above). Single coordinated change; both ship together. Larger diff but
 no blocking dependency.
 
+> **Selected:** Option A — a single coordinated v21 foundation and producer pass avoids an unscheduled dependency and split-review drift while reusing established recorder and reader patterns.
+
 **Option B**: Wait — block ENH-2509 until ENH-2495 lands first.
 Sequential, but ENH-2509's wiring sites have nothing to call in the
 interim and the worktree history gap persists.
@@ -380,5 +403,6 @@ small (one migration + one recorder + one new column entry), and it
 avoids the cross-issue review burden of split landings.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:58:08 - `f851ce48-4854-433f-8843-c76d107c3eed.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:refine-issue` - 2026-07-16T16:48:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

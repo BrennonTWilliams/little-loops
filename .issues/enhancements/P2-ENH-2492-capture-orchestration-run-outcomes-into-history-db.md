@@ -131,7 +131,9 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
 ### Files to Modify (store)
 
 - `scripts/little_loops/session_store.py`:
-  - Line 60 `__all__` — add `"record_orchestration_run"`.
+  - Line 60 `__all__` — add `"record_orchestration_run"` (matches older
+    convention; v20/ENH-2461's `record_usage_event` is NOT in `__all__`, so
+    optional — mirror v20 style for consistency).
   - Line 102 `SCHEMA_VERSION = 18` — bump to 19.
   - Line 104 `_VALID_KINDS` — add `"orchestration_run"`.
   - Line 119 `_KIND_TABLE` — add `"orchestration_run": "orchestration_runs"`.
@@ -142,6 +144,17 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
   - New `record_orchestration_run()` modelled on `record_commit_event`
     (line 1041-1091) — `INSERT OR IGNORE` on the `(run_id, issue_id)` UNIQUE
     constraint, conditional `_index()` only when `cursor.rowcount == 1`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Anti-pattern (do NOT add)**: `_REBUILD_TABLES` at
+  `session_store.py:2833, 2865, 2886`. The `usage_events` table is the ONLY
+  sibling in `_REBUILD_TABLES` because it's parser-derived
+  (`_backfill_usage_events` at line 1878-1943). Direct-write tables
+  (`commit_events`, `test_run_events`, and the proposed `orchestration_runs`)
+  are explicitly excluded — see comment at `session_store.py:2853-2854`
+  ("Issue/loop/commit/cli/file/test_run tables are outside raw_events'
+  scope"). Adding `orchestration_runs` to `_REBUILD_TABLES` would be a bug.
 
 ### Files to Modify (reader)
 
@@ -162,6 +175,23 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
   at line 90 and `recent` `--kind` `choices` at line 114 to include
   `"orchestration_run"`. Routing flow-through is automatic: `_VALID_KINDS` →
   `recent()` (`session_store.py:1268`) → table from `_KIND_TABLE`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Correction to "all four locations" claim**: Both argparse `choices=[…]`
+  literals at `cli/session.py:103` and `:115` use `list(VALID_KINDS)` (i.e.,
+  pull dynamically from `session_store.VALID_KINDS`). Adding `"orchestration_run"`
+  to `VALID_KINDS` propagates automatically — the argparse `choices` literals
+  do NOT need separate edits. The 3rd-pass Codebase Research Finding
+  (lines 266-273) stating a "four-location lockstep" is wrong on current HEAD.
+  Only `VALID_KINDS` and `_KIND_TABLE` need the explicit edit.
+
+- **Export parser `--tables` help text** (`cli/session.py:222-232`): The
+  `export_parser.add_argument("--tables", ...)` help text lists valid type
+  names. Current text omits `commit_event`/`test_run_event`/`usage_event` even
+  though they ARE valid via `_EXPORT_TABLE_MAP`. Add `orchestration_run_event`
+  here for parity (and optionally close the existing v20 drift by including
+  the other three).
 
 ### Test Files (additive)
 
@@ -185,6 +215,44 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
   add `test_parallel_records_wave_and_pr_url` (mock `_on_worker_complete`;
   assert PR URL propagates into `orchestration_runs` row).
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Use v20 sibling as the pattern, not v18**. The closest analog is
+  `TestUsageEventsSchema` at `test_session_store.py:3215-3245` (not
+  `TestRecordTestRunEvent` at line 3549 as the issue cites), since v20 is
+  the most-recent house style.
+- **`_bootstrap_schema_at(db, N)` correction**: Current `SCHEMA_VERSION` is
+  **20** (not 18/19 as the issue cites). The upgrade test should bootstrap
+  at the live pre-`orchestration_runs` version and assert the v21 migration:
+  `_bootstrap_schema_at(db, 20)` then `ensure_db(db)`. Re-verify the live
+  constant at `session_store.py:207` before quoting in a commit.
+- `scripts/tests/test_orchestrator.py::TestEpicBranchCompletion::test_on_worker_complete_records_orchestration_run`
+  — direct unit test for the orchestrator flush site (the issue's 4th-pass
+  finding already flagged this). Use the `orchestrator` fixture at lines
+  121-145 and mirror `TestEpicBranchCompletion::test_no_merge_when_epic_branches_disabled`
+  at line 1533-1546 pattern (construct `WorkerResult`, mock
+  `record_orchestration_run`, call `_on_worker_complete`, assert on the
+  writer call). Faster than driving through `test_parallel_cli.py`.
+- `scripts/tests/test_cli_sprint.py::TestIssueWallClockTimeout::test_wall_clock_timeout_records_orchestration_run`
+  — wall-clock-timeout flush test. Mirror `test_run_issue_with_wall_clock_timeout_catches_timeout_and_returns_failure`
+  at `test_cli_sprint.py:654` (patch `signal`, `process_issue_inplace`, raise
+  `IssueWallClockTimeout`, assert synthetic failure flushed with
+  `failure_reason="WALL_CLOCK_TIMEOUT"`).
+- `scripts/tests/test_sprint_integration.py::TestSprintErrorRecovery::test_sprint_sequential_retry_records_orchestration_runs`
+  — sequential-retry flush test. Mirror
+  `test_sprint_sequential_retry_after_parallel_failure` at line 1046-1070
+  (use the `MockQueue`/`MockOrchestrator`/`mock_process_inplace` pattern,
+  patch `record_orchestration_run`, assert retry outcomes are recorded
+  including success-after-retry).
+- `scripts/tests/test_ll_session.py::test_export_includes_orchestration_run_table`
+  — explicit test for the `_EXPORT_TABLE_MAP` edit. There is currently no
+  `test_export_*` in `test_ll_session.py` (the existing export tests are in
+  `test_cli_history.py:198` and `test_issue_history_cli.py:763+`, which
+  cover `ll-history` export, NOT `ll-session` table export). Add a new
+  test that records a row, runs `ll-session export --tables orchestration_run`,
+  and asserts the row appears in the output. Without this, the
+  `_EXPORT_TABLE_MAP` edit can regress silently.
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — add v19 row to schema-versions table at lines
@@ -197,6 +265,20 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
 - `docs/reference/CLI.md` — extend `--kind` flag tables at lines 2245 and
   2253; add `ll-session recent --kind orchestration_run` example near
   line 2283.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — **NOT** in the issue's docs list
+  but is the user-facing guide that lists `--kind` values and the
+  schema-versions table. Four locations to update on current HEAD:
+  - Schema-versions table (lines 60-76): add v21 row mirroring the new
+    `orchestration_runs` migration.
+  - "What gets recorded" table (lines 79-99): add `orchestration_runs` row.
+  - `--kind` value list in FTS examples (line 170): add `orchestration_run`.
+  - `--tables` choices text (line 208): add `orchestration_run_event`.
+  Note: this guide already lists `commit, test_run, usage` as `--kind`
+  values — confirm `orchestration_run` lands here for consistency with
+  `VALID_KINDS`.
 
 ### Configuration
 
@@ -213,6 +295,17 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
   `try/except Exception: return 0` wrap; same EPIC-1707 contract.
 - `scripts/little_loops/hooks/user_prompt_submit.py:78-94` — sibling
   per-event `with contextlib.suppress(Exception):` pattern.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/verify_kinds.py:40-46` — explicit gate that
+  re-globs `_MIGRATIONS` for every `CREATE TABLE` and asserts the table
+  appears in `_KIND_TABLE` OR `_KINDLESS_TABLES`. Adding `orchestration_runs`
+  to `_MIGRATIONS` without also updating `_KIND_TABLE` will exit 1 here.
+  This gate is **not** named in the issue's Test Files section.
+- `scripts/tests/test_verify_kinds.py::TestRun::test_clean_state_returns_zero`
+  (line 19-23) — the enforced test for the above gate. Run as part of
+  `python -m pytest scripts/tests/`.
 
 ### Similar Patterns (Copy-Modify)
 
@@ -1059,6 +1152,138 @@ not just line numbers:_
   `SCHEMA_VERSION` at implementation time per the Scope Boundary note (siblings
   land in whatever order they're implemented).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the
+implementation. Order matches the natural commit sequence — registry + export before
+producer wiring, docs/tests after._
+
+20. **`_EXPORT_TABLE_MAP` / `_EXPORT_DEFAULT_TABLES` wiring**
+    (`session_store.py:3304-3329`). The current shape is
+    `dict[str, tuple[str, str]]` keyed on the export type-name (2-tuple value),
+    NOT the 3-tuple `list[tuple]` form shown in Implementation Step 14. Add
+    `"orchestration_run": ("orchestration_runs", "ended_at")` to the dict AND
+    `"orchestration_run"` to `_EXPORT_DEFAULT_TABLES`. Without both entries,
+    `ll-session export` silently logs "unknown type" and skips the table.
+
+21. **`docs/guides/HISTORY_SESSION_GUIDE.md`** — user-facing guide (NOT in the
+    issue's docs list). Four locations: schema-versions table (lines 60-76),
+    "what gets recorded" table (lines 79-99), `--kind` FTS examples
+    (line 170), `--tables` choices text (line 208).
+
+22. **`cli/session.py:222-232` export-parser help text** — `export_parser.add_argument`
+    `--tables` help string omits `commit_event`/`test_run_event`/`usage_event`
+    even though they're valid via `_EXPORT_TABLE_MAP`. Add `orchestration_run_event`
+    for parity; optionally close the existing v20 drift on the other three.
+
+23. **`cli/verify_kinds.py:40-46` + `tests/test_verify_kinds.py::TestRun::test_clean_state_returns_zero`**
+    — explicit gate that the new `_MIGRATIONS` entry must be paired with
+    `_KIND_TABLE`. The gate runs under `python -m pytest scripts/tests/`
+    (ENH-2581). If `_KIND_TABLE` is missing the entry, exit 1.
+
+24. **New unit tests** (not in the issue's test list):
+    - `test_orchestrator.py::test_on_worker_complete_records_orchestration_run`
+      — direct callback test, mirrors `TestEpicBranchCompletion::test_no_merge_when_epic_branches_disabled`
+      pattern at line 1533-1546.
+    - `test_cli_sprint.py::test_wall_clock_timeout_records_orchestration_run`
+      — flush test for `_run_issue_with_wall_clock_timeout`, mirrors
+      `test_run_issue_with_wall_clock_timeout_catches_timeout_and_returns_failure`
+      at line 654.
+    - `test_sprint_integration.py::test_sprint_sequential_retry_records_orchestration_runs`
+      — retry-flush test, mirrors `test_sprint_sequential_retry_after_parallel_failure`
+      at line 1046-1070.
+    - `test_ll_session.py::test_export_includes_orchestration_run_table` —
+      explicit `_EXPORT_TABLE_MAP` regression guard. Currently no
+      `test_export_*` exists in `test_ll_session.py` (the existing
+      export tests cover `ll-history`, not `ll-session` table export).
+
+25. **Schema version correction**: Live `SCHEMA_VERSION` is **20** at
+    `session_store.py:207`; the upgrade test must use
+    `_bootstrap_schema_at(db, 20)` and assert the v21 migration lands, NOT
+    the v18→v19 the issue body cites. Re-verify at implementation time.
+
+26. **Anti-pattern (do NOT add)**: `_REBUILD_TABLES`
+    (`session_store.py:2833, 2865, 2886`). Only parser-derived tables
+    (`usage_events`/`_backfill_usage_events` at line 1878-1943) are rebuilt;
+    direct-write tables (`commit_events`, `test_run_events`, and the
+    proposed `orchestration_runs`) are explicitly excluded — see comment at
+    `session_store.py:2853-2854`. Adding `orchestration_runs` here would
+    be a bug.
+
+### Codebase Research Findings (Wiring Pass — 2026-07-16)
+
+_Added by `/ll:wire-issue --auto` (1st wiring pass) — corrects three stale
+claims in the prior research findings and adds six new findings not in the
+issue body:_
+
+- **STALE — "four-location lockstep" claim** (lines 266-273 of original
+  issue body). Both `cli/session.py:103` and `:115` argparse `choices=[…]`
+  literals use `list(VALID_KINDS)` and pull dynamically from
+  `session_store.VALID_KINDS`. Adding `"orchestration_run"` to
+  `VALID_KINDS` propagates automatically to both argparse `choices` — no
+  separate argparse edits required. The 4-location claim is wrong on
+  current HEAD.
+
+- **STALE — `_EXPORT_TABLE_MAP` code block** (Implementation Step 14).
+  Verified on HEAD: `_EXPORT_TABLE_MAP` is now
+  `dict[str, tuple[str, str]]` keyed on type-name with a 2-tuple value,
+  not the old `list[tuple[str, str, str]]`. The 3-tuple
+  `("orchestration_run", "orchestration_runs", "ended_at")` form no
+  longer matches the schema and would be a bug. Use
+  `"orchestration_run": ("orchestration_runs", "ended_at")` instead.
+  `_EXPORT_DEFAULT_TABLES` is a separate `list[str]` at
+  `session_store.py:3318-3329` that needs `"orchestration_run"` appended.
+
+- **STALE — `SCHEMA_VERSION = 18`/`19`** in Integration Map and Implementation
+  Steps. Live value is `SCHEMA_VERSION = 20` (`session_store.py:207`). The
+  v19/`raw_events` (ENH-2581) and v20/`usage_events` (ENH-2461) slots are
+  taken. Next-open is **v21**. Every "18→19" / "bump to 19" literal is
+  stale — substitute "live SCHEMA_VERSION" at implementation time.
+
+- **NEW — `cli/verify_kinds.py` gate** (not in issue). Re-globs `_MIGRATIONS`
+  for every `CREATE TABLE` and asserts membership in `_KIND_TABLE` OR
+  `_KINDLESS_TABLES`. Adding `orchestration_runs` to `_MIGRATIONS` without
+  also updating `_KIND_TABLE` will fail
+  `test_verify_kinds.py::TestRun::test_clean_state_returns_zero`.
+
+- **NEW — `docs/guides/HISTORY_SESSION_GUIDE.md`** (not in issue). User-facing
+  guide with schema-versions table (lines 60-76), "what gets recorded" table
+  (lines 79-99), `--kind` value list in FTS examples (line 170), `--tables`
+  choices text (line 208). Should list `orchestration_run` for parity.
+
+- **NEW — `cli/session.py:222-232` `export_parser` help text** (not in issue).
+  The `--tables` help string currently omits `commit_event`/`test_run_event`/
+  `usage_event` even though they're valid via `_EXPORT_TABLE_MAP`. Add
+  `orchestration_run_event` for parity (closing the existing v20 drift at
+  the same time is recommended).
+
+- **NEW — `_REBUILD_TABLES` anti-pattern** (not in issue). Orchestration runs
+  are direct-write, NOT parser-derived. Only `usage_events` lives in
+  `_REBUILD_TABLES` because it's rebuilt from `raw_events` via
+  `_backfill_usage_events` (`session_store.py:1878-1943`). Adding
+  `orchestration_runs` to `_REBUILD_TABLES` would be a bug — the comment at
+  `session_store.py:2853-2854` explicitly excludes direct-write tables.
+
+- **NEW — `test_orchestrator.py::test_on_worker_complete_records_orchestration_run`**
+  (not in issue). The issue's 4th-pass Codebase Research Finding already
+  flagged `test_orchestrator.py` as the dedicated orchestrator unit-test
+  file (marked `pytest.mark.integration` at line 44). The
+  `TestEpicBranchCompletion::test_no_merge_when_epic_branches_disabled`
+  pattern at line 1533-1546 (construct `WorkerResult`, mock collaborators,
+  call `_on_worker_complete`, assert on side effects) is the closest
+  template. Faster than driving through `test_parallel_cli.py`.
+
+- **NEW — `test_cli_sprint.py::TestIssueWallClockTimeout` flush test** (not
+  in issue). Existing `TestIssueWallClockTimeout` at `test_cli_sprint.py:611`
+  exercises `_run_issue_with_wall_clock_timeout`. The flush should be tested
+  at the caller path with the same patch-`signal`/patch-`process_issue_inplace`
+  pattern.
+
+- **NEW — `test_sprint_integration.py::TestSprintErrorRecovery` retry-flush
+  test** (not in issue). Existing `test_sprint_sequential_retry_after_parallel_failure`
+  at `test_sprint_integration.py:1046-1070` uses `MockQueue`/`MockOrchestrator`/
+  `mock_process_inplace` — extend with retry-flush assertions.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 gap surface (execution outcomes)
@@ -1101,6 +1326,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T20:31:05 - `c6dd324d-abd2-4bf0-a5ac-0b0bfc188270.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:18:50 - `ec721603-845a-43dc-9920-57ba425890cc.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:08:02 - `4bc98e28-d432-4a7a-ab1f-dcf602e3157c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`

@@ -7,7 +7,7 @@ status: open
 discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
-decision_needed: true
+decision_needed: false
 parent: EPIC-2457
 labels:
   - enhancement
@@ -262,6 +262,64 @@ The first pattern matches the v15-v18 batch landed 2026-07-03
 (see commit `98ae796a docs(observability): cover EPIC-2457 v15-v18
 schema migrations`). Default to **batched**.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option A (Comma-separated TEXT in a single `tag` column)
+
+**Reasoning**: The codebase's column-additive ALTER TABLE precedent
+provides an exact migration template that Option B's CREATE TABLE
+would only approximate via the single `summary_spans` precedent. The
+v15 (ENH-2460) and v16 (ENH-2462) migrations at
+`session_store.py:580-583` and `:591-593` establish the "nullable
+TEXT column + CREATE INDEX" shape that ENH-2508's v21 migration would
+copy verbatim. EPIC-2457 sibling precedent overwhelmingly favors
+"widen existing tables" (ENH-2511 widens with four additive columns,
+ENH-2509 widens with three event discriminators — neither spawns a
+child table), and the LIKE-substring query pattern is already in
+production use (`history_reader.py:301-303` `find_user_corrections`,
+`:335-336` `recent_file_events`), making Option A's `tag LIKE '%' ||
+? || '%'` query immediately familiar. Option B's only clear win —
+exact-match `GROUP BY tag` queries without LIKE — is unnecessary for
+the documented read patterns (`commits_by_tag`, `commits_in_release`,
+`tag_summary`), all of which work identically against a scalar TEXT
+column at a lower schema cost (~50% less code per the issue's own
+count).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (comma-separated) | 2/3 | 2/3 | 3/3 | 2/3 | 9/12 |
+| Option B (join table) | 1/3 | 1/3 | 3/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+
+- **Option A**: ALTER TABLE ADD COLUMN has exact precedent at v15/v16
+  (`session_store.py:580-583`, `:591-593`); LIKE-substring matching is
+  established (`history_reader.py:301-303`, `:335-336`); column-additive
+  migration tests have a direct template (`TestSchemaV15SkillCompletion
+  Columns` at `test_session_store.py:3914-3966`); INSERT OR IGNORE +
+  post-INSERT UPDATE split is already documented for the backfill path
+  (issue lines 466-473). Penalty: zero comma-separated TEXT columns
+  exist in the history DB today (the two existing multi-value columns,
+  `files_json` and `failing_names_json`, are JSON arrays — Option A
+  introduces a third pattern); `idx_commit_events_tag` would be inert
+  for `LIKE '%...%'` queries (leading wildcard disables B-tree).
+
+- **Option B**: `summary_spans` (`session_store.py:500-504`) is the
+  canonical join-table precedent with the exact `(a, b) PK + FK` shape
+  Option B would copy; `_KINDLESS_TABLES` registration is a one-line add
+  (not `_KIND_TABLE`/`VALID_KINDS` as the issue body claims); JOIN
+  read patterns already in production (`history_reader.py:1064, 1138,
+  1224`); JOIN test patterns at `test_session_store.py:2209-2228`.
+  Penalty: only one join-table precedent exists; no `GROUP BY`-on-
+  join-table read pattern in the codebase (closest analogue
+  `aggregate_usage()` at `:596-648` is single-table); EPIC-2457
+  precedent is overwhelmingly column-additive; ~50% more schema/
+  migration/read-API surface than Option A.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `tag` and `release_version` columns exist on
@@ -496,6 +554,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
     per-tag analytics, Option B can be added later as v22 without
     breaking Option A rows.
 
+> **Selected:** Option A (Comma-separated TEXT in a single `tag` column) — column-additive ALTER TABLE has an exact migration template (v15 ENH-2460, v16 ENH-2462) and EPIC-2457 sibling precedent overwhelmingly favors "widen existing tables" over new join tables; Option B's only clear win (exact-match `GROUP BY tag` queries) is unnecessary for the documented read patterns.
+
 ## Status
 
 **Open** | Created: 2026-07-06 | Priority: P3
@@ -521,6 +581,7 @@ at whatever version is open when it is implemented (no coordinated release;
 per EPIC-2457's own "no shared helper module is required" scope note).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:50:46 - `80dc6973-3cef-4666-ad46-7e8766345588.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:39:50 - `02969852-e3bd-41f7-a7c6-d6ff4d79a629.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:56 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

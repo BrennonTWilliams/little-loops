@@ -42,6 +42,22 @@ TEXT, these need no new table — only additional producer call-sites and a wide
 `recent_check_events()` filter, and `_VALID_KINDS` so the verify-*/check-links
 family drops in without a second migration.
 
+## Architectural Note — direct-write is primary (ARCHITECTURE-144 scope)
+
+ARCHITECTURE-144 (`.ll/decisions.yaml`, ENH-2581) named this issue among those
+"turned into event_type parser tasks over raw_events." That clause is scoped by a
+later project decision (see `.ll/decisions.d/`): the parser reframe applies only
+to fields sourced from the 5 JSONL-ingested `raw_events` kinds. The gate commands
+(`ruff`, `mypy`, `ruff format`, the `ll-verify-*` family) appear as Bash
+`tool_events` **only when run inside a Claude session**; runs from a terminal, a
+pre-commit hook, or `/ll:check-code` outside a session never touch the transcript,
+and error counts / offending files would have to be scraped from captured stdout
+per-tool. Therefore **direct-write (`record_check_event`) stays the primary
+producer**. An optional `_backfill_check_events` parser over `tool_events` (keyed
+on command basename) may be added later as *secondary enrichment*, not a
+replacement. This is a documented, justified pattern deviation, mirroring
+ENH-2507.
+
 ## Motivation
 
 - **Three of four CI gates are unobservable.** Only pytest is captured; ruff and
@@ -114,6 +130,59 @@ family drops in without a second migration.
 - `scripts/tests/test_ll_session.py:88-96` (`test_recent_subcommand_test_run_accepted`) — template for the `check_run` argparse choices test for both `recent --kind check_run` and `search --kind check_run`.
 - `scripts/tests/test_ll_session.py:916-975` (`class TestSkillStatsAndNewKinds`) — `recent --kind check_run` row-output parity test.
 - `scripts/tests/test_pytest_history_plugin.py:117` (`class TestSessionFinishWritesRow`) — best-effort producer test template; mirror as `test_checkcode_never_raises_on_broken_db` for the new gate writer.
+
+### Wiring Pass Additions (`/ll:wire-issue` 2026-07-16)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Additional Files to Modify (not in the original Integration Map):**
+
+- `scripts/little_loops/session_store.py:3304-3329` — both `_EXPORT_TABLE_MAP` AND `_EXPORT_DEFAULT_TABLES` need `"check_run_event"` (NOT `"check_run"`) added. The original Integration Map listed `_VALID_KINDS` / `_KIND_TABLE` but missed the parallel export-map pair that `ll-session export` reads. Mirrors the ENH-2461 finding at `.issues/enhancements/P3-ENH-2461-...md:378` which caught the same pair-miss post-merge.
+- `scripts/little_loops/observability/schema.py:502-505` + line 626 (`DES_VARIANTS` tuple) — register new `CheckEventVariant` (`type: Literal["check_event"] = "check_event"`) per the precedent at `TestRunEventVariant`. The DES registry comment claims "every variant corresponds to a `record_*` writer site" — without this entry the registry becomes inaccurate.
+- `commands/check-code.md:5` (frontmatter `allowed-tools`) — extend the whitelist from `Bash(ruff:*, mypy:*, python:*, ...)` to also include `Bash(ll-check-gates:*)`. Without this the model falls back to inline shell on permission denials.
+- `commands/help.md:299` — add `ll-check-gates <mode>` bullet to the commands listing.
+- `scripts/little_loops/worktree_utils.py:465-481` (`verify_epic_branch_before_merge`) — best-effort `record_check_event()` call after each `subprocess.run` of `test_cmd`/`lint_cmd` per worktree. Fills the "did this worktree pass lint/typecheck at merge time?" query.
+- `scripts/little_loops/parallel/orchestrator.py:1308-1345` — verify-gate integration path; propagates per-worktree `record_check_event()` calls from `worktree_utils.verify_epic_branch_before_merge()`.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:41, 72, 96, 170` — schema versions table ends at v20; `--kind` enumeration ends at `usage`; "What Gets Recorded" table needs v21 row + `check_run` kind entry + `check_events` row.
+- `CHANGELOG.md` — add entry under NEXT concrete version section (per user pref: no `[Unreleased]`; promote to `## [X.Y.Z] - DATE` during release prep).
+- `commands/find-dead-code.md:30-37` — runs direct `ruff check --select F401` and `--select F841`. **Optional**: extend to invoke `ll-check-gates ruff` so the dead-code search's ruff invocations are also captured.
+
+**Additional Loop YAMLs that run gates (per AC #6 free-form-tool spirit, not required for AC #1-5):**
+
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:340-457` — `verify` state runs `test_cmd` + `lint_cmd` per worktree. Best-effort `record_check_event()` call after each gate gives per-tool breakdown (the existing `verify_verdict` field added by ENH-2601 is a single-state aggregate).
+- `scripts/little_loops/loops/evaluation-quality.yaml:49-54` — runs `ruff check scripts/` and writes to `${context.run_dir}/eval-lint-results.txt`. Wire `record_check_event(tool="ruff", ...)` to also persist the same result into `history.db`.
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml:54, 63, 134-150, 194-220, 275-290` — defines `test_cmd` and `lint_cmd` as explicit oracle gate states. Wire `record_check_event()` per gate invocation.
+
+**Additional Dependent Files (sibling templates + new call-sites):**
+
+- `scripts/little_loops/hooks/post_commit.py:50, 73` — sibling commit-event writer; confirms the pattern of `_post_commit_*` hook-side writers that may need a sibling `_post_check_*` hook if gate recording is later wired into hook lifecycle (not required for this issue).
+- `scripts/little_loops/cli/verify_decisions.py:88` — `main_verify_decisions` entry point wrapped in `cli_event_context()`. Per AC #6 ("`tool` accepts a verify-*/check-links value"), this is a required `record_check_event(tool="verify-decisions", ...)` writer call site.
+- `scripts/little_loops/cli/verify_des_audit.py:106` — `main_verify_des_audit` (DES variant registration check). Per AC #6.
+- `scripts/little_loops/cli/verify_kinds.py:52` — `main_verify_kinds`. Per AC #6. **CRITICAL**: this is the gate that silently catches a missing `check_events` table registration (test_verify_kinds.py:18-23). Adding `record_check_event(tool="verify-kinds", ...)` here closes the loop.
+
+**Additional Documentation references (file:line):**
+
+- `docs/development/TESTING.md:1008-1010` — gate summary block. Append: "All four gate results are persisted to `.ll/history.db` (`check_events` table) by `ll-check-gates`."
+- `docs/development/TROUBLESHOOTING.md:82-88, 946-948` — references mypy install + pytest gate; cross-reference `ll-session recent --kind check_run` for triage.
+- `docs/development/MERGE-COORDINATOR.md:156-163` — partial-failure and merge verification gates; append note that per-worktree gate results now land in `check_events`.
+- `docs/reference/API.md:7275, 7279` — `SCHEMA_VERSION` literal ("Current schema version: **19**") needs bump to **21** in both sites (live is 20; new migration is 21).
+- `docs/ARCHITECTURE.md:723, 748` — sequence diagram bootstrap label "v1–v20" appears twice; both need bump to "v1–v21".
+- `docs/reference/CLI.md:2845` — generated CLI reference mentions CI/gate; append `check_run` to the `--kind` choices listing.
+- `CONTRIBUTING.md:407` — documents `python -m pytest scripts/tests/` as project CI; cross-reference `check_events` table.
+- `specs/harness-optimize-rubric.md:400` — references pytest CI gate; worth a note that gate results are now persisted.
+
+**Additional Tests to add (precedents not in the issue's Tests subsection):**
+
+- `scripts/tests/test_cli_docs.py:17-192` (`TestMainVerifyDocs`), 195-355 (`TestMainCheckLinks`), 358-492 (`TestMainVerifySkillBudget`), 495-588 (`TestMainVerifySkills`) — canonical analog for new `scripts/tests/test_check_gates.py`. Clone all four `TestMain*` classes; they use the triple-mock pattern (`patch("sys.argv", [...])` + `patch("little_loops.X.run_gate", ...)` + `patch("builtins.print")`).
+- `scripts/tests/test_cli_harness.py:42-44` (`_make_completed()`) — canonical "subprocess.run returns CompletedProcess" helper. Reuse for `TestCheckGatesSubprocessWrappers` to mock ruff/mypy/ruff-format subprocess invocations.
+- `scripts/tests/test_cli_harness.py:223-273` — representative subprocess mock patterns: `test_skill_exit_code_pass` (clean exit), `test_skill_timeout_returns_2` (TimeoutExpired), `test_skill_binary_not_found_returns_2` (FileNotFoundError).
+- `scripts/tests/test_action.py:365-421` (`TestCmdCapabilities`) — closest pattern for parsing subprocess stdout as JSON via `json.loads(capsys.readouterr().out)`. Adopt for `TestCheckGatesRuffJsonParse` + `TestCheckGatesMypyJsonParse`.
+- `scripts/tests/test_verify_kinds.py:18-23` (`test_clean_state_returns_zero`) — gate that silently catches missing `check_events` registration. The negative-control test at lines 25-33 (`test_mystery_events_caught`) would fire on a regression.
+- `scripts/tests/test_session_store.py:3221-3243` (`TestSchemaV20UsageEvents.test_usage_events_columns`) — `PRAGMA table_info` + column-set assertion pattern. Clone → `TestCheckSchemaV21.test_check_events_columns`.
+- `scripts/tests/test_session_store.py:3674-3685` (`TestSchemaV13.test_retirement_fingerprint_index_exists`) — index existence assertion pattern. Clone → `TestCheckSchemaV21.test_check_events_indexes_exist`.
+- `scripts/tests/test_session_store.py:4049-4070` (`TestSchemaV16IssueSessionId.test_session_id_index_exists_and_is_used`) — `EXPLAIN QUERY PLAN` pattern for behavioral validation of the new indexes.
+
+**Tests that will break — none.** Verified via Grep: no test asserts `len(VALID_KINDS)`, `len(_KIND_TABLE)`, or `len(_MIGRATIONS)`. `test_every_valid_kind_has_a_kind_table_entry` (line 3412-3413) uses set equality — adding `"check_run"` to both sides keeps it balanced. `SCHEMA_VERSION` literals at lines 3658, 3699, 3952, etc. reference the constant (not its numeric value) and silently update to 21.
 
 ## Proposed Solution
 
@@ -223,6 +292,41 @@ _Added by `/ll:refine-issue` — anchor references verified against `main`:_
 - **Step 7** — clone `TestRecordTestRunEvent` (`scripts/tests/test_session_store.py:3549-3620`) → `TestRecordCheckEvent`; add `TestCheckSchema` covering `_bootstrap_schema_at(18)` followed by `ensure_db()` and asserting `check_events` table exists. Clone `TestReadResultsAndEdges` (`scripts/tests/test_history_reader.py:1442-1522`) → add tests for `recent_check_events` + `check_pass_rate` + missing-DB graceful-degradation. Add `test_check_run_kind_in_argparse` next to `test_recent_subcommand_test_run_accepted` at `scripts/tests/test_ll_session.py:88-96`. Add `test_checkcode_never_raises_on_broken_db` mirroring `class TestSessionFinishWritesRow` at `scripts/tests/test_pytest_history_plugin.py:117`.
 - **Step 8** — append v19 row to schema versions table at `docs/ARCHITECTURE.md:614-633`. Mirror API docs for `record_check_event` (after `record_test_run_event` at `docs/reference/API.md:7025-7048`) and `recent_check_events` (after `recent_test_runs` at `docs/reference/API.md:6762-6774`). Update `docs/reference/CLI.md:2191-2299` `--kind` choices listing. Update `.claude/CLAUDE.md` § Testing & CI Policy to note gate results are now recorded.
 
+### Wiring Phase (added by `/ll:wire-issue` 2026-07-16)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. They are not duplicates of the eight steps above — they are wiring-side couplings the original Integration Map missed._
+
+9. **Add `check_run_event` to the export-map pair** at `scripts/little_loops/session_store.py:3304-3329` — both `_EXPORT_TABLE_MAP` AND `_EXPORT_DEFAULT_TABLES` need the new entry (NOT `_KIND_TABLE`). Without this, `ll-session export` skips the new table until the user passes `--tables check_run_event` explicitly. Mirrors the ENH-2461 finding at line 378.
+
+10. **Register `CheckEventVariant` in the DES registry** at `scripts/little_loops/observability/schema.py:502-505` (variant dataclass) and line 626 (`DES_VARIANTS` tuple). Follow the `TestRunEventVariant` precedent. Without this, `ll-verify-des-audit` does not recognize `record_check_event` as a registered event type.
+
+11. **Wire per-worktree verify-gate recording** in `scripts/little_loops/worktree_utils.py:465-481` (`verify_epic_branch_before_merge`) — add best-effort `record_check_event()` calls after each `subprocess.run` of `test_cmd`/`lint_cmd`. Then propagate through `scripts/little_loops/parallel/orchestrator.py:1308-1345` (`_verify_epic_branch_before_merge`) — the orchestrator just calls the worktree helper, so the wiring lives at one site.
+
+12. **Add `ll-check-gates` to the commands/help bullet list** at `commands/help.md:299`. The help command enumerates CLI binaries; a new binary must be added there.
+
+13. **Extend `commands/check-code.md` `allowed-tools` whitelist** at line 5 to include `Bash(ll-check-gates:*)`. Without this, the model falls back to inline shell on permission denials when rewriting the gate blocks.
+
+14. **Update additional doc surfaces** not in Step 8:
+    - `docs/reference/API.md:7275, 7279` — bump SCHEMA_VERSION literal from "19" to "21" in both sites.
+    - `docs/ARCHITECTURE.md:723, 748` — bump sequence diagram "v1–v20" to "v1–v21" in both places.
+    - `docs/guides/HISTORY_SESSION_GUIDE.md:41, 72, 96, 170` — schema versions table, `--kind` enumeration, "What Gets Recorded" table all need v21 row + `check_run` + `check_events`.
+    - `docs/development/TESTING.md:1008-1010` — append note that all four gates now land in `check_events`.
+    - `docs/development/MERGE-COORDINATOR.md:156-163` — note per-worktree gate recording.
+    - `CHANGELOG.md` — entry under NEXT concrete version section (no `[Unreleased]` per project pref).
+
+15. **Wire loop YAML per-worktree verify states** (optional AC #6 spirit):
+    - `scripts/little_loops/loops/auto-refine-and-implement.yaml:340-457` — `verify` state.
+    - `scripts/little_loops/loops/evaluation-quality.yaml:49-54` — `ruff check scripts/` capture.
+    - `scripts/little_loops/loops/oracles/code-run-gate.yaml:54, 63, 134-150, 194-220, 275-290` — explicit test+lint oracle gates.
+
+16. **Add `record_check_event()` calls inside the verify-* CLI entry points** per AC #6 ("`tool` accepts a verify-*/check-links value"):
+    - `scripts/little_loops/cli/verify_decisions.py:88` — `main_verify_decisions` (tool="verify-decisions").
+    - `scripts/little_loops/cli/verify_des_audit.py:106` — `main_verify_des_audit` (tool="verify-des-audit").
+    - `scripts/little_loops/cli/verify_kinds.py:52` — `main_verify_kinds` (tool="verify-kinds"). **Critical**: this is the gate that silently catches missing `check_events` registration in the table-vs-kind consistency check.
+    Each call wrapped in `contextlib.suppress(Exception)` per the `pytest_history_plugin.py:118-120` template.
+
+17. **Add `commands/find-dead-code.md:30-37` to the gate-recording surface** (optional): replace the two direct `ruff check --select F401` / `--select F841` invocations with `ll-check-gates ruff` so the dead-code search's ruff invocations are captured.
+
 ### Anchor Drift Audit (re-verified at /ll:refine-issue 2026-07-16)
 
 _Added by `/ll:refine-issue` — line numbers from the prior refine pass (2026-07-07) have drifted downstream due to v19 (`raw_events`) and v20 (`usage_events`) landing. Read the live source rather than trusting these literals — the slot to bump is no longer `SCHEMA_VERSION = 18 → 19`, the pattern templates are at different line numbers, and one symbol name is wrong._
@@ -306,6 +410,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T21:57:01 - `dc84b178-4ea7-48fc-aee7-d87810974053.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:11:17 - `5e36f3af-c830-4cfb-9bdd-a2ad95303a4c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:50:28 - `9bf8990b-8daf-440e-9ca6-abe848329070.jsonl`

@@ -106,12 +106,25 @@ Add to `history_reader.py`:
 - `scripts/little_loops/cli/issues/epic_progress.py` — call `record_epic_progress_snapshot(db, prog, ts=...)` at the end of `cmd_epic_progress()` (after line 58) inside a `try/except` so a DB write failure cannot break the CLI; add an `--history` flag to `add_epic_progress_parser()` (lines 16–35) that re-uses the new `epic_progress_history()` reader.
 - `scripts/little_loops/cli/history.py` — add an `epic-velocity` subcommand for `ll-history epic-velocity --since 30d`. (`cli/history_context.py` is the separate `ll-history-context` CLI — not the right home.) Insert the new subparser immediately after the `root_parser` block at lines 205–221 (the most recent subcommand added) and before `add_config_arg(parser)` at line 223; mirror the dispatch-by-`args.command` pattern that already routes `summary`/`analyze`/`export`/`sessions`/`root` later in the function.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/observability/schema.py` (lines 487–505, 563–634) — OPTIONAL: register `EpicProgressSnapshotVariant(DESVariant)` with `type: Literal["epic_progress_snapshot"] = "epic_progress_snapshot"` to follow the `IssueSnapshotVariant` / `CommitEventVariant` / `TestRunEventVariant` Channel A precedent. The DES audit (`observability/audit.py:55-67, 75-111`) only flags `event_bus.emit(...)` / `_emit(...)` call sites, so the direct-writer approach is gate-clean either way. Skip if minimizing channel footprint; include if matching the `IssueSnapshotVariant` precedent for symmetry. [Agent 1 / Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_progress.py` — `compute_epic_progress()` (lines 83–147) and `EpicProgress` (lines 17–48) are the canonical rollup source; the snapshot writer should call `compute_epic_progress()` and shape `EpicProgress.to_dict()` into the snapshot row rather than reimplementing the walk.
 - `scripts/little_loops/issue_lifecycle.py` — six `event_bus.emit(...)` call sites (lines 577, 674, 748, 841, 937, 993) all flow into the `SQLiteTransport.send()` `issue.*` branch; no producer-side change needed (snapshot writes happen in the transport, not at the producer).
 - `scripts/little_loops/cli/issues/list_cmd.py` — imports `compute_epic_progress` (lines 63, 234) and uses it for the `--parent` filter; unchanged by this issue but consumes the same rollup function.
 - `scripts/little_loops/cli/issues/__init__.py` — registers `add_epic_progress_parser` at line 795 and dispatches `cmd_epic_progress` at line 857; needs no edits unless the parser signature grows.
 - `scripts/little_loops/transport.py` — registers the SQLite transport on the EventBus (lines 652–655); unchanged.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/__init__.py` (line 44) — re-exports `SQLiteTransport`, `record_issue_snapshot`, etc. from `session_store`; append `record_epic_progress_snapshot` and `backfill_epic_progress_snapshots` for parity (otherwise the helpers are importable but undiscoverable via `from little_loops import *`). [Agent 1 finding]
+- `scripts/little_loops/cli/session.py` (lines 45, 103, 115) — argparse `choices=list(VALID_KINDS)` drives the `--kind`/`--exclude` filter surfaces; once `"epic_progress"` is added to `VALID_KINDS` these auto-extend. No code edit required at this file, but verify the `recent` and `search` subcommands accept the new kind in a smoke test. [Agent 1 finding]
+- `scripts/little_loops/cli/issues/set_status.py:75` — imports `record_issue_snapshot`, `resolve_history_db`; sibling writer pattern that the new snapshot writer mirrors. No code edit required, but flag as the closest set_status-side precedent for transactional safety (the `set_status` cascade writes a snapshot before/after every status flip). [Agent 1 finding]
+- `scripts/little_loops/hooks/post_commit.py:50,73` — imports `record_commit_event` as a direct-write hook reference. ENH-2465 does NOT need a new hook (snapshot writes flow through `SQLiteTransport.send()` `issue.*` branch), but the `post_commit` writer shape is the closest sibling for "best-effort own-connection insert with FTS-index on success". [Agent 1 finding]
+- `scripts/little_loops/pytest_history_plugin.py:126-129` — imports `record_test_run_event`, `resolve_history_db`. Same best-effort direct-writer pattern; flag as the third sibling in the writer family (`record_issue_snapshot` / `record_commit_event` / `record_test_run_event` → `record_epic_progress_snapshot`). [Agent 1 finding]
+- `scripts/little_loops/issue_manager.py:1161` — `self.event_bus.add_transport(SQLiteTransport(db_path or DEFAULT_DB_PATH))` (AutoManager path). Confirms the only place a fresh `SQLiteTransport` is constructed outside `transport.py`. No edit, but flag if the schema-version gate in `ensure_db()` is called inside the transport's `__init__` — verify a v20→v21 auto-upgrade path runs before the first `record_epic_progress_snapshot` call. [Agent 1 finding]
+- `scripts/little_loops/cli/verify_kinds.py:30-47` — `_all_migration_tables()` and `_run()` form the `ll-verify-kinds` gate (the kindless/kind centralization check). The new `epic_progress_snapshots` table MUST be registered in either `_KIND_TABLE` or `_KINDLESS_TABLES` at `session_store.py:223-255` to keep this gate green. Recommended path: register in `_KIND_TABLE` (drives the `--kind epic_progress` filter) and rely on the `set(VALID_KINDS) == set(_KIND_TABLE.keys())` invariant enforced by `TestValidKindsCentralization` (see Tests). [Agent 1 / Agent 2 finding]
+- `scripts/little_loops/parallel/orchestrator.py:1234,1261,1281` — uses `compute_epic_progress` for the all-done gate. Read-only consumer of the same rollup function; could be a follow-up candidate for switching to `epic_progress_latest(epic_id)` to avoid recomputation. Out of scope for ACs but worth a follow-up issue. [Agent 1 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/session_store.py:record_issue_snapshot()` (lines 816–866) — closest architectural analog: best-effort "compute-then-insert" writer called as a side-effect after the main `issue_events` insert.
@@ -129,14 +142,39 @@ Add to `history_reader.py`:
 - `scripts/tests/test_set_status_cli.py:TestIssuesCLISetStatus.test_set_status_writes_new_status` (lines 17–50) — for verifying that `ll-issues epic-progress EPIC-X` actually writes a DB row. Use the autouse `_isolate_history_db` fixture (`conftest.py:519–534`) which redirects DB opens to `tmp_path/.ll/history.db`.
 - `scripts/tests/test_issue_progress.py` — already covers transitive chain behavior in `compute_epic_progress` (no changes needed); reuse to seed test fixtures.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_store.py:TestSchemaV20UsageEvents` (lines 3221–3244) — **closest precedent** for the new `TestSchemaV21EpicProgressSnapshots` class; the v20 test asserts `PRAGMA table_info(usage_events)` column-set equals the expected set. Clone for `epic_progress_snapshots`. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:_bootstrap_schema_at` helper (lines 3891–3911) — apply the v17/v18 historical-schema bootstrap helper for the v20→v21 upgrade test. Pattern at lines 3927–3956 (`_bootstrap_schema_at(db, 14)` → insert → `ensure_db()` → assert version + preservation + NULL columns). [Agent 3 finding]
+- `scripts/tests/test_session_store.py:TestValidKindsCentralization` (lines 3409–3418) — `set(VALID_KINDS) == set(_KIND_TABLE.keys())` invariant; the v21 migration MUST add `"epic_progress"` to BOTH (or to NEITHER and rely on `_KINDLESS_TABLES`) or this test will fail. [Agent 1 finding]
+- `scripts/tests/test_session_store.py` — seven `assert SCHEMA_VERSION == 20` literals (lines 1372, 1817, 1932, 1984, 2080, 3658, 3699) — every literal MUST bump to the live `SCHEMA_VERSION` value (`21`) at the v21 implementation time. Grep for `assert SCHEMA_VERSION == 20` across `scripts/tests/` and update each site. [Agent 1 finding]
+- `scripts/tests/test_assistant_messages.py:88` — one `assert SCHEMA_VERSION == 20` literal; bump to `21`. [Agent 1 finding]
+- `scripts/tests/test_verify_kinds.py:11-52` — `test_clean_state_returns_zero` (line 19-23) and the `epic_progress_snapshots` registration in `_KIND_TABLE`/`_KINDLESS_TABLES` together determine whether this gate passes. Confirm the table is registered in exactly one of the two lists at implementation time. [Agent 1 / Agent 2 finding]
+- `scripts/tests/test_des_audit.py` (lines 27–68, especially `test_real_tree_passes` at 52–68) — the real-tree audit walks `_emit`/`event_bus.emit`/`bus.emit` sites (not direct DB writes); since `record_epic_progress_snapshot` is invoked directly from `SQLiteTransport.send()` without going through `event_bus.emit`, this gate is NOT triggered. Confirmed gate-clean path. No test changes needed unless the optional `EpicProgressSnapshotVariant` is registered, in which case the parametrized `TestVariantShape` tests (lines 74–121) automatically pick it up. [Agent 1 / Agent 3 finding]
+- `scripts/tests/test_history_reader.py:TestNewEventReaders` (lines 1438–1473) — bundles `recent_commit_events`/`recent_test_runs`/etc.; clone a `TestEpicProgressHistoryRead` class here. The closest `epic_progress_history(epic_id, since=..., limit=...)` analog is `test_recent_commit_events_filters`. [Agent 3 finding]
+- `scripts/tests/test_issue_history_cli.py` (lines 14–209) — `ll-history` parser/integration precedent (summary, --json, top-level flag pass-through); clone a `TestEpicVelocity` class to cover the new subcommand's parser + integration. [Agent 3 finding]
+- `scripts/tests/test_issues_cli.py:5786–6012` — `TestEpicProgress*` block already covers the existing CLI; add sibling `test_epic_progress_history_*` tests for the `--history` flag. The fixture `issues_dir_with_epic_progress` (lines 5791–5809) and `issues_dir_with_epic` (lines 5786) are shared with `test_list_group_by_epic_badge` (line 6014) — confirm both fixtures survive the `--history` short-circuit at the top of `cmd_epic_progress`. [Agent 3 finding]
+- `scripts/tests/test_wiring_reference_docs.py:68` — `("docs/reference/API.md", "SQLiteTransport", "ENH-1734")` wiring entry; add a new `("docs/reference/API.md", "record_epic_progress_snapshot", "ENH-2465")` (and a similar one for `epic_progress_history` / `epic_progress_latest` / `epic_velocity` / `EpicProgressSnapshot`) so the wiring reference doc test asserts the new symbols are documented. [Agent 1 finding]
+- `scripts/tests/test_review_epic_skill.py:56-60` — `test_epic_progress_command_referenced` asserts the literal `"ll-issues epic-progress"` in the review-epic skill body. Verify whether the skill body should also reference `--history`; if so, extend the skill text and the assertion. [Agent 3 finding]
+- `scripts/tests/test_issue_parser.py:1459-1460` — `("epic_progress:53", {"status_filter": _ALL_STATUSES})` call-pattern test fixture; line `53` is the call site in `cmd_epic_progress`. The new `--history` short-circuit lives at the TOP of `cmd_epic_progress` (per Implementation Step #5), so the anchor may shift downward; verify and update the line literal at the time of implementation. [Agent 3 finding]
+- `scripts/tests/test_ll_loop_parsing.py:464-516` — `TestParseDuration` already covers `30d` (line 479-483) and multi-digit parsing; no new edge cases indicated for the `epic-velocity` `--since` flag. The CLI test must still cover the invalid-duration error path. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:test_best_effort_on_unopenable_db` (line ~4025-4029) — graceful-degradation precedent for "DB path that cannot be opened does not break the body"; clone for `record_epic_progress_snapshot` and `cmd_epic_progress` so AC#6's graceful-degrade contract is test-enforced. [Agent 3 finding]
+
 ### Documentation
 - `docs/ARCHITECTURE.md` — add v19 row to the schema-versions table (lines 612–635).
 - `docs/reference/API.md` — add exports for `record_epic_progress_snapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity`, and `EpicProgressSnapshot`; update `SCHEMA_VERSION` from 18 to 19 (currently at line 6970 for `little_loops.session_store`, line 6527 for `little_loops.history_reader`).
 - `docs/reference/CLI.md` — document `ll-issues epic-progress --history <EPIC>` (line 1515 area) and the new `ll-history epic-velocity [--since DURATION]` subcommand.
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — add a section showing how to query epic velocity from `.ll/history.db` end-to-end.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` (line 6837, `little_loops.history_reader` import block; lines 7278–7294, `little_loops.session_store` import block; line 7279, `SCHEMA_VERSION=19` reference; line 7346, `### record_commit_event` precedent) — extend the import blocks to surface the four new `history_reader` symbols (`EpicProgressSnapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity`) and two new `session_store` symbols (`record_epic_progress_snapshot`, `backfill_epic_progress_snapshots`); bump `SCHEMA_VERSION` literal from `19` to the live value at implementation time (currently `20`, next open slot is `21`); mirror the `### record_commit_event` section as `### record_epic_progress_snapshot`. [Agent 2 finding]
+- `docs/reference/CLI.md` (lines 1417, 1645, 1670–1676, 2435) — the existing `epic-progress` reference at line 1417 (currently documents `--format`), the ll-issues block at 1645 and 1670–1676 (must mention `--history <EPIC>`), and the `--kind` enumeration at line 2435 (auto-derived from `VALID_KINDS`, but the doc renders the full list — needs a new `epic_progress` row). [Agent 2 finding]
+- `commands/help.md` (line 286, `ll-verify-des-audit` help text; the surrounding block already covers `ll-history` subcommands) — verify that `ll-history epic-velocity` appears in the generated help listing after the new subparser is registered. [Agent 2 finding]
+
 ### Configuration
 - `.ll/ll-config.json` — `analytics.capture.*` gates already apply (snapshot writes inherit the existing `analytics.capture.issues` gate; no new config knob needed).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/features.py:815` (`SQLiteTransport` config block) — confirm the existing `analytics.capture.issues` gate is the one that flips the snapshot writer off. No new gate required, but if a future finer-grained gate is wanted (`analytics.capture.epic_progress`), this is the file to extend (mirroring `_ANALYTICS_CAPTURE_KEYS` in `scripts/little_loops/init/core.py:140`). [Agent 1 finding]
 
 ## Acceptance Criteria
 
@@ -217,6 +255,23 @@ _Added by `/ll:refine-issue` — corrections and refinements on top of the first
     - `docs/guides/HISTORY_SESSION_GUIDE.md` — section on querying epic velocity from `.ll/history.db`.
     - `CHANGELOG.md` — note the v19 schema bump (do NOT add to `[Unreleased]` — promote to a concrete `## [X.Y.Z] - DATE` section during release prep, per project feedback rule).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation; they are not surfaced by the Implementation Steps above._
+
+11. **Update `scripts/little_loops/session_store.py:__all__` (lines 61–93)** — append `"record_epic_progress_snapshot"` and `"backfill_epic_progress_snapshots"` so `from little_loops.session_store import *` exports the new helpers (currently the issue's Implementation Steps only adds the helpers but does not register them in `__all__`).
+12. **Update `scripts/little_loops/session_store.py` module docstring (lines 16–38)** — append entries for the two new public helpers (`record_epic_progress_snapshot`, `backfill_epic_progress_snapshots`) so the docstring-rendered public API surface stays in sync with `__all__`.
+13. **Update `scripts/little_loops/history_reader.py` module docstring (lines 1–42)** — append `EpicProgressSnapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity` to the public API listing (no `__all__` enforcement here, but the docstring is the source of truth for "what's exported from this module").
+14. **Bump `assert SCHEMA_VERSION == 20` literals across the test suite** (Agent 1 finding — 8 sites total):
+    - `scripts/tests/test_session_store.py:1372, 1817, 1932, 1984, 2080, 3658, 3699` (7 sites)
+    - `scripts/tests/test_assistant_messages.py:88` (1 site)
+    These are sentinel tests that assert the current schema version is `20`; bump each to the live value at implementation time (currently the next open slot is `21`).
+15. **Register the new `epic_progress_snapshots` table in `_KIND_TABLE` OR `_KINDLESS_TABLES`** (Agent 1 / Agent 2 finding) — `scripts/little_loops/session_store.py:223-255`. Required to keep `ll-verify-kinds` (`scripts/little_loops/cli/verify_kinds.py:30-47`) and `TestValidKindsCentralization` (`scripts/tests/test_session_store.py:3409-3418`) green. Recommended: register in `_KIND_TABLE` so the `--kind epic_progress` filter is available in `ll-session search`/`recent`.
+16. **Update `scripts/little_loops/cli/session.py` smoke-test** — once `"epic_progress"` is in `VALID_KINDS`, the argparse `choices=list(VALID_KINDS)` at lines 103 and 115 automatically extends the `--kind`/`--exclude` filter surfaces; no code edit required, but add a CLI smoke test that exercises both filter branches with the new kind.
+17. **Extend `scripts/little_loops/__init__.py:__all__`** (Agent 1 finding, line 44) — add `record_epic_progress_snapshot` and `backfill_epic_progress_snapshots` for parity with `record_issue_snapshot` (already exported). Without this, the helpers are importable via `from little_loops.session_store import ...` but undiscoverable via `from little_loops import *`.
+18. **(Optional) Register `EpicProgressSnapshotVariant` in `scripts/little_loops/observability/schema.py`** (Agent 1 / Agent 2 finding, lines 487–505 precedent; append to `DES_VARIANTS` at lines 563–634) — only for consistency with the `IssueSnapshotVariant` Channel A precedent. Gate-clean either way (the DES audit walker at `observability/audit.py:55-67, 75-111` only inspects `event_bus.emit(...)` / `_emit(...)` call sites, and the new transport-side `record_epic_progress_snapshot(self._path, prog, ts=...)` call is not an event-bus emit).
+19. **Add `scripts/tests/test_wiring_reference_docs.py:68` wiring entry** for each new exported symbol (`record_epic_progress_snapshot`, `epic_progress_history`, `epic_progress_latest`, `epic_velocity`, `EpicProgressSnapshot`) so the wiring reference-doc test catches accidental removal of the documentation.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — recommendations §2 row 7 ("Epic progress over time"), §3 ranked recommendation #8
@@ -256,6 +311,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T21:18:38 - `4efa27c8-3195-440e-9c27-a5fc0d9a60a1.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:48:28 - `a2829a96-dd89-45b5-a3b2-6f21828d058e.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:14:06 - `bdbb2eb5-2bad-4d5c-8b9b-7682c9ce3a55.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`

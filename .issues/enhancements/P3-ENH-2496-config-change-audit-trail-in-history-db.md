@@ -8,7 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -275,12 +275,33 @@ Read the latest `config_hash` via `SELECT config_hash FROM config_snapshots ORDE
 
 **Option B**: `INSERT OR IGNORE` on a UNIQUE index (matches `record_commit_event` precedent at lines 1222-1272)
 
+> **Selected:** Option B — matches the dominant `INSERT OR IGNORE` + `cursor.rowcount`-gated `_index()` idiom used by 28+ call sites in `session_store.py` (reuses existing migration shape, dedup mechanism, and test template with no new abstraction).
+
 Add `CREATE UNIQUE INDEX IF NOT EXISTS idx_config_snapshots_hash ON config_snapshots(config_hash)` to the migration; use `INSERT OR IGNORE` and gate `_index()` on `cursor.rowcount`.
 
 - Pro: idiomatic, matches existing pattern, fewer moving parts.
 - Con: requires a UNIQUE constraint in the schema; cannot be called "unconditionally" with the same safety argument — though the call still short-circuits via the rowcount.
 
 **Recommended**: Option B — matches the 23+ `INSERT OR IGNORE` precedent at `session_store.py` lines 443, 487, 517, 704, 705, 1036, 1254, 1320, 1575, 1700, 1759, 2018, 2051, 2156, 2412, 2420, 2436, 2573, 2663, 2707, 3087. Implementer should add `CREATE UNIQUE INDEX idx_config_snapshots_hash ON config_snapshots(config_hash)` to the v21 migration and gate `_index()` on `cursor.rowcount`.
+
+#### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option B — `INSERT OR IGNORE` on a UNIQUE index
+
+**Reasoning**: Option B is the dominant idempotency idiom in `session_store.py` — `INSERT OR IGNORE` on a UNIQUE constraint plus `cursor.rowcount`-gated `_index()` appears at 28+ call sites and is the canonical pattern documented in `record_commit_event` (lines 1222-1272). Option A would be the only writer in the file using SELECT-then-skip semantics, adds a SELECT round-trip per `session_start` for the common no-change case, and forces a divergent test surface (no `cursor.rowcount` return value to assert on). The 64-bit SHA-256 slice from `_hash_args()` (line 1629) is the only minor concern; bumping to the full 64-char `hexdigest()` at the ENH-2496 call site is a one-line override that leaves the shared helper — and `tool_events` row identity — untouched.
+
+##### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — Explicit-SELECT-first | 1/3 | 2/3 | 2/3 | 1/3 | 6/12 |
+| Option B — `INSERT OR IGNORE` on UNIQUE | 3/3 | 3/3 | 3/3 | 1/3 | 10/12 |
+
+**Key evidence**:
+- **Option A**: Diverges from 21+ `INSERT OR IGNORE` call sites; adds a SELECT round-trip per `session_start`; loses the `cursor.rowcount` observation that gates `_index()` elsewhere; `_hash_args()` and `connect()` are reusable but the idempotency contract is novel. Migration runner is orthogonal — no transactional conflict, but no reuse benefit either.
+- **Option B**: `record_commit_event` (lines 1222-1272) provides a copy-with-rename template; `TestRecordCommitEvent` (lines 4235-4283) and `TestRecordIssueSnapshot` (lines 3758-3829) provide a copy-with-rename test template covering roundtrip / dedupe / FTS-searchable / graceful-degradation. v19 `raw_events` (lines 680-708) and v14 `issue_snapshots` migrations show the `CREATE TABLE` + `CREATE UNIQUE INDEX` shape. Only friction: `_hash_args()` returns a 16-char slice (64 bits) — bumping to full SHA-256 at the call site is one line.
 
 #### Other pattern clarifications
 
@@ -380,6 +401,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:28:17 - `3aea4a19-431a-485f-9821-f9d496ab1c6b.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:27:21 - `66c5d53d-135e-4749-a39f-400ab8f96c42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:10:17 - `0e87c489-48ca-489b-8c2a-14ba92f190fd.jsonl`

@@ -13,8 +13,8 @@ labels:
   - history-db
   - backfill
   - captured
-decision_needed: true
-decision_context: "Subprocess argv shape — see Proposed Solution Codebase Research Findings. Option A: stage merged JSONL list into a temp dir (zero worker signature change). Option B: extend worker signature to accept multiple --jsonl=path pairs (cleaner argv, more code change). Recommended: Option A for v1."
+decision_needed: false
+decision_context: "Subprocess argv shape — see Proposed Solution Codebase Research Findings. Option A: stage merged JSONL list into a temp dir (zero worker signature change). Option B: extend worker signature to accept multiple --jsonl=path pairs (cleaner argv, more code change). Selected: Option B (per /ll:decide-issue on 2026-07-16; code evidence outweighed the original --rebuild-precedent rationale)."
 ---
 
 # ENH-2580: ll-session backfill defaults to user-root with project fallback
@@ -132,6 +132,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `session_start.py` argv construction at lines 153-159.
   Cleaner argv; requires touching the worker.
 
+  > **Selected:** Option B — code-evidence outweighed the original `--rebuild`-precedent rationale; six existing CLIs already use `nargs="*"` and `backfill_incremental(jsonl_files=…)` accepts the list directly.
+
   **Recommended**: Option A for v1 — keeps the worker
   contract stable (the `--rebuild` ad-hoc-flag precedent at
   `backfill_worker.py:24` argues against extending argv
@@ -185,6 +187,25 @@ list is deduplicated by absolute path.
    `cli/logs.py`, so the new helper is reusable across both epics.
    Document the helper in
    `docs/reference/API.md#little_loopscli_logs`.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option B — Extend the worker signature to accept multiple `--jsonl=path` arguments.
+
+**Reasoning**: Evidence-based scoring favored Option B (11/12) over Option A (5/12). The worker's existing minimal-parsing style extends naturally to a positional-list argument (`positional[1:]`), and six existing CLIs (`cli/code.py:91`, `cli/harness.py:127`, `cli/issues/finalize_decomposition.py:75`, `cli/sync.py:54-108`, `cli/action.py:224`, `init/cli.py:637`) already use `nargs="*"` for sibling path/ID lists — Option B is a one-pattern continuation, not a new convention. Critically, `session_store.backfill_incremental(jsonl_files=list[Path])` already accepts the file list directly, so the worker change is purely an argv-to-list shim (3–5 lines). The original "Option A recommended" note focused narrowly on the `--rebuild` ad-hoc-flag precedent at `backfill_worker.py:24` and overlooked the broader `nargs="*"` usage that establishes the natural extension path.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — temp-dir staging | 2/3 | 1/3 | 1/3 | 1/3 | 5/12 |
+| Option B — extend worker signature | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+
+**Key evidence**:
+- **Option A**: Worker already accepts a directory and globs `*.jsonl` (reuse 2/3), but the staging mechanism (symlink/hardlink into a temp dir) has no production precedent. Existing `FakePopen` mock at `tests/test_hook_session_start.py:239-247` doesn't model subprocess lifetime, leaving the parent-tempdir-cleanup-vs-detached-child-read race untested. Existing session-start test at `tests/test_hook_session_start.py:288-304` asserts the project directory itself as the worker path — would need restructuring.
+- **Option B**: Six existing CLIs use `nargs="*"` for sibling lists; `backfill_incremental(jsonl_files=list[Path])` accepts the list directly; `_worker_argv.extend([...])` mirrors the existing `.append("--rebuild")` pattern in `session_start.py:153-181`; the existing FakePopen substring-assert test pattern extends with additional `in args` checks. Single call site (`session_start.py:153-159`) means one-touch propagation.
 
 ## Acceptance Criteria
 
@@ -385,5 +406,6 @@ are ingested into. After ENH-2581 lands, this child is a
 ~1-day implementation.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T20:03:41 - `1e81ab41-e129-4542-bb4c-c3ac182057eb.jsonl`
 - `/ll:refine-issue` - 2026-07-16T17:31:04 - `8fa2ea39-9ae6-4c89-90c1-a8a949c1dbde.jsonl`
 - `/ll:capture-issue` - 2026-07-08T00:00:00Z - fourth-pass expansion of EPIC-2457

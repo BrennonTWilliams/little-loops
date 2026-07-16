@@ -9,7 +9,7 @@ captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
 depends_on: [ENH-2497]
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -180,6 +180,8 @@ This is the meaningful implementation choice an implementer must resolve before 
 
 **Option B: Bind `SubagentStart` / `SubagentStop` lifecycle hooks** — use the only Claude-Code-documented surface that carries child identifiers. Requires adding two new event bindings to `hooks/hooks.json`, two new Python handlers (`subagent_start.py` / `subagent_stop.py`) under `scripts/little_loops/hooks/`, and `_dispatch_table()` registrations in `hooks/__init__.py:74-92`. The schema column `child_session_id` would more accurately be named `agent_id` for fidelity to the documented payload. Backfill from JSONL is feasible because the matching child transcript is at `<transcript_path>/<parent_session>/subagents/<agent_id>.jsonl` per the `SubagentStop` documented sample.
 
+> **Selected:** Option B: Bind `SubagentStart` / `SubagentStop` lifecycle hooks — Documented payload carries `agent_id`/`agent_type`/`agent_transcript_path` directly; PostToolUse `tool_response` shape for Agent/Task is unverified in the repo (zero fixture/sample/doc matches)
+
 **Recommended**: Option B — `SubagentStart` / `SubagentStop`. The Claude Code hooks reference documents the payload shape (`session_id`, `agent_id`, `agent_type`, `agent_transcript_path`) and these events fire on every spawn/completion. PostToolUse child-session extraction is unverified in this repository and would require an empirical test before the producer could land. EPIC-2457 third-pass expansion notes already flag ENH-2511 and ENH-2505 as schema-coordination constraints, suggesting the maintainers expect lifecycle hooks rather than response-payload parsing.
 
 ### Integration Map
@@ -263,11 +265,31 @@ ENH-2497 is **planned, not landed** — its issue file remains `status: open`; `
 3. Is the backfill feasible from JSONL alone? `SubagentStop` documented sample places child transcripts at `<parent_transcript_path>/subagents/<agent_id>.jsonl`, which is discoverable during backfill.
 4. Does the `ll-ctx-stats` per-agent block need to roll up against `subagent_runs`, or is that a separate follow-on (the issue mentions it as "future")?
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option B: Bind `SubagentStart` / `SubagentStop` lifecycle hooks
+
+**Reasoning**: Option A's load-bearing assumption — that PostToolUse `tool_response` carries a child-session identifier for Agent/Task — has zero checked-in evidence in the repo (no fixture, no test sample, no documented surface; repository-wide grep for `tool_response.agent_id` / `tool_response.session_id` / `tool_response.sessionId` returns zero matches). Option B uses the only Claude-Code-documented surface (`docs/claude-code/hooks-reference.md:1059-1112`) where `SubagentStart` / `SubagentStop` payloads carry `agent_id`, `agent_type`, and `agent_transcript_path` directly. The 3-layer wiring pattern (`hooks/hooks.json` binding → bash adapter under `hooks/adapters/claude-code/` → Python handler registered in `scripts/little_loops/hooks/__init__.py:_dispatch_table()`) has four clean precedents (SessionStart, Stop, SessionEnd, PreCompact), so Option B's larger surface area is template-driven boilerplate rather than novel work. The known SessionEnd hard-ceiling bug (`scripts/little_loops/hooks/sweep_stale_refs.py:10-19`, anthropics/claude-code#32712) is a designable risk class — Option B handles it by budgeting the `SubagentStop` handler for sub-second best-effort completion from day one.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A: Extract `child_session_id` from `tool_response` | 1/3 | 3/3 | 1/3 | 0/3 | 5/12 |
+| Option B: Bind `SubagentStart` / `SubagentStop` lifecycle hooks | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+
+**Key evidence**:
+- **Option A**: Excellent producer-side reuse — `scripts/little_loops/hooks/post_tool_use.py:158-180` already extracts from `tool_response` inside an analytics-gated block, calls `session_store.connect()` / `commit()` / close, and wraps the whole block in `with contextlib.suppress(Exception):`. The `record_subagent_run` writer would template directly on `record_test_run_event()` (`session_store.py:1352`) or `record_commit_event()` (`session_store.py:1078-1087`). However, the data source itself is unverified: a repository-wide grep for `tool_response.agent_id` / `tool_response.session_id` / `tool_response.sessionId` returns zero matches in any sample payload, test fixture, or documentation surface. Implementing Option A requires empirical confirmation from a live Claude Code run before the producer can land, and the unlanded ENH-2497 dependency adds schema-coordination risk.
+- **Option B**: SubagentStart / SubagentStop payloads are documented at `docs/claude-code/hooks-reference.md:1059-1112` with `agent_id` / `agent_type` / `agent_transcript_path` fields that map directly to the schema columns (the issue text at line 181 already flags the `child_session_id` → `agent_id` column rename). The 3-layer wiring has four precedents (SessionStart, Stop, SessionEnd, PreCompact). The plugin config auditor (`.codex/agents/plugin-config-auditor.toml:53-54`) already enumerates both events as known events — only the bindings/handlers themselves are missing. Test patterns at three layers (unit, adapter round-trip, DB-write) all have templates; no live-fire evidence in the suite, but this is consistent with all other lifecycle hooks.
+
 ## Status
 
 **Open** | Created: 2026-07-06 | Priority: P3 | Decision Needed: yes (child-session identifier source)
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:41:23 - `c5a83150-c2c4-41fe-8bff-072a77dba866.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:08:30 - `8babd643-3346-4d9e-a0fd-d91a1800504e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

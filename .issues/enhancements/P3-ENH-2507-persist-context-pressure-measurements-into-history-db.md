@@ -8,7 +8,7 @@ discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -145,6 +145,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Option A**: Persist from `context-monitor.sh` immediately after it computes the finalized percentage and token estimate, calling a small best-effort Python recorder and passing the extracted session ID plus optional Git metadata. This preserves the authoritative measurement and avoids a second computation, at the cost of one guarded Python call per sampled event.
 
+> **Selected:** Option A — `context-monitor.sh` is the only path that owns the finalized measurement; `record-commit-post-commit` is a near-exact precedent for a shell wrapper that shells out to a Python recorder with `2>/dev/null || true`; `TestContextMonitor.concurrent_updates` + `TestRecordTestRunEvent` are reusable test scaffolds. Option B would port a 350-line shell state machine to Python and race a hook-ordering pitfall.
+
 **Option B**: Persist from `scripts/little_loops/hooks/post_tool_use.py` alongside `tool_events`, refactoring the measurement/state calculation into a shared Python path or explicit handoff so the handler receives the same percentage. This centralizes database writes but expands the refactor surface and can otherwise observe stale state.
 
 **Recommended**: Option A for the first implementation — retain `context-monitor.sh` as the measurement owner, reuse `session_store.record_context_pressure_event()` for the database contract, and keep the call outside the state lock. Revisit Option B only if profiling shows the guarded Python subprocess is materially expensive.
@@ -205,6 +207,25 @@ Bump `SCHEMA_VERSION`. Add `"context_pressure"` to `_VALID_KINDS` and
 - `ll-session recent --kind context_pressure`.
 - `ll-ctx-stats`: add a "Context pressure curve" rendering block
   (ASCII chart or JSON).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: Option A — Persist from `hooks/scripts/context-monitor.sh`.
+
+**Reasoning**: `context-monitor.sh` is the only path that already holds the finalized `USAGE_PERCENT`, `TOKEN_COUNT`, resolved `CONTEXT_LIMIT`, and compaction-reset behavior — Option A reuses that measurement rather than recomputing it. `hooks/scripts/record-commit-post-commit:11` (`python3 -m little_loops.hooks.post_commit >/dev/null 2>&1 || true`) is a near-exact precedent for a shell wrapper that shells out to a Python recorder and never fails the triggering event. Option B would force porting the 350-line `context-monitor.sh` state machine (`estimate_tokens` tool-specific bash arithmetic, `get_transcript_baseline` `tail | jq -s` pipeline, `check_compaction` `ll-precompact-state.json` reader, `STATE_LOCK` critical section, threshold-cross state) into Python, duplicating `scripts/little_loops/context_window.py:39` for the third time, and would race a hook-ordering pitfall: `hooks/hooks.json:90` registers the Python post-tool-use adapter *before* `hooks/hooks.json:104`'s shell monitor, so a Python producer would either re-derive everything or wait (and bust the 5 s timeout).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A — Shell monitor producer | 3/3 | 3/3 | 3/3 | 2/3 | **11/12** |
+| Option B — Python post_tool_use producer | 1/3 | 0/3 | 1/3 | 1/3 | 3/12 |
+
+**Key evidence**:
+- **Option A**: `record-commit-post-commit` + `post_commit.py:main()` (lines 85–101) is a direct precedent for best-effort shell→Python persistence with `2>/dev/null || true`. `record_test_run_event()` (`session_store.py:1352–1414`) is the exact recorder shape (keyword-only scalar + FTS). `TestContextMonitor.test_concurrent_updates` (`test_hooks_integration.py:38–119`, 4-thread ThreadPoolExecutor) and `TestRecordTestRunEvent` (`test_session_store.py:4362–4408`) directly extend to context-pressure coverage.
+- **Option B**: No precedent for shell-PostToolUse → Python-PostToolUse handoff (`.ll/ll-context-state.json` is shell-only). Porting the measurement requires re-implementing `estimate_tokens`, `get_transcript_baseline`, `get_context_limit`, `check_compaction`, and the `STATE_LOCK` read-modify-write in Python; `post_tool_use.py:handle()` runs *before* the shell monitor in `hooks.json`, so any Python producer either re-derives everything or waits (and races the 5 s hook timeout).
 
 ## Implementation Steps
 
@@ -275,6 +296,7 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:45:16 - `8afbe178-3fe3-4585-9a55-ffd680f48820.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:28:14 - `84cbedd9-ee11-4708-8a40-0cc984c6fcac.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:56 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

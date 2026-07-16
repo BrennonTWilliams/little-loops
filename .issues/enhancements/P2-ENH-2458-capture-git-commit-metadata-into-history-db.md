@@ -154,4 +154,20 @@ absent) in test_session_store.py; reader/CLI tests in test_history_reader.py /
 test_ll_session.py. Docs: ARCHITECTURE schema row, API.md, CLI.md.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T22:21:39 - `feea0e77-30dd-43b7-9239-c317db69810d.jsonl`
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
+## Follow-up Wiring Gaps (added by `/ll:wire-issue`)
+
+_Post-implementation verification (2026-07-16). All AC-listed wiring was verified present against the existing implementation. The following are minor non-blocking items not in the explicit AC; tracked here for completeness — none require reopening this issue._
+
+- `commands/commit.md` — does not mention that commits are recorded into `commit_events` when the post-commit hook is wired (discoverability gap; transparent via hook).
+- `docs/guides/HISTORY_SESSION_GUIDE.md` line 95 — says `commit_events` is "Populated live by the session-start backfill" but the live path is the git post-commit hook → `record_commit_event`; the backfill CLI is `ll-session backfill`. Wording conflates the two writers.
+- `docs/reference/CLI.md` — has an explicit `ll-session recent --kind commit` example but no parallel `ll-session search --fts ... --kind commit` example (implicit via `VALID_KINDS`).
+- `.claude/CLAUDE.md` — does not surface the post-commit hook or the new `commit_events` table to users; discoverability relies on `docs/ARCHITECTURE.md` cross-link.
+- Stale anchor in `.issues/enhancements/P3-ENH-2493-persist-harness-eval-outcomes-into-history-db.md` line 148 — cites `record_commit_event at session_store.py:1067-1072`; actual location is `session_store.py:1222-1272`.
+
+### Optional items explicitly deferred by the issue (not gaps)
+
+- `commits_touching_file(path)` reader helper (Proposed Solution § Read API, marked Optional) — never shipped; `recent_file_events()` continues to expose `git_sha` as an opaque string.
+- Runtime `LEFT JOIN commit_events` enricher for `file_events.git_sha` (Expected Behavior § "file_events.git_sha is enriched") — explicitly framed as optional; table existence resolves the FK orphan at the data level.

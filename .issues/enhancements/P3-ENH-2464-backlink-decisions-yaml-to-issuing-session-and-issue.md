@@ -230,6 +230,93 @@ _Added by `/ll:refine-issue` — based on codebase research (locator + analyzer 
 - `config-schema.json` — `decisions` block at lines 531–549 likely needs **no** new fields; new behavior is transparent (always-thread session_id when available, gracefully `None` when not)
 - `scripts/little_loops/config/features.py` — `DecisionsConfig` at lines 509–523 — same; no new key needed
 
+### Wiring Pass — Net-New Findings (added by `/ll:wire-issue`)
+
+_3 parallel wiring-research agents (caller-tracer, side-effect-tracer, test-gap-finder) ran on 2026-07-16 against current `main`. Each entry below is anchor-specific with file:line references and `[Agent N]` attribution. Append-only._
+
+**Files to Modify (additional):**
+
+- `scripts/little_loops/session_store.py:60-93` — `__all__` export list; append `"record_decision_event"` (and optionally `"_backfill_decision_events"`) next to `"record_commit_event"` (line 86) for parity with sibling recorders [Agent 1 / Agent 2]
+- `scripts/little_loops/session_store.py:3304-3316` — `_EXPORT_TABLE_MAP`; add `_EXPORT_TABLE_MAP["decision"] = ("decision_events", "ts")` for `ll-session export` parity with `commit`/`test_run`/`usage` [Agent 1 / Agent 2]
+- `scripts/little_loops/session_store.py:3318` — `_EXPORT_DEFAULT_TABLES`; append `"decision_event"` to the default export set (referenced at lines 3362 and 3371) [Agent 2]
+- `scripts/little_loops/cli/issues/decisions.py:216-247` — `extract-from-completed` subparser; **decide**: either add `--source-session` / `--source-issue-id` flags for symmetry (recommended), or document the one-shot CLI limitation (`source_session_id=None` accepted); dispatch lives at line 323 [Agent 2]
+- `skills/wire-issue/static-coupling-layer.md:50-58` — CouplingEntry capture-bridge example; add `--source-session="$SESSION_ID"` for Option B parity with the 5 sibling skills (note: this is a documentation example, not a programmatic capture-bridge — no skill body runs it) [Agent 1 / Agent 2]
+- `scripts/tests/test_ll_session.py:15-106` — `TestArgumentParsing`; extend with `test_recent_subcommand_decision_accepted` and `test_search_subcommand_decision_accepted` (model on `commit`/`test_run`/`usage` acceptance tests at lines 78-106) [Agent 3]
+
+**Dependent Files (additional):**
+
+- `scripts/little_loops/cli/verify_decisions.py:57` — `_entry_from_dict` consumer; round-trip-safe for the new fields via existing `extra` dict mechanism, no edit required but flagged for completeness [Agent 1]
+- `scripts/little_loops/issue_history/parsing.py` — `scan_completed_issues_from_db` / `scan_completed_issues` return `CompletedIssue` records without `session_id`; if `generate_from_completed` (decisions.py:550) is extended to thread `source_session_id`, lookup must go via `find_session_for_issue_transition()` (history_reader.py:432) per completed issue. Otherwise auto-extracted entries remain `source_session_id=None` [Agent 2]
+- `scripts/tests/test_wire_issue_static_layer.py:17-22` — `CouplingEntry` / `RuleEntry` fixtures; under Option B (4 dataclasses), `CouplingEntry` gains the new fields and the fixture constructor calls must be reviewed [Agent 1]
+- `scripts/tests/test_verify_kinds.py` (full file) — `ll-verify-kinds` gate; `decision_events` MUST land in `_KIND_TABLE` (NOT `_KINDLESS_TABLES`) for the gate to remain green — registering in `_KINDLESS_TABLES` will trip the `TestRun.test_flags_unregistered_table:25` negative-control [Agent 1]
+
+**Tests to Add or Extend (additional):**
+
+- `scripts/tests/test_session_store.py` — new `TestSchemaV21DecisionEvents` class (slot near line 4036 alongside `TestSchemaV16IssueSessionId`, OR near line 4235 alongside `TestRecordCommitEvent`); assert `decision_events` table exists with all 9 columns, `idx_decision_events_source_session` / `_source_issue` / `_decision_id` indexes exist, v20→v21 migration runs idempotently [Agent 3]
+- `scripts/tests/test_session_store.py` — new `TestBackfillDecisionEvents` (sibling to `TestBackfillCommitEvents:4286`); walks `.ll/decisions.yaml` + `.ll/decisions.d/*.json`, idempotent on re-run, `counts` dict carries `"decisions"` key [Agent 3]
+- `scripts/tests/test_session_store.py:3409-3418` — extend `TestValidKindsCentralization` with `test_recent_decision_kind_does_not_raise` (model on `test_recent_snapshot_kind_does_not_raise:3415`); extends the `set(VALID_KINDS) == set(_KIND_TABLE.keys())` invariant [Agent 3]
+- `scripts/tests/test_history_reader.py:1395` — new `TestFindDecisionsForSession` / `TestFindDecisionsForIssue` under existing `TestNewEventReaders` (or standalone); `list[DecisionRecord]` return shape, newest-first ordering, graceful degrade on missing DB / unknown session / unknown issue [Agent 3]
+- `scripts/tests/test_cli_decisions.py:127` — extend `TestDecisionsCLIList` with `test_list_filter_source_session` and `test_list_filter_no_match_when_session_unknown` [Agent 3]
+- `scripts/tests/test_cli_decisions.py:342` — extend `TestDecisionsCLIAdd` with: `test_add_rule_with_source_session_writes_db_row`, `test_add_decision_with_source_issue_id`, `test_add_rule_without_source_fields_db_row_has_nulls`, `test_add_db_write_failure_does_not_break_yaml` (last one asserts the `contextlib.suppress(Exception)` envelope) [Agent 3]
+- `scripts/tests/test_cli_decisions.py` — optional `TestDecisionsCLIShow` for the new `show <id>` subcommand (referenced in motivation; not strictly part of `decision_needed` decision) [Agent 3]
+- `scripts/tests/test_feat1896_skill_bridges.py:49, 89, 125, 168` — extend `TestGoNoGoDecisionsBridge`, `TestDecideIssueDecisionsBridge`, `TestTradeoffReviewDecisionsBridge`, `TestCaptureIssueDecisionsBridge` with `--source-session="$SESSION_ID"` literal-string assertions; extend `TestTradeoffReviewDecisionsBridge` to assert the Close/Defer site has the `[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]` guard for sibling-skill consistency [Agent 3]
+
+**Tests to Update (incidental breaks — schema bump at 7 sites):**
+
+| File | Line | Current | Bump to |
+|------|------|---------|---------|
+| `scripts/tests/test_session_store.py` | 1372 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestBackfillIncremental.test_schema_version_is_seven`) |
+| `scripts/tests/test_session_store.py` | 1817 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestCliEvents.test_schema_version_is_eight`) |
+| `scripts/tests/test_session_store.py` | 1932 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestSchemaV9` upgrade test) |
+| `scripts/tests/test_session_store.py` | 1984 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestSchemaV10.test_schema_version_is_ten`) |
+| `scripts/tests/test_session_store.py` | 2080 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestSchemaV11.test_schema_version_is_eleven`) |
+| `scripts/tests/test_session_store.py` | 3658 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestSchemaV13.test_schema_version_is_thirteen`) |
+| `scripts/tests/test_session_store.py` | 3699 | `assert SCHEMA_VERSION == 20` | `== 21` (in `TestSchemaV13` upgrade test) |
+
+_Refactor opportunity (deferred): read `SCHEMA_VERSION` symbolically rather than literal `21` to avoid drift on future bumps — the v17/v18 `commit_events` and `test_run_events` precedent used symbolic reads._
+
+**Documentation (additional):**
+
+- `docs/reference/API.md:4068-4108` — `ll-session` subcommand description; append `decision` to the `--kind` enumeration prose (twice, hardcoded in prose) [Agent 2]
+- `docs/reference/API.md:6985` — `search()` description prose; append `decision` to the illustrative `--kind` enumeration [Agent 2]
+- `docs/reference/API.md:7284-7290, 7346-7432` — `record_*` precedent section; add parallel `record_decision_event` reference and `decision_events` table row [Agent 2]
+- `docs/reference/API.md:46-47` (already in Integration Map) — extend `little_loops.decisions` module section with new fields [Agent 1 / Agent 2]
+- `docs/reference/CLI.md:2427, 2435` — **correct anchors** (issue's claimed 2245, 2253 are stale); append `decision` to the `search` / `recent` `--kind` prose tables [Agent 2]
+- `docs/reference/CLI.md:1776` — Phase 8 `ll-issues decisions add` example; add `--source-session` example [Agent 1]
+- `docs/reference/COMMANDS.md:247, 276, 363` — Decisions log sections; consider adding `--source-session` mention [Agent 1]
+- `docs/guides/HISTORY_SESSION_GUIDE.md:32-42, 95-97, 170` — `--kind decision` prose enumerations [Agent 2]
+- `docs/guides/DECISIONS_LOG_GUIDE.md:266, 270, 278, 285, 295, 484` — `ll-issues decisions add` examples; add `--source-session` example [Agent 1]
+- `docs/ARCHITECTURE.md:769` — persistence-layer prose mentions the YAML log only; add a sentence about the DB mirror once landed [Agent 2]
+- `specs/harness-optimize-rubric.md:358` — `ll-issues decisions add` example; consider adding `--source-session` example [Agent 1]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by 3-agent wiring analysis and must be included in the implementation. All anchors verified against current `main` (2026-07-16). Append after Implementation Step 11._
+
+12. Update `scripts/little_loops/session_store.py:60-93` — append `"record_decision_event"` (and optionally `"_backfill_decision_events"`) to `__all__` next to `"record_commit_event"` (line 86).
+13. Update `scripts/little_loops/session_store.py:3304-3316` and `:3318` — add `_EXPORT_TABLE_MAP["decision"] = ("decision_events", "ts")` and append `"decision_event"` to `_EXPORT_DEFAULT_TABLES` for `ll-session export` parity.
+14. Decide & extend `scripts/little_loops/cli/issues/decisions.py:216-247` — `extract-from-completed` subparser: either add `--source-session` / `--source-issue-id` flags (recommended for symmetry), or document the one-shot CLI limitation (`source_session_id=None` accepted); dispatch lives at line 323.
+15. Update `skills/wire-issue/static-coupling-layer.md:50-58` — CouplingEntry capture-bridge example; add `--source-session="$SESSION_ID"` for Option B parity with the 5 sibling skills.
+16. Update documentation prose — append `decision` to `--kind` enumerations in:
+    - `docs/reference/API.md:4068-4108, 6985, 7284-7290`
+    - `docs/reference/CLI.md:2427, 2435` (NOT 2245/2253 — those anchors are stale; see Re-verified Anchors table)
+    - `docs/guides/HISTORY_SESSION_GUIDE.md:32-42, 95-97, 170`
+    - `docs/guides/DECISIONS_LOG_GUIDE.md:266, 270, 278, 285, 295, 484` (add `--source-session` example)
+    - `docs/reference/COMMANDS.md:247, 276, 363` (Decisions log sections)
+    - `docs/ARCHITECTURE.md:769` (add DB-mirror prose)
+    - `specs/harness-optimize-rubric.md:358` (add `--source-session` example)
+17. Tests (additional beyond Integration Map's `### Tests to Add or Extend`):
+    - `scripts/tests/test_session_store.py` — new `TestSchemaV21DecisionEvents` (near line 4036 or 4235), new `TestBackfillDecisionEvents` (sibling of `TestBackfillCommitEvents:4286`), extend `TestValidKindsCentralization:3409-3418`
+    - `scripts/tests/test_history_reader.py:1395` — new `TestFindDecisionsForSession` / `TestFindDecisionsForIssue`
+    - `scripts/tests/test_cli_decisions.py:127` — extend `TestDecisionsCLIList` (`--source-session` filter)
+    - `scripts/tests/test_cli_decisions.py:342` — extend `TestDecisionsCLIAdd` (4 new tests covering `--source-session`/`--source-issue-id` plumbing + DB-mirror + suppress-envelope)
+    - `scripts/tests/test_cli_decisions.py` — optional `TestDecisionsCLIShow`
+    - `scripts/tests/test_ll_session.py:15-106` — extend `TestArgumentParsing` with `test_recent_subcommand_decision_accepted` / `test_search_subcommand_decision_accepted`
+    - `scripts/tests/test_feat1896_skill_bridges.py:49, 89, 125, 168` — extend 4 bridge tests with `--source-session="$SESSION_ID"` literal-string assertions; extend `TestTradeoffReviewDecisionsBridge` to assert the `[ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]` guard
+    - `scripts/tests/test_wire_issue_static_layer.py:17-22` — `CouplingEntry` fixture review for Option B
+    - `scripts/tests/test_verify_kinds.py` — confirm `decision_events` registration keeps the gate green
+18. Bump `assert SCHEMA_VERSION == 20` → `== 21` at 7 sites in `scripts/tests/test_session_store.py`: lines 1372, 1817, 1932, 1984, 2080, 3658, 3699. (Refactor opportunity: read `SCHEMA_VERSION` symbolically rather than literal `21` to avoid drift on future bumps.)
+
 ## Acceptance Criteria
 
 - New YAML fields `source_session_id` and `source_issue_id` are backward-compatible (legacy YAML without them loads as `None`).
@@ -593,6 +680,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T21:05:34 - `49522429-a4f8-47fc-bf61-54cfd3e4c244.jsonl`
 - `/ll:decide-issue` - 2026-07-16T18:40:25 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
 - `/ll:decide-issue` - 2026-07-16T18:32:14 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:40:07 - `ea5d084b-1c5c-442a-875a-55dfbf608ccc.jsonl`

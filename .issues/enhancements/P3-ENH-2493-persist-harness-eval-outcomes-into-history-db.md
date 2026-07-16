@@ -31,6 +31,21 @@ capturing the structured result so eval-score trends are queryable. This mirrors
 what ENH-2459 did for pytest — turn an exit code into a structured, trend-able
 signal.
 
+## Architectural Note — direct-write is primary (ARCHITECTURE-144 scope)
+
+ARCHITECTURE-144 (`.ll/decisions.yaml`, ENH-2581) named this issue among those
+"turned into event_type parser tasks over raw_events." That clause is scoped by a
+later project decision (see `.ll/decisions.d/`): the parser reframe applies only
+to fields sourced from the 5 JSONL-ingested `raw_events` kinds. `ll-harness` runs
+appear as Bash `tool_events` **only when run inside a Claude session**;
+out-of-session / CI / manual runs never touch the transcript, and the semantic
+`verdict` / `exit_code` would have to be scraped from captured stdout. Therefore
+**direct-write (`record_harness_event`) stays the primary producer** — it is the
+only path that captures every run with structured fields. An optional
+`_backfill_harness_events` parser over `tool_events` (keyed on the `ll-harness`
+command basename) may be added later as *secondary enrichment*, not a replacement.
+This is a documented, justified pattern deviation, mirroring ENH-2507.
+
 ## Motivation
 
 - **Evals exist to be tracked over time, and currently aren't.** A harness that
@@ -209,6 +224,19 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 8. Docs: `docs/ARCHITECTURE.md` schema row, `docs/reference/API.md`,
    `docs/reference/CLI.md`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and MUST be included in the implementation alongside Steps 1–8:_
+
+9. **`_EXPORT_TABLE_MAP` + `_EXPORT_DEFAULT_TABLES`** — at `session_store.py:3304-3329`, append `"harness_event": ("harness_events", "ts")` and `"harness_event"`. Without this, `ll-session export --tables harness_event` fails silently (table not in map). Mirror `test_run_event` precedent at lines 3313–3314.
+10. **`_REBUILD_TABLES` exclusion comment** — at `session_store.py:2818-2823`, extend the comment to enumerate `harness_events` as direct-write-only. No code change (rebuild already skips it correctly), but the comment prevents future contributors from mistakenly adding it to the rebuild list.
+11. **DES variant registration** — in `scripts/little_loops/observability/schema.py`, add `HarnessEventVariant` (type `Literal["harness_event"]`) after `TestRunEventVariant` at lines 506–507, and register it in the `DES_VARIANTS` tuple around line 626. **Mandatory** — without this, `ll-verify-des-audit` flags un-covered emit sites. Add a counterpart assertion in `scripts/tests/test_des_schema.py`.
+12. **`export --tables` help text** — at `cli/session.py:228-230`, append `, harness_event` to the hardcoded `"Choices: session, issue_event, ..."` string (kept in sync with `_EXPORT_TABLE_MAP`).
+13. **Mermaid diagram `v1–v20` → `v1–v21`** — at `docs/ARCHITECTURE.md:723, 748`, bump schema-version ranges to include v21.
+14. **API doc import snippets** — at `docs/reference/API.md:6837-6850` and `:7287`, add `recent_harness_events` / `harness_pass_rate` / `record_harness_event` to the rendered `from little_loops.X import (...)` blocks.
+15. **CLI doc `--kind` tables** — at `docs/reference/CLI.md:2427, 2435, 2509-2514`, append `,harness` to the static `--kind {tool,file,...}` choice tables and add a `--kind harness` example snippet.
+16. **`scripts/tests/test_des_schema.py`** — add a counterpart assertion verifying `HarnessEventVariant` coverage (mirroring existing variant registration checks).
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (loop/eval outcomes gap)
@@ -235,6 +263,8 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 - Lines 119–130 — `_KIND_TABLE` dict: add `"harness": "harness_events"`.
 - Lines 521–544 (v18 migration slot) — append v19 `harness_events` table + 3 indexes (mirroring the v18 `test_run_events` block shape). `_apply_migrations` (line 609) is append-only; no helper function needed.
 - Lines 60–87 (`__all__`) + module docstring top-of-file — export `record_harness_event` and reference it in the Public API list.
+- **Lines 3304–3329** — `_EXPORT_TABLE_MAP` and `_EXPORT_DEFAULT_TABLES`: append `"harness_event": ("harness_events", "ts")` and `"harness_event"` (mirror `test_run_event`/`commit_event` precedent at 3313–3314). Without this, `ll-session export --tables harness_event` will fail. `[Agent 1 + Agent 2]`
+- **Lines 2818–2823** — `_REBUILD_TABLES` exclusion-comment block: extend to enumerate `harness_events` alongside `cli_events/file_events/test_run_events/...` so future schema-doc readers know `harness_events` is direct-write-only. No code change (rebuild skips it correctly today). `[Agent 2]`
 
 **Producer (`scripts/little_loops/cli/harness.py`)**
 - Line 22 — imports: add `record_harness_event` from `little_loops.session_store`.
@@ -251,12 +281,25 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 
 **CLI (`scripts/little_loops/cli/session.py`)**
 - Lines 91–106 + 113–129 — append `"harness"` to both `--kind` `choices` lists (search and recent parsers). Module docstring (line 8–10) needs `"harness"` added to the kind list paragraph.
+- **Lines 228–230** — `export --tables` help text hardcodes `"Choices: session, issue_event, ..."`; append `, harness_event` so the help string stays in sync with `_EXPORT_TABLE_MAP`. `[Agent 2]`
+
+**DES audit / observability (NEW for this issue)**
+- **Lines 506–507 of `scripts/little_loops/observability/schema.py`** — add a `HarnessEventVariant` (type `Literal["harness_event"]`) mirroring `TestRunEventVariant` (lines 501–505) and `CommitEventVariant` (lines 494–498).
+- **Line ~626 of `observability/schema.py`** — register the new variant in the `DES_VARIANTS` tuple (after `TestRunEventVariant`).
+- **`scripts/tests/test_des_schema.py`** — add a counterpart assertion verifying `HarnessEventVariant` is registered (mirroring existing variant coverage). Without this, `ll-verify-des-audit` will flag un-covered emit sites. `[Agent 1 + Agent 2]`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/__init__.py` — re-exports `main_harness`; no change required (entry point already wired at `pyproject.toml:54`).
 - `scripts/tests/test_cli_harness.py:1-100` — existing `FakeRunner` / `_make_completed` / `_make_namespace` / `_llm_verdict` helpers provide the wire-up surface for new `TestHarnessEventPersistence` tests.
 - `scripts/little_loops/fsm/evaluators.py:49-58` — defines `EvaluationResult` (fields: `verdict`, `details`) used by `evaluate_llm_structured` at line 915 and consumed at `harness.py:215`.
 - `scripts/little_loops/git_utils.py` — `get_head_sha()` / `get_current_branch()` available for populating `head_sha` / `branch` columns (used analogously in `record_commit_event` at `session_store.py:1067-1072`).
+- `scripts/little_loops/cli/verify_kinds.py:38-47` — `_run()` scans every `CREATE TABLE` in `_MIGRATIONS` and asserts each appears in `_KIND_TABLE` or `_KINDLESS_TABLES`. Adding `harness_events` to `_MIGRATIONS` without `_KIND_TABLE` registration **fails the gate**. `[Agent 1]`
+- `scripts/little_loops/hooks/session_start.py:161-172` — auto-rebuild path (`_last_rebuild_version < SCHEMA_VERSION`) fires on next session start once `SCHEMA_VERSION` is bumped; the JSONL-derived cache tables will rebuild automatically. No code change required. `[Agent 1]`
+- `scripts/little_loops/cli/logs.py:1495-1736` — `_EvalInvocation` / `EvalFixture` reconstruction path (`ll-logs eval-export`) does NOT consult `harness_events` today; it builds fixtures from JSONL alone. Unaffected by this issue (candidate follow-on only). `[Agent 1]`
+- `scripts/little_loops/cli/loop/_helpers.py:1926, 1930, 2101` — references `harness_pass_rate` / `harness_pass` for the **A/B comparator** (different semantics). Unrelated to the new `history_reader.harness_pass_rate()`. **Naming collision risk** — see "Notable Risks" below. `[Agent 1]`
+- `scripts/little_loops/ab_writer.py:30, 39, 146, 174, 194, 221, 265` — defines `ABResults.harness_pass_rate` (float 0-1 fraction). The new `history_reader.harness_pass_rate(target, since)` shares the name with different semantics. Scoped to different modules — no import conflict — but downstream callers must distinguish. `[Agent 1]`
+- `scripts/little_loops/cli/migrate.py`, `cli/migrate_status.py`, `cli/migrate_labels.py`, `cli/migrate_relationships.py` — one-shot issue-file migrations only; do not touch `_MIGRATIONS` / `VALID_KINDS` / `_KIND_TABLE`. No update. `[Agent 1]`
+- `scripts/little_loops/init/writers.py:50, 70` — `Bash(ll-harness:*)` allow-list and CLI docstring mention; descriptive prose only, not a wiring constraint. Optional prose update ("eval outcomes persisted to history.db") only. `[Agent 1]`
 
 ### Similar Patterns
 - **`session_store.py:1171-1233`** — `record_test_run_event()` is the canonical sibling (kwargs shape, `_index(..., kind="test_run", ...)` call, `connect()` → `INSERT` → `commit` in `try/finally`). `pytest_history_plugin.py:81-148` is the consumer pattern.
@@ -272,11 +315,33 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 - `scripts/tests/test_ll_session.py:977-989` — `test_search_kind_commit_filters`; mirror for `test_search_kind_harness_filters`.
 - `scripts/tests/test_cli_harness.py` — new `TestHarnessEventPersistence` class (PASS run, FAIL run, timeout, DSL multi-row, graceful degradation: DB absent/locked unchanged harness exit code).
 
+_Wiring pass added by `/ll:wire-issue` — additional tests identified that the issue does not enumerate:_
+- **`TestHarnessSchema.test_harness_event_indexes_exist`** (new in `scripts/tests/test_session_store.py`) — mirror `test_session_id_index_exists_and_is_used` at `:4049`. Asserts `idx_harness_runner`, `idx_harness_target`, `idx_harness_passed` exist in `sqlite_master`. `[Agent 3]`
+- **`TestHarnessSchema.test_harness_kind_registered_in_both_tables`** — direct integrity assertion: `"harness" in VALID_KINDS` and `_KIND_TABLE["harness"] == "harness_events"`. Closes gap left by `test_verify_kinds.py`'s scan-only approach. `[Agent 3]`
+- **`TestRecordHarnessEvent.test_semantic_columns_round_trip`** — write/read cycle for `semantic_prompt`, `semantic_confidence`, `semantic_reason`, `semantic_evidence`, `semantic_model` (mirror `test_roundtrip`). `[Agent 3]`
+- **`TestRecordHarnessEvent.test_parent_id_round_trip`** — self-FK nullable column accepts arbitrary int (or `NULL`). `[Agent 3]`
+- **`TestRecordHarnessEvent.test_harness_target_fts_searchable`** — verify `_index()` writes `kind="harness"` row to FTS5 when `record_harness_event` is called; mirror `test_record_skill_event_fts_indexed` at `:1641`. `[Agent 3]`
+- **`TestRecordHarnessEvent.test_semantic_passed_mapping`** — `@pytest.mark.parametrize(("verdict", "passed"), [("yes", 1), ("no", 0), ("blocked", 0), ("partial", 0), ("error", 0)])`; mirror `test_semantic_non_yes_fails` at `:612`. `[Agent 3]`
+- **`TestHarnessEventPersistence.test_dsl_aggregate_and_per_task_rows_with_parent_id`** — assert DSL batch writes 1 aggregate row (`runner="dsl"`, `parent_id IS NULL`) + N per-task rows (`runner="dsl-task"`, `parent_id = aggregate.id`). No existing precedent; new assertion. `[Agent 3]`
+- **`TestHarnessEventPersistence.test_main_harness_succeeds_when_db_unopenable`** — set `LL_HISTORY_DB=/nonexistent/path.db` and assert exit code unchanged (PASS still exits 0). Mirrors `cli_event_context`'s missing `try/except` (verified `session_store.py:1054-1091`) — `record_harness_event` MUST be wrapped in `contextlib.suppress(Exception)` at the call site. `[Agent 3]`
+- **`TestNewHarnessReaders.test_recent_harness_events_filters`** (`scripts/tests/test_history_reader.py`) — assert `runner=`, `target=`, `since=` filters independently and combined. Mirror `test_recent_commit_events_filters` at `:1438`. `[Agent 3]`
+- **`TestNewHarnessReaders.test_harness_pass_rate_returns_none_when_no_semantic_results`** — division-by-zero guard when all rows have `semantic_passed IS NULL`. Mirror `summarize_skills`'s `(... if completions else None)` at `:533-545`. `[Agent 3]`
+- **`TestNewHarnessReaders.test_readers_return_empty_on_missing_db`** — both `recent_harness_events` and `harness_pass_rate` return `[]` / `None` for missing DB. Mirror the existing test at `:1530`. `[Agent 3]`
+- **`scripts/tests/test_verify_kinds.py`** — `test_clean_state_returns_zero` will pass once `_KIND_TABLE` is updated; no test code change needed but the implementation must satisfy the data-driven invariant. `[Agent 1]`
+
 ### Documentation
 - `docs/ARCHITECTURE.md:612-635` — `history.db` schema-versions table; append v19 row (`harness_events`) next to v18 `test_run_events`.
 - `docs/reference/API.md:6723-6767` — module-reference blocks for `recent_test_runs` and friends; add `recent_harness_events` + `harness_pass_rate`.
 - `docs/reference/API.md:6980-7048` — `record_test_run_event` reference doc; add `record_harness_event`.
 - `docs/reference/CLI.md:2245, 2253` — `--kind {...,harness}` flag tables for both `search` and `recent`; lines 2280–2282 example block needs a `--kind harness` snippet.
+
+_Wiring pass added by `/ll:wire-issue` — additional documentation coupling:_
+- **`docs/ARCHITECTURE.md:723, 748`** — mermaid diagrams reference `(v1–v20)` ranges (in `ensure_db() — bootstrap schema` and components table); bump to `(v1–v21)`. Schema-versions table line range has grown: current row block sits near `:657-678` (not the older `:612-635` anchor). `[Agent 2]`
+- **`docs/reference/API.md:6837-6850`** — Python import snippet `from little_loops.history_reader import (...)` lists all readers; append `HarnessEvent`, `recent_harness_events`, `harness_pass_rate`. `[Agent 2]`
+- **`docs/reference/API.md:7287`** — `session_store` import snippet — append `record_harness_event`. `[Agent 2]`
+- **`docs/reference/API.md:4102-4103`** — `--kind {tool,file,...,usage}` choice list (CLI doc snippet, distinct from the live argparse choices); append `,harness`. `[Agent 2]`
+- **`docs/reference/CLI.md:2427, 2435, 2509-2514`** — fixed `--kind {tool,file,...}` table at `:2427` is stale (missing `snapshot`, `usage`); mirror the live `VALID_KINDS` by appending `,harness` (and consider fixing the existing drift). `:2435` is the `recent --kind` table; needs same append. `:2509-2514` is the `recent --kind` example block; needs `--kind harness` example. `[Agent 2]`
+- **`scripts/little_loops/cli/session.py:8-10`** (module docstring) — the prose list at the top of `cli/session.py` enumerates kinds; append `"harness"`. Already noted in the existing map but confirmed critical (the docs string is rendered in `--help`). `[Agent 1+2]`
 
 ### Configuration
 - `config-schema.json:1577-1611` — `analytics.capture` block. `additionalProperties: false`, so adding `"harness_events": true` toggle (analogous to `corrections` / `file_events`) needs both schema and consumer wiring; not strictly required to ship — keep parity with ENH-2459 which does not gate `test_run_events`.
@@ -284,6 +349,18 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 ## Status
 
 **Open** | Created: 2026-07-05 | Priority: P3
+
+---
+
+## Notable Risks (added by `/ll:wire-issue`)
+
+_These risks surfaced during the wiring analysis and should be addressed before or during implementation:_
+
+1. **Naming collision: `harness_pass_rate`.** The new `history_reader.harness_pass_rate(target, since)` (eval-flip rollup across DB history) shares its name with `scripts/little_loops/ab_writer.py:146` `ABResults.harness_pass_rate` (float 0–1 fraction from the A/B blind comparator). They are scoped to different modules, so no Python import collision — but downstream consumers of `cli/loop/_helpers.py:1926-1930` (which currently uses the A/B variant) MUST distinguish. **Recommendation**: keep both names; add a docstring paragraph at the top of `history_reader.harness_pass_rate` clarifying the eval-history semantics vs. the A/B semantics. The `specs/harness-optimize-rubric.md:280,316` and `specs/harness-optimize-rubric-check.py:853` references use the A/B context — unrelated to this issue, but worth a comment so future readers don't conflate them. `[Agent 1]`
+
+2. **`cli_event_context` does NOT swallow `sqlite3.Error`.** Verified at `session_store.py:1054-1091` — the existing wrap commits without `try/except`, so a missing/locked DB raises into the harness CLI body. The newer `skill_event_context` (`session_store.py:1108-1195`) wraps in `try/except sqlite3.Error` per EPIC-1707. **The harness call site MUST wrap `record_harness_event(...)` in `contextlib.suppress(Exception)`** (mirroring `pytest_history_plugin.py:118-121`). This is a hard requirement — `cli_event_context` cannot be relied on for graceful degradation. Add a `TestHarnessEventPersistence.test_main_harness_succeeds_when_db_unopenable` test that pins this contract. `[Agent 1 + Agent 2]`
+
+3. **DES audit Phase 1 regex does NOT match direct DB inserts.** `observability/audit.py:55-67` scans for `self._emit(...)` / `event_bus.emit(...)` calls; `record_harness_event(...)` is a direct DB insert, not an event-bus emit. The DES audit gate will NOT flag the new producer unless the `HarnessEventVariant` is explicitly registered in `observability/schema.py` `DES_VARIANTS`. Skipping step 11 of the Wiring Phase lets the new producer ship undetected by the audit gate. `[Agent 2]`
 
 ---
 
@@ -305,6 +382,8 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T21:46:25 - `4035a88c-b8a6-4625-98d9-33f0bbb7d51e.jsonl`
+- `/ll:wire-issue` - 2026-07-16T00:00:00Z - `<this-session>`
 - `/ll:refine-issue` - 2026-07-16T15:04:04 - `74755637-ff93-4bca-bf37-d7f6bf2012f5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:47 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:41:19 - `b56869a4-8510-44e9-9ae9-aea10bc8d02d.jsonl`

@@ -424,7 +424,235 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+## Wiring Pass Addendum (added by `/ll:wire-issue` on 2026-07-16)
+
+This addendum captures every wiring touchpoint surfaced by the three parallel research agents (Caller Tracer, Side-Effect Tracer, Test Gap Finder) that is NOT already enumerated in the Integration Map and Implementation Steps above. Each item is verified against the live source as of 2026-07-16. Drift corrections are listed separately at the end. The session_log entry appended below records the source JSONL.
+
+### Dependent Files (Callers / Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Direct importers and consumers of the changed code that are NOT already listed in the issue's `### Files to Modify`. These are adjacent touchpoints; not all require editing, but each one must be checked during implementation.
+
+- `scripts/little_loops/cli/loop/__init__.py:25-41` — handler-imports group; add `cmd_runs` to the `from .info import ...` block alongside `cmd_history`, `cmd_list`, `cmd_show`.
+- `scripts/little_loops/cli/loop/__init__.py:54-86` — `known_subcommands` set; MUST add `"runs"` so the implicit-`run` pre-parser at line 92 doesn't shadow it.
+- `scripts/little_loops/cli/loop/__init__.py:100-118` — `epilog` example block; append a `ll-loop runs` example alongside existing `ll-loop history fix-types` reference.
+- `scripts/little_loops/cli/loop/__init__.py:521-573` — `history_parser` argument block; add `--summary` flag here. Use `action="store_true"` boolean (NOT `--since`-style optional); in `cmd_history` use `getattr(args, "summary", False)` for defensive access matching existing flag-handling pattern at `cli/loop/info.py:966`.
+- `scripts/little_loops/cli/session.py:1-23` — module docstring subcommand list at lines 8-10 (`tool, file, issue, loop, correction, message, skill, cli, snapshot, commit, test_run`); append `loop_run`. The docstring is hand-maintained; `VALID_KINDS` auto-derives argparse `choices=[...]` at lines 103 and 115, but does NOT auto-flow into the docstring.
+- `scripts/little_loops/cli/loop/_helpers.py:145` — calls `archive_run_only` on forced interruption; Gap Q reconciler site (Decision G2 follow-on).
+- `scripts/little_loops/cli/loop/_helpers.py:1458` — defines `_make_instance_id`; provides the invocation-time `run_id` source. (Note: line has drifted from the issue's claim of `:1239`; see Anchor Drift table.)
+- `scripts/little_loops/cli/logs.py:1752-1783` — existing CLI-side interpretation of archived `loop_complete` events; will continue to work (reads `events.jsonl`, not `loop_runs`). No v1 change.
+- `scripts/little_loops/fsm/executor.py:2457` — defines `_handle_handoff`; Gap R reconciler site (Decision G2 follow-on). The BaseException skip path (`executor.py:729-738` has `except Exception` but no `finally`) is documented as known v1 coverage gap.
+- `scripts/little_loops/fsm/persistence.py:743` — treats `loop_complete` as archival event; no v1 change needed.
+- `scripts/little_loops/session_store.py:1473-1474` — `kind` validation gate; adding `"loop_run"` to `VALID_KINDS` enables both write paths and the `_index()` FTS row.
+- `scripts/little_loops/session_store.py:2824-2834` — `_REBUILD_TABLES` deliberately excludes `loop_events` and `loop_runs` (commented at lines 2818-2823). The new migration block should follow this same convention so a future `_REBUILD_TABLES` audit doesn't try to add `loop_runs` to it.
+- `scripts/little_loops/session_store.py:2835` — `_REBUILD_SEARCH_KINDS` currently `("tool", "message", "skill", "correction", "usage")` only. v1 should NOT add `"loop_run"` here (the FTS row from `record_loop_run_summary` will not be touched by `rebuild()`, but operators who delete a `loop_runs` row manually accept stale-FTS responsibility — see Decision F2 follow-on).
+- `scripts/little_loops/session_store.py:3309` — `export_history` table-name mapping. Must add `"loop_run": ("loop_runs", "ts")` for `ll-session export --tables loop_run` to work; otherwise the export silently skips the new table.
+- `scripts/little_loops/cli/verify_kinds.py:30-47` — gate; `loop_runs` MUST be registered in `_KIND_TABLE` in lock-step with the migration's `CREATE TABLE`, or `ll-verify-kinds` exits 1.
+- `scripts/little_loops/cli/verify_des_audit.py:97-164` — DES audit gate (only required if Decision A2). Walks `_emit(...)` call sites and fails on any emit whose type string is not in `DES_VARIANT_TYPES` (`scripts/little_loops/observability/schema.py:653`).
+- `scripts/little_loops/observability/__init__.py:18-26` — DES registry exports; only matters if Decision A2.
+- `scripts/little_loops/observability/schema.py:563-634` — `DES_VARIANTS` tuple; only A2 (would need a `LoopRunSummaryVariant`).
+- `scripts/little_loops/observability/audit.py:53-189` — DES audit allow-list consumer; only A2.
+- `scripts/little_loops/generate_schemas.py:391-402` — registers the generated `loop_complete` event schema; only A2.
+- `scripts/little_loops/session_store.py:768-822` — `_split_sql_statements` migration splitter; the new migration block must follow the v17 multi-statement layout (`CREATE TABLE` + 3 named indexes) so the splitter handles it without modification.
+- `scripts/little_loops/session_store.py:2962-2963` — `backfill()` dispatch; `_backfill_loops` writes synthetic `transition="backfill"` rows directly (no historical `loop_runs` materialization). Decision F2 follow-on will add a line here.
+- `scripts/little_loops/hooks/session_start.py:150-171` — `--rebuild` flag logic compares `_last_rebuild_version < SCHEMA_VERSION`; after migration lands, an unrun `SessionStart` triggers a rebuild, but since `_REBUILD_TABLES` excludes `loop_runs`, the rebuild is a no-op for `loop_runs`. Document this for the Decision F2 follow-on.
+
+### Files to Modify (additional entries not already in the Integration Map)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/loop/__init__.py:25-41, 54-86, 100-118, 521-573` — sub-changes within the already-listed file (`cli/loop/__init__.py` at line 370). Add `cmd_runs` import, `"runs"` to `known_subcommands`, `epilog` example, `history_parser --summary` flag.
+- `scripts/little_loops/cli/session.py:1-23` — module docstring subcommand list (hand-maintained; NOT auto-derived). Append `loop_run`.
+- `scripts/little_loops/session_store.py:3309` — `export_history` table-name mapping. Add `"loop_run": ("loop_runs", "ts")`.
+- `scripts/little_loops/session_store.py:2824-2834` — comment on new migration block matching the `_REBUILD_TABLES` deliberate-exclusion convention.
+- `scripts/tests/test_session_store.py:90-106` — `test_all_tables_created` (verify the precise test name during impl). Add `"loop_runs"` to the table-name tuple.
+- `scripts/tests/test_session_store.py:3410-3418` — `TestValidKindsCentralization` set-equality invariant. Adding `"loop_run"` to both `VALID_KINDS` and `_KIND_TABLE` keeps the test green; optionally add a new test pinning `"loop_run" in VALID_KINDS and _KIND_TABLE["loop_run"] == "loop_runs"`.
+- `scripts/tests/test_session_store.py:4444-4456` — `_LOOP_EVENT_TYPES` membership test for `("loop_start", "loop_complete", "state_enter", "route")`. Decision A1 keeps `loop_complete` (no change); Decision A2 would require `"loop_run_summary"` in the set.
+
+### Tests to Update / Add (additional entries not already in the Integration Map)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+Existing test files / classes that touch the affected code and should be checked during implementation (NOT covered by the issue's narrow test list):
+
+- `scripts/tests/test_fsm_executor.py:1677-1697` — `test_loop_complete_event_details` asserts on `final_state`, `iterations`, `terminated_by` from `loop_complete` payload. Verify the producer-side `record_loop_run_summary()` call from `_finish()` doesn't change these shape assertions.
+- `scripts/tests/test_fsm_executor.py:2310-2379` — `test_exception_during_execution_emits_error_in_loop_complete_event` and `test_normal_termination_omits_error_from_loop_complete_event`. Both go through `_finish()` and would hit the new writer call; ensure they pass.
+- `scripts/tests/test_fsm_executor.py:2653-2686, 2775-2983, 8332-8481` — Multiple `loop_complete` assertions across `TestFSMExecutorBasic` and downstream test classes; spot-check during impl.
+- `scripts/tests/test_fsm_persistence.py:867-887, 898, 931-949, 2107-2436` — `PersistentExecutor.archive_run_only()` lifecycle tests. Document Gap Q v1 known coverage gap in a new regression test that verifies an `archive_run_only()`-terminated run does NOT create a `loop_runs` row (the test pins the gap, doesn't fix it).
+- `scripts/tests/test_session_store.py:347-388` — `TestSQLiteTransport.test_loop_complete_records_outcome_as_state` (line 372-377) is the only DIRECT test of the `loop_complete` transport branch at `session_store.py:1543`. Extend to cover the new `record_loop_run_summary()` fan-out (under Decision A1, this asserts `loop_runs` is NOT populated — the producer-side path owns it).
+- `scripts/tests/test_session_store.py:4226-4283` — `TestRecordCommitEvent` is the precise model for `TestRecordLoopRun`: `test_roundtrip`, `test_dedupe_on_sha`, `test_fts_searchable_by_message_fragment`, `test_explicit_issue_id_not_overridden`.
+- `scripts/tests/test_session_store.py:4347-4432` — `TestRecordTestRunEvent` is the secondary model for migration-shape.
+- `scripts/tests/test_session_store.py:3758-3828` — `TestRecordIssueSnapshot` insert-then-update companion for idempotency.
+- `scripts/tests/test_session_store.py:3957-4034` — `TestSkillEventContext` (NOT line 1164 of session_store.py as the Issue's Gap T quoted; the production skill_event_context is at `:1164-1180`) is the model for `update_loop_run_diagnostics`'s UPDATE pattern.
+- `scripts/tests/test_session_store.py:3891-3911` — `_bootstrap_schema_at` helper; the new `TestSchemaV{N}LoopRuns` test must call `_bootstrap_schema_at(db, N-1)` (the prior version), per existing usages at lines 3924 and 3927.
+- `scripts/tests/test_session_store.py:3914-3966` — `TestSchemaV15SkillCompletionColumns` is the exact template for `TestSchemaV{N}LoopRuns`.
+- `scripts/tests/test_history_reader.py:1395-1546` — `TestNewEventReaders` template for `TestHistoryLoopRunsRead`; uses writer-then-reader integration tests.
+- `scripts/tests/test_history_reader.py:1548` — `TestUsageEventReaders` (the most-recent reader test class to model after for `aggregate_loop_runs`).
+- `scripts/tests/test_history_reader.py` — extend `test_readers_return_empty_on_missing_db` to cover `recent_loop_runs(db=missing)`, `aggregate_loop_runs(db=missing)`, `find_loop_run(run_id, db=missing)`.
+- `scripts/tests/test_cli.py:2343-2364` — `test_history_command_with_tail` is the model for the new `--summary` flag test.
+- `scripts/tests/test_verify_kinds.py:18-23` — `test_clean_state_returns_zero` is the hard gate; adding `CREATE TABLE loop_runs` without registering in `_KIND_TABLE` will break this test. Verify it passes after the migration lands.
+- `scripts/tests/test_des_audit.py:52-68` — DES audit gate; only matters if Decision A2.
+- `scripts/tests/test_verify_package_data.py` — affected if the docstring at `session_store.py:17-37` is not updated with the new function names.
+- `scripts/tests/conftest.py:565-604` — `_guard_real_history_db` fixture intercepts `little_loops.session_store.sqlite3.connect` to prevent tests from touching the production `.ll/history.db`. Any new test that calls `record_loop_run_summary()` through `connect()` goes through this gate automatically — no extra wiring needed.
+
+New test classes to add (NOT in the issue's test list):
+
+- `TestRecordLoopRunEndToEnd` — in `test_fsm_executor.py`. Patch `record_loop_run_summary` to a mock, run a real `FSMExecutor`, assert the mock was called with `run_id` derived from `started_at`, `loop_name` from `fsm.name`, `final_state`, `iterations`, `terminated_by`. Covers Gap T-6 (Decision D2 + E3 acceptance).
+- `TestLoopRunsRunsSubcommand` — in `test_cli.py` (or new `test_cli_loop_runs.py`). Mirror `test_history_command_with_tail` at `test_cli.py:2343-2364`. Covers `ll-loop runs --since` (Gap T-4).
+- `TestHistorySummaryFlag` — in `test_cli.py`. Covers `ll-loop history --summary` (Gap T-5). Asserts `getattr(args, "summary", False)` is consumed correctly.
+- `TestLoopRunsSchemaV{N}RegistrationLocks` — in `test_session_store.py`. Pins that `_KIND_TABLE["loop_run"] == "loop_runs"` AND `"loop_run" in VALID_KINDS`. Catches unilateral updates that would silently fail `test_verify_kinds.py:18-23`.
+- `TestArchiveRunOnlyDoesNotPopulateLoopRuns` (Gap Q coverage) — in `test_fsm_persistence.py`. Pins the v1 known coverage gap as a regression test; documents that the follow-on (Decision G2) is the fix.
+- `TestResumedRunHasSingleLoopRunsRow` (Gap H coverage) — in `test_fsm_persistence.py` or new file. Verifies the resume path produces a single `loop_runs` row, not multiple, leveraging the `INSERT OR IGNORE` UNIQUE-key idempotency.
+
+### Documentation (additional entries not already in the Integration Map)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/EVENT-SCHEMA.md:600-659` — `loop_complete` event schema and termination semantics; will continue to be valid (no event-shape change under Decision A1). Confirm A1 leaves this section accurate.
+- `docs/reference/EVENT-SCHEMA.md:1020-1033` — SQLite transport loop event handling.
+- `docs/reference/EVENT-SCHEMA.md:1096` — generated event-schema file listing (includes `loop_complete.json`); `ll-generate-schemas` will emit a new `loop_run.json` (note: `loop_run`, not `loop_runs`, matching the DES kind).
+- `docs/reference/EVENT-SCHEMA.md:1201, 1245` — event-to-source mapping for `loop_complete`.
+- `docs/reference/COMMANDS.md:771-781` — loop outcome + `loop_complete` diagnostics section; will need an addendum when the new `ll-loop runs` subcommand lands.
+- `docs/guides/LOOPS_REFERENCE.md:3302` — loop-run command reference.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:51, 91-106, 510-514` — history schema section, version references, and analytics capture settings. Line 51 currently says `Current schema version: 18` (already stale; live is 20) — bump during implementation.
+- `docs/reference/CONFIGURATION.md:509-520` — analytics capture configuration table; if the `analytics.capture.loop_runs` gate is added in v1, the doc table needs a new row.
+- `docs/reference/HOST_COMPATIBILITY.md:312` — analytics capture reporting in `ll-doctor`; if the new capture key is added, this is the surface where it shows up.
+- `docs/generalized-fsm-loop.md:1676` — example `loop_complete` event reference; A1 leaves this intact.
+- `docs/observability/des-audit.md:27` — DES documentation table; only matters if Decision A2 (the table would gain a new row).
+- `docs/reference/API.md:7275, 7279` — `Current schema version: **19**` and `# 19` (both stale; live is 20). Bump during implementation. (Already flagged in Agent 1's documentation research.)
+- `docs/ARCHITECTURE.md:723, 748, 811` — three `v1–v20` callouts (NOT four as the issue claims at Implementation Step 11 line 632). The issue's `:632` claim is wrong; line 632 is the end of an FSMExecutor events row in the emitters table, not a version-range callout. Verified callouts at lines 723 (`mermaid` ensure_db callout), 748 (CLI transport-wiring table), 811 (see-also callout), all currently `v1–v20`. They need `v1–v{N+1}` after the migration lands. (`v1–v18` is from Issue's stale anchor claims.)
+- `docs/reference/CLI.md:2427, 2435, 2509-2511` — `--kind` help text at lines 2427 and 2435 is hand-maintained (does NOT auto-track `VALID_KINDS` like `cli/session.py:103,115` does). Both lines need `loop_run` appended. Example block at lines 2509-2511 should gain a `ll-session recent --kind loop_run` example.
+
+### Configuration (additional entries not already in the Integration Map)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/config-schema.json:1608-1680` — `analytics.capture` block has `additionalProperties: false` at line 1655. Adding `loop_runs: bool = True` to `AnalyticsCaptureConfig` requires a matching JSON-schema `loop_runs` boolean entry here. Only required if v1 activates the gate (the Issue's Gap L decision explicitly defers the gate to a follow-on; in that case no JSON-schema change is needed for v1).
+- `scripts/little_loops/config/features.py:528-558` — `AnalyticsCaptureConfig` (already partially covered by Gap L). If v1 activates the gate, add `loop_runs: bool = True` with the `file_events` precedent at line 540.
+- `scripts/little_loops/.ll/ll-config.json:78-86` — project's `analytics.capture` block currently declares `skills`, `cli_commands`, `corrections`, `file_events` only. For v1 forward-compat stub only, no change needed. If the gate is activated, add `"loop_runs": true` for discoverability.
+- `scripts/little_loops/cli/verify_kinds.py:30-47` — gate. Already covered above in Dependent Files; included here for cross-reference because the lock-step registration is the constraint that drives every entry listed.
+
+### Schema-side-effect additional entries
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store.py:3309` — `export_history` table-name mapping. Add `"loop_run": ("loop_runs", "ts")` for `ll-session export --tables loop_run` to surface the new table; otherwise the export silently skips it.
+- `scripts/little_loops/session_store.py:2824-2834` — `_REBUILD_TABLES` (deliberate-exclusion convention). The new v{N} migration block's leading comment should match this convention so a future audit doesn't attempt to materialise `loop_runs` from `raw_events`.
+- `scripts/little_loops/session_store.py:2835` — `_REBUILD_SEARCH_KINDS`. v1 should NOT add `"loop_run"` here (see Dependent Files note); the FTS row written by `_index(kind="loop_run", ...)` will outlast a `rebuild()` until Decision F2 lands.
+
+### Implementation Steps Wiring Phase (additional substeps)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+These touchpoints must be included in the implementation; they are NOT in the existing 12 Implementation Steps.
+
+13. **`scripts/little_loops/cli/loop/__init__.py:521-573`** — Add `--summary` flag (boolean `action="store_true"`) to the `history_parser` argument block. In `cmd_history` at `cli/loop/info.py:966`, consume via `getattr(args, "summary", False)` (defensive access pattern matching the surrounding flags).
+14. **`scripts/little_loops/cli/loop/__init__.py:25-41, 54-86, 100-118`** — Add `cmd_runs` to the handler-imports group; add `"runs"` to `known_subcommands` so line 92's implicit-`run` pre-parser doesn't shadow it; append `ll-loop runs` example to the `epilog` block at lines 100-118.
+15. **`scripts/little_loops/cli/loop/info.py`** — Add `cmd_runs()` mirroring `cmd_history`'s `getattr(args, ...)` flag-handling pattern. Source data from `recent_loop_runs(since=...)`; on-disk fallback can mirror `_list_archived_runs()` at lines 884-963 if a v2 wants offline listing.
+16. **`scripts/little_loops/cli/session.py:1-23`** — Append `loop_run` to the module docstring subcommand list at lines 8-10. NOTE: this list is hand-maintained; it does NOT auto-derive from `VALID_KINDS` the way argparse `choices=[...]` at lines 103 and 115 does.
+17. **`scripts/little_loops/session_store.py:3309`** — Add `"loop_run": ("loop_runs", "ts")` to the `export_history` table-name mapping.
+18. **`scripts/little_loops/session_store.py:2824-2834`** — Add a leading comment to the new migration block matching the `_REBUILD_TABLES` deliberate-exclusion convention (`loop_runs` is live-write-only; not materialised from `raw_events`).
+19. **`scripts/tests/test_session_store.py:90-106`** — Add `"loop_runs"` to `_all_tables_created`'s table-name tuple.
+20. **`scripts/tests/test_session_store.py:4444-4456`** — Verify the `_LOOP_EVENT_TYPES` membership test still passes (no code change under Decision A1). Add an explicit negative-case test ensuring `"loop_run_summary" not in _LOOP_EVENT_TYPES` so a future A2 pivot can't silently break the test.
+21. **`scripts/tests/test_verify_kinds.py:18-23`** — Run `test_clean_state_returns_zero` after the migration lands; it must remain exit-0. If it fails, the `_KIND_TABLE` registration was missed.
+22. **End-to-end wire-up test (Gap T-6)** — Add `TestRecordLoopRunEndToEnd` in `test_fsm_executor.py` that patches `record_loop_run_summary` to a mock, runs a real `FSMExecutor` through to `_finish()`, and asserts the mock was called with the archive-time `run_id` (derived from `self.started_at[:17]` + `self.fsm.name`), `loop_name=self.fsm.name`, `final_state`, `iterations`, `terminated_by`.
+23. **CLI tests (Gaps T-4, T-5)** — Add `TestLoopRunsRunsSubcommand` and `TestHistorySummaryFlag` in `test_cli.py` (or new `test_cli_loop_runs.py`). Mirror `test_history_command_with_tail` at `test_cli.py:2343-2364`.
+24. **Stale doc version refs** — Bump `docs/reference/API.md:7275, 7279` and `docs/guides/HISTORY_SESSION_GUIDE.md:51` to the current `SCHEMA_VERSION`. Bump `docs/ARCHITECTURE.md:723, 748, 811` (3 callouts, NOT 4) from `v1–v20` to `v1–v{N+1}`.
+25. **`docs/reference/CLI.md:2427, 2435, 2509-2511`** — Append `loop_run` to the `--kind` help text at lines 2427 and 2435; add a `ll-session recent --kind loop_run` example to lines 2509-2511.
+26. **`docs/reference/EVENT-SCHEMA.md:1096`** — Confirm `ll-generate-schemas` emits `loop_run.json` (not `loop_runs.json`) and the listing picks it up.
+27. **Decision G2/G3 follow-on hooks** — Document (in the issue, not in code) the two reconciler sites that remain for v1: `cli/loop/_helpers.py:145` (forced-interrupt `archive_run_only`) and `fsm/executor.py:2457` (`_handle_handoff`). A new `loop_runs` row is missed for ~5-10% of runs until these are wired. Verification: file the follow-on issues; do not block v1.
+28. **Decision F2 follow-on hooks** — Document that `_backfill_loops` at `session_store.py:2962-2963` and the migration in step 1 don't auto-populate `loop_runs` for pre-migration runs. A one-shot scan of `.loops/.history/*/state.json` is the chosen follow-on path. Verification: file the follow-on issue.
+
+### Anchor Drift Corrections
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The Integration Map and Implementation Steps cite line numbers that have drifted since refine-issue was last run. Verified current positions:
+
+| Symbol | Issue's cited line(s) | Verified current | Source |
+|--------|-----------------------|------------------|--------|
+| `SCHEMA_VERSION` constant | `:102`, claimed `18` or `19` | `session_store.py:207`, value `20` | Agent 2 + Scope Boundary note |
+| `_MIGRATIONS` list | `:208-545` | `session_store.py:333` | Agent 2 |
+| `VALID_KINDS` tuple | `:104` (as `_VALID_KINDS`) | `session_store.py:209` (public, in `__all__`) | Agent 2 |
+| `_KIND_TABLE` | `:119` | `session_store.py:223` | Agent 2 |
+| `_LOOP_EVENT_TYPES` | `:133` | `session_store.py:258` (`"loop_complete"` at `:262`) | Agent 2 |
+| `record_commit_event` | `:1041`, `:1041-1091` | `session_store.py:1222-1272` | Agent 2 |
+| `record_test_run_event` | (not cited) | `session_store.py:1352-1414` | Agent 2 |
+| `record_skill_event` (initial insert area) | `:991` | `session_store.py:973+` (initial insert) | Agent 2 (Gap T refutation) |
+| `skill_event_context` (completion UPDATE) | `:1164-1180` | `session_store.py:1164-1180` ✓ | Agent 3 |
+| `_split_sql_statements` | (not cited by name) | `session_store.py:768`, used at `:822` | Agent 1 |
+| `kind` validation gate | (not cited) | `session_store.py:1473-1474` | Agent 1 |
+| `SQLiteTransport.send` `loop_complete` branch | `:1353`, `:1341-1376` | `session_store.py:1543` (with `outcome` key read at `:1543-1544`) | Agent 2 |
+| `summarize_skills` | `:472` and `:472-598` | `history_reader.py:497-546` | Agent 2 |
+| `recent_commit_events` | `:524` | `history_reader.py:651-686` | Agent 2 |
+| `record_commit_event` author shape | `1222-1272` | `session_store.py:1222-1272` ✓ | Agent 3 |
+| `_index` helper | `:705-718` | `session_store.py:890-903` | Agent 3 (DRIFT) |
+| `_bootstrap_schema_at` test helper | `:3075-3095` | `test_session_store.py:3891-3911` | Agent 3 (DRIFT) |
+| `_make_instance_id` | `cli/loop/_helpers.py:1239` | `cli/loop/_helpers.py:1458` | Agent 3 (DRIFT) |
+| `archive_run()` | `fsm/persistence.py:494` | `fsm/persistence.py:487-537` (line `518` is the actual `run_id` derivation) | Agent 2 |
+| `archive_run_only()` | `fsm/persistence.py:839-895` | `fsm/persistence.py:839-895` ✓ | Agents 1-3 |
+| `FSMExecutor._finish()` | `fsm/executor.py:2269-2309` | `fsm/executor.py:2415` | Agent 2 |
+| `_emit("loop_complete", payload)` | `fsm/executor.py:2278` | `fsm/executor.py:2424` | Agent 2 |
+| `loop_start` (explicit `loop_name` injection) | (Gap K implied `:389-393`) | `fsm/executor.py:389-393` ✓ | Gap N |
+| `_emit` (only adds `event` + `ts`) | (Gap K implied) | `fsm/executor.py:2124-2132` | Gap N refutation |
+| `_handle_handoff()` | (not cited by line) | `fsm/executor.py:2457` | Agent 1 |
+| `loop_complete` archival treatment | (not cited) | `fsm/persistence.py:743` | Agent 1 |
+| `known_subcommands` set | `:54-86` | `cli/loop/__init__.py:54-86` ✓ | Agent 3 |
+| `cli/session.py --kind` choices | `:88-141` | `cli/session.py:103, 115` (auto-derived via `list(VALID_KINDS)`) | Gap note |
+| `cli/session.py` module docstring | (not cited) | `cli/session.py:1-23` (hand-maintained) | Agent 2 (line 8-10 specifically) |
+| `_list_archived_runs()` | `:884-963` | `cli/loop/info.py:884-963` ✓ | Agent 1 |
+| `cmd_history` flag pattern | (not cited) | `cli/loop/info.py:966` | Agent 2 |
+| `history_parser` arg block | (not cited) | `cli/loop/__init__.py:521-573` | Agent 2 |
+| `epilog` block | (not cited) | `cli/loop/__init__.py:100-118` | Agent 2 |
+| `AnalyticsCaptureConfig` | `config/features.py:528-558` | matches | Agents 1-3 |
+| `analytics.capture` block | `config-schema.json` not cited | `config-schema.json:1608-1680` (line 1655 `additionalProperties: false`) | Agent 2 |
+| `ll-verify-kinds` gate | not cited by path | `cli/verify_kinds.py:30-47` | Agents 2 + 3 |
+| `ll-verify-des-audit` (A2 only) | not cited by file | `cli/verify_des_audit.py:97-164`; observability at `schema.py:653` | Agent 2 |
+| DES `LoopCompleteVariant` registration | not cited by file | `observability/schema.py:113-119` (`:115-117` per Agent 1) | Agent 1 |
+| DES `DES_VARIANTS` | not cited by line | `observability/schema.py:563-634` | Agent 2 |
+| DES audit allow-list | not cited by file | `observability/audit.py:53-189` (Agent 1 says `:27, 161-189`) | Agents 1 + 2 |
+| `ll-generate-schemas` registration | not cited | `generate_schemas.py:391-402` | Agent 1 (A2 only) |
+| `_backfill_loops` (no `loop_runs` materialisation) | not cited | `session_store.py:1776-1807` and dispatch at `:2962-2963` | Agent 2 |
+| `rebuild()` excludes `loop_events` | not cited | `session_store.py:2818-2823` (comment); `_REBUILD_TABLES` at `:2824-2834` | Agent 2 |
+| `_REBUILD_SEARCH_KINDS` (FTS rebuild filter) | not cited | `session_store.py:2835` | Agent 2 |
+| `export_history` table-name mapping | not cited | `session_store.py:3309` | Agent 2 |
+| `SessionStart --rebuild` trigger | not cited | `hooks/session_start.py:150-171` | Agent 2 |
+| `loop_complete` archival scan in CLI logs | not cited | `cli/logs.py:1752-1783` (archived `events.jsonl`) | Agent 1 |
+| `_guard_real_history_db` (conftest fixture) | not cited | `tests/conftest.py:565-604` | Agent 3 |
+| `tests/test_session_store.py:_all_tables_created` | not cited | `test_session_store.py:90-106` | Agent 2 |
+| `tests/test_session_store.py:TestValidKindsCentralization` | not cited | `test_session_store.py:3410-3418` (lines 3412, 3417) | Agent 2 |
+| `tests/test_session_store.py:TestSQLiteTransport` | not cited | `test_session_store.py:347-388` (`:372-377` direct test of loop_complete branch) | Agent 3 |
+| `tests/test_session_store.py:_LOOP_EVENT_TYPES` test | not cited | `test_session_store.py:4444-4456` (line 4454 membership check) | Agent 2 |
+| `tests/test_verify_kinds.py:test_clean_state_returns_zero` | not cited | `test_verify_kinds.py:18-23` (and `:41` per Agent 3) | Agent 2 |
+| `tests/test_des_audit.py` (A2 only) | not cited | `test_des_audit.py:52-68` | Agent 3 |
+| `tests/test_verify_package_data.py` | not cited | exists; affected by docstring | Agent 3 |
+| `tests/test_fsm_executor.py` `loop_complete` tests | not cited | `test_fsm_executor.py:1677-1697, 2310-2379, 2653-2686, 2775-2983, 8332-8481` | Agent 3 |
+| `tests/test_fsm_persistence.py` `archive_run_only` tests | not cited | `test_fsm_persistence.py:867-887, 898, 931-949, 2107-2436` | Agent 3 |
+| `tests/test_history_reader.py:TestNewEventReaders` template | not cited | `test_history_reader.py:1395-1546` | Agent 3 |
+| `tests/test_history_reader.py:TestUsageEventReaders` template | not cited | `test_history_reader.py:1548` | Agent 3 |
+| `tests/test_cli.py:2343-2364` (`test_history_command_with_tail` model) | not cited | `test_cli.py:2343-2364` | Agent 3 |
+| `docs/observability/des-audit.md:27` (A2) | not cited | exists | Agent 1 |
+| `docs/reference/EVENT-SCHEMA.md` references | not cited by line | `:600-659, 1020-1033, 1096, 1201, 1245` | Agent 1 + Agent 2 |
+| `docs/reference/COMMANDS.md:771-781` | not cited | exists | Agent 1 |
+| `docs/guides/LOOPS_REFERENCE.md:3302` | not cited | exists | Agent 1 |
+| `docs/guides/HISTORY_SESSION_GUIDE.md:51, 91-106, 510-514` | not cited | exists; line 51 has stale version ref | Agents 1 + 2 |
+| `docs/reference/CONFIGURATION.md:509-520` | not cited | exists | Agent 1 |
+| `docs/reference/HOST_COMPATIBILITY.md:312` | not cited | exists | Agent 1 |
+| `docs/generalized-fsm-loop.md:1676` | not cited | exists | Agent 1 |
+| `docs/reference/API.md:7275, 7279` (stale version refs) | not cited | exists; both stale `19` | Agents 1 + 2 |
+| `docs/ARCHITECTURE.md` version-range callouts | `:632, :678, :703, :749` (4 callouts claimed) | Verified `3 callouts at `:723, :748, :811` (line `:632` is NOT a callout — it's the end of an FSMExecutor events row) | Agent 2 |
+| `docs/reference/CLI.md:2427, 2435, 2509-2511` | not cited | exist; help text is hand-maintained and out-of-date | Agent 2 |
+
+Use the verified-current column when implementing. The drift is mostly +100 lines per major session-store expansion (v17→v18→v20 migrations each added ~30 lines).
+
+---
+
+The session-log entry appended below records the source JSONL for this wiring pass.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T20:45:15 - `f2e34338-c6b9-4184-87ae-f3c7166e82ab.jsonl`
+
 - `/ll:decide-issue` - 2026-07-16T18:28:35 - `ed09a07d-067d-44ac-b1ad-ad826ab00704.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:29:26 - `6a56187c-bd1e-41fd-bb6f-3e87d47a557a.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:09:47 - `62d957fd-b2f2-451b-85fc-3f142b5e5e6b.jsonl`

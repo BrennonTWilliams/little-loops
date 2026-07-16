@@ -8,7 +8,7 @@ discovered_date: 2026-07-05
 captured_at: "2026-07-05T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
   - enhancement
   - history-db
@@ -127,6 +127,8 @@ Two viable shapes; **prefer (A)** for minimal schema churn.
 
 ### (A) Nullable `agent_type` column on `tool_events`
 
+> **Selected:** (A) Nullable `agent_type` column on `tool_events` — additive migration matches the v15/v16 nullable-column precedent; reuses `_row_to_dataclass()` column-tolerance, existing `SkillEvent`/`summarize_skills()` reader templates, and lands cleanly in the ENH-2497+ENH-2511 batched migration.
+
 ```sql
 ALTER TABLE tool_events ADD COLUMN agent_type TEXT;  -- NULL for non-Task tools
 CREATE INDEX IF NOT EXISTS idx_tool_events_agent ON tool_events(agent_type);
@@ -163,6 +165,25 @@ For (A): bump `SCHEMA_VERSION` for the additive column (existing rows get
 
 - `ll-ctx-stats`: add a per-agent usage line (optional, follow-on).
 - `ll-session search --fts "<agent>"` already works once indexed.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-16.
+
+**Selected**: (A) Nullable `agent_type` column on `tool_events`
+
+**Reasoning**: The additive-column path is the exact precedent set by v15 (ENH-2460 `skill_events` completion columns at `session_store.py:576-584`) and v16 (ENH-2462 `issue_events.session_id` at `:585-594`), and `_row_to_dataclass()` at `history_reader.py:273-277` already tolerates absent columns for pre-migration rows. Option (B)'s proposed fields (`prompt_preview`, `result_size`, `duration_ms`) are either already on `tool_events` (`result_size`/`bytes_out` exist today; `latency_ms` arrives via ENH-2511's same-migration batch) or have no precedent in any `*_events` table (`prompt_preview`), making a separate `agent_spawn` table redundant. ARCHITECTURE-144/145 in `decisions.yaml:5030-5066` explicitly rejected the sibling-table pattern in favor of additive columns when derivable — the same constraint applies here. The only implementation gap for (A) is wiring `_index()` after the live `post_tool_use` insert (live FTS parity with the backfill path), which is a single-call addition at `post_tool_use.py:~179`.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| (A) Nullable `agent_type` column on `tool_events` | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| (B) Dedicated `agent_spawn` kind | 2/3 | 1/3 | 2/3 | 1/3 | 6/12 |
+
+**Key evidence**:
+- **(A)**: Direct precedent at `session_store.py:576-594` (v15/v16 `ALTER TABLE … ADD COLUMN` + `CREATE INDEX`); `_row_to_dataclass()` compatibility at `history_reader.py:273-277`; existing test patterns at `test_session_store.py:3079-3105` and `test_hook_post_tool_use.py:100-237`; `summarize_skills()` template at `history_reader.py:497-546` for the `agent_usage()` helper. Reuse score: 3/3.
+- **(B)**: New-kind call-site cost spans `VALID_KINDS`/`_KIND_TABLE` (`session_store.py:209-236`), new `record_agent_spawn()` writer, new `_backfill_agent_spawns()`, new `AgentSpawnEvent` dataclass, new `recent_agent_spawns()` + `agent_usage()` readers, new `AgentSpawnVariant` in DES_VARIANTS, plus `analytics.capture.agent_spawns` gating expansion. Disrupts the ENH-2497+ENH-2511 batched migration plan (both issues' Scope Boundary sections require a single shared migration). Reuse score: 2/3.
 
 ## Acceptance Criteria
 
@@ -274,6 +295,7 @@ issue lands first and ENH-2511's `mcp_server`/`mcp_tool`/`mcp_outcome`/
 (one shared `ALTER TABLE tool_events` batch), not a second competing one.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-16T19:35:50 - `c62633a6-bc8a-42d5-88d1-7b034101e282.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:36:00 - `5d02fdfe-927a-4f1f-aa0e-5f159a6cee91.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:22:08 - `33e15d2a-429d-48f8-8998-aca5080acdd5.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:16:27 - `84c84b8b-bd4f-4743-8789-7aa8fa03818a.jsonl`

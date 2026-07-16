@@ -131,6 +131,8 @@ Add to `history_reader.py`:
 - `scripts/tests/test_history_reader.py` — add reader tests (mirror `test_recent_commit_events_*` patterns).
 
 - `scripts/tests/test_cli_learning_tests.py` — confirm `cmd_prove` / `cmd_mark_stale` tests still pass with the new write calls; the calls are best-effort and may be no-op in fixture DBs.
+- `scripts/little_loops/cli/backfill_worker.py` — extend the detached session-start worker so the registry directory is reconciled in addition to incremental JSONL ingestion; the current worker only calls `backfill_incremental()` and cannot satisfy Implementation Step 6 by itself.
+- `scripts/little_loops/hooks/session_start.py` — thread the project registry path (or an equivalent worker option) into the detached backfill process so session-start reconciliation actually reaches `.ll/learning-tests/`; the existing `ensure_db()` call only applies migrations.
 
 ### Dependent Files (Callers/Importers)
 
@@ -138,6 +140,10 @@ Add to `history_reader.py`:
 - `scripts/little_loops/cli/history_context.py` (`ll-history-context`) — consumers that read `search_index` benefit from new `kind="learning_test"` rows automatically (no code change required there).
 - `scripts/little_loops/hooks/session_start.py` (line 122) — the existing `ensure_db()` call already creates the new table on session start; no change needed but verifies the migration is applied.
 - `scripts/little_loops/issue_history/evolution.py` — history-db consumer; may consume `find_learning_tests()` in future work.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/hooks/session_start.py` — the existing no-change note is incomplete if the stated periodic reconcile/session-start requirement remains: `ensure_db()` creates the table but the current detached `backfill_worker` only ingests JSONL, so the registry path must be passed through the worker or reconciled in a separate best-effort step.
+- `scripts/little_loops/cli/session.py` — the existing `--kind` choices are dynamic (`list(VALID_KINDS)`), but the `backfill` command path must pass the new registry directory/count if CLI-driven reconciliation is retained; do not add a second hardcoded kind list.
 
 ### Similar Patterns
 
@@ -160,6 +166,15 @@ Add to `history_reader.py`:
 - `scripts/tests/test_history_reader.py` — mirror for reader tests.
 - `scripts/tests/test_cli_learning_tests.py` — existing CLI tests must continue to pass.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_session.py` — add parser and output coverage for `recent --kind learning_test` and `search --kind learning_test`, plus a backfill assertion for the new `learning_tests` count/registry path; the parser choices are inherited from `VALID_KINDS`.
+- `scripts/tests/test_assistant_messages.py` — update the hard-coded `SCHEMA_VERSION == 20` assertion (line 88) to the live next-version contract, alongside the version assertions already listed for `test_session_store.py`.
+- `scripts/tests/test_hook_session_start.py` — extend detached-worker argument/reconcile coverage when `session_start.py` begins passing the registry directory; preserve the existing best-effort/no-config behavior.
+- `scripts/tests/test_backfill_worker.py` — new worker tests are needed for registry reconciliation and for continuing to ingest JSONL; follow the existing `TestSessionStartBackfillThread` argument/error-isolation patterns.
+- `scripts/tests/integration/test_learning_tests_e2e.py` — add an end-to-end prove/backfill → `learning_test_events` → FTS `ll-session search --kind learning_test` path; the current unit tests mock the CLI/backfill boundary and do not prove the cross-component wiring.
+- `scripts/tests/test_cli_learning_tests.py` — extend the existing prove, mark-stale, and orphan tests to assert the best-effort recorder is invoked and that recorder exceptions are swallowed.
+- `scripts/tests/test_verify_kinds.py` — retain/extend the migration gate assertion so adding `learning_test_events` without `_KIND_TABLE["learning_test"]` cannot pass.
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — add a `learning_test_events` row to the schema-version table (find the v18 row added by ENH-2459; append v19).
@@ -167,6 +182,11 @@ Add to `history_reader.py`:
 - `docs/reference/CLI.md` — document `ll-session search --fts ... --kind learning_test` and `ll-session recent --kind learning_test`.
 - `docs/guides/LEARNING_TESTS_GUIDE.md` — note that records are mirrored into history.db and discoverable via `ll-session search --fts`.
 - `thoughts/history-db-expand-wiring.md` — already names this work in §3 ranked recommendation #9 (line 70 of EPIC-2457 confirms); close-out the reference once shipped.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — update the stale `Current schema version: 18` text and the v18-only migration/table summary; add the new `learning_test_events` row and current version range.
+- `.claude/CLAUDE.md` — update the `ll-session` CLI description, which currently says `backfill` ingests JSONL only; registry reconciliation and the `learning_test` kind make that description incomplete.
+- `docs/reference/CLI.md` — while the file is already listed, replace the stale hard-coded `--kind`/`--tables` examples (which omit existing `snapshot`/`usage` values) with the current `VALID_KINDS`-based surface and add `learning_test` examples.
 
 ### Configuration
 
@@ -227,6 +247,17 @@ _Added by `/ll:refine-issue` — concrete anchor references for each step:_
 9. `test_session_store.py` — add `TestSchemaV19LearningTestEvents` (mirror `TestSchemaV14` at line 2872), `TestRecordLearningTestEvent` (mirror `TestRecordIssueSnapshot` at line 2942), `TestBackfillLearningTests` (mirror `TestBackfillSnapshots` at line 3015). Update legacy `assert SCHEMA_VERSION == 18` literals to `19` (search for `SCHEMA_VERSION == 18` across the file). Update `test_all_tables_created` table tuple (line 60).
 10. `test_history_reader.py` — add `test_recent_learning_tests_*` mirroring `test_recent_commit_events_*`. `test_cli_learning_tests.py` — confirm `cmd_prove` / `cmd_mark_stale` tests still pass.
 11. Docs: `docs/ARCHITECTURE.md` schema-version table — append v19 row. `docs/reference/API.md` — add 4 new entries. `docs/reference/CLI.md` — add `--kind learning_test` documentation.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+12. Thread `.ll/learning-tests/` through `session_start.py` and `cli/backfill_worker.py` (or add an equivalent detached best-effort reconcile call); the current worker only runs `backfill_incremental()` for JSONL, so `ensure_db()` alone does not implement the stated session-start registry sweep.
+13. Update the `cli/session.py` backfill dispatch and result reporting to pass the registry directory/count when CLI-driven reconciliation is used. Do not edit the `--kind` choices as literals: both parsers already derive them from `VALID_KINDS`.
+14. Add `test_ll_session.py`, `test_backfill_worker.py`, and `test_hook_session_start.py` coverage for kind acceptance, FTS/recent output, registry-path threading, and best-effort worker failures; add the missing schema-version assertion update in `test_assistant_messages.py`.
+15. Extend `test_cli_learning_tests.py` to assert prove/mark-stale/orphan producer calls and exception swallowing, and add `integration/test_learning_tests_e2e.py` for prove/backfill → DB row → FTS search wiring.
+16. Update `docs/guides/HISTORY_SESSION_GUIDE.md`, `.claude/CLAUDE.md`, and the already-listed `docs/reference/CLI.md` stale kind/table examples alongside the architecture/API/learning-test documentation.
+17. Run `ll-verify-kinds`/its pytest gate after adding the migration; `learning_test_events` must be registered in `_KIND_TABLE`, not `_KINDLESS_TABLES`.
 
 ## Sources
 
@@ -431,6 +462,7 @@ return `[]`/`None` on missing DB. New `record_learning_test_event()` and
 `_backfill_learning_test_events()` must conform.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T21:32:32 - `ec8b8d8e-4a0b-44e0-9688-a85509c72451.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:56:29 - `e00bc985-f84c-4584-9c06-8e2a01e24509.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:54 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:35:03 - `984dde16-4d04-4519-aaa2-e9d51aefdda9.jsonl`

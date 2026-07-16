@@ -118,6 +118,81 @@ Add `recent_test_runs(branch=None, head_sha=None, limit=50)` to `history_reader.
 9. Tests: `TestRecordTestRunEvent`, `TestSchemaV15` (or higher), `TestPytestPluginWritesRow`, `TestBackfillTestRunsStub`.
 10. Docs: `docs/ARCHITECTURE.md` schema row, `docs/reference/CLI.md` `--kind test_run`, `.claude/CLAUDE.md` notes the new gateway for "is CI green?" lookups.
 
+## Integration Map
+
+_Wiring pass added by `/ll:wire-issue` on 2026-07-16 — comprehensive touchpoint audit for the shipped implementation (schema v18)._
+
+### Files to Modify
+
+- `scripts/little_loops/pytest_history_plugin.py` — shipped as `pytest_history_plugin.py` (not `testing/pytest_plugin.py`); registers `pytest_sessionfinish` + `pytest_runtest_logreport` hooks (not `pytest_terminal_summary`)
+- `scripts/little_loops/session_store.py` — schema v18 migration (test_run_events table + 3 indexes), `"test_run"` in `_VALID_KINDS`, `_KIND_TABLE["test_run"] = "test_run_events"`, `_EXPORT_TABLE_MAP["test_run_event"] = ("test_run_events", "ts")`, `test_run_event` in `_EXPORT_DEFAULT_TABLES`, `test_run_events` exclusion from `_REBUILD_TABLES`, `record_test_run_event()` in `__all__`
+- `scripts/little_loops/history_reader.py` — `RunEvent` dataclass + `recent_test_runs()` (filter by `branch`/`head_sha`, derive `pass_rate`)
+- `scripts/little_loops/observability/schema.py` — `TestRunEventVariant` registered in `DES_VARIANTS` (required for `ll-verify-des-audit` F5 adoption gate)
+- `scripts/little_loops/cli/session.py` — argparse derives `search --kind` and `recent --kind` choices from `VALID_KINDS` (adding `"test_run"` automatically expands both surfaces)
+- `scripts/pyproject.toml` — `[project.entry-points.pytest11]` table registering `ll_history = "little_loops.pytest_history_plugin"`
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/pytest_history_plugin.py` — `from little_loops.session_store import record_test_run_event, resolve_history_db` (the plugin's own consumer)
+- `scripts/little_loops/cli/session.py` — `main_session()` dispatches `--kind test_run` to `recent()` and `search()` (via `_KIND_TABLE` lookup)
+- `scripts/little_loops/cli/verify_des_audit.py` — transitive: walks source tree for emit sites; `test_run_event` must remain registered in `DES_VARIANT_TYPES`
+- `scripts/little_loops/cli/verify_kinds.py` — transitive: validates `_MIGRATIONS` ↔ `_KIND_TABLE` consistency for every `CREATE TABLE`
+- `scripts/tests/conftest.py` (lines 91–93) — cites `pytest_history_plugin.py:147-150` and `test_pytest_history_plugin.py:62-71` as the proven-correct xdist-worker-detection idiom
+
+### Registration / Manifest Files
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/pyproject.toml` — `[project.entry-points.pytest11]` with `ll_history` entry-point (lines 101–104)
+- `scripts/little_loops/observability/schema.py` — `TestRunEventVariant` registered in `DES_VARIANTS` tuple (line 626)
+- `scripts/little_loops/session_store.py` — `_KIND_TABLE["test_run"] = "test_run_events"` (line 234); `__all__` exports `record_test_run_event` (line 86); `_EXPORT_TABLE_MAP` + `_EXPORT_DEFAULT_TABLES` + `_REBUILD_TABLES` exclusions
+- `.claude-plugin/plugin.json` — does NOT directly reference `test_run` (entry-point manifest is `pyproject.toml`, not plugin.json)
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Existing shipped coverage:**
+- `scripts/tests/test_pytest_history_plugin.py` — `TestCaptureGating` (xdist, opt-out env), `TestOutcomeCounting` (per-phase tally), `TestSessionFinishWritesRow` (DB write), `TestEnvLabel` (CI/worktree/local)
+- `scripts/tests/test_session_store.py::TestRecordTestRunEvent` (lines 4362–4432) — round-trip, FTS searchable, multi-row distinct, v14→v18 upgrade
+- `scripts/tests/test_session_store.py::TestSchemaV14::test_v14_db_upgrades_gains_test_run_events` — schema upgrade smoke
+- `scripts/tests/test_history_reader.py::test_recent_test_runs_and_pass_rate` — newest-first ordering, `pass_rate` derivation, `head_sha` filter, empty-DB path
+- `scripts/tests/test_ll_session.py::test_recent_subcommand_test_run_accepted` + `test_recent_kind_test_run_outputs_row` — CLI end-to-end
+
+**Test gaps identified (not yet implemented):**
+- `TestSchemaV18TestRunEvents` — column set + 3 indexes (idx_test_run_events_head_sha/branch/failed_count) via `PRAGMA table_info` + `sqlite_master`, following `TestSchemaV20UsageEvents` convention
+- xdist `-n auto` integration test asserting exactly one DB row under sharded run
+- `pytest_configure(config)` with `PYTEST_DISABLE_PLUGIN_LL_HISTORY=1` set + `.ll/` present → `register.assert_not_called()`
+- `failing_names[:100]` truncation when >100 reports logged
+- `command[:500]` truncation when argv >500 chars
+- `export_history()` with `tables=["test_run_event"]` yields rows with `type="test_run_event"`
+- `ll-session search --fts "<node_id>" --kind test_run` end-to-end CLI (only arg-parser currently covered)
+- `[project.entry-points.pytest11] ll_history` discoverability via `entry_points(group="pytest11")`
+- `record_test_run_event` `config` kwarg accepted-and-ignored behavior
+- Positive env-var tests for `GITHUB_ACTIONS=true` and `JENKINS_URL` (currently only `CI` and `LL_AUTO_RUN` set positively)
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/ARCHITECTURE.md` — schema v18 row + plugin description (line 676)
+- `docs/reference/API.md` — `RunEvent`, `recent_test_runs()`, `record_test_run_event()` API reference (lines 7065–7389)
+- `docs/reference/CLI.md` — `search --kind` / `recent --kind` / `export --tables` choices + example
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — query examples, schema table, v18/ENH-2459 row
+- `docs/observability/des-audit.md` — `TestRunEventVariant` registry entry (line 76)
+
+**Documentation gaps (not yet mentioned):**
+- `commands/run-tests.md` — user-facing command for running the test suite; does NOT mention automatic history capture, `PYTEST_DISABLE_PLUGIN_LL_HISTORY` opt-out, or `ll_history` entry-point
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `.ll/ll-config.json` — no test-run-specific keys (capture controls are env vars: `PYTEST_DISABLE_PLUGIN_LL_HISTORY`, `LL_HISTORY_DB`)
+- `config-schema.json` — no `test_runs` capture flag added (the `config` kwarg on `record_test_run_event` is documented as a forward-compatibility stub for a future `analytics.capture.test_runs` flag)
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — findings report, recommendations §2 row 2 ("Test run results") and §3 ranked recommendation #2
@@ -156,4 +231,5 @@ Tests: scripts/tests/test_pytest_history_plugin.py, `TestRecordTestRunEvent` in
 test_session_store.py, reader/CLI tests.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T22:32:30 - `e1bd59a2-e0c5-4fc0-822b-b3df1645480c.jsonl`
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

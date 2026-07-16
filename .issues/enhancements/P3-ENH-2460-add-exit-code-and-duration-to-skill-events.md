@@ -114,6 +114,20 @@ Extend `history_reader.recent_skill_events(...)` to return rows including exit_c
 7. Tests: `TestSkillEventContext`, `TestSchemaV15` (or higher), `TestRecentSkillEventsWithCompletion`.
 8. Docs: `docs/ARCHITECTURE.md` schema row; `docs/reference/API.md` for `skill_event_context`; `docs/reference/CLI.md` `--kind skill` columns.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis. Each is annotated with its landing status — already-wired items document the actual implementation touchpoints the original Implementation Steps did not enumerate; "flagged" items are follow-ups surfaced by the wiring pass._
+
+9. Wire `cmd_invoke` in `scripts/little_loops/cli/action.py:14, 81-84, 113, 148` — wrap skill body in `skill_event_context()` and set `completion.exit_code = exit_code` on both `stream-json` and `blocking-json` branches ✅ (done)
+10. Update `scripts/little_loops/observability/schema.py:479-483` `SkillEventVariant` docstring to mention both `record_skill_event` and `skill_event_context` writers ✅ (done)
+11. Update `scripts/little_loops/history_reader.py` module docstring (lines 19, 26-27) to add `SkillEvent`, `recent_skill_events`, `summarize_skills` entries ✅ (done)
+12. Update `scripts/little_loops/cli/session.py:11` module docstring to add `skill-stats` entry ✅ (done)
+13. Document in `docs/guides/HISTORY_SESSION_GUIDE.md:43, 69, 92, 349-353` (quick-reference row, schema history v15 row, table description, "Skill success signal" cookbook section) ✅ (done)
+14. **CHANGELOG entry** — flagged as release-prep owner action (per `feedback_changelog_no_unreleased.md`, promote to concrete `[X.Y.Z] - DATE` section during release prep, never `[Unreleased]`)
+15. **Decision fragment** — flagged as owner action: record the `user_prompt_submit` stays dispatch-only + `ll-action invoke` is the wrap point + `SkillEventCompletion` mutable-yield design choices in `.ll/decisions.d/<uuid>.json` (currently captured only in this issue's Status section)
+16. **End-to-end integration test** — flagged as follow-up: add `test_invoke_records_exit_code_in_skill_events` to `scripts/tests/test_action.py::TestMainAction` mirroring `test_session_store.py:3972` (success path) + 3986 (raise path); conftest's autouse `_isolate_history_db` already routes writes to `tmp_path/.ll/history.db`
+17. **Verify-style gate** — flagged as follow-up: add a `PRAGMA table_info(skill_events)`-based gate to `scripts/tests/test_verify_kinds.py` (model on `TestRun::test_flags_unregistered_table` at line 25) asserting `exit_code`/`success`/`duration_ms` are always present regardless of bootstrap path
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — recommendations §2 row 3 ("Skill/CLI success-failure"), §3 ranked recommendation #3
@@ -128,6 +142,80 @@ Extend `history_reader.recent_skill_events(...)` to return rows including exit_c
 | `docs/ARCHITECTURE.md` | Schema versions table; producer/consumer flow |
 | `docs/reference/API.md` | `session_store` module reference |
 | `docs/reference/CLI.md` | `ll-session recent --kind skill` columns |
+
+## Integration Map
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+### Files to Modify (verified during implementation)
+
+- `scripts/little_loops/session_store.py` — v15 migration (lines 581-583); `skill_event_context()` + `SkillEventCompletion` mutable-yield (lines 1095, 1109); `__all__` export (lines 88-89); `SCHEMA_VERSION` bump
+- `scripts/little_loops/history_reader.py` — `SkillEvent` dataclass; `recent_skill_events()` (line 466); `summarize_skills()` (line 497); module-docstring entry
+- `scripts/little_loops/cli/action.py` — wrap `cmd_invoke` body in `skill_event_context()`; set `completion.exit_code` on both branches (lines 14, 81-84, 113, 148)
+- `scripts/little_loops/cli/session.py` — `skill-stats` argparse subparser + handler dispatch (lines 11, 284-294, 615-632); `recent` command auto-renders new columns via `SELECT *`
+- `scripts/little_loops/observability/schema.py` — `SkillEventVariant` docstring updated to mention both `record_skill_event` and `skill_event_context` writers (lines 479-483)
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/action.py:14` — imports `skill_event_context` from `session_store`; the sole production wrap site
+- `scripts/little_loops/cli/session.py:616` — lazy-imports `summarize_skills` inside the `skill-stats` handler dispatch
+- `scripts/little_loops/hooks/user_prompt_submit.py:29, 92` — calls `record_skill_event` (dispatch-only path, intentionally NOT migrated per design — wrapping would fabricate ~0ms success rows because the hook returns before the skill body runs)
+- `scripts/little_loops/cli/logs.py:779` — reads `skill_events` via `SELECT ts, session_id, skill_name FROM skill_events` (no change needed; `ll-logs stats --kind skill` does not consume the new columns)
+- `scripts/little_loops/cli/ctx_stats.py:20` — drives skill-health section via `_aggregate_skill_stats` import (no change needed)
+- `scripts/little_loops/issue_history/evolution.py:235` — reads `skill_events` directly for the `_MIN_BYPASS_KEYWORDS` check (no change needed)
+
+### Registration / Manifest Files
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store.py` `__all__` (lines 88-89) — adds `"skill_event_context"` and `"SkillEventCompletion"`
+- `scripts/little_loops/cli/session.py` `skill_stats_parser` (lines 284-294) — registers the `skill-stats` subcommand with `--since` and `--json` flags
+- `scripts/little_loops/__init__.py` — NOT modified (matches existing pattern: `record_issue_snapshot` is also only surfaced via `little_loops.session_store.*`)
+- `scripts/little_loops/hooks/__init__.py` — NOT modified (CLI subcommands dispatch from `scripts/little_loops/cli/`, not the hook intent layer)
+- `.claude-plugin/plugin.json` — NOT modified (CLI subcommands are not plugin commands)
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/ARCHITECTURE.md:673` — schema versions table v15 row
+- `docs/ARCHITECTURE.md:726` — producer diagram mentions `record_skill_event()` (intentionally unchanged for dispatch-only path)
+- `docs/reference/API.md:54, 6845-6846, 7026-7049, 7284-7285, 7331-7344` — `skill_event_context`, `recent_skill_events`, `summarize_skills`, `SkillEvent`, v15 ALTERs
+- `docs/reference/CLI.md:2386, 2435, 2512` — `ll-session` subcommand table, `--kind skill` columns, `skill-stats` example
+- `docs/guides/HISTORY_SESSION_GUIDE.md:43, 69, 92, 349-353` — quick-reference row, schema history v15 row, table description, "Skill success signal" cookbook section
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_session_store.py:3914-3966` — `TestSchemaV15SkillCompletionColumns` (PRAGMA verification, v14→v15 migration via `_bootstrap_schema_at(db, 14)` helper at line 3891, NULL-on-dispatch contract)
+- `scripts/tests/test_session_store.py:3969-4034` — `TestSkillEventContext` (success/raise/host-exit-code/args-truncate/FTS/best-effort paths)
+- `scripts/tests/test_history_reader.py:1398-1410` — `test_recent_skill_events_includes_completion_columns`
+- `scripts/tests/test_history_reader.py:1415-1436` — `test_summarize_skills_success_rate`
+- `scripts/tests/test_history_reader.py:1530-1545` — `test_readers_return_empty_on_missing_db` (covers both `recent_skill_events` and `summarize_skills`)
+- `scripts/tests/test_ll_session.py:109-112` — `test_skill_stats_subcommand_parses`
+- `scripts/tests/test_ll_session.py:1041-1067` — `TestSkillStatsEndToEnd` (text + JSON output)
+- `scripts/tests/test_hook_user_prompt_submit.py:229-275` — pins the dispatch-only contract (intentional design boundary)
+- `scripts/tests/test_evolution_triggers.py:327` — fixture row insertion (no schema change needed)
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/config-schema.json` — no new knobs (existing `analytics.capture.skills` glob patterns at lines 1621-1625 are the upstream gate, unchanged)
+- `.ll/ll-config.json` — no change (analytics.capture.skills: ["*"] is upstream gate)
+- `scripts/little_loops/session_store.py:1114` — `config` parameter on `skill_event_context()` is a forward-compatibility stub for ENH-1835, accepted but not yet used
+
+### Outstanding Gaps (Flagged for Owner Action)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **`CHANGELOG.md`** — no ENH-2460 entry yet. Prior schema-migration cycles (ENH-1833, ENH-1848, ENH-2151, ENH-2458, ENH-2459) all landed entries. Per project convention (`feedback_changelog_no_unreleased.md`), promote to a concrete `[X.Y.Z] - DATE` section during release prep, not `[Unreleased]`.
+- **`.ll/decisions.d/`** — no ENH-2460 decision fragment. The three design choices captured in this issue's Status section (`user_prompt_submit` stays dispatch-only; `ll-action invoke` is the wrap point; `SkillEventCompletion` mutable yield) live only in the issue body, not the structured decisions log.
+- **`scripts/tests/test_action.py::TestMainAction`** — no integration test asserting that `ll-action invoke` actually populates `exit_code`/`success`/`duration_ms` end-to-end. Mirror `test_session_store.py:3972` (success path) + 3986 (raise path); conftest's autouse `_isolate_history_db` already routes writes to `tmp_path/.ll/history.db`.
+- **`scripts/tests/test_verify_kinds.py`** — no gate-style test asserting `skill_events` carries the new columns regardless of bootstrap path. A verify-style check modeled on `TestRun::test_flags_unregistered_table` (line 25) would enforce schema column presence.
 
 ## Status
 
@@ -145,4 +233,5 @@ skill body runs, so wrapping it would fabricate ~0ms success rows. Read side:
 reader tests in test_history_reader.py, CLI tests in test_ll_session.py.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T22:42:30 - `d1b2ea44-51af-41c6-8062-952a8b4f56b7.jsonl`
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
