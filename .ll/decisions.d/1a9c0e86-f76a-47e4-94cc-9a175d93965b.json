@@ -1,0 +1,12 @@
+{
+  "id": "86ddeaf8-7a83-451d-9c43-95465f747220",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:57:28Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2495's shared lifecycle foundation is absent, while the required migration, recorder, reader, and tests closely mirror existing session-store patterns. A coordinated implementation avoids an unscheduled wait and split ownership while keeping the producer wiring best-effort and directly testable.",
+  "rule": "Option A \u2014 Co-implement",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 Wait: no formal dependency or schedule exists and the observability gap would persist; Option C \u2014 Land ENH-2509 first: assigns most shared ENH-2495 infrastructure to ENH-2509 and leaves a split follow-up review.",
+  "issue": "ENH-2509"
+}

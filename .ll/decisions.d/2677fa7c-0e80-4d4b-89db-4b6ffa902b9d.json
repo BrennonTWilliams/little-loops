@@ -1,0 +1,11 @@
+{
+  "id": "729d7ebe-314c-4020-b46b-5f9a4dc43e1a",
+  "type": "decision",
+  "timestamp": "2026-07-16T23:01:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Learning states (type: learning, FEAT-1283) currently render with the shell fallback glyph because _ACTION_TYPE_BADGES has no learning key. The alembic glyph (U+2697) signals distillation/proof-of-substance, matching the learning state's prove-before-build role. Add 'learning': '\u2697' to _ACTION_TYPE_BADGES and extend _get_state_badge() to consult state.type for the learning fallback.",
+  "rule": "Captured: Add learning state badge glyph to _ACTION_TYPE_BADGES using \u2697 (U+2697) alembic",
+  "scope": "issue",
+  "issue": "ENH-2661"
+}

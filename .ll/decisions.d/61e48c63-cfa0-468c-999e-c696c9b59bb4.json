@@ -1,0 +1,11 @@
+{
+  "id": "3638137d-77f4-4083-bf2a-50da6e064783",
+  "type": "decision",
+  "timestamp": "2026-07-16T20:54:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "rn-implement init only normalizes direct IDs; passing an EPIC with pre-existing children (parent: linked) requires manual enumeration or shell-piping ll-issues list --parent. Add explicit --context epic=EPIC-XXX flag that resolves children at init time, preserving cycle detection, check_blocked_by gating, and re_enqueue_unblocked flow. Mirrors ENH-2658 ids filter pattern on prompt-across-issues.",
+  "rule": "Captured: Add --epic flag to rn-implement for auto-resolving children",
+  "scope": "issue",
+  "issue": "ENH-2660"
+}

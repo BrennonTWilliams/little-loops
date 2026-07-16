@@ -1,0 +1,12 @@
+{
+  "id": "df20f24f-bfe5-4f6b-b025-687af7f61db2",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:45:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A reuses the finalized measurement owned by context-monitor.sh and matches the record-commit-post-commit precedent. Option B would require porting the 350-line shell measurement/lock/threshold state machine into post_tool_use.py and races a hook-ordering pitfall (post_tool_use.py runs before context-monitor.sh per hooks.json:90->104).",
+  "rule": "Persist context-window pressure events from hooks/scripts/context-monitor.sh (Option A); call record_context_pressure_event() best-effort via the record-commit-post-commit shell-out pattern (python3 -m ... 2>/dev/null || true) outside the STATE_LOCK critical section. Reuses record_test_run_event() shape for the recorder and TestContextMonitor.concurrent_updates for the shell-side test scaffold.",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (persist from scripts/little_loops/hooks/post_tool_use.py): no precedent for shell-PostToolUse -> Python-PostToolUse handoff; large refactor surface (estimate_tokens, get_transcript_baseline, check_compaction, STATE_LOCK); would duplicate context_window.py for the third time and race the 5s hook timeout.",
+  "issue": "ENH-2507"
+}

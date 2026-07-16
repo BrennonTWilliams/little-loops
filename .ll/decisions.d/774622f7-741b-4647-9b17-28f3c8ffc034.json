@@ -1,0 +1,12 @@
+{
+  "id": "45928dd5-d212-47d4-9950-222bf578c869",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:35:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Additive migration matches v15/v16 nullable-column precedent (session_store.py:576-594); _row_to_dataclass() at history_reader.py:273-277 tolerates absent columns for pre-migration rows. Option B's richer payload (prompt_preview, result_size, duration_ms) is redundant \u2014 result_size/bytes_out already on tool_events, latency_ms arrives via ENH-2511's same-migration batch. ARCHITECTURE-144/145 (decisions.yaml:5030-5066) explicitly rejected sibling-table pattern in favor of additive columns when derivable. Only implementation gap is wiring _index() after the live post_tool_use insert for live FTS parity.",
+  "rule": "Nullable agent_type column on tool_events (option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Dedicated agent_spawn kind (option B): redundant columns, kind-registration overhead across VALID_KINDS/_KIND_TABLE/DES_VARIANTS, disrupts ENH-2497+ENH-2511 batched migration plan, and contradicts the additive-column precedent.",
+  "issue": "ENH-2497"
+}

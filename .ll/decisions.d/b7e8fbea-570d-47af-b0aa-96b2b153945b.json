@@ -1,0 +1,12 @@
+{
+  "id": "3da7e023-796a-4ed1-96d6-24ba4a3a1b86",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:28:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the dominant idempotency idiom in session_store.py (28+ INSERT OR IGNORE call sites); record_commit_event (lines 1222-1272) provides a copy-with-rename template. Use full 64-char SHA-256 hexdigest at the ENH-2496 call site instead of the 16-char _hash_args() slice to close the 64-bit collision risk for the UNIQUE column, without altering the shared helper or tool_events row identity.",
+  "rule": "Option B \u2014 INSERT OR IGNORE on UNIQUE index for hash-gated config snapshots",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 explicit-SELECT-first (diverges from 21+ INSERT OR IGNORE sites, adds SELECT round-trip per session_start, loses rowcount-gated _index() observation)",
+  "issue": "ENH-2496"
+}

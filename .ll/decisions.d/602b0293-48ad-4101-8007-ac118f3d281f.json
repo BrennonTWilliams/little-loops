@@ -1,0 +1,12 @@
+{
+  "id": "5fe0502e-1e65-4ff2-bf6d-1ee885da3078",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:50:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Column-additive ALTER TABLE has an exact migration template at v15/v16 (session_store.py:580-583, :591-593); LIKE-substring matching is established in history_reader.py:301-303, :335-336; EPIC-2457 sibling precedent overwhelmingly favors widen-existing-tables over new join tables; ~50% less schema/migration/read-API surface than Option B (join table).",
+  "rule": "Option A: Comma-separated TEXT in a single tag column",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: join table commit_tags(commit_sha, tag) \u2014 only one join-table precedent (summary_spans); no GROUP BY-on-join-table read pattern in codebase; contradicts EPIC-2457 sibling precedent.",
+  "issue": "ENH-2508"
+}

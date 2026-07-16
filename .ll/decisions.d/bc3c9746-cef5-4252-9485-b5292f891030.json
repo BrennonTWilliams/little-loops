@@ -1,0 +1,16 @@
+{
+  "id": "a0059f47-fce4-470f-bc5d-bcf3ccc3e7ea",
+  "type": "decision",
+  "timestamp": "2026-07-16T20:11:52Z",
+  "category": "architecture",
+  "labels": [
+    "history-db",
+    "schema",
+    "epic-2457"
+  ],
+  "rationale": "ARCHITECTURE-144's rule is a v19-ownership/sequencing decision; its 'turns 2461/2493/2494/2506/2507/2511 into parser tasks' clause is rationale, not a per-issue mandate. Applying the in-band/out-of-band test per child: ENH-2506 (hook telemetry) and ENH-2507 (context-pressure %) have NO transcript source at all -> pure parser is impossible, direct-write is the only complete path (2507 already documents this at its Codebase Research Findings). ENH-2493 (ll-harness) and ENH-2494 (ruff/mypy) appear as Bash tool_events only when run inside a Claude session; out-of-session/CI runs are invisible and verdict/exit-code must be scraped from stdout, so direct-write must remain the primary producer with an optional _backfill as secondary enrichment. ENH-2511/ENH-2497 are already hybrids (server/tool derivable, outcome/latency not). Net: only ENH-2461 is a clean pure-parser; the rest are direct-write or hybrid, and that is consistent with the architecture, not a violation.",
+  "rule": "Scopes ARCHITECTURE-144: the raw_events 'parser task' reframe applies ONLY to fields sourced from the 5 JSONL-ingested raw_events kinds (tool/message/assistant_message/skill_event/session-mapping). Out-of-band signal children stay direct-write; hybrids keep direct-write as the primary producer with an optional _backfill_* enrichment for the in-transcript subset.",
+  "scope": "project",
+  "alternatives_rejected": "Mechanically rewrite 2493/2494/2506 into pure _backfill parsers (rejected: drops out-of-session run coverage for harness/check gates, and 2506/2507 have no raw_events source so the parser would be hollow). Leave ARCHITECTURE-144 unscoped (rejected: it silently marks legitimate direct-write children as pattern violations).",
+  "issue": "ENH-2581"
+}

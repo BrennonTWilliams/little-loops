@@ -1,0 +1,12 @@
+{
+  "id": "eb5bbe37-d62f-475b-bc6a-30cc819e5c86",
+  "type": "decision",
+  "timestamp": "2026-07-16T19:41:19Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's load-bearing assumption \u2014 that PostToolUse tool_response carries a child-session identifier for Agent/Task \u2014 has zero checked-in evidence in the repo. Repository-wide grep for tool_response.agent_id/tool_response.session_id returns zero matches; no test fixture, no sample payload, no documented surface. Option B uses the only Claude-Code-documented surface (hooks-reference.md:1059-1112) where SubagentStart/SubagentStop payloads carry agent_id, agent_type, and agent_transcript_path directly. The 3-layer wiring (hooks.json binding \u2192 bash adapter \u2192 Python handler registered in _dispatch_table) has 4+ clean precedents. Schema column rename child_session_id \u2192 agent_id is mechanical (already flagged at issue line 181).",
+  "rule": "Bind SubagentStart/SubagentStop lifecycle hooks for subagent_runs producer",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: extract child_session_id from tool_response inside post_tool_use.py \u2014 load-bearing assumption unverified by any checked-in evidence; implementation would be either dead code or brittle inference; ENH-2497 dependency unlanded adds coordination risk",
+  "issue": "ENH-2505"
+}

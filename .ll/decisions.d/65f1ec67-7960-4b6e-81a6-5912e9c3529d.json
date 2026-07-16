@@ -1,0 +1,12 @@
+{
+  "id": "771faa9a-d3e7-4990-a944-0f1792764b24",
+  "type": "decision",
+  "timestamp": "2026-07-16T20:03:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Six existing CLIs (code.py:91, harness.py:127, finalize_decomposition.py:75, sync.py:54-108, action.py:224, init/cli.py:637) already use nargs=* for sibling path/ID lists; backfill_incremental(jsonl_files=list[Path]) accepts the list directly; the worker's existing minimal-parsing style extends naturally to positional[1:]. Original Option A recommendation focused narrowly on the --rebuild ad-hoc-flag precedent at backfill_worker.py:24 and overlooked the broader nargs=* convention. Option B is a one-pattern continuation (3-5 lines in main() + one .extend() at the single call site), not new infrastructure.",
+  "rule": "Extend backfill_worker argv to accept multiple --jsonl=path positional args (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (temp-dir staging) \u2014 rejected because the staging mechanism has no production precedent, the FakePopen mock at tests/test_hook_session_start.py:239-247 does not model subprocess lifetime (parent-tempdir-cleanup-vs-detached-child-read race is untested), and the existing session-start test at tests/test_hook_session_start.py:288-304 asserts the project directory itself as the worker path. Scoring: A=5/12, B=11/12.",
+  "issue": "ENH-2580"
+}

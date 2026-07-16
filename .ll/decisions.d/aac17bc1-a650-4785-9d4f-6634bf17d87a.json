@@ -1,0 +1,12 @@
+{
+  "id": "300eee5e-b3ca-4115-aee7-779a4732e121",
+  "type": "decision",
+  "timestamp": "2026-07-16T23:12:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Extend _get_state_badge() and _box_kind_color() to consult state.type as a new branch after the sub-loop check. Matches existing dispatcher pattern in fsm/executor.py:1218 and fsm/validation.py:710 which already consume state.type=='learning' directly. Reuse score 3/3; no FSM-loader changes; no schema changes. Option B (loader copies type -> action_type) rejected: no precedent for cross-field copy in StateConfig.from_dict, would break the field-independence invariant asserted by test_fsm_schema.py:2868-2870, would silently change executor dispatch semantics (executor.py:1905-1911 interprets unknown action_types as prompts), and would pollute to_dict() roundtrip output.",
+  "rule": "Renderer consults state.type for kind-scoped badges",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: Have the FSM loader copy type: learning into action_type: learning at parse time",
+  "issue": "ENH-2661"
+}
