@@ -248,7 +248,28 @@ _Added by `/ll:refine-issue` — concrete anchor references for each step:_
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Integration Map
+assumes it is the sole claimant of the next schema-version slot ("bump
+`SCHEMA_VERSION` from `18` to `19`"). Several other active EPIC-2457 siblings
+(ENH-2492, ENH-2463, ENH-2464, ENH-2465, ENH-2493, ENH-2494, ENH-2495,
+ENH-2496, ENH-2497, ENH-2498, ENH-2511, and others) independently make the
+same "18→19" claim in their own Integration Maps — they cannot all be v19.
+Verified against current code (`scripts/little_loops/session_store.py`):
+`SCHEMA_VERSION` is now **20** (v17=`commit_events`/ENH-2458 done,
+v18=`test_run_events`/ENH-2459 done, v19=`raw_events`/ENH-2581 done,
+v20=`usage_events`/ENH-2461 done). At implementation time, read the live
+`SCHEMA_VERSION` constant to determine the actual next-available slot rather
+than trusting this issue's stale "19" literal; each child lands its own
+migration at whatever version is open when it is implemented (no coordinated
+release; per EPIC-2457's own "no shared helper module is required" scope
+note).
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-16T02:57:54 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:35:03 - `984dde16-4d04-4519-aaa2-e9d51aefdda9.jsonl`
 - audit - 2026-07-06 - Confirmed `docs/guides/LEARNING_TESTS_GUIDE.md` exists (removed "(if exists)" hedge) and `.ll/learning-tests/*.md` registry files are present.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

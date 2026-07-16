@@ -8,6 +8,7 @@ discovered_date: 2026-07-06
 captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
+depends_on: [ENH-2497]
 labels:
   - enhancement
   - history-db
@@ -169,4 +170,5 @@ Bump `SCHEMA_VERSION`. Add `"subagent_run"` to `_VALID_KINDS` and
 **Open** | Created: 2026-07-06 | Priority: P3
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
