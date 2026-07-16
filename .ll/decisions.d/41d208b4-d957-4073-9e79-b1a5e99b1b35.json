@@ -1,0 +1,12 @@
+{
+  "id": "cc4ab8c7-e4e5-467f-a610-d7d4cf0209cc",
+  "type": "decision",
+  "timestamp": "2026-07-16T13:45:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A is structurally inert for CLOSED>0 abandoned runs (the elif chain resolves CLOSED>0 branches before reaching phantom); Option B matches the ENH-2376 partial-with-errors precedent for compound verdicts and requires no new consumer-side infrastructure.",
+  "rule": "Option B \u2014 dedicated incomplete-abandoned verdict",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: fold ABANDONED into the existing phantom/exit-1 disjunction",
+  "issue": "ENH-2657"
+}
