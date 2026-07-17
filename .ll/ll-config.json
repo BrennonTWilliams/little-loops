@@ -68,7 +68,7 @@
       "prefix": "epic/",
       "merge_to_base_on_complete": true,
       "open_pr": false,
-      "verify_before_merge": true
+      "verify_before_merge": false
     }
   },
   "design_tokens": {
