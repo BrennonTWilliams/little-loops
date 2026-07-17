@@ -3,9 +3,10 @@ id: ENH-2660
 title: Add `--epic` flag to `rn-implement` for auto-resolving children
 type: enhancement
 priority: P3
-status: open
+status: done
 decision_needed: false
 captured_at: '2026-07-16T20:52:21Z'
+completed_at: '2026-07-17T01:47:38Z'
 discovered_date: 2026-07-16
 discovered_by: capture-issue
 labels:
@@ -316,7 +317,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 `enhancement`, `loops`, `fsm`, `rn-implement`, `captured`
 
+## Resolution
+
+Implemented via `/ll:manage-issue` (2026-07-17).
+
+- **`scripts/little_loops/loops/rn-implement.yaml`** — added the `epic: ""` context var
+  and branched the `init` state on `${context.epic}`. When set, `init` validates the
+  EPIC exists (`ll-issues path`), resolves its `parent:`-linked children via
+  `ll-issues list --parent <EPIC> --json`, de-duplicates them (wiring #9, via an
+  in-Python `seen` set), and seeds `queue.txt` directly. The tracking-file and
+  `config.json` initialization was hoisted to run for **both** the epic and
+  comma-separated paths (wiring #10) rather than short-circuiting past it, so
+  epic-seeded runs get identical downstream bookkeeping. The empty-input guard now
+  fires only when neither `epic` nor `INPUT` is set. The comma-separated / BUG-2003
+  canonicalization path is byte-identical when `epic=""`.
+- **Docs** — `LOOPS_REFERENCE.md` (context-var table row + FSM-flow caption),
+  `RECURSIVE_LOOPS_GUIDE.md` (two usage examples), `loops/README.md` (catalog row).
+- **Tests** — `TestRnImplementEpicFlag` (structural + negative-path error strings) in
+  `test_builtin_loops.py`; `test_mr11_does_not_fire_for_epic_context_var` in
+  `test_fsm_validation.py` (locks the regex-bounded MR-11 scope so `epic` stays
+  un-flagged); `TestEpicFlagInit` in `test_rn_implement.py` (bash-level exercise of
+  the epic branch — dedup, config.json written, not-found/no-children aborts — plus a
+  byte-identical regression for the `epic=""` fallback).
+
+Verified: full suite `15109 passed, 36 skipped`; `ll-loop validate rn-implement` clean;
+`ruff` clean. No `ll-issues list --parent` / CLI change needed (reused as-is).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-17T01:47:01Z - `277b34db-cfbf-4705-992e-85d46ff898ac.jsonl`
+- `/ll:ready-issue` - 2026-07-17T01:26:31 - `cea204c7-c631-4884-aa1b-b2bc8772c75a.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:18:19 - `1512fb58-0770-4096-8672-0f98fe62b48f.jsonl`
 - `/ll:refine-issue` - 2026-07-16T21:06:10 - `3875a64d-5808-46b9-81ae-98b6d0d858c2.jsonl`
 - `/ll:capture-issue` - 2026-07-16T20:52:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b1f5f4d-99ee-4158-9ffa-3dfb5dc76405.jsonl`

@@ -1363,6 +1363,108 @@ class TestCheckLearningReadyConfigReadShell:
         assert not prove_called, "explicit off context override must win over config"
 
 
+class TestEpicFlagInit:
+    """ENH-2660: end-to-end exercise of the init state's --epic branch and the
+    byte-identical fallback when epic is empty. Mirrors the shell-substitution
+    shape of TestCheckLearningReadyConfigReadShell._run."""
+
+    def _run_init(
+        self,
+        tmp_path: Path,
+        *,
+        epic: str = "",
+        input_val: str = "",
+        ll_issues_stub: str | None = None,
+    ) -> tuple[subprocess.CompletedProcess, str, Path]:
+        import os
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        stub = bindir / "ll-issues"
+        stub.write_text(ll_issues_stub or "#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+
+        action = _load_loop()["states"]["init"]["action"]
+        action = (
+            action.replace("${context.input:shell}", f"'{input_val}'")
+            .replace("${context.epic}", epic)
+            .replace("${context.resume}", "")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace("${context.readiness_threshold}", "85")
+            .replace("${context.outcome_threshold}", "75")
+            .replace("${context.max_depth}", "3")
+            .replace("${context.max_remediation_passes}", "3")
+            .replace("$$", "$")  # unescape FSM shell-brace guards
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", action],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+        queue_file = run_dir / "queue.txt"
+        queue = queue_file.read_text() if queue_file.exists() else ""
+        return result, queue, run_dir
+
+    def test_epic_empty_preserves_comma_separated_input(self, tmp_path: Path) -> None:
+        """epic='' → the init action seeds queue.txt from the comma-separated INPUT
+        exactly as before ENH-2660 (canonicalized IDs, one per line). Regression
+        lock on the byte-identical fallback path."""
+        stub = (
+            "#!/bin/sh\n"
+            # `ll-issues path <id>` → echo a fake file path carrying the canonical ID.
+            'if [ "$1" = "path" ]; then echo "/x/.issues/enhancements/P3-$2-slug.md"; fi\n'
+        )
+        result, queue, _ = self._run_init(
+            tmp_path, epic="", input_val="ENH-1842, FEAT-1808", ll_issues_stub=stub
+        )
+        assert result.returncode == 0, result.stderr
+        assert queue == "ENH-1842\nFEAT-1808\n"
+
+    def test_epic_seeds_queue_from_children_deduped(self, tmp_path: Path) -> None:
+        """epic=EPIC-999 → queue.txt is seeded from `ll-issues list --parent`
+        child IDs, de-duplicated (wiring #9). config.json is still written for
+        epic-seeded runs (wiring #10)."""
+        stub = (
+            "#!/bin/sh\n"
+            'if [ "$1" = "path" ]; then echo "/x/.issues/epics/P3-$2-slug.md"; exit 0; fi\n'
+            'if [ "$1" = "list" ]; then\n'
+            "  echo '[{\"id\":\"ENH-100\"},{\"id\":\"ENH-101\"},{\"id\":\"ENH-100\"}]'\n"
+            "  exit 0\n"
+            "fi\n"
+        )
+        result, queue, run_dir = self._run_init(
+            tmp_path, epic="EPIC-999", input_val="", ll_issues_stub=stub
+        )
+        assert result.returncode == 0, result.stderr
+        assert queue == "ENH-100\nENH-101\n"  # duplicate ENH-100 collapsed
+        assert (run_dir / "config.json").exists(), "config.json must be written for epic runs"
+
+    def test_epic_not_found_aborts(self, tmp_path: Path) -> None:
+        """A --epic target that ll-issues path cannot resolve aborts init (exit 1)."""
+        stub = '#!/bin/sh\nif [ "$1" = "path" ]; then exit 0; fi\n'  # path echoes nothing
+        result, _, _ = self._run_init(tmp_path, epic="EPIC-404", ll_issues_stub=stub)
+        assert result.returncode == 1
+        assert "not found" in result.stdout
+
+    def test_epic_no_children_aborts(self, tmp_path: Path) -> None:
+        """A --epic target with zero (open) children aborts init (exit 1)."""
+        stub = (
+            "#!/bin/sh\n"
+            'if [ "$1" = "path" ]; then echo "/x/.issues/epics/P3-$2-x.md"; exit 0; fi\n'
+            'if [ "$1" = "list" ]; then echo "[]"; exit 0; fi\n'
+        )
+        result, _, _ = self._run_init(tmp_path, epic="EPIC-1", ll_issues_stub=stub)
+        assert result.returncode == 1
+        assert "no children" in result.stdout
+
+
 # ============================================================================
 # TestReEnqueueUnblocked — ENH-2195: re-enqueue deferred issues in same run
 # ============================================================================

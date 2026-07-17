@@ -3455,6 +3455,15 @@ class TestUnsafeContextInterpolation:
         errors = _validate_unsafe_context_interpolation(fsm)
         assert errors == []
 
+    def test_mr11_does_not_fire_for_epic_context_var(self) -> None:
+        """MR-11 does not flag context.epic (ENH-2660): ``epic`` is outside the
+        user-controlled regex set, so rn-implement's --epic branch can interpolate
+        ``${context.epic}`` bare without needing unsafe_context_interpolation_ok.
+        Locks the regex-bounded scope against a future "tighten MR-11" change."""
+        fsm = self._simple_fsm('EPIC="${context.epic}"; echo "$EPIC"')
+        errors = _validate_unsafe_context_interpolation(fsm)
+        assert errors == []
+
     def test_mr11_does_not_fire_for_single_quoted_position(self) -> None:
         """MR-11 does not fire when the placeholder sits inside single quotes."""
         fsm = self._simple_fsm("printf '%s' '${context.input}'")

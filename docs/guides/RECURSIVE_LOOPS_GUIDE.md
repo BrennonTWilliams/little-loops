@@ -185,6 +185,9 @@ re-enqueues deferred issues once their `blocked_by` dependencies complete.
 
 ```bash
 ll-loop run rn-implement "FEAT-1808,ENH-1842"
+
+# Or seed the queue with an EPIC's parent:-linked children (ENH-2660):
+ll-loop run rn-implement --context epic=EPIC-2457
 ```
 
 ### `rn-remediate` — make one issue ready, then implement it
@@ -352,6 +355,7 @@ ll-loop run rn-refine "thoughts/sync-layer-plan.md"
 # Implementation (the entry point — drives the sub-loops for you)
 ll-loop run rn-implement "FEAT-1808"
 ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001"
+ll-loop run rn-implement --context epic=EPIC-2457   # implement an EPIC's children (ENH-2660)
 
 # Sub-loops standalone, against a single issue
 ll-loop run rn-remediate "ENH-1842"

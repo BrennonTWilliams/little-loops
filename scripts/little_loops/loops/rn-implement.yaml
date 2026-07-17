@@ -7,6 +7,8 @@ description: |
   detection) lives in the delegated sub-loops.
 
   Run as: ll-loop run rn-implement "<issue-id>"
+      or: ll-loop run rn-implement --context epic=EPIC-NNN   # seed queue with the
+                                                             # EPIC's parent:-linked children
 
   Architecture:
   - Queue lifecycle: init → dequeue → depth gate → sub-loop delegation → repeat
@@ -43,6 +45,13 @@ context:
   # surprised by rn-implement spawning proving agents on every cold-registry issue.
   #   ll-loop run rn-implement <id> --context auto_prove_learning_gate=1
   auto_prove_learning_gate: ""
+  # ENH-2660: opt-in EPIC-as-input. When set to EPIC-NNN, init resolves the
+  # EPIC's parent:-linked (open) children via `ll-issues list --parent` and seeds
+  # the queue with them instead of parsing a comma-separated INPUT. Default empty
+  # = the direct-ID / comma-separated path runs unchanged. A bare EPIC ID with no
+  # children still routes to the auto-decompose path (pass it as INPUT, not epic=).
+  #   ll-loop run rn-implement --context epic=EPIC-2457
+  epic: ""
 import:
   - lib/common.yaml
 meta_self_eval_ok: false
@@ -58,10 +67,7 @@ states:
     action_type: shell
     action: |
       INPUT=${context.input:shell}
-      if [ -z "$INPUT" ]; then
-        echo "ERROR: No input provided. Pass an issue ID as argument."
-        exit 1
-      fi
+      EPIC="${context.epic}"
       RUN_DIR="${context.run_dir}"
       mkdir -p "$RUN_DIR"
 
@@ -76,33 +82,72 @@ states:
         exit 0
       fi
 
-      # Seed queue with input (support comma-separated list)
-      echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$RUN_DIR/queue_raw.txt"
-
-      # BUG-2003 Layer 1: normalize each ID to its canonical TYPE-NNN form before
-      # seeding the queue. A stale/mismatched type prefix (e.g. FEAT-1903 for a file
-      # named ENH-1903) and cross-type duplicate refs collapse to one identity, so
-      # the visited-set / cycle detection keys on a single canonical ID downstream.
-      : > "$RUN_DIR/queue.txt"
-      while IFS= read -r raw_id; do
-        [ -z "$raw_id" ] && continue
-        resolved=$(ll-issues path "$raw_id" 2>/dev/null)
-        if [ -n "$resolved" ]; then
-          canon=$(basename "$resolved" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' | head -1)
-          echo "$${canon:-$raw_id}" >> "$RUN_DIR/queue.txt"
-        else
-          # Unresolvable now -> keep raw so existing downstream error handling fires.
-          echo "$raw_id" >> "$RUN_DIR/queue.txt"
+      if [ -n "$EPIC" ]; then
+        # ENH-2660: EPIC-as-input. Resolve the EPIC's parent:-linked children via
+        # the existing `ll-issues list --parent` primitive (transitive descendant
+        # walk, status-filtered to open) and seed queue.txt directly. Child IDs are
+        # already canonical (they came from parent: frontmatter resolution, not user
+        # input), so the BUG-2003 canonicalization loop below is not re-run — but we
+        # still de-dup (wiring #9) since a two-path parent chain could emit a child
+        # ID twice, which would otherwise be popped twice in series.
+        EPIC_PATH=$(ll-issues path "$EPIC" 2>/dev/null)
+        if [ -z "$EPIC_PATH" ]; then
+          echo "ERROR: --epic target not found: $EPIC"
+          exit 1
         fi
-      done < "$RUN_DIR/queue_raw.txt"
-      rm -f "$RUN_DIR/queue_raw.txt"
-      QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
-      if [ "$QUEUE_COUNT" -eq 0 ]; then
-        echo "ERROR: No valid issue IDs parsed from input: $INPUT"
-        exit 1
+        ll-issues list --parent "$EPIC" --json | python3 -c '
+      import json, sys
+      seen = set()
+      for i in json.load(sys.stdin):
+          iid = i.get("id")
+          if iid and iid not in seen:
+              seen.add(iid)
+              print(iid)
+      ' > "$RUN_DIR/queue.txt"
+        if [ "$?" -ne 0 ]; then
+          echo "ERROR: could not resolve children for --epic $EPIC (ll-issues list / JSON parse failed)"
+          exit 1
+        fi
+        QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
+        if [ "$QUEUE_COUNT" -eq 0 ]; then
+          echo "ERROR: --epic $EPIC has no children. Pass the EPIC ID directly (as INPUT) to trigger auto-decompose, or create children via /ll:scope-epic."
+          exit 1
+        fi
+        echo "Resolved $EPIC -> $QUEUE_COUNT child issue(s)" >&2
+      else
+        if [ -z "$INPUT" ]; then
+          echo "ERROR: No input provided. Pass an issue ID as argument, or --context epic=EPIC-NNN."
+          exit 1
+        fi
+        # Seed queue with input (support comma-separated list)
+        echo "$INPUT" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' > "$RUN_DIR/queue_raw.txt"
+
+        # BUG-2003 Layer 1: normalize each ID to its canonical TYPE-NNN form before
+        # seeding the queue. A stale/mismatched type prefix (e.g. FEAT-1903 for a file
+        # named ENH-1903) and cross-type duplicate refs collapse to one identity, so
+        # the visited-set / cycle detection keys on a single canonical ID downstream.
+        : > "$RUN_DIR/queue.txt"
+        while IFS= read -r raw_id; do
+          [ -z "$raw_id" ] && continue
+          resolved=$(ll-issues path "$raw_id" 2>/dev/null)
+          if [ -n "$resolved" ]; then
+            canon=$(basename "$resolved" | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' | head -1)
+            echo "$${canon:-$raw_id}" >> "$RUN_DIR/queue.txt"
+          else
+            # Unresolvable now -> keep raw so existing downstream error handling fires.
+            echo "$raw_id" >> "$RUN_DIR/queue.txt"
+          fi
+        done < "$RUN_DIR/queue_raw.txt"
+        rm -f "$RUN_DIR/queue_raw.txt"
+        QUEUE_COUNT=$(wc -l < "$RUN_DIR/queue.txt" | tr -d ' ')
+        if [ "$QUEUE_COUNT" -eq 0 ]; then
+          echo "ERROR: No valid issue IDs parsed from input: $INPUT"
+          exit 1
+        fi
       fi
 
-      # Initialize tracking files
+      # Initialize tracking files (shared by both the epic and comma-separated
+      # paths, so config.json is written for epic-seeded runs too — wiring #10).
       : > "$RUN_DIR/visited.txt"
       : > "$RUN_DIR/depth_capped.txt"
       : > "$RUN_DIR/skipped.txt"

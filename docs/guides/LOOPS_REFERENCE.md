@@ -416,6 +416,7 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842"
 | `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
 | `schedule_mode` | `"fifo"` | Scheduler: `"fifo"` (default, pop queue head) or `"value_ranked"` (select highest-value ready issue each tick) |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/rn-implement-{instance_id}/`); created automatically before the `init` state |
+| `epic` | `""` | ENH-2660: opt-in EPIC-as-input. When set to `EPIC-NNN`, `init` resolves the EPIC's `parent:`-linked (open) children via `ll-issues list --parent` and seeds the queue with them (de-duplicated) instead of parsing the comma-separated input. A bare EPIC with no children still routes to auto-decompose — pass it as the positional input, not `epic=`. Usage: `--context epic=EPIC-2457` |
 
 **`schedule_mode: value_ranked`**
 
@@ -467,7 +468,7 @@ This mirrors the `blocked_by` gate's shape exactly: same fail-open contract, sam
 **FSM flow:**
 
 ```
-init               (shell: seed queue from comma-separated input, init tracking files)
+init               (shell: seed queue from epic-as-input OR comma-separated input, init tracking files)
   → dequeue_next   (fragment: queue_pop — pop head of queue, mark visited, increment counter)
     → check_blocked_by  (shell: parse frontmatter, write blocked_by_unmet_<ID>.txt)
       → route_blocked_by  (evaluate: output_contains — any unmet blockers?)

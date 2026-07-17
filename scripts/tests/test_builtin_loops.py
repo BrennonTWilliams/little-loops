@@ -10736,6 +10736,52 @@ class TestRnImplementAuthFastFail:
         assert "echo" in action
 
 
+class TestRnImplementEpicFlag:
+    """ENH-2660: --context epic=EPIC-NNN seeds the queue with the EPIC's
+    parent:-linked children instead of a comma-separated ID list. The direct-ID
+    path is unchanged (epic defaults to '')."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "rn-implement.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_epic_context_var_defaults_empty(self, data: dict) -> None:
+        """context.epic must default to '' (opt-in; direct-ID path unchanged)."""
+        assert data.get("context", {}).get("epic") == ""
+
+    def test_init_branches_on_epic(self, data: dict) -> None:
+        """init action must branch on ${context.epic}."""
+        init_action = data["states"]["init"].get("action", "")
+        assert "${context.epic}" in init_action
+
+    def test_init_resolves_children_via_ll_issues_list_parent(self, data: dict) -> None:
+        """The epic branch resolves children through ll-issues list --parent
+        (reuses the existing transitive-descendant primitive)."""
+        init_action = data["states"]["init"].get("action", "")
+        assert "ll-issues list --parent" in init_action
+
+    def test_init_action_errors_on_missing_epic(self, data: dict) -> None:
+        """A non-resolvable --epic target aborts init with a not-found error."""
+        init_action = data["states"]["init"].get("action", "")
+        assert "ERROR" in init_action
+        assert "not found" in init_action
+
+    def test_init_action_errors_on_epic_with_no_children(self, data: dict) -> None:
+        """An EPIC with zero (open) children aborts init with a no-children error
+        that points the operator at auto-decompose / scope-epic."""
+        init_action = data["states"]["init"].get("action", "")
+        assert "no children" in init_action
+
+    def test_epic_branch_seeds_queue_txt(self, data: dict) -> None:
+        """The epic branch seeds queue.txt directly (shares the shared
+        tracking-file/config.json init downstream, wiring #10)."""
+        init_action = data["states"]["init"].get("action", "")
+        assert "queue.txt" in init_action
+
+
 class TestLearningGateConsistency:
     """The three core implementation loops route a learning-gate block (ENH-2319)
     consistently through the same `ll-auto --only` choke point: a distinct
