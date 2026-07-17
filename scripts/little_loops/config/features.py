@@ -796,6 +796,65 @@ class OTelEventsConfig:
 
 
 @dataclass
+class OTelAttributesConfig:
+    """FEAT-2478 — ``gen_ai.usage.*`` attribute stamping toggle.
+
+    Governs the always-on, capture-time behavior of shaping OTel-canonical
+    attributes onto usage rows written to ``history.db`` / ``usage.jsonl``. This
+    is independent of the opt-in OTLP transport (``events.otel``): a user can
+    want local cost attribution with no collector wired.
+    """
+
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OTelAttributesConfig:
+        """Create OTelAttributesConfig from dictionary."""
+        return cls(enabled=data.get("enabled", True))
+
+
+@dataclass
+class StreamingParityConfig:
+    """FEAT-2478 — streaming-vs-blocking cache-token parity check toggle (ENH-2479)."""
+
+    check: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StreamingParityConfig:
+        """Create StreamingParityConfig from dictionary."""
+        return cls(check=data.get("check", True))
+
+
+@dataclass
+class ObservabilityConfig:
+    """FEAT-2478 — top-level observability settings.
+
+    Homed as a dedicated top-level block (Decision 1 = Option A) rather than under
+    ``events.otel``: the toggles govern an always-on capture-time behavior that
+    writes shaped rows directly to ``history.db`` with no OTel SDK / collector,
+    so coupling them to the opt-in OTLP transport namespace would be misleading.
+    """
+
+    otel_attributes: OTelAttributesConfig = field(default_factory=OTelAttributesConfig)
+    streaming_parity: StreamingParityConfig = field(default_factory=StreamingParityConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ObservabilityConfig:
+        """Create ObservabilityConfig from dictionary."""
+        return cls(
+            otel_attributes=OTelAttributesConfig.from_dict(data.get("otel_attributes", {})),
+            streaming_parity=StreamingParityConfig.from_dict(data.get("streaming_parity", {})),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize back to the config dict shape (round-trips ll init/configure)."""
+        return {
+            "otel_attributes": {"enabled": self.otel_attributes.enabled},
+            "streaming_parity": {"check": self.streaming_parity.check},
+        }
+
+
+@dataclass
 class WebhookEventsConfig:
     """WebhookTransport configuration."""
 

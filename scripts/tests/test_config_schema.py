@@ -26,6 +26,29 @@ class TestConfigSchema:
         """config-schema.json must be accessible inside the package."""
         assert CONFIG_SCHEMA.is_file(), f"config-schema.json not found: {CONFIG_SCHEMA}"
 
+    def test_observability_in_schema(self) -> None:
+        """observability block (FEAT-2478, Decision 1 = Option A) is declared.
+
+        A top-level observability block is required because the top-level object
+        has additionalProperties: false — a config carrying observability.* would
+        otherwise be rejected. This is additive; it does not touch the
+        events.otel property set (test_events_otel_properties below still holds).
+        """
+        data = json.loads(_load_schema_text())
+        props = data["properties"]
+        assert "observability" in props, (
+            "observability key missing from config-schema.json properties — "
+            "top-level additionalProperties: false would reject observability.*"
+        )
+        obs = props["observability"]
+        assert obs.get("additionalProperties") is False
+        obs_props = obs["properties"]
+        assert set(obs_props) == {"otel_attributes", "streaming_parity"}
+        assert obs_props["otel_attributes"]["properties"]["enabled"]["type"] == "boolean"
+        assert obs_props["otel_attributes"].get("additionalProperties") is False
+        assert obs_props["streaming_parity"]["properties"]["check"]["type"] == "boolean"
+        assert obs_props["streaming_parity"].get("additionalProperties") is False
+
     def test_extensions_in_properties(self) -> None:
         """extensions key must be inside the properties block."""
         data = json.loads(_load_schema_text())

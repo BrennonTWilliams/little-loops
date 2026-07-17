@@ -4647,6 +4647,36 @@ if not result.passed:
         print(f"Uncovered event type: {etype}")
 ```
 
+### little_loops.observability.tracing
+
+```python
+from little_loops.observability import (
+    OTelAttributes, StampUsageEvent, StreamingParityChecker, vendor_for_runner,
+)
+```
+
+OTel `gen_ai.*` attribute shaping + streaming-parity primitives (FEAT-2478). Emits
+OpenTelemetry-semantic-convention-shaped attributes from internal token-usage rows
+**without** an OTel SDK in-process. See
+[docs/observability/otel-mapping.md](../observability/otel-mapping.md) for the full
+internal-name ↔ OTel-canonical map.
+
+- `OTelAttributes.from_usage(usage, vendor=None, invocation_id=None) -> dict` —
+  shape a `TokenUsage` (or flat dict) into the canonical **dotted** `gen_ai.usage.*`
+  attribute dict (`gen_ai.usage.cache_read.input_tokens`, not the underscore form).
+- `StampUsageEvent.usage_event(row, vendor=None, invocation_id=None) -> dict` —
+  non-destructively augment a flat usage row with `gen_ai.*` keys.
+- `StreamingParityChecker(threshold=0.001).diff(blocking, streaming)` /
+  `.within_threshold(...)` — gate the ENH-2479 0.1% cache-token parity threshold
+  across all four token fields.
+- `vendor_for_runner(name) -> str` — map a `HostRunner.name` to the
+  `gen_ai.provider.vendor` addendum (`anthropic` / `openai` / `google` / `other`).
+
+```python
+attrs = OTelAttributes.from_usage(usage, vendor="anthropic", invocation_id=str(uuid4()))
+# {"gen_ai.usage.input_tokens": ..., "gen_ai.usage.cache_read.input_tokens": ..., ...}
+```
+
 ---
 
 ## little_loops.fsm
@@ -7047,6 +7077,26 @@ def summarize_skills(
 ```
 
 Per-skill rollup powering `ll-session skill-stats` (ENH-2460): returns dicts with `skill_name`, `invocations`, `completions`, `successes`, `success_rate` (over completion-carrying rows only; `None` when no completions), and `avg_duration_ms`, sorted by invocation count descending.
+
+### cost_attribution
+
+```python
+def cost_attribution(
+    group_by: str = "gen_ai.invocation.id",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-`group_by` token/cost rollup over `usage_events` (FEAT-2478). `group_by` is an
+OTel attribute name (`gen_ai.invocation.id` / `gen_ai.provider.vendor`) or a raw
+column (`session_id` / `model` / `state` / `invocation_id` / `provider_vendor`); any
+other value raises `ValueError` (the `GROUP BY` clause is whitelisted). Each returned
+dict carries the group key plus the summed token counts under the canonical dotted
+OTel names (`gen_ai.usage.input_tokens`, `gen_ai.usage.cache_read.input_tokens`, …),
+`cost_usd`, and `invocations`, so a `GROUP BY gen_ai.invocation.id` rollup matches raw
+`result`-event `usage` totals row-for-row.
 
 ### recent_commit_events
 

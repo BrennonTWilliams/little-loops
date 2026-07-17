@@ -39,6 +39,12 @@ from little_loops.issue_lifecycle import (
 )
 from little_loops.issue_manager import AutoManager
 from little_loops.learning_tests import LearnTestRecord, check_learning_test
+from little_loops.observability import (
+    OTelAttributes,
+    StampUsageEvent,
+    StreamingParityChecker,
+    vendor_for_runner,
+)
 from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
 from little_loops.pii import apply_pii_action, detect_pii, redact_pii
 from little_loops.session_store import SQLiteTransport, record_issue_snapshot
@@ -90,6 +96,11 @@ __all__ = [
     "wire_extensions",
     # testing
     "LLTestBus",
+    # observability (FEAT-2478)
+    "OTelAttributes",
+    "StampUsageEvent",
+    "StreamingParityChecker",
+    "vendor_for_runner",
     # transport
     "JsonlTransport",
     "OTelTransport",

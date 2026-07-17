@@ -1409,6 +1409,31 @@ Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `pa
 
 ---
 
+## `observability`
+
+Top-level block (FEAT-2478) governing OTel `gen_ai.*` attribute shaping and the
+streaming-parity check. These are an **always-on, capture-time** behavior that
+writes OTel-shaped rows directly to `history.db` / `usage.jsonl` with **no** OTel
+SDK or collector — independent of the opt-in OTLP transport under `events.otel`
+(which requires `pip install 'little-loops[otel]'`). See
+[docs/observability/otel-mapping.md](../observability/otel-mapping.md).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `observability.otel_attributes.enabled` | `boolean` | `true` | Stamp canonical `gen_ai.usage.*` attributes onto captured usage rows (`usage.jsonl`). |
+| `observability.streaming_parity.check` | `boolean` | `true` | Gate the 0.1% streaming-vs-blocking cache-token parity threshold (ENH-2479). |
+
+```json
+{
+  "observability": {
+    "otel_attributes": { "enabled": true },
+    "streaming_parity": { "check": true }
+  }
+}
+```
+
+---
+
 ## Manual Configuration
 
 The following fields are defined in `config-schema.json` but are not exposed through `ll-init` or `/ll:configure`. To set them, edit `.ll/ll-config.json` directly. All have sensible defaults and rarely need changing.

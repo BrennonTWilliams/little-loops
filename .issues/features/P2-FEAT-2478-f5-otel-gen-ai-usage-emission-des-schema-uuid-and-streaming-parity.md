@@ -4,8 +4,9 @@ title: "F5 \u2014 OTel gen_ai.usage.* emission + streaming parity + UUID + provi
   \ addendum"
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-04T20:05:34Z'
+completed_at: '2026-07-17T04:23:53Z'
 discovered_date: 2026-07-04
 discovered_by: capture-issue
 parent: EPIC-2456
@@ -29,11 +30,11 @@ decision_needed: false
 learning_tests_required:
 - anthropic
 - phoenix
-confidence_score: 98
-outcome_confidence: 65
-score_complexity: 14
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 15
 score_test_coverage: 23
-score_ambiguity: 10
+score_ambiguity: 23
 score_change_surface: 18
 size: Very Large
 ---
@@ -698,11 +699,18 @@ already exist on disk. Verified live against current `main`:_
 - **Both hard dependencies are done.** `ENH-2475` (DES audit) and
   `ENH-2479` (streaming-parity trace set) — this issue's two
   `depends_on` entries — are both `status: done`. This issue is no
-  longer prerequisite-blocked. (`ENH-2461`, referenced separately in
-  the Integration Map as a coordination point, is still `open` — the
-  `usage_event` table still does not exist in `history.db`
-  (`session_store.py` remains at `SCHEMA_VERSION = 18`); that
-  soft-dependency caveat is unchanged and still accurate.)
+  longer prerequisite-blocked.
+
+  > ⚠ **Update (2026-07-16, `/ll:ready-issue`)**: `ENH-2461` (the
+  > coordination point referenced in the Integration Map) is now also
+  > `status: done` — the earlier "still `open`, table does not exist"
+  > caveat is **stale**. The persistence table **exists on `main`** as
+  > `usage_events` (plural, `session_store.py:719`), `SCHEMA_VERSION = 20`
+  > (not 18). F5's "emit shaped rows into `history.db`" now targets a
+  > landed table; the soft-prerequisite caveat is resolved. Note the
+  > table name is `usage_events` (plural), whereas this issue's prose and
+  > Acceptance Criteria say `usage_event` (singular) — reconcile the name
+  > against `session_store.py` during implementation.
 
 - **The ENH-2479 streaming-parity trace set already exists** — F5 does
   not need to create it, only consume it from the production
@@ -775,6 +783,66 @@ already exist on disk. Verified live against current `main`:_
   not bundled into `[dev]` — so contributors without it get a clean
   skip via `_HAS_ANTHROPIC`, matching the existing
   `test_streaming_cache_parity.py` gating pattern above.
+
+### Codebase Research Findings (round 3 — `/ll:refine-issue`, 2026-07-16)
+
+_The round-2 line citations (2026-07-11) have drifted again on `main`;
+all files, anchors, and prior structural findings remain valid — only
+line numbers moved. Verified live against current `main` this pass.
+Use these numbers; the round-2 figures are stale:_
+
+- **`scripts/little_loops/fsm/executor.py:1560–1566`** — the
+  `total_cache_read` / `total_cache_creation` aggregation and
+  `payload["cache_read_tokens"]` / `payload["cache_creation_tokens"]`
+  assignment inside `_run_action()`. (Round-2 cited 1462–1474; the
+  originally-captured figures were 1295–1305 then 1382–1392 — all now
+  superseded.)
+- **`scripts/little_loops/cli/loop/_helpers.py`** — `_print_usage_summary()`
+  `def` is at **1884**, its call site at **1841**, and it reads the
+  per-state table via `CostReport.from_usage_jsonl(usage_path)` at
+  **1898**. (Round-2 cited def 1869 / call 1826.)
+- **`scripts/little_loops/observability/schema.py:243–246`** —
+  `ActionCompleteVariant` (`type: Literal["action_complete"] =
+  "action_complete"`); its docstring still reads "carries TokenUsage"
+  while the dataclass still declares no token fields (step 17 unchanged).
+  (Round-2/wire cited 222–227.)
+- **`scripts/little_loops/config/features.py`** — `OTelEventsConfig` is
+  at **783**, embedded in `EventsConfig` at **831**. (Prior refs: 727 /
+  745–758 / 776.) The `from_dict` + `@dataclass` + `data.get(key,
+  default)` donor pattern for the new `ObservabilityConfig` is unchanged.
+- **`scripts/little_loops/config/core.py`** — `EventsConfig.from_dict`
+  is wired at **`_parse_config()`:233** (`self._events =
+  EventsConfig.from_dict(...)`); the `events` property returns at
+  **324**; the `to_dict()` `otel` branch (only `endpoint` /
+  `service_name`) is at **696–697**. Still no `observability` key parsed
+  anywhere — the three-site wiring (parse line, property, `to_dict`
+  entry) called for by Decision 1 / step 10 is still unwritten.
+- **`scripts/little_loops/config-schema.json`** — the `events.otel`
+  object is at **1411–1427**, `"additionalProperties": false` at
+  **1427**, declaring only `endpoint` / `service_name`. No top-level
+  `"observability"` key exists yet (Decision 1 = Option A needs a
+  brand-new block here). (Prior refs: 1365–1381.)
+- **`scripts/little_loops/history_reader.py:497`** —
+  `summarize_skills()` `def` (the read-only `mode=ro` +
+  `try/except sqlite3.Error/finally` + `row_factory` donor for the new
+  `cost_attribution()`); no `cost_attribution` defined yet. (Prior ref:
+  472.)
+- **Still accurate, no drift** — `fsm/persistence.py:710–728`
+  (`usage.jsonl` writer, gated on `event_type == "action_complete" and
+  "input_tokens" in event`; flat keys confirmed verbatim: `input_tokens`,
+  `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `model`,
+  `timestamp`), `fsm/cost_graph.py:185` (`from_usage_jsonl`), and
+  `subprocess_utils.py` (`TokenUsage` at **45**; `run_claude_command` at
+  **282** with independent `on_usage` / `on_usage_detailed` branches at
+  **451–458** — Decision 2 = Option D's zero-touch premise still holds).
+- **`observability/tracing.py` still does not exist** —
+  `observability/` currently contains only `__init__.py`, `audit.py`,
+  `schema.py`; F5 still adds `tracing.py` alongside them.
+- **`usage_events` table confirmed landed** — `session_store.py:719`
+  (plural), `SCHEMA_VERSION = 20` at line **207**; corroborates the
+  2026-07-16 `/ll:ready-issue` note above. The singular `usage_event`
+  spelling throughout this issue's prose/AC still needs reconciling
+  against the plural table name at implementation time.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -931,11 +999,67 @@ _Added by `/ll:confidence-check` on 2026-07-11_
 - Broad enumeration across ~11 mandatory code-change sites (`tracing.py`, `subprocess_utils.py`, CLI UUID entry point, `history_reader.py`, `persistence.py`, `_helpers.py`, `config/core.py`, `config-schema.json`, `fsm/types.py`, `host_runner.py`) that must be kept in sync — the `persistence.py` → `_helpers.py` → `cost_graph.py` chain silently defaults to 0 if any site is missed. Per-site depth is low (mostly contained additions), but breadth drives the risk.
 - Scope for the three optional callers (`cli/action.py`, `issue_manager.py::run_claude_command()`, `worker_pool.py::_run_claude_command()`) — each wires only a 2-arg `on_usage`, not `on_usage_detailed` — is enumerated as a scorable Option group (Decision 2 — Option C/D, under `## Proposed Solution › Open Decisions`; recommended: Option D — defer). Resolve via `/ll:decide-issue`.
 
+## Resolution
+
+**Done** — 2026-07-17. Implemented per both decisions (Option A top-level
+`observability` block; Option D deferring the three optional callers).
+
+Landed:
+- **`observability/tracing.py`** (new) — `OTelAttributes.from_usage`,
+  `StampUsageEvent.usage_event`, `StreamingParityChecker.diff/within_threshold`,
+  and `vendor_for_runner`. Cache attrs use the **dotted** OTel spelling
+  (`gen_ai.usage.cache_read.input_tokens`) per the § Premise Note spec
+  correction. Exported from `observability/__init__.py` and top-level
+  `little_loops/__init__.py`.
+- **`observability` config block** (Decision 1 = Option A) — `ObservabilityConfig`
+  + `OTelAttributesConfig` + `StreamingParityConfig` in `config/features.py`;
+  parse/property/`to_dict` wired in `config/core.py`; new top-level block in
+  `config-schema.json`; exports in `config/__init__.py`.
+- **`usage_events` schema v21** (`SCHEMA_VERSION=21`) — additive nullable
+  `invocation_id` (→ `gen_ai.invocation.id`) and `provider_vendor`
+  (→ `gen_ai.provider.vendor`) columns, forward-compat NULL on parser rows like
+  `state`. Table name reconciled: it is `usage_events` (plural); this issue's
+  prose predates ENH-2461's landed spelling.
+- **`history_reader.cost_attribution(group_by=...)`** — per-invocation/vendor
+  token+cost rollup keyed by canonical dotted OTel names; whitelisted `group_by`.
+- **`usage.jsonl` enrichment** — `fsm/persistence.py` stamps the four dotted
+  `gen_ai.usage.*` keys alongside the flat keys (additive; gated on
+  `observability.otel_attributes.enabled`, cached). Flat-key consumers
+  (`cost_graph.py`, `_print_usage_summary`) unaffected.
+- **Tests** — `test_otel_attributes.py` (new; attribute map, dotted-cache spec,
+  vendor addendum, UUID uniqueness, StampUsageEvent, Phoenix ingest skip-guard,
+  DES coverage), `StreamingParityChecker` cases in `test_streaming_cache_parity.py`,
+  `cost_attribution` in `test_history_reader.py`, `ObservabilityConfig` in
+  `test_config.py`, schema block in `test_config_schema.py`, v21 column +
+  version guards in `test_session_store.py`/`test_assistant_messages.py`, and an
+  end-to-end `gen_ai.*`-in-`usage.jsonl` assertion in `test_usage_journal.py`.
+- **Docs** — new `docs/observability/otel-mapping.md`; API.md
+  (`observability.tracing` + `cost_attribution`); CONFIGURATION.md
+  (`observability` block); loops.md `usage.jsonl` callout; CHANGELOG.
+
+Deferred (mechanical follow-on, per Decision 2 = Option D): threading
+`on_usage_detailed` (and thus live `invocation_id`/`provider_vendor` writes)
+through `cli/action.py`, `issue_manager.py::run_claude_command()`, and
+`worker_pool.py::_run_claude_command()`. The DES gate is type-literal and already
+satisfied; `ActionCompleteVariant` was intentionally left field-less (only the
+type-literal is required for the accept-rate check). Phoenix parse-fixture test
+skips when `arize-phoenix` is absent, gating only where installed.
+
+**Verification**: `python -m pytest scripts/tests/` → 15142 passed, 37 skipped.
+`ruff check` / `mypy` clean. `ll-verify-kinds` / `ll-verify-des-audit` /
+`ll-verify-package-data` all PASS.
+
 ## Status
 
-**Open** | Created: 2026-07-04 | Priority: P2
+**Done** | Created: 2026-07-04 | Completed: 2026-07-17 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue feat implement FEAT-2478` - 2026-07-17T04:22:59Z - `9b2a6c2d-1f82-482f-81a0-7bf1d1c2e405.jsonl`
+- `/ll:ready-issue` - 2026-07-17T03:51:12 - `6692eb78-c9e2-4a69-9cd1-a7009faee778.jsonl`
+- `/ll:confidence-check` - 2026-07-16T00:00:00 - `94f9b745-d9ae-4d33-bc0f-026e7f5cfc1b.jsonl` (re-run after round-3 `/ll:refine-issue` line-number corrections and `/ll:ready-issue` staleness pass — no new blockers, decisions, or scope changes found; verified `ENH-2475`/`ENH-2479`/`ENH-2461` all `status: done`, `usage_events` table + `SCHEMA_VERSION=20` confirmed on `main`, `observability/tracing.py` still absent as expected. Scores unchanged: readiness 100/100, outcome confidence 79/100)
+- `/ll:refine-issue` - 2026-07-17T02:47:48 - `4959d8d1-f77d-457e-a3af-bbce85e5a585.jsonl`
+- `/ll:ready-issue` - 2026-07-17T02:39:39 - `9ef37ae8-4fb8-456e-a0ea-0c286a87b971.jsonl`
+- `/ll:confidence-check` - 2026-07-16T00:00:00 - `c40eea5e-917f-403a-851c-c927ecf94d98.jsonl` (re-run: both open decisions now resolved and ENH-2461 landed — readiness 98→100, outcome confidence 65→79)
 - `/ll:decide-issue` - 2026-07-11T23:01:46 - `76857e57-bb36-467b-a675-eb133a2f4272.jsonl`
 - `/ll:decide-issue` - 2026-07-11T22:55:41 - `5108c085-82ed-425a-a7e2-f3dfee0de132.jsonl`
 - `/ll:confidence-check` - 2026-07-11T00:00:00 - `e59193e3-64de-4bf2-ac76-b0b4ae767a77.jsonl` (re-run, no codebase changes since prior check — scores unchanged)

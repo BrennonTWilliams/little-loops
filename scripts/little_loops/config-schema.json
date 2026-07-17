@@ -1463,6 +1463,37 @@
       },
       "additionalProperties": false
     },
+    "observability": {
+      "type": "object",
+      "description": "OTel gen_ai.* attribute shaping + streaming-parity settings (FEAT-2478). Governs an always-on, capture-time behavior that writes OTel-shaped rows directly to history.db/usage.jsonl with no OTel SDK or collector — independent of the opt-in OTLP transport under events.otel.",
+      "properties": {
+        "otel_attributes": {
+          "type": "object",
+          "description": "gen_ai.usage.* attribute stamping on every captured usage row.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "When true, stamp OTel-canonical gen_ai.usage.* attributes onto usage rows."
+            }
+          },
+          "additionalProperties": false
+        },
+        "streaming_parity": {
+          "type": "object",
+          "description": "Streaming-vs-blocking cache-token parity check (ENH-2479).",
+          "properties": {
+            "check": {
+              "type": "boolean",
+              "default": true,
+              "description": "When true, gate the 0.1% streaming-vs-blocking cache-token parity threshold."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "orchestration": {
       "type": "object",
       "description": "Orchestration settings, primarily host CLI selection. Values here are read by apply_host_cli_from_config() before resolve_host() runs.",

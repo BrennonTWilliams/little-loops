@@ -19,6 +19,13 @@ from little_loops.observability.schema import (
     DES_VARIANTS,
     DESVariant,
 )
+from little_loops.observability.tracing import (
+    OTelAttributes,
+    ParityDiff,
+    StampUsageEvent,
+    StreamingParityChecker,
+    vendor_for_runner,
+)
 
 __all__ = [
     "DESVariant",
@@ -26,4 +33,10 @@ __all__ = [
     "DES_VARIANT_TYPES",
     "AuditResult",
     "audit_tree",
+    # FEAT-2478 — OTel gen_ai.* attribute shaping + streaming parity
+    "OTelAttributes",
+    "StampUsageEvent",
+    "StreamingParityChecker",
+    "ParityDiff",
+    "vendor_for_runner",
 ]

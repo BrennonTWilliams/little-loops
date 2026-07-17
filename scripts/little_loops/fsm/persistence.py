@@ -52,6 +52,25 @@ RESUMABLE_STATUSES: frozenset[str] = frozenset(
 
 logger = logging.getLogger(__name__)
 
+# FEAT-2478 — cache the observability.otel_attributes.enabled toggle so the
+# per-event usage.jsonl writer doesn't reload config on every action_complete.
+# ``None`` = not yet resolved; resolved once on first use, defaulting to True on
+# any config-load error (the enrichment is additive and harmless).
+_OTEL_ATTRS_ENABLED: bool | None = None
+
+
+def _otel_attributes_enabled() -> bool:
+    """Return observability.otel_attributes.enabled, loaded once and cached."""
+    global _OTEL_ATTRS_ENABLED
+    if _OTEL_ATTRS_ENABLED is None:
+        try:
+            from little_loops.config import BRConfig
+
+            _OTEL_ATTRS_ENABLED = bool(BRConfig(Path.cwd()).observability.otel_attributes.enabled)
+        except Exception:  # noqa: BLE001 — additive enrichment; default on
+            _OTEL_ATTRS_ENABLED = True
+    return _OTEL_ATTRS_ENABLED
+
 
 def _json_safe_context(context: dict[str, Any]) -> dict[str, Any]:
     """Return the JSON-serializable subset of *context* (BUG-2485).
@@ -724,6 +743,14 @@ class PersistentExecutor:
                     "model": event.get("model", "unknown"),
                     "timestamp": event.get("ts", ""),
                 }
+                # FEAT-2478 — stamp OTel-canonical gen_ai.usage.* keys alongside the
+                # flat keys (additive; flat-key consumers cost_graph/_print_usage_summary
+                # ignore the extras). The four token gen_ai keys derive purely from the
+                # flat keys already present — no host threading needed.
+                if _otel_attributes_enabled():
+                    from little_loops.observability.tracing import StampUsageEvent
+
+                    entry = StampUsageEvent.usage_event(entry)
                 _append_jsonl(usage_path, entry)
 
         # Append shared message to messages.jsonl when a state appends to the log.

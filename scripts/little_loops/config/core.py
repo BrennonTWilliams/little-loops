@@ -31,6 +31,7 @@ from little_loops.config.features import (
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
+    ObservabilityConfig,
     ScanConfig,
     SprintsConfig,
     SyncConfig,
@@ -231,6 +232,9 @@ class BRConfig:
             self._raw_config.get("refine_status", {})
         )
         self._events = EventsConfig.from_dict(self._raw_config.get("events", {}))
+        self._observability = ObservabilityConfig.from_dict(
+            self._raw_config.get("observability", {})
+        )
         self._orchestration = OrchestrationConfig.from_dict(
             self._raw_config.get("orchestration", {})
         )
@@ -322,6 +326,11 @@ class BRConfig:
     def events(self) -> EventsConfig:
         """Get events configuration."""
         return self._events
+
+    @property
+    def observability(self) -> ObservabilityConfig:
+        """Get observability configuration (FEAT-2478)."""
+        return self._observability
 
     @property
     def orchestration(self) -> OrchestrationConfig:
@@ -702,6 +711,7 @@ class BRConfig:
                     "headers": dict(self._events.webhook.headers),
                 },
             },
+            "observability": self._observability.to_dict(),
             "history": {
                 "velocity_window": self._history.velocity_window,
                 "effort_fields": list(self._history.effort_fields),

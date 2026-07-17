@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OTel `gen_ai.usage.*` attribute emission** — `observability/tracing.py` shapes
+  internal token-usage rows into canonical dotted OTel attributes
+  (`gen_ai.usage.cache_read.input_tokens` etc.) with a per-CLI `gen_ai.invocation.id`
+  UUID and a `gen_ai.provider.vendor` addendum; `usage.jsonl` rows carry the dotted
+  keys, `usage_events` gains `invocation_id`/`provider_vendor` columns (schema v21),
+  and `history_reader.cost_attribution()` rolls up token/cost by invocation or vendor
+  (FEAT-2478).
 - **`ll-loop queue list`** — lists pending run-queue entries and prunes dead-PID
   files as a side effect (FEAT-2618, ENH-2629).
 - **`ll-loop queue remove <id>`** — cancels a queued waiter: SIGTERMs its process

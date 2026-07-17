@@ -204,7 +204,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -730,6 +730,17 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model);
+    """,
+    # v21 (FEAT-2478): OTel gen_ai.* addenda on usage_events. invocation_id maps
+    # to gen_ai.invocation.id (a per-CLI-invocation UUID enabling GROUP BY rollups
+    # that match raw result-event usage totals row-for-row); provider_vendor maps
+    # to gen_ai.provider.vendor (anthropic/openai/google/other). Both are
+    # forward-compat NULL on parser-written rows — like `state`, reserved for a
+    # future live per-invocation writer. Column names stay underscore/internal;
+    # the dotted OTel spelling is derived on read by observability/tracing.py.
+    """
+    ALTER TABLE usage_events ADD COLUMN invocation_id TEXT;
+    ALTER TABLE usage_events ADD COLUMN provider_vendor TEXT;
     """,
 ]
 

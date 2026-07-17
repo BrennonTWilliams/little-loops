@@ -1369,7 +1369,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 20
+        assert SCHEMA_VERSION == 21
 
 
 class TestBackfillIncremental:
@@ -1814,8 +1814,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1929,8 +1929,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1981,8 +1981,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2060,7 +2060,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 20
+        assert int(version[0]) == 21
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2077,8 +2077,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3240,6 +3240,9 @@ class TestSchemaV20UsageEvents:
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
             "cost_usd",
+            # v21 (FEAT-2478) OTel gen_ai.* addenda
+            "invocation_id",
+            "provider_vendor",
         }
 
 
@@ -3655,8 +3658,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3696,8 +3699,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 20
-        assert int(row[0]) == 20
+        assert SCHEMA_VERSION == 21
+        assert int(row[0]) == 21
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3751,7 +3754,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 20
+        assert int(version[0]) == 21
         assert "issue_snapshots" in names
 
 

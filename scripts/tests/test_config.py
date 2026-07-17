@@ -44,6 +44,7 @@ from little_loops.config import (
     LoopsConfig,
     LoopsGlyphsConfig,
     NextIssueConfig,
+    ObservabilityConfig,
     OrchestrationConfig,
     OTelEventsConfig,
     ParallelAutomationConfig,
@@ -1953,6 +1954,36 @@ class TestOTelEventsConfig:
 
         assert config.endpoint == "http://collector:4317"
         assert config.service_name == "my-svc"
+
+
+class TestObservabilityConfig:
+    """Tests for ObservabilityConfig dataclass (FEAT-2478, Decision 1 = Option A)."""
+
+    def test_defaults_enabled(self) -> None:
+        config = ObservabilityConfig.from_dict({})
+        assert config.otel_attributes.enabled is True
+        assert config.streaming_parity.check is True
+
+    def test_from_dict_overrides(self) -> None:
+        config = ObservabilityConfig.from_dict(
+            {"otel_attributes": {"enabled": False}, "streaming_parity": {"check": False}}
+        )
+        assert config.otel_attributes.enabled is False
+        assert config.streaming_parity.check is False
+
+    def test_to_dict_round_trips(self) -> None:
+        config = ObservabilityConfig.from_dict({"otel_attributes": {"enabled": False}})
+        restored = ObservabilityConfig.from_dict(config.to_dict())
+        assert restored.otel_attributes.enabled is False
+        assert restored.streaming_parity.check is True
+
+    def test_property_and_to_dict_on_brconfig(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.observability.otel_attributes.enabled is True
+        assert config.to_dict()["observability"] == {
+            "otel_attributes": {"enabled": True},
+            "streaming_parity": {"check": True},
+        }
 
 
 class TestWebhookEventsConfig:

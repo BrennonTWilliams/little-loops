@@ -11,6 +11,7 @@ from little_loops.history_reader import (
     SearchResult,
     SessionRef,
     UserCorrection,
+    cost_attribution,
     find_user_corrections,
     issue_effort,
     lookup_session_metadata,
@@ -86,6 +87,98 @@ class TestEmptyTables:
         ensure_db(db)
         result = sessions_for_issue("ENH-9999", db=db)
         assert result == []
+
+
+class TestCostAttribution:
+    """cost_attribution() token/cost rollup over usage_events (FEAT-2478)."""
+
+    @staticmethod
+    def _seed(db: Path) -> None:
+        ensure_db(db)
+        conn = connect(db)
+        rows = [
+            # (ts, session, model, state, in, out, cread, ccreate, cost, inv, vendor)
+            (
+                "2026-07-16T00:00:00Z",
+                "s1",
+                "claude",
+                None,
+                100,
+                20,
+                5,
+                7,
+                0.01,
+                "inv-1",
+                "anthropic",
+            ),
+            (
+                "2026-07-16T00:00:01Z",
+                "s1",
+                "claude",
+                None,
+                200,
+                40,
+                10,
+                14,
+                0.02,
+                "inv-1",
+                "anthropic",
+            ),
+            (
+                "2026-07-16T00:00:02Z",
+                "s2",
+                "claude",
+                None,
+                50,
+                10,
+                0,
+                0,
+                0.005,
+                "inv-2",
+                "anthropic",
+            ),
+        ]
+        conn.executemany(
+            "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
+            "cost_usd, invocation_id, provider_vendor) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        conn.commit()
+        conn.close()
+
+    def test_missing_db_returns_empty(self, tmp_path: Path) -> None:
+        assert cost_attribution(db=tmp_path / "nope.db") == []
+
+    def test_group_by_invocation_id_sums_match_raw_totals(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed(db)
+        rows = cost_attribution(group_by="gen_ai.invocation.id", db=db)
+        assert len(rows) == 2  # one row per invocation
+        inv1 = next(r for r in rows if r["gen_ai.invocation.id"] == "inv-1")
+        # sum across the invocation's two rows == raw usage totals row-for-row
+        assert inv1["gen_ai.usage.input_tokens"] == 300
+        assert inv1["gen_ai.usage.output_tokens"] == 60
+        assert inv1["gen_ai.usage.cache_read.input_tokens"] == 15
+        assert inv1["gen_ai.usage.cache_creation.input_tokens"] == 21
+        assert inv1["invocations"] == 2
+
+    def test_group_by_vendor(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed(db)
+        rows = cost_attribution(group_by="gen_ai.provider.vendor", db=db)
+        assert len(rows) == 1
+        assert rows[0]["gen_ai.provider.vendor"] == "anthropic"
+        assert rows[0]["gen_ai.usage.input_tokens"] == 350
+
+    def test_unsupported_group_by_raises(self, tmp_path: Path) -> None:
+        import pytest
+
+        db = tmp_path / "history.db"
+        self._seed(db)
+        with pytest.raises(ValueError):
+            cost_attribution(group_by="'; DROP TABLE usage_events; --", db=db)
 
 
 class TestStaleRowFiltering:

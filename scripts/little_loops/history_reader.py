@@ -25,6 +25,7 @@ Public API:
     related_issue_events(issue_id, ...) -> list[IssueEvent]
     recent_skill_events(skill_name, ...) -> list[SkillEvent]
     summarize_skills(since, ...) -> list[dict]
+    cost_attribution(group_by, ...) -> list[dict]
     recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
     recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
@@ -541,6 +542,96 @@ def summarize_skills(
                 "successes": successes,
                 "success_rate": (successes / completions) if completions else None,
                 "avg_duration_ms": row["avg_duration_ms"],
+            }
+        )
+    return result
+
+
+# FEAT-2478 — accepted GROUP BY dimensions for cost_attribution(). Maps the
+# caller-facing OTel attribute name (and raw column aliases) to the physical
+# usage_events column. Whitelisted to keep the GROUP BY clause injection-safe.
+_COST_ATTR_GROUP_COLUMNS: dict[str, str] = {
+    "gen_ai.invocation.id": "invocation_id",
+    "gen_ai.provider.vendor": "provider_vendor",
+    "invocation_id": "invocation_id",
+    "provider_vendor": "provider_vendor",
+    "session_id": "session_id",
+    "model": "model",
+    "state": "state",
+}
+
+
+def cost_attribution(
+    group_by: str = "gen_ai.invocation.id",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-``group_by`` token/cost rollup over ``usage_events`` (FEAT-2478).
+
+    *group_by* is an OTel attribute name (``gen_ai.invocation.id`` /
+    ``gen_ai.provider.vendor``) or a raw ``usage_events`` column
+    (``session_id`` / ``model`` / ``state`` / ``invocation_id`` /
+    ``provider_vendor``); any other value raises ``ValueError`` (the clause is
+    whitelisted, never interpolated raw). *since* is an ISO 8601 lower bound on
+    ``ts``. Sorted by ``input_tokens`` sum descending.
+
+    Each returned dict carries the group key under both the requested
+    *group_by* name and — for the default invocation grouping — the summed token
+    counts under the canonical dotted OTel names, so a
+    ``GROUP BY gen_ai.invocation.id`` rollup matches raw ``result``-event
+    ``usage`` totals row-for-row (see FEAT-2478 § Acceptance Criteria).
+    """
+    from little_loops.observability.tracing import (
+        GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+        GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+        GEN_AI_USAGE_INPUT_TOKENS,
+        GEN_AI_USAGE_OUTPUT_TOKENS,
+    )
+
+    column = _COST_ATTR_GROUP_COLUMNS.get(group_by)
+    if column is None:
+        raise ValueError(
+            f"cost_attribution: unsupported group_by {group_by!r}; "
+            f"expected one of {sorted(_COST_ATTR_GROUP_COLUMNS)}"
+        )
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            f"SELECT {column} AS grp, "
+            "SUM(input_tokens) AS input_tokens, "
+            "SUM(output_tokens) AS output_tokens, "
+            "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
+            "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
+            "SUM(cost_usd) AS cost_usd, "
+            "COUNT(*) AS invocations "
+            "FROM usage_events "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ? "
+            params.append(since)
+        sql += "GROUP BY grp ORDER BY input_tokens DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: cost_attribution query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        result.append(
+            {
+                group_by: row["grp"],
+                GEN_AI_USAGE_INPUT_TOKENS: row["input_tokens"] or 0,
+                GEN_AI_USAGE_OUTPUT_TOKENS: row["output_tokens"] or 0,
+                GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS: row["cache_read_input_tokens"] or 0,
+                GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS: (row["cache_creation_input_tokens"] or 0),
+                "cost_usd": row["cost_usd"] or 0.0,
+                "invocations": row["invocations"],
             }
         )
     return result

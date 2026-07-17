@@ -105,6 +105,11 @@ class TestUsageJournaling:
         assert "state" in row
         assert "iteration" in row
         assert "timestamp" in row
+        # FEAT-2478 — dotted OTel gen_ai.usage.* keys stamped alongside flat keys
+        assert row["gen_ai.usage.input_tokens"] == 1000
+        assert row["gen_ai.usage.output_tokens"] == 200
+        assert row["gen_ai.usage.cache_read.input_tokens"] == 300
+        assert row["gen_ai.usage.cache_creation.input_tokens"] == 50
 
     def test_usage_jsonl_not_written_when_no_tokens(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path

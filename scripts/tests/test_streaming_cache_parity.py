@@ -194,3 +194,55 @@ def _diff_pct(a: int, b: int) -> float:
     pytest.approx with rel=0.001).
     """
     return 100.0 * abs(a - b) / max(b, 1)
+
+
+# ---------------------------------------------------------------------------
+# FEAT-2478: exercise the PRODUCTION StreamingParityChecker against the fixtures
+# ---------------------------------------------------------------------------
+# The parity assertion above is fixture-driven; F5 additionally ships the
+# production `StreamingParityChecker` so callers reuse one diff implementation
+# rather than re-deriving it. These tests gate that production class against the
+# same ENH-2479 trace set.
+
+
+class TestStreamingParityChecker:
+    """Production StreamingParityChecker.diff / within_threshold (FEAT-2478)."""
+
+    def test_all_trace_turns_within_threshold(self) -> None:
+        from little_loops.observability import StreamingParityChecker
+
+        checker = StreamingParityChecker(threshold=PARITY_REL_TOLERANCE)
+        for trace_id in TRACE_IDS:
+            trace_dir = FIXTURES_DIR / trace_id
+            if not trace_dir.is_dir():
+                pytest.skip(f"fixture dir missing: {trace_dir}")
+            for row in _read_jsonl_rows(trace_dir / "expected.jsonl"):
+                assert checker.within_threshold(row["create"], row["stream"]), (
+                    f"{trace_id} turn {row.get('turn')} exceeds parity threshold"
+                )
+
+    def test_diff_returns_one_entry_per_token_field(self) -> None:
+        from little_loops.observability import StreamingParityChecker
+
+        checker = StreamingParityChecker()
+        diffs = checker.diff(
+            {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
+             "cache_creation_tokens": 0},
+            {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
+             "cache_creation_tokens": 0},
+        )
+        assert [d.field for d in diffs] == list(TOKEN_FIELDS)
+        assert all(d.within_threshold for d in diffs)
+
+    def test_drift_beyond_threshold_flagged(self) -> None:
+        from little_loops.observability import StreamingParityChecker
+
+        checker = StreamingParityChecker(threshold=PARITY_REL_TOLERANCE)
+        blocking = {"input_tokens": 1000, "output_tokens": 20,
+                    "cache_read_tokens": 0, "cache_creation_tokens": 0}
+        streaming = {"input_tokens": 1010, "output_tokens": 20,  # 1% drift
+                     "cache_read_tokens": 0, "cache_creation_tokens": 0}
+        assert not checker.within_threshold(blocking, streaming)
+        input_diff = next(d for d in checker.diff(blocking, streaming)
+                          if d.field == "input_tokens")
+        assert not input_diff.within_threshold
