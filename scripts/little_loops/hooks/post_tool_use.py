@@ -156,16 +156,28 @@ def handle(event: LLHookEvent) -> LLHookResult:
         session_id = payload.get("session_id")
 
         with contextlib.suppress(Exception):
-            from little_loops.session_store import _hash_args, _now, connect
+            from little_loops.session_store import (
+                _hash_args,
+                _index,
+                _normalize_agent_type,
+                _now,
+                connect,
+            )
 
+            agent_type = (
+                _normalize_agent_type(tool_input.get("subagent_type"))
+                if tool_name == "Task"
+                else None
+            )
+            ts = _now()
             conn = connect(cwd / ".ll" / "history.db")
             try:
-                conn.execute(
+                cursor = conn.execute(
                     "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                    "result_size, bytes_in, bytes_out, cache_hit) "
-                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                    "result_size, bytes_in, bytes_out, cache_hit, agent_type) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        _now(),
+                        ts,
                         session_id,
                         tool_name,
                         _hash_args(tool_input),
@@ -173,8 +185,18 @@ def handle(event: LLHookEvent) -> LLHookResult:
                         bytes_in,
                         bytes_out,
                         cache_hit,
+                        agent_type,
                     ),
                 )
+                if cursor.rowcount:
+                    _index(
+                        conn,
+                        content=f"{tool_name} {agent_type or ''}".strip(),
+                        kind="tool",
+                        ref=tool_name,
+                        anchor=str(session_id or ""),
+                        ts=ts,
+                    )
                 conn.commit()
             finally:
                 conn.close()

@@ -5,15 +5,21 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-02
-captured_at: "2026-07-02T00:00:00Z"
+captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: true
 labels:
-  - enhancement
-  - history-db
-  - learning-tests
-  - captured
+- enhancement
+- history-db
+- learning-tests
+- captured
+confidence_score: 95
+outcome_confidence: 77
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # ENH-2466: Mirror Learning Test Registry records into history.db / search_index
@@ -280,6 +286,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/learning_tests/__init__.py` — registry module (reference for record schema)
 - `scripts/little_loops/session_store.py:_index()` — shared FTS5 writer
 
+## Impact
+
+- **Priority**: P3 — registry discoverability improves cross-referencing and search but does not block any other EPIC-2457 sibling or day-to-day operation; `ll-learning-tests` already works entirely off the filesystem without this.
+- **Effort**: Medium — one additive schema migration, a mirror writer + backfill helper closely mirroring `record_commit_event`/`record_issue_snapshot`, two producer call sites (`cmd_prove()`, `cmd_mark_stale()`), two new `history_reader.py` read functions, session-start reconcile wiring, plus test and doc coverage across roughly a dozen files (see Integration Map).
+- **Risk**: Low — additive-only migration (new table + indexes, no changes to existing tables); the writer is best-effort (`contextlib.suppress`/`try-except` per EPIC-1707's graceful-degradation contract) so a DB failure cannot break `ll-learning-tests prove`/`mark-stale`. The one real risk is the shared schema-version slot: read `SCHEMA_VERSION` live at implementation time rather than trusting this issue's stale "v19"/"v21" literals, since roughly a dozen other EPIC-2457 siblings independently claim the same "next" slot (see Scope Boundary).
+- **Breaking Change**: No.
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -476,6 +489,8 @@ return `[]`/`None` on missing DB. New `record_learning_test_event()` and
 `_backfill_learning_test_events()` must conform.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-17T00:00:00Z - `fb8ca0b8-a409-438d-a477-431cb6de1cd0.jsonl`
+- `/ll:format-issue` - 2026-07-17T22:42:06 - `3c693d1b-b435-412e-b697-77d3cd96161d.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:32:32 - `ec8b8d8e-4a0b-44e0-9688-a85509c72451.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:56:29 - `e00bc985-f84c-4584-9c06-8e2a01e24509.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:54 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`

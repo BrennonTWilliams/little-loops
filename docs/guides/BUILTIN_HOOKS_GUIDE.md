@@ -255,7 +255,7 @@ Seven hooks run after each tool call.
 
 **Hook:** `post-tool-use.sh` → `little_loops.hooks.post_tool_use.handle`
 
-Records a `tool_events` row (tool name, bytes in/out, cache-hit, args hash) for every call, and a `file_events` row when a tool touches a file. Gated by `analytics.enabled` (default **false**); file capture is further gated by `analytics.capture.file_events` (default **true**). Writes to `.ll/history.db`. Never blocks. See the [History & Session Guide](HISTORY_SESSION_GUIDE.md).
+Records a `tool_events` row (tool name, bytes in/out, cache-hit, args hash, `agent_type` — populated when `tool_name=Task`, `NULL` otherwise, ENH-2497) for every call, and a `file_events` row when a tool touches a file. Gated by `analytics.enabled` (default **false**); file capture is further gated by `analytics.capture.file_events` (default **true**). Writes to `.ll/history.db`. Never blocks. See the [History & Session Guide](HISTORY_SESSION_GUIDE.md).
 
 ### Context monitor (exit 2 near the limit)
 

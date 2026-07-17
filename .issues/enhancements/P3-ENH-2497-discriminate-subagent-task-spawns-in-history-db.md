@@ -3,17 +3,24 @@ id: ENH-2497
 title: Discriminate sub-agent / Task spawns in history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
+completed_at: '2026-07-17T23:07:53Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - agents
-  - captured
+- enhancement
+- history-db
+- agents
+- captured
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2497: Discriminate sub-agent / Task spawns in history.db
@@ -307,6 +314,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 14. **Version renumber in test classes.** Rename the suggested `TestSchemaV19AgentType` → `TestSchemaV21AgentType` and the suggested `_bootstrap_schema_at(db, 19)` → `_bootstrap_schema_at(db, 20)` calls because `SCHEMA_VERSION = 20` today at `session_store.py:207`. Bootstrap must occur at the version immediately preceding the new migration's slot; a v19 bootstrap skips the v21 entry and the test would falsely pass on a non-migrated DB.
 
+## Impact
+
+- **Priority**: P3 - Observability improvement for subagent usage; not blocking, but closes a real blind spot the skill-health tooling (`ll-ctx-stats`, `ll-logs dead-skills`) already covers for skills.
+- **Effort**: Medium - additive schema migration follows direct v15/v16 precedent, but touches five files (migration, live insert, backfill, reader, tests) per the Integration Map.
+- **Risk**: Low - nullable additive column with no existing-row rewrite; write path stays inside the existing `contextlib.suppress(Exception)` best-effort wrap (EPIC-1707 contract), so a malformed payload degrades to `NULL` rather than raising.
+- **Breaking Change**: No.
+
+## Scope Boundaries
+
+- **In scope**: `agent_type` column on `tool_events` (migration + index), live-write and backfill population, `history_reader.agent_usage()` / `recent_tool_events()` readers, FTS indexing of Task-spawn rows, `ll:`-prefix normalization.
+- **Out of scope**: Option (B) dedicated `agent_spawn` kind (rejected per Decision Rationale — additive column has direct precedent and avoids a competing migration); the `result_size`/`bytes_out` naming quirk noted in Codebase Research Findings (tracked as an independent follow-on); `ll-ctx-stats` CLI rendering (optional, Implementation Step 6).
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (tool-event granularity)
@@ -372,6 +391,9 @@ independently-failing** write — it MUST NOT alter, roll back, or wrap
 agent-spawn write, and vice versa.
 
 ## Session Log
+- `/ll:manage-issue improve` - 2026-07-17T23:07:21Z - `674d8816-f8da-4cb9-9757-b53e5e3312af.jsonl`
+- `/ll:confidence-check` - 2026-07-17T00:00:00Z - `83dcbb10-725f-46a0-9f43-098d906d33a2.jsonl`
+- `/ll:format-issue` - 2026-07-17T22:49:34 - `fe51be03-e5dc-4b6e-a570-b3618e17fcc2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T18:48:49 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T13:59:18 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T23:53:35 - `116f385e-2818-4c79-8ce3-a15f63040329.jsonl`

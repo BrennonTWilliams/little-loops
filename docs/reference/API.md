@@ -6880,6 +6880,8 @@ from little_loops.history_reader import (
     recent_orchestration_runs,    # ENH-2492
     aggregate_orchestration_runs, # ENH-2492
     find_session_for_issue_transition,  # ENH-2462
+    agent_usage,             # ENH-2497
+    recent_tool_events,      # ENH-2497
 )
 ```
 
@@ -7080,6 +7082,31 @@ def summarize_skills(
 ```
 
 Per-skill rollup powering `ll-session skill-stats` (ENH-2460): returns dicts with `skill_name`, `invocations`, `completions`, `successes`, `success_rate` (over completion-carrying rows only; `None` when no completions), and `avg_duration_ms`, sorted by invocation count descending.
+
+### agent_usage
+
+```python
+def agent_usage(
+    since: str | None = None,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-agent rollup of `Task`-tool subagent spawn counts (ENH-2497): returns dicts with `agent_type` and `invocations`, filtered to `tool_name='Task'` rows with a non-NULL `agent_type` (the v24 `tool_events` column), sorted by invocation count descending. Returns `[]` on a missing/unreadable DB.
+
+### recent_tool_events
+
+```python
+def recent_tool_events(
+    agent_type: str | None = None,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Return recent `tool_events` rows, newest first, optionally filtered to a single `agent_type` (ENH-2497). Returns `[]` on a missing/unreadable DB.
 
 ### cost_attribution
 
@@ -7405,11 +7432,11 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **23**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **24**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 23
+    SCHEMA_VERSION,        # 24
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection

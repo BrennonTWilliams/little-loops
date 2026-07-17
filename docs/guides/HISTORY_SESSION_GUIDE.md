@@ -84,7 +84,7 @@ v15–v18 and v20–v22 are EPIC-2457 coverage expansions and related observabil
 
 | Table | What it stores |
 |-------|---------------|
-| `tool_events` | Every tool call (Bash, Read, Write, etc.) with byte counts (`bytes_in`, `bytes_out`, `result_size`) and `cache_hit` flag |
+| `tool_events` | Every tool call (Bash, Read, Write, etc.) with byte counts (`bytes_in`, `bytes_out`, `result_size`), `cache_hit` flag, and `agent_type` (nullable; populated with the dispatched subagent name for `tool_name="Task"` rows, `NULL` otherwise — ENH-2497) |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
 | `issue_events` | Issue state transitions: captured, started, completed, deferred. v16 added a `session_id` column (indexed) so the `issue_sessions` view no longer relies on timestamp overlap (ENH-2462). |
 | `issue_snapshots` | Point-in-time snapshots of issue content at lifecycle transitions (`open`, `done`, `cancelled`); dedup index on `(issue_id, transition)`; indexed for full-text search (FTS) via the `search_index` with `kind="snapshot"`. Populated live by `set_status` and by `ll-session backfill --snapshots` for historical issues. Used by `ll-history-context` as a last-resort fallback when no corrections or FTS rows match an issue (ENH-2151). |

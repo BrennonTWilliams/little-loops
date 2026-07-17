@@ -208,7 +208,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -802,6 +802,15 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_name ON loop_runs(loop_name);
     CREATE INDEX IF NOT EXISTS idx_loop_runs_terminated_by ON loop_runs(terminated_by);
     CREATE INDEX IF NOT EXISTS idx_loop_runs_evaluator_score ON loop_runs(evaluator_score);
+    """,
+    # v24 (ENH-2497): agent_type discriminator on tool_events for Task-tool
+    # spawns, so subagent usage is first-class and joinable/groupable (parity
+    # with the skill-health tooling ENH-2460 gave skill_events). Nullable so
+    # non-Task rows and pre-migration rows remain valid (NULL = "not a
+    # subagent spawn").
+    """
+    ALTER TABLE tool_events ADD COLUMN agent_type TEXT;
+    CREATE INDEX IF NOT EXISTS idx_tool_events_agent ON tool_events(agent_type);
     """,
 ]
 
@@ -1893,6 +1902,19 @@ def _hash_args(value: Any) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+def _normalize_agent_type(subagent_type: Any) -> str | None:
+    """Strip the ``ll:`` plugin prefix so built-in and plugin agent names group together.
+
+    ``Task`` tool spawns carry ``subagent_type`` as either a bare name
+    (``Explore``) or an ``ll:``-prefixed plugin agent (``ll:codebase-locator``);
+    without normalization these count as distinct agents in aggregation.
+    """
+    if not isinstance(subagent_type, str) or not subagent_type:
+        return None
+    normalized = subagent_type.removeprefix("ll:")
+    return normalized or None
+
+
 _FILENAME_TYPE_RE = re.compile(r"(BUG|ENH|FEAT|EPIC)-(\d+)")
 _FILENAME_PRIORITY_RE = re.compile(r"^(P\d)")
 
@@ -2115,15 +2137,20 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                 continue
             tool_name = str(block.get("name", ""))
             args = block.get("input", {})
+            agent_type = (
+                _normalize_agent_type(args.get("subagent_type"))
+                if tool_name == "Task" and isinstance(args, dict)
+                else None
+            )
             conn.execute(
                 "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                "result_size, bytes_in, bytes_out, cache_hit) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (ts, session_id, tool_name, _hash_args(args), None, None, None, None),
+                "result_size, bytes_in, bytes_out, cache_hit, agent_type) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ts, session_id, tool_name, _hash_args(args), None, None, None, None, agent_type),
             )
             _index(
                 conn,
-                content=tool_name,
+                content=f"{tool_name} {agent_type or ''}".strip(),
                 kind="tool",
                 ref=tool_name,
                 anchor=source_label,

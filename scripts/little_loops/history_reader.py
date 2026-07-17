@@ -590,6 +590,71 @@ def summarize_skills(
     return result
 
 
+def agent_usage(
+    since: str | None = None,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-agent rollup of Task-tool subagent spawn counts (ENH-2497).
+
+    Only rows with ``tool_name = 'Task'`` and a non-NULL ``agent_type`` count;
+    other tools are excluded. *since* is an ISO 8601 lower bound on ``ts``.
+    Sorted by invocation count, descending.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT agent_type, COUNT(*) AS invocations FROM tool_events "
+            "WHERE tool_name = 'Task' AND agent_type IS NOT NULL "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "AND ts >= ? "
+            params.append(since)
+        sql += "GROUP BY agent_type ORDER BY invocations DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: agent_usage query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [{"agent_type": row["agent_type"], "invocations": row["invocations"]} for row in rows]
+
+
+def recent_tool_events(
+    agent_type: str | None = None,
+    *,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Return recent ``tool_events`` rows, newest first, optionally filtered by agent_type (ENH-2497)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, tool_name, args_hash, result_size, bytes_in, "
+            "bytes_out, cache_hit, agent_type FROM tool_events "
+        )
+        params: list[Any] = []
+        if agent_type is not None:
+            sql += "WHERE agent_type = ? "
+            params.append(agent_type)
+        sql += "ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_tool_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
+
+
 # FEAT-2478 — accepted GROUP BY dimensions for cost_attribution(). Maps the
 # caller-facing OTel attribute name (and raw column aliases) to the physical
 # usage_events column. Whitelisted to keep the GROUP BY clause injection-safe.

@@ -5,15 +5,22 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-02
-captured_at: "2026-07-02T00:00:00Z"
+captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - decisions
-  - history-db
-  - captured
+- enhancement
+- decisions
+- history-db
+- captured
+confidence_score: 100
+outcome_confidence: 69
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-2464: Backlink .ll/decisions.yaml entries to issuing session_id and issue_id
@@ -657,6 +664,52 @@ The new `TestRecordCommitEvent` at line 4235 is the closest precedent for the ne
 - Step 8 (new, optional): add `_EXPORT_TABLE_MAP["decision"] = ("decision_events", "ts")` near line 3313 for export-tooling parity.
 - Step 9 (CLI): confirmed — `--kind decision` lights up via `choices=list(VALID_KINDS)` at lines 103 and 115 of `cli/session.py`. No `cli/session.py` edit needed beyond what's already in the third-pass Implementation Step 9.
 
+### Codebase Research Findings — Re-verified Anchors (2026-07-17 fifth pass)
+
+_Added by `/ll:refine-issue --auto --full-rewrite` (additive; Preservation Rule applied) — anchor reconciliation against current `main`. All fourth-pass (2026-07-16) line anchors have drifted again; use symbolic navigation, not the literal ranges below._
+
+**`SCHEMA_VERSION` has moved again:** `scripts/little_loops/session_store.py:211` now reads `SCHEMA_VERSION = 23` (fourth pass claimed 20). `VALID_KINDS` is at line 213 (was 209) and has grown to include `"orchestration_run"` and `"loop_run"` (new since the fourth pass — from the recent `85cfd785 feat(history): capture orchestration run outcomes` work). `_KIND_TABLE` is at line 229 (was 223). `_KINDLESS_TABLES` is at line 252 (was 244-255). `grep -rn decision_events scripts/little_loops/` still returns nothing — the core deliverable remains untouched; this issue is still fully valid.
+
+**`assert SCHEMA_VERSION == N` sites — now 9, not 7:** `grep -n 'SCHEMA_VERSION == 23' scripts/tests/test_session_store.py` → lines **1372, 1817, 1932, 1984, 2080, 3661, 3702, 4450, 4596**. The fourth-pass list of 7 sites (1372/1817/1932/1984/2080/3658/3699) is stale — two new sites appeared at **4450** and **4596** (likely from tests added alongside the orchestration-run-outcome work), and the last two shifted by +3 (3658→3661, 3699→3702). At implementation time, re-run the grep rather than trusting any of these literals — this is the third consecutive pass where the site count changed, reinforcing the existing "read `SCHEMA_VERSION` symbolically" recommendation.
+
+**Other anchor drift (cosmetic, ≤10 lines, no action needed beyond symbolic navigation):**
+
+| Symbol | Fourth-pass claim | Current line |
+|--------|-------------------|--------------|
+| `decisions.RuleEntry` | 89 | 89 (stable) |
+| `decisions.DecisionEntry` | 140 | 140 (stable) |
+| `decisions.ExceptionEntry` | 196 | 196 (stable) |
+| `decisions.CouplingEntry` | 243 | 243 (stable) |
+| `decisions.add_entry` | 366 | 366 (stable) |
+| `decisions.update_entry` | 378 | 378 (stable) |
+| `session_store._index()` | 890 | **962** (+72) |
+| `session_store.record_commit_event` | 1222 | **1294** (+72) |
+| `session_store.record_retirement` | 3248 | **3506** (+258) |
+| `session_store._EXPORT_TABLE_MAP` | ~3313 | **3562** |
+| `session_store._EXPORT_DEFAULT_TABLES` | (not located) | **3578** |
+| `cli/issues/decisions.py --issue` | 99 | 99 (stable) |
+| `cli/issues/decisions.py cmd_decisions` | 266 | 266 (stable) |
+| `cli/issues/decisions.py _cmd_list` | 340 | 340 (stable) |
+| `cli/issues/decisions.py _cmd_add` | 414 | 414 (stable) |
+| `cli/session.py` `--kind choices=list(VALID_KINDS)` | 103, 115 | 103, 115 (stable — confirmed still derived, not hardcoded) |
+| skill capture-bridge call sites (`decide-issue`, `go-no-go`, `capture-issue`, `improve-claude-md`, `tradeoff-review-issues` ×2) | 419/407/295/405/276/348 | 421/407/310/277/297/349 (all stable within a few lines) |
+
+**Still-unimplemented (confirmed live, fifth consecutive check):** no `decision_events` table, `record_decision_event`, `DecisionRecord`, or `find_decisions_for_*` exist anywhere in `scripts/little_loops/`. Core deliverable and `decision_needed: true`→Option B resolution both remain exactly as the fourth pass left them — no new schema-version race has materialized (still ten-plus EPIC-2457 siblings contending for the next open slot, now 24 rather than 21).
+
+## Impact
+
+- **Priority**: P3 - Traceability enhancement for the decisions log; valuable for auditability and cross-query with `ll-session search`, but not blocking other EPIC-2457 work.
+- **Effort**: Large - Touches 4 dataclasses (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`, `CouplingEntry`), one schema migration (next open `SCHEMA_VERSION` slot), 5 skill/command capture-bridge call sites, 2 CLI surface files, the `history_reader` read API, and ~15 test classes across 5 test files per the Integration Map.
+- **Risk**: Low - New fields are optional/nullable and additive on both the YAML and DB sides; write helpers and round-trip logic follow existing precedent (`record_commit_event`, the `outcome`/`scope` omit-when-`None` pattern). No existing behavior changes.
+- **Breaking Change**: No - `source_session_id`/`source_issue_id` default to `None`; legacy YAML entries without them continue to load unaffected.
+
+## Scope Boundaries
+
+- Does not retroactively edit existing `.ll/decisions.yaml`/`decisions.d/*.json` entries to populate the new fields — only the optional `_backfill_decision_events()` DB mirror pass touches historical data, and only in `decision_events`, not the YAML source of truth.
+- Does not add a `show` subcommand to `ll-issues decisions` as a hard requirement — it's called out as a desired read path in the Read API section but isn't gated by Acceptance Criteria.
+- Does not extend `correction_retirements` (the existing one-way correction→rule link) — this issue only adds the decision→session/issue link; the two linkage mechanisms remain separate.
+- Does not restructure `wire-issue`'s coupling-capture flow — `CouplingEntry` (Option B, `decision_needed` resolved) only gains the two new fields via the same round-trip pattern as the other three dataclasses.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — recommendations §2 row 6 ("`decisions.yaml` content — Partial"), §3 ranked recommendation #7
@@ -696,7 +749,25 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-17_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 69/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across the change: 4 dataclasses, 1 schema migration, 6 skill/command capture bridges, 2 CLI files, the history_reader API, and ~15 test classes across 5 test files. Each site is individually mechanical, but the sheer count raises the odds of a missed site.
+- Dependent-file surface spans `decisions_sync.py`, `verify_decisions.py`, `wire-issue`'s static coupling layer, and `issue_history/parsing.py` — a skipped round-trip update in any of these could silently drop the new provenance fields.
+- Schema-version slot contention: roughly ten sibling EPIC-2457 issues independently claim the "next `SCHEMA_VERSION` slot" in their own Integration Maps. Read the live constant at implementation time (currently 23, not the issue's stale 18→19/20→21 literals) and expect a migration-number race if multiple siblings land close together.
+
+_Re-verified 2026-07-17 (post fifth-pass `/ll:refine-issue`): `SCHEMA_VERSION` has since moved to 23 (next open slot 24) and the `assert SCHEMA_VERSION == N` site count grew from 7 to 9 — both are instances of the schema-version-contention risk already captured above, not new risk categories. All four score components (readiness 100/100, outcome complexity 9, test coverage 25, ambiguity 25, change surface 10) are unchanged; `decision_needed` remains resolved (Option B, false). No frontmatter delta._
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-17T22:30:00 - `0f8c08e0-4a7a-41e0-9c8d-0ea38d5cce7a.jsonl`
+- `/ll:refine-issue` - 2026-07-17T22:03:21 - `e5fb419b-2ba0-4ac9-9db0-3feac6fd4800.jsonl`
+- `/ll:confidence-check` - 2026-07-17T22:15:00 - `1426770d-07a9-4729-b39c-28f57b189758.jsonl`
+- `/ll:format-issue` - 2026-07-17T21:57:50 - `793d82bb-4f98-420f-8135-23de47d8eadd.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:05:34 - `49522429-a4f8-47fc-bf61-54cfd3e4c244.jsonl`
 - `/ll:decide-issue` - 2026-07-16T18:40:25 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
 - `/ll:decide-issue` - 2026-07-16T18:32:14 - `610f97a0-a009-4f75-8a2c-c24b7b21105f.jsonl`
