@@ -1,20 +1,27 @@
 ---
 id: FEAT-2598
-title: "F3 — Session-memory compaction: StreamingLLM eviction + 6-section schema"
+title: "F3 \u2014 Session-memory compaction: StreamingLLM eviction + 6-section schema"
 type: FEAT
 priority: P2
 status: open
-captured_at: "2026-07-11T00:00:00Z"
+captured_at: '2026-07-11T00:00:00Z'
 discovered_date: 2026-07-11
 discovered_by: capture-issue
 parent: EPIC-2456
-relates_to: [ENH-2486]
+relates_to:
+- ENH-2486
 labels:
-  - token-cost
-  - fsm
-  - compaction
-  - tier-3
+- token-cost
+- fsm
+- compaction
+- tier-3
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # FEAT-2598: F3 — Session-memory compaction
@@ -110,6 +117,132 @@ the actual target.
    4096-token cross-session boundary — confirm during implementation
    whether that's a shared entry point or needs a new one.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included
+in the implementation:_
+
+5. **Register the CLI entry point** — add `ll-compact-session =
+   "little_loops.cli:main_compact_session"` to `scripts/pyproject.toml`
+   `[project.scripts]`, define + export `main_compact_session` in
+   `scripts/little_loops/cli/__init__.py` (`__all__`), and add the
+   dispatch/module in `cli/session.py` (or a new `cli/compact_session.py`)
+   — keeping it visibly distinct from the existing retention `ll-session
+   compact` subcommand.
+6. **Register the skill** — add `skills/ll-compact-session/` to
+   `.claude-plugin/plugin.json`, and decide the SKILL.md convention
+   (full-content vs. Codex-bridge stub + new `commands/compact-session.md`).
+7. **Verify the `rebuild()` output contract** — confirm the eviction
+   pre-pass does not silently change `counts["summaries"]` semantics
+   surfaced by `ll-session rebuild` / `backfill --and-rebuild`
+   (`cli/session.py:582-588`, `--json`).
+8. **Guard the downstream reader** — run `test_history_reader.py`
+   `TestSummaryDagRetrieval` and confirm `condensed_nodes_for_issue()`
+   (feeding `ll-history-context`) still resolves `kind='condensed'
+   AND level=0` nodes unchanged.
+9. **Update docs** — `docs/ARCHITECTURE.md:750` (Token cost layer row),
+   `docs/reference/API.md` (new module reference + `condensed_nodes_for_issue`
+   accuracy), `CONTRIBUTING.md:310` (file-tree comment), and the
+   `.claude/CLAUDE.md` `## CLI Tools` listing for `ll-compact-session`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 4 resolved — there is a shared *core* but two distinct *triggers*.**
+  Both `compact_session(session_id, db, *, config)` (public single-session
+  API, `session_store.py:2607`) and `rebuild(db, config, max_sessions)`
+  (batch pipeline, `session_store.py:2838` → `_compact_sessions:2452` →
+  loop call at `:2484`) ultimately call the shared low-level worker
+  `_compact_session_conn` (`session_store.py:2359`). Each trigger re-reads
+  `history.compaction` independently and constructs its own
+  `CompactionConfig`. The soft-threshold trigger is best wired at the
+  shared core (`_compact_session_conn`) or as a new pre-pass invoked by
+  both, rather than duplicated per trigger.
+- **Compaction is opt-in.** `CompactionConfig.enabled` defaults to `False`
+  (`config/features.py:937`); `_compact_sessions` returns `0` immediately
+  when disabled (`session_store.py:2476-2477`). The new eviction pass must
+  decide whether it is gated on the same `enabled` flag or always-on for
+  the instant/structural path.
+- **⚠ Naming-collision hazard for the skill/CLI.** A *different*
+  `compact()` function (`session_store.py:3034`, ENH-1906/ENH-2581
+  retention sweep over `raw_events`, `kind='retention'`) already exists,
+  and `ll-session` already exposes a `compact` subcommand
+  (`cli/session.py:198-216`) bound to it. That is a different compaction
+  axis than this issue's LCM/`compact_session` summarization. Name the new
+  skill/entry point to avoid confusion with the existing retention
+  `compact` (e.g. keep `ll-compact-session` distinct from `ll-session
+  compact`).
+- **Existing summarizer is reusable for the 6-section pass.**
+  `_summarize_block` (`session_store.py:2183`, LCM Algorithm 3 three-level
+  escalation) calls `_call_llm_for_summary` (`session_store.py:2258`),
+  which shells out via `resolve_host().build_blocking_json(...)` (the
+  sanctioned host-CLI path — do not add raw `"claude"` literals per
+  `.claude/CLAUDE.md` § Host CLI Abstraction). Model `summarize_6_section`
+  on this rather than reinventing the host invocation.
+- **`goal_tokens` calc has an existing helper.** The sliding-window
+  formula `goal_tokens = (1 - sliding_window_percentage) × context_window`
+  can reuse `context_window.py:context_window_for()` +
+  `MODEL_CONTEXT_WINDOW` for the per-model context-window size.
+
+### Decision Resolutions
+
+_Added by `/ll:refine-issue --auto` — two implementation-time decisions that
+`/ll:confidence-check` flagged as open are resolved below by codebase evidence:_
+
+#### Decision 1 — Skill/CLI authoring convention
+
+**Option A**: Author full content directly in `skills/ll-compact-session/SKILL.md`
+(the map-dependencies / go-no-go full-content template).
+
+**Option B**: Ship `skills/ll-compact-session/SKILL.md` as a thin Codex-bridge
+stub and first create a companion `commands/compact-session.md` holding the
+real content.
+
+> **Selected:** Option A (full content in the skill) — matches the uniform
+> repo convention that bare-named skills hold real content and `ll-*` variants
+> are thin Codex bridges.
+
+**Recommended**: Option A — full content in the skill. All 30 existing
+`skills/ll-*/SKILL.md` files are thin Codex-bridge stubs (12–26 lines) that
+bridge to a target that *already existed* (`skills/ll-help/SKILL.md:9-12`,
+`skills/ll-go-no-go/SKILL.md:23-27` → `skills/go-no-go/SKILL.md`); none were
+created backward from a stub. The bare-named skill is where real content lives
+(`skills/map-dependencies/SKILL.md`, 252 lines, has no `commands/map-dependencies.md`
+at all). Inventing a stub-only `commands/compact-session.md` just to satisfy the
+bridge pattern would invert the convention. **Refinement**: to match the
+convention exactly, put full content in `skills/compact-session/SKILL.md`
+(bare name) and, only if Codex parity is required, add a thin
+`skills/ll-compact-session/SKILL.md` stub bridging to it — mirroring how
+`ll-go-no-go` bridges to `go-no-go`.
+
+#### Decision 2 — Does the eviction pass gate on `CompactionConfig.enabled`?
+
+**Option A**: Gate the new eviction pass on the existing
+`CompactionConfig.enabled` flag (`config/features.py:995`, default `False`) —
+consistent with the summarization path.
+
+**Option B**: Run eviction always-on, independent of `CompactionConfig.enabled`
+(optionally behind a *new* dedicated `history.compaction.eviction_enabled`
+kill-switch defaulting `True`, never reusing `enabled`).
+
+> **Selected:** Option B (eviction always-on, independent of
+> `CompactionConfig.enabled`) — that flag gates opt-in LLM summarization cost,
+> not structural safety; gating eviction on it defeats its instant-fallback
+> purpose for the 100% of installs that default it off.
+
+**Recommended**: Option B — always-on. `CompactionConfig.enabled` gates an
+opt-in *LLM cost* ("Disabled by default to avoid background LLM calls without
+user opt-in," `config/features.py:981-993`), not structural safety.
+`_compact_sessions` (`session_store.py:2452-2477`) and `cli/history_context.py:334`
+both treat the flag as "is summarization active." Eviction is a lossless-enough
+structural pass with no LLM cost; gating it on `enabled` means the 100% of
+installs that never opted into `history.compaction` get zero protection against
+context blowup — exactly the "hard-limit hit, no fast fallback" gap this issue
+cites as its motivation (`:67-69`). Since eviction sits on a different axis
+(structural/deterministic vs. semantic/LLM), give it its own concern: always-on,
+or a dedicated new flag rather than overloading `enabled`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -120,6 +253,34 @@ the actual target.
   `_compact_session_conn` call sites to invoke the new eviction pass
   ahead of (or alongside) existing summarization
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/pyproject.toml` — add `ll-compact-session =
+  "little_loops.cli:main_compact_session"` to `[project.scripts]`
+  (`:52-94`), following the `ll-<name> = "little_loops.cli:main_<name>"`
+  convention [Agent 1 finding]
+- `scripts/little_loops/cli/__init__.py` — add + export
+  `main_compact_session` in `__all__` (models `main_session` at `:76`,
+  `:122`) [Agent 1 finding]
+- `scripts/little_loops/cli/session.py` (or a new `cli/compact_session.py`
+  module) — the entry point importing `evict_sink_and_window` /
+  `summarize_6_section` from `compaction/instant.py` and `CompactResult`
+  from `compaction/result.py`. **Naming-collision guard**: this file
+  already binds a *different* `compact` subcommand (`:198-216`, dispatch
+  `:591-609`) to the retention `compact()` (`session_store.py:3034`,
+  ENH-1906/ENH-2581 `kind='retention'`) — keep `ll-compact-session`
+  visibly distinct from `ll-session compact` [Agent 1 + Agent 2 finding]
+- `.claude-plugin/plugin.json` — register the new `skills/ll-compact-session/`
+  entry [Agent 1 finding]
+- `.claude/CLAUDE.md` — add `ll-compact-session` to the `## CLI Tools`
+  listing (repo convention: every `ll-*` entry point is documented there)
+  [wiring inference]
+- `commands/compact-session.md` (decision point) — all `skills/ll-*/SKILL.md`
+  are Codex-bridge stubs pointing at a `commands/*.md`; there is no
+  `commands/compact-session.md`, so either author `ll-compact-session/SKILL.md`
+  with full content OR create this companion command first [Agent 1 +
+  existing research finding]
+
 ### Dependent Files (Callers/Importers)
 
 - The not-yet-filed F8 child (EPIC-2456 § Children Tier 3, subagent
@@ -127,6 +288,35 @@ the actual target.
   `subagents/handoff.py` — this issue's module is a hard dependency for
   that future work; no action needed here beyond keeping the module's
   public surface stable.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store.py` — **`rebuild()` (`:2888`) is the
+  sole production call site of `_compact_sessions`** (`:2452-2604`). If the
+  new eviction pre-pass changes `_compact_session_conn` from "purely
+  additive" to deleting/evicting `message_events`, that behavior flows
+  through `rebuild()`'s `counts["summaries"]` return value — printed via
+  `logger.success(...)` in `cli/session.py:582-588` and emitted as
+  `--json` output. Treat `rebuild()`'s output contract as a coupling point
+  [Agent 2 finding]
+- `scripts/little_loops/history_reader.py` — `condensed_nodes_for_issue()`
+  reads `summary_nodes WHERE kind='condensed' AND level=0` (the downstream
+  consumer feeding `ll-history-context <id>`'s `## Prior Work (condensed)`
+  block). Since `CompactResult` wraps existing rows with no schema change,
+  this must not regress: preserve `kind`/`level` semantics for existing
+  `condensed` nodes [Agent 2 finding]
+- `scripts/little_loops/cli/history_context.py` — reads
+  `_cfg.history.compaction.enabled` (`:334`) to gate condensed-node
+  loading; confirm the `enabled` flag's meaning is unchanged if eviction
+  is gated on it [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/context_window.py` — `context_window_for()` (`:39`)
+  + `MODEL_CONTEXT_WINDOW` (`:19`); the new sliding-window `goal_tokens`
+  calc imports these (dependency, not caller) [Agent 1 finding]
+- `scripts/little_loops/config/features.py` — `CompactionConfig` (`:922-953`)
+  consumed via `BRConfig.history.compaction` (established pattern in
+  `cli/history_context.py`); the eviction pass must decide if it gates on
+  `CompactionConfig.enabled` (defaults `False`, `:937`) or is always-on
+  for the instant/structural path [Agent 1 + Agent 2 finding]
 
 ### Similar Patterns
 
@@ -143,6 +333,43 @@ the actual target.
   triggers; 6-section schema shape; 50–70% reduction range on the
   locked trace set.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_compaction.py` (new) — **add a `message_events`
+  row-count-unchanged regression** paired with the system/CLAUDE.md
+  preservation test: no existing test asserts eviction is non-destructive,
+  and the current "purely additive" guarantee (issue `:216-217`) must be
+  re-proven if the pre-pass drops middle messages structurally [Agent 3
+  finding]
+- `scripts/tests/test_session_store.py` — `class TestCompactSession`
+  (`:2143+`) tests assume purely-additive semantics and need
+  re-validation once eviction wires into `_compact_session_conn`:
+  `test_compact_session_creates_leaf_nodes` (`:2167`),
+  `test_compact_session_creates_spans` (`:2208`, span-linkage may change
+  for dropped messages), `test_compact_session_condensed_node_when_multiple_leaves`
+  (`:2233`), `test_backfill_with_compaction_enabled` (`:2292`) [Agent 3
+  finding]
+- `scripts/tests/test_session_store.py` — **log-string coupling**:
+  `test_escalation_logs_warning` (`:2719-2730`) asserts the literal
+  `"escalating to level 2"` from `_summarize_block` (`:2224-2229`); if
+  `summarize_6_section` reuses/wraps `_summarize_block`, keep this string
+  intact [Agent 2 finding]
+- `scripts/tests/test_ll_session.py` — `class TestCompactSubcommand`
+  (`:972-986`) covers the *retention* `compact` axis; **do not name the
+  new eviction test class `TestCompactSubcommand`** (collision) [Agent 2 +
+  Agent 3 finding]
+- `scripts/tests/test_history_reader.py` — `class TestSummaryDagRetrieval`
+  (`:870+`) bootstraps DB state via `compact_session(...)`; re-run to
+  confirm the eviction pre-pass doesn't alter the DAG it reads [Agent 3
+  finding]
+- `scripts/tests/test_merge_coordinator.py` — threading-test template for
+  `summarize_6_section`'s background-thread firing. Use the **ad-hoc
+  raw-thread pattern** (`:922-928`, `:958-968`: spawn → `.join(timeout=)`
+  → assert on resulting `summary_nodes` row), not the persistent
+  `TestThreadLifecycle` coordinator pattern (`:1507`), since the
+  summarizer is fire-once, not a `start()/shutdown()` loop [Agent 3
+  finding]
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — "Token cost layer" section (shared across
@@ -150,10 +377,112 @@ the actual target.
 - `docs/reference/API.md` — document `compaction/instant.py` +
   `compaction/result.py`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/ARCHITECTURE.md` (`:750`) — the exact "Token cost layer" table row
+  for `compact_session()` documents current behavior; update its prose to
+  mention the eviction pre-pass + 6-section schema [Agent 2 finding]
+- `docs/reference/API.md` (`:7150-7172`) — the `### condensed_nodes_for_issue`
+  section documents the `history.compaction.enabled` dependency + `## Prior
+  Work (condensed)` integration; verify it stays accurate under the new
+  `CompactResult` semantics [Agent 2 finding]
+- `CONTRIBUTING.md` (`:310`) — file-tree comment names `compact_session`
+  in the `session_store.py` description; extend to reflect the new
+  eviction pass [Agent 2 finding]
+
 ### Configuration
 
 - N/A — reuses existing `history.compaction` config (4096-token budget);
   no new config keys required for the base mechanism.
+
+_Wiring pass added by `/ll:wire-issue` (advisory — no change required if
+the 7,500-token soft threshold stays hardcoded):_
+
+- `scripts/little_loops/config-schema.json` (`:1788-1824`) — the
+  `history.compaction` block would only need new properties **if** the
+  soft threshold / `sink_n` / `window_n` are made configurable. **Precision
+  note**: a *different* `compaction` concept exists at `:1337-1370` (the
+  `pre_compact` hook's rubric-gated context-window compaction) — be
+  explicit about which block any schema PR touches [Agent 2 finding]
+- `.ll/ll-config.json` (`:112-123`) — **this repo's own DB has
+  `history.compaction.enabled: true`**, so little-loops' own `.ll/history.db`
+  is a live consumer: a destructive eviction pass affects this repo's
+  history on the next `rebuild`/`backfill` run, not just downstream
+  projects [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+> ⚠ **Anchor correction:** The `session_store.py:1747+` reference used
+> throughout this issue (Summary, Current Behavior, Files-to-Modify,
+> Similar Patterns) is stale — line 1747 is unrelated
+> `issue_snapshots`/frontmatter-backfill logic. The real anchors are below;
+> update `:1747` references against them during implementation.
+
+**Existing compaction surface (verified anchors):**
+- `summary_nodes` table DDL — `session_store.py:489-499` (in the migration
+  block starting `:474`; `level` column added v12 at `:538`). Columns:
+  `id, kind, content (single opaque TEXT — no sections today), tokens,
+  parent_id, session_id, ts_start, ts_end, created_at, level`. Companion
+  `summary_spans(summary_id, message_event_id)` at `:500-504`.
+- `_compact_session_conn` — `session_store.py:2359-2449` (greedy
+  single-pass block grouping by `_estimate_tokens`, `INSERT OR IGNORE`
+  idempotency via partial unique indexes; **purely additive — never
+  deletes `message_events`, confirming no eviction pass exists today**).
+- `_compact_sessions` — `session_store.py:2452-2604` (ENH-1954
+  cross-session condensation; the **monotonic-update / re-parent path** to
+  reuse is at `:2590-2596`, `WHERE id IN (...) AND parent_id IS NULL` — a
+  node is parented exactly once, never re-parented on re-run).
+- `compact_session` (public wrapper) — `session_store.py:2607`.
+- `_estimate_tokens` — `session_store.py:2178-2180`, `len(text) // 4` ("LCM
+  convention"). This is the byte/4 heuristic to base
+  `APPROX_TOKEN_SAFETY_MARGIN = 1.3` on; same convention independently in
+  `doc_counts.py:352-353`.
+- `_summarize_block` — `session_store.py:2183-2255`;
+  `_call_llm_for_summary` — `session_store.py:2258-2356`.
+- `CompactionConfig` — `config/features.py:922-953`; schema in
+  `config-schema.json:1788-1824`.
+
+**New sub-package layout (templates to model after):**
+- `scripts/little_loops/dependency_mapper/__init__.py:61-93` and
+  `scripts/little_loops/issue_history/__init__.py` — the `models.py`
+  (pure dataclasses) + logic-module split with a curated `__all__` and
+  private helpers re-exported for test access. Model `compaction/__init__.py`
+  on this.
+- `CompactResult` dataclass models: `FixResult`
+  (`dependency_mapper/models.py:105-118`) and `SkillBudgetResult`
+  (`doc_counts.py:269-277`) — typed fields, `field(default_factory=...)`
+  for mutable containers, docstring naming field semantics. Note existing
+  `session_store` query fns return `list[dict]` via `dict(row)`, not
+  dataclasses — `CompactResult` is intentionally new in wrapping rows as a
+  dataclass.
+
+**Background-thread pattern (semantic summarizer):**
+- `parallel/merge_coordinator.py:81-93` — closest analog: `threading.Thread(
+  target=..., daemon=True, name=...)` + `Queue` handoff + `threading.Event`
+  shutdown, dispatched on a triggering event. Simpler daemon-thread forms:
+  `fsm/host_guard.py:277`, `transport.py:526`.
+
+**Skill authoring:**
+- `skills/map-dependencies/SKILL.md` is the real full-content template
+  (frontmatter with `disable-model-invocation`, `allowed-tools`; `## When
+  to Activate`, `## Arguments`, `## How to Use`, `## Examples` table).
+  **Note:** all `skills/ll-*/SKILL.md` are Codex-bridge stubs pointing at a
+  `commands/*.md`; there is no `commands/compact-session.md`, so
+  `ll-compact-session/SKILL.md` needs full content OR a companion command
+  created first — pick a convention during implementation.
+- If a one-shot CLI is needed, add `ll-compact-session =
+  "little_loops.cli:main_compact_session"` to `scripts/pyproject.toml`
+  `[project.scripts]` (`:51-95`), following the `ll-<name> =
+  "little_loops.cli:main_<name>"` convention.
+
+**Test conventions:**
+- Model `test_compaction.py` on `class TestCompactSession`
+  (`scripts/tests/test_session_store.py:2143+`): per-class
+  `_make_db_with_messages` builder, `tmp_path` SQLite DBs via `connect(db)`,
+  explicit run-twice idempotency asserts, and **mock `subprocess` so
+  summarization never shells out to the real host CLI** (`:2241-2242`).
 
 ## Acceptance Criteria
 
@@ -198,9 +527,37 @@ the actual target.
   unchanged unless the new soft-threshold trigger is wired in as a strict
   addition ahead of the existing summarization-only path.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-16_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
+
+### Outcome Risk Factors
+- ~~Two implementation-time decisions remain open~~ **RESOLVED** (2026-07-16 by
+  `/ll:decide-issue`, see `### Decision Resolutions` under Proposed Solution):
+  the skill ships **full content** in `skills/compact-session/SKILL.md` (bare
+  name; `ll-compact-session` optional thin Codex bridge), and the eviction pass
+  runs **always-on**, independent of `CompactionConfig.enabled` (or behind a new
+  dedicated `eviction_enabled` flag). Both settled by decisive codebase evidence.
+- Moderate depth: the sliding-window selector integrates with ENH-1954's
+  cross-session condensation and touches `_compact_session_conn`'s
+  purely-additive contract — regression risk against 4 existing test classes
+  (`TestCompactSession`, `TestSummaryDagRetrieval`, `TestCompactSubcommand`,
+  `test_escalation_logs_warning`) that assume current behavior.
+- Broad enumeration across ~13 touch sites (core module, CLI wiring, skill
+  registration, docs) — largely mechanical registration work, but increases
+  the chance of a missed wiring step (e.g. `plugin.json` registration,
+  `__all__` export).
+
 ## Status
 
 **Open** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-17T04:04:52 - `9b2a6c2d-1f82-482f-81a0-7bf1d1c2e405.jsonl`
+- `/ll:confidence-check` - 2026-07-16T00:00:00Z - `cf3b0ae1-2f93-485f-aec6-d9be1ab4d928.jsonl`
+- `/ll:wire-issue` - 2026-07-17T03:54:06 - `227c564e-bdcb-41dc-a8dd-8daf6484b451.jsonl`
+- `/ll:refine-issue` - 2026-07-17T02:46:17 - `26f8f56e-63ed-48a4-831c-98fbdf32a442.jsonl`
 - `/ll:capture-issue` - 2026-07-11T00:00:00Z - filed from EPIC-2456 § Children [TBD-12] per `thoughts/plans/2026-07-02-token-cost-reduction-architecture.md` (EPIC-CHILD-6) and `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md` (Tier 3).

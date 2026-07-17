@@ -1,0 +1,12 @@
+{
+  "id": "852700d9-52da-404c-b456-5fd27794c2eb",
+  "type": "decision",
+  "timestamp": "2026-07-17T04:04:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-* SKILL.md are uniformly thin Codex bridges to pre-existing targets; bare-named skills hold content. CompactionConfig.enabled gates opt-in LLM cost not structural safety, so gating eviction on it defeats its instant-fallback purpose (100% of installs default it off).",
+  "rule": "Skill: full content in skills/compact-session/SKILL.md; Eviction: always-on, independent of CompactionConfig.enabled",
+  "scope": "issue",
+  "alternatives_rejected": "Stub SKILL.md + new commands/compact-session.md; eviction gated on CompactionConfig.enabled",
+  "issue": "FEAT-2598"
+}
