@@ -762,7 +762,13 @@ class TestFeatureBranchInPlaceWarning:
         config.project_root = Path(".")
         return config
 
-    def _run(self, args: MagicMock, config: MagicMock, num_waves: int = 1) -> tuple[int, list]:
+    def _run(
+        self,
+        args: MagicMock,
+        config: MagicMock,
+        num_waves: int = 1,
+        issue_result: object | None = None,
+    ) -> tuple[int, list]:
         """Call _cmd_sprint_run with enough mocking to reach the in-place wave path.
 
         Returns (exit_code, warning_calls) where warning_calls is a list of
@@ -797,8 +803,11 @@ class TestFeatureBranchInPlaceWarning:
         waves = [[iss] for iss in mock_issues]
         contention_notes = [None] * len(waves)
 
-        success = IssueProcessingResult(success=True, duration=0.1, issue_id="dummy")
+        outcome = issue_result or IssueProcessingResult(
+            success=True, duration=0.1, issue_id="dummy"
+        )
         warning_calls: list = []
+        orchestration_calls: list[dict] = []
 
         with (
             patch("little_loops.cli.sprint.run.signal"),
@@ -815,7 +824,11 @@ class TestFeatureBranchInPlaceWarning:
             ),
             patch(
                 "little_loops.cli.sprint.run._run_issue_with_wall_clock_timeout",
-                return_value=success,
+                return_value=outcome,
+            ),
+            patch(
+                "little_loops.cli.sprint.run.record_orchestration_run",
+                side_effect=lambda _db, **kwargs: orchestration_calls.append(kwargs),
             ),
             patch("little_loops.cli.sprint.run._save_sprint_state"),
             patch("little_loops.cli.sprint.run._cleanup_sprint_state"),
@@ -834,7 +847,54 @@ class TestFeatureBranchInPlaceWarning:
 
             exit_code = _cmd_sprint_run(args, mock_manager, config)
 
+        self.orchestration_calls = orchestration_calls
         return exit_code, warning_calls
+
+    def test_direct_waves_share_run_id_and_record_success(self) -> None:
+        from little_loops.issue_manager import IssueProcessingResult
+
+        args = self._make_args()
+        config = self._make_config(use_feature_branches=False)
+        outcome = IssueProcessingResult(success=True, duration=1.25, issue_id="ignored")
+        exit_code, _ = self._run(args, config, num_waves=2, issue_result=outcome)
+
+        assert exit_code == 0
+        assert len(self.orchestration_calls) == 2
+        assert {call["issue_id"] for call in self.orchestration_calls} == {
+            "ENH-100",
+            "ENH-101",
+        }
+        assert {call["status"] for call in self.orchestration_calls} == {"completed"}
+        assert {call["driver"] for call in self.orchestration_calls} == {"ll-sprint"}
+        assert len({call["run_id"] for call in self.orchestration_calls}) == 1
+
+    def test_direct_timeout_and_blocked_outcomes_are_mapped(self) -> None:
+        from little_loops.issue_manager import IssueProcessingResult
+
+        args = self._make_args()
+        config = self._make_config(use_feature_branches=False)
+        timeout = IssueProcessingResult(
+            success=False,
+            duration=60.0,
+            issue_id="ignored",
+            failure_reason="WALL_CLOCK_TIMEOUT",
+        )
+        exit_code, _ = self._run(args, config, issue_result=timeout)
+        assert exit_code == 1
+        assert self.orchestration_calls[0]["status"] == "failed"
+        assert self.orchestration_calls[0]["failure_reason"] == "WALL_CLOCK_TIMEOUT"
+
+        blocked = IssueProcessingResult(
+            success=False,
+            duration=0.5,
+            issue_id="ignored",
+            was_blocked=True,
+            failure_reason="blocked by BUG-1",
+        )
+        exit_code, _ = self._run(args, config, issue_result=blocked)
+        assert exit_code == 0
+        assert self.orchestration_calls[0]["status"] == "skipped"
+        assert self.orchestration_calls[0]["failure_reason"] == "blocked by BUG-1"
 
     def test_warning_emitted_when_config_flag_set_and_wave_in_place(self) -> None:
         """Warning fires when use_feature_branches=True (via config) and wave runs in-place."""

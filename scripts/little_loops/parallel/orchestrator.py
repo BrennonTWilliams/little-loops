@@ -15,9 +15,11 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from little_loops.events import EventBus
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
@@ -35,6 +37,7 @@ from little_loops.parallel.types import (
 )
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry
+from little_loops.session_store import record_orchestration_run, resolve_history_db
 from little_loops.worktree_utils import (
     _is_ll_branch,
     _is_ll_worktree,
@@ -89,6 +92,8 @@ class ParallelOrchestrator:
         verbose: bool = True,
         wave_label: str | None = None,
         event_bus: EventBus | None = None,
+        run_id: str | None = None,
+        driver: str = "ll-parallel",
     ) -> None:
         """Initialize the orchestrator.
 
@@ -99,6 +104,8 @@ class ParallelOrchestrator:
             verbose: Whether to output progress messages
             wave_label: Optional label for wave-based execution (e.g., "Wave 1")
             event_bus: Optional EventBus for emitting worker completion events
+            run_id: Opaque ID shared by every issue in this top-level invocation
+            driver: Producer identity (``ll-parallel`` or ``ll-sprint``)
         """
         self.parallel_config = parallel_config
         self.br_config = br_config
@@ -108,6 +115,8 @@ class ParallelOrchestrator:
         self.logger = Logger(verbose=verbose, use_color=use_color_enabled())
         self.wave_label = wave_label
         self._event_bus = event_bus
+        self.run_id = run_id or uuid4().hex
+        self.driver = driver
         self._execution_duration: float = 0.0
 
         # Create shared git lock for serializing main repo operations
@@ -966,6 +975,29 @@ class ParallelOrchestrator:
         self.logger.info(f"Dispatching {issue.issue_id} to worker pool")
         self.worker_pool.submit(issue, self._on_worker_complete)
 
+    def _record_orchestration_result(
+        self,
+        result: WorkerResult,
+        *,
+        status: str,
+        failure_reason: str | None = None,
+    ) -> None:
+        """Persist one worker outcome without affecting orchestration behavior."""
+        branch_state = self._pr_ready_branches.get(result.issue_id, {})
+        with suppress(Exception):
+            record_orchestration_run(
+                resolve_history_db(),
+                run_id=self.run_id,
+                driver=self.driver,
+                issue_id=result.issue_id,
+                status=status,
+                failure_reason=failure_reason,
+                duration_s=result.duration,
+                wave=self.wave_label,
+                pr_url=branch_state.get("pr_url"),
+                branch=result.branch_name or None,
+            )
+
     def _on_worker_complete(self, result: WorkerResult) -> None:
         """Callback when a worker completes.
 
@@ -981,6 +1013,11 @@ class ParallelOrchestrator:
         # Handle interrupted workers (not counted as failed) - ENH-036
         if result.interrupted:
             self.logger.info(f"{result.issue_id} was interrupted during shutdown (can retry)")
+            self._record_orchestration_result(
+                result,
+                status="interrupted",
+                failure_reason=result.error or "Worker interrupted",
+            )
             self._interrupted_issues.append(result.issue_id)
             # Don't mark as failed - they can be retried on next run
             return
@@ -1135,6 +1172,23 @@ class ParallelOrchestrator:
             self.state.timing[result.issue_id] = {
                 "total": result.duration,
             }
+
+        # Record the authoritative result after merge/PR and timing state are final.
+        recorded_error = self._worker_errors.get(result.issue_id)
+        if result.was_blocked:
+            orchestration_status = "skipped"
+            orchestration_reason = result.error or recorded_error
+        elif (result.success or result.should_close) and recorded_error is None:
+            orchestration_status = "completed"
+            orchestration_reason = None
+        else:
+            orchestration_status = "failed"
+            orchestration_reason = recorded_error or result.error or "Worker failed"
+        self._record_orchestration_result(
+            result,
+            status=orchestration_status,
+            failure_reason=orchestration_reason,
+        )
 
         # Clean up stage tracking after callback completes (ENH-262)
         # Delay briefly so status reporter can show completion

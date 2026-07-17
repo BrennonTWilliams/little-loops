@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 from collections import deque
 
-from wcwidth import wcswidth as _wcswidth
-from wcwidth import wcwidth as _wcwidth
+from wcwidth import wcswidth as _wcswidth  # type: ignore[import-untyped]
+from wcwidth import wcwidth as _wcwidth  # type: ignore[import-untyped]
 
 from little_loops.cli.output import colorize, strip_ansi, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig

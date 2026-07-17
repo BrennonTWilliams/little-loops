@@ -309,6 +309,75 @@ class TestOrchestratorInit:
             assert orch._git_lock is not None
 
 
+class TestOrchestrationRunRecording:
+    """ENH-2492: worker callbacks persist authoritative per-issue outcomes."""
+
+    def test_completion_records_batch_driver_wave_and_pr(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        from little_loops.parallel import orchestrator as orchestrator_module
+
+        writer = getattr(orchestrator_module, "record_orchestration_run", None)
+        assert callable(writer), "orchestrator must expose the history writer"
+        assert hasattr(orchestrator, "run_id")
+        assert hasattr(orchestrator, "driver")
+        orchestrator.run_id = "batch-parallel"
+        orchestrator.driver = "ll-sprint"
+        orchestrator.wave_label = "Wave 2/3"
+        orchestrator._pr_ready_branches["BUG-001"] = {
+            "branch_name": "feature/BUG-001",
+            "pr_url": "https://example.test/pr/1",
+        }
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/BUG-001",
+            worktree_path=Path(".worktrees/BUG-001"),
+            duration=12.0,
+        )
+
+        with patch.object(orchestrator_module, "record_orchestration_run") as mock_record:
+            orchestrator._on_worker_complete(result)
+
+        mock_record.assert_called_once()
+        kwargs = mock_record.call_args.kwargs
+        assert kwargs["run_id"] == "batch-parallel"
+        assert kwargs["driver"] == "ll-sprint"
+        assert kwargs["issue_id"] == "BUG-001"
+        assert kwargs["status"] == "completed"
+        assert kwargs["duration_s"] == 12.0
+        assert kwargs["wave"] == "Wave 2/3"
+        assert kwargs["pr_url"] == "https://example.test/pr/1"
+
+    def test_interrupted_worker_records_before_early_return(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        from little_loops.parallel import orchestrator as orchestrator_module
+
+        writer = getattr(orchestrator_module, "record_orchestration_run", None)
+        assert callable(writer), "orchestrator must expose the history writer"
+        assert hasattr(orchestrator, "run_id")
+        orchestrator.run_id = "batch-interrupted"
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=False,
+            branch_name="feature/BUG-001",
+            worktree_path=Path(".worktrees/BUG-001"),
+            duration=5.0,
+            error="worker stopped",
+            interrupted=True,
+        )
+
+        with patch.object(orchestrator_module, "record_orchestration_run") as mock_record:
+            orchestrator._on_worker_complete(result)
+
+        mock_record.assert_called_once()
+        assert mock_record.call_args.kwargs["status"] == "interrupted"
+        assert mock_record.call_args.kwargs["failure_reason"] == "worker stopped"
+        orchestrator.queue.mark_failed.assert_not_called()
+
+
 class TestSignalHandlers:
     """Tests for signal handler setup and restore."""
 

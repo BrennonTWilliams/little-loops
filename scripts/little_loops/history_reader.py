@@ -19,6 +19,7 @@ Public API:
     SkillEvent:       dataclass for skill event rows incl. completion columns (ENH-2460)
     CommitEvent:      dataclass for commit event rows (ENH-2458)
     RunEvent:         dataclass for test run event rows (ENH-2459)
+    OrchestrationRun: dataclass for per-issue batch outcomes (ENH-2492)
     find_user_corrections(topic, ...) -> list[UserCorrection]
     recent_file_events(path, ...) -> list[FileEvent]
     search(query, ...) -> list[SearchResult]
@@ -28,6 +29,8 @@ Public API:
     cost_attribution(group_by, ...) -> list[dict]
     recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
     recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
+    recent_orchestration_runs(driver, issue_id, ...) -> list[OrchestrationRun]
+    aggregate_orchestration_runs(group_by, ...) -> list[dict]
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -160,6 +163,24 @@ class RunEvent:
         if not self.total:
             return None
         return (self.passed or 0) / self.total
+
+
+@dataclass
+class OrchestrationRun:
+    """A per-issue orchestration outcome from ll-auto/parallel/sprint (ENH-2492)."""
+
+    run_id: str
+    driver: str
+    issue_id: str
+    status: str
+    failure_reason: str | None
+    duration_s: float | None
+    wave: str | None
+    pr_url: str | None
+    started_at: str | None
+    ended_at: str | None
+    head_sha: str | None
+    branch: str | None
 
 
 @dataclass
@@ -814,6 +835,107 @@ def recent_test_runs(
     finally:
         conn.close()
     return [_row_to_dataclass(row, RunEvent) for row in rows]
+
+
+_ORCHESTRATION_GROUP_COLUMNS: dict[str, str] = {
+    "driver": "driver",
+    "issue_id": "issue_id",
+    "status": "status",
+}
+
+
+def recent_orchestration_runs(
+    driver: str | None = None,
+    issue_id: str | None = None,
+    *,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[OrchestrationRun]:
+    """Return recent per-issue orchestration outcomes, newest first (ENH-2492)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT run_id, driver, issue_id, status, failure_reason, duration_s, "
+            "wave, pr_url, started_at, ended_at, head_sha, branch "
+            "FROM orchestration_runs "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if driver is not None:
+            clauses.append("driver = ?")
+            params.append(driver)
+        if issue_id is not None:
+            clauses.append("issue_id = ?")
+            params.append(issue_id)
+        if since is not None:
+            clauses.append("COALESCE(ended_at, started_at) >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY COALESCE(ended_at, started_at) DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_orchestration_runs query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, OrchestrationRun) for row in rows]
+
+
+def aggregate_orchestration_runs(
+    group_by: Literal["driver", "issue_id", "status"] = "driver",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Roll up run count, completion rate, and mean duration by a fixed dimension."""
+    column = _ORCHESTRATION_GROUP_COLUMNS.get(group_by)
+    if column is None:
+        raise ValueError(
+            f"aggregate_orchestration_runs: unsupported group_by {group_by!r}; "
+            f"expected one of {sorted(_ORCHESTRATION_GROUP_COLUMNS)}"
+        )
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            f"SELECT {column} AS group_key, COUNT(*) AS runs, "  # noqa: S608 - fixed map
+            "SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed, "
+            "AVG(duration_s) AS avg_duration_s FROM orchestration_runs "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE COALESCE(ended_at, started_at) >= ? "
+            params.append(since)
+        sql += f"GROUP BY {column} ORDER BY runs DESC, group_key"  # noqa: S608 - fixed map
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: aggregate_orchestration_runs query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+    result: list[dict] = []
+    for row in rows:
+        runs = row["runs"] or 0
+        completed = row["completed"] or 0
+        result.append(
+            {
+                group_by: row["group_key"],
+                "runs": runs,
+                "completed": completed,
+                "success_rate": completed / runs if runs else None,
+                "avg_duration_s": row["avg_duration_s"],
+            }
+        )
+    return result
 
 
 def sessions_for_issue(

@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports: `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711) dataclasses; `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue(issue_id, *, limit, db)` (ENH-1711), `issue_effort(issue_id, *, db)`, `recent_issue_velocity(limit, *, db)` (ENH-1905), `lookup_session_metadata(session_id, *, db)` (ENH-1943), `conversation_turns(db_path, *, since, context_window)` (ENH-1942), `condensed_nodes_for_issue(issue_id, *, limit, node_char_cap, db)` (ENH-2231), `recent_skill_events()` / `summarize_skills()` (ENH-2460), `recent_commit_events()` (ENH-2458), `recent_test_runs()` (ENH-2459), `find_session_for_issue_transition()` (ENH-2462) query functions. All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), and `OrchestrationRun` (ENH-2492); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -4099,8 +4099,8 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
-- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage}`, `--limit N` (default 20), `--json`
-- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}`, `--limit N` (default 20), `--json`
+- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
 - `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
 - `rebuild` — Wipe+re-derive the JSONL-derived cache tables (and their `search_index` rows) from `raw_events`; optional `--config PATH`, `--json` (ENH-2581)
 - `compact` — Sweep `raw_events` rows past the retention cutoff into per-session `kind='retention'` summary nodes, marking them `compacted=1`; optional `--and-prune` (also runs `prune` afterward), `--config PATH`, `--json` (ENH-2581)
@@ -6876,6 +6876,9 @@ from little_loops.history_reader import (
     summarize_skills,        # ENH-2460
     recent_commit_events,    # ENH-2458
     recent_test_runs,        # ENH-2459
+    OrchestrationRun,        # ENH-2492
+    recent_orchestration_runs,    # ENH-2492
+    aggregate_orchestration_runs, # ENH-2492
     find_session_for_issue_transition,  # ENH-2462
 )
 ```
@@ -7126,6 +7129,45 @@ def recent_test_runs(
 
 Return recent `test_run_events` rows, newest first, optionally filtered (ENH-2459). `RunEvent` exposes a derived `pass_rate` property (`passed / total`, `None` when `total` is 0/unknown).
 
+### OrchestrationRun / recent_orchestration_runs / aggregate_orchestration_runs
+
+```python
+@dataclass
+class OrchestrationRun:
+    run_id: str
+    driver: str
+    issue_id: str
+    status: str
+    failure_reason: str | None
+    duration_s: float | None
+    wave: str | None
+    pr_url: str | None
+    started_at: str | None
+    ended_at: str | None
+    head_sha: str | None
+    branch: str | None
+
+
+def recent_orchestration_runs(
+    driver: str | None = None,
+    issue_id: str | None = None,
+    *,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[OrchestrationRun]
+
+
+def aggregate_orchestration_runs(
+    group_by: Literal["driver", "issue_id", "status"] = "driver",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Read per-issue outcomes written by `ll-auto`, `ll-parallel`, and `ll-sprint` (ENH-2492). The recent reader filters by exact driver/issue and optional completion-time lower bound. The aggregate reader returns run count, completed count, success rate, and average duration for a fixed, SQL-safe grouping dimension. Both return `[]` on unavailable or pre-v22 databases.
+
 ### sessions_for_issue
 
 ```python
@@ -7322,11 +7364,11 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **19**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **22**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 19
+    SCHEMA_VERSION,        # 22
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -7335,6 +7377,7 @@ from little_loops.session_store import (
     skill_event_context,   # ctx manager: INSERT on enter, UPDATE exit_code/success/duration_ms on exit (ENH-2460)
     record_commit_event,   # write a commit_events row; issue_id inferred from message/branch (ENH-2458)
     record_test_run_event, # write a test_run_events row (ENH-2459)
+    record_orchestration_run, # UPSERT one per-issue batch outcome (ENH-2492)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -7363,7 +7406,7 @@ def rebuild(
 ) -> dict[str, int]
 ```
 
-Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Idempotent. Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`. Issue/loop/commit/cli/file/test_run tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
+Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Idempotent. Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`. Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
 
 ```python
 def compact(
@@ -7437,6 +7480,30 @@ def record_test_run_event(
 ```
 
 Write one `test_run_events` row and index it in `search_index` with `kind="test_run"` (ENH-2459). `failing_names` (pytest node IDs) are stored as a JSON array and fed into FTS so failing-test fragments are searchable. The primary producer is the `little_loops.pytest_history_plugin` pytest11 plugin (auto-registered via entry point; opt out with `PYTEST_DISABLE_PLUGIN_LL_HISTORY=1`); it only activates when the invocation directory contains `.ll/` or `LL_HISTORY_DB` is set, records from the xdist controller only, and swallows all write errors.
+
+### record_orchestration_run
+
+```python
+def record_orchestration_run(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    driver: str,
+    issue_id: str,
+    status: str,
+    failure_reason: str | None = None,
+    duration_s: float | None = None,
+    wave: str | None = None,
+    pr_url: str | None = None,
+    started_at: str | None = None,
+    ended_at: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    config: dict | None = None,
+) -> bool
+```
+
+UPSERT one `orchestration_runs` row per `(run_id, issue_id)` and replace its matching FTS row (ENH-2492). A top-level `ll-auto`, `ll-parallel`, or `ll-sprint` invocation reuses one opaque UUID for all of its issues and retries; the final retry therefore replaces the initial failure rather than adding a duplicate. Producers guard calls with `contextlib.suppress(Exception)` so history failures never alter orchestration behavior.
 
 ### record_retirement
 

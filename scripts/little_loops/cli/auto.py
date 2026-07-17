@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
@@ -108,6 +109,7 @@ Examples:
             verbose=args.verbose or not args.quiet,
             preview_full=args.verbose,
             skip_learning_gate=args.skip_learning_gate,
+            run_id=uuid4().hex,
         )
 
         return manager.run()

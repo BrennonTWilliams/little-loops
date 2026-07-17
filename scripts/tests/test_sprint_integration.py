@@ -1043,6 +1043,17 @@ issues:
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
+        from little_loops.cli.sprint import run as sprint_run
+
+        writer = getattr(sprint_run, "record_orchestration_run", None)
+        assert callable(writer), "sprint retry path must expose the history writer"
+        orchestration_calls: list[dict[str, Any]] = []
+        monkeypatch.setattr(
+            sprint_run,
+            "record_orchestration_run",
+            lambda _db, **kwargs: orchestration_calls.append(kwargs),
+        )
+
         retry_calls: list[str] = []
 
         class MockQueue:
@@ -1100,6 +1111,12 @@ issues:
         # (state cleanup = no failures remaining = retries worked)
         state_file = tmp_path / ".sprint-state.json"
         assert not state_file.exists(), "State file should be cleaned up on full success"
+
+        assert {call["issue_id"] for call in orchestration_calls} == {"BUG-002", "BUG-003"}
+        assert {call["status"] for call in orchestration_calls} == {"completed"}
+        assert {call["driver"] for call in orchestration_calls} == {"ll-sprint"}
+        assert {call["wave"] for call in orchestration_calls} == {"Wave 1/1"}
+        assert len({call["run_id"] for call in orchestration_calls}) == 1
 
     def test_sprint_sequential_retry_still_fails(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test retry that also fails keeps issue in failed_issues (ENH-308)."""

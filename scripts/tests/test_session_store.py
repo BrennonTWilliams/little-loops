@@ -1369,7 +1369,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 21
+        assert SCHEMA_VERSION == 22
 
 
 class TestBackfillIncremental:
@@ -1814,8 +1814,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1929,8 +1929,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1981,8 +1981,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2060,7 +2060,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 21
+        assert int(version[0]) == 22
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2077,8 +2077,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3658,8 +3658,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3699,8 +3699,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 21
-        assert int(row[0]) == 21
+        assert SCHEMA_VERSION == 22
+        assert int(row[0]) == 22
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3754,7 +3754,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 21
+        assert int(version[0]) == 22
         assert "issue_snapshots" in names
 
 
@@ -4433,6 +4433,144 @@ class TestRecordTestRunEvent:
             conn.close()
         assert "test_run_events" in names
         assert "commit_events" in names
+
+
+class TestOrchestrationRuns:
+    """ENH-2492: orchestration_runs schema, UPSERT, and FTS contract."""
+
+    @staticmethod
+    def _recorder():
+        from little_loops import session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        assert callable(recorder), "record_orchestration_run must be public"
+        return recorder
+
+    def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 22
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 21)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            indexes = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND tbl_name='orchestration_runs'"
+                )
+            }
+        finally:
+            conn.close()
+        assert "orchestration_runs" in names
+        assert {
+            "idx_orchestration_runs_driver",
+            "idx_orchestration_runs_issue_id",
+            "idx_orchestration_runs_status",
+        } <= indexes
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="batch-1",
+            driver="ll-sprint",
+            issue_id="ENH-2492",
+            status="failed",
+            failure_reason="teleporterfailure",
+            duration_s=12.5,
+            wave="Wave 2/3",
+            pr_url="https://example.test/pr/42",
+            started_at="2026-07-17T10:00:00Z",
+            ended_at="2026-07-17T10:00:13Z",
+            head_sha="abc123",
+            branch="feature/ENH-2492",
+        )
+
+        rows = recent(db, kind="orchestration_run")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["run_id"] == "batch-1"
+        assert row["driver"] == "ll-sprint"
+        assert row["issue_id"] == "ENH-2492"
+        assert row["status"] == "failed"
+        assert row["failure_reason"] == "teleporterfailure"
+        assert row["duration_s"] == 12.5
+        assert row["wave"] == "Wave 2/3"
+        assert row["pr_url"] == "https://example.test/pr/42"
+
+    def test_upsert_replaces_outcome_and_fts_row(self, tmp_path: Path) -> None:
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        common = {
+            "run_id": "batch-retry",
+            "driver": "ll-sprint",
+            "issue_id": "BUG-17",
+            "wave": "Wave 1/1",
+        }
+        record_orchestration_run(
+            db,
+            **common,
+            status="failed",
+            failure_reason="teleporterfailure",
+            duration_s=4.0,
+        )
+        record_orchestration_run(
+            db,
+            **common,
+            status="completed",
+            failure_reason=None,
+            duration_s=2.0,
+        )
+
+        rows = recent(db, kind="orchestration_run")
+        assert len(rows) == 1
+        assert rows[0]["status"] == "completed"
+        assert rows[0]["failure_reason"] is None
+        assert rows[0]["duration_s"] == 2.0
+        stale = search(db, query="teleporterfailure")
+        assert not any(row["kind"] == "orchestration_run" for row in stale)
+        completed = [
+            row for row in search(db, query="completed") if row["kind"] == "orchestration_run"
+        ]
+        assert len(completed) == 1
+
+        conn = connect(db)
+        try:
+            indexed = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind='orchestration_run'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert indexed == 1
+
+    def test_identical_write_is_idempotent(self, tmp_path: Path) -> None:
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        kwargs = {
+            "run_id": "batch-same",
+            "driver": "ll-auto",
+            "issue_id": "ENH-1",
+            "status": "completed",
+            "duration_s": 1.0,
+        }
+        record_orchestration_run(db, **kwargs)
+        record_orchestration_run(db, **kwargs)
+
+        conn = connect(db)
+        try:
+            table_rows = conn.execute("SELECT COUNT(*) FROM orchestration_runs").fetchone()[0]
+            fts_rows = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind='orchestration_run'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert table_rows == 1
+        assert fts_rows == 1
 
 
 class TestLoopEventTypes:

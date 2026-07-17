@@ -13,11 +13,12 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from little_loops.parallel.types import SprintWorkerContext
@@ -41,7 +42,11 @@ from little_loops.learning_tests.extractor import resolve_learning_targets
 from little_loops.learning_tests.gate import run_learning_gate_for_issue
 from little_loops.logger import Logger, format_duration
 from little_loops.output_parsing import parse_ready_issue_output
-from little_loops.session_store import DEFAULT_DB_PATH, SQLiteTransport
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    SQLiteTransport,
+    record_orchestration_run,
+)
 from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager, _iso_now
 from little_loops.subprocess_utils import (
@@ -1123,6 +1128,7 @@ class AutoManager:
         preview_full: bool = False,
         db_path: Path | None = None,
         skip_learning_gate: bool = False,
+        run_id: str | None = None,
     ) -> None:
         """Initialize the auto manager.
 
@@ -1140,6 +1146,9 @@ class AutoManager:
             label_filter: If provided, only process issues that have at least one of these labels
             verbose: Whether to output progress messages
             preview_full: If True, show full command content without truncation (--verbose flag).
+            db_path: Optional history database override.
+            skip_learning_gate: Whether to bypass per-issue learning-test checks.
+            run_id: Opaque ID shared by every issue in this top-level invocation.
         """
         self.config = config
         self.dry_run = dry_run
@@ -1153,12 +1162,14 @@ class AutoManager:
         self.label_filter = label_filter
         self._preview_full = preview_full
         self.skip_learning_gate = skip_learning_gate
+        self.db_path = db_path or DEFAULT_DB_PATH
+        self.run_id = run_id or uuid4().hex
 
         from little_loops.cli.output import use_color_enabled
 
         self.logger = Logger(verbose=verbose, use_color=use_color_enabled())
         self.event_bus = EventBus()
-        self.event_bus.add_transport(SQLiteTransport(db_path or DEFAULT_DB_PATH))
+        self.event_bus.add_transport(SQLiteTransport(self.db_path))
         self.state_manager = StateManager(
             config.get_state_file(), self.logger, event_bus=self.event_bus
         )
@@ -1440,5 +1451,26 @@ class AutoManager:
 
         if result.corrections:
             self.state_manager.record_corrections(info.issue_id, result.corrections)
+
+        if not self.dry_run:
+            if result.was_closed or result.success:
+                orchestration_status = "completed"
+                orchestration_reason = None
+            elif result.was_blocked or result.plan_created:
+                orchestration_status = "skipped"
+                orchestration_reason = result.failure_reason or None
+            else:
+                orchestration_status = "failed"
+                orchestration_reason = result.failure_reason or "Issue processing failed"
+            with suppress(Exception):
+                record_orchestration_run(
+                    self.db_path,
+                    run_id=self.run_id,
+                    driver="ll-auto",
+                    issue_id=info.issue_id,
+                    status=orchestration_status,
+                    failure_reason=orchestration_reason,
+                    duration_s=result.duration,
+                )
 
         return result.success

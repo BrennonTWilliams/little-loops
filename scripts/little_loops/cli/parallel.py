@@ -7,6 +7,7 @@ import dataclasses
 import os
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.cli_args import (
@@ -321,6 +322,7 @@ Examples:
             repo_path=project_root,
             verbose=args.verbose or not args.quiet,
             event_bus=event_bus,
+            run_id=uuid4().hex,
         )
 
         return orchestrator.run()

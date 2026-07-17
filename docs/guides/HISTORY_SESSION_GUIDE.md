@@ -40,6 +40,7 @@ Use this when you want to query what happened in past sessions, inject historica
 | What shipped recently (commits with issue linkage) | `ll-session recent --kind commit` |
 | Last pytest run on this branch | `ll-session recent --kind test_run --limit 1` |
 | Recent LLM token usage / cost by model | `ll-session recent --kind usage` |
+| Per-issue outcomes from the latest automation batches | `ll-session recent --kind orchestration_run` |
 | Which skills succeed vs. fail | `ll-session skill-stats` |
 
 ---
@@ -48,7 +49,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 18, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 22, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -72,8 +73,10 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v18 | ENH-2459 | `test_run_events` table |
 | v19 | ENH-2581 | `raw_events` source-of-truth table |
 | v20 | ENH-2461 | `usage_events` table (real LLM token counts + cost) |
+| v21 | FEAT-2478 | OTel `invocation_id` / `provider_vendor` attribution on `usage_events` |
+| v22 | ENH-2492 | `orchestration_runs` table (per-issue batch outcomes) |
 
-v15–v18 are the EPIC-2457 children; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v22 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -94,7 +97,8 @@ v15–v18 are the EPIC-2457 children; all migrations are additive — no user ac
 | `sessions` | Maps session IDs to their `.jsonl` file paths |
 | `commit_events` | Git commit metadata: `commit_sha` (unique), `parent_sha`, message, author, branch, `issue_id` (linked when known), `files_json`. Populated live by the session-start backfill. Queryable via `ll-session recent --kind commit` (ENH-2458, v17). |
 | `test_run_events` | Pytest runs: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Queryable via `ll-session recent --kind test_run` (ENH-2459, v18). |
-| `usage_events` | Real LLM token counts per assistant turn: `model`, `state` (always NULL from the parser path), `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd` (NULL for unpriced models). Derived from `raw_events` by `_backfill_usage_events()` (parses `message.usage` on `type == "assistant"` records). Queryable via `ll-session recent --kind usage` and `history_reader.recent_usage_events()`/`aggregate_usage()` (ENH-2461, v20). |
+| `usage_events` | Real LLM token counts per assistant turn: `model`, `state` (always NULL from the parser path), `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd` (NULL for unpriced models). Derived from `raw_events` by `_backfill_usage_events()` (parses `message.usage` on `type == "assistant"` records). Queryable via `ll-session recent --kind usage` and `history_reader.recent_usage_events()`/`aggregate_usage()` (ENH-2461, v20; OTel attribution columns added in v21). |
+| `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, and git context. Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 
@@ -167,7 +171,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `commit`, `test_run`, `usage`.
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `commit`, `test_run`, `usage`, `orchestration_run`.
 
 ### Most recent events
 
@@ -205,7 +209,7 @@ ll-session export --since 2026-06-01 -o export.jsonl  # date-filtered, to a file
 ll-session export --include-messages                  # also include message_events (~46K rows)
 ```
 
-Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `commit_event`, `test_run_event`, `message_event`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add it back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
+Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `message_event`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add it back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
 
 ---
 

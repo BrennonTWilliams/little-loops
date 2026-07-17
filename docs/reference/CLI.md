@@ -2424,7 +2424,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` | Filter results by event kind (optional) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -2432,7 +2432,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). `snapshot` and the full choice list are now sourced from `VALID_KINDS`, the single source of truth (ENH-2581) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492). |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
@@ -2464,8 +2464,8 @@ cache tables (`tool_events`, `message_events`, `assistant_messages`,
 Wipes and re-derives `tool_events`, `message_events`, `assistant_messages`,
 `skill_events`, `sessions`, `user_corrections`, `summary_nodes`/
 `summary_spans`, and their `search_index` rows from `raw_events`. Idempotent.
-Issue/loop/commit/cli/file/test_run tables are outside `raw_events`'s scope
-and are untouched (ENH-2581).
+Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope
+and are untouched (ENH-2581, ENH-2492).
 
 **`compact` flags:**
 
@@ -2498,7 +2498,7 @@ idempotent and byte-lossless — running it twice is a no-op on the second pass.
 
 | Flag | Description |
 |------|-------------|
-| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event` |
+| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run` |
 | `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
 | `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
 | `-o / --output FILE` | Write output to FILE instead of stdout |
@@ -2509,6 +2509,7 @@ ll-session search --fts "rate limit"            # Full-text search, BM25-ranked
 ll-session recent --kind loop                   # Recent loop events
 ll-session recent --kind commit                 # Recent git commits (ENH-2458)
 ll-session recent --kind test_run               # Recent pytest runs (ENH-2459)
+ll-session recent --kind orchestration_run       # Per-issue automation outcomes (ENH-2492)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions

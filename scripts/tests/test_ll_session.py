@@ -105,6 +105,22 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "usage"
 
+    def test_recent_subcommand_orchestration_run_accepted(self) -> None:
+        """ENH-2492: orchestration_run is valid for recent and search."""
+        from little_loops.session_store import VALID_KINDS
+
+        assert "orchestration_run" in VALID_KINDS
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "orchestration_run"]):
+            args = _parse_args()
+        assert args.kind == "orchestration_run"
+
+        with patch(
+            "sys.argv",
+            ["ll-session", "search", "--fts", "ENH-2492", "--kind", "orchestration_run"],
+        ):
+            args = _parse_args()
+        assert args.kind == "orchestration_run"
+
     def test_skill_stats_subcommand(self) -> None:
         """ENH-2460: skill-stats subcommand parses with optional --since."""
         with patch("sys.argv", ["ll-session", "skill-stats", "--since", "2026-01-01"]):
@@ -1148,3 +1164,62 @@ class TestSkillStatsAndNewKinds:
         ):
             assert main_session() == 0
         assert "teleporter" in capsys.readouterr().out
+
+    def test_orchestration_run_recent_search_and_export(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops import session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        assert callable(recorder), "record_orchestration_run must exist"
+        db = tmp_path / "history.db"
+        recorder(
+            db,
+            run_id="cli-batch",
+            driver="ll-auto",
+            issue_id="ENH-2492",
+            status="failed",
+            failure_reason="fluxcapacitor",
+            duration_s=3.0,
+        )
+
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "recent", "--kind", "orchestration_run"],
+        ):
+            assert main_session() == 0
+        recent_out = capsys.readouterr().out
+        assert "ENH-2492" in recent_out
+        assert "cli-batch" in recent_out
+
+        with patch(
+            "sys.argv",
+            [
+                "ll-session",
+                "--db",
+                str(db),
+                "search",
+                "--fts",
+                "fluxcapacitor",
+                "--kind",
+                "orchestration_run",
+            ],
+        ):
+            assert main_session() == 0
+        assert "fluxcapacitor" in capsys.readouterr().out
+
+        with patch(
+            "sys.argv",
+            [
+                "ll-session",
+                "--db",
+                str(db),
+                "export",
+                "--tables",
+                "orchestration_run",
+            ],
+        ):
+            assert main_session() == 0
+        exported = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+        row = next(item for item in exported if item["type"] == "orchestration_run")
+        assert row["issue_id"] == "ENH-2492"

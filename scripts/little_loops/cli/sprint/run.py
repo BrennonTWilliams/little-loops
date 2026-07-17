@@ -8,9 +8,11 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from little_loops.cli.output import use_color_enabled
 from little_loops.cli.sprint._helpers import _build_issue_contents, _render_dependency_analysis
@@ -20,6 +22,7 @@ from little_loops.issue_manager import IssueProcessingResult, process_issue_inpl
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.parallel.types import SprintWorkerContext
+from little_loops.session_store import record_orchestration_run, resolve_history_db
 from little_loops.sprint import SprintManager, SprintState
 from little_loops.worktree_utils import detect_default_branch
 
@@ -525,6 +528,9 @@ def _cmd_sprint_run(
         logger.info("\nDry run mode - no changes will be made")
         return 0
 
+    run_id = uuid4().hex
+    history_db = resolve_history_db()
+
     # Initialize or load state
     state: SprintState
     start_wave = 1
@@ -651,21 +657,39 @@ def _cmd_sprint_run(
                     )
                     total_duration += issue_result.duration
                     if issue_result.success:
+                        orchestration_status = "completed"
+                        orchestration_reason = None
                         completed.add(issue.issue_id)
                         state.completed_issues.append(issue.issue_id)
                         state.timing[issue.issue_id] = {"total": issue_result.duration}
                         logger.success(f"  {issue.issue_id}: completed")
                     elif issue_result.was_blocked:
+                        orchestration_status = "skipped"
+                        orchestration_reason = issue_result.failure_reason or None
                         completed.add(issue.issue_id)
                         state.skipped_blocked_issues[issue.issue_id] = issue_result.failure_reason
                         logger.warning(f"  {issue.issue_id}: skipped (blocked by open dependency)")
                     else:
-                        wave_failed = True
-                        completed.add(issue.issue_id)
-                        state.failed_issues[issue.issue_id] = (
+                        orchestration_status = "failed"
+                        orchestration_reason = (
                             issue_result.failure_reason or "Issue processing failed"
                         )
+                        wave_failed = True
+                        completed.add(issue.issue_id)
+                        state.failed_issues[issue.issue_id] = orchestration_reason
                         logger.warning(f"  {issue.issue_id}: failed")
+                    with suppress(Exception):
+                        record_orchestration_run(
+                            history_db,
+                            run_id=run_id,
+                            driver="ll-sprint",
+                            issue_id=issue.issue_id,
+                            status=orchestration_status,
+                            failure_reason=orchestration_reason,
+                            duration_s=issue_result.duration,
+                            wave=f"Wave {wave_num}/{total_waves}",
+                            branch=_current_branch,
+                        )
                 if wave_failed:
                     failed_waves += 1
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
@@ -723,6 +747,8 @@ def _cmd_sprint_run(
                     Path.cwd(),
                     wave_label=f"Wave {wave_num}/{total_waves}",
                     event_bus=event_bus,
+                    run_id=run_id,
+                    driver="ll-sprint",
                 )
                 result = orchestrator.run()
                 total_duration += orchestrator.execution_duration
@@ -753,6 +779,7 @@ def _cmd_sprint_run(
                             continue
                         logger.info(f"  Retrying {issue.issue_id} in-place...")
                         # TODO(ENH-1686): sprint sequential path not yet live-written
+                        retry_branch = _detect_current_branch()
                         retry_result = process_issue_inplace(
                             info=issue,
                             config=config,
@@ -760,17 +787,21 @@ def _cmd_sprint_run(
                             dry_run=args.dry_run,
                             sprint_context=SprintWorkerContext(
                                 issue_id=issue.issue_id,
-                                branch=_detect_current_branch(),
+                                branch=retry_branch,
                             ),
                         )
                         total_duration += retry_result.duration
                         if retry_result.success:
+                            orchestration_status = "completed"
+                            orchestration_reason = None
                             retried_ok += 1
                             state.failed_issues.pop(issue.issue_id, None)
                             state.completed_issues.append(issue.issue_id)
                             state.timing[issue.issue_id] = {"total": retry_result.duration}
                             logger.success(f"  Retry succeeded: {issue.issue_id}")
                         elif retry_result.was_blocked:
+                            orchestration_status = "skipped"
+                            orchestration_reason = retry_result.failure_reason or None
                             state.failed_issues.pop(issue.issue_id, None)
                             state.skipped_blocked_issues[issue.issue_id] = (
                                 retry_result.failure_reason
@@ -779,7 +810,26 @@ def _cmd_sprint_run(
                                 f"  Retry skipped: {issue.issue_id} (blocked by open dependency)"
                             )
                         else:
+                            orchestration_status = "failed"
+                            orchestration_reason = (
+                                retry_result.failure_reason
+                                or state.failed_issues.get(issue.issue_id)
+                                or "Issue processing failed"
+                            )
+                            state.failed_issues[issue.issue_id] = orchestration_reason
                             logger.warning(f"  Retry failed: {issue.issue_id}")
+                        with suppress(Exception):
+                            record_orchestration_run(
+                                history_db,
+                                run_id=run_id,
+                                driver="ll-sprint",
+                                issue_id=issue.issue_id,
+                                status=orchestration_status,
+                                failure_reason=orchestration_reason,
+                                duration_s=retry_result.duration,
+                                wave=f"Wave {wave_num}/{total_waves}",
+                                branch=retry_branch,
+                            )
                     if retried_ok > 0:
                         logger.info(
                             f"Sequential retry recovered {retried_ok}/{len(actually_failed)} issue(s)"

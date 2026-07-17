@@ -35,6 +35,7 @@ Public API:
     skill_event_context(db,...): skill-host analogue of cli_event_context (ENH-2460)
     record_commit_event(db,...): write one row to ``commit_events`` + search_index (ENH-2458)
     record_test_run_event(db,...): write one row to ``test_run_events`` + search_index (ENH-2459)
+    record_orchestration_run(db,...): UPSERT one per-issue batch outcome (ENH-2492)
 """
 
 from __future__ import annotations
@@ -84,6 +85,7 @@ __all__ = [
     "record_issue_snapshot",
     "record_commit_event",
     "record_test_run_event",
+    "record_orchestration_run",
     "cli_event_context",
     "skill_event_context",
     "SkillEventCompletion",
@@ -204,7 +206,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -219,6 +221,7 @@ VALID_KINDS: tuple[str, ...] = (
     "commit",
     "test_run",
     "usage",
+    "orchestration_run",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -233,6 +236,7 @@ _KIND_TABLE = {
     "commit": "commit_events",
     "test_run": "test_run_events",
     "usage": "usage_events",
+    "orchestration_run": "orchestration_runs",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -741,6 +745,33 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE usage_events ADD COLUMN invocation_id TEXT;
     ALTER TABLE usage_events ADD COLUMN provider_vendor TEXT;
+    """,
+    # v22 (ENH-2492): per-issue outcomes from ll-auto, ll-parallel, and ll-sprint.
+    # Direct-write execution ground truth; intentionally excluded from raw_events
+    # rebuild because no transcript parser can reconstruct these batch results.
+    """
+    CREATE TABLE IF NOT EXISTS orchestration_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        driver TEXT NOT NULL,
+        issue_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        failure_reason TEXT,
+        duration_s REAL,
+        wave TEXT,
+        pr_url TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        head_sha TEXT,
+        branch TEXT,
+        UNIQUE(run_id, issue_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_driver
+        ON orchestration_runs(driver);
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_issue_id
+        ON orchestration_runs(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestration_runs_status
+        ON orchestration_runs(status);
     """,
 ]
 
@@ -1426,6 +1457,92 @@ def record_test_run_event(
 
 
 # ---------------------------------------------------------------------------
+# Orchestration-run events (ENH-2492)
+# ---------------------------------------------------------------------------
+
+
+def record_orchestration_run(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    driver: str,
+    issue_id: str,
+    status: str,
+    failure_reason: str | None = None,
+    duration_s: float | None = None,
+    wave: str | None = None,
+    pr_url: str | None = None,
+    started_at: str | None = None,
+    ended_at: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    config: dict | None = None,
+) -> bool:
+    """UPSERT one per-issue orchestration outcome and refresh its FTS row.
+
+    ``run_id`` identifies the top-level ``ll-auto``, ``ll-parallel``, or
+    ``ll-sprint`` invocation. Reusing the same ``(run_id, issue_id)`` for a retry
+    replaces the initial result with the final outcome. The matching FTS row is
+    deleted and recreated in the same transaction so stale failure text cannot
+    remain searchable after a successful retry.
+
+    The ``config`` parameter is a forward-compatibility stub for a future
+    ``analytics.capture.orchestration_runs`` gate; it is accepted but unused.
+    Returns ``False`` only when the required identity fields are empty.
+    """
+    if not run_id or not driver or not issue_id or not status:
+        return False
+
+    effective_ended_at = ended_at or _now()
+    index_ts = effective_ended_at or started_at or _now()
+    index_ref = f"{run_id}:{issue_id}"
+    conn = connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO orchestration_runs("
+            "run_id, driver, issue_id, status, failure_reason, duration_s, wave, pr_url, "
+            "started_at, ended_at, head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(run_id, issue_id) DO UPDATE SET "
+            "driver=excluded.driver, status=excluded.status, "
+            "failure_reason=excluded.failure_reason, duration_s=excluded.duration_s, "
+            "wave=excluded.wave, pr_url=excluded.pr_url, "
+            "started_at=excluded.started_at, ended_at=excluded.ended_at, "
+            "head_sha=excluded.head_sha, branch=excluded.branch",
+            (
+                run_id,
+                driver,
+                issue_id,
+                status,
+                failure_reason,
+                duration_s,
+                wave,
+                pr_url,
+                started_at,
+                effective_ended_at,
+                head_sha,
+                branch,
+            ),
+        )
+        conn.execute(
+            "DELETE FROM search_index WHERE kind = ? AND ref = ?",
+            ("orchestration_run", index_ref),
+        )
+        _index(
+            conn,
+            content=(f"{driver} {run_id} {issue_id} {status} {failure_reason or ''}").strip()[:512],
+            kind="orchestration_run",
+            ref=index_ref,
+            anchor=issue_id,
+            ts=index_ts,
+        )
+        conn.commit()
+        return bool(cursor.rowcount)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Query API
 # ---------------------------------------------------------------------------
 
@@ -1479,7 +1596,7 @@ def recent(
     """Return the most recent rows for *kind*.
 
     Kinds: tool, file, issue, loop, correction, message, skill, cli, commit,
-    test_run, usage.
+    test_run, usage, orchestration_run.
     """
     if kind not in VALID_KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(VALID_KINDS)}")
@@ -3324,6 +3441,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "commit_event": ("commit_events", "ts"),
     "test_run_event": ("test_run_events", "ts"),
     "usage_event": ("usage_events", "ts"),
+    "orchestration_run": ("orchestration_runs", "ended_at"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -3337,6 +3455,7 @@ _EXPORT_DEFAULT_TABLES = [
     "commit_event",
     "test_run_event",
     "usage_event",
+    "orchestration_run",
 ]
 
 
@@ -3358,7 +3477,8 @@ def export_history(
         tables: Type names to include.  Defaults to all non-message tables.
             Valid values: ``session``, ``issue_event``, ``issue_snapshot``,
             ``skill_event``, ``loop_event``, ``correction``, ``summary_node``,
-            ``message_event``.
+            ``message_event``, ``commit_event``, ``test_run_event``,
+            ``usage_event``, ``orchestration_run``.
         since: ISO 8601 datetime string; only rows at or after this timestamp are
             returned, filtered per-table using the relevant timestamp column.
         include_messages: When ``True`` and *tables* is not given, also include

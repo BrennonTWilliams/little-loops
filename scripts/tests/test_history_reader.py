@@ -1620,6 +1620,84 @@ class TestNewEventReaders:
         assert len(only_b) == 1
         assert only_b[0].transition == "done"
 
+    def test_recent_orchestration_runs_filters(self, tmp_path: Path) -> None:
+        from little_loops import history_reader, session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        reader = getattr(history_reader, "recent_orchestration_runs", None)
+        assert callable(recorder), "record_orchestration_run must exist"
+        assert callable(reader), "recent_orchestration_runs must exist"
+
+        db = tmp_path / "history.db"
+        recorder(
+            db,
+            run_id="batch-a",
+            driver="ll-auto",
+            issue_id="BUG-1",
+            status="completed",
+            duration_s=2.0,
+            ended_at="2026-07-17T10:00:00Z",
+        )
+        recorder(
+            db,
+            run_id="batch-b",
+            driver="ll-sprint",
+            issue_id="BUG-2",
+            status="failed",
+            failure_reason="boom",
+            duration_s=4.0,
+            ended_at="2026-07-17T11:00:00Z",
+        )
+
+        rows = reader(db=db)
+        assert [row.run_id for row in rows] == ["batch-b", "batch-a"]
+        assert reader(driver="ll-auto", db=db)[0].issue_id == "BUG-1"
+        assert reader(issue_id="BUG-2", db=db)[0].driver == "ll-sprint"
+        assert reader(since="2026-07-17T10:30:00Z", db=db)[0].run_id == "batch-b"
+
+    def test_aggregate_orchestration_runs(self, tmp_path: Path) -> None:
+        from little_loops import history_reader, session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        aggregate = getattr(history_reader, "aggregate_orchestration_runs", None)
+        assert callable(recorder), "record_orchestration_run must exist"
+        assert callable(aggregate), "aggregate_orchestration_runs must exist"
+
+        db = tmp_path / "history.db"
+        recorder(
+            db,
+            run_id="r1",
+            driver="ll-auto",
+            issue_id="BUG-1",
+            status="completed",
+            duration_s=2.0,
+        )
+        recorder(
+            db,
+            run_id="r2",
+            driver="ll-auto",
+            issue_id="BUG-2",
+            status="failed",
+            duration_s=4.0,
+        )
+        stats = aggregate(group_by="driver", db=db)
+        assert stats == [
+            {
+                "driver": "ll-auto",
+                "runs": 2,
+                "completed": 1,
+                "success_rate": 0.5,
+                "avg_duration_s": 3.0,
+            }
+        ]
+
+    def test_recent_orchestration_runs_empty_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops import history_reader
+
+        reader = getattr(history_reader, "recent_orchestration_runs", None)
+        assert callable(reader), "recent_orchestration_runs must exist"
+        assert reader(db=tmp_path / "nope" / "history.db") == []
+
     def test_readers_return_empty_on_missing_db(self, tmp_path: Path) -> None:
         from little_loops.history_reader import (
             find_session_for_issue_transition,

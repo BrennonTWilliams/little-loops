@@ -3618,6 +3618,77 @@ class TestAutoManagerModelDetection:
 
         assert any("model: claude-sonnet-4-6" in msg for msg in info_log)
 
+    def test_records_mixed_issue_outcomes_with_one_batch_id(
+        self, temp_project_with_issue: Path
+    ) -> None:
+        """ENH-2492: ll-auto persists success/failure detail under one run ID."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+        from little_loops.issue_parser import IssueInfo
+        from little_loops.session_store import recent
+
+        db = temp_project_with_issue / ".ll" / "orchestration.db"
+        config = BRConfig(temp_project_with_issue)
+        manager = AutoManager(
+            config,
+            dry_run=False,
+            db_path=db,
+            run_id="auto-batch",
+        )
+        first = manager._get_next_issue()
+        assert first is not None
+        second = IssueInfo(
+            path=first.path,
+            issue_type=first.issue_type,
+            priority=first.priority,
+            issue_id="FEAT-002",
+            title="Second Feature",
+        )
+        outcomes = [
+            IssueProcessingResult(success=True, duration=1.5, issue_id=first.issue_id),
+            IssueProcessingResult(
+                success=False,
+                duration=2.5,
+                issue_id=second.issue_id,
+                failure_reason="verification failed",
+            ),
+        ]
+
+        with patch("little_loops.issue_manager.process_issue_inplace", side_effect=outcomes):
+            assert manager._process_issue(first) is True
+            assert manager._process_issue(second) is False
+
+        rows = recent(db, kind="orchestration_run")
+        assert len(rows) == 2
+        assert {row["run_id"] for row in rows} == {"auto-batch"}
+        by_issue = {row["issue_id"]: row for row in rows}
+        assert by_issue[first.issue_id]["status"] == "completed"
+        assert by_issue[first.issue_id]["duration_s"] == 1.5
+        assert by_issue[second.issue_id]["status"] == "failed"
+        assert by_issue[second.issue_id]["failure_reason"] == "verification failed"
+
+    def test_orchestration_write_failure_does_not_change_auto_result(
+        self, temp_project_with_issue: Path
+    ) -> None:
+        """ENH-2492: history write failures are best-effort for ll-auto."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+
+        config = BRConfig(temp_project_with_issue)
+        manager = AutoManager(config, dry_run=False, run_id="auto-batch")
+        issue = manager._get_next_issue()
+        assert issue is not None
+        outcome = IssueProcessingResult(success=True, duration=1.0, issue_id=issue.issue_id)
+
+        with (
+            patch("little_loops.issue_manager.process_issue_inplace", return_value=outcome),
+            patch(
+                "little_loops.issue_manager.record_orchestration_run",
+                side_effect=OSError("database unavailable"),
+            ),
+        ):
+            assert manager._process_issue(issue) is True
+
 
 class TestDecisionNeededGate:
     """Tests for conditional decide-issue invocation when decision_needed=True."""

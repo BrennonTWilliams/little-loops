@@ -3,9 +3,10 @@ id: ENH-2492
 title: Capture orchestration run outcomes (ll-auto/ll-parallel/ll-sprint) into history.db
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-05
 captured_at: '2026-07-05T00:00:00Z'
+completed_at: '2026-07-17T20:49:12Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
@@ -14,11 +15,11 @@ labels:
 - history-db
 - orchestration
 - captured
-confidence_score: 97
-outcome_confidence: 76
-score_complexity: 18
-score_test_coverage: 22
-score_ambiguity: 18
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -131,19 +132,18 @@ Python orchestration layer has no FSM equivalent (see `docs/ARCHITECTURE.md`
 ### Files to Modify (store)
 
 - `scripts/little_loops/session_store.py`:
-  - Line 60 `__all__` — add `"record_orchestration_run"` (matches older
-    convention; v20/ENH-2461's `record_usage_event` is NOT in `__all__`, so
-    optional — mirror v20 style for consistency).
-  - Line 102 `SCHEMA_VERSION = 18` — bump to 19.
-  - Line 104 `_VALID_KINDS` — add `"orchestration_run"`.
-  - Line 119 `_KIND_TABLE` — add `"orchestration_run": "orchestration_runs"`.
-  - Line 208+ `_MIGRATIONS` — append a v19 entry with the issue's proposed
-    SQL. Apply via `_apply_migrations()` (line 609-645) under
-    `BEGIN IMMEDIATE` with `_split_sql_statements` (line 579-589); bump meta
-    via `INSERT OR REPLACE INTO meta(key='schema_version')` (line 635-639).
-  - New `record_orchestration_run()` modelled on `record_commit_event`
-    (line 1041-1091) — `INSERT OR IGNORE` on the `(run_id, issue_id)` UNIQUE
-    constraint, conditional `_index()` only when `cursor.rowcount == 1`.
+  - Export `record_orchestration_run` consistently with the current module's
+    public-helper convention.
+  - Read the live `SCHEMA_VERSION` and append the next migration. It is 21 on
+    2026-07-17, making this v22 if no sibling lands first.
+  - Add `"orchestration_run"` to `VALID_KINDS` and
+    `"orchestration_run": "orchestration_runs"` to `_KIND_TABLE`.
+  - Append the issue's SQL to `_MIGRATIONS`; `_apply_migrations()` already
+    serializes each migration under `BEGIN IMMEDIATE` and advances the meta
+    schema version.
+  - Add `record_orchestration_run()` near the direct-write event helpers. Use a
+    true `ON CONFLICT(run_id, issue_id) DO UPDATE` UPSERT and refresh the single
+    matching FTS row so a retry's final outcome replaces its initial outcome.
 
 _Wiring pass added by `/ll:wire-issue`:_
 
@@ -729,6 +729,36 @@ Codebase Research Findings above).
   radius), and no acceptance criterion or query in this issue needs the
   numeric form.
 
+### Readiness Contract (2026-07-17)
+
+This contract supersedes conflicting historical research snippets and concrete
+code blocks elsewhere in this issue:
+
+1. **Schema slot**: read the live value before implementation. It is currently
+   `SCHEMA_VERSION = 21`, so ENH-2492 targets v22 if no other migration lands
+   first. The upgrade test bootstraps the live pre-migration version.
+2. **One batch ID per top-level invocation**: generate an opaque UUID once when
+   `ll-auto`, `ll-parallel`, or `ll-sprint run` begins. Reuse that `run_id` for
+   every issue and every sprint wave/retry in that invocation. Do not derive it
+   from a wave label or issue ID; values such as `"Wave 1/3-ENH-2492"` collide
+   across separate invocations and are not batch IDs.
+3. **Explicit producer identity**: extend `ParallelOrchestrator` with the batch
+   `run_id` and `driver` (default `"ll-parallel"`). `ll-sprint` passes the same
+   sprint batch ID plus `driver="ll-sprint"` into every wave orchestrator.
+   Therefore sprint-owned rows are never mislabeled as `ll-parallel`.
+4. **One authoritative write per execution path**: `_on_worker_complete` writes
+   multi-issue parallel/sprint-wave outcomes. Sprint's direct sequential,
+   timeout, blocked, and retry paths write only outcomes that did not pass
+   through that callback. Do not belt-and-suspenders write the same initial
+   outcome from both sites.
+5. **True UPSERT semantics**: use `INSERT ... ON CONFLICT(run_id, issue_id) DO
+   UPDATE`, not `INSERT OR IGNORE`. Retries in the same batch must replace an
+   initial failure with the final success/blocked/failure state and refreshed
+   duration/reason/wave/PR/timestamps. Refresh the matching FTS row on update so
+   stale failure text is not searchable after a successful retry. Repeating an
+   identical write remains idempotent and never creates a second table or FTS
+   row.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `orchestration_runs` exists; `SCHEMA_VERSION` bumped.
@@ -1294,6 +1324,19 @@ issue body:_
 - `scripts/little_loops/parallel/orchestrator.py` — per-issue finish + PR create
 - ENH-2458 / ENH-2459 — sibling execution-ground-truth tables to join against
 
+## Impact
+
+- **Priority**: P2 — orchestration is a high-frequency execution path, and the
+  current batch-level row loses the per-issue outcomes needed to diagnose
+  recurring automation failures.
+- **Effort**: Large — the schema/read API are patterned additions, but correct
+  producer wiring spans three drivers, parallel wave callbacks, retries,
+  timeouts, interruption handling, export, tests, and documentation.
+- **Risk**: Medium — writes are additive and best-effort, but an unstable run ID
+  or duplicate producer path would silently corrupt historical attribution.
+- **Breaking Change**: No — the migration is additive and existing orchestration
+  behavior must remain unchanged when history writes fail.
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -1308,24 +1351,30 @@ issue body:_
 
 ---
 
-## Scope Boundary
+## Scope Boundaries
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's Integration Map
-assumes it is the sole claimant of the next schema-version slot ("bump
-`SCHEMA_VERSION = 18` → `19`"). At least ten other active EPIC-2457 siblings
-(ENH-2463, ENH-2464, ENH-2465, ENH-2493, ENH-2494, ENH-2495, ENH-2496,
-ENH-2497, ENH-2498, ENH-2511) independently make the same "18→19" claim in
-their own Integration Maps — they cannot all be v19. Verified against current
-code (`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
-(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
-v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done). At
-implementation time, read the live `SCHEMA_VERSION` constant to determine the
-actual next-available slot rather than trusting this issue's stale "19"
-literal; each child lands its own migration at whatever version is open when
-it is implemented (no coordinated release; per EPIC-2457's own "no shared
-helper module is required" scope note).
+assumes it is the sole claimant of the next schema-version slot. At least ten
+other active EPIC-2457 siblings independently made the same claim in their own
+Integration Maps, so the migration number must be read from live code at
+implementation time. Verified on 2026-07-17 against
+`scripts/little_loops/session_store.py:SCHEMA_VERSION`: the current version is
+**21** (v21 is FEAT-2478's OTel usage-event addendum), so the next-open slot is
+**v22**. Each child lands its own migration at whatever version is open when it
+is implemented; no coordinated release is required per EPIC-2457.
+
+The following are explicitly out of scope:
+
+- Rebuilding `orchestration_runs` from `raw_events`; this is a direct-write table.
+- Numeric wave aggregation; persist the existing `"Wave N/M"` label as `TEXT`.
+- Dashboard, `ll-history`, and `ll-ctx-stats` presentation beyond the required
+  `ll-session` read/search/export surfaces.
+- Cross-project aggregation or changes to the EPIC-1707 graceful-degradation
+  contract.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-17T20:05:20Z - `9d67de00-7b43-4bbf-a5a3-528aead2ca2f.jsonl`
+- `/ll:ready-issue` - 2026-07-17T19:56:16 - `47372670-68ce-4fa6-888d-341821a4f56e.jsonl`
 - `/ll:confidence-check` - 2026-07-17T00:00:00Z - `a1f53ce0-d899-487b-a632-e0ad2563719e.jsonl`
 - `/ll:wire-issue` - 2026-07-16T20:31:05 - `c6dd324d-abd2-4bf0-a5ac-0b0bfc188270.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:18:50 - `ec721603-845a-43dc-9920-57ba425890cc.jsonl`
@@ -1337,3 +1386,30 @@ helper module is required" scope note).
 - `/ll:refine-issue` - 2026-07-06T23:47:05 - `8b0fb94d-2a13-40c0-a03a-0886bca177ac.jsonl`
 - `/ll:refine-issue` - 2026-07-06T19:14:36 - `29927953-330a-400d-9d73-7c6c5c33aac1.jsonl`
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:manage-issue` - 2026-07-17T20:48:24Z - `9d67de00-7b43-4bbf-a5a3-528aead2ca2f.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-17
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/session_store.py`: added schema v22, the `orchestration_runs` table, true outcome UPSERT with FTS replacement, kind registration, and export support.
+- `scripts/little_loops/history_reader.py`: added the typed `OrchestrationRun` reader and driver/issue/status aggregation API.
+- `scripts/little_loops/cli/auto.py`, `issue_manager.py`, `cli/parallel.py`, `parallel/orchestrator.py`, and `cli/sprint/run.py`: threaded one opaque UUID per invocation and recorded authoritative auto, parallel, sprint-wave, direct, blocked, timeout, interrupted, and retry outcomes with best-effort writes.
+- `scripts/little_loops/cli/session.py`: exposed the new kind through existing dynamic choices and documented all export table names.
+- `scripts/tests/`: added schema, UPSERT/FTS, reader, CLI, producer, stable-run-ID, wave/PR, timeout/blocked, retry, and graceful-degradation coverage.
+- `docs/ARCHITECTURE.md`, `docs/reference/API.md`, `docs/reference/CLI.md`, and `docs/guides/HISTORY_SESSION_GUIDE.md`: documented schema v22 and the new write/read/query/export surfaces.
+- `scripts/little_loops/cli/loop/layout.py`: annotated the untyped `wcwidth` imports so the configured full mypy gate remains clean.
+
+### Verification Results
+
+- Tests: PASS (`15158 passed, 37 skipped`)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Run: PASS (targeted `ll-session`, auto, parallel, and sprint integration tests)
+- Integration: PASS (no duplicate producer path; direct-write table excluded from rebuild; shared DB resolver/writer patterns used)

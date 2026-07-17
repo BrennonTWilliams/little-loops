@@ -332,6 +332,29 @@ class TestMainAutoIntegration:
             assert call_kwargs["resume"] is True
             assert call_kwargs["category"] == "bugs"
 
+    def test_main_auto_passes_one_batch_run_id(self, temp_project: Path) -> None:
+        """ENH-2492: one opaque orchestration run ID is passed into AutoManager."""
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-auto", "--config", str(temp_project)],
+            ):
+                from little_loops.cli import main_auto
+
+                assert main_auto() == 0
+
+        call_kwargs = mock_manager_cls.call_args.kwargs
+        assert "run_id" in call_kwargs
+        run_id = call_kwargs["run_id"]
+        assert isinstance(run_id, str)
+        assert len(run_id) == 32
+        int(run_id, 16)
+
     def test_main_auto_quiet_flag_passed_to_manager(self, temp_project: Path) -> None:
         """main_auto passes quiet flag as verbose=False to AutoManager."""
         with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
@@ -586,6 +609,10 @@ class TestMainParallelIntegration:
             mock_orch_cls.assert_called_once()
             call_kwargs = mock_orch_cls.call_args.kwargs
             assert call_kwargs["verbose"] is True  # default (not --quiet)
+            run_id = call_kwargs["run_id"]
+            assert isinstance(run_id, str)
+            assert len(run_id) == 32
+            int(run_id, 16)
 
     def test_main_parallel_verbose_short_flag(self, temp_project: Path) -> None:
         """-v is accepted as --verbose in ll-parallel and sets verbose=True (ENH-910)."""
