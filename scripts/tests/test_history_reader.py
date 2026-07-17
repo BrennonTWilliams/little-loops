@@ -1698,6 +1698,82 @@ class TestNewEventReaders:
         assert callable(reader), "recent_orchestration_runs must exist"
         assert reader(db=tmp_path / "nope" / "history.db") == []
 
+    def test_recent_loop_runs_filters(self, tmp_path: Path) -> None:
+        from little_loops import history_reader, session_store
+
+        recorder = getattr(session_store, "record_loop_run_summary", None)
+        reader = getattr(history_reader, "recent_loop_runs", None)
+        assert callable(recorder), "record_loop_run_summary must exist"
+        assert callable(reader), "recent_loop_runs must exist"
+
+        db = tmp_path / "history.db"
+        recorder(
+            db,
+            run_id="20260717T100000-rn-implement",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            ended_at="2026-07-17T10:00:00Z",
+        )
+        recorder(
+            db,
+            run_id="20260717T110000-rn-refine",
+            loop_name="rn-refine",
+            terminated_by="error",
+            ended_at="2026-07-17T11:00:00Z",
+        )
+
+        rows = reader(db=db)
+        assert [row.run_id for row in rows] == [
+            "20260717T110000-rn-refine",
+            "20260717T100000-rn-implement",
+        ]
+        assert reader(loop_name="rn-implement", db=db)[0].loop_name == "rn-implement"
+        assert reader(since="2026-07-17T10:30:00Z", db=db)[0].run_id == (
+            "20260717T110000-rn-refine"
+        )
+
+    def test_find_loop_run(self, tmp_path: Path) -> None:
+        from little_loops import history_reader, session_store
+
+        recorder = getattr(session_store, "record_loop_run_summary", None)
+        finder = getattr(history_reader, "find_loop_run", None)
+        assert callable(recorder), "record_loop_run_summary must exist"
+        assert callable(finder), "find_loop_run must exist"
+
+        db = tmp_path / "history.db"
+        recorder(db, run_id="run-1", loop_name="rn-implement", terminated_by="terminal")
+
+        found = finder("run-1", db=db)
+        assert found is not None
+        assert found.loop_name == "rn-implement"
+        assert finder("no-such-run", db=db) is None
+
+    def test_aggregate_loop_runs(self, tmp_path: Path) -> None:
+        from little_loops import history_reader, session_store
+
+        recorder = getattr(session_store, "record_loop_run_summary", None)
+        aggregate = getattr(history_reader, "aggregate_loop_runs", None)
+        assert callable(recorder), "record_loop_run_summary must exist"
+        assert callable(aggregate), "aggregate_loop_runs must exist"
+
+        db = tmp_path / "history.db"
+        recorder(db, run_id="run-1", loop_name="rn-implement", iterations=2, terminated_by="terminal")
+        recorder(db, run_id="run-2", loop_name="rn-implement", iterations=4, terminated_by="terminal")
+
+        stats = aggregate(group_by="loop_name", db=db)
+        assert stats == [{"loop_name": "rn-implement", "runs": 2, "avg_iterations": 3.0}]
+
+    def test_recent_loop_runs_empty_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops import history_reader
+
+        reader = getattr(history_reader, "recent_loop_runs", None)
+        assert callable(reader), "recent_loop_runs must exist"
+        assert reader(db=tmp_path / "nope" / "history.db") == []
+        finder = getattr(history_reader, "find_loop_run", None)
+        assert finder("run-1", db=tmp_path / "nope" / "history.db") is None
+        aggregate = getattr(history_reader, "aggregate_loop_runs", None)
+        assert aggregate(db=tmp_path / "nope" / "history.db") == []
+
     def test_readers_return_empty_on_missing_db(self, tmp_path: Path) -> None:
         from little_loops.history_reader import (
             find_session_for_issue_transition,

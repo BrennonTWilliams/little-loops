@@ -36,6 +36,8 @@ Public API:
     record_commit_event(db,...): write one row to ``commit_events`` + search_index (ENH-2458)
     record_test_run_event(db,...): write one row to ``test_run_events`` + search_index (ENH-2459)
     record_orchestration_run(db,...): UPSERT one per-issue batch outcome (ENH-2492)
+    record_loop_run_summary(db,...): write one row to ``loop_runs`` + search_index (ENH-2463)
+    update_loop_run_diagnostics(db,...): link a diagnostics artifact to its loop_runs row (ENH-2463)
 """
 
 from __future__ import annotations
@@ -206,7 +208,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -222,6 +224,7 @@ VALID_KINDS: tuple[str, ...] = (
     "test_run",
     "usage",
     "orchestration_run",
+    "loop_run",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -237,6 +240,7 @@ _KIND_TABLE = {
     "test_run": "test_run_events",
     "usage": "usage_events",
     "orchestration_run": "orchestration_runs",
+    "loop_run": "loop_runs",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -772,6 +776,32 @@ _MIGRATIONS: list[str] = [
         ON orchestration_runs(issue_id);
     CREATE INDEX IF NOT EXISTS idx_orchestration_runs_status
         ON orchestration_runs(status);
+    """,
+    # v23 (ENH-2463): one row per completed loop run — final state, iteration
+    # count, evaluator score (nullable; extraction deferred to a follow-on),
+    # and a diagnostics-artifact link. A producer-side direct-write sibling of
+    # orchestration_runs (v22): written from FSMExecutor._finish() with its
+    # locals, not derived from raw_events — rebuild() intentionally excludes
+    # loop_events/loop_runs from materialization (see _REBUILD_TABLES below).
+    """
+    CREATE TABLE IF NOT EXISTS loop_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL UNIQUE,
+        loop_name TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT,
+        final_state TEXT,
+        iterations INTEGER,
+        terminated_by TEXT,
+        error TEXT,
+        evaluator_score REAL,
+        diagnostics_path TEXT,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_name ON loop_runs(loop_name);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_terminated_by ON loop_runs(terminated_by);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_evaluator_score ON loop_runs(evaluator_score);
     """,
 ]
 
@@ -1540,6 +1570,106 @@ def record_orchestration_run(
         return bool(cursor.rowcount)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Loop-run summary events (ENH-2463)
+# ---------------------------------------------------------------------------
+
+
+def record_loop_run_summary(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    loop_name: str,
+    started_at: str | None = None,
+    ended_at: str | None = None,
+    final_state: str | None = None,
+    iterations: int | None = None,
+    terminated_by: str | None = None,
+    error: str | None = None,
+    evaluator_score: float | None = None,
+    diagnostics_path: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    config: dict | None = None,
+) -> bool:
+    """Write one row to ``loop_runs`` and index it in ``search_index`` (ENH-2463).
+
+    ``run_id`` is the archive-time run identifier (see
+    :meth:`little_loops.fsm.persistence.RunPersistence.archive_run` for the
+    derivation) so this row JOINs cleanly to on-disk
+    ``.loops/.history/<run_id>-<loop_name>/`` archives. Idempotent via
+    ``INSERT OR IGNORE`` on the ``run_id`` UNIQUE constraint, mirroring
+    :func:`record_commit_event` — a resumed-then-completed run contributes
+    exactly one row. The FTS row is only written when the insert actually
+    lands, so repeated calls do not duplicate search results.
+
+    The ``config`` parameter is a forward-compatibility stub for a future
+    ``analytics.capture.loop_runs`` gate; it is accepted but not yet used.
+    Returns ``False`` only when the required identity fields are empty or the
+    row already existed.
+    """
+    if not run_id or not loop_name:
+        return False
+    ts = ended_at or _now()
+    conn = connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO loop_runs("
+            "run_id, loop_name, started_at, ended_at, final_state, iterations, "
+            "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id,
+                loop_name,
+                started_at,
+                ts,
+                final_state,
+                iterations,
+                terminated_by,
+                error,
+                evaluator_score,
+                diagnostics_path,
+                head_sha,
+                branch,
+            ),
+        )
+        inserted = bool(cursor.rowcount)
+        if inserted:
+            _index(
+                conn,
+                content=f"{loop_name} {final_state or ''} {terminated_by or ''}".strip()[:512],
+                kind="loop_run",
+                ref=run_id,
+                anchor=loop_name,
+                ts=ts,
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return inserted
+
+
+def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_path: str) -> bool:
+    """Link a ``loop-specialist``-written diagnostics artifact to its ``loop_runs`` row.
+
+    A single ``UPDATE ... WHERE run_id = ?``, mirroring the
+    ``skill_event_context`` completion-UPDATE pattern. Best-effort by design:
+    returns ``False`` (does not raise) when no matching row exists yet.
+    """
+    if not run_id or not diagnostics_path:
+        return False
+    conn = connect(db_path)
+    try:
+        cursor = conn.execute(
+            "UPDATE loop_runs SET diagnostics_path = ? WHERE run_id = ?",
+            (diagnostics_path, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return bool(cursor.rowcount)
 
 
 # ---------------------------------------------------------------------------
@@ -3442,6 +3572,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "test_run_event": ("test_run_events", "ts"),
     "usage_event": ("usage_events", "ts"),
     "orchestration_run": ("orchestration_runs", "ended_at"),
+    "loop_run": ("loop_runs", "ended_at"),
 }
 
 _EXPORT_DEFAULT_TABLES = [

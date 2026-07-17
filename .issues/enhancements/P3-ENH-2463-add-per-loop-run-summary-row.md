@@ -3,9 +3,10 @@ id: ENH-2463
 title: Add per-loop-run summary row to history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: '2026-07-02T00:00:00Z'
+completed_at: '2026-07-17T22:09:49Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
@@ -427,6 +428,26 @@ The `known_subcommands` set at `cli/loop/__init__.py:54-86` must include `"runs"
 - `scripts/little_loops/fsm/executor.py::_finish()` — emit site for `loop_complete`
 - `agents/loop-specialist.md` — diagnostic artifact writer
 
+## Impact
+
+- **Priority justification (P3)**: Loop health rollup is a developer-productivity
+  aid, not a correctness or data-loss issue — no user-facing feature is blocked
+  by its absence, and the workaround (replaying `loop_events`) still works. P3
+  reflects "clearly valuable, not urgent."
+- **Effort estimate**: Moderate. The schema migration, producer-side writer, and
+  reader functions are straightforward and closely modeled on existing
+  precedents (`record_commit_event`, `record_test_run_event`,
+  `recent_commit_events`), but the wiring-pass addendum enumerates ~20
+  additional touchpoints (CLI registration, docs, `_KIND_TABLE`/`VALID_KINDS`
+  pairing, `export_history` mapping) that make the total surface area larger
+  than the core feature alone.
+- **Risk level**: Low. All new columns are nullable or best-effort
+  (`evaluator_score`, `diagnostics_path`), the write is wrapped in try/except at
+  `_finish()` so a sink failure can't fail a loop run, and the known v1 coverage
+  gaps (handoff/force-archive/hard-kill paths, Gaps Q/R) are explicitly
+  documented rather than silently swallowed. No breaking changes to existing
+  `loop_complete` event consumers.
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -435,6 +456,55 @@ The `known_subcommands` set at `cli/loop/__init__.py:54-86` must include `"runs"
 | `docs/reference/API.md` | `session_store`, `history_reader` module references |
 | `docs/reference/CLI.md` | New `ll-session`, `ll-loop` flags |
 | `docs/guides/LOOPS_GUIDE.md` | Loops debugging section |
+
+## Resolution
+
+Implemented the v1 core scope per Decisions A1/B1/C1/D2/E3/F2/G1 (all authoritative
+per the Architecture-alignment banner and Pass-3 findings above):
+
+- Schema v23: `loop_runs` table + 3 indexes (`loop_name`, `terminated_by`,
+  `evaluator_score`); `SCHEMA_VERSION` 22→23; `"loop_run"` added to `VALID_KINDS`
+  / `_KIND_TABLE` / `_EXPORT_TABLE_MAP`.
+- `record_loop_run_summary()` and `update_loop_run_diagnostics()` in
+  `session_store.py`, modeled on `record_commit_event` (`INSERT OR IGNORE` +
+  `cursor.rowcount`-gated FTS indexing) per the issue's pattern-disambiguation
+  section.
+- `FSMExecutor._finish()` (`fsm/executor.py`) calls `record_loop_run_summary()`
+  best-effort (try/except) immediately after emitting `loop_complete`, passing
+  `loop_name`/`started_at` as direct args (Decisions D2/E3) and deriving the
+  archive-time `run_id` the same way `fsm/persistence.py::archive_run` does.
+- `history_reader.py` gained `LoopRun`, `recent_loop_runs()`, `find_loop_run()`,
+  `aggregate_loop_runs()`, modeled on the `OrchestrationRun` (ENH-2492) reader
+  trio — the most current precedent, superseding the issue's older
+  `record_test_run_event`/`summarize_skills` citations.
+- `ll-session recent --kind loop_run` / `search --kind loop_run` work with no
+  CLI code change (`--kind` choices auto-derive from `VALID_KINDS`).
+- Docs: `docs/ARCHITECTURE.md` schema table + version-range callouts, and
+  `docs/reference/API.md` (`history_reader`/`session_store` sections) updated
+  for v23.
+
+**Deferred (documented gaps, not implemented in this pass — file as follow-ons
+if needed):**
+
+- `ll-loop runs` subcommand and `ll-loop history --summary` flag (Implementation
+  Steps 9/13-15) — the issue marks these "optionally"; `ll-session recent --kind
+  loop_run` already exposes the data.
+- `loop-specialist.md` wiring to call `update_loop_run_diagnostics()`
+  (Implementation Step 7) — deferred per **Gap S**'s own recommendation (Option
+  C3): the diagnostics-artifact filename doesn't encode the archive `run_id`, so
+  no upstream caller can supply it yet. The function itself is implemented and
+  tested directly.
+- The long tail of wiring-pass documentation touchpoints (CLI.md help text,
+  EVENT-SCHEMA.md, HISTORY_SESSION_GUIDE.md, etc.) and `export_history`
+  cross-doc mentions beyond `_EXPORT_TABLE_MAP` itself.
+- Known v1 coverage gaps already documented in Expected Behavior (Gaps Q/R:
+  handoff/force-archive/hard-kill paths skip `_finish()`) and Decision F2
+  (no retroactive backfill of pre-migration `.loops/.history/` runs).
+
+Verification: `python -m pytest scripts/tests/` green (15171 passed, 37 skipped;
+one unrelated pre-existing timing flake in `test_concurrency.py` confirmed
+independent by isolated re-run). `ruff check scripts/` and `python -m mypy
+scripts/little_loops/` both clean.
 
 ## Status
 
@@ -689,6 +759,8 @@ Use the verified-current column when implementing. The drift is mostly +100 line
 The session-log entry appended below records the source JSONL for this wiring pass.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-17T22:09:22Z - `48acddeb-70db-4b85-ab6f-8ea429363e4d.jsonl`
+- `/ll:ready-issue` - 2026-07-17T21:51:17 - `428bfc2e-f056-487d-87ab-094e5e23aedb.jsonl`
 - `/ll:wire-issue` - 2026-07-16T20:45:15 - `f2e34338-c6b9-4184-87ae-f3c7166e82ab.jsonl`
 
 - `/ll:decide-issue` - 2026-07-16T18:28:35 - `ed09a07d-067d-44ac-b1ad-ad826ab00704.jsonl`

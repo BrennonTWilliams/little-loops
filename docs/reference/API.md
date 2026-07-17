@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), and `OrchestrationRun` (ENH-2492); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492). All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), and `LoopRun` (ENH-2463); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492) and `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -7168,6 +7168,47 @@ def aggregate_orchestration_runs(
 
 Read per-issue outcomes written by `ll-auto`, `ll-parallel`, and `ll-sprint` (ENH-2492). The recent reader filters by exact driver/issue and optional completion-time lower bound. The aggregate reader returns run count, completed count, success rate, and average duration for a fixed, SQL-safe grouping dimension. Both return `[]` on unavailable or pre-v22 databases.
 
+### LoopRun / recent_loop_runs / find_loop_run / aggregate_loop_runs
+
+```python
+@dataclass
+class LoopRun:
+    run_id: str
+    loop_name: str
+    started_at: str | None
+    ended_at: str | None
+    final_state: str | None
+    iterations: int | None
+    terminated_by: str | None
+    error: str | None
+    evaluator_score: float | None
+    diagnostics_path: str | None
+    head_sha: str | None
+    branch: str | None
+
+
+def recent_loop_runs(
+    *,
+    loop_name: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[LoopRun]
+
+
+def find_loop_run(run_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> LoopRun | None
+
+
+def aggregate_loop_runs(
+    group_by: Literal["loop_name", "terminated_by"] = "loop_name",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Read per-run summaries written by `FSMExecutor._finish()` (ENH-2463). `recent_loop_runs()` filters by exact `loop_name` and optional completion-time lower bound; `find_loop_run()` looks up a single row by its archive-time `run_id`; `aggregate_loop_runs()` returns run count and mean iteration count for a fixed grouping dimension. All three return `[]`/`None` on unavailable or pre-v23 databases. Known v1 coverage gap: runs that exit via handoff or forced archive (never reaching `_finish()`) have no row.
+
 ### sessions_for_issue
 
 ```python
@@ -7364,11 +7405,11 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **22**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **23**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 22
+    SCHEMA_VERSION,        # 23
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -7378,6 +7419,8 @@ from little_loops.session_store import (
     record_commit_event,   # write a commit_events row; issue_id inferred from message/branch (ENH-2458)
     record_test_run_event, # write a test_run_events row (ENH-2459)
     record_orchestration_run, # UPSERT one per-issue batch outcome (ENH-2492)
+    record_loop_run_summary, # write a loop_runs row (ENH-2463)
+    update_loop_run_diagnostics, # link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -7504,6 +7547,33 @@ def record_orchestration_run(
 ```
 
 UPSERT one `orchestration_runs` row per `(run_id, issue_id)` and replace its matching FTS row (ENH-2492). A top-level `ll-auto`, `ll-parallel`, or `ll-sprint` invocation reuses one opaque UUID for all of its issues and retries; the final retry therefore replaces the initial failure rather than adding a duplicate. Producers guard calls with `contextlib.suppress(Exception)` so history failures never alter orchestration behavior.
+
+### record_loop_run_summary / update_loop_run_diagnostics
+
+```python
+def record_loop_run_summary(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    loop_name: str,
+    started_at: str | None = None,
+    ended_at: str | None = None,
+    final_state: str | None = None,
+    iterations: int | None = None,
+    terminated_by: str | None = None,
+    error: str | None = None,
+    evaluator_score: float | None = None,
+    diagnostics_path: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    config: dict | None = None,
+) -> bool
+
+
+def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_path: str) -> bool
+```
+
+Write one `loop_runs` row and index it in `search_index` with `kind="loop_run"` (ENH-2463). `run_id` is the archive-time identifier (`started_at` mangled the same way as `fsm/persistence.py::archive_run`, joined with `-<loop_name>`) so the row JOINs to the on-disk `.loops/.history/` archive. Idempotent via `INSERT OR IGNORE` on the `run_id` UNIQUE constraint — a resumed-then-completed run contributes exactly one row. The sole v1 producer is `FSMExecutor._finish()`, called best-effort (wrapped in `try/except`) immediately after it emits `loop_complete`. `update_loop_run_diagnostics()` is a single `UPDATE ... WHERE run_id = ?` linking a `loop-specialist`-written diagnostics artifact back to its row; exposed as a public API but not yet wired into any caller (the artifact filename does not encode the archive `run_id`, so an upstream caller must supply it — a known v1 gap).
 
 ### record_retirement
 

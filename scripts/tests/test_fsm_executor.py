@@ -2380,6 +2380,58 @@ class TestErrorHandling:
         assert complete_event["terminated_by"] == "terminal"
         assert "error" not in complete_event
 
+    def test_finish_writes_loop_run_summary(self) -> None:
+        """ENH-2463: _finish() calls record_loop_run_summary with the archive-time run_id."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        with patch("little_loops.session_store.record_loop_run_summary") as mock_record:
+            result = executor.run()
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        expected_run_id = (
+            executor.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            + "-test-loop"
+        )
+        assert kwargs["run_id"] == expected_run_id
+        assert kwargs["loop_name"] == "test-loop"
+        assert kwargs["started_at"] == executor.started_at
+        assert kwargs["final_state"] == result.final_state
+        assert kwargs["iterations"] == result.iterations
+        assert kwargs["terminated_by"] == "terminal"
+
+    def test_finish_survives_record_loop_run_summary_failure(self) -> None:
+        """A sink failure in record_loop_run_summary must not fail the loop run."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        with patch(
+            "little_loops.session_store.record_loop_run_summary",
+            side_effect=RuntimeError("db unavailable"),
+        ):
+            result = executor.run()
+
+        assert result.terminated_by == "terminal"
+
 
 class TestTimeoutHandling:
     """Tests for timeout handling."""

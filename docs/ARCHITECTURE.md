@@ -678,6 +678,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v20 | `usage_events` | Real LLM token counts the API returned (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) plus a derived `cost_usd` (via `pricing.estimate_cost_usd`, `NULL` for unpriced models) and a forward-compat nullable `state` column: `(ts, session_id, model, state, input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd)`. Derived from `raw_events` by `_backfill_usage_events()` — one row per assistant turn, parsing `message.usage` on `type == "assistant"` transcript records. `state` is always `NULL` on parser-written rows (the transcript carries no FSM-state boundary); reserved for a future live per-state writer. Enables `ll-session recent --kind usage`, FTS with `kind="usage"`, and `history_reader.recent_usage_events()`/`aggregate_usage()` (ENH-2461). |
 | v21 | `usage_events.invocation_id/provider_vendor` | OTel attribution addenda mapping live usage to `gen_ai.invocation.id` and `gen_ai.provider.vendor`; parser-derived rows remain nullable (FEAT-2478). |
 | v22 | `orchestration_runs` | Per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: one UPSERTed row per `(run_id, issue_id)` with driver, final status, duration, failure reason, wave label, PR URL, timestamps, and git context. Producers use one opaque UUID per top-level invocation and suppress DB failures. Enables `ll-session recent --kind orchestration_run`, FTS, export, and typed history-reader rollups (ENH-2492). |
+| v23 | `loop_runs` | One row per completed FSM loop run — final state, iteration count, terminator, error, nullable evaluator score and diagnostics-artifact path, plus git context. A producer-side sibling of `orchestration_runs`: written best-effort by `FSMExecutor._finish()` via `record_loop_run_summary()`, keyed by the archive-time `run_id` so it JOINs to `.loops/.history/<run_id>-<loop_name>/`. Idempotent via `INSERT OR IGNORE` on `run_id` (a resumed-then-completed run contributes one row). Outside `raw_events`'s rebuild scope, like `loop_events`. Enables `ll-session recent --kind loop_run`, FTS, export, and typed history-reader rollups via `recent_loop_runs()`/`find_loop_run()`/`aggregate_loop_runs()` (ENH-2463). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -722,7 +723,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v22)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v23)
     SS-->>DB: backfill_incremental() ingests JSONL into raw_events (background thread; --rebuild only when SCHEMA_VERSION > last_rebuild_version)
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -747,7 +748,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v22 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v23 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. |
 | `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
@@ -810,7 +811,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v22) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v23) and CLI transport-wiring table.
 
 ---
 

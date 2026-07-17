@@ -20,6 +20,7 @@ Public API:
     CommitEvent:      dataclass for commit event rows (ENH-2458)
     RunEvent:         dataclass for test run event rows (ENH-2459)
     OrchestrationRun: dataclass for per-issue batch outcomes (ENH-2492)
+    LoopRun:          dataclass for loop_runs summary rows (ENH-2463)
     find_user_corrections(topic, ...) -> list[UserCorrection]
     recent_file_events(path, ...) -> list[FileEvent]
     search(query, ...) -> list[SearchResult]
@@ -31,6 +32,9 @@ Public API:
     recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
     recent_orchestration_runs(driver, issue_id, ...) -> list[OrchestrationRun]
     aggregate_orchestration_runs(group_by, ...) -> list[dict]
+    recent_loop_runs(loop_name, ...) -> list[LoopRun]
+    find_loop_run(run_id, ...) -> LoopRun | None
+    aggregate_loop_runs(group_by, ...) -> list[dict]
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -179,6 +183,24 @@ class OrchestrationRun:
     pr_url: str | None
     started_at: str | None
     ended_at: str | None
+    head_sha: str | None
+    branch: str | None
+
+
+@dataclass
+class LoopRun:
+    """A ``loop_runs`` row — one summary per completed FSM loop run (ENH-2463)."""
+
+    run_id: str
+    loop_name: str
+    started_at: str | None
+    ended_at: str | None
+    final_state: str | None
+    iterations: int | None
+    terminated_by: str | None
+    error: str | None
+    evaluator_score: float | None
+    diagnostics_path: str | None
     head_sha: str | None
     branch: str | None
 
@@ -936,6 +958,115 @@ def aggregate_orchestration_runs(
             }
         )
     return result
+
+
+_LOOP_RUN_COLUMNS = (
+    "run_id, loop_name, started_at, ended_at, final_state, iterations, "
+    "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"
+)
+
+
+def recent_loop_runs(
+    *,
+    loop_name: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[LoopRun]:
+    """Return recent loop-run summaries, newest first, optionally filtered (ENH-2463)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = f"SELECT {_LOOP_RUN_COLUMNS} FROM loop_runs "
+        clauses: list[str] = []
+        params: list[Any] = []
+        if loop_name is not None:
+            clauses.append("loop_name = ?")
+            params.append(loop_name)
+        if since is not None:
+            clauses.append("COALESCE(ended_at, started_at) >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY COALESCE(ended_at, started_at) DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_loop_runs query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, LoopRun) for row in rows]
+
+
+def find_loop_run(run_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> LoopRun | None:
+    """Return the single ``loop_runs`` row for *run_id*, or None if missing (ENH-2463)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            f"SELECT {_LOOP_RUN_COLUMNS} FROM loop_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: find_loop_run query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    return _row_to_dataclass(row, LoopRun) if row is not None else None
+
+
+_LOOP_RUN_GROUP_COLUMNS: dict[str, str] = {
+    "loop_name": "loop_name",
+    "terminated_by": "terminated_by",
+}
+
+
+def aggregate_loop_runs(
+    group_by: Literal["loop_name", "terminated_by"] = "loop_name",
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Roll up run count and mean iteration count by loop_name or terminated_by (ENH-2463)."""
+    column = _LOOP_RUN_GROUP_COLUMNS.get(group_by)
+    if column is None:
+        raise ValueError(
+            f"aggregate_loop_runs: unsupported group_by {group_by!r}; "
+            f"expected one of {sorted(_LOOP_RUN_GROUP_COLUMNS)}"
+        )
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            f"SELECT {column} AS group_key, COUNT(*) AS runs, "  # noqa: S608 - fixed map
+            "AVG(iterations) AS avg_iterations FROM loop_runs "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE COALESCE(ended_at, started_at) >= ? "
+            params.append(since)
+        sql += f"GROUP BY {column} ORDER BY runs DESC, group_key"  # noqa: S608 - fixed map
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: aggregate_loop_runs query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+    return [
+        {
+            group_by: row["group_key"],
+            "runs": row["runs"] or 0,
+            "avg_iterations": row["avg_iterations"],
+        }
+        for row in rows
+    ]
 
 
 def sessions_for_issue(

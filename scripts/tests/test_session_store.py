@@ -1369,7 +1369,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 22
+        assert SCHEMA_VERSION == 23
 
 
 class TestBackfillIncremental:
@@ -1814,8 +1814,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1929,8 +1929,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1981,8 +1981,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2060,7 +2060,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 22
+        assert int(version[0]) == 23
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2077,8 +2077,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3658,8 +3658,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3699,8 +3699,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 22
-        assert int(row[0]) == 22
+        assert SCHEMA_VERSION == 23
+        assert int(row[0]) == 23
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3754,7 +3754,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 22
+        assert int(version[0]) == 23
         assert "issue_snapshots" in names
 
 
@@ -4447,7 +4447,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 22
+        assert SCHEMA_VERSION == 23
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4571,6 +4571,149 @@ class TestOrchestrationRuns:
             conn.close()
         assert table_rows == 1
         assert fts_rows == 1
+
+
+class TestLoopRuns:
+    """loop_runs summary rows (ENH-2463)."""
+
+    @staticmethod
+    def _recorder():
+        from little_loops import session_store
+
+        recorder = getattr(session_store, "record_loop_run_summary", None)
+        assert callable(recorder), "record_loop_run_summary must be public"
+        return recorder
+
+    @staticmethod
+    def _diagnostics_updater():
+        from little_loops import session_store
+
+        updater = getattr(session_store, "update_loop_run_diagnostics", None)
+        assert callable(updater), "update_loop_run_diagnostics must be public"
+        return updater
+
+    def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 23
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 22)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            indexes = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND tbl_name='loop_runs'"
+                )
+            }
+        finally:
+            conn.close()
+        assert "loop_runs" in names
+        assert {
+            "idx_loop_runs_loop_name",
+            "idx_loop_runs_terminated_by",
+            "idx_loop_runs_evaluator_score",
+        } <= indexes
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        record_loop_run_summary(
+            db,
+            run_id="20260717T101530-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-17T10:15:30Z",
+            ended_at="2026-07-17T10:20:00Z",
+            final_state="done",
+            iterations=3,
+            terminated_by="terminal",
+            head_sha="abc123",
+            branch="feature/ENH-2463",
+        )
+
+        rows = recent(db, kind="loop_run")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["run_id"] == "20260717T101530-rn-implement"
+        assert row["loop_name"] == "rn-implement"
+        assert row["final_state"] == "done"
+        assert row["iterations"] == 3
+        assert row["terminated_by"] == "terminal"
+        assert row["evaluator_score"] is None
+        assert row["diagnostics_path"] is None
+
+    def test_error_termination(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        record_loop_run_summary(
+            db,
+            run_id="20260717T101530-rn-refine",
+            loop_name="rn-refine",
+            terminated_by="error",
+            error="boom",
+        )
+        rows = recent(db, kind="loop_run")
+        assert rows[0]["terminated_by"] == "error"
+        assert rows[0]["error"] == "boom"
+
+    def test_duplicate_run_id_is_idempotent(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        kwargs = {
+            "run_id": "20260717T101530-rn-implement",
+            "loop_name": "rn-implement",
+            "terminated_by": "terminal",
+        }
+        record_loop_run_summary(db, **kwargs)
+        record_loop_run_summary(db, **kwargs)
+
+        conn = connect(db)
+        try:
+            table_rows = conn.execute("SELECT COUNT(*) FROM loop_runs").fetchone()[0]
+            fts_rows = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind='loop_run'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert table_rows == 1
+        assert fts_rows == 1
+
+    def test_missing_identity_fields_returns_false(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        db = tmp_path / "history.db"
+        assert record_loop_run_summary(db, run_id="", loop_name="rn-implement") is False
+        assert record_loop_run_summary(db, run_id="run-1", loop_name="") is False
+
+    def test_update_loop_run_diagnostics_links_artifact(self, tmp_path: Path) -> None:
+        record_loop_run_summary = self._recorder()
+        update_loop_run_diagnostics = self._diagnostics_updater()
+        db = tmp_path / "history.db"
+        record_loop_run_summary(
+            db,
+            run_id="20260717T101530-rn-implement",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+        )
+        result = update_loop_run_diagnostics(
+            db, "20260717T101530-rn-implement", ".loops/diagnostics/rn-implement-20260717.md"
+        )
+        assert result is True
+
+        rows = recent(db, kind="loop_run")
+        assert rows[0]["diagnostics_path"] == ".loops/diagnostics/rn-implement-20260717.md"
+        # other fields untouched by the diagnostics-only update
+        assert rows[0]["terminated_by"] == "terminal"
+
+    def test_update_loop_run_diagnostics_missing_run_id_returns_false(
+        self, tmp_path: Path
+    ) -> None:
+        update_loop_run_diagnostics = self._diagnostics_updater()
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert update_loop_run_diagnostics(db, "no-such-run", "path.md") is False
 
 
 class TestLoopEventTypes:

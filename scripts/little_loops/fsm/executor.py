@@ -2423,6 +2423,27 @@ class FSMExecutor:
             payload["error"] = error
         self._emit("loop_complete", payload)
 
+        # ENH-2463: write a loop_runs summary row. Best-effort — a sink
+        # failure must never fail the loop run. The archive-time run_id
+        # mirrors fsm/persistence.py::archive_run's derivation so this row
+        # JOINs cleanly to the on-disk .loops/.history/ archive.
+        try:
+            from little_loops.session_store import record_loop_run_summary, resolve_history_db
+
+            run_id = self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            record_loop_run_summary(
+                resolve_history_db(),
+                run_id=f"{run_id}-{self.fsm.name}",
+                loop_name=self.fsm.name,
+                started_at=self.started_at,
+                final_state=self.current_state,
+                iterations=self.iteration,
+                terminated_by=terminated_by,
+                error=error,
+            )
+        except Exception:
+            pass  # Non-fatal: loop still completes (ENH-2463)
+
         # FEAT-1822: Write ab.json if baseline comparison results exist
         if self._ab_results:
             try:
