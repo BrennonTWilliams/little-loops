@@ -2434,6 +2434,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 |------|-------------|
 | `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492). |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
+| `--mcp-server NAME` / `--mcp-tool NAME` / `--mcp-outcome {success,error,timeout}` | With `--kind tool`, filter to MCP tool-call rows by server/tool/outcome (`tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`, ENH-2511). Ignored for other `--kind` values. |
 | `--limit N` | Maximum rows (default: 20) |
 | `--json` | Output as a JSON array |
 
@@ -2510,6 +2511,7 @@ ll-session recent --kind loop                   # Recent loop events
 ll-session recent --kind commit                 # Recent git commits (ENH-2458)
 ll-session recent --kind test_run               # Recent pytest runs (ENH-2459)
 ll-session recent --kind orchestration_run       # Per-issue automation outcomes (ENH-2492)
+ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)
 ll-session recent --issue ENH-1710              # Sessions that touched ENH-1710
 ll-session recent --kind message --issue ENH-1710  # Messages from those sessions

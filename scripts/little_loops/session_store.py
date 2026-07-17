@@ -208,7 +208,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -811,6 +811,19 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE tool_events ADD COLUMN agent_type TEXT;
     CREATE INDEX IF NOT EXISTS idx_tool_events_agent ON tool_events(agent_type);
+    """,
+    # v25 (ENH-2511): mcp_server/mcp_tool/mcp_outcome/latency_ms on tool_events.
+    # All nullable so pre-migration rows remain valid. mcp_server/mcp_tool are
+    # parsed from the mcp__<server>__<tool> tool_name prefix; mcp_outcome and
+    # latency_ms are only populated by the live post_tool_use write (backfill
+    # from JSONL cannot recover the paired tool_result envelope or timing).
+    """
+    ALTER TABLE tool_events ADD COLUMN mcp_server TEXT;
+    ALTER TABLE tool_events ADD COLUMN mcp_tool TEXT;
+    ALTER TABLE tool_events ADD COLUMN mcp_outcome TEXT;
+    ALTER TABLE tool_events ADD COLUMN latency_ms INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_server ON tool_events(mcp_server);
+    CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_outcome ON tool_events(mcp_outcome);
     """,
 ]
 
@@ -1915,6 +1928,17 @@ def _normalize_agent_type(subagent_type: Any) -> str | None:
     return normalized or None
 
 
+_MCP_TOOL_NAME_RE = re.compile(r"^mcp__(.+?)__(.+)$")
+
+
+def _parse_mcp_tool_name(tool_name: str) -> tuple[str | None, str | None]:
+    """Split ``mcp__<server>__<tool>`` into ``(server, tool)``, else ``(None, None)``."""
+    match = _MCP_TOOL_NAME_RE.match(tool_name)
+    if not match:
+        return None, None
+    return match.group(1), match.group(2)
+
+
 _FILENAME_TYPE_RE = re.compile(r"(BUG|ENH|FEAT|EPIC)-(\d+)")
 _FILENAME_PRIORITY_RE = re.compile(r"^(P\d)")
 
@@ -2142,11 +2166,25 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                 if tool_name == "Task" and isinstance(args, dict)
                 else None
             )
+            mcp_server, mcp_tool = _parse_mcp_tool_name(tool_name)
             conn.execute(
                 "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                "result_size, bytes_in, bytes_out, cache_hit, agent_type) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (ts, session_id, tool_name, _hash_args(args), None, None, None, None, agent_type),
+                "result_size, bytes_in, bytes_out, cache_hit, agent_type, "
+                "mcp_server, mcp_tool) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    ts,
+                    session_id,
+                    tool_name,
+                    _hash_args(args),
+                    None,
+                    None,
+                    None,
+                    None,
+                    agent_type,
+                    mcp_server,
+                    mcp_tool,
+                ),
             )
             _index(
                 conn,

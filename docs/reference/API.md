@@ -7100,13 +7100,43 @@ Per-agent rollup of `Task`-tool subagent spawn counts (ENH-2497): returns dicts 
 ```python
 def recent_tool_events(
     agent_type: str | None = None,
+    mcp_server: str | None = None,
+    mcp_tool: str | None = None,
+    mcp_outcome: str | None = None,
     *,
     limit: int = 20,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> list[dict]
 ```
 
-Return recent `tool_events` rows, newest first, optionally filtered to a single `agent_type` (ENH-2497). Returns `[]` on a missing/unreadable DB.
+Return recent `tool_events` rows, newest first, optionally filtered to a single `agent_type` (ENH-2497) and/or `mcp_server`/`mcp_tool`/`mcp_outcome` (ENH-2511, the v25 `tool_events` columns). Returns `[]` on a missing/unreadable DB.
+
+### mcp_server_usage
+
+```python
+def mcp_server_usage(
+    server: str | None = None,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-MCP-server rollup of invocations/completions/success rate/average latency (ENH-2511), sourced from `tool_events.mcp_server`/`mcp_outcome`/`latency_ms`. Returns `[]` on a missing/unreadable DB.
+
+### mcp_failure_rate
+
+```python
+def mcp_failure_rate(
+    server: str | None = None,
+    tool: str | None = None,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-server/tool MCP failure-rate rollup (ENH-2511): counts of invocations and `mcp_outcome='error'` rows, grouped by `(mcp_server, mcp_tool)`. Returns `[]` on a missing/unreadable DB.
 
 ### cost_attribution
 

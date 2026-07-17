@@ -626,11 +626,16 @@ def agent_usage(
 
 def recent_tool_events(
     agent_type: str | None = None,
+    mcp_server: str | None = None,
+    mcp_tool: str | None = None,
+    mcp_outcome: str | None = None,
     *,
     limit: int = 20,
     db: Path | str = DEFAULT_DB_PATH,
 ) -> list[dict]:
-    """Return recent ``tool_events`` rows, newest first, optionally filtered by agent_type (ENH-2497)."""
+    """Return recent ``tool_events`` rows, newest first, optionally filtered by
+    ``agent_type`` (ENH-2497) and/or ``mcp_server``/``mcp_tool``/``mcp_outcome`` (ENH-2511).
+    """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
     if conn is None:
@@ -638,12 +643,25 @@ def recent_tool_events(
     try:
         sql = (
             "SELECT ts, session_id, tool_name, args_hash, result_size, bytes_in, "
-            "bytes_out, cache_hit, agent_type FROM tool_events "
+            "bytes_out, cache_hit, agent_type, mcp_server, mcp_tool, mcp_outcome, "
+            "latency_ms FROM tool_events "
         )
+        clauses: list[str] = []
         params: list[Any] = []
         if agent_type is not None:
-            sql += "WHERE agent_type = ? "
+            clauses.append("agent_type = ?")
             params.append(agent_type)
+        if mcp_server is not None:
+            clauses.append("mcp_server = ?")
+            params.append(mcp_server)
+        if mcp_tool is not None:
+            clauses.append("mcp_tool = ?")
+            params.append(mcp_tool)
+        if mcp_outcome is not None:
+            clauses.append("mcp_outcome = ?")
+            params.append(mcp_outcome)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
         sql += "ORDER BY id DESC LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
@@ -653,6 +671,103 @@ def recent_tool_events(
     finally:
         conn.close()
     return [dict(row) for row in rows]
+
+
+def mcp_server_usage(
+    server: str | None = None,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-MCP-server rollup of invocations / completions / success rate / avg latency (ENH-2511)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT mcp_server, COUNT(*) AS invocations, "
+            "COUNT(mcp_outcome) AS completions, "
+            "SUM(CASE WHEN mcp_outcome = 'success' THEN 1 ELSE 0 END) AS successes, "
+            "AVG(latency_ms) AS avg_latency_ms "
+            "FROM tool_events WHERE mcp_server IS NOT NULL "
+        )
+        params: list[Any] = []
+        if server is not None:
+            sql += "AND mcp_server = ? "
+            params.append(server)
+        if since is not None:
+            sql += "AND ts >= ? "
+            params.append(since)
+        sql += "GROUP BY mcp_server ORDER BY invocations DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: mcp_server_usage query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        completions = row["completions"] or 0
+        successes = row["successes"] or 0
+        result.append({
+            "mcp_server": row["mcp_server"],
+            "invocations": row["invocations"],
+            "completions": completions,
+            "successes": successes,
+            "success_rate": (successes / completions) if completions else None,
+            "avg_latency_ms": row["avg_latency_ms"],
+        })
+    return result
+
+
+def mcp_failure_rate(
+    server: str | None = None,
+    tool: str | None = None,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-server/tool MCP failure rate rollup (ENH-2511)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT mcp_server, mcp_tool, COUNT(*) AS invocations, "
+            "SUM(CASE WHEN mcp_outcome = 'error' THEN 1 ELSE 0 END) AS error_count "
+            "FROM tool_events WHERE mcp_server IS NOT NULL "
+        )
+        params: list[Any] = []
+        if server is not None:
+            sql += "AND mcp_server = ? "
+            params.append(server)
+        if tool is not None:
+            sql += "AND mcp_tool = ? "
+            params.append(tool)
+        if since is not None:
+            sql += "AND ts >= ? "
+            params.append(since)
+        sql += "GROUP BY mcp_server, mcp_tool ORDER BY invocations DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: mcp_failure_rate query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        invocations = row["invocations"] or 0
+        error_count = row["error_count"] or 0
+        result.append({
+            "mcp_server": row["mcp_server"],
+            "mcp_tool": row["mcp_tool"],
+            "invocations": invocations,
+            "error_count": error_count,
+            "failure_rate": (error_count / invocations) if invocations else None,
+        })
+    return result
 
 
 # FEAT-2478 — accepted GROUP BY dimensions for cost_attribution(). Maps the

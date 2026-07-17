@@ -166,6 +166,20 @@ def _aggregate_tool_events(db_path: Path) -> dict[str, Any] | None:
     }
 
 
+def _aggregate_mcp_health(db_path: Path) -> list[dict[str, Any]] | None:
+    """Per-MCP-server call count / success rate / avg latency (ENH-2511).
+
+    Returns ``None`` when the database file is missing (mirrors
+    ``_aggregate_tool_events``'s absent-DB contract); an empty list when the
+    DB exists but has no MCP rows yet.
+    """
+    if not db_path.exists():
+        return None
+    from little_loops.history_reader import mcp_server_usage
+
+    return mcp_server_usage(db=db_path)
+
+
 def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     """Aggregate real LLM token usage from ``usage_events``, by model (ENH-2461).
 
@@ -349,6 +363,7 @@ def _render(
     skill_stats: dict[str, dict[str, int]] | None = None,
     cache_rate: dict[str, Any] | None = None,
     lt_stats: dict[str, Any] | None = None,
+    mcp_health: list[dict[str, Any]] | None = None,
 ) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
@@ -415,6 +430,21 @@ def _render(
     elif skill_stats is not None:
         logger.info("No skill events recorded yet.")
 
+    if mcp_health:
+        print()
+        print("MCP server health:")
+        for row in mcp_health:
+            success_rate = (
+                f"{row['success_rate']:.0%}" if row["success_rate"] is not None else "n/a"
+            )
+            avg_latency = (
+                f"{row['avg_latency_ms']:.0f}ms" if row["avg_latency_ms"] is not None else "n/a"
+            )
+            print(
+                f"  {row['mcp_server']:<22} {row['invocations']:>3} calls   "
+                f"success_rate={success_rate} avg_latency={avg_latency}"
+            )
+
     if lt_stats is not None:
         _render_learning_tests_section(lt_stats)
 
@@ -446,6 +476,7 @@ def _print_json(
     cache_rate: dict[str, Any] | None = None,
     lt_stats: dict[str, Any] | None = None,
     usage_events: dict[str, Any] | None = None,
+    mcp_health: list[dict[str, Any]] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -485,6 +516,7 @@ def _print_json(
             "skill_health": skill_health,
             "learning_tests": lt_stats,
             "usage_by_model": usage_events,
+            "mcp_health": mcp_health,
         }
     elif state is not None:
         payload = {
@@ -601,9 +633,12 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         lt_config = _load_lt_config(cwd)
         lt_stats = _compute_learning_tests_stats(cwd, lt_config)
         usage_events = _aggregate_usage_events(db_path)
+        mcp_health = _aggregate_mcp_health(db_path)
 
         if args.json_mode:
-            _print_json(summary, fallback, skill_stats, cache_rate, lt_stats, usage_events)
+            _print_json(
+                summary, fallback, skill_stats, cache_rate, lt_stats, usage_events, mcp_health
+            )
             return 0 if (summary is not None or fallback is not None) else 1
 
         if summary is not None:
@@ -616,7 +651,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger, skill_stats, cache_rate, lt_stats)
+                _render(summary, logger, skill_stats, cache_rate, lt_stats, mcp_health)
                 return 0
 
         if fallback is not None:

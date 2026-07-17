@@ -161,6 +161,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _index,
                 _normalize_agent_type,
                 _now,
+                _parse_mcp_tool_name,
                 connect,
             )
 
@@ -169,13 +170,26 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 if tool_name == "Task"
                 else None
             )
+            mcp_server, mcp_tool = _parse_mcp_tool_name(tool_name)
+            mcp_outcome = None
+            if mcp_server is not None:
+                tool_response_raw = payload.get("tool_response")
+                if isinstance(tool_response_raw, dict):
+                    mcp_outcome = "error" if tool_response_raw.get("isError", False) else "success"
+            tool_call = payload.get("tool_call")
+            started = tool_call.get("started_at") if isinstance(tool_call, dict) else None
+            completed = tool_call.get("completed_at") if isinstance(tool_call, dict) else None
+            latency_ms = None
+            if isinstance(started, (int, float)) and isinstance(completed, (int, float)):
+                latency_ms = int(max(0, completed - started))
             ts = _now()
             conn = connect(cwd / ".ll" / "history.db")
             try:
                 cursor = conn.execute(
                     "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
-                    "result_size, bytes_in, bytes_out, cache_hit, agent_type) "
-                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "result_size, bytes_in, bytes_out, cache_hit, agent_type, "
+                    "mcp_server, mcp_tool, mcp_outcome, latency_ms) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         ts,
                         session_id,
@@ -186,6 +200,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
                         bytes_out,
                         cache_hit,
                         agent_type,
+                        mcp_server,
+                        mcp_tool,
+                        mcp_outcome,
+                        latency_ms,
                     ),
                 )
                 if cursor.rowcount:

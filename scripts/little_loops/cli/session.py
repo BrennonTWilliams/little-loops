@@ -126,6 +126,24 @@ Examples:
         "--limit", type=int, default=20, metavar="N", help="Maximum rows (default: 20)"
     )
     recent_parser.add_argument(
+        "--mcp-server",
+        default=None,
+        metavar="NAME",
+        help="Filter --kind tool rows to this MCP server (ENH-2511)",
+    )
+    recent_parser.add_argument(
+        "--mcp-tool",
+        default=None,
+        metavar="NAME",
+        help="Filter --kind tool rows to this MCP tool (ENH-2511)",
+    )
+    recent_parser.add_argument(
+        "--mcp-outcome",
+        choices=["success", "error", "timeout"],
+        default=None,
+        help="Filter --kind tool rows to this MCP outcome (ENH-2511)",
+    )
+    recent_parser.add_argument(
         "--json", action="store_true", dest="json", help="Output as JSON array"
     )
 
@@ -451,7 +469,21 @@ def main_session() -> int:
                 logger.error("recent: --kind is required unless --issue is given")
                 return 1
 
-            rows = recent(args.db, kind=args.kind, limit=args.limit)
+            mcp_server = getattr(args, "mcp_server", None)
+            mcp_tool = getattr(args, "mcp_tool", None)
+            mcp_outcome = getattr(args, "mcp_outcome", None)
+            if args.kind == "tool" and (mcp_server or mcp_tool or mcp_outcome):
+                from little_loops.history_reader import recent_tool_events
+
+                rows = recent_tool_events(
+                    mcp_server=mcp_server,
+                    mcp_tool=mcp_tool,
+                    mcp_outcome=mcp_outcome,
+                    limit=args.limit,
+                    db=args.db,
+                )
+            else:
+                rows = recent(args.db, kind=args.kind, limit=args.limit)
             if issue_filter:
                 session_ids = {r.session_id for r in sessions_for_issue(issue_filter, db=args.db)}
                 rows = [r for r in rows if r.get("session_id") in session_ids]
