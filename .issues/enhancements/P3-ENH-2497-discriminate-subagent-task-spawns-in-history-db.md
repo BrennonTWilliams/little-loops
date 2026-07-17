@@ -72,6 +72,12 @@ first-class and joinable.
 - `scripts/little_loops/history_reader.py:752-756` (`lookup_session_metadata`'s `tool_count` query) — runs `SELECT COUNT(*) FROM tool_events WHERE session_id = ?`; will continue to work unchanged.
 - `scripts/little_loops/cli/ctx_stats.py:118-130` — currently aggregates `tool_name` for the per-tool summary; would need a sibling query (or UNION) for per-agent summary.
 
+#### Dependent Files (Wiring-pass additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/session.py:466-467` — `ll-session recent --kind tool` text-render iterates `row.items()` and prints `f"{k}={v}"` for every non-NULL column. The new `agent_type` column will surface as `agent_type=<name>` in user-facing output for Task rows; non-Task rows remain unaffected (NULL values are filtered). **No code change required** — flagged because the issue Map listed `recent()` as a caller but did not call out the user-facing CLI text change. Verify by `ll-session recent --kind tool --limit 5` after migration lands.
+
 ### Similar Patterns
 - `scripts/little_loops/session_store.py:451-459` (v15 ENH-2460) — `ALTER TABLE skill_events ADD COLUMN exit_code INTEGER; ALTER TABLE skill_events ADD COLUMN success INTEGER; ALTER TABLE skill_events ADD COLUMN duration_ms INTEGER;`; the docstring at lines 453-454 explicitly describes the additive-nullable convention: *"Nullable so pre-migration dispatch-only rows remain valid (NULL = 'no completion signal recorded')."* Use the same template here.
 - `scripts/little_loops/session_store.py:466-468` (v16 ENH-2462) — single-column `ADD COLUMN` plus companion `CREATE INDEX`; closest analogue to v19's `agent_type` + index.
@@ -84,10 +90,33 @@ first-class and joinable.
 - `scripts/tests/test_session_store.py:3151-3193` (`TestSkillEventContext`) — round-trip test for ENH-2460; analogous tests for the per-Task-spawn insert site.
 - New file (suggested): `scripts/tests/test_enh_2497_agent_type.py` — covers `TestTaskSpawnAgentType` (insert Task with `subagent_type="codebase-locator"`, expect row has `agent_type="codebase-locator"`), `TestNonTaskNullAgent` (insert Write/Edit, expect `agent_type=NULL`), `TestAgentUsageAggregation` (multiple Task rows of mixed agents, expect per-agent counts), and a graceful-missing-field test (insert Task with no `subagent_type` → row has `agent_type=NULL`, no exception).
 
+#### Tests (Wiring-pass additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Version renumber (load-bearing).** `SCHEMA_VERSION = 20` today at `session_store.py:207`; the new migration lands in slot **v21**, not v19 (the issue body's "bump 18→19" text is stale per the Scope Boundary note at the bottom of this file). The suggested class `TestSchemaV19AgentType` and the `_bootstrap_schema_at(db, 19)` bootstrap call in the Implementation Steps below must be renamed to `TestSchemaV21AgentType` and `_bootstrap_schema_at(db, 20)` respectively. Failure to renumber causes the bootstrap fixture to skip the new migration entirely. Mirror `TestSchemaV14.test_schema_version_is_fourteen` at `scripts/tests/test_session_store.py:3691-3700` as the simplest version-bump assertion template.
+
+- **NEW test (mandatory).** `test_live_write_filled_in_search_index` in the suggested `test_enh_2497_agent_type.py` — directly closes the FTS acceptance-criterion gap. The issue's Implementation Step 4 wires `_index()` into `post_tool_use.handle()` with `content=f"{tool_name} {agent_type or ''}".strip()`, but no current test asserts that `_index()` is called after the live INSERT. Closest reusable template: `scripts/tests/test_hook_post_tool_use.py:367-388` (`test_fts5_search_index_updated`) — query `search_index WHERE content LIKE '%<agent>%'` after a `Task` event and assert a `kind="tool"` row exists. Without this test, the FTS acceptance criterion is enforced by no automated check.
+
+- **NEW test (mandatory).** `test_tool_events_backfill_populates_agent_type` — closes the backfill-side gap called out in Implementation Step 3 and Codebase Research Findings line 102. Pattern: write a JSONL with an assistant `tool_use` block whose `input.subagent_type="loop-specialist"`, run `backfill(... also_rebuild=True)`, read `recent(db, kind="tool")[0]["agent_type"]`, assert `"loop-specialist"`. Closest template: `scripts/tests/test_session_store.py:475-502` (`TestBackfill.test_backfill_tool_events_from_jsonl`).
+
+- **NEW test (edge case).** `test_readers_return_empty_on_missing_db` — assert both `agent_usage()` and `recent_tool_events(agent_type=None)` return `[]` (not raise) when called against a non-existent DB path. Mirrors `scripts/tests/test_history_reader.py:1530-1545` (TestNewEventReaders missing-DB pattern); closes the `agent_usage()` reader's no-raise contract gap.
+
+- **No-existing-test breakage (verified).** Existing INSERTs into `tool_events` in `scripts/tests/test_history_reader.py:802-811`, `scripts/tests/test_session_store.py:574-577, 595-598`, and `scripts/tests/test_cli_ctx_stats.py:75-78, 682-683` all use fixed column lists. The new `agent_type` column is nullable and defaults to NULL on omitted INSERTs — these tests continue to pass without modification. **No edit required.**
+
+- **No `test_wiring_skills_and_commands.py` entry required.** That file is a doc-wiring inventory sweep over `skills/` and `commands/` strings only; this issue adds no new skill/command content. The wiring-pass report initially flagged this as a candidate; verification confirmed the inventory does not include test files or column-level code changes.
+
 ### Documentation
 - `docs/ARCHITECTURE.md` — schema versions table (look for the `_MIGRATIONS`-indexed table; bump `18`→`19` and add a row describing the `tool_events.agent_type` addition).
 - `docs/reference/API.md` — `session_store`, `history_reader`, and `hooks/post_tool_use` entries; mention the new column on `tool_events`, the new `agent_usage()` helper, and the EPIC-1707 best-effort contract that applies to `post_tool_use`.
 - `thoughts/history-db-expand-wiring.md` — §2 (tool-event granularity) — the issue text already cites this; cross-link from the v19 migration comment if §2 is updated.
+
+#### Documentation (Wiring-pass additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/guides/HISTORY_SESSION_GUIDE.md:84` — the `tool_events` row in the column-listing table currently shows `bytes_in`, `bytes_out`, `result_size`, `cache_hit`. Add `agent_type` (nullable TEXT, populated for `tool_name="Task"` from `tool_input.subagent_type`) to this row. Line 55 (initial bootstrap table list) is unchanged — only the column row needs the addition.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:258` — the `post_tool_use` hook description currently lists the `tool_events` row shape as "tool name, bytes in/out, cache-hit, args hash". Add `agent_type` to this enumeration, qualified with "(populated when `tool_name=Task`, NULL otherwise)". Line 455 (prunable-tables list) is unchanged.
 
 ### Configuration
 - None required. The existing `analytics.enabled` gate at `post_tool_use.py:151` already controls whether the `tool_events` row is written at all; the new column rides the same gate and the same best-effort wrap. No new config key.
@@ -257,6 +286,27 @@ _Added by `/ll:refine-issue` — concrete references derived from direct source 
 - `result_size` is currently set to `bytes_out` at `post_tool_use.py:175` — **out of scope** for this issue, but if the implementer notices and is tempted to fix it: keep the fix in a separate issue to avoid scope creep.
 - Run the suite: `python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py -v` to verify both the new migration tests and existing tests still pass.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation alongside the eight steps above:_
+
+9. **Normalize wire-format `ll:` prefix (mandatory).** `subagent_type` arrives in two distinct shapes in the wild: bare names (`Explore`, `general-purpose`) for built-in Claude Code subagents, and `ll:`-prefixed names (`ll:codebase-locator`, `ll:codebase-analyzer`, `ll:codebase-pattern-finder`, `ll:loop-specialist`, etc.) for this plugin's custom agents (verified by Grep across `commands/*.md` and `skills/*/SKILL.md`). The 9-agent catalog at `.claude-plugin/plugin.json:21-31` uses bare names, so the implementation should strip a leading `ll:` before insertion to keep GROUP BY output consistent: `agent_type = (tool_input.get("subagent_type") or "").removeprefix("ll:") or None if tool_name == "Task" else None`. Apply the same normalization in `_backfill_tool_events` after the existing `args = block.get("input", {})` read. Without this step, `agent_usage()` returns two distinct rows for what is logically the same agent (`codebase-locator` vs `ll:codebase-locator`).
+
+10. **Coordinate v21 batched migration with ENH-2511 (mandatory).** Per the Scope Boundary section below, ENH-2511 has `depends_on: [ENH-2497]` and will widen this same migration with `mcp_server`, `mcp_tool`, `mcp_outcome`, and `latency_ms` columns + their indexes. The migration entry added in Step 1 must be the **single shared** v21 `ALTER TABLE tool_events … ADD COLUMN` block; do not land a separate v21 entry. Both issues' indexes (`idx_tool_events_agent`, `idx_tool_events_mcp_*`) are independent `CREATE INDEX IF NOT EXISTS` statements, idempotency-safe. Before landing, read `scripts/little_loops/session_store.py` `SCHEMA_VERSION` directly to confirm the slot is still 21 (it is currently 20 as of this writing); if ENH-2511 has landed first, reconcile.
+
+11. **CLI user-facing output (verification only).** No code change required in `scripts/little_loops/cli/session.py:466-467`. The `ll-session recent --kind tool` text-renderer iterates `row.items()` and prints `f"{k}={v}"` for non-NULL columns; the new `agent_type` column will automatically appear as `agent_type=<name>` for Task rows. Verify by `ll-session recent --kind tool --limit 5` post-implementation. Non-Task rows are unaffected (NULL values filtered out by the existing `v is not None` clause).
+
+12. **Doc updates beyond the two in Step 8.** In addition to `docs/ARCHITECTURE.md` and `docs/reference/API.md`, update:
+    - `docs/guides/HISTORY_SESSION_GUIDE.md:84` — add `agent_type` to the column-listing row for `tool_events`.
+    - `docs/guides/BUILTIN_HOOKS_GUIDE.md:258` — add `agent_type (populated when tool_name=Task, NULL otherwise)` to the `post_tool_use` row description.
+
+13. **Tests beyond the new file in Step 7.** In `scripts/tests/test_enh_2497_agent_type.py` (the suggested new file), add three additional test cases not in the issue's Tests subsection:
+    - `test_live_write_filled_in_search_index` — directly closes the FTS acceptance-criterion gap from Implementation Step 4 (mandatory; without it, no test enforces the `_index()` wiring).
+    - `test_tool_events_backfill_populates_agent_type` — directly closes the backfill-side gap from Implementation Step 3 (mandatory).
+    - `test_readers_return_empty_on_missing_db` — closes the no-raise-on-missing-DB contract for `agent_usage()` and `recent_tool_events()`.
+
+14. **Version renumber in test classes.** Rename the suggested `TestSchemaV19AgentType` → `TestSchemaV21AgentType` and the suggested `_bootstrap_schema_at(db, 19)` → `_bootstrap_schema_at(db, 20)` calls because `SCHEMA_VERSION = 20` today at `session_store.py:207`. Bootstrap must occur at the version immediately preceding the new migration's slot; a v19 bootstrap skips the v21 entry and the test would falsely pass on a non-migrated DB.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (tool-event granularity)
@@ -295,6 +345,7 @@ issue lands first and ENH-2511's `mcp_server`/`mcp_tool`/`mcp_outcome`/
 (one shared `ALTER TABLE tool_events` batch), not a second competing one.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T23:53:35 - `116f385e-2818-4c79-8ce3-a15f63040329.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:35:50 - `c62633a6-bc8a-42d5-88d1-7b034101e282.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:36:00 - `5d02fdfe-927a-4f1f-aa0e-5f159a6cee91.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:22:08 - `33e15d2a-429d-48f8-8998-aca5080acdd5.jsonl`

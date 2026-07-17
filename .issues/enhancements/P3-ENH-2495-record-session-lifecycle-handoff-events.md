@@ -130,6 +130,53 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `context_monitor.auto_handoff_threshold` (default **80**, not 50 — see "Threshold correction" in Codebase Research Findings below)
 - `context_monitor.sentinel_threshold` (default **50** — this is the sentinel threshold, the one that triggers `.ll/ll-context-handoff-needed`)
 
+### Wiring Additions (added by `/ll:wire-issue`)
+
+_Files and coupling surfaces identified by the wiring pass that are not on the Integration Map above. These must be touched alongside the primary implementation._
+
+#### Additional Files to Modify
+
+| File | Anchor | Change | Source |
+|------|--------|--------|--------|
+| `scripts/little_loops/__init__.py` | line 44 (`__all__` re-export block) | Re-export `record_session_lifecycle_event` for `from little_loops import *` parity with `record_issue_snapshot` | Agent 1 (caller tracer) |
+| `scripts/tests/test_assistant_messages.py` | line 88 (`assert SCHEMA_VERSION == 20`) | Bump to 21 when v21 migration lands | Agent 1 + Agent 3 |
+| `scripts/tests/test_hook_session_start.py` | lines 307, 332, 341 (`TestRebuildFlagOnlyWhenSchemaVersionAdvanced`, `TestFreshMigrationTriggersRebuild`) | Bump `SCHEMA_VERSION == 20` literals to 21 | Agent 1 + Agent 3 |
+| `scripts/tests/test_session_store.py` | lines 1371–1372, 1817, 1932, 1984, 2080, 3658, 3699 | Multiple `assert SCHEMA_VERSION == 20` literals across `TestRecord*` classes — bump to 21 | Agent 3 (test gap finder) |
+| `scripts/tests/test_hooks_integration.py` | `TestContextHandoffSentinel` (lines 2740–2905) | Add `test_writes_lifecycle_row_on_threshold_crossing` (asserts `session_lifecycle_events` row landed in DB after bash script runs) and `test_python_failure_does_not_flip_exit_code` (DB write failure → `returncode == 0` AND sentinel still written — verifies `\|\| true` semantics) | Agent 3 |
+| `scripts/tests/test_sweep_stale_refs.py` | add to `TestSweepStaleRefsGracefulDegradation` (line 255) | Add `test_writes_lifecycle_row_silently_with_broken_db` — call `handle(_event(cwd=tmp_path))` after pointing `LL_HISTORY_DB` at the tmp directory; assert sweep primary job completes AND no `session_lifecycle_events` row is written (graceful drop) | Agent 3 |
+| `scripts/tests/test_pre_compact.py` | add to existing precompact tests | Add `test_writes_compaction_lifecycle_row_silently_with_broken_db` — same shape as sweep; verify compaction primary job completes AND DB write fails silently | Agent 3 |
+| `docs/guides/HISTORY_SESSION_GUIDE.md` | lines 51, 60–75 (schema versions table), 32–43 (task→command table), 80–100 ("What Gets Recorded" table), 170 (`--kind` enumeration) | Add v21 row; add `session_lifecycle_events` to "What Gets Recorded"; add `ll-session recent --kind session_lifecycle` row to task→command table; append `session_lifecycle` to brace-enumerated kind list | Agent 1 + Agent 2 |
+| `docs/guides/BUILTIN_HOOKS_GUIDE.md` | line 59 ("PostToolUse records tool & file events"), line 94 (flow diagram), line 434 (`analytics.capture.file_events` config row) | Add `session_lifecycle` companion line to PostToolUse writers list; add `sweep_stale_refs`/`pre_compact`/`context-handoff-sentinel` producers to flow diagram; consider `analytics.capture.session_lifecycle_events` flag (precedent: `usage_events`) | Agent 1 |
+| `docs/reference/CONFIGURATION.md` | lines 1162–1178 (`hooks.pre_compact.rubric.*` block) | Mention that compaction events from this hook flow into `session_lifecycle_events` (cross-reference ENH-2507 if present) | Agent 1 |
+| `.claude/CLAUDE.md` | lines 141–142, 186, 196, 203, 218 (multiple `ll-session` prose references) | Add `session_lifecycle` to kind listings where `recent`/`search`/`compact` are documented; mirror the table updates in `HISTORY_SESSION_GUIDE.md` | Agent 1 |
+| `docs/reference/API.md` | line 81 (history.db prose), lines 4102–4103 (`--kind` brace list — already drifted, no `snapshot`/`usage`), line 7275 ("Current schema version: 19" — already stale by 1), line 7279 (`SCHEMA_VERSION` import snippet), lines 6847–6848 (history_reader imports block), 7051–7077 (recent_commit_events/recent_test_runs sections), 7286–7287 + 7346–7389 (record_commit_event/record_test_run_event API reference sections) | Add `session_lifecycle` to prose enumeration (line 81); fix brace-list drift at 4102–4103; bump "Current schema version" to 21; add `LifecycleEvent`, `recent_lifecycle_events`, `handoff_frequency` to imports block; add API reference sections for the new functions | Agent 1 + Agent 2 |
+| `docs/reference/CLI.md` | lines 2427 (`search --kind` choices list — ends at `test_run`), 2435 (`recent --kind` choices list — ends at `test_run`), 2501 (`export --tables` choices table), 2510–2512 (worked examples block) | Add `session_lifecycle` to `search` and `recent` `--kind` brace lists; add `session_lifecycle_event` to `export --tables` choices IF `_EXPORT_TABLE_MAP` extended; add `ll-session recent --kind session_lifecycle` example | Agent 1 + Agent 2 |
+| `docs/ARCHITECTURE.md` | lines 670–678 (schema versions table ends at v20), lines 714–729 (mermaid sequence diagram `v1–v20`), lines 753–754 (Components table — only `post_tool_use` and `user_prompt_submit` listed as hook writers) | Add v21 row mirroring v17/v18/v19/v20 format; extend sequence diagram to show `sweep_stale_refs`/`pre_compact`/`context-handoff-sentinel` as DB writers; add Components table rows for the new producers | Agent 1 + Agent 2 |
+
+#### Additional Dependent Files (Callers/Importers) — Awareness Only (no edit required)
+
+- `scripts/little_loops/cli/verify_kinds.py:40` — iterates `_KIND_TABLE.values()` against `_MIGRATIONS` CREATE TABLEs; the ENH-2581 gate enforces that `session_lifecycle_events` is in `_KIND_TABLE` OR `_KINDLESS_TABLES`. No edit, but failure mode if forgotten: `ll-verify-kinds` exits 1.
+- `scripts/little_loops/cli/session.py:228–230` — `export --tables` help text lists `session, issue_event, ...`; only edit if `_EXPORT_TABLE_MAP` is extended for parity with `commit_event`/`test_run_event`.
+- `scripts/little_loops/hooks/types.py:44` — `LLHookEvent.session_id: str | None = None`; this is the data source for `session_id=event.session_id` on every new `record_session_lifecycle_event(...)` call (per the Integration Map's Stale Reference Audit item at line 262).
+- `scripts/little_loops/cli/history.py:297,314`, `scripts/little_loops/cli/logs.py:1644`, `scripts/little_loops/cli/history_context.py:31,331`, `scripts/little_loops/loops/sft-corpus.yaml:67`, `scripts/tests/test_loops_sft_corpus.py:42,101` — transitive importers of `history_reader`; the new `recent_lifecycle_events`/`handoff_frequency` functions will be available to these automatically once added.
+- `scripts/little_loops/pytest_history_plugin.py:126,130` — direct importer of `record_test_run_event` from `session_store`; serves as the import-shape precedent for `record_session_lifecycle_event` (no edit).
+- `scripts/little_loops/__init__.py:44` — package-level `from little_loops.session_store import (..., record_issue_snapshot)` (overlaps with Files to Modify above).
+
+#### Additional Codebase Research Findings
+
+_Added by `/ll:wire-issue` — based on wiring research:_
+
+- **`_EXPORT_DEFAULT_TABLES` ALSO needs the entry** — not just `_EXPORT_TABLE_MAP`. The Integration Map mentions `_EXPORT_TABLE_MAP` (per `cli/backfill_worker.py` coupling at line 104), but Agent 2 confirmed `_EXPORT_DEFAULT_TABLES` at `session_store.py:3318–3329` is a SEPARATE constant that gates which tables `ll-session export` writes without `--tables`. Without both entries, `ll-session export` silently skips `session_lifecycle_events` unless the user passes `--tables session_lifecycle_event` explicitly. ENH-2461 documented this two-map pattern at `.issues/enhancements/P3-ENH-2461-...md:378`.
+- **Recorder should use `connect()` (not `ensure_db()` + raw INSERT)** — Agent 3 flagged that `record_skill_event` uses `connect()` which calls `ensure_db()` internally and swallows migration errors more aggressively. The new `record_session_lifecycle_event` should mirror `record_skill_event`'s shape (call `connect()`), NOT `cli_event_context`'s (call `ensure_db()` explicitly). This affects the graceful-degradation contract because `connect()`-based call sites never block the hook even on partial migration state.
+- **`_EXPORT_TABLE_MAP` lives in `session_store.py:3304–3316`, NOT in `cli/backfill_worker.py`** — the Integration Map's "Dependent Files" note (`cli/backfill_worker.py` line 2791–2802) is incorrect. The actual map is in `session_store.py:3304`. `backfill_worker.py` is the consumer but doesn't define it.
+- **Bash shell-out needs explicit `|| true` verification test** — the proposed bash shell-out pattern `python3 -c '...'` followed by `|| true` is necessary because the hook host (Claude Code `Stop` event) treats any non-zero exit as a stop-blocking error. The new test `test_python_failure_does_not_flip_exit_code` (Agent 3 finding) verifies this contract by triggering a DB write failure (e.g., `LL_HISTORY_DB=/some/dir/`) and asserting `returncode == 0` AND the sentinel file was still written.
+- **`docs/reference/API.md:7275` is already drifted** — currently says "Current schema version: **19**" while live is 20. The implementer should bump to 21 (or the next open slot) AND fix the drift. Same for line 7279 (`SCHEMA_VERSION,        # 19` in the import snippet).
+- **`docs/reference/API.md:4102–4103` brace-list is already drifted** — the `--kind {tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` brace list omits `snapshot` and `usage` despite being valid kinds per `VALID_KINDS`. The new entry should NOT inherit this drift — update the brace list to the full `VALID_KINDS` (or link to it) so future additions don't require a doc re-touch.
+- **`docs/reference/CLI.md:2427, 2435` brace lists are also drifted** — same observation as above; both lists end at `test_run`.
+- **`test_assistant_messages.py:88` AND `test_hook_session_start.py:307,332,341` ALSO hardcode `SCHEMA_VERSION == 20`** — alongside `test_session_store.py`'s multiple literals. The implementer must grep for `SCHEMA_VERSION == ` across the whole `scripts/tests/` tree when bumping.
+- **Codex/OpenCode adapters don't register `pre_compact_handoff`** — `hooks/adapters/codex/hooks.json:17–28` and `hooks/adapters/opencode/index.ts:64–72` only register `pre_compact`, not `pre_compact_handoff`. This is an intentional adapter gap (the handoff variant is Claude-Code-only), NOT a fix-required observation for ENH-2495. Codex/OpenCode users simply won't get `compaction` lifecycle events from the handoff path — the regular `pre_compact` path still emits them.
+- **`ENH-2509` coordination anchor confirmed** — `ENH-2509:142` records the `/ll:decide-issue` decision for Option A (Co-implement): both issues land in a single PR sharing the `session_lifecycle_events` table. The shared schema (`(ts, session_id, event, detail JSON, head_sha, branch)` per ENH-2495 line 152–162) is canonical; `ENH-2509`'s `worktree_create`/`worktree_merge`/`worktree_delete` event discriminators are added as additional `event` TEXT values (no CHECK constraint). The shared recorder signature is `record_session_lifecycle_event(db_path, *, ts, session_id, event, detail=None, head_sha=None, branch=None)` — confirmed identical at `ENH-2509:241–246`.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -251,6 +298,76 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - The **`session_end` row** is currently unspecified in the issue — consider whether the SessionEnd/SessionStart fallback in `sweep_stale_refs.handle()` should always emit a `session_end` row (even with zero findings) to make session-churn queryable. Defer to implementer.
 - **Idempotency**: lifecycle events don't need a UNIQUE key — two sweeps per session at the same UTC second are improbable — so plain `INSERT` (per `record_correction` / `record_skill_event`) is acceptable.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. Numbering continues from Step 8 above._
+
+9. Package re-export for `from little_loops import *` parity.
+   - Add `"record_session_lifecycle_event"` to `scripts/little_loops/__init__.py:44` next to `record_issue_snapshot`. Required so downstream callers (CLI subcommands, hooks) can use the helper without a fully-qualified import path.
+
+10. Extend `_EXPORT_TABLE_MAP` AND `_EXPORT_DEFAULT_TABLES` (BOTH, not just one).
+    - `_EXPORT_TABLE_MAP` at `scripts/little_loops/session_store.py:3304–3316` — add `"session_lifecycle_event": ("session_lifecycle_events", "ts")`.
+    - `_EXPORT_DEFAULT_TABLES` at `scripts/little_loops/session_store.py:3318–3329` — add the matching default-table entry.
+    - Without BOTH, `ll-session export` silently skips `session_lifecycle_events` unless `--tables session_lifecycle_event` is passed explicitly. ENH-2461 documented the two-map pattern at `.issues/enhancements/P3-ENH-2461-...md:378`.
+
+11. Bump `SCHEMA_VERSION == 20` assertions across the test suite.
+    - `scripts/tests/test_session_store.py:1371–1372, 1817, 1932, 1984, 2080, 3658, 3699` — multiple `assert SCHEMA_VERSION == 20` literals across `TestRecord*` classes.
+    - `scripts/tests/test_assistant_messages.py:88` — single `assert SCHEMA_VERSION == 20`.
+    - `scripts/tests/test_hook_session_start.py:307, 332, 341` — `TestRebuildFlagOnlyWhenSchemaVersionAdvanced`, `TestFreshMigrationTriggersRebuild`.
+    - Use `grep -rn "SCHEMA_VERSION ==" scripts/tests/` to verify completeness before merging.
+
+12. Update `docs/guides/BUILTIN_HOOKS_GUIDE.md` hook writers list and flow diagram.
+    - Line 59 (PostToolUse records line) — add `session_lifecycle` companion row.
+    - Line 94 (flow diagram) — add `sweep_stale_refs`/`pre_compact`/`context-handoff-sentinel` as DB writers.
+    - Line 434 — consider `analytics.capture.session_lifecycle_events` flag (precedent: `usage_events`).
+
+13. Update `docs/reference/CONFIGURATION.md` `hooks.pre_compact.rubric.*` block.
+    - Lines 1162–1178 — mention that compaction events from this hook flow into `session_lifecycle_events`. Cross-reference ENH-2507 if present.
+
+14. Update `.claude/CLAUDE.md` `ll-session` prose references.
+    - Lines 141–142, 186, 196, 203, 218 — add `session_lifecycle` to kind listings where `recent`/`search`/`compact` are documented. Mirror the table updates in `HISTORY_SESSION_GUIDE.md`.
+
+15. Update `docs/reference/API.md` schema version drift + new API sections.
+    - Line 7275 — bump "Current schema version: 19" (already drifted by 1) → 21 (or next open slot).
+    - Line 7279 — bump `SCHEMA_VERSION,        # 19` import snippet.
+    - Lines 6847–6848 — add `LifecycleEvent`, `recent_lifecycle_events`, `handoff_frequency` to the `from little_loops.history_reader import (...)` block.
+    - Lines 7051–7077 — add API reference sections for `recent_lifecycle_events` and `handoff_frequency` next to `recent_commit_events`/`recent_test_runs`.
+    - Lines 7286–7287 — add `record_session_lifecycle_event` to the public-API docstring excerpts (alongside `record_commit_event`/`record_test_run_event`).
+    - Lines 7346–7389 — add a `record_session_lifecycle_event` API reference section.
+    - Lines 4102–4103 — fix brace-list drift (`{tool,file,issue,loop,correction,message,skill,cli,commit,test_run}` is missing `snapshot` and `usage`); either enumerate the full `VALID_KINDS` set or link to it.
+
+16. Update `docs/reference/CLI.md` `--kind` choices lists + worked examples.
+    - Line 2427 — `search --kind` brace list — add `session_lifecycle` (and fix drift).
+    - Line 2435 — `recent --kind` brace list — add `session_lifecycle` (and fix drift).
+    - Line 2501 — `export --tables` choices table — add `session_lifecycle_event` IF `_EXPORT_TABLE_MAP` extended.
+    - Lines 2510–2512 — worked examples block — add `ll-session recent --kind session_lifecycle` example.
+
+17. Update `docs/ARCHITECTURE.md` schema versions table + sequence diagram + Components table.
+    - Lines 670–678 — schema versions table (currently ends at v20/usage_events); add v21 row mirroring v17/v18/v19/v20 format (`session_lifecycle_events` + ENH-2495 + producer wiring description).
+    - Lines 714–729 — mermaid sequence diagram `v1–v20`; extend to v21 and add `sweep_stale_refs`/`pre_compact`/`context-handoff-sentinel` as DB-writer arrows.
+    - Lines 753–754 — Components table; currently only lists `post_tool_use` and `user_prompt_submit` as hook writers — add rows for the new producers.
+
+18. Update `docs/guides/HISTORY_SESSION_GUIDE.md` (full coverage).
+    - Lines 51, 60–75 — schema versions table — add v21 row.
+    - Lines 32–43 — task→command table — add `ll-session recent --kind session_lifecycle` row mirroring `--kind commit`/`--kind test_run`.
+    - Lines 80–100 — "What Gets Recorded" reference table — add `session_lifecycle_events` row.
+    - Line 170 — `--kind` enumeration list — append `session_lifecycle`.
+
+19. Extend `scripts/tests/test_hooks_integration.py:TestContextHandoffSentinel` with DB-row assertions + `|| true` semantics test.
+    - Add `test_writes_lifecycle_row_on_threshold_crossing` — invoke the modified sentinel script via `subprocess.run`, then open the resulting DB and assert a `session_lifecycle_events` row with `event="handoff_needed"` and the threshold detail landed.
+    - Add `test_python_failure_does_not_flip_exit_code` — point `LL_HISTORY_DB` at a directory (sqlite raises `OperationalError`), run the script, assert `returncode == 0` AND the sentinel file was still written.
+
+20. Add graceful-degradation hook-handler tests.
+    - `scripts/tests/test_sweep_stale_refs.py` — add `test_writes_lifecycle_row_silently_with_broken_db` (mirror the precedent at `TestSweepStaleRefsGracefulDegradation:255`).
+    - `scripts/tests/test_pre_compact.py` — add `test_writes_compaction_lifecycle_row_silently_with_broken_db`.
+    - Both call `handle(_event(cwd=tmp_path))` after pointing `LL_HISTORY_DB` at the tmp directory; assert the hook's primary job completes AND no `session_lifecycle_events` row is written (graceful drop, not exception).
+
+21. Coordinate with `ENH-2509` (worktree lifecycle events) before merging.
+    - `ENH-2509:142` records the `/ll:decide-issue` Option A (Co-implement) decision: both issues land in a single PR sharing the `session_lifecycle_events` table.
+    - The shared recorder signature is `record_session_lifecycle_event(db_path, *, ts, session_id, event, detail=None, head_sha=None, branch=None)` — confirmed identical at `ENH-2509:241–246`.
+    - The shared schema is `(ts, session_id, event TEXT, detail TEXT JSON, head_sha, branch)` — no CHECK constraint on `event`; `ENH-2509`'s `worktree_create`/`worktree_merge`/`worktree_delete` are added as additional `event` discriminators per `ENH-2509:84–101`.
+    - Confirm the v21 migration SQL is identical in both issues before merging.
+
 ### Stale Reference Audit
 
 _Added by `/ll:refine-issue` — verifying the Integration Map's anchors against the current codebase (post-2026-07-07 baseline):_
@@ -305,6 +422,7 @@ lifecycle events) is an intentional, already-coordinated widening of this
 issue's `session_lifecycle_events` table — not a conflict.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T23:33:29 - `93c7c3d0-7fc2-409d-9882-227ad5f6e063.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:15:18 - `165a14ee-791b-4c16-a333-4b3b4da4a314.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T00:57:52 - `f072a647-96ed-4b8d-bdc1-936243abf1c4.jsonl`

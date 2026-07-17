@@ -255,6 +255,47 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   bash wrappers for the adapter layer, mirroring the
   `post-tool-use.sh` pattern
 
+**Wiring pass additions (added by `/ll:wire-issue`):**
+
+- `scripts/little_loops/__init__.py:62-131` — extend package `__all__`
+  tuple to re-export `record_hook_event` and `hook_event_context` so the
+  new public API is discoverable alongside the existing peer exports
+  (LLHookEvent/LLHookResult already there)
+- `scripts/little_loops/session_store.py:16-38` (module docstring
+  "Public API" block) — append `record_hook_event` /
+  `hook_event_context` lines paralleling the `record_skill_event` /
+  `skill_event_context` listing
+- `scripts/little_loops/session_store.py:1462-1484` (`recent()`
+  docstring "Kinds" sentence) — append `"hook_event"` to the supported-kinds
+  list (the `recent()` routing reads `_KIND_TABLE` at runtime, but the
+  docstring is the user-facing contract)
+- `scripts/little_loops/session_store.py:2824-2834` (`_REBUILD_TABLES`
+  comment block) — enumerate `hook_events` in the live-only exclusion
+  comment so future maintainers see the architectural note inline
+- `scripts/little_loops/session_store.py:3304-3329` (`_EXPORT_TABLE_MAP` /
+  `_EXPORT_DEFAULT_TABLES`) — decide whether to register
+  `"hook_event": ("hook_events", "ts")` here (matches live-only
+  exclusion — `cli_events` and `file_events` precedent not registered;
+  default to NOT registering to keep `ll-session export` opt-in)
+- `scripts/little_loops/observability/schema.py:479-633` (DES_VARIANTS
+  tuple) — add `HookEventVariant` paralleling `SkillEventVariant`/
+  `CliEventVariant`. **CRITICAL**: without this,
+  `ll-verify-des-audit` (F5 audit gate, ENH-2475) will reject every
+  `record_hook_event`/`hook_event_context` emit site as an uncovered
+  event type
+- `scripts/little_loops/config/features.py:529-558`
+  (`AnalyticsCaptureConfig` + `from_dict`) — add `hooks: bool = True`
+  dataclass field and the corresponding `from_dict` mapping. Mirrors
+  `usage_events` precedent (ENH-2581 / ENH-2461)
+- `scripts/little_loops/init/core.py:17` (`_ANALYTICS_CAPTURE_KEYS`
+  tuple) — append `"hooks"`. Without this, `ll-init` defaults will not
+  include the new gate, leaving users without an explicit `hooks: true`
+  config entry
+- `scripts/little_loops/config-schema.json:1608-1655` (`analytics.capture`
+  schema properties) — add `"hooks": {"type": "boolean", "default":
+  true, "description": "..."}` before `additionalProperties: false`;
+  required for `test_config_schema.py` to pass
+
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/session.py` — dispatcher for `ll-session`
@@ -265,6 +306,32 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
 - `scripts/little_loops/cli/backfill_worker.py` — **no change** (no
   `_backfill_hook_events` to wire; hook telemetry is live-write-only, see
   Architectural Note)
+
+**Wiring pass additions (added by `/ll:wire-issue`):**
+
+- `scripts/little_loops/cli/logs.py:25` — imports `cli_event_context` /
+  `resolve_history_db`; observes the new `_KIND_TABLE` extension via
+  the kind-discovery path that backs `ll-logs` calls; no functional
+  change required but the import block must continue to compile after
+  `_KIND_TABLE` gains `"hook_event"`
+- `scripts/little_loops/cli/verify_des_audit.py:19-20, 106` — gates
+  every DES emit site against `DES_VARIANT_TYPES`; will fail closed if
+  `record_hook_event` / `hook_event_context` emit a `HookEvent` without
+  a registered `HookEventVariant` (paired with the schema.py edit above)
+- `scripts/little_loops/extension.py` (uses `_register_hook_intents`
+  via `wire_extensions`) — peer hook intent registration; must
+  coexist with the new `_dispatch_table` outer wrap (under Option A,
+  wrap is per-handler; under Option B, this becomes the integration
+  point)
+- `scripts/little_loops/__init__.py:21` — package-level
+  re-exports of `LLHookEvent`/`LLHookResult`; per the re-export
+  precedent `record_hook_event` and `hook_event_context` belong here
+  too (see Files to Modify)
+- `scripts/little_loops/hooks/types.py:20-145` — `LLHookEvent` /
+  `LLHookResult` definitions referenced by `hook_event_context`;
+  unaffected by the new schema but the typed-completion handle needs
+  to coexist (use a `dataclass` similar to `SkillEventCompletion` per
+  issue §Implementation Steps 2.2)
 
 ### Similar Patterns
 
@@ -306,6 +373,121 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   for `recent_hook_events`, `hook_failure_rate`, `hook_latency_p95`
   using an in-memory or temp SQLite fixture
 
+**Wiring pass additions (added by `/ll:wire-issue`):**
+
+- `scripts/tests/test_session_store.py:1372` (`TestSchemaV6`),
+  `:1817` (`TestCliEventContext`), `:1932` / `:1984`
+  (`TestSchemaV9` / `TestSchemaV10`), `:2080` (`TestSchemaV14`),
+  `:3658` / `:3699` (`TestSqliteTransportStyleUsage`) — 7+
+  `assert SCHEMA_VERSION == 20` sites; ALL must bump to 21 alongside
+  the migration. The issue's §1.1 mentions the constant at line 207;
+  the test-side bumps are equally required to keep pytest green
+- `scripts/tests/test_session_store.py:3413` — `set(VALID_KINDS) ==
+  set(_KIND_TABLE.keys())` assertion — must hold with `"hook_event"`
+  added to both tuples; if only one is updated, the test fires
+- `scripts/tests/test_session_store.py:1945-1969, 2044-2048, 2109-2113,
+  3730-3734, 3898-3902` — migration-list tests that iterate
+  `_MIGRATIONS[:N]` via `_bootstrap_schema_at`. Existing v14 callers
+  (`:3930, :4174, :4422`) keep working unchanged (slice past v14 is
+  unaffected); verify post-implementation that the helper's
+  version-by-version semantics still hold
+- (NEW) `scripts/tests/test_session_store.py::TestSchemaV21HookEvents`
+  — column-set assertion + 3-index-existence assertion + v20→v21
+  upgrade test (bootstrap at v20, run `ensure_db`, assert
+  `hook_events` table + indexes exist). Model on `TestSchemaV20UsageEvents`
+  at `test_session_store.py:3221-3243`
+- (NEW) `scripts/tests/test_session_store.py::TestRecordHookEvent` —
+  round-trip INSERT (single row + multi-row ordering) + FTS5 search
+  propagation; kwarg-only signature test (every column test). Model
+  on `TestRecordTestRunEvent` at `:4362-4432`
+- (NEW) `scripts/tests/test_session_store.py::TestHookEventContext` —
+  insert-on-enter/update-on-exit success path, raise-path exit_code=1
+  propagation, host-provided exit_code, custom event_name/matcher/
+  script propagation, best-effort-on-unopenable-db. Model on
+  `TestSkillEventContext` at `:3969-4033`
+- `scripts/tests/test_history_reader.py:1395-1546` — `TestNewEventReaders`
+  extension: add `test_recent_hook_events_*` (recency ordering,
+  filter_by_event_name, filter_by_exit_code, since filter),
+  `test_hook_failure_rate` (per-event_name rollup, dispatch-only vs
+  completed), `test_hook_latency_p95`
+- `scripts/tests/test_history_reader.py:1530-1545` (`test_readers_return_empty_on_missing_db`)
+  — extend the missing-db batch test to include
+  `recent_hook_events`, `hook_failure_rate`, `hook_latency_p95`
+- `scripts/tests/test_verify_kinds.py:18-33` (`TestRun.test_clean_state_returns_zero`)
+  — regression gate; no edit required (it reads `_KIND_TABLE` /
+  `_MIGRATIONS` dynamically). But the implementation MUST add both
+  the migration AND the `_KIND_TABLE` entry in lock-step, or this
+  test flips to failure
+- `scripts/tests/test_ll_session.py:58-105` (`TestArgumentParsing`)
+  — add `test_recent_subcommand_hook_event_accepted` + `test_search_subcommand_hook_event_accepted`
+  pair (mirroring the `test_run` precedent at `:88-105`)
+- `scripts/tests/test_ll_session.py:1073-1135`
+  (`TestSkillStatsAndNewKinds`) — add `test_recent_kind_hook_event_outputs_row`
+  (seed via `record_hook_event`, run `ll-session recent --kind
+  hook_event`, assert stdout shows the row)
+- `scripts/tests/test_ll_session.py:1043-1072` (subparser pattern
+  for `skill-stats`) — mirror for `hook-health` subcommand:
+  `test_hook_health_subcommand_outputs_rollup`,
+  `test_hook_health_subcommand_json_flag`,
+  `test_hook_health_since_argument`
+- `scripts/tests/test_config.py:1443-1485` (`TestAnalyticsCaptureConfig`)
+  — add `test_hooks_true_default` + `test_hooks_false_overrides` cases
+  (mirroring `test_file_events_false` at `:1476-1480`)
+- `scripts/tests/test_config.py:3043-3098` (`BRConfig` integration)
+  — extend round-trip default assertion for `analytics_capture.hooks`
+- `scripts/tests/test_config_schema.py:449-485`
+  (`test_analytics_capture_in_schema`) — add `assert "hooks" in
+  capture_props` mirroring `file_events` at `:478-480`
+- `scripts/tests/test_init_core.py:720` — `schema_default(f"analytics.capture.{key}")`
+  iterates `_ANALYTICS_CAPTURE_KEYS`; if the const is extended to
+  include `"hooks"`, this test exercises the new key automatically
+- `scripts/tests/test_wiring_init_and_configure.py:58-65` — wiring
+  docs reference `analytics.capture.*`; verify the wiring doc still
+  enumerates each gate after the new `hooks` key lands
+- `scripts/tests/test_config.py:1391-1440` (analytics.from_dict round-trip)
+  — extend to include `hooks` key
+- `scripts/tests/test_assistant_messages.py:11, 88` —
+  `assert SCHEMA_VERSION == 20` hardcoded; bump to 21 alongside the
+  migration
+- `scripts/tests/test_hook_intents.py:477-585` (`main_hooks()`
+  integration tests) — every dispatch test will exercise the new
+  outer wrap on `_dispatch_table`; no edits required but the new
+  context manager's emissions get exercised end-to-end here. Add a
+  `test_record_hook_event_in_dispatch` case that stubs
+  `_dispatch_table`, runs `main_hooks()`, then asserts a `hook_events`
+  row exists via `recent_hook_events(db)`
+- `scripts/tests/test_extension.py:448-483`
+  (`test_wire_extensions_populates_hook_intent_registry`) — extension
+  tests must continue to pass; the new outer wrap on `_dispatch_table`
+  is orthogonal to extension wiring
+- (NEW) per-handler capture fixtures — extend the existing
+  `test_hook_post_tool_use.py:100-132` pattern (the
+  `TestPostToolUseWithSessionStore.test_writes_row_when_analytics_enabled`
+  precedent) to add a `TestHookEventsInHandler` class that wraps the
+  existing handler tests, opening `.ll/history.db` post-handler and
+  asserting one `hook_events` row was written. Mirror in:
+  - `scripts/tests/test_hook_post_tool_use.py`
+  - `scripts/tests/test_hook_user_prompt_submit.py`
+  - `scripts/tests/test_hook_session_start.py`
+  - `scripts/tests/test_pre_compact.py`
+  - `scripts/tests/test_pre_compact_handoff.py`
+  - `scripts/tests/test_sweep_stale_refs.py`
+  - `scripts/tests/test_edit_batch_hook.py`
+  - `scripts/tests/test_install_learning_gate.py`
+  - `scripts/tests/test_learning_tests_discoverability.py`
+- (NEW) `scripts/tests/test_record_hook_event_shim.py` — bash shim
+  end-to-end test. Model on
+  `scripts/tests/test_check_decisions_yaml_hook.py:146-209`
+  (`test_hook_blocks_othe_203_write`). Tests:
+  - shim exits 0 on success
+  - shim captures `$?` from the preceding bash command
+  - shim writes to `.ll/history.db` via
+    `python -m little_loops.cli.session record-hook-event "$@"`
+  - shim is graceful on DB-absent (does not propagate sqlite failures)
+- (NEW) `scripts/tests/test_des_variants.py` (if not already present)
+  — assert `HookEventVariant` is registered in `DES_VARIANTS` after
+  schema.py edit; mirror `SkillEventVariant` regression coverage
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — schema versions table; bump v20→v21 entry
@@ -321,6 +503,45 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
 - `docs/development/TROUBLESHOOTING.md` — add the "hook didn't fire"
   debug section pointing to `ll-session recent --kind hook_event`
 
+**Wiring pass additions (added by `/ll:wire-issue`):**
+
+- `docs/ARCHITECTURE.md:655-678` (schema versions table) — add v21
+  row for `hook_events` (ENH-2506); the existing v1–v20 rows remain
+- `docs/ARCHITECTURE.md:723` ("ensure_db() — bootstrap schema
+  (v1–v20)") — bump literal to `v1–v21`
+- `docs/ARCHITECTURE.md:748` ("Bootstrap schema (v1–v20 migrations)")
+  — bump literal to `v1–v21`
+- `docs/ARCHITECTURE.md:811` ("See also: ... full schema-version
+  table (v1–v20)") — bump literal to `v1–v21`
+- `docs/guides/HISTORY_SESSION_GUIDE.md:51` ("Current schema
+  version: 18") — bump to whatever live version applies (per the
+  issue's Scope Boundary note, read `session_store.py:SCHEMA_VERSION`
+  at implementation time; the doc's prose already drifts from source
+  — make this consistent with the new migration slot)
+- `docs/guides/HISTORY_SESSION_GUIDE.md:53-75` (schema-version table)
+  — add v21 row for `hook_events`
+- `docs/guides/HISTORY_SESSION_GUIDE.md:81-99` ("What Gets Recorded"
+  table) — add `hook_events` row with columns enumerated
+- `docs/guides/HISTORY_SESSION_GUIDE.md:101-107` (`analytics.capture.*`
+  config-keys list) — add `hooks` entry mirroring `file_events` line
+- `docs/guides/HISTORY_SESSION_GUIDE.md:170, 180` (`--kind` choices in
+  prose) — append `hook_event` to both
+- `docs/reference/API.md:6837-6850` (`from little_loops.history_reader
+  import ...` block) — add `recent_hook_events`,
+  `hook_failure_rate`, `hook_latency_p95` to the public import block
+- `docs/reference/API.md:7282-7290` (`from
+  little_loops.session_store import ...` block) — append
+  `record_hook_event` and `hook_event_context` paralleling the
+  `skill_event_context` listing at `:7285`
+- `docs/reference/API.md:7331-7344` (new `hook_event_context` API
+  section) — mirror the `skill_event_context` documentation block;
+  this is the user-facing contract for the new context manager
+- `docs/reference/CLI.md:2427` and `:2435` (`--kind` choice prose
+  lists) — append `hook_event` to both
+- `docs/reference/CONFIGURATION.md:507-520` (`analytics.capture`
+  config-keys table) — add `hooks` row with default `true` and a
+  short description referencing ENH-2506
+
 ### Configuration
 
 - `.ll/ll-config.json` → `analytics.capture` keys: gate the new
@@ -328,6 +549,52 @@ _Added by `/ll:refine-issue` — based on codebase analysis._
   `analytics.capture.file_events` / `analytics.capture.skills`),
   defaulting to `true`. The `skill_event_context` config parameter is
   a forward-compat stub; reuse the same `config: dict | None` shape.
+
+**Wiring pass additions (added by `/ll:wire-issue`):**
+
+The new `analytics.capture.hooks` config flag must be plumbed through
+every layer; adding the user-facing key alone is not sufficient:
+
+- `scripts/little_loops/config/features.py:537-542` — declare
+  `hooks: bool = True` as a dataclass field, parallel to
+  `usage_events: bool = True`. This is the runtime type that
+  `ll_init` / `from_dict` materialize
+- `scripts/little_loops/config/features.py:529-558` (`from_dict`)
+  — add the `hooks` key mapping; default `True` when key is absent
+  (forward compat — older `.ll/ll-config.json` files continue to
+  enable telemetry)
+- `scripts/little_loops/init/core.py:17` (`_ANALYTICS_CAPTURE_KEYS`)
+  — append `"hooks"`. Without this, `schema_default(f"analytics.capture.hooks")`
+  returns `None` and the init template omits the key, leaving users
+  without an opt-out surface
+- `scripts/little_loops/config-schema.json:1608-1655` — add
+  `"hooks": {"type": "boolean", "default": true, "description":
+  "Capture per-fire hook telemetry into history.db (ENH-2506)."}`
+  to `analytics.capture.properties`, before `additionalProperties: false`
+- `scripts/tests/test_config.py:1391-1440` (round-trip + from_dict
+  tests) — extend to cover the new key
+- `scripts/tests/test_config.py:1443-1485` (`TestAnalyticsCaptureConfig`)
+  — extend with `test_hooks_true_default` + `test_hooks_false_overrides`
+- `scripts/tests/test_config.py:3043-3098` (`BRConfig` integration)
+  — extend round-trip default assertion
+- `scripts/tests/test_config_schema.py:449-485`
+  (`test_analytics_capture_in_schema`) — add `"hooks" in capture_props`
+  assertion
+- `scripts/tests/test_init_core.py:720` — assert
+  `schema_default("analytics.capture.hooks")` is registered (via the
+  `_ANALYTICS_CAPTURE_KEYS` iteration in init/core.py)
+- `scripts/tests/test_wiring_init_and_configure.py:58-65` — verify the
+  wiring doc still enumerates each gate after the new key lands
+- `scripts/little_loops/hooks/post_tool_use.py:151` — outer wrap
+  goes OUTSIDE the existing `feature_enabled(config, "analytics.enabled")`
+  gate (per issue §Implementation Steps 4.1). The new
+  `analytics.capture.hooks` gate is layered on the inside: the
+  context manager reads `config["analytics"]["capture"]["hooks"]`
+  and no-ops when disabled (mirroring `skill_event_context`'s
+  forward-compat stub parameter)
+- `scripts/little_loops/hooks/scripts/lib/common.sh:184-198` — the
+  bash shim reuses `ll_resolve_config` + `ll_feature_enabled` for the
+  `analytics.capture.hooks` gate check; no new lib helper needed
 
 ## Implementation Steps
 
@@ -419,6 +686,133 @@ existing migration / wrap pattern._
    scripts/tests/`. Per `.claude/CLAUDE.md`, the pytest suite is the
    project's only CI gate — do not add GitHub Actions workflows.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be
+included in the implementation. Each is a concrete code or doc edit
+discovered by tracing every file that imports / calls / depends on
+the planned changes._
+
+10. **Module docstrings (session_store.py:16-38, history_reader.py:9-41,
+    cli/session.py:7-23)** — append `record_hook_event` /
+    `hook_event_context` / `recent_hook_events` / `hook_failure_rate`
+    / `hook_latency_p95` entries to each module's "Public API" block,
+    keeping the alphabetical ordering convention.
+
+11. **`__all__` block (session_store.py:61-93)** — append
+    `"record_hook_event"` and `"hook_event_context"` to the export
+    tuple (peer to `record_commit_event`, `skill_event_context`,
+    `record_test_run_event`).
+
+12. **`recent()` docstring (session_store.py:1462-1484)** — append
+    `"hook_event"` to the supported-kinds prose list so the
+    user-facing contract matches the runtime `_KIND_TABLE` lookup.
+
+13. **`_REBUILD_TABLES` exclusion comment
+    (session_store.py:2818-2834)** — add `hook_events` to the
+    inline enumeration of live-only excluded tables so future
+    maintainers see the architectural rationale in context
+    (parallel to `cli_events`, `file_events`, `test_run_events`,
+    `issue_events`, `loop_events`, `commit_events`,
+    `issue_snapshots`).
+
+14. **`_EXPORT_TABLE_MAP` decision (session_store.py:3304-3329)** —
+    decide whether to register `"hook_event": ("hook_events", "ts")`
+    here. The plan defaults to NOT registering (keep `ll-session
+    export` opt-in — matches `cli_events` / `file_events` precedent);
+    document the decision in the inline comment.
+
+15. **DES_VARIANTS register (`observability/schema.py:479-633`)** —
+    add `HookEventVariant` paralleling `SkillEventVariant` /
+    `CliEventVariant`. **F5 audit gate (ENH-2475)** —
+    `ll-verify-des-audit` will fail closed if any
+    `record_hook_event` / `hook_event_context` emit site is added
+    without a registered variant. Implementation must land both the
+    schema.py registration AND the new emit calls in lock-step.
+
+16. **`AnalyticsCaptureConfig.hooks` dataclass field
+    (`config/features.py:537-542` + `from_dict` at `:529-558`)** —
+    declare `hooks: bool = True` and the corresponding mapping. Peer
+    to `usage_events` precedent (ENH-2461).
+
+17. **`_ANALYTICS_CAPTURE_KEYS` const (`init/core.py:17`)** — append
+    `"hooks"`. Required for `schema_default("analytics.capture.hooks")`
+    to resolve during `ll-init`.
+
+18. **`config-schema.json` `analytics.capture.hooks` property
+    (lines 1608-1655)** — add boolean property with `default: true`
+    and a description referencing ENH-2506. Required for
+    `test_config_schema.py` and the `additionalProperties: false`
+    gate to pass.
+
+19. **7+ `SCHEMA_VERSION == 20` assertion bumps in
+    `scripts/tests/test_session_store.py:1372, 1817, 1932, 1984,
+    2080, 3658, 3699` and `scripts/tests/test_assistant_messages.py:88`**
+    — bump to 21 alongside the migration. The issue's §1.1 covers
+    the session_store.py constant; the test-side bumps are equally
+    required to keep pytest green.
+
+20. **`set(VALID_KINDS) == set(_KIND_TABLE.keys())` assertion
+    (`scripts/tests/test_session_store.py:3413`)** — verify the
+    tuple sets stay in lock-step after adding `"hook_event"` to both.
+
+21. **Bash shim wiring (`hooks/hooks.json` + 15 `hooks/scripts/*.sh`
+    + 7 `hooks/adapters/claude-code/*.sh`)** — implement Option A
+    (two-commands shape, per the issue's Decision-Point): add a
+    second command entry per bash hook that invokes
+    `hooks/scripts/record-hook-event.sh`. Coverage matrix per
+    `hooks.json` is enumerated at `:5-233` (the 18 follow-on entries
+    identified by Agent 2). For each adapter that delegates to
+    Python (`hooks/adapters/claude-code/post-tool-use.sh`,
+    `pre-tool-use.sh`, `precompact.sh`, `precompact-handoff.sh`,
+    `edit-batch-nudge.sh`, `session-start.sh`, `session-end.sh`)
+    the wrap goes around the Python invoke, not the adapter
+    script (Option A surface — Python handlers are already wrapped
+    per Implementation Step 4).
+
+22. **Bash shim test (NEW `scripts/tests/test_record_hook_event_shim.py`)** —
+    add `subprocess.run`-based shim coverage modeled on
+    `scripts/tests/test_check_decisions_yaml_hook.py:146-209`. Tests:
+    (a) shim exits 0 on success, (b) `$?` of the preceding command is
+    captured as `exit_code`, (c) `.ll/history.db` row exists with
+    the right `event_name` / `matcher`, (d) shim is DB-absent
+    graceful.
+
+23. **Per-handler `hook_events` capture fixtures** — extend the
+    existing handler-test files with a `TestHookEventsInHandler`
+    class that asserts one `hook_events` row was written around
+    each `handle()` call. Files:
+    `scripts/tests/test_hook_post_tool_use.py`,
+    `test_hook_user_prompt_submit.py`,
+    `test_hook_session_start.py`,
+    `test_pre_compact.py`,
+    `test_pre_compact_handoff.py`,
+    `test_sweep_stale_refs.py`,
+    `test_edit_batch_hook.py`,
+    `test_install_learning_gate.py`,
+    `test_learning_tests_discoverability.py`.
+
+24. **`docs/ARCHITECTURE.md` schema-version bump** — 4 sites: the
+    schema-versions table at `:655-678` (add v21 row for
+    `hook_events`/ENH-2506), and 3 literals at `:723, :748, :811`
+    (bump `v1–v20` → `v1–v21`).
+
+25. **`docs/guides/HISTORY_SESSION_GUIDE.md` 5-site bump** — the
+    schema version literal at `:51`, the schema-version table row at
+    `:53-75`, the `What Gets Recorded` row at `:81-99`, the
+    `analytics.capture.*` entry at `:101-107`, and the `--kind`
+    prose lists at `:170, :180`.
+
+26. **`docs/reference/API.md` 3-site update** — import block at
+    `:6837-6850` (read API), import block at `:7282-7290`
+    (session_store), and the new `hook_event_context` API section
+    at `:7331-7344` (mirror `skill_event_context` precedent).
+
+27. **`docs/reference/CLI.md` and `docs/reference/CONFIGURATION.md`**
+    — append `hook_event` to the `--kind` choice lists at
+    `:2427, :2435`; add `analytics.capture.hooks` row to the
+    config-keys table at `docs/reference/CONFIGURATION.md:507-520`.
+
 ### Decision-Point (Implementation Steps §3)
 
 The bash shim wiring has two viable shapes:
@@ -507,6 +901,7 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-17T00:45:19 - `36e8e2d1-f879-4f12-a41b-ffd3a462d36b.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:16:11 - `a12fca84-5e71-48ec-aff1-8ea85e8c0067.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

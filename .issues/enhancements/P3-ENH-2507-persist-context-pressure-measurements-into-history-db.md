@@ -91,6 +91,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_hooks_integration.py` and `scripts/tests/test_hook_post_tool_use.py` — cover context-monitor threshold state, sampling, session identity, and DB-absent/unwritable graceful degradation.
 - `scripts/tests/test_cli_ctx_stats.py` and `scripts/tests/test_ll_session.py` — cover the new rendering block and `--kind context_pressure` acceptance. `cli/session.py` currently derives both parser `choices` lists from `VALID_KINDS`, so it may not need a source edit once the kind map is updated.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store.py` (additional export surface) — register `context_pressure_event` in `_EXPORT_TABLE_MAP` and `_EXPORT_DEFAULT_TABLES`, and extend `export_history()`'s valid-type documentation. Without this, `ll-session export` would omit the new live table despite promising all non-message tables by default.
+- `scripts/little_loops/cli/session.py` — the parser choices derive from `VALID_KINDS`, but the module-level `recent` kind list and `export --tables` help are static; add `context_pressure` / `context_pressure_event` and bring the already-stale live-event list in sync.
+
 ### Dependent Files (Callers/Importers)
 
 - `hooks/hooks.json` — already invokes `hooks/scripts/context-monitor.sh` for every `PostToolUse` and does not require new registration; preserve that hook's exit-code contract.
@@ -117,12 +121,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_hook_post_tool_use.py:test_writes_row_when_analytics_enabled` / `test_graceful_when_store_unwritable` — Python hook persistence and graceful-degradation patterns.
 - `scripts/tests/test_cli_ctx_stats.py` — existing text/JSON rendering fixtures for the new summary block.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_verify_kinds.py:TestRun.test_clean_state_returns_zero` — the generic local-CI gate already scans every migration table; keep it green and add a targeted assertion only if the implementation needs clearer failure localization.
+- `scripts/tests/test_session_store.py` and `scripts/tests/test_ll_session.py` — add `export_history()` / `ll-session export` coverage proving `context_pressure_event` is available explicitly and included in the default non-message export set.
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — schema-version table, bootstrap range, and history-db hook write-path notes.
 - `docs/reference/API.md` — `session_store.record_context_pressure_event()` and the three `history_reader` pressure APIs.
 - `docs/reference/CLI.md` — `ll-session recent/search --kind context_pressure` and the `ll-ctx-stats` pressure block.
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md` and `docs/guides/SESSION_HANDOFF.md` — context-monitor persistence and threshold semantics, if the feature is user-visible there.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` (additional export surface) — add `context_pressure_event` to the `ll-session export --tables` choices/default-table description as well as documenting `recent --kind context_pressure` and the `ll-ctx-stats` pressure block.
 
 ### Configuration
 
@@ -236,6 +247,15 @@ Decided by `/ll:decide-issue` on 2026-07-16.
 5. Add the `ll-ctx-stats` text and JSON rendering block, then add migration, recorder, FTS, sampling, threshold, session identity, graceful-degradation, reader, CLI, and rendering tests using the patterns listed in the Integration Map.
 6. Update schema/API/CLI and hook guidance documentation, run `ll-verify-kinds`, the focused history/hook/CLI tests, and finally `python -m pytest scripts/tests/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+7. Update `scripts/little_loops/session_store.py`'s `_EXPORT_TABLE_MAP`, `_EXPORT_DEFAULT_TABLES`, and `export_history()` docs so `context_pressure_event` participates in explicit and default non-message exports while remaining outside `_REBUILD_TABLES`.
+8. Update `scripts/little_loops/cli/session.py`'s static kind/export help text; no separate argparse routing is needed because `search` and `recent` already derive choices from `VALID_KINDS`.
+9. Extend `scripts/tests/test_session_store.py` and `scripts/tests/test_ll_session.py` with explicit/default context-pressure export coverage, and run `scripts/tests/test_verify_kinds.py` as the migration-registration gate.
+10. Extend `docs/reference/CLI.md`'s `ll-session export` choices/defaults together with the already-planned `recent --kind context_pressure` and `ll-ctx-stats` documentation.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `context_pressure_events` exists;
@@ -296,6 +316,7 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-17T00:57:51 - `13d87a18-b4f4-4e8c-b34a-5f09c2a1ee33.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:45:16 - `8afbe178-3fe3-4585-9a55-ffd680f48820.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:28:14 - `84cbedd9-ee11-4708-8a40-0cc984c6fcac.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:56 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`

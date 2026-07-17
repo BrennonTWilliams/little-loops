@@ -113,6 +113,58 @@ _Added by `/ll:refine-issue` — verified against the codebase (line numbers cur
   (lines ~115–126). Omitting either makes argparse reject the kind before the runtime
   `_VALID_KINDS` check is reached.
 
+### Additional session_store.py / cli surfaces (Wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store.py:1-38` — module docstring. Add a one-line
+  `record_prompt_opt_event(db,...):   write one row to ``prompt_opt_events`` +
+  search_index (ENH-2498)` entry alongside the sibling writers
+  (`record_commit_event`/`record_test_run_event`) [Agent 2 finding].
+- `scripts/little_loops/session_store.py:61-93` — `__all__` exports. Add
+  `"record_prompt_opt_event"` next to `"record_commit_event"` /
+  `"record_test_run_event"` (note: those two are *not* currently in `__all__` — a
+  pre-existing inconsistency; follow precedent and add only the new symbol unless
+  backfilling siblings is in scope) [Agent 2 finding].
+- `scripts/little_loops/session_store.py:244-255` — `_KINDLESS_TABLES`. **Do NOT**
+  add `prompt_opt_events` here. `ll-verify-kinds` (ENH-2581) asserts every
+  `CREATE TABLE` has a `_KIND_TABLE` entry **or** is explicitly kindless; adding
+  it would silently disable the lint gate for this table [Agent 2 finding].
+- `scripts/little_loops/session_store.py:1468-1472` — `recent()` docstring
+  `Kinds:` line. Append `, prompt_opt` to the existing enumeration
+  (`tool, file, issue, loop, correction, message, skill, cli, commit, test_run,
+  usage`) [Agent 2 finding, issue §8a already calls out].
+- `scripts/little_loops/session_store.py:2818-2835` — `_REBUILD_TABLES` /
+  `_REBUILD_SEARCH_KINDS`. Add `"prompt_opt_events"` to `_REBUILD_TABLES`
+  (alongside `"usage_events"` line 2833) and `"prompt_opt"` to
+  `_REBUILD_SEARCH_KINDS` (alongside `"usage"` line 2835). Per ENH-2581 the
+  rebuild wipe lists are now the canonical registration point for
+  JSONL-derived cache tables [Agent 2 finding, issue research §3 calls this
+  shape out].
+- `scripts/little_loops/session_store.py:2856-2895` — `rebuild()` body. Add
+  `"prompt_opt_events": 0` to the `counts` dict (lines 2857-2866) and add
+  `counts["prompt_opt_events"] = _backfill_prompt_opt(conn, _raw_events_cursor())`
+  to the dispatch (lines 2881-2888, next to the `usage_events` line 2886). Update
+  the `rebuild()` docstring (lines 2844-2854) with a one-line mention [Agent 2
+  finding].
+- `scripts/little_loops/session_store.py:3304-3329` — `_EXPORT_TABLE_MAP` /
+  `_EXPORT_DEFAULT_TABLES`. Optional: add `"prompt_opt_event":
+  ("prompt_opt_events", "ts")` to `_EXPORT_TABLE_MAP` (next to `"usage_event"`
+  line 3315) and `"prompt_opt_event"` to `_EXPORT_DEFAULT_TABLES` (next to
+  `"usage_event"` line 3328). Issue marks this as optional; recommended for
+  parity with `usage_event` [Agent 2 finding].
+- `scripts/little_loops/history_reader.py:1-42` — module docstring. Add a
+  `PromptOptEvent` dataclass entry (around line 21 next to `RunEvent`) and two
+  function entries (`recent_prompt_opt_events`, `prompt_opt_offer_rate`) in the
+  public API listing (around lines 28-29 next to `recent_commit_events` /
+  `recent_test_runs`). `history_reader.py` has no `__all__` — docstring is the
+  sole export surface [Agent 2 finding].
+- `scripts/little_loops/cli/session.py:9-10` — module docstring `recent` kind
+  listing. The choices at lines 103/115 are auto-derived from
+  `list(VALID_KINDS)` (so no argparse edit), but the docstring is a static
+  string and must be updated to include `prompt_opt`. Same precedent: ENH-2461
+  added `usage` to both the docstring and `_VALID_KINDS` [Agent 2 finding].
+
 ### Bypass-reason enum — full branch inventory
 
 The issue's example enum (`prefix | slash | short | disabled`) is a subset. `handle()`
@@ -159,12 +211,93 @@ or write it with `mode=NULL` — document the choice in the AC.
   graceful-degradation test).
 - `scripts/tests/test_hook_user_prompt_submit.py` — offered/bypass wiring per branch.
 
+### Additional tests to extend (Wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The following existing tests do not currently cover `prompt_opt_events` directly
+but will break or silently regress if the migration lands without coordinated
+updates. They are NOT new test files — they are extensions to existing ones.
+
+- `scripts/tests/test_session_store.py:1372,1817,1932,1984,2080,3658,3699` —
+  `TestSchemaV5/V9/V10/V11/V12/V13/V14::test_schema_version_is_*` — each
+  asserts `assert SCHEMA_VERSION == 20` and the mated line asserts
+  `int(row[0]) == 20`. Bump all literals to `21` after the migration lands [Agent
+  3 finding, paired meta-row assertions at lines 1818, 1933, 1985, 2081, 3659,
+  3700 must be bumped in lockstep].
+- `scripts/tests/test_assistant_messages.py:88` —
+  `test_schema_version_is_12::test_schema_version` — also asserts
+  `assert SCHEMA_VERSION == 20`. Bump to `21` [Agent 3 finding].
+- `scripts/tests/test_session_store.py:3409` —
+  `TestValidKindsCentralization::test_every_valid_kind_has_a_kind_table_entry` —
+  asserts `set(VALID_KINDS) == set(_KIND_TABLE.keys())`. Fails until
+  `"prompt_opt"` is added to both, **and** `"prompt_opt": "prompt_opt_events"`
+  to `_KIND_TABLE`. Will fail loudly otherwise [Agent 3 finding].
+- `scripts/tests/test_verify_kinds.py:11,19` —
+  `test_finds_known_tables` / `test_clean_state_returns_zero` — must extend
+  assertions to include `prompt_opt_events`. The verifier auto-discovers tables
+  from `_MIGRATIONS`, so the only test-side change is the assertion list
+  [Agent 3 finding].
+- `scripts/tests/test_history_reader.py:1530-1545` —
+  `test_readers_return_empty_on_missing_db` — extend the import block
+  (lines 1531-1537) and the assertion block (lines 1541-1544) to include
+  `recent_prompt_opt_events` and `prompt_opt_offer_rate` [Agent 3 finding,
+  issue §Tests partial].
+- `scripts/tests/test_hooks_integration.py:1215,1275` — existing
+  `prompt_optimization: enabled=False/True` fixtures. Extend to assert the
+  resulting `prompt_opt_events` row count matches the bypass matrix [Agent 1
+  finding].
+- `scripts/tests/test_hook_user_prompt_submit.py:328,364,394,409` — the
+  existing render/short/disabled/bypass tests should each be extended to
+  assert the corresponding `bypass_reason` (or `offered=True` for the render
+  path at line 328) row exists in `prompt_opt_events`. Pattern: mirror the
+  existing `correction`-row assertions [Agent 3 finding].
+
 ### Documentation
 
 - `docs/ARCHITECTURE.md` — schema-versions table needs a v19 `prompt_opt_events` row.
 - `docs/reference/API.md` — `session_store` (`record_prompt_opt_event`, `_backfill_prompt_opt`)
   and `history_reader` (`recent_prompt_opt_events`, `prompt_opt_offer_rate`) entries.
 - `docs/reference/CLI.md` — `ll-session recent --kind prompt_opt`.
+
+### Additional doc surfaces (Wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/ARCHITECTURE.md:659-678` — schema-versions table. Add a v21 row
+  (or whatever next-available slot — read live `SCHEMA_VERSION` before
+  editing) for `prompt_opt_events`, listing the columns `(ts, session_id,
+  mode, offered, bypass_reason, raw_len, optimized_len, optimized_text,
+  accepted)`, the live-write path (`user_prompt_submit.py::handle()`),
+  the backfill pass (`_backfill_prompt_opt` via `rebuild()`), and the
+  CLI/reader surfaces. Issue already names `docs/ARCHITECTURE.md` but not
+  this specific line range [Agent 2 finding].
+- `docs/reference/API.md:7280-7294` — `little_loops.session_store` Python
+  import block. Add `record_prompt_opt_event` next to `record_commit_event`
+  / `record_test_run_event`. Issue already names `docs/reference/API.md`
+  but not this specific block [Agent 2 finding].
+- `docs/reference/API.md:6836-6850` — `little_loops.history_reader`
+  Python import block. Add `recent_prompt_opt_events`,
+  `prompt_opt_offer_rate`, and a `PromptOptEvent` dataclass reference
+  next to `CommitEvent` / `RunEvent` (lines 6847-6848) [Agent 2 finding].
+- `docs/reference/CLI.md:2427,2435` — `--kind {…}` brace-listings. The
+  table at line 2427 lists `tool,file,issue,loop,correction,message,skill,
+  cli,commit,test_run`; the one at 2435 lists the same plus `snapshot`.
+  Both omit `usage` (ENH-2461 left them stale). Update both to include
+  `prompt_opt` (or run a sweep to add `usage` and `prompt_opt`
+  together). The line 2435 description already says these are "sourced
+  from `VALID_KINDS`, the single source of truth" — so the brace-lists
+  are documentation-only and lag the runtime [Agent 2 finding].
+- `docs/guides/HISTORY_SESSION_GUIDE.md:85-99` — `*.db` tables table.
+  Add a `prompt_opt_events` row between `usage_events` (line 97) and
+  the `summary_nodes` / `summary_spans` rows (line 98). Describe columns
+  `(ts, session_id, mode, offered, bypass_reason, raw_len,
+  optimized_len, optimized_text, accepted)` and the ENH-2498 source
+  [Agent 2 finding].
+- `docs/guides/HISTORY_SESSION_GUIDE.md:170` — search `--kind` examples
+  comment. Currently lists `tool, file, issue, loop, correction, message,
+  skill, cli, commit, test_run, usage`. Add `prompt_opt` (and `usage`
+  while at it) [Agent 2 finding].
 
 ### Configuration
 
@@ -173,6 +306,32 @@ or write it with `mode=NULL` — document the choice in the AC.
   this issue (behavior unchanged). No schema change unless a per-feature
   `analytics.capture.prompt_opt` gate is added (out of scope — the top-level
   `analytics.enabled` gate is the lighter precedent the siblings follow).
+
+### Intentionally skipped config / schema surfaces (Wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The following per-feature `analytics.capture.*` surfaces exist and could host
+a dedicated `prompt_opt` / `prompt_optimization` gate, but adding them would
+expand `AnalyticsCaptureConfig` + `config-schema.json` + init admission
+list. Per the issue's "Configuration" section, the lighter precedent is the
+top-level `analytics.enabled` gate. Flagged here for completeness — do not
+edit unless the implementation deliberately expands scope:
+
+- `scripts/little_loops/config/features.py:528-558` — `AnalyticsCaptureConfig`
+  dataclass. Mirror the `config=` stub pattern used by
+  `record_test_run_event()` if a per-feature gate is desired [Agent 2 finding].
+- `scripts/little_loops/init/core.py:17` — `_ANALYTICS_CAPTURE_KEYS` admission
+  list (currently `("skills", "cli_commands", "corrections", "file_events",
+  "usage_events")`) [Agent 2 finding].
+- `scripts/little_loops/cli/doctor.py:25-44` — `_print_capture_section`
+  runtime consumer of the per-feature capture field names [Agent 2 finding].
+- `scripts/little_loops/config-schema.json:1608-1680` — `analytics.capture.*`
+  schema mirror [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md:519` — `analytics.capture.usage_events`
+  row precedent [Agent 2 finding].
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:433-434` — config-by-hook table
+  [Agent 2 finding].
 
 ### Codebase Research Findings
 
@@ -361,6 +520,88 @@ _Added by `/ll:refine-issue` — concrete sequencing corrections:_
    but do not add a second argparse choices list—the choices already derive from
    `VALID_KINDS`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation alongside the existing 1–9 steps above._
+
+10. **SCHEMA_VERSION literal bump.** Update the seven `TestSchemaV*` tests in
+    `scripts/tests/test_session_store.py` (lines 1372, 1817-1818, 1932-1933,
+    1984-1985, 2080-2081, 3658-3659, 3699-3700) and the
+    `test_schema_version` assertion in `scripts/tests/test_assistant_messages.py:88`
+    from `20` to `21`. [Agent 3 finding — without this, the meta-row
+    assertions break once `SCHEMA_VERSION` advances.]
+11. **Schema registration invariants.**
+    - Add `"prompt_opt"` to `_VALID_KINDS` (line 209) and
+      `"prompt_opt": "prompt_opt_events"` to `_KIND_TABLE` (line 215). The
+      `TestValidKindsCentralization` test (line 3409) will fail loudly if
+      these two are not landed together.
+    - Add `"prompt_opt_events"` to `_REBUILD_TABLES` (line 2824) and
+      `"prompt_opt"` to `_REBUILD_SEARCH_KINDS` (line 2835). Update
+      `rebuild()` `counts` dict and dispatch (lines 2856-2895).
+    - Verify `_KINDLESS_TABLES` (line 244) does **NOT** contain
+      `prompt_opt_events` — `ll-verify-kinds` enforces that every
+      `CREATE TABLE` is either registered in `_KIND_TABLE` or explicitly
+      kindless, and adding it here would silently disable the lint gate.
+12. **Docstring + `__all__` updates.**
+    - `scripts/little_loops/session_store.py:1-38` — module docstring.
+    - `scripts/little_loops/session_store.py:61-93` — `__all__` (add
+      `"record_prompt_opt_event"`).
+    - `scripts/little_loops/session_store.py:1468-1472` — `recent()`
+      docstring `Kinds:` line.
+    - `scripts/little_loops/history_reader.py:1-42` — module docstring
+      (add `PromptOptEvent` dataclass entry + two function entries).
+    - `scripts/little_loops/cli/session.py:9-10` — module docstring
+      listing.
+13. **Optional export registration.** Add `"prompt_opt_event":
+    ("prompt_opt_events", "ts")` to `_EXPORT_TABLE_MAP` (line 3304) and
+    `"prompt_opt_event"` to `_EXPORT_DEFAULT_TABLES` (line 3329) for parity
+    with `usage_event`. Issue marks as optional; recommended.
+14. **History guide doc.** Add a `prompt_opt_events` row to the `*.db`
+    tables table in `docs/guides/HISTORY_SESSION_GUIDE.md:85-99`, and
+    update the `--kind` examples comment at line 170 to include
+    `prompt_opt` (and `usage` while at it).
+15. **API reference import blocks.** Extend `docs/reference/API.md:7280-7294`
+    (session_store) and `:6836-6850` (history_reader) Python import blocks.
+16. **CLI reference `--kind` brace-lists.** Update the `--kind {…}`
+    brace-listings at `docs/reference/CLI.md:2427` and `:2435`.
+17. **Architecture schema-versions table.** Add a v21 row to
+    `docs/ARCHITECTURE.md:659-678` for `prompt_opt_events`.
+18. **Missing-DB graceful degradation.** Extend
+    `scripts/tests/test_history_reader.py:1530-1545`
+    (`test_readers_return_empty_on_missing_db`) to import and assert
+    `recent_prompt_opt_events` and `prompt_opt_offer_rate`.
+19. **`ll-verify-kinds` test extension.** Update
+    `scripts/tests/test_verify_kinds.py:11,19`
+    (`test_finds_known_tables`, `test_clean_state_returns_zero`) to include
+    `prompt_opt_events` in the known-tables assertion.
+20. **Hook integration test extensions.** Extend the existing
+    `scripts/tests/test_hooks_integration.py:1215,1275` fixtures to assert
+    `prompt_opt_events` row counts per bypass branch.
+21. **Hook handler test extensions.** Extend the render / short / disabled
+    / bypass tests in `scripts/tests/test_hook_user_prompt_submit.py`
+    (lines 328, 364, 394, 409) to assert the corresponding `bypass_reason`
+    or `offered=True` row.
+
+### Verified-safe surfaces (Wiring pass)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+The following surfaces were verified to NOT need changes despite a
+hypothesis that they might:
+
+- `scripts/little_loops/hooks/__init__.py:50-54` — `_USAGE` banner. ENH-2498
+  adds a *table*, not a new hook *intent*. No edit needed.
+- `scripts/little_loops/observability/schema.py` /
+  `scripts/little_loops/cli/verify_des_audit.py` — DES variant registry.
+  Confirmed no DES variant is required for `record_prompt_opt_event` or
+  `_backfill_prompt_opt`; the F5 adoption gate walks `event_bus.emit(...)`
+  sites only and these are direct DB writers, mirroring the
+  `record_correction`/`record_skill_event`/`record_commit_event`/
+  `record_test_run_event` precedent which all lack DES variants.
+- `CHANGELOG.md` — defer per project convention `feedback_changelog_no_unreleased.md`;
+  the entry lands during release prep, not at implementation time.
+
 ## Sources
 
 - `scripts/little_loops/hooks/user_prompt_submit.py` — the producer (renders
@@ -426,6 +667,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-17T00:08:22 - `1a6a415c-07aa-41f7-87c2-f7aafafb29ad.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:47:11 - `fd81b1d4-3269-4fb1-aa37-7a65417fe3e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
 - `/ll:refine-issue` - 2026-07-07T01:29:53 - `396f134c-5bb3-4cf3-988f-e98b42e96ee1.jsonl`

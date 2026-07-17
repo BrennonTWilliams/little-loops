@@ -6,8 +6,14 @@ priority: P3
 type: ENH
 discovered_by: capture-issue
 discovered_date: 2026-07-16
-captured_at: 2026-07-16T00:00:00Z
+captured_at: 2026-07-16 00:00:00+00:00
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 19
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # ENH-2661: Add learning state badge glyph to _ACTION_TYPE_BADGES
@@ -173,6 +179,35 @@ _Added by `/ll:refine-issue` — additional integration points and the kind-colo
 
 - This is NOT configuration-free if user override parity with `glyphs.parallel` is desired. To match the established ENH-904 / FEAT-1225 precedent, add `learning: str | None = None` to `LoopsGlyphsConfig` (`features.py:562`), an entry in `to_dict()` (line 586), a `learning` property in `config-schema.json`, a row in `docs/reference/CONFIGURATION.md:859–865`, and corresponding tests in `test_config.py` / `test_config_schema.py`. Skipping this leaves the new badge hard-coded — acceptable for an XS-effort change but inconsistent with the glyphs override surface.
 
+### Wiring Pass Findings
+
+_Wiring pass added by `/ll:wire-issue` (3-agent trace + direct grep confirmation). All items below are net-new relative to the refine pass above._
+
+**Path correction (blocking factual error):**
+- The config schema is at **`scripts/little_loops/config-schema.json`**, NOT bare `config-schema.json` at the repo root — that path does not exist (`find` confirms only `scripts/little_loops/config-schema.json`). The CLAUDE.md "Config schema" pointer and all references in this issue (Files to Modify, step 9) should use the fully-qualified path. The `glyphs` block is at `scripts/little_loops/config-schema.json:941` with `additionalProperties: false` (verified) — so a `learning` property MUST be added there or the schema rejects `loops.glyphs.learning`.
+
+**Test that WILL BREAK (not previously flagged by line):**
+- `scripts/tests/test_config.py:2513–2527` (`TestLoopsGlyphsConfig.test_to_dict_returns_all_keys`) — asserts `set(d.keys()) == {"prompt", "slash_command", "shell", "mcp_tool", "sub_loop", "route", "parallel"}` (a 7-key **set-equality**, not a subset). Adding `"learning"` to `LoopsGlyphsConfig.to_dict()` breaks this test unless the set literal is updated to include `"learning"`. The refine pass references `TestLoopsGlyphsConfig` (line 2483) generically but never called out this specific breaking assertion — FEAT-1227 (the parallel-glyph precedent) explicitly listed the analogous set-literal as a "will break" line. [Agent 2 + Agent 3 finding — both converged]
+
+**Test class missing from the map entirely:**
+- `scripts/tests/test_config.py:2540` (`TestBRConfigLoopsGlyphs`) — separate from `TestLoopsGlyphsConfig` (2483), this class exercises the full-`BRConfig` override path: `test_loops_glyphs_defaults_when_absent` (2543) and `test_loops_glyphs_override_from_config` (2550). Extend both to cover `learning` (default `assert config.loops.glyphs.learning == "⚗"`; add a `learning` key to the override sample). The refine pass listed only the sibling `TestLoopsGlyphsConfig`; this class was omitted. [Agent 3 finding]
+
+**Render-level (integration) color test missing:**
+- `scripts/tests/test_cli_loop_layout.py:262` (`TestDiagramKindColors`) — the issue lists the *unit*-level `TestBoxKindColor` but not this *integration*-level class that asserts kind colors appear in the rendered `_render_fsm_diagram()` output. Add a `test_learning_state_color_in_diagram` mirroring the shell-kind assertion (~line 304) so the ⚗ kind-color is validated end-to-end, not just in the `_box_kind_color()` unit. [Agent 3 finding]
+
+**Correctness sharpening on an existing test item:**
+- The issue's item to "extend the `_ACTION_TYPE_BADGES.items()` loop in `test_get_state_badge_action_types` (`test_ll_loop_display.py:2986`)" is INSUFFICIENT on its own under the selected Option A. That loop constructs `StateConfig(action_type=<key>)`, but Option A dispatches learning via `state.type == "learning"`, not `state.action_type`. So the iteration will not exercise the learning branch. A **dedicated** `test_get_state_badge_learning` constructing `StateConfig(type="learning")` (modeled after `test_get_state_badge_sub_loop`, ~line 2997) is REQUIRED, not merely "consider"-optional as line 133 currently phrases it. [Agent 3 finding — resolves the type-vs-action_type dispatch gap]
+
+**De-risked (open question in step 12 now answered):**
+- No snapshot fixture uses a `type: learning` state — `scripts/tests/__snapshots__/test_snapshot_loop_layout.ambr` has 0 matches for `learning`/`⚗`, and the four snapshot tests build FSMs inline (no `type: learning`). The existing `scripts/tests/fixtures/fsm/learning-state-loop.yaml` is consumed only by `test_learning_state.py` (executor behavior), not by any layout snapshot. **Step 12's "regenerate if fixtures use `type: learning`" resolves to: no regeneration needed.** An opportunistic new snapshot test using that fixture is available if desired but not required. [Agent 2 + Agent 3 finding]
+
+**Verified flows-through-unchanged (checked, no edit needed — do not chase these):**
+- `docs/reference/API.md:536` documents `glyphs: LoopsGlyphsConfig` as an opaque field; it does NOT enumerate glyph keys (0 matches for `_ACTION_TYPE_KIND_COLORS` or per-key glyphs), so no doc edit there.
+- `scripts/little_loops/config/core.py:653` (`BRConfig.to_dict()`) reads `self._loops.glyphs.to_dict()` wholesale — the new key flows through once `LoopsGlyphsConfig.to_dict()` includes it.
+- `scripts/little_loops/config/__init__.py:60,100` re-exports `LoopsGlyphsConfig` (class-level `__all__`) — transparent, no per-field change.
+- `scripts/little_loops/fsm/executor.py:1169,1218` and `fsm/validation.py:710` read `state.type == "learning"` but assert no badge/color strings — no coupling.
+- No legend/help-text renderer iterates `_ACTION_TYPE_BADGES.items()` for user output; no `ll-verify-*` script enumerates glyph fields.
+
 ## Implementation Steps
 
 1. Add `"learning": "⚗"` to `_ACTION_TYPE_BADGES` in `layout.py`.
@@ -194,6 +229,17 @@ _Added by `/ll:refine-issue` — concrete steps for the kind-color mirror, confi
 12. **Visual / snapshot verification** — run `python -m pytest scripts/tests/test_snapshot_loop_layout.py` to confirm no existing snapshots regress. If `test_snapshot_loop_layout.py` fixtures use `type: learning`, regenerate via `pytest --snapshot-update`.
 13. **End-to-end verification on `ready-to-implement-gate`** — run `ll-loop show scripts/little_loops/loops/ready-to-implement-gate.yaml` and confirm the `prove:` state renders with ⚗ in the top border (matches the integration in `loops/ready-to-implement-gate.yaml`).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+14. **Use the correct schema path** — all edits to the JSON schema target `scripts/little_loops/config-schema.json` (line 941 `glyphs` block, `additionalProperties: false`), NOT a bare root-level `config-schema.json` (which does not exist).
+15. **Update the breaking set-literal** — in `scripts/tests/test_config.py:2513–2527` (`test_to_dict_returns_all_keys`), add `"learning"` to the `set(d.keys()) == {...}` assertion. This test WILL FAIL otherwise (set-equality, not subset).
+16. **Extend `TestBRConfigLoopsGlyphs`** (`test_config.py:2540`) — add `learning` coverage to `test_loops_glyphs_defaults_when_absent` (2543, assert default `"⚗"`) and `test_loops_glyphs_override_from_config` (2550, add a `learning` override key).
+17. **Add a dedicated type-dispatch badge test** — in `test_ll_loop_display.py`, write `test_get_state_badge_learning` constructing `StateConfig(type="learning")` and asserting the ⚗ glyph (model after `test_get_state_badge_sub_loop`, ~line 2997). The existing `_ACTION_TYPE_BADGES.items()` loop (step 4) dispatches by `action_type` and will NOT exercise the `state.type` branch — this dedicated test is required, not optional.
+18. **Add a render-level kind-color test** — in `test_cli_loop_layout.py:262` (`TestDiagramKindColors`), add `test_learning_state_color_in_diagram` asserting the learning kind-color appears in `_render_fsm_diagram()` output (mirror the shell-kind assertion ~line 304), complementing the unit-level `TestBoxKindColor` test.
+19. **Skip snapshot regeneration** — wiring confirmed no snapshot fixture uses `type: learning` (0 matches in `test_snapshot_loop_layout.ambr`); step 12's conditional regeneration is a no-op. Optionally add a new snapshot test using `scripts/tests/fixtures/fsm/learning-state-loop.yaml`.
+
 ## Impact
 
 - **Priority**: P3. Visual polish; doesn't affect correctness or correctness-related debugging. Doesn't block any other feature.
@@ -202,6 +248,8 @@ _Added by `/ll:refine-issue` — concrete steps for the kind-color mirror, confi
 - **Backwards compatibility**: Fully backwards compatible. Existing diagrams that don't use learning states are byte-identical; diagrams that *do* use learning states currently display ❯_ and will switch to ⚗ — a visible-but-intentional change for the states that warranted their own kind in the first place.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-16T23:40:00 - `7e729572-5a2d-4041-9bd6-09fdc31243af.jsonl`
+- `/ll:wire-issue` - 2026-07-16T23:28:31 - `662c2d02-abef-4d10-9ba7-e1ae1ed1edc9.jsonl`
 - `/ll:decide-issue` - 2026-07-16T23:12:42 - `2b0ca1df-7c62-41b3-bca6-f14f3a99fe12.jsonl`
 - `/ll:refine-issue` - 2026-07-16T23:09:37 - `6d26c8e2-beb5-4509-b48c-5e42b98eb8bd.jsonl`
 - `/ll:capture-issue` - 2026-07-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/49310899-7033-4907-9485-79b5c5414ca0.jsonl`

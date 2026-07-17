@@ -378,6 +378,38 @@ _Added by `/ll:refine-issue` — verified against current `main`._
   table for `search` / `recent`.
 - `docs/reference/CLI.md:2509-2514` — add `ll-session recent --kind verdict`
   example.
+- `scripts/little_loops/session_store.py:30-40, 80-93` — module docstring
+  Public API list (lines 30-40) and `__all__` (lines 80-93) must add
+  `record_verdict_event` and `VerdictEvent` for `from session_store import *`
+  discoverability and module-docstring parity with the existing producer
+  entries (`record_commit_event`, `record_test_run_event`) [Agent 1 finding].
+- `scripts/little_loops/cli/session.py:8-10` — module docstring `recent` kind
+  list (`commit, test_run`) needs `verdict` added [Agent 2 finding].
+- `scripts/little_loops/cli/session.py:228-231` — `export --tables` help text
+  manually lists table types and currently stops at `message_event`; even
+  existing `commit_event`/`test_run_event`/`usage_event` are missing from
+  this help text — gap worth closing at the same time. Add `verdict_event`
+  and the three missing entries [Agent 2 finding].
+- `scripts/little_loops/cli/session.py:3347-3355` — `export_history()`
+  docstring repeats valid export types and default behavior; add
+  `verdict_event` and the missing `commit_event`/`test_run_event`/`usage_event`
+  entries for parity with the implementation [Agent 2 finding].
+- `scripts/little_loops/observability/schema.py:494-505` — add
+  `VerdictEventVariant(DESVariant)` with
+  `type: Literal["verdict_event"] = "verdict_event"`, mirroring
+  `CommitEventVariant` (line 494) / `TestRunEventVariant` (line 501). Required
+  for the `ll-verify-des-audit` gate (CLAUDE.md § CLI Tools) to accept the
+  new `record_verdict_event()` emit site [Agent 1, Agent 2 finding].
+- `scripts/little_loops/session_store.py:2824, 2835, 2846-2872, 2853` —
+  confirm `verdict_events` follows the **live-write-only** convention:
+  NOT added to `_REBUILD_TABLES` (line 2824) or `_REBUILD_SEARCH_KINDS`
+  (line 2835). The existing exclusion comment at line 2853 ("Issue/loop/
+  commit/cli/file/test_run tables are outside `raw_events`'s scope")
+  establishes the precedent; `verdict` joins this set [Agent 1 finding].
+- `CHANGELOG.md` (current release section, line 180-188 precedent) — add a
+  new entry describing the schema + persistence change with issue ID
+  reference, parallel to ENH-2458/ENH-2459 history-db entries [Agent 1,
+  Agent 2 finding].
 
 ### Dependent Files (Callers / Importers)
 
@@ -397,6 +429,48 @@ _Added by `/ll:refine-issue` — verified against current `main`._
   `CREATE TABLE` in `_MIGRATIONS` is registered in `_KIND_TABLE` (or
   explicitly listed in `_KINDLESS_TABLES`). The new `verdict_events`
   table will be checked here (ENH-2581).
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store.py:890-905` — `_index()` shared FTS5
+  writer consumed by every producer (`write_file_event`,
+  `record_correction`, `record_skill_event`, `record_issue_snapshot`,
+  `record_commit_event`, `record_test_run_event`). The new
+  `record_verdict_event()` must call this helper with `kind="verdict"`
+  rather than bypass it [Agent 1 finding].
+- `scripts/little_loops/session_store.py:1218-1275` — `_backfill_commit_events`
+  (line 1275) is the historical migration pathway for raw-event-rebuildable
+  tables. `verdict_events` is **live-write-only** (no `_backfill_verdict_events`
+  needed) — it joins the exclusion comment at line 2853 ("commit/cli/file/
+  test_run tables are outside `raw_events`'s scope") [Agent 1 finding].
+- `scripts/little_loops/session_store.py:1473-1474` — `recent()` rejects
+  unknown kinds against `VALID_KINDS` and reports the sorted expected list;
+  adding `verdict` to `VALID_KINDS` automatically extends this
+  rejection-error contract. No code change required at this site — the
+  error message lists `VALID_KINDS` dynamically [Agent 2 finding].
+- `scripts/little_loops/history_reader.py:353-391` — `search()` calls
+  `fts_phrase(query)` and filters `search_index WHERE kind = ?`. New
+  `kind="verdict"` rows surface automatically via the `_index()` FTS write;
+  no code change needed in `search()` itself [Agent 1 finding].
+- `scripts/little_loops/cli/session.py:616-618` — `summarize_skills` lazy
+  import for the `stats` subcommand is a parallel anchor for any future
+  `verdict-stats` slot (mirror mirror) [Agent 1 finding].
+- `scripts/little_loops/init/core.py:17, 140` — `_ANALYTICS_CAPTURE_KEYS`
+  (line 17) and the generated project config defaults (line 140). Only
+  relevant if an `analytics.capture.verdict_events` gate is added — the
+  precedent (`record_test_run_event` docstring at session_store.py:1377)
+  treats the gate as accepted-but-unused; recommend skipping per the
+  issue's "optional parity" note [Agent 2 finding].
+- `scripts/little_loops/observability/audit.py:75-189` — `_ast_extract_event_types()`
+  and the audit functions enumerate registered emitted event types for
+  `ll-verify-des-audit`. The new `record_verdict_event()` call site in
+  `cli/action.py:67-100` is auto-discovered by AST extraction; the only
+  required change is registering `VerdictEventVariant` in
+  `observability/schema.py` (see Files to Modify) [Agent 2 finding].
+- `scripts/little_loops/cli/verify_des_audit.py:66-106` — renders uncovered
+  event types from the observability audit and wraps the CLI with
+  `cli_event_context`; the new variant must be registered in
+  `observability/schema.py` for this gate to pass cleanly [Agent 2 finding].
 
 ### Similar Patterns (Most Relevant Siblings)
 
@@ -456,12 +530,232 @@ _Added by `/ll:refine-issue` — verified against current `main`._
 - `scripts/tests/test_ll_session.py` — `test_search_kind_commit_filters`
   (reference for `test_search_kind_verdict_filters`).
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_session_store.py:3409-3418` —
+  `TestValidKindsCentralization` (`test_every_valid_kind_has_a_kind_table_entry`)
+  asserts `set(VALID_KINDS) == set(_KIND_TABLE.keys())`. The new `verdict`
+  kind must satisfy this invariant, OR a new sub-test must be added for
+  it. Adjacent `test_recent_snapshot_kind_does_not_raise` (lines 3415-3418)
+  is the mirror for `test_recent_verdict_kind_does_not_raise` [Agent 1,
+  Agent 3 finding].
+- `scripts/tests/test_session_store.py:1950, 2044, 2109, 3730, 3894-3902` —
+  five `_MIGRATIONS[:N]` slicing tests iterate specific slice indices
+  (`[:8]`/`[:9]`/`[:11]`/`[:13]`); new migration tests must extend the
+  slice indices when the v21 block lands [Agent 1 finding].
+- `scripts/tests/test_session_store.py:3688-3888` — `TestSchemaV14` is the
+  template for new `TestSchemaV<N>` upgrade tests (mirrors the
+  `_bootstrap_schema_at(db, N)` pattern at line 3891-3909) [Agent 3 finding].
+- `scripts/tests/test_session_store.py:3969-4034` — `TestSkillEventContext`
+  is the pattern for the context-manager that `record_verdict_event()`
+  may mirror (best-effort write inside a context, never raises) [Agent 3
+  finding].
+- `scripts/tests/test_session_store.py:417-424` —
+  `test_search_hyphenated_id_matches` (BUG-2651 fix) is the closest FTS
+  pattern for the new `verdict_events` FTS test [Agent 3 finding].
+- `scripts/tests/test_history_reader.py:1415-1437` —
+  `test_summarize_skills_success_rate` is the closest mirror for the
+  new `verdict_pass_rate()` aggregator (returns `success_rate` field)
+  [Agent 3 finding].
+- `scripts/tests/test_history_reader.py:274-281, 283-289` —
+  `test_search_hyphenated_id_matches` / `test_search_hyphenated_id_unfiltered`
+  (BUG-2651 from the history-reader side) [Agent 3 finding].
+- `scripts/tests/test_history_reader.py:1548` — `TestUsageEventReaders`
+  follows the same "filters / newest-first / missing-db" structure that
+  `recent_verdict_events` should mirror [Agent 3 finding].
+- `scripts/tests/test_ll_session.py:29` — `test_recent_subcommand` accepts
+  `--kind <X>` for new kinds; the new `verdict` kind registration must be
+  accepted here [Agent 3 finding].
+- `scripts/tests/test_ll_session.py:88` — `test_recent_subcommand_test_run_accepted`
+  is the direct mirror for `test_recent_subcommand_verdict_accepted` [Agent 3
+  finding].
+- `scripts/tests/test_ll_session.py:248` — `test_recent_message_kind` is
+  the mirror for the integration of `recent --kind verdict` [Agent 3 finding].
+- `scripts/tests/test_ll_session.py:260, 267` — `test_search_kind_arg_accepted` /
+  `test_search_kind_rejects_invalid` — inverse mirror (new `verdict` kind
+  must NOT be rejected) [Agent 3 finding].
+- `scripts/tests/test_ll_session.py:1099-1136` — `test_recent_kind_usage_outputs_row`
+  mirror for `test_recent_kind_verdict_outputs_row` [Agent 3 finding].
+- `scripts/tests/test_ll_session.py:1043-1059, 1061-1071` —
+  `test_skill_stats_outputs_rollup` / `test_skill_stats_json` are mirrors
+  for any optional `verdict-stats` subcommand [Agent 3 finding].
+- `scripts/tests/test_action.py:199-303, 311-357` — `TestCmdInvokeStreamJson`
+  and `TestCmdInvokeJsonMode` assert `cmd_invoke` event emission / JSON-mode
+  contract (7+ tests at lines 212, 233, 249, 262, 273, 285, 298, 323, 340,
+  353). The new `record_verdict_event()` call inside `cmd_invoke()` must
+  NOT add new event lines or change `exit_code` propagation. Verify with
+  these tests passing unchanged [Agent 3 finding].
+- `scripts/tests/test_action.py` (NEW) — `TestCmdInvokeRecordsVerdictEvent`
+  and `TestCmdInvokeRecordsNothingOnFailure` — **critical gap**: no
+  existing tests assert that a `verdict_events` row is written by
+  `cmd_invoke()`. The integration of `record_verdict_event()` into
+  `cmd_invoke()` (per the plan) is currently uncovered. Mirror the
+  `TestSessionFinishWritesRow` pattern at test_pytest_history_plugin.py:116-148
+  [Agent 1, Agent 3 finding].
+- `scripts/tests/test_pytest_history_plugin.py:32-81, 84-113, 116-148, 151-175` —
+  `TestCaptureGating` / `TestOutcomeCounting` / `TestSessionFinishWritesRow` /
+  `TestEnvLabel` — pytest-history-plugin pattern references for the new
+  best-effort-writer tests [Agent 3 finding].
+- `scripts/tests/test_confidence_check_skill.py:12-39, 42-84` —
+  `TestConfidenceCheckPhase4CLI` / `TestConfidenceCheckSkillWriteBack` —
+  confidence-check integration test patterns (for end-to-end verdict
+  recording verification) [Agent 3 finding].
+- `scripts/tests/test_ready_issue_lint.py:94-119` —
+  `TestReadyIssueHistoryContextInjection` — ready-issue integration test
+  pattern [Agent 3 finding].
+- **CRITICAL GAP** — `scripts/tests/test_session_store.py` and
+  `scripts/tests/test_ll_session.py` — no tests exercise
+  `session_store.export_history()` or `ll-session export --tables` directly.
+  The new `_EXPORT_TABLE_MAP` entry for `verdict_event` will be uncovered
+  unless a new test is added. Recommend mirroring
+  `TestHistoryExportStdout` at test_cli_history.py:195-234 (different
+  command but analogous pattern) [Agent 1, Agent 3 finding].
+
 ### Configuration
 
 - `scripts/little_loops/config-schema.json:1577-1611` — `analytics.capture`
   block (`additionalProperties: false`); adding a `verdict_events: true`
   toggle is **optional** parity. ENH-2459 `test_run_events` does not gate
   on this — precedent for not gating.
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/init/core.py:17, 140` — `_ANALYTICS_CAPTURE_KEYS`
+  (line 17) and the generated project config defaults (line 140). Only
+  relevant if an `analytics.capture.verdict_events` gate is added —
+  recommend skipping per the issue's "optional parity" note [Agent 2 finding].
+- `scripts/little_loops/observability/schema.py:494-505` — DES variant
+  registration is required for the `ll-verify-des-audit` gate; add
+  `VerdictEventVariant(DESVariant)` (see Files to Modify) [Agent 1 finding].
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/guides/HISTORY_SESSION_GUIDE.md:40-41` — `## Quick Queries` lists
+  `ll-session recent --kind commit` and `--kind test_run`; add the
+  verdict query alongside these examples [Agent 2 finding].
+- `docs/guides/HISTORY_SESSION_GUIDE.md:71` — `## Schema Evolution`
+  migration table lists v17 `commit_events`; the new verdict migration
+  should be represented here [Agent 2 finding].
+- `docs/guides/HISTORY_SESSION_GUIDE.md:95-96` — `## Event Tables` catalog
+  documents `commit_events` and `test_run_events`; add `verdict_events`
+  with its queryable kind and columns [Agent 2 finding].
+- `docs/guides/HISTORY_SESSION_GUIDE.md:340` — `## Query Examples`
+  contains a `recent --kind test_run` command example; add the
+  corresponding verdict query [Agent 2 finding].
+- `docs/observability/des-audit.md:76` — `## Registered Event Variants`
+  table contains `TestRunEventVariant` / `test_run_event`; add the
+  verdict_event row (gated by `ll-verify-des-audit`) [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md:519` — `## analytics.capture`
+  documents `analytics.capture.usage_events`; verify whether the verdict
+  writer's gate (if configurable) belongs in this section [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md:534-546` — `#### analytics.retention`
+  retention documentation explicitly names raw-event tables (`issue_events`,
+  `user_corrections`, etc.) — verify `verdict_events` is intentionally
+  included in the permanent-retention set (matching `user_corrections` /
+  `issue_events`) [Agent 2 finding].
+- `docs/reference/COMMANDS.md:179-190` — `## format-issue / verify-issues`
+  documents `--check` verifier modes and their emitted verdicts;
+  cross-reference the persistence/readback behavior [Agent 2 finding].
+- `docs/reference/COMMANDS.md:342-361` — `## go-no-go` documents GO/NO-GO
+  verdict output; cross-reference history persistence/readback behavior
+  [Agent 2 finding].
+- `docs/reference/COMMANDS.md:772-775, 841-872` — `## audit-loop-run`
+  enumerates evaluator verdict strings (`error`, `fail`); distinguish these
+  loop-evaluator verdicts from the new persisted skill-verifier verdict
+  records [Agent 2 finding].
+- `CHANGELOG.md` (current release section, line 180-188 precedent) — add a
+  new entry describing schema + persistence change, parallel to
+  ENH-2458/ENH-2459 history-db entries [Agent 1, Agent 2 finding].
+- `skills/go-no-go/SKILL.md:29-43, 383` — `## Usage` documents the GO/NO-GO
+  verifier command; cross-reference persisted verdict behavior in the
+  Session Log section [Agent 2 finding].
+- `skills/confidence-check/SKILL.md:63, 319` — `## Usage` and `## Session Log`
+  document the readiness-score verifier; cross-reference persisted verdict
+  behavior [Agent 2 finding].
+- `skills/format-issue/SKILL.md:399-418, 425-448` — `## Examples` and
+  `## Workflow` document format-issue validation; cross-reference persisted
+  verdict behavior [Agent 2 finding].
+- `skills/issue-workflow/SKILL.md:113-121, 166-175` — `## ready-issue
+  Sub-Skills` and `## Workflow Rules` reference ready-issue and
+  confidence-check; cross-reference persisted verdict behavior
+  [Agent 2 finding].
+- `commands/ready-issue.md:340-346, 484-496` — `## Session Log` and
+  `## Examples` document ready-issue invocation; cross-reference persisted
+  verdict behavior [Agent 2 finding].
+- `commands/verify-issues.md:179-185, 271-284` — `## Session Log` and
+  `## Examples` document verify-issues invocation; cross-reference persisted
+  verdict behavior [Agent 2 finding].
+- `commands/refine-issue.md:514, 624-626` — `## Next Steps` and `## Workflow`
+  reference `/ll:ready-issue` as the validation step; cross-reference
+  persisted verdict behavior [Agent 2 finding].
+- `commands/tradeoff-review-issues.md:284-290, 425-431` — `## Session Log`
+  and `## Examples` document tradeoff-review invocation; cross-reference
+  persisted verdict behavior [Agent 2 finding].
+- `commands/prioritize-issues.md:217-220` — `## Examples` documents the
+  prioritization verifier; cross-reference persisted verdict behavior
+  [Agent 2 finding].
+- `commands/align-issues.md:410-451` — `## Examples` / `## Related Commands`
+  documents alignment verification; cross-reference persisted verdict
+  behavior [Agent 2 finding].
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+1. **Add `VerdictEventVariant` DES registration** at
+   `scripts/little_loops/observability/schema.py:494-505` so the
+   `ll-verify-des-audit` gate accepts the new `record_verdict_event()`
+   emit site (mirror `CommitEventVariant` / `TestRunEventVariant`).
+2. **Update `cli/session.py` module docstring and help strings** at
+   `scripts/little_loops/cli/session.py:8-10` (module docstring kind
+   list), `scripts/little_loops/cli/session.py:228-231` (`export --tables`
+   help), and `scripts/little_loops/cli/session.py:3347-3355`
+   (`export_history()` docstring) — add `verdict_event` and close the
+   existing gap where `commit_event` / `test_run_event` / `usage_event`
+   are missing from the help text.
+3. **Add CHANGELOG entry** under the current release section in
+   `CHANGELOG.md` (line 180-188 precedent) — schema + persistence change
+   with ENH-2504 issue ID reference.
+4. **Update `docs/guides/HISTORY_SESSION_GUIDE.md`** — add
+   `verdict_event` entries to four sections: `## Quick Queries`
+   (line 40-41), `## Schema Evolution` (line 71), `## Event Tables`
+   (lines 95-96), and `## Query Examples` (line 340).
+5. **Update `docs/observability/des-audit.md:76`** — `## Registered
+   Event Variants` table — add verdict_event row.
+6. **Update `docs/reference/CONFIGURATION.md`** — `## analytics.capture`
+   (line 519) and `## analytics.retention` (lines 534-546) — confirm
+   `verdict_events` is in the permanent-retention set.
+7. **Add export pipeline tests** in `scripts/tests/test_session_store.py`
+   and `scripts/tests/test_ll_session.py` — currently no tests exercise
+   `session_store.export_history()` or `ll-session export --tables`
+   directly; mirror `TestHistoryExportStdout` at
+   `test_cli_history.py:195-234` for the new `verdict_event` export.
+8. **Add `cmd_invoke` verdict-recording tests** in
+   `scripts/tests/test_action.py` — `TestCmdInvokeRecordsVerdictEvent`
+   and `TestCmdInvokeRecordsNothingOnFailure`. Currently no tests assert
+   `skill_event_context` side effects from `cmd_invoke()`; the new
+   `record_verdict_event()` integration is uncovered.
+9. **Add mirror tests in `test_ll_session.py`** —
+   `test_recent_subcommand_verdict_accepted` (mirror line 88),
+   `test_recent_kind_verdict_outputs_row` (mirror line 1086),
+   `test_search_kind_verdict_filters` (mirror line 1138), and
+   `test_search_kind_rejects_invalid` (mirror line 267) for the new
+   `verdict` kind.
+10. **Update existing migration slice tests** at
+    `scripts/tests/test_session_store.py:1950, 2044, 2109, 3730, 3894-3902`
+    — extend `_MIGRATIONS[:N]` slice indices when the v21 entry lands.
+11. **Update skill/command docs** — add brief cross-references to
+    persisted verdict behavior in
+    `skills/{go-no-go,confidence-check,format-issue,issue-workflow}/SKILL.md`
+    and `commands/{ready-issue,verify-issues,refine-issue,tradeoff-review-issues,
+    prioritize-issues,align-issues}.md`.
+12. **Confirm live-write-only / permanent-retention policy** at
+    `scripts/little_loops/session_store.py:2824-2872, 3124-3126` —
+    `verdict_events` joins the live-write-only set (NOT in
+    `_REBUILD_TABLES` or `_REBUILD_SEARCH_KINDS`) and inherits permanent
+    retention (same as `user_corrections` / `issue_events`).
 
 ## Status
 
@@ -488,6 +782,7 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-17T00:19:34 - `41ebf8b1-b91a-4101-976b-04777c36ced5.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:56:02 - `64744f61-c486-4d99-a2e6-3ec33ede907d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

@@ -9,6 +9,9 @@ captured_at: "2026-07-06T00:00:00Z"
 discovered_by: capture-issue
 parent: EPIC-2457
 depends_on: [ENH-2497]
+learning_tests_required:
+  - sqlite3
+  - claude-code-hooks
 decision_needed: false
 labels:
   - enhancement
@@ -204,6 +207,15 @@ This is the meaningful implementation choice an implementer must resolve before 
 - `docs/reference/API.md` — fix stale `SCHEMA_VERSION` example at line 7279 (currently says 19, actual is 20); add `record_subagent_run`, `subagent_tree`, `subagent_retries`, `subagent_budget` to `little_loops.session_store` section (starts at line 7273) and `little_loops.history_reader` section.
 - `docs/reference/CLI.md` — add `--kind subagent_run` row.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/hooks/subagent_start.py` — new host-agnostic `SubagentStart` handler that records the parent/child start row.
+- `scripts/little_loops/hooks/subagent_stop.py` — new best-effort `SubagentStop` handler that closes the child row and records terminal status.
+- `hooks/adapters/claude-code/subagent-start.sh` — thin Claude Code adapter for the new start intent.
+- `hooks/adapters/claude-code/subagent-stop.sh` — thin Claude Code adapter for the new stop intent.
+- `scripts/little_loops/observability/schema.py` — register the direct `subagent_runs` history writer in `DES_VARIANTS` so the DES audit documents the new table target.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — reconcile the stale schema-version/table map and document querying `subagent_runs`.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — document the new lifecycle hooks in the event table and session flow.
+
 **Dependent Files (Callers/Importers)**
 
 - `scripts/little_loops/parallel/orchestrator.py` — spawns subagents; consumer of the new `subagent_runs` data for fleet telemetry.
@@ -224,6 +236,15 @@ This is the meaningful implementation choice an implementer must resolve before 
 - `scripts/tests/test_hook_post_tool_use.py` — live producer tests (Option A only).
 - `scripts/tests/test_verify_kinds.py` — `_KIND_TABLE` registration gate.
 - Suggested new test file: `scripts/tests/test_enh_2505_subagent_runs.py` with classes `TestSubagentRunMigration`, `TestAgentSpawnLifecycle`, `TestSubagentTreeAPI`, `TestSubagentReplayIdempotency` (mirrors the `test_enh_2497_agent_type.py` naming pattern referenced in the ENH-2497 plan).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_claude_code_adapter.py` — extend structural adapter checks for the new executable scripts and `SubagentStart`/`SubagentStop` entries in `hooks/hooks.json`.
+- `scripts/tests/test_hooks_integration.py` — add subprocess round-trip coverage for the new Claude Code adapters and their best-effort exit behavior.
+- `scripts/tests/test_hook_intents.py` — assert `_dispatch_table()` exposes both new intents and malformed lifecycle payloads remain non-blocking.
+- `scripts/tests/test_ll_session.py` — assert `recent` and `search` accept `--kind subagent_run`, following the existing per-kind parser tests.
+- `scripts/tests/test_des_schema.py` — cover the `SubagentRun` direct-writer variant in the `DES_VARIANTS` registry.
+- `scripts/tests/test_assistant_messages.py` — update the schema-version assertion that currently pins the database at v20.
+- `scripts/tests/test_sweep_stale_refs.py` — extend shared best-effort/session-end coverage if the terminal-row update is folded into the existing sweep path rather than isolated in `subagent_stop`.
 
 ### Constants & Discovered Drift
 
@@ -256,7 +277,11 @@ ENH-2497 is **planned, not landed** — its issue file remains `status: open`; `
 - `docs/ARCHITECTURE.md` schema-versions table (lines 657-679) — add v22 row referencing `subagent_runs`.
 - `docs/reference/API.md` — fix stale `SCHEMA_VERSION = 19` example at line 7279 (actual is 20, will be 22 after this issue); document `record_subagent_run`, `subagent_tree`, `subagent_retries`, `subagent_budget` helpers.
 - `docs/reference/CLI.md` — add `--kind subagent_run` row under `ll-session recent`.
-- `.claude/CLAUDE.md` — `ll-session` entry already documents `--kind`; the new value is auto-derived from `VALID_KINDS` and needs no CLAUDE.md change unless listed.
+- `.claude/CLAUDE.md` — `ll-session` entry already documents `--kind`; the new value is auto-derived from `VALID_KINDS` and needs no `.claude/CLAUDE.md` change unless listed.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — update the current schema version, append the migration/table entries, and add a subagent-tree query recipe.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — add `SubagentStart`/`SubagentStop` to the lifecycle-at-a-glance table and session-flow narrative.
 
 ### Open Questions for Implementer
 
@@ -284,11 +309,24 @@ Decided by `/ll:decide-issue` on 2026-07-16.
 - **Option A**: Excellent producer-side reuse — `scripts/little_loops/hooks/post_tool_use.py:158-180` already extracts from `tool_response` inside an analytics-gated block, calls `session_store.connect()` / `commit()` / close, and wraps the whole block in `with contextlib.suppress(Exception):`. The `record_subagent_run` writer would template directly on `record_test_run_event()` (`session_store.py:1352`) or `record_commit_event()` (`session_store.py:1078-1087`). However, the data source itself is unverified: a repository-wide grep for `tool_response.agent_id` / `tool_response.session_id` / `tool_response.sessionId` returns zero matches in any sample payload, test fixture, or documentation surface. Implementing Option A requires empirical confirmation from a live Claude Code run before the producer can land, and the unlanded ENH-2497 dependency adds schema-coordination risk.
 - **Option B**: SubagentStart / SubagentStop payloads are documented at `docs/claude-code/hooks-reference.md:1059-1112` with `agent_id` / `agent_type` / `agent_transcript_path` fields that map directly to the schema columns (the issue text at line 181 already flags the `child_session_id` → `agent_id` column rename). The 3-layer wiring has four precedents (SessionStart, Stop, SessionEnd, PreCompact). The plugin config auditor (`.codex/agents/plugin-config-auditor.toml:53-54`) already enumerates both events as known events — only the bindings/handlers themselves are missing. Test patterns at three layers (unit, adapter round-trip, DB-write) all have templates; no live-fire evidence in the suite, but this is consistent with all other lifecycle hooks.
 
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+1. Add the `SubagentStart`/`SubagentStop` Python handlers and Claude Code adapter scripts, then register both intents in `hooks/hooks.json`, `hooks/__init__.py`, and the static dispatcher usage text.
+2. Extend `session_store.py` and `history_reader.py` for the new migration, kind registration, live/backfill writers, FTS rows, and tree/retry/budget read helpers; register the direct writer in `observability/schema.py`.
+3. Extend lifecycle, adapter, CLI-kind, schema, DES registry, and malformed-payload tests, including the existing schema-version assertion in `test_assistant_messages.py`.
+4. Reconcile `HISTORY_SESSION_GUIDE.md` and `BUILTIN_HOOKS_GUIDE.md` with the new schema table and lifecycle events, alongside the already-listed architecture/API/CLI documentation.
+5. Run `ll-verify-kinds`, `ll-verify-des-audit`, the focused ENH-2505 tests, and the full `python -m pytest scripts/tests/` gate.
+
 ## Status
 
 **Open** | Created: 2026-07-06 | Priority: P3 | Decision Needed: yes (child-session identifier source)
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-17T00:32:24 - `93986e3c-827b-4964-9860-7394e662a283.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:41:23 - `c5a83150-c2c4-41fe-8bff-072a77dba866.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:08:30 - `8babd643-3346-4d9e-a0fd-d91a1800504e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`

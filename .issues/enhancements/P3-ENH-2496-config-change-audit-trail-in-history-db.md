@@ -314,6 +314,26 @@ Decided by `/ll:decide-issue` on 2026-07-16.
 - **CLI `--kind config`** — once `"config"` is added to `VALID_KINDS`, both `search_parser` (cli/session.py:103) and `recent_parser` (cli/session.py:118) reference it dynamically. **No per-list edit is required**; the prior pass's claim that both parsers need a hand-edit is wrong.
 - **Wiring position** — the `record_config_snapshot` call inside `session_start.py` should live INSIDE the existing `if config_path is not None:` block (line 118+) **and** before the backfill subprocess spawn at lines 153-181, so the row lands synchronously before the hook exits. Use `with contextlib.suppress(Exception):` as the wrapper.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by 3-agent wiring analysis and must be included in the implementation alongside Steps 1-9:_
+
+10. **Register `ConfigSnapshotVariant` in the DES-Audit registry** — add `class ConfigSnapshotVariant(DESVariant)` at `scripts/little_loops/observability/schema.py:495-507` (mirroring `CommitEventVariant:495-501`) and append it to the `DES_VARIANTS` tuple at `:563, :625-626`. Without this, `ll-verify-des-audit` (the F5 adoption gate, ENH-2475) will fail on the new event-emit site. [Agent 1, enforce MR-7 / ENH-2475]
+11. **Bump hardcoded `SCHEMA_VERSION` literals in tests** — update `assert SCHEMA_VERSION == 20` to `21` at:
+    - `scripts/tests/test_session_store.py:1372, 1817, 1932, 1984, 2080, 3658, 3699, 3700, 3754`
+    - `scripts/tests/test_assistant_messages.py:88`
+    - `scripts/tests/test_hook_session_start.py:307, 332, 341`
+    [Agent 1+3 finding — these assertions are independent of the dynamic `ensure_db()` user-version comparison but currently hardcoded to the pre-ENH-2496 schema version]
+12. **Add `config_snapshots` to hardcoded table lists** — update `scripts/tests/test_session_store.py:64, 89` (`TestEnsureDb.test_all_tables_created`) to include `"config_snapshots"` in its hardcoded table list. [Agent 3 finding]
+13. **Add CLI `--kind config` parser acceptance coverage** — add `test_recent_subcommand_config_accepted` and `test_search_subcommand_config_accepted` to `scripts/tests/test_ll_session.py:14-114` (TestArgumentParsing class), mirroring the `usage`-kind precedent at lines 99-104. [Agent 1+3 finding]
+14. **Add CLI `--kind config` dispatch coverage** — add `test_recent_kind_config_outputs_row` and `test_search_kind_config_filters` to `scripts/tests/test_ll_session.py:1073-1141` (TestMainSession class), mirroring `test_recent_kind_commit_outputs_row:1073` / `test_recent_kind_test_run_outputs_row:1086` / `test_recent_kind_usage_outputs_row:1099`. [Agent 3 finding]
+15. **Update `CHANGELOG.md`** — add an ENH-2496 entry in the current release section. Schema v21, `config_snapshots` table, hash-gated session_start write, `ll-session recent --kind config` / `ll-session search --fts --kind config` surface, and the new typed readers. Per [[feedback_changelog_no_unreleased]], do NOT place the entry under `[Unreleased]`; promote to a concrete `## [X.Y.Z] - DATE` section during release prep. [Agent 2 finding]
+16. **Update `docs/reference/API.md`** — bump the schema-version literal (currently `19`, must become `21`); add `record_config_snapshot` to the import listing; add a `### record_config_snapshot` section mirroring `### record_commit_event`; add a `### config_snapshots table (v21, ENH-2496)` schema block mirroring `### correction_retirements`. **Note**: original issue cited anchors `:6975-6984, :7005-7048, :7081-7091` but Agent 2 reports these drifted to `:4102-4103, :7279-7280, :7316`; verify against live file before editing. [Agent 1+2 finding]
+17. **Update `docs/reference/CLI.md`** — add `config` to the documented `--kind` choice lists at lines 2427 (search) and 2435 (recent) area; add a `recent --kind config` usage example near line 2509-2514; update the `ll-session` description (around 2873) to mention `session_start` snapshots as a DB population source. [Agent 2 finding]
+18. **Update `docs/guides/HISTORY_SESSION_GUIDE.md`** — bump schema version literal at line 51 from `18` to `21`; add a "config_snapshots" entry to the `What Gets Recorded` table (lines 32-43); add a "config" entry to the FTS `--kind` enumeration (lines 80-100, 166-180, 225); add a "when was my config last flipped?" recipe (lines 49-60+); update the v15-v18 migration range to v15-v21 to reflect the actual current state. [Agent 2 finding]
+19. **Update `docs/ARCHITECTURE.md`** — verify the schema-versions table exists at lines 665-678 (the `:612-635` anchor from the original issue is suspect per Agent 2) and add a `| v21 | config_snapshots | ENH-2496 |` row. [Agent 2 finding]
+20. **Verify `verify_kinds.py` gate still passes** — run `python -m pytest scripts/tests/test_verify_kinds.py` after the migration lands. The auto-detection in `cli/verify_kinds.py:33-67` will pick up `config_snapshots` from `_MIGRATIONS`; `TestRun.test_clean_state_returns_zero` (lines 18-23) confirms it is registered in `_KIND_TABLE` or `_KINDLESS_TABLES`. **No code change required** — verify step only. [Agent 1 finding]
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — §2 (uncaptured surfaces)
@@ -369,6 +389,53 @@ Decided by `/ll:decide-issue` on 2026-07-16.
 ### Out of Scope / Optional
 - `/ll:configure` write-path wiring (`source="configure"`) is **optional** per the issue spec. `skills/configure/SKILL.md` is LLM-driven and edits `.ll/ll-config.json` directly via the `Edit` tool — there is no Python write path to hook today. The only programmatic writer is `ll-init`'s `write_config()` at `scripts/little_loops/init/writers.py:148`, which could be hooked for an `ll-init`-initiated snapshot. A future PostToolUse hook on `.ll/ll-config.json` edits is a clean way to wire `source="configure"`; defer to a follow-on.
 
+### Additional Manifests/Registrations
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/observability/schema.py:495-507` — add `class ConfigSnapshotVariant(DESVariant)` mirroring `CommitEventVariant:495-501` / `TestRunEventVariant:502-507`. This is the **F5 adoption gate** (ENH-2475) enforced by `ll-verify-des-audit`; without the variant registration the writer is rejected as an uncovered event-emit site. [Agent 1 finding]
+- `scripts/little_loops/observability/schema.py:563` and `:625-626` area — append `ConfigSnapshotVariant` to the `DES_VARIANTS: Final[tuple[type[DESVariant], ...]]` tuple alongside `CommitEventVariant, TestRunEventVariant,` so the variant is enumerated for the audit walk. [Agent 1 finding]
+- `scripts/little_loops/cli/verify_kinds.py:33-67` — already scans `_MIGRATIONS` for `CREATE TABLE` and checks each against `_KIND_TABLE` + `_KINDLESS_TABLES`; **no code edit is required** (the new migration's `CREATE TABLE config_snapshots` will be auto-detected), but `scripts/tests/test_verify_kinds.py:18-23` (`TestRun.test_clean_state_returns_zero`) MUST pass after the migration lands. [Agent 1 finding]
+
+### Additional Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `CHANGELOG.md` — add an ENH-2496 entry in the current release section describing: schema v21 bump, `config_snapshots` table, hash-gated session_start write, `ll-session recent --kind config` + `ll-session search --fts --kind config` user-facing surface, and `recent_config_snapshots()` / `config_at()` typed readers. [Agent 2 finding]
+- `.ll/decisions.d/b7e8fbea-570d-47af-b0aa-96b2b153945b.json` — existing decision fragment records the `INSERT OR IGNORE` + 64-char SHA-256 hash contract selected by `/ll:decide-issue`. Confirm the implementation matches; no edit needed if aligned. [Agent 2 finding]
+- `docs/ARCHITECTURE.md:665-678, 724` — Agent 2 couldn't locate the schema-versions table in the queried range, so the issue's prior `:612-635` anchor is suspect. Verify the table exists in the new range and add a v21 row for `config_snapshots` with ENH-2496 attribution. [Agent 2 finding]
+- `docs/reference/API.md:4102-4103, 7279-7280, 7316` (drifted anchors — original issue cited `:6975-6984, :7005-7048, :7081-7091` which Agent 2 identifies as the wrong lines). Verify and update. [Agent 1 finding]
+
+### Additional Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Tests that hardcode `SCHEMA_VERSION == 20` and must update to 21:**
+- `scripts/tests/test_session_store.py:1372, 1817, 1932, 1984, 2080, 3658, 3699` — assertions inside migration/version tests; bump to 21. [Agent 1 finding]
+- `scripts/tests/test_session_store.py:3688-3700` — `TestSchemaV14` test_schema_version_is_fourteen hardcodes `20`; bump assertion. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3754` — `TestSchemaV14.test_v13_to_v14_migration` final-assertion hardcodes `20`; bump. [Agent 3 finding]
+- `scripts/tests/test_assistant_messages.py:11, 88` — `assert SCHEMA_VERSION == 20` literal; bump to 21. [Agent 1 finding]
+- `scripts/tests/test_hook_session_start.py:307, 332, 341` — `TestRebuildFlagOnlyWhenSchemaVersionAdvanced` and `TestFreshMigrationTriggersRebuild` hardcode `SCHEMA_VERSION == 20`; bump to 21. [Agent 1 finding]
+
+**Tests with hardcoded lists/tables that need `config_snapshots` added:**
+- `scripts/tests/test_session_store.py:64, 89` — `TestEnsureDb.test_all_tables_created` has a hardcoded table list; add `"config_snapshots"`. [Agent 3 finding]
+
+**Tests with hardcoded `--kind` parser coverage that need a `config` case:**
+- `scripts/tests/test_ll_session.py:57-104` (TestArgumentParsing) — add `test_recent_subcommand_config_accepted` and `test_search_subcommand_config_accepted` mirroring the `usage`-kind precedent (lines 99-104). [Agent 1+3 finding]
+- `scripts/tests/test_ll_session.py:1073-1141` (TestMainSession) — add `test_recent_kind_config_outputs_row` and `test_search_kind_config_filters` mirroring `test_recent_kind_commit_outputs_row:1073` and `test_recent_kind_test_run_outputs_row:1086` and `test_recent_kind_usage_outputs_row:1099`. [Agent 3 finding]
+
+**Test patterns to copy for new tests (model only — no edit required):**
+- `scripts/tests/test_session_store.py:4235-4284` `TestRecordCommitEvent` — primary template for new `TestRecordConfigSnapshot` (roundtrip, dedupe-on-sha, FTS-searchable). [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3758-3830` `TestRecordIssueSnapshot` — alternative template. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3688-3700` `TestSchemaV14` — primary template for new `TestSchemaV21ConfigSnapshots` migration test. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3894` `_bootstrap_schema_at` — helper to set up old-schema DBs for migration tests. [Agent 3 finding]
+- `scripts/tests/test_history_reader.py:549` `recent_usage_events` — typed-reader template for `recent_config_snapshots()`. [Agent 3 finding]
+- `scripts/tests/test_history_reader.py:1576-1608` `TestUsageEventReaders.test_recent_usage_events_newest_first_and_filters` — typed-reader test template. [Agent 3 finding]
+- `scripts/tests/test_history_reader.py:1530-1545` `test_readers_return_empty_on_missing_db` and `:1609` `TestUsageEventReaders.test_recent_usage_events_missing_db` — graceful-degradation patterns. [Agent 3 finding]
+- `scripts/tests/test_hook_post_tool_use.py:184` `test_graceful_when_store_unwritable` — best-effort pattern for `TestSnapshotFailureDoesNotBlockSessionStart`. [Agent 3 finding]
+- `scripts/tests/test_hook_session_start.py:270` `test_backfill_error_does_not_propagate` — sister best-effort pattern. [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3409-3420` `TestValidKindsCentralization` — passes automatically once `"config"` is added consistently to both `VALID_KINDS` and `_KIND_TABLE`. [Agent 3 finding]
+
 ## Related Key Documentation
 
 | Document | Why Relevant |
@@ -401,6 +468,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-16T23:40:50 - `32a81c05-ade9-48bd-b00c-f7d79fb22ef4.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:28:17 - `3aea4a19-431a-485f-9821-f9d496ab1c6b.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:27:21 - `66c5d53d-135e-4749-a39f-400ab8f96c42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`
