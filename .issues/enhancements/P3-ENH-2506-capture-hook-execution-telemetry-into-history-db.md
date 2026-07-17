@@ -900,7 +900,70 @@ each child lands its own migration at whatever version is open when it is
 implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2498** (prompt
+optimization outcomes) also wraps `user_prompt_submit.py`. The two issues
+split ownership by **table semantics**, not by hook path: this issue owns
+generic execution telemetry — `exit_code`, `duration_ms`, `matcher`,
+`script`, `stderr_tail` — for every registered hook intent. ENH-2498 owns
+prompt-optimization-specific semantics — `mode` (`quick` / `thorough`),
+the offer/bypass reason, and the best-effort outcome — recorded in its own
+row. One UserPromptSubmit invocation may intentionally produce **one row in
+each table**; this is by design, not duplication.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2505** (subagent
+session-tree) registers two new host-agnostic Python handlers
+(`SubagentStart`, `SubagentStop`) in `hooks/hooks.json`,
+`hooks/__init__.py`, and the static dispatcher usage text. This issue's
+dispatcher-level `hook_event_context` wrapper MUST cover those two
+dynamically-registered intents exactly once — no second pass — and the new
+handlers MUST NOT additionally wrap themselves in this issue's context
+manager. The two implementations must agree on a single source of telemetry
+to avoid both omission and double-counting.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2497** (subagent Task
+discrimination) also modifies `post_tool_use.py` to extract `agent_type`
+into the new `tool_events.agent_type` column. The two issues operate at
+distinct nesting levels: ENH-2497's `tool_events` insert and FTS `_index()`
+remain the **inner** operation, already best-effort-wrapped in
+`contextlib.suppress(Exception)` at `post_tool_use.py:158`. This issue's
+`hook_event_context` is the **outer, independently-failing** write that
+MUST NOT alter, roll back, or wrap the inner `tool_events` persistence. A
+telemetry failure must never suppress an agent-spawn write, and vice versa.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `ll-verify-des-audit`
+contract scans for `self._emit(...)` / `event_bus.emit(...)` calls
+(`observability/audit.py:55-67`). Direct DB writers like
+`record_hook_event(...)` / `hook_event_context(...)` are NOT covered by
+the Phase 1 regex unless explicitly registered in
+`observability/schema.py` `DES_VARIANTS`. **Register `HookEventVariant`
+only if the concrete emit site is discovered by the audit**; if the
+implementation remains a pure direct insert / context manager without
+going through `event_bus`, the variant is not required. Implementers
+should run `ll-verify-des-audit` post-implementation and resolve any
+uncovered event types it surfaces (ENH-2475 adoption gate). Sibling
+ENH-2504 carries the same contract for `VerdictEventVariant`.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:49:45 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:48:50 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T14:03:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T14:01:04 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:45:19 - `36e8e2d1-f879-4f12-a41b-ffd3a462d36b.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:16:11 - `a12fca84-5e71-48ec-aff1-8ea85e8c0067.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`

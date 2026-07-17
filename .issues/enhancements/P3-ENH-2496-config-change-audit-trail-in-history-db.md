@@ -467,7 +467,23 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `## Proposed Solution`
+block (lines 64–79) describes an explicit SELECT-then-INSERT hash-gate
+(`internally reads the last snapshot's config_hash and no-ops when
+unchanged`), while the `## Decision Rationale` block (lines 287–305) selects
+**Option B** (`INSERT OR IGNORE` on a `UNIQUE` index, gated by
+`cursor.rowcount`). The two paths are mutually exclusive. The implementer
+should follow the Decision block: append
+`CREATE UNIQUE INDEX IF NOT EXISTS idx_config_snapshots_hash ON config_snapshots(config_hash)`
+to the migration SQL, and gate `_index(...)` on `cursor.rowcount == 1`. The
+Proposed Solution prose is stale.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:47:18 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T23:40:50 - `32a81c05-ade9-48bd-b00c-f7d79fb22ef4.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:28:17 - `3aea4a19-431a-485f-9821-f9d496ab1c6b.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:27:21 - `66c5d53d-135e-4749-a39f-400ab8f96c42.jsonl`

@@ -666,7 +666,23 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2506** (hook execution
+telemetry) also wraps `user_prompt_submit.py`. The two issues split
+ownership by **table semantics**, not by hook path: this issue owns
+prompt-optimization semantics — `mode` (`quick` / `thorough`), the
+offer/bypass reason, and the best-effort outcome (`offered` / `bypassed`
+/ `error`) — recorded in a prompt-optimization-specific row. ENH-2506 owns
+only the generic execution telemetry — `exit_code`, `duration_ms`,
+`matcher`, `script`, `stderr_tail` — recorded separately. One
+UserPromptSubmit invocation may intentionally produce **one row in each
+table**; this is by design, not duplication.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T14:01:04 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:08:22 - `1a6a415c-07aa-41f7-87c2-f7aafafb29ad.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:47:11 - `fd81b1d4-3269-4fb1-aa37-7a65417fe3e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`

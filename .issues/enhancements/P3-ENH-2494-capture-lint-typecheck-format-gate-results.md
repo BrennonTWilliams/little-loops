@@ -409,7 +409,20 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The Implementation Steps
+instruct editing both `search_parser` and `recent_parser` `choices=[...]`
+lists in `cli/session.py`. This premise is stale: both argparse subparsers
+derive `choices=list(VALID_KINDS)` from the single source of truth at
+`session_store.py` lines 104–118, so adding `"check_run"` only to
+`_VALID_KINDS` propagates to both subparsers. No duplicate `choices=[...]`
+edit is required.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T13:57:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:57:01 - `dc84b178-4ea7-48fc-aee7-d87810974053.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:11:17 - `5e36f3af-c830-4cfb-9bdd-a2ad95303a4c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-14T00:23:48 - `bf6876a0-2fb4-4626-99a4-da1569d51511.jsonl`

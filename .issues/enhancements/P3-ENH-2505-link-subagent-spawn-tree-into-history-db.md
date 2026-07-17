@@ -325,7 +325,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-07-06 | Priority: P3 | Decision Needed: yes (child-session identifier source)
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2497** (subagent Task
+discrimination) owns the authoritative spawn-event discriminator at
+`tool_events.agent_type`. This issue's `subagent_runs.agent_type` is a
+query-side denormalization populated from the same normalized value at write
+time, not an independent second source. The existing frontmatter
+`depends_on: [ENH-2497]` enforces the ordering — this issue lands after
+ENH-2497.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2506** (hook execution
+telemetry) wraps every registered hook handler with `hook_event_context`.
+This issue adds two new host-agnostic Python handlers (`SubagentStart`,
+`SubagentStop`) and registers them in `hooks/hooks.json`,
+`hooks/__init__.py`, and the static dispatcher usage text. To avoid both
+omission (handlers fire without telemetry) and double-counting
+(dispatcher-level + per-handler wrapping), the implementations must apply
+exactly one telemetry wrap per `SubagentStart` / `SubagentStop` invocation.
+The wrap belongs in ENH-2506's dispatcher-level wrapper, not duplicated in
+this issue's per-handler body.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T14:03:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T13:59:18 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:32:24 - `93986e3c-827b-4964-9860-7394e662a283.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:41:23 - `c5a83150-c2c4-41fe-8bff-072a77dba866.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:08:30 - `8babd643-3346-4d9e-a0fd-d91a1800504e.jsonl`

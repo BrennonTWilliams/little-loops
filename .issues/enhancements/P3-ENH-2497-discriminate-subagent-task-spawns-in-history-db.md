@@ -344,7 +344,36 @@ issue lands first and ENH-2511's `mcp_server`/`mcp_tool`/`mcp_outcome`/
 `latency_ms` columns are added to the same migration block this issue creates
 (one shared `ALTER TABLE tool_events` batch), not a second competing one.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2505** (subagent
+session-tree) also persists `agent_type` for each spawn, in its new
+`subagent_runs` table. The authoritative source for the spawn-event
+discriminator is `tool_events.agent_type` (this issue); ENH-2505's
+`subagent_runs.agent_type` is a query-side denormalization populated from
+the same normalized value at write time, not an independent second source.
+ENH-2505 already declares `depends_on: [ENH-2497]` in its frontmatter — this
+note records that contract.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): **ENH-2506** (hook execution
+telemetry) wraps the same `post_tool_use.py` handler. The two issues operate
+at distinct nesting levels: this issue's `tool_events` insert (with the new
+`agent_type` column) and `_index()` live-write remain the **inner** operation,
+already best-effort-wrapped in `contextlib.suppress(Exception)` at
+`post_tool_use.py:158`. ENH-2506's `hook_event_context` is the **outer,
+independently-failing** write — it MUST NOT alter, roll back, or wrap
+`tool_events` persistence. A telemetry failure must never suppress an
+agent-spawn write, and vice versa.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:48:49 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T13:59:18 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T23:53:35 - `116f385e-2818-4c79-8ce3-a15f63040329.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:35:50 - `c62633a6-bc8a-42d5-88d1-7b034101e282.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:36:00 - `5d02fdfe-927a-4f1f-aa0e-5f159a6cee91.jsonl`

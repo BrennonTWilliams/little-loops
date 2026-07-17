@@ -801,7 +801,25 @@ each child lands its own migration at whatever version is open when it is
 implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `ll-verify-des-audit`
+contract scans for `self._emit(...)` / `event_bus.emit(...)` calls
+(`observability/audit.py:55-67`). Direct DB writers like
+`record_verdict_event(...)` are NOT covered by the Phase 1 regex unless
+explicitly registered in `observability/schema.py` `DES_VARIANTS`.
+**Register `VerdictEventVariant` only if the concrete emit site is
+discovered by the audit**; if the implementation remains a pure
+`record_verdict_event` direct insert without going through `event_bus`,
+the variant is not required. Implementers should run `ll-verify-des-audit`
+post-implementation and resolve any uncovered event types it surfaces
+(ENH-2475 adoption gate). Sibling ENH-2506 carries the same contract for
+`HookEventVariant`.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:49:45 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:19:34 - `41ebf8b1-b91a-4101-976b-04777c36ced5.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:56:02 - `64744f61-c486-4d99-a2e6-3ec33ede907d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:55 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`

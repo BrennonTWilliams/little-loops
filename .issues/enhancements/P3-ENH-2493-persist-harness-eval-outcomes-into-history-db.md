@@ -381,7 +381,36 @@ literal; each child lands its own migration at whatever version is open when
 it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The Implementation Steps
+instruct editing both `search_parser` and `recent_parser` `choices=[...]`
+lists in `cli/session.py`. This premise is stale: both argparse subparsers
+derive `choices=list(VALID_KINDS)` from the single source of truth at
+`session_store.py` lines 104–118, so adding the new kind only to
+`_VALID_KINDS` propagates to both subparsers. No duplicate `choices=[...]`
+edit is required.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The proposed
+`history_reader.harness_pass_rate(target, since)` collides in name with
+`ABResults.harness_pass_rate` at `scripts/little_loops/ab_writer.py:146`
+(float 0–1 fraction from the A/B comparator). The two are distinct symbols
+in distinct modules, but downstream consumers of
+`cli/loop/_helpers.py:1926-1930` (currently using the A/B variant) must
+disambiguate. **The implementer should rename this issue's reader to
+`history_reader.harness_eval_pass_rate(target, since)`** to remove the
+ambiguity at the source rather than relying on the import path to
+distinguish.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-17T18:48:07 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-17T13:57:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:46:25 - `4035a88c-b8a6-4625-98d9-33f0bbb7d51e.jsonl`
 - `/ll:wire-issue` - 2026-07-16T00:00:00Z - `<this-session>`
 - `/ll:refine-issue` - 2026-07-16T15:04:04 - `74755637-ff93-4bca-bf37-d7f6bf2012f5.jsonl`
