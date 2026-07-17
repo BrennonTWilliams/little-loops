@@ -19,6 +19,21 @@ labels:
 
 # ENH-2509: Capture worktree lifecycle events into session_lifecycle_events
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`).**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with stream-derived tables materialized by `_backfill_*()` parsers via
+> `rebuild()` (the pattern [[ENH-2461]] became). Worktree lifecycle signals are **not
+> in that stream** — `git worktree add/remove/merge` happen inside `ll-parallel` /
+> `ll-loop --worktree` / `ll-sprint` Python orchestration and leave no transcript
+> trace. So this widening of ENH-2495's `session_lifecycle_events` is a **live
+> best-effort direct-write** (`record_session_lifecycle_event(event="worktree_*", …)`
+> called from the orchestration entry points), correctly **outside `raw_events`'s
+> scope** (NOT in `_REBUILD_TABLES` / `_REBUILD_SEARCH_KINDS`). This inherits ENH-2495's
+> chosen mechanism; no `raw_events`-sourced parser is needed. (This issue predates
+> [[ENH-2581]] — it should be framed as "ENH-2495 owns the base table; ENH-2509 adds
+> the worktree discriminators + producer wiring," and read the live `SCHEMA_VERSION`/
+> `VALID_KINDS` at implementation time.)
+
 ## Summary
 
 `ll-parallel`, `ll-loop` (in worktree mode), and `ll-sprint` create,

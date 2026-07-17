@@ -18,6 +18,26 @@ labels:
 
 # ENH-2504: Persist verification / readiness-review verdict outcomes into history.db
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`) — read before implementing.**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, and every table derived from that stream is a transformation — a
+> `_backfill_*()` parser replayed by `rebuild()` (the pattern [[ENH-2461]] was
+> rewritten into). **`verdict_events` is NOT such a table, and correctly so.** The
+> verdict payload (`verdict`, `severity_counts`, `confidence`, `findings_count`) is a
+> *structured dict already in hand* at the `cli/action.py::cmd_invoke()` Python
+> boundary where each skill-bridged verifier returns — it is never reconstructed from
+> transcript text. Recovering it by parsing free-form JSONL would be strictly more
+> fragile. `verdict_events` is therefore a **live-write-only direct-write sibling**,
+> in the same category as `cli_events`, `test_run_events` ([[ENH-2459]]), and
+> `commit_events` ([[ENH-2458]]) — it joins the "outside `raw_events`'s scope"
+> exclusion set (NOT added to `_REBUILD_TABLES` / `_REBUILD_SEARCH_KINDS`; see the
+> exclusion comment at `session_store.py:2853` and the Integration Map's wiring-pass
+> note). **No `_backfill_verdict_events()` parser is needed or wanted.** The
+> `/ll:verify-issue-loop` path is the one exception: its verdict flows through
+> `ll-harness` and is captured by [[ENH-2493]]'s `harness_events` — this issue writes
+> the verifier row only for the standalone `ll-action`-bridged verifiers, so there is
+> no double-write.
+
 ## Summary
 
 `ll-ready-issue`, `ll-tradeoff-review`, `ll-confidence-check`, `ll-go-no-go`,

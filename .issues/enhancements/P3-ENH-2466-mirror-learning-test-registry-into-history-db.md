@@ -18,6 +18,20 @@ labels:
 
 # ENH-2466: Mirror Learning Test Registry records into history.db / search_index
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`).**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with stream-derived tables materialized by `_backfill_*()` parsers via
+> `rebuild()` (the pattern [[ENH-2461]] became). **`learning_test_events` is NOT such
+> a table, and correctly so.** Its source is the external file set
+> `.ll/learning-tests/*.md`; the table is a **search/join mirror** of those records,
+> and its `_backfill_learning_test_events()` helper walks the **markdown files** (via
+> `record_id UNIQUE`) — NOT `raw_events`. It is a **direct-write file-mirror sibling**
+> (shaped like `correction_retirements` / `commit_events`/[[ENH-2458]]) that joins the
+> "outside `raw_events`'s scope" exclusion set (NOT in `_REBUILD_TABLES` /
+> `_REBUILD_SEARCH_KINDS`), while still registering in `_KIND_TABLE` (never
+> `_KINDLESS_TABLES`) so `ll-verify-kinds` stays green. No `raw_events`-sourced parser
+> is needed. (Read the live `SCHEMA_VERSION`/`VALID_KINDS` at implementation time.)
+
 ## Summary
 
 The Learning Test Registry (`.ll/learning-tests/*.md`, owned by `ll-learning-tests`, exposed via `/ll:explore-api` and `ll-learning-tests prove`) lives entirely as markdown files outside the DB. There's no entry in `skill_events`, `loop_events`, `message_events`, or any other table that says "this registry record was created at timestamp T by session S, asserting behavior X for module M." `ll-session search` cannot find them — they're invisible to FTS and to all read APIs. Add a `learning_test_events` table mirroring each record's `id, target, status, assertions, captured_at, last_proved_at` and index into `search_index` so registry content is discoverable alongside everything else. Per `thoughts/history-db-expand-wiring.md` §3 ranked recommendation #9: *"mirror registry records into a `learning_test_events` table (or at least index them into `search_index`) so they're discoverable via `ll-session search` alongside everything else."*

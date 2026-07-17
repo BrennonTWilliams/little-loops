@@ -18,6 +18,33 @@ decision_needed: false
 
 # ENH-2463: Add per-loop-run summary row to history.db
 
+> **✅ Architecture alignment + internal-contradiction fix (ENH-2581 `raw_events`) — read before implementing.**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with stream-derived tables materialized by `_backfill_*()` parsers via
+> `rebuild()` (the pattern [[ENH-2461]] became). **`loop_runs` is NOT such a table,
+> and correctly so** — this issue's own Pass-3 research proves it cannot be:
+> - **Gap P**: `rebuild()` explicitly *excludes* `loop_events` from materialization
+>   (`session_store.py:2818-2823`); loop backfill reads `state.json`, never
+>   `raw_events`. So a `raw_events`-sourced parser is architecturally impossible here.
+> - **Gaps N/O**: the `loop_complete` event doesn't even carry `loop_name` or the
+>   `final_state` key a transport-side fan-out would need.
+>
+> The run summary is **FSM-engine-computed** at `_finish()`, so `loop_runs` is a
+> **producer-side direct-write sibling** (same category as [[ENH-2492]]'s
+> `orchestration_runs`, `commit_events`/[[ENH-2458]], `test_run_events`/[[ENH-2459]]),
+> written by `record_loop_run_summary(...)` called directly from `_finish()` with its
+> locals — **Decisions D2 + E3 are authoritative.** It joins the "outside
+> `raw_events`'s scope" exclusion set (NOT in `_REBUILD_TABLES` / `_REBUILD_SEARCH_KINDS`).
+>
+> **Contradiction to resolve during implementation:** the earlier-selected **Decision
+> A1** and **Implementation Step 6** describe the transport-side `loop_complete` branch
+> as a fan-out that lets "JSONL backfill auto-populate `loop_runs`." Pass-3 **Gap P**
+> refutes exactly this, and **Decision F** defers backfill to a follow-on. Treat D2/E3
+> (producer-side write from `_finish()`) as the sole v1 population path; the
+> transport-side branch is at most a redundant best-effort write for live in-process
+> events (it cannot serve historical replay), and retroactive backfill of
+> `.loops/.history/*/state.json` is out of v1 scope per Decision F.
+
 ## Summary
 
 `loop_events` records per-transition FSM state (`loop_start`, `state_enter`, `route`, `loop_complete`, `retry_exhausted`, …) but no single row summarises a run. To answer "what was the iteration count, final state, and evaluator score of `rn-implement` last Tuesday?" requires replaying the entire `loop_events` stream for that run. Add a `loop_runs` table populated at run completion via a side-effect of `loop_complete` (or a new `loop_run_summary` event) carrying `(run_id, loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score, diagnostics_path)`. Per `thoughts/history-db-expand-wiring.md` §3 ranked recommendation #6: *"one row per completed loop run (final state, iteration count, evaluator score if any, path to `.loops/diagnostics/*.md`), rather than only per-transition events — makes loop health queryable without replaying the whole event stream."*
@@ -178,7 +205,7 @@ The proposed solution is sound, but the research surfaced three decision points 
 
 **Decision A — Producer wiring (one row per run)**
 
-> **Selected:** Option A1 — per the stated recommendation. Side-effect of existing `loop_complete` keeps the transport-layer fan-out pattern intact and lets JSONL backfill auto-populate `loop_runs`.
+> **Selected:** Option A1 — **but superseded in part by Pass-3 Gap P (see the Architecture-alignment banner at top).** The authoritative v1 population path is the *producer-side* `record_loop_run_summary()` call from `_finish()` (Decisions D2 + E3), because Gaps N/O show `loop_complete` carries neither `loop_name` nor a usable `final_state`. The transport-side `loop_complete` branch is retained only as a redundant best-effort write for live in-process events; it does **not** enable JSONL/`raw_events` backfill (Gap P refutes that — `rebuild()` excludes `loop_events`), and historical backfill is deferred to a follow-on per Decision F.
 
 - **Option A1**: Side-effect of existing `loop_complete` event — modify `SQLiteTransport.send()` at `session_store.py:1353` to also write `loop_runs` when `event_type == "loop_complete"`. Pros: no new event type, no `_LOOP_EVENT_TYPES` change, single ingest path. Cons: conflates per-transition and per-run semantics in one branch.
 - **Option A2**: New `loop_run_summary` event — emit from `fsm/executor.py:_finish()` at line 2278 alongside `loop_complete`; add `"loop_run_summary"` to `_LOOP_EVENT_TYPES` at `session_store.py:133`. Pros: clean separation; can be re-emitted on backfill without side effects. Cons: two emits per run; more code surface.
@@ -358,7 +385,7 @@ The `known_subcommands` set at `cli/loop/__init__.py:54-86` must include `"runs"
 3. **`record_loop_run_summary()`** — new function in `session_store.py`, modeled on `record_commit_event` at line 1041. Signature: `(db_path, run_id, loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score=None, diagnostics_path=None, config: dict | None = None) -> bool`. Uses `INSERT OR IGNORE` on the `run_id` UNIQUE constraint; calls `_index()` only when `cursor.rowcount` is truthy (with `kind="loop_run"`, `ref=run_id`, `anchor=loop_name`); exports the function for re-use by `SQLiteTransport`. The `config` parameter is a forward-compat stub matching `record_commit_event` / `record_test_run_event` so the `analytics.capture.loop_runs` gate can be honored later without API churn.
 4. **`update_loop_run_diagnostics()`** — new function in `session_store.py`, single `UPDATE loop_runs SET diagnostics_path=? WHERE run_id=?` per the `skill_events` completion-UPDATE pattern at line 991. Simple-by-primary-key (no return value).
 5. **Wire `_finish()`** — at `fsm/executor.py:2278`, immediately after `_emit("loop_complete", payload)`, compute the archive-time `run_id` via `self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17] + "-" + self.fsm.name` (mirrors `fsm/persistence.py:494`); then call `record_loop_run_summary(...)` with the locals. Make the call best-effort (try/except, log warning) — `_finish()` must never fail because the sink is unhappy.
-6. **Wire JSONL ingest** — at `session_store.py:1353` (the `event_type == "loop_complete"` branch in `SQLiteTransport.send`), call `record_loop_run_summary()` with the event-payload fields. This is the backfill path — historical JSONL replays from `.loops/.history/*/events.jsonl` will populate `loop_runs` on next `ll-session backfill`.
+6. **Wire live transport ingest (optional, redundant)** — at `session_store.py:1543` (the `event_type == "loop_complete"` branch in `SQLiteTransport.send`), optionally call `record_loop_run_summary()` for live in-process events. ⚠ **This is NOT a backfill path** — Pass-3 Gap P proves historical JSONL/`raw_events` replay will NOT populate `loop_runs` (`rebuild()` explicitly excludes `loop_events`), and Gaps N/O show this branch lacks `loop_name` and the correct `final_state` key. The producer-side call from `_finish()` (Step 5, Decisions D2/E3) is the authoritative populator; retroactive backfill of `.loops/.history/*/state.json` is a separate follow-on per Decision F. This step may be dropped entirely without losing v1 coverage.
 7. **Update `loop-specialist` agent** — at `agents/loop-specialist.md:73-76`, append a bullet after the artifact-write step: "After writing the diagnostic artifact, call `update_loop_run_diagnostics(run_id, "<artifact-path>")` to link the artifact to the run row in `history.db`." Run-id is extracted from the artifact filename.
 8. **Extend `history_reader`** — add three functions to `scripts/little_loops/history_reader.py`, modeled on `recent_commit_events` (line 524) and `summarize_skills` (line 472):
    - `recent_loop_runs(*, loop_name=None, since=None, limit=50)` → `list[LoopRun]`

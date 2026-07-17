@@ -20,6 +20,21 @@ labels:
 
 # ENH-2465: Periodic epic-progress snapshots into history.db
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`).**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with stream-derived tables materialized by `_backfill_*()` parsers via
+> `rebuild()` (the pattern [[ENH-2461]] became). **`epic_progress_snapshots` is NOT
+> such a table, and correctly so.** A snapshot is a *rollup computed from live issue
+> files* on the `.issues/` filesystem (a by-status aggregation of `issue_events`),
+> written at child-issue transition time and on each `ll-issues epic-progress`
+> invocation — nothing about it is present in, or recovered from, transcript JSONL.
+> It is therefore a **live/direct-write sibling** (same category as `commit_events`/
+> [[ENH-2458]] and `test_run_events`/[[ENH-2459]]) and joins the "outside
+> `raw_events`'s scope" exclusion set (NOT in `_REBUILD_TABLES` /
+> `_REBUILD_SEARCH_KINDS`). No `raw_events`-sourced parser is needed. (Read the live
+> `SCHEMA_VERSION`/`VALID_KINDS` — now `20` / exported tuple `VALID_KINDS` — at
+> implementation time; the v15–v19 references in the body predate [[ENH-2581]].)
+
 ## Summary
 
 `ll-issues epic-progress <EPIC>` recomputes from live issue state every time — there's no historical snapshot. Once an EPIC closes (or a child moves from `open` → `in_progress` → `done`), the previous state of "what was open last Tuesday at 14:00?" is no longer recoverable from the DB. Add an `epic_progress_snapshots` table populated at child-issue transition time (and on `ll-issues epic-progress` invocation) carrying `(ts, epic_id, by_status_json, total_children, open_count, in_progress_count, done_count, deferred_count, blocked_count, cancelled_count, completion_fraction)`. Per `thoughts/history-db-expand-wiring.md` §3 ranked recommendation #8: *"periodically (e.g. on `epic-progress` invocation, or on child issue transitions) snapshot `by_status` counts so epic velocity is queryable historically, not just as a point-in-time computation."*

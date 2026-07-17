@@ -18,6 +18,23 @@ labels:
 
 # ENH-2464: Backlink .ll/decisions.yaml entries to issuing session_id and issue_id
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`) — read before implementing.**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with every stream-derived table produced by a `_backfill_*()` parser that
+> `rebuild()` replays (the pattern [[ENH-2461]] became). **`decision_events` is NOT
+> that kind of table, and correctly so.** Its canonical source of truth is the
+> external file `.ll/decisions.yaml` (+ `.ll/decisions.d/*.json`); the DB row is a
+> **search/join mirror**, and `source_session_id` / `source_issue_id` are threaded
+> from the orchestrator's runtime context at the `ll-issues decisions add` CLI call
+> site — none of this is present in, or recovered from, session-transcript JSONL.
+> `decision_events` is therefore a **direct-write YAML-mirror sibling**, shaped like
+> `record_issue_snapshot` (YAML+DB dual-write) and `correction_retirements`, and its
+> `_backfill_decision_events()` helper walks the **YAML/JSON decision files** — NOT
+> `raw_events`. It joins the "outside `raw_events`'s scope" exclusion set (NOT added
+> to `_REBUILD_TABLES` / `_REBUILD_SEARCH_KINDS`). It must still register in
+> `_KIND_TABLE` (never `_KINDLESS_TABLES`) so `ll-verify-kinds` stays green. No
+> `raw_events`-sourced parser is needed or wanted.
+
 ## Summary
 
 `.ll/decisions.yaml` (FEAT-948 done, ENH-2152 done for extraction) holds `rule`, `decision`, and `exception` entries with author-provided fields like `rule`, `rationale`, `issue`, `category`, `enforcement`. `correction_retirements` (a sibling table) marks corrections as "codified as a rule" but it's only a one-way link from correction → rule. The `decisions` source file itself carries no `session_id` or `issuing_session_id` — when a `decision` is appended by `/ll:decide-issue`, `/ll:tradeoff-review-issues`, or `/ll:go-no-go`, the originating session and any related issue are not recorded. Add `source_session_id` and `source_issue_id` (or restructure `issue:` to include both) so a rule/decision can be traced to the session and issue that produced it. Per `thoughts/history-db-expand-wiring.md` §3 ranked recommendation #7: *"when a decision is added or its outcome is recorded, write the source `session_id`/`issue_id` so `ll-session search` can trace a rule back to the incident that produced it."*

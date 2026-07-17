@@ -18,6 +18,20 @@ labels:
 
 # ENH-2510: Persist ll-history-context query telemetry into history.db
 
+> **✅ Architecture alignment (ENH-2581 `raw_events`).**
+> [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript
+> JSONL**, with stream-derived tables materialized by `_backfill_*()` parsers via
+> `rebuild()` (the pattern [[ENH-2461]] became). **`context_query_events` is NOT such
+> a table, and correctly so.** The telemetry (`queried_kind`, `queried_id`,
+> `result_tokens`, `hit_rate`) is a *structured result already in hand* inside
+> `ll-history-context` — captured in-process, one row per call — not reconstructed
+> from transcript text. (`ll-history-context` is a CLI the planning skills invoke; its
+> internal per-query cost is not a transcript tool_use payload.) It is therefore a
+> **live-write-only direct-write sibling** (same category as `cli_events` /
+> `test_run_events`/[[ENH-2459]]), correctly **outside `raw_events`'s scope** (NOT in
+> `_REBUILD_TABLES` / `_REBUILD_SEARCH_KINDS`). No `raw_events`-sourced parser is
+> needed. (Read the live `SCHEMA_VERSION`/`VALID_KINDS` at implementation time.)
+
 ## Summary
 
 Every time the agent asks the DB for historical context — "Context for
