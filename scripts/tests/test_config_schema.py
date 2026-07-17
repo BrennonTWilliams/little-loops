@@ -185,6 +185,21 @@ class TestConfigSchema:
         )
         assert glyph_props["parallel"]["type"] == "string"
 
+    def test_loops_glyphs_learning_in_schema(self) -> None:
+        """loops.glyphs.learning must be declared so ll-config.json can set it.
+
+        The `loops.glyphs` block has additionalProperties: false, so configs
+        that set loops.glyphs.learning will be rejected unless the property is
+        declared here alongside the other glyph keys.
+        """
+        data = json.loads(_load_schema_text())
+        glyph_props = data["properties"]["loops"]["properties"]["glyphs"]["properties"]
+        assert "learning" in glyph_props, (
+            "loops.glyphs.learning is not declared; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        assert glyph_props["learning"]["type"] == "string"
+
     def test_learning_tests_in_schema(self) -> None:
         """learning_tests must be declared in config-schema.json.
 

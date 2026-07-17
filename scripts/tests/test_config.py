@@ -2492,6 +2492,7 @@ class TestLoopsGlyphsConfig:
         assert config.sub_loop == "\u21b3\u27f3"
         assert config.route == "\u2443"
         assert config.parallel == "\u2225"
+        assert config.learning == "\u2697"
 
     def test_from_dict_empty(self) -> None:
         config = LoopsGlyphsConfig.from_dict({})
@@ -2521,6 +2522,7 @@ class TestLoopsGlyphsConfig:
             "sub_loop",
             "route",
             "parallel",
+            "learning",
         }
         assert d["prompt"] == "\u2726"
         assert d["route"] == "\u2443"
@@ -2546,11 +2548,12 @@ class TestBRConfigLoopsGlyphs:
         assert config.loops.glyphs.prompt == "\u2726"
         assert config.loops.glyphs.route == "\u2443"
         assert config.loops.glyphs.parallel == "\u2225"
+        assert config.loops.glyphs.learning == "\u2697"
 
     def test_loops_glyphs_override_from_config(self, temp_project_dir: Path) -> None:
         """Custom loops.glyphs values are loaded from config file."""
         sample_config: dict[str, Any] = {
-            "loops": {"glyphs": {"prompt": "P", "mcp_tool": "M", "parallel": "Q"}}
+            "loops": {"glyphs": {"prompt": "P", "mcp_tool": "M", "parallel": "Q", "learning": "L"}}
         }
         config_path = temp_project_dir / ".ll" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -2559,6 +2562,7 @@ class TestBRConfigLoopsGlyphs:
         assert config.loops.glyphs.prompt == "P"
         assert config.loops.glyphs.mcp_tool == "M"
         assert config.loops.glyphs.parallel == "Q"
+        assert config.loops.glyphs.learning == "L"
         assert config.loops.glyphs.shell == "\u276f_"  # default unchanged
         assert config.loops.glyphs.route == "\u2443"  # default unchanged
 

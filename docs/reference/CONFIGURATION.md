@@ -863,6 +863,7 @@ FSM loop settings:
 | `glyphs.sub_loop` | `↳⟳` | Badge glyph for `sub_loop` action states |
 | `glyphs.route` | `⑃` | Badge glyph for `route` action states |
 | `glyphs.parallel` | `∥` | Badge glyph for `parallel` action states |
+| `glyphs.learning` | `⚗` | Badge glyph for `learning` (`type: learning`) states |
 | `queue_wait_timeout_seconds` | `86400` | Seconds to wait for a conflicting scope lock to release when `--queue` is used |
 
 #### `throttle` (per-state progressive throttling)

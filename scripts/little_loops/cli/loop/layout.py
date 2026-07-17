@@ -110,6 +110,7 @@ _ACTION_TYPE_BADGES: dict[str, str] = {
     "slash_command": "/\u2501\u25ba",  # /━►
     "shell": "\u276f_",  # ❯_
     "mcp_tool": "\u26a1",  # ⚡
+    "learning": "\u2697",  # ⚗ — alembic (U+2697); type: learning states
 }
 
 _SUB_LOOP_BADGE = "\u21b3\u27f3"  # ↳⟳
@@ -127,6 +128,7 @@ _ACTION_TYPE_KIND_COLORS: dict[str, str] = {
     "prompt": "35",  # magenta
     "shell": "90",  # bright black (gray) — recedes on warm-paper dark theme
     "mcp_tool": "33",  # yellow
+    "learning": "36",  # muted cyan — distillation/proof theme (type: learning)
 }
 
 _SUB_LOOP_KIND_COLOR = "35"  # magenta — distinguishes nested FSMs
@@ -140,15 +142,18 @@ def _box_kind_color(state: StateConfig | None) -> str | None:
     border hue correspond 1:1:
 
     1. ``state.loop`` set → ``_SUB_LOOP_KIND_COLOR`` (magenta).
-    2. ``state.action_type`` in ``_ACTION_TYPE_KIND_COLORS`` → mapped hue.
-    3. bare ``state.action`` (no explicit ``action_type``) → shell hue.
-    4. terminal state without action → ``_TERMINAL_KIND_COLOR`` (dim).
-    5. bare ``route:`` only or empty state → ``None`` (defer to caller).
+    2. ``state.type == "learning"`` → ``_ACTION_TYPE_KIND_COLORS["learning"]`` (muted cyan).
+    3. ``state.action_type`` in ``_ACTION_TYPE_KIND_COLORS`` → mapped hue.
+    4. bare ``state.action`` (no explicit ``action_type``) → shell hue.
+    5. terminal state without action → ``_TERMINAL_KIND_COLOR`` (dim).
+    6. bare ``route:`` only or empty state → ``None`` (defer to caller).
     """
     if state is None:
         return None
     if state.loop:
         return _SUB_LOOP_KIND_COLOR
+    if state.type == "learning":
+        return _ACTION_TYPE_KIND_COLORS["learning"]
     if state.action_type:
         return _ACTION_TYPE_KIND_COLORS.get(state.action_type)
     if state.action:
@@ -301,6 +306,8 @@ def _get_state_badge(state: StateConfig | None, badges: dict[str, str] | None = 
     route_badge = (badges or {}).get("route", _ROUTE_BADGE)
     if state.loop is not None:
         return sub_loop_badge
+    if state.type == "learning":
+        return effective.get("learning", _ACTION_TYPE_BADGES["learning"])
     if state.action_type:
         return effective.get(state.action_type, f"[{state.action_type}]")
     if state.action:

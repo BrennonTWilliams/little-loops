@@ -569,6 +569,7 @@ class LoopsGlyphsConfig:
     sub_loop: str = "\u21b3\u27f3"  # ↳⟳
     route: str = "\u2443"  # ⑃
     parallel: str = "\u2225"  # ∥
+    learning: str = "\u2697"  # ⚗ — alembic; type: learning states
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopsGlyphsConfig:
@@ -581,6 +582,7 @@ class LoopsGlyphsConfig:
             sub_loop=data.get("sub_loop", "\u21b3\u27f3"),
             route=data.get("route", "\u2443"),
             parallel=data.get("parallel", "\u2225"),
+            learning=data.get("learning", "\u2697"),
         )
 
     def to_dict(self) -> dict[str, str]:
@@ -593,6 +595,7 @@ class LoopsGlyphsConfig:
             "sub_loop": self.sub_loop,
             "route": self.route,
             "parallel": self.parallel,
+            "learning": self.learning,
         }
 
 

@@ -1,12 +1,13 @@
 ---
 id: ENH-2661
 title: Add learning state badge glyph to _ACTION_TYPE_BADGES
-status: open
+status: done
 priority: P3
 type: ENH
 discovered_by: capture-issue
 discovered_date: 2026-07-16
 captured_at: 2026-07-16 00:00:00+00:00
+completed_at: '2026-07-17T01:58:41Z'
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 89
@@ -247,7 +248,35 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low. The new key is additive; existing renderers ignore unknown keys or fall through to their existing default. The kind-color addition follows the same fallback semantics already established for `mcp_tool`.
 - **Backwards compatibility**: Fully backwards compatible. Existing diagrams that don't use learning states are byte-identical; diagrams that *do* use learning states currently display ❯_ and will switch to ⚗ — a visible-but-intentional change for the states that warranted their own kind in the first place.
 
+## Resolution
+
+Implemented via Option A (renderer consults `state.type`), mirroring the FEAT-1225
+parallel-glyph precedent exactly:
+
+- `layout.py` — added `"learning": "⚗"` (U+2697 ALEMBIC) to `_ACTION_TYPE_BADGES` and
+  `"learning": "36"` (muted cyan) to `_ACTION_TYPE_KIND_COLORS`; added a
+  `state.type == "learning"` tier to both `_get_state_badge()` and `_box_kind_color()`,
+  placed after the sub-loop check so a learning state that embeds a sub-loop still
+  shows the sub-loop badge/color. Updated the `_box_kind_color()` docstring precedence list.
+- `config/features.py` — added `learning: str = "⚗"` to `LoopsGlyphsConfig` with
+  matching `from_dict`/`to_dict` entries for `loops.glyphs.learning` overrides.
+- `config-schema.json` — declared the `learning` glyph property (the block is
+  `additionalProperties: false`).
+- `docs/reference/CONFIGURATION.md` — added the `glyphs.learning` row.
+- Tests: dedicated `test_get_state_badge_learning` + precedence test in
+  `test_ll_loop_display.py`; `test_learning_maps_to_cyan` / `test_learning_yields_to_sub_loop`
+  in `TestBoxKindColor` and `test_learning_state_color_in_diagram` in `TestDiagramKindColors`
+  (`test_cli_loop_layout.py`); updated the `to_dict` set-literal and default/override
+  assertions in `test_config.py`; `test_loops_glyphs_learning_in_schema` in
+  `test_config_schema.py`.
+
+Verified end-to-end: `ll-loop show scripts/little_loops/loops/ready-to-implement-gate.yaml`
+renders the `prove:` learning state with a muted-cyan `⚗` badge. Full suite: 15115 passed,
+36 skipped. No snapshot regeneration needed (no fixture uses `type: learning`).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-17T01:58:02Z - `c2510e44-fcba-45e4-8ed1-398080b6f309.jsonl`
+- `/ll:ready-issue` - 2026-07-17T01:49:30 - `b9cc31f0-c0c6-4354-9691-ce16b94a8abd.jsonl`
 - `/ll:confidence-check` - 2026-07-16T23:40:00 - `7e729572-5a2d-4041-9bd6-09fdc31243af.jsonl`
 - `/ll:wire-issue` - 2026-07-16T23:28:31 - `662c2d02-abef-4d10-9ba7-e1ae1ed1edc9.jsonl`
 - `/ll:decide-issue` - 2026-07-16T23:12:42 - `2b0ca1df-7c62-41b3-bca6-f14f3a99fe12.jsonl`
@@ -256,4 +285,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-Open.
+Done.

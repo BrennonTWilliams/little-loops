@@ -189,6 +189,18 @@ class TestBoxKindColor:
         st = self._state(action="mcp://x", action_type="mcp_tool")
         assert _box_kind_color(st) == "33"
 
+    def test_learning_maps_to_cyan(self) -> None:
+        from little_loops.cli.loop.layout import _box_kind_color
+
+        st = self._state(type="learning")
+        assert _box_kind_color(st) == "36"
+
+    def test_learning_yields_to_sub_loop(self) -> None:
+        from little_loops.cli.loop.layout import _SUB_LOOP_KIND_COLOR, _box_kind_color
+
+        st = self._state(type="learning", loop="child")
+        assert _box_kind_color(st) == _SUB_LOOP_KIND_COLOR
+
     def test_unknown_action_type_returns_none(self) -> None:
         from little_loops.cli.loop.layout import _box_kind_color
 
@@ -304,6 +316,33 @@ class TestDiagramKindColors:
         assert "\033[90" in diagram, "shell action_type should color the box bright black (gray)"
         assert "\033[35" in diagram, "sub-loop state should be magenta"
         assert "\033[2m" in diagram, "terminal state should be dim"
+
+    def test_learning_state_color_in_diagram(self) -> None:
+        """A ``type: learning`` state colors its box muted cyan (36) end-to-end."""
+        from little_loops.cli.loop.layout import _render_fsm_diagram
+        from little_loops.fsm.schema import FSMLoop
+
+        states = {
+            "prove": TestBoxKindColor._state(type="learning"),
+            "done": TestBoxKindColor._state(terminal=True),
+        }
+        states["prove"].next = "done"
+        fsm = FSMLoop(
+            name="t",
+            initial="prove",
+            states=states,
+            context={},
+            required_inputs=[],
+            max_steps=50,
+        )
+        diagram = _render_fsm_diagram(
+            fsm,
+            highlight_state=None,
+            highlight_color="32",
+            suppress_labels=True,
+            title_only=True,
+        )
+        assert "\033[36" in diagram, "learning state should color the box muted cyan"
 
     def test_active_box_still_uses_highlight_color(self) -> None:
         """Active state uses highlight_color (with bg fill); kind hues

@@ -2973,6 +2973,7 @@ class TestStateBadges:
         assert _ACTION_TYPE_BADGES["slash_command"] == "/\u2501\u25ba"  # /━►
         assert _ACTION_TYPE_BADGES["shell"] == "\u276f_"  # ❯_
         assert _ACTION_TYPE_BADGES["mcp_tool"] == "\u26a1"  # ⚡
+        assert _ACTION_TYPE_BADGES["learning"] == "\u2697"  # ⚗ — alembic (U+2697)
         assert _SUB_LOOP_BADGE == "\u21b3\u27f3"  # ↳⟳
 
     def test_get_state_badge_none_state(self) -> None:
@@ -3002,6 +3003,20 @@ class TestStateBadges:
     def test_sub_loop_badge_takes_precedence_over_action_type(self) -> None:
         """loop field checked before action_type for badge selection."""
         state = StateConfig(action_type="prompt", loop="child.yaml")
+        assert _get_state_badge(state) == _SUB_LOOP_BADGE
+
+    def test_get_state_badge_learning(self) -> None:
+        """A ``type: learning`` state resolves to the alembic badge via state.type.
+
+        Learning states set ``type: learning`` (not ``action_type``), so they are
+        dispatched by the dedicated type-branch rather than the action_type lookup.
+        """
+        state = StateConfig(type="learning")
+        assert _get_state_badge(state) == _ACTION_TYPE_BADGES["learning"] == "⚗"
+
+    def test_learning_badge_yields_to_sub_loop(self) -> None:
+        """A learning state that also embeds a sub-loop shows the sub-loop badge."""
+        state = StateConfig(type="learning", loop="child.yaml")
         assert _get_state_badge(state) == _SUB_LOOP_BADGE
 
     def test_diagram_contains_prompt_badge(self) -> None:
