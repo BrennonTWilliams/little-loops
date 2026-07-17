@@ -14,10 +14,10 @@ labels:
 - history-db
 - orchestration
 - captured
-confidence_score: 96
-outcome_confidence: 77
+confidence_score: 97
+outcome_confidence: 76
 score_complexity: 18
-score_test_coverage: 23
+score_test_coverage: 22
 score_ambiguity: 18
 score_change_surface: 18
 ---
@@ -1326,6 +1326,7 @@ it is implemented (no coordinated release; per EPIC-2457's own "no shared
 helper module is required" scope note).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-17T00:00:00Z - `a1f53ce0-d899-487b-a632-e0ad2563719e.jsonl`
 - `/ll:wire-issue` - 2026-07-16T20:31:05 - `c6dd324d-abd2-4bf0-a5ac-0b0bfc188270.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:18:50 - `ec721603-845a-43dc-9920-57ba425890cc.jsonl`
 - `/ll:refine-issue` - 2026-07-16T14:08:02 - `4bc98e28-d432-4a7a-ab1f-dcf602e3157c.jsonl`
