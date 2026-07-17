@@ -5,15 +5,21 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-02
-captured_at: "2026-07-02T00:00:00Z"
+captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - loops
-  - captured
+- enhancement
+- history-db
+- loops
+- captured
 decision_needed: false
+confidence_score: 92
+outcome_confidence: 77
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 16
 ---
 
 # ENH-2463: Add per-loop-run summary row to history.db
@@ -75,7 +81,7 @@ Loop health is the project's most heavily-instrumented surface, yet it lacks a r
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Files to Modify
-- `scripts/little_loops/session_store.py:208-545` — append v19 entry to `_MIGRATIONS` AND manually bump `SCHEMA_VERSION = 18` → `SCHEMA_VERSION = 19` at line 102 (the constant is **separate** from `len(_MIGRATIONS)` and is not auto-derived — both edits are required)
+- `scripts/little_loops/session_store.py:208-545` — append a v23 entry to `_MIGRATIONS` AND manually bump the live `SCHEMA_VERSION` constant at `session_store.py:209` from 22 → 23 (the constant is **separate** from `len(_MIGRATIONS)` and is not auto-derived — both edits are required; the version literal here was last verified against v20 and has since advanced to v22 as of 2026-07-17)
 - `scripts/little_loops/session_store.py:17-37` (module docstring public API list) — add `record_loop_run_summary()` and `update_loop_run_diagnostics()` to the enumerated public functions (the docstring is the rendered public-API surface)
 - `scripts/little_loops/session_store.py:104-130` — add `"loop_run"` to `_VALID_KINDS` and `"loop_run": "loop_runs"` to `_KIND_TABLE` (paired registry; both must move together)
 - `scripts/little_loops/session_store.py:133-145` — add `"loop_run"` to `_LOOP_EVENT_TYPES` if emitting a new `loop_run_summary` event (not needed if piggy-backing on `loop_complete`)
@@ -111,7 +117,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` (gap-analysis pass, 2026-07-16) — anchor refresh against current code. The Integration Map line numbers above have drifted; use the current anchors below and the [Scope Boundary](#scope-boundary) note (SCHEMA_VERSION is now **20**, not 18/19)._
+_Added by `/ll:refine-issue` (gap-analysis pass, 2026-07-16) — anchor refresh against current code. The Integration Map line numbers above have drifted; use the current anchors below and the [Scope Boundary](#scope-boundary) note (SCHEMA_VERSION was 20 at the time of this refresh and is now 22 as of 2026-07-17, not 18/19)._
 
 **Behavioral corrections (not just line drift):**
 
@@ -380,7 +386,9 @@ The `known_subcommands` set at `cli/loop/__init__.py:54-86` must include `"runs"
 
 ## Implementation Steps
 
-1. **Schema migration** — append a v19 SQL block to `_MIGRATIONS` at `scripts/little_loops/session_store.py:208-545` (after the v18 entry at line 544). **Also manually bump `SCHEMA_VERSION = 18` → `SCHEMA_VERSION = 19` at line 102** — the constant is a separate module attribute and is NOT auto-derived from `len(_MIGRATIONS)` (verified by codebase-analyzer). Follow the v17 (`test_run_events`) precedent at lines 521-544 for the SQL shape: `CREATE TABLE` + 3 named indexes (`loop_name`, `terminated_by`, `started_at`).
+> **Drift note (2026-07-17):** `SCHEMA_VERSION` is currently **22** (was 20 at the time of `/ll:wire-issue`, has since advanced). The implementer must read the live constant at `scripts/little_loops/session_store.py:209` and bump to the next available version (currently 23). All `v19`/`v20`/`v1–v20` literals in the steps below are stale; substitute the live values when implementing.
+
+1. **Schema migration** — append a v23 SQL block to `_MIGRATIONS` at `scripts/little_loops/session_store.py:333` (after the most-recent entry, not the v18 one cited in the original issue). **Also manually bump the live `SCHEMA_VERSION` constant from 22 → 23** at `session_store.py:209` — the constant is a separate module attribute and is NOT auto-derived from `len(_MIGRATIONS)` (verified by codebase-analyzer). Follow the v17 (`test_run_events`) precedent for the SQL shape: `CREATE TABLE` + 3 named indexes (`loop_name`, `terminated_by`, `started_at`).
 2. **Registry updates** — add `"loop_run"` to `_VALID_KINDS` (`session_store.py:104`) and `"loop_run": "loop_runs"` to `_KIND_TABLE` (`session_store.py:119`). Both move together; the validation gate at line 1278 enforces this pairing. Also add `record_loop_run_summary()` and `update_loop_run_diagnostics()` to the public API docstring enumeration at `session_store.py:17-37` (the docstring is the rendered public-API surface referenced by `docs/reference/API.md:6970`).
 3. **`record_loop_run_summary()`** — new function in `session_store.py`, modeled on `record_commit_event` at line 1041. Signature: `(db_path, run_id, loop_name, started_at, ended_at, final_state, iterations, terminated_by, error, evaluator_score=None, diagnostics_path=None, config: dict | None = None) -> bool`. Uses `INSERT OR IGNORE` on the `run_id` UNIQUE constraint; calls `_index()` only when `cursor.rowcount` is truthy (with `kind="loop_run"`, `ref=run_id`, `anchor=loop_name`); exports the function for re-use by `SQLiteTransport`. The `config` parameter is a forward-compat stub matching `record_commit_event` / `record_test_run_event` so the `analytics.capture.loop_runs` gate can be honored later without API churn.
 4. **`update_loop_run_diagnostics()`** — new function in `session_store.py`, single `UPDATE loop_runs SET diagnostics_path=? WHERE run_id=?` per the `skill_events` completion-UPDATE pattern at line 991. Simple-by-primary-key (no return value).
@@ -442,9 +450,12 @@ assumes it is the sole claimant of the next schema-version slot ("bump
 (ENH-2464, ENH-2465, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496,
 ENH-2497, ENH-2498, ENH-2511) independently make the same "18→19" claim in
 their own Integration Maps — they cannot all be v19. Verified against current
-code (`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **20**
-(v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
-v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done). At
+code (`scripts/little_loops/session_store.py`): `SCHEMA_VERSION` is now **22**
+as of 2026-07-17 (was 20 at the time this note was first written; the
+EPIC-2457 sibling work has continued advancing the schema). Known milestones:
+v17=`commit_events`/ENH-2458 done, v18=`test_run_events`/ENH-2459 done,
+v19=`raw_events`/ENH-2581 done, v20=`usage_events`/ENH-2461 done;
+v21 and v22 landed in the interim. At
 implementation time, read the live `SCHEMA_VERSION` constant to determine the
 actual next-available slot rather than trusting this issue's stale "19"
 literal; each child lands its own migration at whatever version is open when
@@ -688,3 +699,4 @@ The session-log entry appended below records the source JSONL for this wiring pa
 - `/ll:refine-issue` - 2026-07-07T00:06:36 - `6c59385b-d02b-4ef9-8cb4-4a48daafa67d.jsonl`
 - audit - 2026-07-06 - Fixed loop-specialist agent path in Sources (`agents/loop-specialist.md`, not `scripts/little_loops/agents/`). Note for implementer: schema is at v18 as of 2026-07-06, so the new migration lands as v19+; `_finish()` is at `fsm/executor.py:2269`.
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:confidence-check` - 2026-07-17 - `a4d9b02c-e8f7-4a3a-9b1d-2e5c8a7f9b3d.jsonl`
