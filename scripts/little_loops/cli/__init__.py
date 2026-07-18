@@ -40,7 +40,7 @@ Provides command-line interfaces for automated issue management:
 - ll-doctor: Check host CLI capability support for little-loops features
 - ll-code: Structural code queries (callers, callees, imports, impact) via a pluggable provider protocol
 - ll-config: Resolve and print a single dot-path config value (e.g. `ll-config get history.go_no_go.correction_penalty`)
-- ll-queue: Persisted work-item queue: add/list/status/remove commands (FEAT-2682)
+- ll-queue: Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)
 """
 
 from little_loops.cli.action import main_action

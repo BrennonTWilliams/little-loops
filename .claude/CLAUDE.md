@@ -231,7 +231,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-doctor` - Check host CLI capability support for little-loops features
 - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`; JSONL-based session cache hit rate; skill-health signals)
 - `ll-config` - Resolve and print a single dot-path config value (`ll-config get <key>`, e.g. `ll-config get history.go_no_go.correction_penalty`); wraps `BRConfig.resolve_variable()` with a never-raise, config-or-default contract — the CLI a markdown skill shells out to instead of referencing `{{config...}}` template tokens directly (those only expand under `ll-auto`'s `skill_expander.py` pre-expansion pass)
-- `ll-queue` - Persisted work-item queue backed by `.ll/queue.db` (`add`/`list`/`status`/`remove` subcommands; FEAT-2682). `add <target>` classifies a bare string into an FSM loop name, a skill/command name, or a raw CLI invocation (override with `--runner`); distinct from `ll-loop queue`'s PID-liveness marker mechanism, which FEAT-2684 migrates separately
+- `ll-queue` - Persisted work-item queue backed by `.ll/queue.db` (`add`/`list`/`status`/`remove`/`run` subcommands; FEAT-2682, FEAT-2683). `add <target>` classifies a bare string into an FSM loop name, a skill/command name, or a raw CLI invocation (override with `--runner`); distinct from `ll-loop queue`'s PID-liveness marker mechanism, which FEAT-2684 migrates separately. `run` serially dequeues `pending` entries in priority/FIFO order and dispatches each through ENH-2668's `run_action()`, writing back real `status`/`result` (`SKILL`/`CMD`/`MCP`/`PROMPT` kinds only — `RunnerType.LOOP` stays on `PersistentExecutor`)
 
 Install: `pip install -e "./scripts[dev]"`
 

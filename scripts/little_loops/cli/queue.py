@@ -1,4 +1,4 @@
-"""ll-queue: persisted queue-entry store — add/list/status/remove commands (FEAT-2682).
+"""ll-queue: persisted queue-entry store — add/list/status/remove/run commands (FEAT-2682, FEAT-2683).
 
 Operates on a dedicated ``.ll/queue.db`` (via :mod:`little_loops.queue_store`),
 distinct from ``ll-loop queue``'s PID-liveness marker mechanism
@@ -225,12 +225,65 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run(args: argparse.Namespace) -> int:
+    """Dequeue pending entries in priority/FIFO order and dispatch each via run_action()."""
+    from little_loops.cli.output import colorize, print_json
+    from little_loops.queue_store import list_entries, update_entry_result
+    from little_loops.runner_spec import run_action
+
+    json_mode = getattr(args, "json", False)
+    processed: list[dict[str, Any]] = []
+
+    while True:
+        pending = [e for e in list_entries(QUEUE_DB_PATH) if e.status == "pending"]
+        if not pending:
+            break
+        entry = pending[0]
+        update_entry_result(entry.id, "running", None, db_path=QUEUE_DB_PATH)
+
+        try:
+            result = run_action(entry.action)
+        except Exception as exc:
+            status = "failed"
+            result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}
+        else:
+            result_dict = {
+                "exit_code": result.exit_code,
+                "timed_out": result.timed_out,
+                "error": result.error,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+            status = "done" if not result.timed_out and result.error is None and result.exit_code == 0 else "failed"
+
+        update_entry_result(entry.id, status, result_dict, db_path=QUEUE_DB_PATH)
+        processed.append({"id": entry.id, "status": status, "result": result_dict})
+
+        if not json_mode:
+            status_color = _STATUS_COLOR.get(status, "0")
+            print(
+                f"  {colorize(entry.id[:8], '34')}  {colorize(status, status_color)}  "
+                f"{entry.action.runner.value}:{entry.action.target}"
+            )
+
+    if json_mode:
+        print_json(processed)
+        return 0
+
+    if not processed:
+        print("Queue is empty")
+    else:
+        plural = "y" if len(processed) == 1 else "ies"
+        print(colorize(f"Processed {len(processed)} entr{plural}", "1"))
+    return 0
+
+
 def main_queue() -> int:
     """CLI handler for ll-queue subcommands."""
     with cli_event_context(DEFAULT_DB_PATH, "ll-queue", sys.argv[1:]):
         parser = argparse.ArgumentParser(
             prog="ll-queue",
-            description="Persisted work-item queue: add/list/status/remove commands",
+            description="Persisted work-item queue: add/list/status/remove/run commands",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
@@ -239,6 +292,7 @@ Examples:
   ll-queue list --json
   ll-queue status abcd1234
   ll-queue remove abcd1234 --force
+  ll-queue run
 """,
         )
 
@@ -308,6 +362,13 @@ Examples:
             "--json", action="store_true", default=False, help="JSON output"
         )
 
+        run_parser = subparsers.add_parser(
+            "run",
+            help="Dequeue and execute pending entries in priority/FIFO order",
+            description="Serially dispatch each pending entry through run_action()",
+        )
+        run_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
+
         parsed = parser.parse_args()
 
         if parsed.command == "add":
@@ -318,6 +379,8 @@ Examples:
             return cmd_status(parsed)
         elif parsed.command == "remove":
             return cmd_remove(parsed)
+        elif parsed.command == "run":
+            return cmd_run(parsed)
         else:
             parser.print_help()
             return 1

@@ -300,7 +300,7 @@ ll-session        Query the unified SQLite session store (search/recent/backfill
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
 ll-config         Resolve and print a single dot-path config value (ll-config get <key>)
-ll-queue          Persisted work-item queue: add/list/status/remove commands (FEAT-2682)
+ll-queue          Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]
