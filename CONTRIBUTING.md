@@ -307,7 +307,11 @@ little-loops/
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
-        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session, v1–v14 migrations)
+        ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session + soft-threshold 6-section trigger, v1–v14 migrations)
+        ├── compaction/          # Instant eviction + 6-section summary (sub-package, FEAT-2598)
+        │   ├── __init__.py      #   Re-exports for the compaction/instant.py + compaction/result.py surface
+        │   ├── instant.py       #   StreamingLLM sink+window eviction, sliding-window selection, 6-section summarizer
+        │   └── result.py        #   CompactResult dataclass wrapper over summary_nodes rows
         ├── history_reader.py    # Typed read-only query API for .ll/history.db (8 query functions, 7 dataclasses)
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction

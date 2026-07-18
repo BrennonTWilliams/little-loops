@@ -7376,6 +7376,64 @@ Joins the `issue_sessions` VIEW to `summary_nodes` filtering for `kind='condense
 
 **Integration:** Called by `ll-history-context <issue_id>` when `history.compaction.enabled` is `true` to inject a `## Prior Work (condensed)` section. Output is byte-identical when compaction is disabled or no level-0 nodes exist for the issue's sessions. See ENH-2231 and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` for the DAG architecture.
 
+**FEAT-2598 note:** for sessions that cross the 7,500-token soft threshold, `session_store._maybe_soft_threshold_summary()` may rewrite this same row's `content` into the 6-section cookbook schema (User Intent / Completed Work / Errors & Corrections / Active Work / Pending Tasks / Key References) — the row's `kind`/`level`/identity are unchanged, so this function's query and truncation behavior are unaffected.
+
+## little_loops.compaction
+
+Session-memory compaction: StreamingLLM eviction + 6-section schema (FEAT-2598). Extends the LCM compaction surface in `session_store` with two complementary passes: instant structural eviction (no LLM cost, always-on) and 6-section semantic summarization (gated on `history.compaction.enabled`, fires in a background thread at the soft token threshold).
+
+### evict_sink_and_window
+
+```python
+def evict_sink_and_window(
+    messages: list[dict],
+    sink_n: int = 4,
+    window_n: int = 20,
+) -> list[dict]
+```
+
+StreamingLLM-style eviction: keeps the first `sink_n` + last `window_n` messages, dropping the middle. Operates at message granularity (not token/KV-cache granularity). `system`-role messages (system prompt / CLAUDE.md blocks) are preserved unconditionally and excluded from the sink/window accounting. Returns the original list unchanged when there is nothing to prune.
+
+### is_valid_cutoff / compute_goal_tokens / select_sliding_window
+
+```python
+def is_valid_cutoff(messages: list[dict], index: int) -> bool
+def compute_goal_tokens(model: str | None = None, sliding_window_percentage: float = 0.3, override: int | None = None) -> int
+def select_sliding_window(messages: list[dict], model: str | None = None, sliding_window_percentage: float = 0.3, override: int | None = None) -> list[dict]
+```
+
+Letta-style sliding-window selection. `compute_goal_tokens` implements `goal_tokens = (1 - sliding_window_percentage) * context_window` using `context_window.context_window_for()`. `select_sliding_window` selects the most recent messages fitting within that budget (inflated by `APPROX_TOKEN_SAFETY_MARGIN = 1.3`, the project's byte/4 token-estimate heuristic), snapped to a valid cutoff via `is_valid_cutoff` (a user-turn boundary, avoiding a split mid assistant/tool-call sequence).
+
+### summarize_6_section
+
+```python
+def summarize_6_section(
+    messages: list[str] | list[dict],
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+) -> str
+```
+
+Produces a 6-section cookbook-style summary (User Intent / Completed Work / Errors & Corrections / Active Work / Pending Tasks / Key References) via `session_store._call_llm_for_summary` (same sanctioned host-CLI abstraction `_summarize_block` uses). Falls back to a deterministic empty-section skeleton if the LLM call fails, so a well-shaped summary is always produced.
+
+### CompactResult / compact_result_for_session
+
+```python
+@dataclass
+class CompactResult:
+    summary_message: str | None
+    compacted_messages: list[int] = field(default_factory=list)
+    summary_text: str | None = None
+    context_token_estimate: int = 0
+
+def compact_result_for_session(session_id: str, db: Path | str) -> CompactResult | None
+```
+
+`CompactResult` is a thin dataclass wrapper over existing `summary_nodes`/`summary_spans` rows — no schema change. `compact_result_for_session` returns `None` when the session has no per-session condensed node (`kind='condensed'`, `level=0`) yet.
+
+**CLI:** `ll-compact-session SESSION_ID [--db PATH] [--json]` manually triggers `session_store.compact_session()` for one session and prints the resulting `CompactResult`. Distinct from `ll-session compact`, which sweeps the separate *retention* axis (`kind='retention'` `raw_events` summarization, ENH-1906/ENH-2581).
+
 ### issue_effort
 
 ```python

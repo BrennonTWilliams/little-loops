@@ -16,6 +16,7 @@ Provides command-line interfaces for automated issue management:
 - ll-history: Completed issue statistics and analysis
 - ll-logs: Discover, extract, and analyze ll-relevant JSONL entries from ~/.claude/projects/ (scan-failures mines failed ll-* calls)
 - ll-session: Query the unified session store (SQLite + FTS5)
+- ll-compact-session: Manually trigger LCM session-memory compaction for one session (distinct from `ll-session compact`'s retention sweep)
 - ll-history-context: render a ## Historical Context block for an issue from .ll/history.db
 - ll-deps: Cross-issue dependency discovery and validation
 - ll-sync: GitHub Issues sync
@@ -47,6 +48,7 @@ from little_loops.cli.adapt_skills_for_codex import main_adapt_skills_for_codex
 from little_loops.cli.artifact import main_artifact
 from little_loops.cli.auto import main_auto
 from little_loops.cli.code import main_code
+from little_loops.cli.compact_session import main_compact_session
 from little_loops.cli.create_extension import main_create_extension
 from little_loops.cli.ctx_stats import main_ctx_stats
 from little_loops.cli.deps import main_deps
@@ -99,6 +101,7 @@ __all__ = [
     "main_auto",
     "main_check_links",
     "main_code",
+    "main_compact_session",
     "main_create_extension",
     "main_ctx_stats",
     "main_deps",

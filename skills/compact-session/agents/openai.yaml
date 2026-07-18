@@ -1,0 +1,3 @@
+interface:
+  display_name: "Compact Session"
+  short_description: "Use when asked to manually compact a session's memory, trigger session summariza"

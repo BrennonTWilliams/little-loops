@@ -3,8 +3,9 @@ id: FEAT-2598
 title: "F3 \u2014 Session-memory compaction: StreamingLLM eviction + 6-section schema"
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-11T00:00:00Z'
+completed_at: '2026-07-18T14:26:02Z'
 discovered_date: 2026-07-11
 discovered_by: capture-issue
 parent: EPIC-2456
@@ -568,11 +569,56 @@ _Added by `/ll:confidence-check` on 2026-07-16; updated 2026-07-17 after
   the chance of a missed wiring step (e.g. `plugin.json` registration,
   `__all__` export).
 
+## Resolution
+
+Implemented as scoped:
+
+- `scripts/little_loops/compaction/` (new sub-package): `instant.py` —
+  `evict_sink_and_window` (StreamingLLM sink+window structural eviction,
+  system/CLAUDE.md-preserving), `is_valid_cutoff`/`compute_goal_tokens`/
+  `select_sliding_window` (Letta-style sliding window), `summarize_6_section`
+  (6-section cookbook schema via the sanctioned host-CLI abstraction);
+  `result.py` — `CompactResult` dataclass + `compact_result_for_session()`,
+  a thin wrapper over existing `summary_nodes`/`summary_spans` rows (no
+  schema change).
+- `session_store.py`: new `_maybe_soft_threshold_summary()` fires a
+  background thread once a session's `message_events` cross the 7,500-token
+  soft threshold (gated on `history.compaction.enabled`, matching the
+  existing opt-in LLM-cost semantics); it bounds its input via
+  `evict_sink_and_window` and updates the session's existing per-session
+  condensed node in place (`kind='condensed'`, `level=0`) — deliberately
+  *not* touching `_compact_session_conn`'s purely-additive contract, to
+  avoid regressing the 4 test classes the confidence-check flagged as the
+  top outcome risk. Called from both shared trigger points
+  (`compact_session()` and `_compact_sessions()`/`rebuild()`).
+- `ll-compact-session` CLI (`cli/compact_session.py`, registered in
+  `pyproject.toml` + `cli/__init__.py`) manually triggers the same path and
+  prints the resulting `CompactResult`; kept visibly distinct from the
+  unrelated retention `ll-session compact` subcommand.
+- `skills/compact-session/SKILL.md` (full content, bare name per repo
+  convention) + `skills/ll-compact-session/SKILL.md` (thin Codex-bridge
+  stub, `agents/openai.yaml` generated to satisfy
+  `test_every_bridged_skill_has_openai_yaml`).
+- Docs updated: `docs/ARCHITECTURE.md` (Token cost layer row),
+  `docs/reference/API.md` (new `little_loops.compaction` module section +
+  a note on `condensed_nodes_for_issue`), `CONTRIBUTING.md` (file-tree),
+  `.claude/CLAUDE.md` (CLI Tools listing). `.claude-plugin/plugin.json`
+  needed no edit — its `skills` key is a directory glob (`["./skills"]`),
+  not a per-skill list, so the new skill is auto-discovered.
+- New `scripts/tests/test_compaction.py` (18 tests, written first/Red
+  before implementation per TDD mode) plus a `message_events`
+  row-count-unchanged regression test. Full suite: `python -m pytest
+  scripts/tests/` — 15,240 passed, 37 skipped, 0 failed. Verified the 4
+  test classes the confidence-check flagged (`TestCompactSession`,
+  `TestSummaryDagRetrieval`, `TestCompactSubcommand`,
+  `test_escalation_logs_warning`) all pass unmodified.
+
 ## Status
 
-**Open** | Created: 2026-07-11 | Priority: P2
+**Done** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue feature implement` - 2026-07-18T14:25:20Z - `8a349b37-94d0-42d7-a0df-4233366cfa1b.jsonl`
 - `/ll:ready-issue` - 2026-07-18T05:08:35 - `b50b5d3c-2ef8-4088-bf21-2dd93301043a.jsonl`
 - `/ll:confidence-check` - 2026-07-17T00:00:00Z - `b50b5d3c-2ef8-4088-bf21-2dd93301043a.jsonl`
 - `/ll:decide-issue` - 2026-07-17T04:04:52 - `9b2a6c2d-1f82-482f-81a0-7bf1d1c2e405.jsonl`

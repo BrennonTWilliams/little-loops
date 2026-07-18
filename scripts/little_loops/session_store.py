@@ -57,9 +57,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.host_runner import resolve_host
+
+if TYPE_CHECKING:
+    from little_loops.config.features import CompactionConfig
 
 __all__ = [
     "DEFAULT_DB_PATH",
@@ -2772,10 +2775,86 @@ def _compact_session_conn(
     return new_leaves
 
 
+def _maybe_soft_threshold_summary(
+    conn: sqlite3.Connection,
+    session_id: str,
+    db: Path | str,
+    compact_cfg: CompactionConfig,
+) -> threading.Thread | None:
+    """Fire a background 6-section summary once the soft token threshold is crossed (FEAT-2598).
+
+    Gated on ``CompactionConfig.enabled`` — summarization is the opt-in LLM-cost
+    path (unlike the always-on structural eviction pass in
+    ``compaction.instant.evict_sink_and_window``, applied here to bound the
+    summarizer's input). Updates the session's existing per-session condensed
+    ``summary_nodes`` row (``kind='condensed'``, ``level=0``) in place — no new
+    node kind, no schema change, and no change to
+    ``history_reader.condensed_nodes_for_issue()``'s query semantics.
+
+    Does not touch ``_compact_session_conn``'s purely-additive contract: this
+    function only ever reads ``message_events`` and writes to ``summary_nodes``
+    from a background thread using its own connection (sqlite3 connections are
+    not thread-safe across threads).
+    """
+    if not compact_cfg.enabled:
+        return None
+
+    from little_loops.compaction.instant import SOFT_THRESHOLD_TOKENS, evict_sink_and_window
+
+    rows = conn.execute(
+        "SELECT content FROM message_events WHERE session_id = ? ORDER BY ts, id",
+        (session_id,),
+    ).fetchall()
+    if not rows:
+        return None
+
+    contents = [r[0] or "" for r in rows]
+    if sum(_estimate_tokens(c) for c in contents) < SOFT_THRESHOLD_TOKENS:
+        return None
+
+    bounded = evict_sink_and_window([{"role": "user", "content": c} for c in contents])
+    bounded_contents = [m["content"] for m in bounded]
+
+    def _run() -> None:
+        from little_loops.compaction.instant import summarize_6_section
+
+        summary_text = summarize_6_section(
+            bounded_contents, model=compact_cfg.model, timeout=compact_cfg.timeout
+        )
+        thread_conn = connect(db)
+        try:
+            existing = thread_conn.execute(
+                "SELECT id FROM summary_nodes"
+                " WHERE session_id = ? AND kind = 'condensed' AND level = 0",
+                (session_id,),
+            ).fetchone()
+            tokens = _estimate_tokens(summary_text)
+            if existing:
+                thread_conn.execute(
+                    "UPDATE summary_nodes SET content = ?, tokens = ? WHERE id = ?",
+                    (summary_text, tokens, existing[0]),
+                )
+            else:
+                thread_conn.execute(
+                    "INSERT OR IGNORE INTO summary_nodes"
+                    "(kind, content, tokens, session_id, ts_start, ts_end, created_at, level)"
+                    " VALUES('condensed', ?, ?, ?, NULL, NULL, ?, 0)",
+                    (summary_text, tokens, session_id, _now()),
+                )
+            thread_conn.commit()
+        finally:
+            thread_conn.close()
+
+    thread = threading.Thread(target=_run, name=f"compact-6section-{session_id}", daemon=True)
+    thread.start()
+    return thread
+
+
 def _compact_sessions(
     conn: sqlite3.Connection,
     config: dict | None = None,
     max_sessions: int | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
 ) -> int:
     """Compact all sessions in the sessions table; returns total new leaf nodes created.
 
@@ -2791,6 +2870,8 @@ def _compact_sessions(
     Args:
         max_sessions: When set, caps the number of sessions compacted in this run
             (useful for incremental first-time backfills on large databases).
+        db: Path passed through to the soft-threshold background summarizer
+            (FEAT-2598), which needs its own connection to the same database.
     """
     from little_loops.config.features import CompactionConfig
 
@@ -2811,6 +2892,7 @@ def _compact_sessions(
             model=compact_cfg.model,
             timeout=compact_cfg.timeout,
         )
+        _maybe_soft_threshold_summary(conn, row[0], db, compact_cfg)
 
     # -- Cross-session condensation (ENH-1954) ---------------------------------
     if not compact_cfg.cross_session_enabled:
@@ -2955,6 +3037,7 @@ def compact_session(
             timeout=compact_cfg.timeout,
         )
         conn.commit()
+        _maybe_soft_threshold_summary(conn, session_id, db, compact_cfg)
     finally:
         conn.close()
     return result
@@ -3208,7 +3291,7 @@ def rebuild(
         counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())
         counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor())
         counts["corrections"] = mine_corrections_from_messages(conn, config)
-        counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions)
+        counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)
 
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_rebuild_version', ?) "

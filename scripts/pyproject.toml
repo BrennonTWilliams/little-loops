@@ -76,6 +76,7 @@ ll-migrate-labels = "little_loops.cli:main_migrate_labels"
 ll-migrate-status = "little_loops.cli:main_migrate_status"
 ll-logs = "little_loops.cli:main_logs"
 ll-session = "little_loops.cli:main_session"
+ll-compact-session = "little_loops.cli:main_compact_session"
 ll-history-context = "little_loops.cli:main_history_context"
 ll-ctx-stats = "little_loops.cli:main_ctx_stats"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
