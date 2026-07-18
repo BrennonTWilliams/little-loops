@@ -481,7 +481,7 @@
             "outcome_threshold": {
               "type": "integer",
               "description": "Minimum outcome_confidence (0-100) required to proceed with implementation",
-              "default": 70,
+              "default": 65,
               "minimum": 1,
               "maximum": 100
             }
