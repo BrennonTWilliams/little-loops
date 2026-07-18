@@ -46,7 +46,8 @@ relates_to:
 - FEAT-2674
 - FEAT-2675
 - FEAT-2676
-- FEAT-2679
+- FEAT-2680
+- FEAT-2681
 source_artifacts:
 - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
 - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
