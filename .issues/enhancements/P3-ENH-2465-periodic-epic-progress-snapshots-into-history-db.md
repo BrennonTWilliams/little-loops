@@ -3,7 +3,7 @@ id: ENH-2465
 title: Periodic epic-progress snapshots into history.db
 type: ENH
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-07-02
 captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue

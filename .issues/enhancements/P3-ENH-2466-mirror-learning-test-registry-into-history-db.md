@@ -489,6 +489,7 @@ return `[]`/`None` on missing DB. New `record_learning_test_event()` and
 `_backfill_learning_test_events()` must conform.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-17T22:46:55 - `6de2c4b0-59eb-45b9-812c-4633494e7ce9.jsonl`
 - `/ll:confidence-check` - 2026-07-17T00:00:00Z - `fb8ca0b8-a409-438d-a477-431cb6de1cd0.jsonl`
 - `/ll:format-issue` - 2026-07-17T22:42:06 - `3c693d1b-b435-412e-b697-77d3cd96161d.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:32:32 - `ec8b8d8e-4a0b-44e0-9688-a85509c72451.jsonl`
