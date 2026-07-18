@@ -688,6 +688,8 @@ When `ll-loop run --queue` encounters a scope conflict with a running loop, it c
 
 Entries are short-lived and ephemeral — treat the directory as a live view, not a history log. Stale entries are possible if a process exits abnormally without running `atexit` handlers; `ll-loop queue list` (below) *is* that cleanup tooling — reading the queue prunes entries whose `pid` is no longer alive.
 
+Distinct from [`ll-queue`](#ll-queue), which persists general-purpose, non-FSM `ActionSpec` work items to `.ll/queue.db` — the two queue surfaces are unrelated and do not overlap.
+
 #### `ll-loop queue list`
 
 List pending entries in the process-backed run queue (the `.loops/.queue/*.json` files documented under [Queue entries](#queue-entries-loopsqueue) above). This is the observability surface for loops waiting on a scope lock via `ll-loop run --queue`.
@@ -2603,7 +2605,7 @@ Pruning is dual-gated by `analytics.retention` config: both `min_project_age_day
 
 ### ll-queue
 
-Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from `ll-loop queue`'s PID-liveness marker mechanism, which FEAT-2684 migrates separately. Schema: `{id, action, enqueuedAt, priority, status, result}`, ordered by priority tier then FIFO within tier.
+Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result}`, ordered by priority tier then FIFO within tier.
 
 **Subcommands:**
 

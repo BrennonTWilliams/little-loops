@@ -2,7 +2,8 @@
 
 Operates on a dedicated ``.ll/queue.db`` (via :mod:`little_loops.queue_store`),
 distinct from ``ll-loop queue``'s PID-liveness marker mechanism
-(``cli/loop/queue.py``), which FEAT-2684 migrates separately.
+(``cli/loop/queue.py``), which FEAT-2684 preserves unchanged as a compat
+shim rather than migrating.
 """
 
 from __future__ import annotations

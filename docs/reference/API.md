@@ -8248,7 +8248,7 @@ Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that 
 
 ## little_loops.queue_store
 
-Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll/queue.db` — distinct from `ll-loop queue`'s PID-liveness marker mechanism (`cli/loop/queue.py`), which FEAT-2684 migrates separately. Modeled directly on `session_store`'s migration/`connect`/`ensure_db` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`, copied rather than shared).
+Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll/queue.db` — distinct from `ll-loop queue`'s PID-liveness marker mechanism (`cli/loop/queue.py`), which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Modeled directly on `session_store`'s migration/`connect`/`ensure_db` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`, copied rather than shared).
 
 ```python
 from little_loops.queue_store import (

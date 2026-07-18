@@ -152,6 +152,11 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "ll-loop queue remove", "ENH-2630"),
     (".claude/CLAUDE.md", "queue remove", "ENH-2630"),
     ("docs/guides/LOOPS_GUIDE.md", "ll-loop queue remove", "ENH-2630"),
+    (
+        "docs/reference/CLI.md",
+        "Distinct from [`ll-queue`](#ll-queue), which persists general-purpose",
+        "FEAT-2684",
+    ),
 ]
 
 

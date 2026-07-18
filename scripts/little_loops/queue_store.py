@@ -16,8 +16,9 @@ here since it's typed concretely against ``IssueInfo``.
 
 This module owns persistence and CRUD only (add/list/get/remove). Dequeuing
 and executing entries is FEAT-2683's worker loop; the ``ll-loop queue``
-PID-liveness marker mechanism this supersedes is migrated separately by
-FEAT-2684.
+PID-liveness marker mechanism is a distinct, non-overlapping surface for FSM
+lock contention, preserved unchanged as a compat shim by FEAT-2684 rather
+than migrated into this store.
 """
 
 from __future__ import annotations

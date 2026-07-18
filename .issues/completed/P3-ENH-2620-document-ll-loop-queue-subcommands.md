@@ -242,3 +242,9 @@ _Added by `/ll:confidence-check` on 2026-07-13_
 ### Decomposed Into
 - ENH-2629: Document `ll-loop queue list` (and bare `ll-loop queue`) surface — unblocked now
 - ENH-2630: Document `ll-loop queue remove <id>` subcommand — blocked on FEAT-2619
+
+**Note (FEAT-2684, 2026-07-18)**: this issue's decomposition already covers the
+`ll-loop queue` subcommand docs (ENH-2629/ENH-2630, both `done`). FEAT-2684
+resolves the separate question of how `ll-loop queue` relates to the new
+`ll-queue` (FEAT-2682) persisted store by cross-linking the two sections in
+`docs/reference/CLI.md` — complementary to, not superseding, this issue.
