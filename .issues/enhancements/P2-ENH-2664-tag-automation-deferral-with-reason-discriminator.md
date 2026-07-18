@@ -7,12 +7,20 @@ captured_at: '2026-07-18T02:50:02Z'
 discovered_date: '2026-07-18'
 discovered_by: capture-issue
 parent: EPIC-2663
-relates_to: [FEAT-2665, ENH-2666]
+relates_to:
+- FEAT-2665
+- ENH-2666
 decision_needed: false
 labels:
 - loops
 - issue-lifecycle
 - orchestration
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-2664: Tag automation deferral with a reason discriminator
@@ -217,6 +225,22 @@ _Added by `/ll:refine-issue` — concrete, code-grounded revision of the steps a
   `defer_issue()` + `issue.deferred` event payload.
 - `.claude/CLAUDE.md:174-179`, `docs/reference/CLI.md`, `docs/reference/API.md` — docs.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/observability/schema.py:416-420` — `IssueDeferredVariant` (DES variant for `issue.deferred`). **Only if optional step 6 lands** (extending `defer_issue()`'s event payload with the new keys). The variant declares only a `type: Literal["issue.deferred"]` discriminator and inherits its payload shape from the base `DESVariant`, so no structural class change is required unless payload fields are typed explicitly; `ll-verify-des-audit` still passes since the emit-site name is unchanged. [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:1150` — the closure-context bullet already documents `deferred_reason`/`deferred_date` (ENH-2535 free-prose semantics); add a note that under `deferred_by: automation`, `deferred_reason` is an **enum code**, not prose. [Agent 2 finding]
+- `docs/reference/CLI.md:1627-1641` — the `#### ll-issues set-status` argument table has no `--reason`/`--by` rows and its examples show no usage; add two table rows + an example invoking `set-status <ID> deferred --by automation --reason <code>`. [Agent 2 finding]
+- **Verified no coupling (report only):** `config-schema.json:105-110` documents only the config-default `status` enum, not issue frontmatter — it is *not* the place for the reason-code enum (target `.claude/CLAUDE.md` § Issue File Format instead). No `commands/*.md` or `skills/*/SKILL.md` mentions the deferred-specific fields. [Agent 2 finding]
+
+### Consumers Verified Unaffected (report only)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/skip.py:cmd_skip` — guards *against* deferred (`status in ("done","cancelled","deferred")` @ `:40`), never writes `status: deferred`, shares no code path with `_status_updates()`. Its `--reason` is a naming precedent only; **no change needed**. [Agent 1 + Agent 2 finding]
+- `ll-parallel` / `ll-auto` / `ll-sprint` — all shell out to `ll-issues set-status` as a subprocess (no in-process `Namespace` construction), so new *optional* flags don't break them. `parallel/orchestrator.py`'s `_requeue_deferred_issues()` (`:1210-1228`) manages a within-run re-enqueue of deferred issues but keys off `status`, not the new discriminator — out of scope for ENH-2664 (relevant later to FEAT-2665). [Agent 1 + Agent 2 finding]
+
 ### Dependent Files (Callers / Consumers)
 - `scripts/little_loops/cli/issues/show.py:202,205,335,390` — already reads
   `deferred_reason`/`deferred_date` for closure-context display (ENH-2535); verify it
@@ -240,6 +264,16 @@ _Added by `/ll:refine-issue` — concrete, code-grounded revision of the steps a
 - `scripts/tests/test_issue_lifecycle.py:1153-1223` (`TestDeferIssue`) — library path.
 - `scripts/tests/test_rn_implement.py` — loop-level `mark_deferred` coverage.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_decisions.py:244-313` (`TestSourceProvenanceFields`) + `scripts/tests/test_cli_decisions.py:380-454` — **strongest precedent** (ENH-2667): the three-tier "new optional field on write" test shape to model on — (1) round-trips through the write/read fn, (2) backward-compat: pre-existing data / omitted flag loads as `None`/absent (not an error), (3) omit-when-None: field absent from output when unset, (4) CLI-level test threading the new argparse flag through `main_issues()` end-to-end. Mirror this for `deferred_by`/`deferred_reason`/`deferred_date`. [Agent 3 finding]
+- `scripts/tests/test_rn_implement.py` — update specific static-assertion tests to distinguish the two reason codes at their two routes: `TestDeferredOnStall.test_mark_deferred_writes_reason_sets_status_and_dequeues` (~`:993`) and `TestBlockedByGate.test_mark_deferred_names_unmet_blocker` (~`:1074`) — assert `--reason blocked_by_unmet` on the `route_blocked_by` branch, `--reason remediation_stalled` on the `route_dec_stalled_origin` branch, and `--by automation` present. No existing test distinguishes which route produced which reason. [Agent 3 finding]
+- `scripts/tests/test_set_status_cli.py` — new cases beyond the stamping pair: invalid `--reason`/`--by` choice → argparse exit 2 (mirror `test_set_status_invalid_value_rejected:204`, using `choices=` on the flags); `deferred_date` ISO-8601 `Z`-suffix format assertion (mirror `test_set_status_done_stamps_completed_at:108-110`); establish expected behavior for `--reason` passed without `deferred` status (no-op vs reject — currently undefined). [Agent 3 finding]
+- `scripts/tests/test_show.py` — reads `deferred_reason`/`deferred_date`; verify an automation **enum code** renders acceptably (gated on the `show.py` code→label follow-up). [Agent 1 + Agent 3 finding]
+- `scripts/tests/test_wiring_reference_docs.py` — references the deferred fields; check whether the new/reused key documentation keeps it green. [Agent 1 finding]
+- **No tests expected to break:** no repo test does exact-dict frontmatter equality on a deferred issue; all `deferred`-adjacent assertions use substring/`.get()` checks that tolerate added keys (e.g. `test_cascade_active_children_get_deferred_by_default:267`, `test_cascade_continues_on_individual_failure:614`). [Agent 3 finding]
+
+**Argparse precedent note:** for the constrained flags, model `--reason`/`--by` on the existing `choices=`/`default=` args already in the `set-status` subparser (`__init__.py:744-761`, e.g. the `status` positional and `--cascade-to` choices), not on `skip.py`'s unconstrained free-text `--reason`.
+
 ## Impact
 
 - **Priority**: P2 — blocks FEAT-2665; small surface, high leverage.
@@ -252,6 +286,7 @@ _Added by `/ll:refine-issue` — concrete, code-grounded revision of the steps a
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-18T03:12:16 - `5b371a7f-6f3f-4a6b-a7e3-0d2e9c555d54.jsonl`
 - `/ll:decide-issue` - 2026-07-18T03:05:24 - `2d062121-c6c8-4eac-acd8-deaa9fe844d1.jsonl`
 - `/ll:refine-issue` - 2026-07-18T03:01:00 - `2d062121-c6c8-4eac-acd8-deaa9fe844d1.jsonl`
 - `/ll:capture-issue` - 2026-07-18T02:50:02Z
