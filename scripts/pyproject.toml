@@ -79,6 +79,7 @@ ll-session = "little_loops.cli:main_session"
 ll-compact-session = "little_loops.cli:main_compact_session"
 ll-history-context = "little_loops.cli:main_history_context"
 ll-ctx-stats = "little_loops.cli:main_ctx_stats"
+ll-config = "little_loops.cli:main_config"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"

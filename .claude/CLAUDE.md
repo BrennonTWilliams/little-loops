@@ -230,6 +230,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-adapt` - Generate host-specific artefacts for a given host (e.g. `--host codex`); run `ll-adapt --host codex --apply` to regenerate skills, commands, and agent TOML files for Codex
 - `ll-doctor` - Check host CLI capability support for little-loops features
 - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`; JSONL-based session cache hit rate; skill-health signals)
+- `ll-config` - Resolve and print a single dot-path config value (`ll-config get <key>`, e.g. `ll-config get history.go_no_go.correction_penalty`); wraps `BRConfig.resolve_variable()` with a never-raise, config-or-default contract — the CLI a markdown skill shells out to instead of referencing `{{config...}}` template tokens directly (those only expand under `ll-auto`'s `skill_expander.py` pre-expansion pass)
 
 Install: `pip install -e "./scripts[dev]"`
 

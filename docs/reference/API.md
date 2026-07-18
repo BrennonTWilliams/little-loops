@@ -4192,6 +4192,21 @@ Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.l
 
 ---
 
+### main_config
+
+```python
+def main_config() -> int
+```
+
+Entry point for `ll-config` command. Resolve and print a single dot-path configuration value via `BRConfig.resolve_variable()`. This is the CLI a markdown skill shells out to when it needs a resolved config value at runtime — the `{{config.path.to.value}}` template token syntax only expands under `ll-auto`'s `skill_expander.py` pre-expansion pass, so interactive/slash-command skill runs never see it substituted (ENH-2678).
+
+**Returns:** 0 always — mirrors `resolve_variable()`'s never-raise, config-or-default contract.
+
+**Subcommands:**
+- `get <key>` — Print the resolved value for a dot-separated config path (e.g. `history.go_no_go.correction_penalty`); prints nothing for unknown keys.
+
+---
+
 ## little_loops.workflow_sequence
 
 Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.

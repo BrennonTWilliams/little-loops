@@ -299,6 +299,7 @@ ll-logs           Discover, extract, and analyze ll-relevant log entries from Cl
 ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
+ll-config         Resolve and print a single dot-path config value (ll-config get <key>)
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

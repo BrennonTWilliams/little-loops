@@ -290,6 +290,30 @@ To enable per-tool byte tracking, set `"analytics": {"enabled": true}` in `.ll/l
 
 ---
 
+### ll-config
+
+Resolve and print a single dot-path configuration value, wrapping `BRConfig.resolve_variable()`. This is the CLI a markdown skill shells out to when it needs a resolved config value — the `{{config.path.to.value}}` template token syntax only expands under `ll-auto`'s `skill_expander.py` pre-expansion pass, so interactive/slash-command skill runs never see it substituted.
+
+**Usage:**
+```bash
+ll-config get <key>
+```
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `KEY` | Dot-separated config path (e.g. `history.go_no_go.correction_penalty`) |
+
+**Exit codes:** `0` always — mirrors `resolve_variable()`'s never-raise, config-or-default contract. Unknown keys print nothing (empty stdout), not an error.
+
+**Examples:**
+```bash
+ll-config get history.go_no_go.correction_penalty   # -0.2
+ll-config get project.src_dir                        # scripts/
+```
+
+---
+
 ## Issue Processing
 
 ### ll-auto

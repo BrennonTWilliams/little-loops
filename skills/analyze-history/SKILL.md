@@ -140,7 +140,7 @@ The full analysis includes:
 When `.ll/history.db` is available, `analyze-history` includes an **Evolution Triggers** section with two subsections:
 
 ### Recurring Corrections
-User corrections that have recurred ≥ `analysis.evolution.feedback_min_recurrence` times (default: 2) across sessions. Each entry includes:
+User corrections that have recurred ≥ `history.evolution.feedback_min_recurrence` times (default: 2) across sessions. Each entry includes:
 - **Topic**: content excerpt or cluster key
 - **Count**: number of times this correction recurred
 - **Example Sessions**: up to 5 session IDs where the correction appeared
@@ -155,4 +155,4 @@ Skills where the user performed the work manually instead of invoking the skill,
 - **Example Sessions**: up to 5 session IDs
 - **Suggested Improvement**: recommendation to sharpen trigger keywords or lighten the skill
 
-**Configuration**: `analysis.evolution.feedback_min_recurrence` and `analysis.evolution.bypass_min_count` in `.ll/ll-config.json` control the thresholds.
+**Configuration**: `history.evolution.feedback_min_recurrence` and `history.evolution.bypass_min_count` in `.ll/ll-config.json` control the thresholds.
