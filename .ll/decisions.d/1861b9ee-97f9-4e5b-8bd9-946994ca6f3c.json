@@ -1,0 +1,11 @@
+{
+  "id": "1861b9ee-97f9-4e5b-8bd9-946994ca6f3c",
+  "type": "decision",
+  "timestamp": "2026-07-18T15:15:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "EPIC-2456 [TBD-11] filed: SkillStart async warming on warmable >50K-token prompts, max_tokens=0 alternative; meaningless without F1, so depends_on FEAT-2673.",
+  "rule": "Captured: F10 \u2014 speculative cache warming hook",
+  "scope": "issue",
+  "issue": "FEAT-2674"
+}

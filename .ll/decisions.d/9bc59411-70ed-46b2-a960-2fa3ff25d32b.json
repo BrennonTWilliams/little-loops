@@ -1,0 +1,11 @@
+{
+  "id": "9bc59411-70ed-46b2-a960-2fa3ff25d32b",
+  "type": "decision",
+  "timestamp": "2026-07-18T15:15:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "EPIC-2456 [TBD-8] filed: SHA-256 stability signal over (skill_body, system_prompt, tool_definitions); prerequisite proving byte-stability before F1 cache marking (FEAT-2673).",
+  "rule": "Captured: F1-prereq (a) \u2014 content-hash fragment store",
+  "scope": "issue",
+  "issue": "FEAT-2671"
+}

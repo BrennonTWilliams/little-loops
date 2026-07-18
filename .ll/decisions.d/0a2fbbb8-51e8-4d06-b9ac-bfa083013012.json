@@ -1,0 +1,11 @@
+{
+  "id": "0a2fbbb8-51e8-4d06-b9ac-bfa083013012",
+  "type": "decision",
+  "timestamp": "2026-07-18T15:15:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "EPIC-2456 [TBD-10] filed: first SDK integration (anthropic pip dep), opt-in via orchestration.request_path=sdk per OQ #2; decision_needed=true carries OQ #1 (SDK pin/CI) and OQ #5 (oracle reuse threshold). Depends on FEAT-2671+FEAT-2672; [TBD-19] ablation set must be decided before ship.",
+  "rule": "Captured: F1 \u2014 cache_control ephemeral integration + cache-marking cost oracle",
+  "scope": "issue",
+  "issue": "FEAT-2673"
+}

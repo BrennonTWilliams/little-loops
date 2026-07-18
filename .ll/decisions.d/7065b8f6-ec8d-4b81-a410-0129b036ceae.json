@@ -1,0 +1,11 @@
+{
+  "id": "7065b8f6-ec8d-4b81-a410-0129b036ceae",
+  "type": "decision",
+  "timestamp": "2026-07-18T15:15:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "EPIC-2456 [TBD-9] filed: defer_loading + tool_reference pattern keeps the cacheable static prefix byte-stable across tool-catalog churn; second F1 prerequisite.",
+  "rule": "Captured: F1-prereq (b) \u2014 deferred tool loading",
+  "scope": "issue",
+  "issue": "FEAT-2672"
+}

@@ -4,18 +4,55 @@ type: EPIC
 title: Token-Cost Reduction (Tier 0 + F1/F2/F3/F4-gated/F5/F6/F7-lite/F8/F10)
 priority: P2
 status: open
-captured_at: "2026-07-02T00:00:00Z"
-discovered_date: "2026-07-02"
+captured_at: '2026-07-02T00:00:00Z'
+discovered_date: '2026-07-02'
 discovered_by: deep-research / manual synthesis
-labels: [architecture, token-cost, fsm, observability, budgeting, caching, compression, routing, epics-candidate, replication-not-integration]
-relates_to: [EPIC-1707, EPIC-1744, ENH-1797, FEAT-1689, EPIC-2178, EPIC-1463, FEAT-2123, ENH-2461, EPIC-2258, EPIC-2257, FEAT-2470, ENH-2471, ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479, ENH-2486, ENH-2490, ENH-2499, FEAT-2598, FEAT-2599]
+labels:
+- architecture
+- token-cost
+- fsm
+- observability
+- budgeting
+- caching
+- compression
+- routing
+- epics-candidate
+- replication-not-integration
+relates_to:
+- EPIC-1707
+- EPIC-1744
+- ENH-1797
+- FEAT-1689
+- EPIC-2178
+- EPIC-1463
+- FEAT-2123
+- ENH-2461
+- EPIC-2258
+- EPIC-2257
+- FEAT-2470
+- ENH-2471
+- ENH-2475
+- FEAT-2476
+- ENH-2477
+- FEAT-2478
+- ENH-2479
+- ENH-2486
+- ENH-2490
+- ENH-2499
+- FEAT-2598
+- FEAT-2671
+- FEAT-2672
+- FEAT-2673
+- FEAT-2674
+- FEAT-2675
+- FEAT-2676
 source_artifacts:
-  - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
-  - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
-  - thoughts/token-cost-reduction-arxiv-research-report.md
-  - thoughts/token-cost-reduction-gh-research-pass-2.md
-  - thoughts/wozcode-plugin-review.md
-  - .loops/runs/deep-research-20260702T113714/report.md
+- thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
+- thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
+- thoughts/token-cost-reduction-arxiv-research-report.md
+- thoughts/token-cost-reduction-gh-research-pass-2.md
+- thoughts/wozcode-plugin-review.md
+- .loops/runs/deep-research-20260702T113714/report.md
 epic_role: container
 confidence_score: 80
 score_complexity: 9
@@ -161,10 +198,10 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 
 ### Tier 2 — caching (needs Tier 1 to verify hit rates)
 
-- **[TBD-8]** F1-prereq (a) — content-hash fragment store: SHA-256 over `(skill_body, system_prompt, tool_definitions)`, skip re-serialization when key stable (new `prompts/fragment_store.py`). Adapted from `BerriAI/litellm/litellm/caching/caching.py`.
-- **[TBD-9]** F1-prereq (b) — deferred tool loading: `defer_loading=True` + `tool_reference` pattern (new `tools/deferred.py`); preserves cache breakpoint across catalog churn. Vendor-measured: "cutting context usage by 90%+ while enabling applications that scale to thousands of tools."
-- **[TBD-10]** F1 — `cache_control: ephemeral` integration + cache-marking cost oracle: introduce `anthropic` SDK; add `build_anthropic_request()` to `host_runner.py`; emit `CacheControlEphemeralParam` `{"type": "ephemeral", "ttl": "5m" | "1h"}` on system + tool + stable-skill blocks. Oracle (SGLang prefix-hash + Li 2025 cost model) refuses to mark any block below the provider's cacheable-prefix minimum (Anthropic: 1024 tokens Sonnet, 4096 Opus).
-- **[TBD-11]** F10 — Speculative cache warming: `SkillStart` hook fires async warming request on `cache.warmable == true` and prompt >50K tokens; SDK-level `max_tokens=0` primitive as cheaper background-warm alternative.
+- **FEAT-2671** — F1-prereq (a) — content-hash fragment store: SHA-256 over `(skill_body, system_prompt, tool_definitions)`, skip re-serialization when key stable (new `prompts/fragment_store.py`). Adapted from `BerriAI/litellm/litellm/caching/caching.py`. *(filed 2026-07-18, P2; was [TBD-8])*
+- **FEAT-2672** — F1-prereq (b) — deferred tool loading: `defer_loading=True` + `tool_reference` pattern (new `tools/deferred.py`); preserves cache breakpoint across catalog churn. Vendor-measured: "cutting context usage by 90%+ while enabling applications that scale to thousands of tools." *(filed 2026-07-18, P2; was [TBD-9])*
+- **FEAT-2673** — F1 — `cache_control: ephemeral` integration + cache-marking cost oracle: introduce `anthropic` SDK; `build_anthropic_request()` in `host_runner.py`; oracle refuses to mark blocks below the provider cacheable-prefix minimum. Carries Open Questions #1/#2/#5 (`decision_needed: true`). Depends on FEAT-2671 + FEAT-2672. *(filed 2026-07-18, P2; was [TBD-10])*
+- **FEAT-2674** — F10 — Speculative cache warming: `SkillStart` hook fires async warming request on `cache.warmable == true` and prompt >50K tokens; SDK-level `max_tokens=0` primitive as cheaper background-warm alternative. Depends on FEAT-2673. *(filed 2026-07-18, P2; was [TBD-11])*
 
 ### Tier 3 — compaction and compression
 
@@ -301,6 +338,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:capture-issue` - 2026-07-18 - Filed the Tier 2 caching tranche: **FEAT-2671** (F1-prereq a, was [TBD-8]), **FEAT-2672** (F1-prereq b, was [TBD-9]), **FEAT-2673** (F1, was [TBD-10]; `decision_needed: true` for Open Questions #1/#2/#5), **FEAT-2674** (F10, was [TBD-11]; depends on FEAT-2673). Replaced the four TBD placeholders in Children and added all four to `relates_to`. Reminder recorded in FEAT-2673: decide [TBD-19] (cache x router ablation set, OQ #7) before F1 ships.
 - `/ll:capture-issue` - 2026-07-11 - Filed **FEAT-2598** (F3, was [TBD-12]) and **FEAT-2599** (F4-gated, was [TBD-13]) from the Tier 3 section of both plan docs. Replaced the two TBD placeholder bullets in Children with real child references; added both to `relates_to`.
 - epic-review - 2026-07-10 - **F7-lite budget re-scoping resolved**: chose option (a) — F7-lite owns a minimal, file-local per-worker spend accumulator (not a shared `fsm/` module) — over dropping the guard and relying on `ll-parallel --workers`. Researched first: `fsm/cost_graph.py` (F6) confirmed purely post-hoc (reads completed run artifacts only, no live accumulation, and its own scope explicitly excludes "cost ceiling guard"); F5 emits per-invocation OTel telemetry only; `ll-parallel --workers` is a pure concurrency cap with no dollar/token tracking, so it can't catch a single runaway worker. Updated Integration Map, Implementation Order diagram, Tests list, and Success Metrics to reflect the local-accumulator plan; renamed the planned test file `test_fsm_budget.py` → `test_routing_budget.py`.
 - epic-review - 2026-07-10 - **F2 cut** (per user request, not deferred): FEAT-2476 and its three grandchildren (FEAT-2548/2549/2550) cancelled — a spend cap/circuit-breaker is cost *governance*, not *reduction* (it halts a run at a $ ceiling; it doesn't lower tokens/$ spent per unit of work, unlike F1/F3/F4/F7-lite). Removed F2 from Goal, Scope table, Boundary section, Children, Integration Map, Implementation Order, Success Metrics, and effort totals (~1,550 → ~1,390 LOC, 9 → 8 F-feature children). Flagged one follow-up: F7-lite's per-worker spend tracking was slated to reuse `fsm/budget.py`; that dependency needs re-scoping (either a minimal local accumulator or drop the per-worker guard) before F7-lite body work starts.

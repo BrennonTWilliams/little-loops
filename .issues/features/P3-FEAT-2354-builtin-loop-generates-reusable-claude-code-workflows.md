@@ -13,12 +13,12 @@ labels:
 - meta-loop
 - codegen
 - harness
-confidence_score: 96
-outcome_confidence: 77
-score_complexity: 15
-score_test_coverage: 20
-score_ambiguity: 20
-score_change_surface: 22
+confidence_score: 94
+outcome_confidence: 72
+score_complexity: 14
+score_test_coverage: 19
+score_ambiguity: 19
+score_change_surface: 20
 ---
 
 # FEAT-2354: Built-in FSM loop that generates reusable Claude Code workflows
@@ -448,7 +448,33 @@ FSM/YAML by hand.
 
 Captured from brainstorm: `.loops/runs/brainstorm-20260627T164631/brainstorm.md`.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-18_
+
+**Readiness Score**: 94/100 → READY
+**Outcome Confidence**: 72/100 → PROCEED WITH CAUTION
+
+### Outcome Risk Factors
+- Doc-wiring anchors are already stale: `ll-verify-docs` currently shows
+  `loops: documented=82, actual=98` at `README.md:179` (the issue's Integration Map cites
+  `line 79` and `96 FSM loops`, both wrong today), and the skills count is independently
+  mismatched (`documented=68/39, actual=42`) — a pre-existing drift on `main`, not caused by
+  this issue, but it means the doc-count gate is already red before implementation starts and
+  the cited line numbers need re-verification at implementation time.
+- `scripts/tests/test_builtin_loops.py` line-number references throughout the Integration Map
+  and Implementation Steps (e.g. `TestHtmlWebsiteGeneratorLoop` cited at ~3290, actually at
+  5431; `test_no_bare_loops_tmp_writes` cited at ~6484, actually at 8967) have drifted by
+  ~2000-3000 lines from continued file growth — the named classes/tests still exist, so this is
+  a deep per-site precision risk during wiring, not a missing-artifact risk.
+- The six-pass compiler-lowering design (especially the adversarial minimum-coupling shrink
+  pass) has no directly equivalent loop already shipped in this codebase to copy wholesale;
+  the issue supplies a reasoned probe-set definition, but assembling six coordinated passes
+  into one coherent, MR-1-clean meta-loop carries deep per-site complexity beyond a typical
+  generator-loop addition.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-18T15:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29ebb98a-04bb-4f75-82fb-7e031504071a.jsonl`
 - issue-review (Cowork session) - 2026-07-18 - Resolved output-target question to FSM YAML v1 in Summary; added § Portability & Lock-in Analysis (shim strategy) with lint-grade validator sketch + shim dry-run gate for the Workflow-JS follow-on; suggested `ll-workflow-shim` and `output: workflow-js` follow-on issues.
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1811 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:wire-issue` - 2026-06-27T22:49:38 - `154c9238-9065-452a-b00a-b2db627068e4.jsonl`
