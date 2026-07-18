@@ -22,16 +22,44 @@ decision_needed: false
 ## Summary
 
 Add an in-house, zero-dependency heuristic prompt compressor invoked from
-`fsm/runners.py` for prompts ≥8K tokens: drop repeated tool results older
-than 5 turns, dedupe stable system blocks (flagging them as
-`cache_control` candidates for the separate, not-yet-filed F1 caching
-child — no coupling to F1's implementation, just a flag), and
-tail-truncate assistant turns beyond N. The real LLMLingua ML compressor
-(GPT2-small, ~700MB weights, pulls in `transformers`) stays **out of
-scope and disabled by default** — it is gated behind
+`fsm/runners.py` for prompts that cross a **window-relative trigger**
+(default: 40% of the active model's `context_window`, configurable —
+see Trigger Threshold below): drop repeated tool results older than 5
+turns, dedupe stable system blocks (flagging them as `cache_control`
+candidates for the separate, not-yet-filed F1 caching child — no
+coupling to F1's implementation, just a flag), and tail-truncate
+assistant turns beyond N. The real LLMLingua ML compressor (GPT2-small,
+~700MB weights, pulls in `transformers`) stays **out of scope and
+disabled by default** — it is gated behind
 `compression.heuristic_underperforms == true`, set only after a benchmark
 proves the heuristic underperforms. This is EPIC-2456 § Children
 [TBD-13] — directly serves Goal #9 in the EPIC.
+
+### Trigger Threshold
+
+The original draft of this issue hardcoded an **8K-token** trigger,
+copied from LLMLingua's upstream benchmarks — which target GPT-3.5-era
+models with 4K–8K context windows, where compression was often required
+just to fit the prompt at all. That number does not fit little-loops'
+actual profile: Claude models run 200K–1M context windows, and prompts
+of several hundred K tokens are routine. A flat 8K floor would fire
+heuristic (lossy) compression on nearly every non-trivial FSM prompt,
+not just the cost outliers the epic is targeting, trading response
+quality for savings that aren't needed yet.
+
+Instead, the trigger is **window-relative and configurable**:
+
+- `compression.trigger_pct` (default `0.4`) — compress once the prompt
+  exceeds this fraction of the active model's `context_window`. Reads
+  `context_window` from `HostRunner.list_models()` (F7-lite) when
+  available; falls back to `compression.trigger_tokens` if the active
+  host/model doesn't expose a context window yet.
+- `compression.trigger_tokens` (default `null`) — optional absolute
+  floor/override for hosts that can't report `context_window`, or for
+  small-context-model users who want a fixed cutoff regardless of
+  window size.
+- If both are set, the **lower absolute value wins** (most
+  conservative — compress sooner, not later).
 
 ## Motivation
 
@@ -60,8 +88,10 @@ insufficient.
 
 ## Expected Behavior
 
-- For any FSM prompt ≥8K tokens, `compression/heuristic.py` runs before
-  the request is sent:
+- For any FSM prompt crossing the window-relative trigger (default: 40%
+  of the active model's `context_window`, or `compression.trigger_tokens`
+  if set — see Trigger Threshold above), `compression/heuristic.py` runs
+  before the request is sent:
   - Repeated tool results older than 5 turns are dropped.
   - Stable system blocks are deduped (and flagged as `cache_control`
     candidates in metadata, for the separate F1 child to consume later —
@@ -78,7 +108,9 @@ insufficient.
   LLMLingua integration itself is **out of scope** for this issue; only
   the benchmark run and the gate wiring are in scope.
 - `.ll/ll-config.json` gains a `compression.*` namespace including
-  `compression.heuristic_underperforms` (default `false`).
+  `compression.heuristic_underperforms` (default `false`),
+  `compression.trigger_pct` (default `0.4`), and
+  `compression.trigger_tokens` (default `null`).
 
 ## Proposed Solution
 
@@ -88,18 +120,24 @@ insufficient.
      a `cache_control_candidate` flag list in metadata (consumed later
      by the separate F1 child, not wired here)
    - `tail_truncate_assistant_turns(messages, max_n)`
-   - `compress(messages, token_threshold=8000) -> CompressedResult`
+   - `compress(messages, context_window=None, trigger_pct=0.4, trigger_tokens=None) -> CompressedResult`
+     — resolves the effective trigger from `trigger_pct * context_window`
+     (when `context_window` is known) vs. `trigger_tokens`, taking the
+     lower absolute value when both apply.
 2. **`scripts/little_loops/fsm/runners.py`**: hook `compress()` into the
-   prompt-assembly path for prompts ≥8K tokens. Confirm during
-   implementation whether ENH-2486's existing size-guard call site is the
-   right integration point (see Related Key Documentation) rather than
-   adding a second, parallel threshold check.
+   prompt-assembly path, resolving `context_window` from
+   `HostRunner.list_models()` (F7-lite) for the active host/model when
+   available. Confirm during implementation whether ENH-2486's existing
+   size-guard call site is the right integration point (see Related Key
+   Documentation) rather than adding a second, parallel threshold check.
 3. **Benchmark harness**: lock a 10-trace `general-task` trace set (this
    issue documents and commits the set); run both the heuristic and a
    one-time offline LLMLingua comparator over it; record the ratio.
 4. **Config gate**: add `compression.heuristic_underperforms` (default
-   `false`) to `.ll/ll-config.json` + a matching `compression.*` block in
-   `config-schema.json`. When `true`, the (out-of-scope) LLMLingua
+   `false`), `compression.trigger_pct` (default `0.4`), and
+   `compression.trigger_tokens` (default `null`) to `.ll/ll-config.json`
+   + a matching `compression.*` block in `config-schema.json`. When
+   `heuristic_underperforms` is `true`, the (out-of-scope) LLMLingua
    integration is expected to take over — this issue only wires the
    toggle and its default, not the LLMLingua consumer.
 
@@ -108,7 +146,7 @@ insufficient.
 ### Files to Modify
 
 - `scripts/little_loops/compression/heuristic.py` (new)
-- `scripts/little_loops/fsm/runners.py` — ≥8K-token compression hook
+- `scripts/little_loops/fsm/runners.py` — window-relative compression hook
 
 ### Dependent Files (Callers/Importers)
 
@@ -137,8 +175,10 @@ insufficient.
 ### Configuration
 
 - `.ll/ll-config.json` — new `compression.*` namespace:
-  `compression.heuristic_underperforms` (default `false`), plus whatever
-  tuning knobs the implementation needs (e.g. `max_tool_result_age_turns`,
+  `compression.heuristic_underperforms` (default `false`),
+  `compression.trigger_pct` (default `0.4`),
+  `compression.trigger_tokens` (default `null`), plus whatever tuning
+  knobs the implementation needs (e.g. `max_tool_result_age_turns`,
   `max_assistant_tail_turns`).
 - `config-schema.json` — matching `compression` object with an explicit
   property list (mirror the `additionalProperties: false` convention used
@@ -154,6 +194,12 @@ insufficient.
   runtime dependency).
 - `compression.heuristic_underperforms` defaults to `false` and
   round-trips through `.ll/ll-config.json` / `config-schema.json`.
+- `compression.trigger_pct` (default `0.4`) and `compression.trigger_tokens`
+  (default `null`) round-trip through `.ll/ll-config.json` /
+  `config-schema.json`; the effective trigger resolves relative to the
+  active model's `context_window` when known, falling back to
+  `trigger_tokens` otherwise, with the lower absolute value winning when
+  both apply.
 - `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries

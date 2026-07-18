@@ -28,7 +28,15 @@ score_change_surface: 22
 Add a new built-in FSM loop — in the same family as our artifact-generator loops
 (`html-website-generator`, `svg-image-generator`, `generative-art`, `p5js-sketch-generator`,
 etc.) — that, instead of emitting an HTML/SVG/visual artifact, emits a **reusable Claude Code
-workflow script** that automates a repeatable piece of work.
+workflow** that automates a repeatable piece of work.
+
+**Output-target resolution (v1):** the original brainstorm spanned both little-loops FSM YAML
+and Claude Code *dynamic workflow* JS scripts (the `agent()`/`pipeline()` scripts saved under
+`.claude/workflows/`). The `/ll:refine-issue` research pass resolved v1 to **FSM-loop YAML**
+(validatable with `ll-loop validate`); the JS target is a follow-on, now made concretely
+tractable by the shim strategy in § Portability & Lock-in Analysis below. The title's
+"Claude Code workflows" reflects the original ambition — read "workflow" in this issue as
+"FSM-loop YAML artifact" unless the JS follow-on is explicitly named.
 
 The recommended design (from the source brainstorm) is a **staged "compiler-lowering" loop**:
 the workflow is generated through sequential FSM passes, each specializing in one semantic
@@ -104,8 +112,9 @@ These three address orthogonal failure modes (conflation, local convergence, ove
 and compose into a single six-pass FSM without redundancy.
 
 **Open design questions:**
-- Output target: emit FSM-loop YAML, a Workflow JS script, or selectable? (The brainstorm spans
-  both; the generator family currently emits artifacts, and the Workflow tool emits JS scripts.)
+- ~~Output target: emit FSM-loop YAML, a Workflow JS script, or selectable?~~ **Resolved:**
+  FSM-loop YAML for v1 (see Codebase Research Findings below); Workflow JS is a follow-on with
+  its own validation + portability story (see § Portability & Lock-in Analysis).
 - Whether to support the "mine observed behavior" input mode (generate from `.ll/history.db` /
   session traces) in v1 or defer to a follow-on.
 - How the shrink pass's "probe set" is defined for a non-executable-by-default workflow.
@@ -133,6 +142,62 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   result of `ll-loop validate` on the emitted artifact (and, where applicable, a `simulate` of
   the emitted loop). Removing a state and re-running `ll-loop validate` gives the external,
   binary, repeatable signal the issue's Rank-3 shrink pass calls for — no LLM judge needed.
+
+## Portability & Lock-in Analysis (shim strategy)
+
+_Added 2026-07-18 — analysis of vendor coupling for the two output targets, and the shim idea
+that changes the calculus for the Workflow-JS follow-on._
+
+**Principle: lock-in lives at the execution seam, not in the file format.** For both targets,
+the artifact itself is inert data/code; what matters is who owns the runtime that executes it.
+
+- **FSM YAML (v1 target):** the artifact runs on `ll-loop`, which *we own*. The only vendor
+  coupling is wherever the executor invokes the LLM for `llm`/`llm_structured` states — a
+  single adapter seam in our own code. Generated YAML is therefore the *portable* layer of the
+  stack; this feature adds to it rather than to any Anthropic-specific layer. (For comparison:
+  OpenAI Codex custom prompts and Gemini CLI custom commands/extensions/hooks are prompt-level
+  reuse only — neither vendor has an analogue to a validated, evaluator-gated state-machine
+  artifact.)
+- **Claude Code dynamic-workflow JS (follow-on target):** scripts are plain JavaScript, but all
+  semantics flow through runtime-injected globals — `agent()`, `pipeline()`, `parallel()`,
+  `phase()`, `log()`, `budget`, `args`. These are host functions of the Claude Code workflow
+  runtime (subagent spawn, permissioning, sandbox, resume journal), not npm imports; under
+  plain Node the script dies on `agent is not defined`. Same host relationship as a GitHub
+  Actions YAML to GitHub's runner.
+
+**The shim strategy.** The runtime-global contract surface is *small*, which makes the JS
+target portable in principle with modest effort:
+
+- A shim implementing `agent(prompt, {schema, label, model})` against any backend (Anthropic
+  API, OpenAI, Gemini, a local model, `codex exec` subprocess) plus `pipeline()`/`parallel()`
+  (~20 lines of Promise plumbing each) yields basic-fidelity execution of any generated script
+  outside Claude Code.
+- What a shim does NOT replicate: the permission/sandbox model, worktree isolation,
+  resume-with-cached-results, schema-retry enforcement, per-agent tool access. Research-style
+  fan-out scripts port trivially; file-mutating migration scripts that lean on worktree
+  isolation and edit permissions do not.
+- Net: the JS target is *framework coupling*, not a proprietary format — acceptable lock-in
+  risk **provided we own a shim**, because that moves the execution seam back into code we
+  control (same as the YAML/`ll-loop` situation).
+
+**Implication for the JS follow-on's MR-1 gate.** The refine pass rejected JS for v1 because
+"no in-repo validator exists" — the shim strategy weakens that objection. A lint-grade non-LLM
+validator for generated workflow scripts is realistic: (a) JS parse check; (b) `meta` block
+pure-literal check (required `name`/`description`, no computed values); (c) banned-API check
+(`Date.now()`, `Math.random()`, argless `new Date()` — rejected by the real runtime); (d) JSON
+Schema validity of every `schema:` option; (e) runtime-global allowlist (script references only
+`agent/pipeline/parallel/phase/log/budget/args` + JS builtins); and, with the shim, (f) an
+actual **dry-run probe**: execute the script under the shim with `agent()` stubbed to return
+canned fixtures, asserting it runs to completion — a true behavioral, deterministic,
+exit-code-style gate that YAML `ll-loop validate` cannot match. This keeps v1 sequencing
+unchanged (YAML first proves the lowering pipeline) but upgrades the JS target from
+"no non-LLM gate possible" to "gate is buildable, and partly *stronger* than the YAML gate."
+
+**Suggested follow-on issues (not in scope here):**
+1. `ll-workflow-shim` — minimal portable runtime (`agent`/`pipeline`/`parallel` + stub mode)
+   with a pluggable backend adapter; doubles as the dry-run probe executor.
+2. `workflow-generator` JS output target — add a selectable `output: workflow-js` mode gated by
+   the lint-grade validator + shim dry-run above.
 
 ## Integration Map
 
@@ -283,8 +348,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    (`ll-loop validate` exit-code, schema check, diff-stall) to satisfy MR-1 by architecture.
 4. Add per-run `${context.run_dir}/` artifact isolation (MR-3) and per-iteration snapshots
    (MR-5) for the generate→evaluate cycle.
-5. Resolve the open design questions (output target: YAML vs Workflow JS vs selectable;
-   probe-set definition for the shrink pass) and scope the genetic graft to the state-graph pass.
+5. Resolve the remaining open design questions (probe-set definition for the shrink pass;
+   mined-input mode) and scope the genetic graft to the state-graph pass. (Output target is
+   resolved: FSM YAML for v1; Workflow JS deferred to the shim follow-on — see § Portability
+   & Lock-in Analysis.)
 6. Add `test_builtin_loops.py` coverage and verify with `ll-loop validate` (MR-1..MR-6) plus a
    `ll-loop diagnose-evaluators` discriminator-health check.
 
@@ -382,6 +449,7 @@ FSM/YAML by hand.
 Captured from brainstorm: `.loops/runs/brainstorm-20260627T164631/brainstorm.md`.
 
 ## Session Log
+- issue-review (Cowork session) - 2026-07-18 - Resolved output-target question to FSM YAML v1 in Summary; added § Portability & Lock-in Analysis (shim strategy) with lint-grade validator sketch + shim dry-run gate for the Workflow-JS follow-on; suggested `ll-workflow-shim` and `output: workflow-js` follow-on issues.
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1811 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
 - `/ll:wire-issue` - 2026-06-27T22:49:38 - `154c9238-9065-452a-b00a-b2db627068e4.jsonl`
 - `/ll:refine-issue` - 2026-06-27T22:37:06 - `567c4d00-9ba7-4b64-8c58-6d0231d254b8.jsonl`
