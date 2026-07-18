@@ -51,6 +51,7 @@ from little_loops.config import (
     ParallelAutomationConfig,
     PreCompactRubricConfig,
     ProjectConfig,
+    QueueConfig,
     RateLimitsConfig,
     RecursiveRefineConfig,
     ScanConfig,
@@ -649,6 +650,23 @@ class TestLoopsConfig:
 
         assert config.loops_dir == ".loops"
         assert config.queue_wait_timeout_seconds == 86400
+
+
+class TestQueueConfig:
+    """Tests for QueueConfig dataclass (FEAT-2682)."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating QueueConfig with all fields."""
+        data = {"db_path": "custom/queue.db"}
+        config = QueueConfig.from_dict(data)
+
+        assert config.db_path == "custom/queue.db"
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating QueueConfig with default values."""
+        config = QueueConfig.from_dict({})
+
+        assert config.db_path is None
 
 
 class TestBRConfig:
@@ -3445,6 +3463,37 @@ class TestBRConfigHistoryIntegration:
             h2.compaction.cross_session_enabled == config.history.compaction.cross_session_enabled
         )
         assert h2.compaction.max_level == config.history.compaction.max_level
+
+
+class TestBRConfigQueueIntegration:
+    """Integration tests for BRConfig.queue property (FEAT-2682)."""
+
+    def test_queue_property_exists(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert hasattr(config, "queue")
+
+    def test_queue_returns_queue_config(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert isinstance(config.queue, QueueConfig)
+
+    def test_queue_defaults_on_absent(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.queue.db_path is None
+
+    def test_queue_loads_from_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        sample_config["queue"] = {"db_path": "custom/queue.db"}
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        assert config.queue.db_path == "custom/queue.db"
+
+    def test_queue_to_dict_round_trip(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "queue" in d
+        assert d["queue"]["db_path"] is None
 
 
 class TestPreCompactRubricConfig:

@@ -631,6 +631,15 @@ Capture-issue deduplication configuration (ENH-1914).
 }
 ```
 
+### `queue`
+
+`ll-queue` persistence configuration (FEAT-2682). Owns the `.ll/queue.db` location for the
+persisted work-item queue (add/list/status/remove).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `queue.db_path` | `string\|null` | `null` | Override the default `.ll/queue.db` location; relative paths resolve against the project root. |
+
 ### `sprints`
 
 Sprint management settings (ll-sprint, `/ll:create-sprint`):

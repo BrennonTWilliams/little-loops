@@ -819,6 +819,18 @@ Any match across the three sets records the message as a correction. A fourth me
 
 ---
 
+## Queue DB (ll-queue)
+
+`.ll/queue.db` is a sibling per-project SQLite database — distinct from `.ll/history.db` — backing `ll-queue`'s persisted work-item queue (`little_loops.queue_store`, FEAT-2682). It copies `session_store.py`'s `_configure_connection`/`_apply_migrations`/`ensure_db`/`connect` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`) rather than sharing code, matching every other sqlite consumer in this codebase.
+
+| Version | Table | Purpose |
+|---------|-------|---------|
+| v1 | `queue_entries` | One row per queued work item: `id, action (JSON ActionSpec), enqueued_at, priority (0=P0..5=P5), status, result (JSON, nullable)`. Ordered `ORDER BY priority ASC, enqueued_at ASC` — replicates `QueuedIssue.__lt__`'s tiered-then-FIFO comparator (`parallel/types.py`) without importing that class. |
+
+`add_entry`/`list_entries`/`get_entry`/`resolve_entry`/`remove_entry` back `ll-queue`'s `add`/`list`/`status`/`remove` commands (`cli/queue.py`). `update_entry_result` is reserved for FEAT-2683's dequeue-and-execute worker loop, which is out of scope here. This mechanism supersedes `ll-loop queue`'s PID-liveness JSON markers under `.loops/.queue/*.json` (`cli/loop/queue.py`); FEAT-2684 migrates that compat path separately, using a distinct id space so the two don't collide during the transition.
+
+---
+
 ## Host Runner Layer
 
 Sitting alongside the hook-intent layer is the `host_runner` abstraction

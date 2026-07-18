@@ -33,6 +33,7 @@ from little_loops.config.features import (
     LearningTestsConfig,
     LoopsConfig,
     ObservabilityConfig,
+    QueueConfig,
     ScanConfig,
     SprintsConfig,
     SyncConfig,
@@ -248,6 +249,7 @@ class BRConfig:
             self._raw_config.get("analytics", {}).get("capture", {})
         )
         self._history = HistoryConfig.from_dict(self._raw_config.get("history", {}))
+        self._queue = QueueConfig.from_dict(self._raw_config.get("queue", {}))
 
     @property
     def project(self) -> ProjectConfig:
@@ -363,6 +365,11 @@ class BRConfig:
     def history(self) -> HistoryConfig:
         """Get history read/consume configuration."""
         return self._history
+
+    @property
+    def queue(self) -> QueueConfig:
+        """Get ll-queue persistence configuration."""
+        return self._queue
 
     @property
     def extensions(self) -> list[str]:
@@ -755,6 +762,9 @@ class BRConfig:
                     "cross_session_enabled": self._history.compaction.cross_session_enabled,
                     "max_level": self._history.compaction.max_level,
                 },
+            },
+            "queue": {
+                "db_path": self._queue.db_path,
             },
             "sync": {
                 "enabled": self._sync.enabled,

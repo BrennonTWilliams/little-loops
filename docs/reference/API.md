@@ -77,6 +77,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
+| `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
 | `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
@@ -4128,6 +4129,24 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `expand` — Return `message_events` covered by a summary node; requires `SUMMARY_ID`, optional `--json`
 - `describe` — Show metadata for a summary node; requires `NODE_ID`, optional `--json`
 - `prune` — Delete `raw_events` rows already marked `compacted=1` past the configured max-age, then VACUUM the database; optional `--dry-run`, `--json` (ENH-2581 — previously deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events`)
+
+---
+
+### main_queue
+
+```python
+def main_queue() -> int
+```
+
+Entry point for `ll-queue` command (FEAT-2682). Persisted work-item queue backed by `.ll/queue.db` (`little_loops.queue_store`) — distinct from `ll-loop queue`'s PID-liveness marker mechanism.
+
+**Returns:** 0 on success, 1 on not-found/ambiguous id, 2 on a malformed `--arg`
+
+**Subcommands:**
+- `add TARGET` — Classify and persist a new entry. Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolves via `resolve_loop_path`), a skill/command name (resolves via `skills/<name>/SKILL.md` / `commands/<name>.md`), else a raw CLI invocation. Optional `--priority {P0..P5}` (default `P3`), `--runner {skill,cmd,mcp,prompt,loop}` (skip classification), `--arg KEY=VALUE` (repeatable), `--timeout N` (default 120), `--json`
+- `list` — List all entries ordered by priority tier then FIFO within tier; optional `--json`
+- `status ID` — Show one entry by full id or 8+-char prefix; optional `--json`
+- `remove ID` — Delete a `pending` entry by full id or 8+-char prefix; `--force` removes a non-pending entry too; optional `--json`
 
 ---
 
@@ -8224,6 +8243,31 @@ Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that 
 ### run_action
 
 `run_action(spec: ActionSpec) -> RunnerResult` dispatches to the runner named by `spec.runner`. Covers `SKILL`/`CMD`/`MCP`/`PROMPT`. `RunnerType.DSL` is a batch driver over `PROMPT` (callers loop and call `run_action` once per task, as `ll-harness`'s `cmd_dsl` does via `cmd_prompt`) rather than an independent execution path. `RunnerType.LOOP` is **not** dispatched by `run_action` — raises `ValueError` if attempted — because FSM loop execution (`PersistentExecutor`/`run_foreground()`) is a stateful, resumable, multi-state engine with per-state persistence, an event bus, and scope locking spanning the entire run, not a single blocking call. `cli/loop/run.py`'s `cmd_run()` builds a `RunnerType.LOOP` `ActionSpec` for structural/observability parity only and continues to call `PersistentExecutor` directly for execution.
+
+---
+
+## little_loops.queue_store
+
+Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll/queue.db` — distinct from `ll-loop queue`'s PID-liveness marker mechanism (`cli/loop/queue.py`), which FEAT-2684 migrates separately. Modeled directly on `session_store`'s migration/`connect`/`ensure_db` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`, copied rather than shared).
+
+```python
+from little_loops.queue_store import (
+    DEFAULT_DB_PATH,     # Path(".ll/queue.db")
+    PRIORITY_TIERS,      # ("P0", "P1", "P2", "P3", "P4", "P5")
+    QueueEntry,           # id, action: ActionSpec, enqueued_at, priority, status, result
+    AmbiguousEntryIdError,
+    ensure_db,
+    connect,
+    add_entry,            # (action: ActionSpec, priority: str = "P3", *, db_path=...) -> QueueEntry
+    list_entries,          # ordered by priority tier, then FIFO within tier
+    get_entry,              # exact id lookup
+    resolve_entry,          # exact id or 8+-char prefix; raises AmbiguousEntryIdError on a multi-match prefix
+    remove_entry,
+    update_entry_result,   # for the FEAT-2683 worker loop to record status/result
+)
+```
+
+Schema: `queue_entries(id, action, enqueued_at, priority, status, result)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). `result` is `NULL` until a worker calls `update_entry_result()`.
 
 ---
 

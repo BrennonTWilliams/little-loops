@@ -2601,6 +2601,51 @@ Pruning is dual-gated by `analytics.retention` config: both `min_project_age_day
 
 ---
 
+### ll-queue
+
+Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from `ll-loop queue`'s PID-liveness marker mechanism, which FEAT-2684 migrates separately. Schema: `{id, action, enqueuedAt, priority, status, result}`, ordered by priority tier then FIFO within tier.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `add TARGET` | Classify and persist a new entry |
+| `list` | List all entries, ordered by priority then FIFO |
+| `status ID` | Show one entry's state and result by full id or 8+-char prefix |
+| `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
+
+**`add` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `TARGET` | FSM loop name, skill/command name, or raw CLI invocation (required, positional) |
+| `--priority {P0,P1,P2,P3,P4,P5}` | Priority tier (default: `P3`) |
+| `--runner {skill,cmd,mcp,prompt,loop}` | Force a specific runner kind instead of classifying `TARGET` |
+| `--arg KEY=VALUE` | Extra `ActionSpec` arg (repeatable) |
+| `--timeout N` | Timeout in seconds (default: 120) |
+| `--json` | Output the new entry as JSON |
+
+Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolved the same way `ll-loop run` resolves a loop), a skill/command name (resolved via `skills/<name>/SKILL.md` / `commands/<name>.md`), else falls back to a raw CLI invocation.
+
+**`status`/`remove` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `ID` | Entry id — full uuid or an 8+-char prefix (required, positional) |
+| `--force` | (`remove` only) remove even if the entry is not `pending` |
+| `--json` | Output as JSON |
+
+**Examples:**
+```bash
+ll-queue add audit-docs                                  # Enqueue a skill (classified automatically)
+ll-queue add "pytest scripts/tests/" --runner cmd --priority P1
+ll-queue list --json
+ll-queue status abcd1234
+ll-queue remove abcd1234 --force
+```
+
+---
+
 ### ll-history-context
 
 Query `.ll/history.db` for user corrections and FTS5 matches related to an issue ID and print a ready-to-inject `## Historical Context` markdown block. Returns empty output (exit 0) when the DB is missing, has no matches, or all rows are stale (>30 days old).

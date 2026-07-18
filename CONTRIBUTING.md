@@ -263,6 +263,7 @@ little-loops/
         │   ├── logs.py
         │   ├── messages.py
         │   ├── parallel.py
+        │   ├── queue.py         # ll-queue persisted work-item queue CLI (FEAT-2682)
         │   ├── session.py       # ll-session unified session store query CLI
         │   ├── history_context.py  # ll-history-context historical context query CLI
         │   ├── sync.py
@@ -308,6 +309,7 @@ little-loops/
         │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
         ├── session_store.py     # Write-side session persistence (SQLiteTransport, ensure_db, backfill, compact_session + soft-threshold 6-section trigger, v1–v14 migrations)
+        ├── queue_store.py       # Persisted ll-queue entry store (.ll/queue.db, FEAT-2682)
         ├── compaction/          # Instant eviction + 6-section summary (sub-package, FEAT-2598)
         │   ├── __init__.py      #   Re-exports for the compaction/instant.py + compaction/result.py surface
         │   ├── instant.py       #   StreamingLLM sink+window eviction, sliding-window selection, 6-section summarizer

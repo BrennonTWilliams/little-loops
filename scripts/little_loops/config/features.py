@@ -1111,3 +1111,17 @@ class HistoryConfig:
             capture_issue=CaptureIssueConfig.from_dict(data.get("capture_issue", {})),
             compaction=CompactionConfig.from_dict(data.get("compaction", {})),
         )
+
+
+@dataclass
+class QueueConfig:
+    """ll-queue persistence configuration (FEAT-2682)."""
+
+    db_path: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> QueueConfig:
+        """Create QueueConfig from dictionary. Lenient: ignores unknown keys, never raises."""
+        return cls(
+            db_path=data.get("db_path", None),
+        )

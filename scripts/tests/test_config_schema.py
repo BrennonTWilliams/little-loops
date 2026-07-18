@@ -467,6 +467,27 @@ class TestConfigSchema:
         assert "capture_issue" in history["properties"]
         assert "compaction" in history["properties"]
 
+    def test_queue_in_schema(self) -> None:
+        """queue block must be declared in config-schema.json (FEAT-2682).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing 'queue' will be rejected unless the property is
+        declared here.
+        """
+        data = json.loads(_load_schema_text())
+        assert "queue" in data["properties"], (
+            "queue is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        queue = data["properties"]["queue"]
+        assert queue["type"] == "object"
+        assert queue.get("additionalProperties") is False
+        assert "db_path" in queue["properties"]
+        db_path = queue["properties"]["db_path"]
+        assert "null" in db_path["type"]
+        assert "string" in db_path["type"]
+        assert db_path["default"] is None
+
     def test_history_db_path_in_schema(self) -> None:
         """history.db_path must be declared as a nullable string (ENH-2623).
 

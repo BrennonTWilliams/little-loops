@@ -1887,6 +1887,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "queue": {
+      "type": "object",
+      "description": "ll-queue persistence configuration (FEAT-2682).",
+      "properties": {
+        "db_path": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Override the default .ll/queue.db location; relative paths resolve against the project root."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
