@@ -188,7 +188,7 @@ class TestCmdSkill:
         args = _make_namespace(runner="skill", target="check-code", runner_args=[])
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch(
                 "subprocess.run",
                 return_value=_make_completed(returncode=0, stdout="All checks passed"),
@@ -213,7 +213,7 @@ class TestCmdSkill:
         fake_runner.build_streaming = fake_build_streaming  # type: ignore[method-assign]
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", return_value=_make_completed()),
         ):
             cmd_skill(args)
@@ -225,7 +225,7 @@ class TestCmdSkill:
         args = _make_namespace(runner="skill", target="check-code", runner_args=[], exit_code=0)
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0)),
         ):
             result = cmd_skill(args)
@@ -237,7 +237,7 @@ class TestCmdSkill:
         args = _make_namespace(runner="skill", target="check-code", runner_args=[], exit_code=0)
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=1)),
         ):
             result = cmd_skill(args)
@@ -251,7 +251,7 @@ class TestCmdSkill:
         args = _make_namespace(runner="skill", target="check-code", runner_args=[])
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch(
                 "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
             ),
@@ -265,7 +265,7 @@ class TestCmdSkill:
         args = _make_namespace(runner="skill", target="check-code", runner_args=[])
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", side_effect=FileNotFoundError("claude not found")),
         ):
             result = cmd_skill(args)
@@ -292,7 +292,7 @@ class TestCmdSkill:
             return _make_completed(returncode=0)
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", side_effect=capture_run),
         ):
             cmd_skill(args)
@@ -414,7 +414,7 @@ class TestCmdMcp:
             captured.append((server, tool, params))
             return {"content": [{"type": "text", "text": "ok"}]}, 0
 
-        with patch("little_loops.cli.harness.call_mcp_tool", side_effect=fake_call):
+        with patch("little_loops.runner_spec.call_mcp_tool", side_effect=fake_call):
             result = cmd_mcp(args)
 
         assert result == 0
@@ -431,7 +431,7 @@ class TestCmdMcp:
             captured.append(params)
             return {}, 0
 
-        with patch("little_loops.cli.harness.call_mcp_tool", side_effect=fake_call):
+        with patch("little_loops.runner_spec.call_mcp_tool", side_effect=fake_call):
             cmd_mcp(args)
 
         assert captured[0] == {"key": "val", "num": 42}
@@ -453,7 +453,7 @@ class TestCmdMcp:
         args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{}")
 
         with patch(
-            "little_loops.cli.harness.call_mcp_tool",
+            "little_loops.runner_spec.call_mcp_tool",
             return_value=({"isError": True, "content": []}, 1),
         ):
             result = cmd_mcp(args)
@@ -465,7 +465,7 @@ class TestCmdMcp:
         args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{}", exit_code=0)
 
         with patch(
-            "little_loops.cli.harness.call_mcp_tool",
+            "little_loops.runner_spec.call_mcp_tool",
             return_value=({}, 1),
         ):
             result = cmd_mcp(args)
@@ -494,7 +494,7 @@ class TestCmdPrompt:
         fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", return_value=_make_completed(stdout="4")),
         ):
             result = cmd_prompt(args)
@@ -507,7 +507,7 @@ class TestCmdPrompt:
         args = _make_namespace(runner="prompt", target="hello")
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch(
                 "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
             ),
@@ -521,7 +521,7 @@ class TestCmdPrompt:
         args = _make_namespace(runner="prompt", target="hello")
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", side_effect=FileNotFoundError("claude not found")),
         ):
             result = cmd_prompt(args)
@@ -546,7 +546,7 @@ class TestCmdPrompt:
         fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", return_value=_make_completed(stdout="4")),
         ):
             cmd_prompt(args)
@@ -568,7 +568,7 @@ class TestCmdPrompt:
         fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", return_value=_make_completed(stdout="hi")),
         ):
             cmd_prompt(args)
@@ -701,7 +701,7 @@ class TestMainHarness:
         """main_harness returns 0 for a passing skill invocation."""
         with (
             patch("sys.argv", ["ll-harness", "skill", "check-code"]),
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0)),
         ):
             result = main_harness(["skill", "check-code"])
@@ -712,7 +712,7 @@ class TestMainHarness:
         """main_harness returns 0 for a passing mcp invocation."""
         with (
             patch("sys.argv", ["ll-harness", "mcp", "srv:tool"]),
-            patch("little_loops.cli.harness.call_mcp_tool", return_value=({}, 0)),
+            patch("little_loops.runner_spec.call_mcp_tool", return_value=({}, 0)),
         ):
             result = main_harness(["mcp", "srv:tool"])
 
@@ -722,7 +722,7 @@ class TestMainHarness:
         """main_harness returns 0 for a passing prompt invocation."""
         with (
             patch("sys.argv", ["ll-harness", "prompt", "hello"]),
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="response")),
         ):
             result = main_harness(["prompt", "hello"])
@@ -855,7 +855,7 @@ class TestCmdDsl:
         args = _make_namespace(runner="dsl", path=str(task_file))
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
         ):
             result = cmd_dsl(args)
@@ -871,7 +871,7 @@ class TestCmdDsl:
         args = _make_namespace(runner="dsl", path=str(task_file), exit_code=0)
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=1, stdout="")),
         ):
             result = cmd_dsl(args)
@@ -890,7 +890,7 @@ class TestCmdDsl:
         args = _make_namespace(runner="dsl", path=str(tmp_path))
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
         ):
             result = cmd_dsl(args)
@@ -927,7 +927,7 @@ class TestCmdDsl:
         fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=fake_runner),
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
         ):
             cmd_dsl(args)
@@ -942,7 +942,7 @@ class TestCmdDsl:
         args = _make_namespace(runner="dsl", path=str(task_file))
 
         with (
-            patch("little_loops.cli.harness.resolve_host", return_value=FakeRunner()),
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
         ):
             cmd_dsl(args)

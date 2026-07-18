@@ -120,6 +120,22 @@ def cmd_run(
         logger.error(f"Validation error: {e}")
         return 1
 
+    # ENH-2668: describe this run as a RunnerType.LOOP ActionSpec for
+    # structural parity with ll-harness/ll-action. Not dispatched through
+    # runner_spec.run_action() — PersistentExecutor is a stateful, resumable
+    # multi-state engine, not a one-shot call; see runner_spec's module
+    # docstring for why RunnerType.LOOP is intentionally excluded from
+    # run_action()'s dispatch table.
+    from little_loops.runner_spec import ActionSpec, RunnerType
+
+    loop_spec = ActionSpec(
+        name=loop_name,
+        runner=RunnerType.LOOP,
+        target=str(path),
+        args={"max_steps": fsm.max_steps, "max_iterations": fsm.max_iterations},
+    )
+    logger.debug(f"loop action spec: {loop_spec.name} ({loop_spec.runner.value}) -> {loop_spec.target}")
+
     # Apply overrides
     if getattr(args, "max_steps", None):
         fsm.max_steps = args.max_steps

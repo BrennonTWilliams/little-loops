@@ -65,16 +65,12 @@ def _load_skills() -> list[dict[str, str | None]]:
 
 
 def cmd_invoke(args: argparse.Namespace) -> int:
-    from little_loops.subprocess_utils import run_claude_command
+    from little_loops.runner_spec import ActionSpec, RunnerType, run_action
 
     skill = args.skill
     skill_args: list[str] = args.args or []
     timeout: int = args.timeout
     output_mode: str = args.output
-
-    command = f"/ll:{skill}"
-    if skill_args:
-        command += " " + " ".join(skill_args)
 
     start_ms = int(time.time() * 1000)
 
@@ -91,13 +87,16 @@ def cmd_invoke(args: argparse.Namespace) -> int:
                 if not is_stderr:
                     _emit({"event": "action_output", "ts": _now_iso(), "line": line})
 
+            spec = ActionSpec(
+                name=skill,
+                runner=RunnerType.SKILL,
+                target=skill,
+                args={"runner_args": skill_args, "stream_callback": _stream_cb},
+                timeout=timeout,
+            )
             try:
-                result = run_claude_command(
-                    command=command,
-                    timeout=timeout,
-                    stream_callback=_stream_cb,
-                )
-                exit_code = result.returncode
+                result = run_action(spec)
+                exit_code = result.exit_code
             except subprocess.TimeoutExpired:
                 exit_code = 124
 
@@ -125,14 +124,17 @@ def cmd_invoke(args: argparse.Namespace) -> int:
                 else:
                     output_lines.append(line)
 
+            spec = ActionSpec(
+                name=skill,
+                runner=RunnerType.SKILL,
+                target=skill,
+                args={"runner_args": skill_args, "stream_callback": _stream_cb_json},
+                timeout=timeout,
+            )
             exit_code = 0
             try:
-                result = run_claude_command(
-                    command=command,
-                    timeout=timeout,
-                    stream_callback=_stream_cb_json,
-                )
-                exit_code = result.returncode
+                result = run_action(spec)
+                exit_code = result.exit_code
             except subprocess.TimeoutExpired:
                 exit_code = 124
 

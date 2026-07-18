@@ -8103,6 +8103,42 @@ Subclasses `UserWarning` (not `Warning`) so test code can capture it via `pytest
 
 ---
 
+## little_loops.runner_spec
+
+Shared runner abstraction extracted from `ll-harness`/`ll-action`'s previously duplicated dispatch if/elifs (ENH-2668). `ll-harness` and `ll-action` build an `ActionSpec` and call `run_action()` instead of each owning its own runner-kind dispatch.
+
+```python
+from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
+```
+
+### RunnerType
+
+`Enum` covering the runner kinds `ll-harness` exposes (`SKILL`, `CMD`, `MCP`, `PROMPT`, `DSL`) plus `LOOP` for FSM loop execution.
+
+### ActionSpec
+
+```python
+@dataclass(frozen=True)
+class ActionSpec:
+    name: str
+    runner: RunnerType
+    target: str
+    args: dict[str, Any] = field(default_factory=dict)
+    timeout: int = 120
+```
+
+Frozen, following the same crosses-the-runner/caller-boundary convention as `host_runner.HostInvocation`.
+
+### RunnerResult
+
+Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that module re-exports it (`from little_loops.cli.harness import RunnerResult` still resolves) so existing importers are unaffected.
+
+### run_action
+
+`run_action(spec: ActionSpec) -> RunnerResult` dispatches to the runner named by `spec.runner`. Covers `SKILL`/`CMD`/`MCP`/`PROMPT`. `RunnerType.DSL` is a batch driver over `PROMPT` (callers loop and call `run_action` once per task, as `ll-harness`'s `cmd_dsl` does via `cmd_prompt`) rather than an independent execution path. `RunnerType.LOOP` is **not** dispatched by `run_action` — raises `ValueError` if attempted — because FSM loop execution (`PersistentExecutor`/`run_foreground()`) is a stateful, resumable, multi-state engine with per-state persistence, an event bus, and scope locking spanning the entire run, not a single blocking call. `cli/loop/run.py`'s `cmd_run()` builds a `RunnerType.LOOP` `ActionSpec` for structural/observability parity only and continues to call `PersistentExecutor` directly for execution.
+
+---
+
 ## little_loops.adapters
 
 > `CodexEmitter` and `GeminiEmitter` are fully implemented (FEAT-2391/2392). Use `ll-adapt --host codex --apply` or `ll-adapt --host gemini --apply` to emit artifacts for a given host.

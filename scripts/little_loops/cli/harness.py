@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,21 +13,15 @@ import yaml
 
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
 from little_loops.fsm.evaluators import evaluate_llm_structured
-from little_loops.host_runner import resolve_host
 from little_loops.logger import Logger
-from little_loops.mcp_call import call_mcp_tool
+from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
-
-@dataclass
-class RunnerResult:
-    """Captured output from a runner invocation."""
-
-    stdout: str
-    stderr: str
-    exit_code: int
-    timed_out: bool = False
-    error: str | None = None
+__all__ = [
+    "RunnerResult",
+    "DslTask",
+    "main_harness",
+]
 
 
 @dataclass
@@ -277,81 +268,29 @@ def _report(
 def cmd_skill(args: argparse.Namespace) -> int:
     """Invoke a little-loops skill via the active host CLI."""
     runner_args: list[str] = getattr(args, "runner_args", None) or []
-    parts = [f"/ll:{args.target}"] + runner_args
-    prompt = " ".join(parts)
-
-    inv = resolve_host().build_streaming(prompt=prompt)
     runner_label = f"skill {args.target}"
-
-    try:
-        proc = subprocess.run(
-            [inv.binary, *inv.args],
-            capture_output=True,
-            text=True,
-            timeout=args.timeout,
-            env={**os.environ, **inv.env},
-        )
-        result = RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
-    except subprocess.TimeoutExpired:
-        result = RunnerResult(stdout="", stderr="", exit_code=2, timed_out=True)
-    except FileNotFoundError as e:
-        result = RunnerResult(stdout="", stderr="", exit_code=2, error=str(e))
-
+    spec = ActionSpec(
+        name=args.target,
+        runner=RunnerType.SKILL,
+        target=args.target,
+        args={"runner_args": runner_args},
+        timeout=args.timeout,
+    )
+    result = run_action(spec)
     return _evaluate_and_report(runner_label, result, args)
 
 
 def cmd_cmd(args: argparse.Namespace) -> int:
     """Run a shell command with deadlock-safe stderr draining."""
     runner_label = f"cmd {args.target}"
-
-    process = subprocess.Popen(
-        ["bash", "-c", args.target],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    spec = ActionSpec(
+        name=args.target,
+        runner=RunnerType.CMD,
+        target=args.target,
+        timeout=args.timeout,
     )
-
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
-
-    def _drain_stderr() -> None:
-        assert process.stderr is not None
-        for line in process.stderr:
-            stderr_chunks.append(line)
-
-    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-    stderr_thread.start()
-
-    try:
-        assert process.stdout is not None
-        for line in process.stdout:
-            stdout_chunks.append(line)
-        process.wait(timeout=args.timeout)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        stderr_thread.join(timeout=5)
-        return _evaluate_and_report(
-            runner_label,
-            RunnerResult(
-                stdout="".join(stdout_chunks),
-                stderr="".join(stderr_chunks),
-                exit_code=2,
-                timed_out=True,
-            ),
-            args,
-        )
-
-    stderr_thread.join(timeout=5)
-    return _evaluate_and_report(
-        runner_label,
-        RunnerResult(
-            stdout="".join(stdout_chunks),
-            stderr="".join(stderr_chunks),
-            exit_code=process.returncode,
-        ),
-        args,
-    )
+    result = run_action(spec)
+    return _evaluate_and_report(runner_label, result, args)
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
@@ -363,7 +302,6 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         )
         return 2
 
-    server, tool = args.target.split(":", 1)
     runner_label = f"mcp {args.target}"
 
     try:
@@ -372,8 +310,14 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         print(f"Error: --args is not valid JSON: {e}", file=sys.stderr)
         return 2
 
-    response, exit_code = call_mcp_tool(server, tool, params, timeout=args.timeout)
-    result = RunnerResult(stdout=json.dumps(response), stderr="", exit_code=exit_code)
+    spec = ActionSpec(
+        name=args.target,
+        runner=RunnerType.MCP,
+        target=args.target,
+        args={"mcp_params": params},
+        timeout=args.timeout,
+    )
+    result = run_action(spec)
     return _evaluate_and_report(runner_label, result, args)
 
 
@@ -381,21 +325,14 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     """Send a raw prompt to Claude and evaluate the response."""
     label_text = args.target[:40] + ("..." if len(args.target) > 40 else "")
     runner_label = f"prompt {label_text}"
-    inv = resolve_host().build_blocking_json(prompt=args.target, model=args.model)
-
-    try:
-        proc = subprocess.run(
-            [inv.binary, *inv.args],
-            capture_output=True,
-            text=True,
-            timeout=args.timeout,
-        )
-        result = RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
-    except subprocess.TimeoutExpired:
-        result = RunnerResult(stdout="", stderr="", exit_code=2, timed_out=True)
-    except FileNotFoundError as e:
-        result = RunnerResult(stdout="", stderr="", exit_code=2, error=str(e))
-
+    spec = ActionSpec(
+        name=label_text,
+        runner=RunnerType.PROMPT,
+        target=args.target,
+        args={"model": args.model},
+        timeout=args.timeout,
+    )
+    result = run_action(spec)
     return _evaluate_and_report(runner_label, result, args)
 
 
