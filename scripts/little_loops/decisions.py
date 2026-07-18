@@ -99,6 +99,8 @@ class RuleEntry:
     enforcement: str = "advisory"
     supersedes: str | None = None
     issue: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -115,6 +117,8 @@ class RuleEntry:
             enforcement=copy.pop("enforcement", "advisory"),
             supersedes=copy.pop("supersedes", None),
             issue=copy.pop("issue", None),
+            source_session_id=copy.pop("source_session_id", None),
+            source_issue_id=copy.pop("source_issue_id", None),
             extra=copy,
         )
 
@@ -133,6 +137,10 @@ class RuleEntry:
             d["supersedes"] = self.supersedes
         if self.issue is not None:
             d["issue"] = self.issue
+        if self.source_session_id is not None:
+            d["source_session_id"] = self.source_session_id
+        if self.source_issue_id is not None:
+            d["source_issue_id"] = self.source_issue_id
         return {**d, **self.extra}
 
 
@@ -151,6 +159,8 @@ class DecisionEntry:
     issue: str | None = None
     scope: str = "issue"
     outcome: DecisionOutcome | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -169,6 +179,8 @@ class DecisionEntry:
             issue=copy.pop("issue", None),
             scope=copy.pop("scope", "issue"),
             outcome=DecisionOutcome.from_dict(outcome_data) if outcome_data else None,
+            source_session_id=copy.pop("source_session_id", None),
+            source_issue_id=copy.pop("source_issue_id", None),
             extra=copy,
         )
 
@@ -189,6 +201,10 @@ class DecisionEntry:
             d["issue"] = self.issue
         if self.outcome is not None:
             d["outcome"] = self.outcome.to_dict()
+        if self.source_session_id is not None:
+            d["source_session_id"] = self.source_session_id
+        if self.source_issue_id is not None:
+            d["source_issue_id"] = self.source_issue_id
         return {**d, **self.extra}
 
 
@@ -205,6 +221,8 @@ class ExceptionEntry:
     rule_ref: str = ""
     issue: str = ""
     alternatives_rejected: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -220,6 +238,8 @@ class ExceptionEntry:
             rule_ref=copy.pop("rule_ref", ""),
             issue=copy.pop("issue", ""),
             alternatives_rejected=copy.pop("alternatives_rejected", None),
+            source_session_id=copy.pop("source_session_id", None),
+            source_issue_id=copy.pop("source_issue_id", None),
             extra=copy,
         )
 
@@ -236,6 +256,10 @@ class ExceptionEntry:
         }
         if self.alternatives_rejected is not None:
             d["alternatives_rejected"] = self.alternatives_rejected
+        if self.source_session_id is not None:
+            d["source_session_id"] = self.source_session_id
+        if self.source_issue_id is not None:
+            d["source_issue_id"] = self.source_issue_id
         return {**d, **self.extra}
 
 
@@ -256,6 +280,8 @@ class CouplingEntry:
     enforcement: str = "advisory"
     supersedes: str | None = None
     issue: str | None = None
+    source_session_id: str | None = None
+    source_issue_id: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -275,6 +301,8 @@ class CouplingEntry:
             enforcement=copy.pop("enforcement", "advisory"),
             supersedes=copy.pop("supersedes", None),
             issue=copy.pop("issue", None),
+            source_session_id=copy.pop("source_session_id", None),
+            source_issue_id=copy.pop("source_issue_id", None),
             extra=copy,
         )
 
@@ -297,6 +325,10 @@ class CouplingEntry:
             d["supersedes"] = self.supersedes
         if self.issue is not None:
             d["issue"] = self.issue
+        if self.source_session_id is not None:
+            d["source_session_id"] = self.source_session_id
+        if self.source_issue_id is not None:
+            d["source_issue_id"] = self.source_issue_id
         return {**d, **self.extra}
 
 

@@ -97,6 +97,20 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
         help="Why this rule/decision/exception applies",
     )
     add_p.add_argument("--issue", default=None, help="Related issue ID (e.g. FEAT-1894)")
+    add_p.add_argument(
+        "--source-session",
+        default=None,
+        dest="source_session_id",
+        metavar="SESSION_ID",
+        help="Session ID that produced this entry (provenance backlink)",
+    )
+    add_p.add_argument(
+        "--source-issue-id",
+        default=None,
+        dest="source_issue_id",
+        metavar="ISSUE_ID",
+        help="Issue ID that produced this entry (provenance backlink)",
+    )
     add_p.add_argument("--label", default=None, help="Comma-separated labels")
     add_p.add_argument(
         "--enforcement",
@@ -454,6 +468,8 @@ def _cmd_add(
             enforcement=getattr(args, "enforcement", "advisory"),
             supersedes=getattr(args, "supersedes", None),
             issue=getattr(args, "issue", None),
+            source_session_id=getattr(args, "source_session_id", None),
+            source_issue_id=getattr(args, "source_issue_id", None),
         )
     elif entry_type == "decision":
         entry = DecisionEntry(
@@ -466,6 +482,8 @@ def _cmd_add(
             alternatives_rejected=getattr(args, "alternatives_rejected", None),
             issue=getattr(args, "issue", None),
             scope=getattr(args, "scope", "issue"),
+            source_session_id=getattr(args, "source_session_id", None),
+            source_issue_id=getattr(args, "source_issue_id", None),
         )
     elif entry_type == "coupling":
         then_check = [t.strip() for t in args.then_check.split(",")]
@@ -481,6 +499,8 @@ def _cmd_add(
             archetype=getattr(args, "archetype", None),
             enforcement=getattr(args, "enforcement", "advisory"),
             issue=getattr(args, "issue", None),
+            source_session_id=getattr(args, "source_session_id", None),
+            source_issue_id=getattr(args, "source_issue_id", None),
         )
     else:  # exception
         entry = ExceptionEntry(
@@ -492,6 +512,8 @@ def _cmd_add(
             rule_ref=args.rule_ref,
             issue=getattr(args, "issue", "") or "",
             alternatives_rejected=getattr(args, "alternatives_rejected", None),
+            source_session_id=getattr(args, "source_session_id", None),
+            source_issue_id=getattr(args, "source_issue_id", None),
         )
 
     add_entry(entry, path=path)

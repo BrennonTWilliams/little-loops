@@ -8,6 +8,8 @@ discovered_date: 2026-07-02
 captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
+relates_to:
+- ENH-2667
 decision_needed: false
 labels:
 - enhancement
@@ -24,6 +26,33 @@ size: Very Large
 ---
 
 # ENH-2464: Backlink .ll/decisions.yaml entries to issuing session_id and issue_id
+
+> **🔀 SPLIT (2026-07-17) — this issue is now the DB-mirror half only.**
+> The YAML-side, DB-free core (first-class `source_session_id` / `source_issue_id`
+> fields on the four dataclasses + `ll-issues decisions add --source-session /
+> --source-issue-id` flags) was carved into **[[ENH-2667]]** and **implemented +
+> merged separately** because it has no schema dependency. What remains here is the
+> heavyweight, schema-coupled half: the `decision_events` DB mirror table +
+> `SCHEMA_VERSION` migration, `record_decision_event()` / `_backfill_decision_events()`,
+> the `history_reader` read API (`find_decisions_for_session/issue`), `ll-session
+> --kind decision`, and the capture-bridge threading of the current session id
+> (which itself needs an orchestrator session-id env var that skill bodies do not
+> have today). **Verify what ENH-2667 already landed before re-reading the anchor
+> tables below** — the dataclass/CLI edits in those tables are done; only the DB +
+> read-API + producer-wiring rows remain.
+
+> **⏸ DEFERRAL RATIONALE (2026-07-17) — why this stays deferred (not abandoned).**
+> Parked by `rn-implement-20260717T165621` as "remediation scores did not converge."
+> Root cause is **not** issue quality (readiness 100/100, `decision_needed` resolved)
+> but two structural problems: (1) it is Very Large (outcome confidence 69) — a single
+> autonomous pass can't land ~15 test-class edits cleanly; (2) **schema-version-slot
+> contention** — ~10 EPIC-2457 siblings each claim "the next `SCHEMA_VERSION` slot",
+> so this issue has been re-refined five times chasing pure `SCHEMA_VERSION` drift
+> (18→20→21→23→25) with no forward progress. **The remaining DB-mirror half should not
+> land as yet another independent migration** — it wants a single coordinated
+> EPIC-2457 migration pass. Until that coordination exists, this stays deferred by
+> design. The user-facing value (provenance recordable in YAML) already shipped via
+> [[ENH-2667]].
 
 > **✅ Architecture alignment (ENH-2581 `raw_events`) — read before implementing.**
 > [[ENH-2581]] made `raw_events` the single ingestion point for **session-transcript

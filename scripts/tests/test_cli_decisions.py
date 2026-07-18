@@ -377,6 +377,82 @@ class TestDecisionsCLIAdd:
         # BUG-2644: adds land as a fragment under .ll/decisions.d/, not the flat file.
         assert len(load_decisions(decisions_path)) == 1
 
+    def test_add_rule_with_source_provenance(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2667: --source-session / --source-issue-id are threaded onto the entry."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "rule",
+                "--category",
+                "naming",
+                "--rule",
+                "test rule text",
+                "--rationale",
+                "test rationale",
+                "--source-session",
+                "sess-xyz",
+                "--source-issue-id",
+                "ENH-2667",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entry = load_decisions(decisions_path)[0]
+        assert entry.source_session_id == "sess-xyz"
+        assert entry.source_issue_id == "ENH-2667"
+
+    def test_add_rule_without_source_provenance_is_none(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Omitting the flags leaves provenance unset (backward compatible)."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "rule",
+                "--category",
+                "naming",
+                "--rule",
+                "test rule text",
+                "--rationale",
+                "test rationale",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entry = load_decisions(decisions_path)[0]
+        assert entry.source_session_id is None
+        assert entry.source_issue_id is None
+
     def test_add_decision(
         self,
         temp_project_dir: Path,

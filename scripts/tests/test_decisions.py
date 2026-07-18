@@ -241,6 +241,77 @@ class TestAddEntry:
         assert len(loaded) == 2
 
 
+class TestSourceProvenanceFields:
+    """ENH-2667: source_session_id / source_issue_id round-trip on all entry types."""
+
+    def test_rule_round_trips_source_fields(self, decisions_path: Path) -> None:
+        entry = RuleEntry(
+            id="PROV-001",
+            timestamp="2026-07-17T00:00:00Z",
+            rule="x",
+            source_session_id="sess-abc",
+            source_issue_id="ENH-2667",
+        )
+        add_entry(entry, decisions_path)
+        loaded = load_decisions(decisions_path)[0]
+        assert loaded.source_session_id == "sess-abc"
+        assert loaded.source_issue_id == "ENH-2667"
+
+    def test_decision_round_trips_source_fields(self, decisions_path: Path) -> None:
+        entry = DecisionEntry(
+            id="PROV-002",
+            timestamp="2026-07-17T00:00:00Z",
+            rule="x",
+            source_session_id="sess-def",
+            source_issue_id="FEAT-948",
+        )
+        add_entry(entry, decisions_path)
+        loaded = load_decisions(decisions_path)[0]
+        assert loaded.source_session_id == "sess-def"
+        assert loaded.source_issue_id == "FEAT-948"
+
+    def test_exception_round_trips_source_fields(self, decisions_path: Path) -> None:
+        entry = ExceptionEntry(
+            id="PROV-003",
+            timestamp="2026-07-17T00:00:00Z",
+            rule_ref="NAMING-001",
+            source_session_id="sess-ghi",
+            source_issue_id="BUG-100",
+        )
+        add_entry(entry, decisions_path)
+        loaded = load_decisions(decisions_path)[0]
+        assert loaded.source_session_id == "sess-ghi"
+        assert loaded.source_issue_id == "BUG-100"
+
+    def test_coupling_round_trips_source_fields(self, decisions_path: Path) -> None:
+        entry = CouplingEntry(
+            id="PROV-004",
+            timestamp="2026-07-17T00:00:00Z",
+            if_changed="a.py",
+            then_check=["b.py"],
+            source_session_id="sess-jkl",
+            source_issue_id="ENH-2464",
+        )
+        add_entry(entry, decisions_path)
+        loaded = load_coupling_entries(decisions_path)[0]
+        assert loaded.source_session_id == "sess-jkl"
+        assert loaded.source_issue_id == "ENH-2464"
+
+    def test_legacy_yaml_without_source_fields_loads_as_none(self, decisions_path: Path) -> None:
+        """Backward compat: entries predating ENH-2667 load with source_* == None."""
+        legacy = RuleEntry(id="LEGACY-1", timestamp="2026-06-01T00:00:00Z", rule="x")
+        add_entry(legacy, decisions_path)
+        loaded = load_decisions(decisions_path)[0]
+        assert loaded.source_session_id is None
+        assert loaded.source_issue_id is None
+
+    def test_source_fields_omitted_from_yaml_when_none(self, decisions_path: Path) -> None:
+        """Omit-when-None: unset provenance fields do not bloat the serialized entry."""
+        entry = RuleEntry(id="OMIT-1", timestamp="2026-07-17T00:00:00Z", rule="x")
+        assert "source_session_id" not in entry.to_dict()
+        assert "source_issue_id" not in entry.to_dict()
+
+
 class TestListEntries:
     """Tests for list_entries()."""
 
