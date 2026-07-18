@@ -1,0 +1,14 @@
+{
+  "id": "5b3d339b-8534-4aa0-be75-f5327eaa90b8",
+  "type": "rule",
+  "timestamp": "2026-07-18T00:57:16Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The FSM interpolates the entire action string before bash executes, so a bash '&&' guard with ':default=' does not protect an unguarded RHS reference to the same variable \u2014 the unguarded reference still raises InterpolationError when absent.",
+  "rule": "In FSM shell states, apply ':default=' to every reference of an optional context variable, not just the one inside a bas",
+  "enforcement": "advisory",
+  "issue": "BUG-2662"
+}

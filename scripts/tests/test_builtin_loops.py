@@ -365,6 +365,61 @@ class TestSubloopSidecarContract:
         )
 
 
+class TestCodeRunGateOptionalParams:
+    """Regression: code-run-gate must interpolate when *_cmd overrides are absent.
+
+    rn-remediate's ``run_code_gate`` invokes ``oracles/code-run-gate`` with only
+    ``issue_id`` / ``run_dir`` / ``min_pass_rate`` bound, expecting the oracle to
+    resolve build/test/typecheck/lint/run commands from ``.ll/ll-config.json``.
+    The optional ``*_cmd`` parameters are therefore ABSENT from the child context.
+
+    A 2026-07-17 rn-implement run showed every gate-reaching issue (ENH-2497,
+    ENH-2511) falsely tagged ``GATE_FAILED_INFRA``: ``resolve_commands`` assigned
+    ``BUILD_CMD="${context.build_cmd}"`` with no ``:default=`` on the RHS. Because
+    the FSM interpolates the whole action string BEFORE bash runs, the bash ``&&``
+    guard does not protect the assignment — interpolation raised
+    ``Path 'build_cmd' not found in context`` and the child died with an ``error``
+    verdict, which ``record_gate_error`` laundered into GATE_FAILED_INFRA. Every
+    ``*_cmd`` RHS must carry ``:default=``. Prior tests only exercised the
+    override path (all commands supplied), so the config-resolution path regressed
+    silently.
+    """
+
+    def test_resolve_commands_interpolates_without_cmd_overrides(self) -> None:
+        from little_loops.fsm.interpolation import InterpolationContext, interpolate
+
+        loop_file = BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml"
+        fsm, _ = load_and_validate(loop_file)
+        action = fsm.states["resolve_commands"].action
+        # Exactly what rn-remediate binds — no *_cmd overrides.
+        child_ctx = {
+            **fsm.context,
+            "issue_id": "ENH-9999",
+            "run_dir": "/tmp/gate-regression",
+            "min_pass_rate": 0.95,
+        }
+        ctx = InterpolationContext(context=child_ctx, captured={}, prev=None)
+        # Must not raise InterpolationError (the GATE_FAILED_INFRA root cause).
+        interpolate(action, ctx)
+
+    def test_resolve_commands_still_honours_cmd_overrides(self) -> None:
+        from little_loops.fsm.interpolation import InterpolationContext, interpolate
+
+        loop_file = BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml"
+        fsm, _ = load_and_validate(loop_file)
+        action = fsm.states["resolve_commands"].action
+        child_ctx = {
+            **fsm.context,
+            "issue_id": "ENH-9999",
+            "run_dir": "/tmp/gate-regression",
+            "min_pass_rate": 0.95,
+            "build_cmd": "make build",
+        }
+        ctx = InterpolationContext(context=child_ctx, captured={}, prev=None)
+        rendered = interpolate(action, ctx)
+        assert 'BUILD_CMD="make build"' in rendered
+
+
 class TestMR6BuiltinFalsePositives:
     """MR-6 (ENH-2079): verify no false positives on known built-in loops."""
 

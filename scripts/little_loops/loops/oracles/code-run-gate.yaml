@@ -138,12 +138,20 @@ states:
       HEALTH_URL=$(get_value "$CFG_PROJECT" "health_url" "health_url")
 
       # Honour caller-supplied overrides via parameters (when provided).
-      [ -n "${context.build_cmd:default=}" ] && BUILD_CMD="${context.build_cmd}"
-      [ -n "${context.test_cmd:default=}" ] && TEST_CMD="${context.test_cmd}"
-      [ -n "${context.typecheck_cmd:default=}" ] && TYPECHECK_CMD="${context.typecheck_cmd}"
-      [ -n "${context.lint_cmd:default=}" ] && LINT_CMD="${context.lint_cmd}"
-      [ -n "${context.run_cmd:default=}" ] && RUN_CMD="${context.run_cmd}"
-      [ -n "${context.health_url:default=}" ] && HEALTH_URL="${context.health_url}"
+      # NOTE: both the guard AND the assignment RHS must carry :default= — the
+      # FSM interpolates the entire action string BEFORE bash runs, so a bare
+      # context.build_cmd reference (no :default=) on the RHS raises "Path
+      # 'build_cmd' not found in context" whenever the caller omits the override
+      # (e.g. rn-remediate, which resolves commands from config instead). The
+      # bash && short-circuit only gates runtime execution, not interpolation.
+      # (Do not write the brace-substitution form in this comment — it would
+      # itself be interpolated and reintroduce the crash.)
+      [ -n "${context.build_cmd:default=}" ] && BUILD_CMD="${context.build_cmd:default=}"
+      [ -n "${context.test_cmd:default=}" ] && TEST_CMD="${context.test_cmd:default=}"
+      [ -n "${context.typecheck_cmd:default=}" ] && TYPECHECK_CMD="${context.typecheck_cmd:default=}"
+      [ -n "${context.lint_cmd:default=}" ] && LINT_CMD="${context.lint_cmd:default=}"
+      [ -n "${context.run_cmd:default=}" ] && RUN_CMD="${context.run_cmd:default=}"
+      [ -n "${context.health_url:default=}" ] && HEALTH_URL="${context.health_url:default=}"
 
       # Write commands.json sidecar (F2a → F2b contract — canonical names only)
       cat > "$${ABS_DIR}/commands.json" <<CMDEOF
