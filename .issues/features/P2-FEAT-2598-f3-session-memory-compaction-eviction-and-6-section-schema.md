@@ -16,11 +16,11 @@ labels:
 - compaction
 - tier-3
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 56
+confidence_score: 97
+outcome_confidence: 66
 score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 20
 score_change_surface: 18
 ---
 
@@ -38,8 +38,9 @@ the soft threshold (7,500 tokens) is crossed. This is EPIC-2456 § Children
 [TBD-12] — directly serves Goal #4 in the EPIC.
 
 This is **not** a greenfield build: it extends the existing LCM compaction
-surface already in the tree (`session_store._compact_session_conn` +
-the `summary_nodes` SQL schema, `session_store.py:1747+`), reuses
+surface already in the tree (`session_store._compact_session_conn` at
+`session_store.py:2682` + the `summary_nodes` SQL schema at
+`session_store.py:497`), reuses
 ENH-1954's cross-session condensation, and reuses the existing
 `history.compaction` config (4096-token budget) — no new config keys are
 needed for the base mechanism.
@@ -58,10 +59,28 @@ tokens saved)** on a 5-ticket workflow — those are cited as context for how
 large the lever is, not as this issue's bar; see Acceptance Criteria for
 the actual target.
 
+## Use Case
+
+_Added by `/ll:ready-issue` — required FEAT section, missing from prior passes:_
+
+A developer kicks off a long-running `rn-implement` FSM loop against a large
+EPIC. By hour three the session has accumulated tens of thousands of tokens
+of tool output and prior turns, and every subsequent prompt re-embeds that
+full history — inflating per-call cost and pushing the session toward the
+model's context window. With this feature: once the session crosses the
+7,500-token soft threshold, a background thread produces a 6-section summary
+(User Intent / Completed Work / Errors & Corrections / Active Work / Pending
+Tasks / Key References) without stalling the loop; if the session instead
+hits a hard limit before that summary lands, the instant sink-and-window
+eviction pass drops the middle of the transcript (preserving system/CLAUDE.md
+blocks and the most recent turns) so the loop can keep running rather than
+fail outright. The developer never has to manually intervene or restart the
+loop — the session's context footprint stays bounded automatically.
+
 ## Current Behavior
 
 - `session_store._compact_session_conn` and the `summary_nodes` SQL schema
-  (`session_store.py:1747+`) already implement cross-session condensation
+  (`session_store.py:2682` / `:497`) already implement cross-session condensation
   (ENH-1954) at the existing 4096-token `history.compaction` budget
   boundary.
 - No instant structural eviction pass exists — compaction is
@@ -151,31 +170,31 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Step 4 resolved — there is a shared *core* but two distinct *triggers*.**
   Both `compact_session(session_id, db, *, config)` (public single-session
-  API, `session_store.py:2607`) and `rebuild(db, config, max_sessions)`
-  (batch pipeline, `session_store.py:2838` → `_compact_sessions:2452` →
-  loop call at `:2484`) ultimately call the shared low-level worker
-  `_compact_session_conn` (`session_store.py:2359`). Each trigger re-reads
+  API, `session_store.py:2930`) and `rebuild(db, config, max_sessions)`
+  (batch pipeline, `session_store.py:3161` → `_compact_sessions:2775` →
+  loop call at `:2807`) ultimately call the shared low-level worker
+  `_compact_session_conn` (`session_store.py:2682`). Each trigger re-reads
   `history.compaction` independently and constructs its own
   `CompactionConfig`. The soft-threshold trigger is best wired at the
   shared core (`_compact_session_conn`) or as a new pre-pass invoked by
   both, rather than duplicated per trigger.
 - **Compaction is opt-in.** `CompactionConfig.enabled` defaults to `False`
-  (`config/features.py:937`); `_compact_sessions` returns `0` immediately
-  when disabled (`session_store.py:2476-2477`). The new eviction pass must
+  (`config/features.py:995`); `_compact_sessions` returns `0` immediately
+  when disabled (`session_store.py:2799-2800`). The new eviction pass must
   decide whether it is gated on the same `enabled` flag or always-on for
   the instant/structural path.
 - **⚠ Naming-collision hazard for the skill/CLI.** A *different*
-  `compact()` function (`session_store.py:3034`, ENH-1906/ENH-2581
+  `compact()` function (`session_store.py:3357`, ENH-1906/ENH-2581
   retention sweep over `raw_events`, `kind='retention'`) already exists,
   and `ll-session` already exposes a `compact` subcommand
-  (`cli/session.py:198-216`) bound to it. That is a different compaction
+  (`cli/session.py:216-233`) bound to it. That is a different compaction
   axis than this issue's LCM/`compact_session` summarization. Name the new
   skill/entry point to avoid confusion with the existing retention
   `compact` (e.g. keep `ll-compact-session` distinct from `ll-session
   compact`).
 - **Existing summarizer is reusable for the 6-section pass.**
-  `_summarize_block` (`session_store.py:2183`, LCM Algorithm 3 three-level
-  escalation) calls `_call_llm_for_summary` (`session_store.py:2258`),
+  `_summarize_block` (`session_store.py:2506`, LCM Algorithm 3 three-level
+  escalation) calls `_call_llm_for_summary` (`session_store.py:2581`),
   which shells out via `resolve_host().build_blocking_json(...)` (the
   sanctioned host-CLI path — do not add raw `"claude"` literals per
   `.claude/CLAUDE.md` § Host CLI Abstraction). Model `summarize_6_section`
@@ -233,8 +252,8 @@ kill-switch defaulting `True`, never reusing `enabled`).
 
 **Recommended**: Option B — always-on. `CompactionConfig.enabled` gates an
 opt-in *LLM cost* ("Disabled by default to avoid background LLM calls without
-user opt-in," `config/features.py:981-993`), not structural safety.
-`_compact_sessions` (`session_store.py:2452-2477`) and `cli/history_context.py:334`
+user opt-in," `config/features.py:982-993`), not structural safety.
+`_compact_sessions` (`session_store.py:2775-2800`) and `cli/history_context.py:334`
 both treat the flag as "is summarization active." Eviction is a lossless-enough
 structural pass with no LLM cost; gating it on `enabled` means the 100% of
 installs that never opted into `history.compaction` get zero protection against
@@ -266,8 +285,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   module) — the entry point importing `evict_sink_and_window` /
   `summarize_6_section` from `compaction/instant.py` and `CompactResult`
   from `compaction/result.py`. **Naming-collision guard**: this file
-  already binds a *different* `compact` subcommand (`:198-216`, dispatch
-  `:591-609`) to the retention `compact()` (`session_store.py:3034`,
+  already binds a *different* `compact` subcommand (`:216-233`, dispatch
+  `:624-643`) to the retention `compact()` (`session_store.py:3357`,
   ENH-1906/ENH-2581 `kind='retention'`) — keep `ll-compact-session`
   visibly distinct from `ll-session compact` [Agent 1 + Agent 2 finding]
 - `.claude-plugin/plugin.json` — register the new `skills/ll-compact-session/`
@@ -291,12 +310,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `scripts/little_loops/session_store.py` — **`rebuild()` (`:2888`) is the
-  sole production call site of `_compact_sessions`** (`:2452-2604`). If the
+- `scripts/little_loops/session_store.py` — **`rebuild()` (`:3161`) is the
+  sole production call site of `_compact_sessions`** (`:2775-2929`). If the
   new eviction pre-pass changes `_compact_session_conn` from "purely
   additive" to deleting/evicting `message_events`, that behavior flows
   through `rebuild()`'s `counts["summaries"]` return value — printed via
-  `logger.success(...)` in `cli/session.py:582-588` and emitted as
+  `logger.success(...)` in `cli/session.py:580-589` and emitted as
   `--json` output. Treat `rebuild()`'s output contract as a coupling point
   [Agent 2 finding]
 - `scripts/little_loops/history_reader.py` — `condensed_nodes_for_issue()`
@@ -312,16 +331,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/context_window.py` — `context_window_for()` (`:39`)
   + `MODEL_CONTEXT_WINDOW` (`:19`); the new sliding-window `goal_tokens`
   calc imports these (dependency, not caller) [Agent 1 finding]
-- `scripts/little_loops/config/features.py` — `CompactionConfig` (`:922-953`)
+- `scripts/little_loops/config/features.py` — `CompactionConfig` (`:980-1014`)
   consumed via `BRConfig.history.compaction` (established pattern in
   `cli/history_context.py`); the eviction pass must decide if it gates on
-  `CompactionConfig.enabled` (defaults `False`, `:937`) or is always-on
+  `CompactionConfig.enabled` (defaults `False`, `:995`) or is always-on
   for the instant/structural path [Agent 1 + Agent 2 finding]
 
 ### Similar Patterns
 
 - `session_store._compact_session_conn` + `summary_nodes` schema
-  (`session_store.py:1747+`) — the existing LCM compaction surface this
+  (`session_store.py:2682` / `:497`) — the existing LCM compaction surface this
   issue extends, not replaces.
 - ENH-1954 — cross-session condensation; the monotonic-update path in
   the sliding-window selector should reuse this rather than duplicate it.
@@ -338,9 +357,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_compaction.py` (new) — **add a `message_events`
   row-count-unchanged regression** paired with the system/CLAUDE.md
   preservation test: no existing test asserts eviction is non-destructive,
-  and the current "purely additive" guarantee (issue `:216-217`) must be
-  re-proven if the pre-pass drops middle messages structurally [Agent 3
-  finding]
+  and the current "purely additive" guarantee (issue `:431`, Codebase
+  Research Findings) must be re-proven if the pre-pass drops middle
+  messages structurally [Agent 3 finding]
 - `scripts/tests/test_session_store.py` — `class TestCompactSession`
   (`:2143+`) tests assume purely-additive semantics and need
   re-validation once eviction wires into `_compact_session_conn`:
@@ -351,15 +370,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   finding]
 - `scripts/tests/test_session_store.py` — **log-string coupling**:
   `test_escalation_logs_warning` (`:2719-2730`) asserts the literal
-  `"escalating to level 2"` from `_summarize_block` (`:2224-2229`); if
+  `"escalating to level 2"` from `_summarize_block` (`:2549-2554`); if
   `summarize_6_section` reuses/wraps `_summarize_block`, keep this string
   intact [Agent 2 finding]
 - `scripts/tests/test_ll_session.py` — `class TestCompactSubcommand`
-  (`:972-986`) covers the *retention* `compact` axis; **do not name the
+  (`:988-1021`) covers the *retention* `compact` axis; **do not name the
   new eviction test class `TestCompactSubcommand`** (collision) [Agent 2 +
   Agent 3 finding]
 - `scripts/tests/test_history_reader.py` — `class TestSummaryDagRetrieval`
-  (`:870+`) bootstraps DB state via `compact_session(...)`; re-run to
+  (`:963-1254`) bootstraps DB state via `compact_session(...)`; re-run to
   confirm the eviction pre-pass doesn't alter the DAG it reads [Agent 3
   finding]
 - `scripts/tests/test_merge_coordinator.py` — threading-test template for
@@ -379,10 +398,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `docs/ARCHITECTURE.md` (`:750`) — the exact "Token cost layer" table row
+- `docs/ARCHITECTURE.md` (`:755`) — the exact "Token cost layer" table row
   for `compact_session()` documents current behavior; update its prose to
   mention the eviction pre-pass + 6-section schema [Agent 2 finding]
-- `docs/reference/API.md` (`:7150-7172`) — the `### condensed_nodes_for_issue`
+- `docs/reference/API.md` (`:7353-7377`) — the `### condensed_nodes_for_issue`
   section documents the `history.compaction.enabled` dependency + `## Prior
   Work (condensed)` integration; verify it stays accurate under the new
   `CompactResult` semantics [Agent 2 finding]
@@ -398,13 +417,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue` (advisory — no change required if
 the 7,500-token soft threshold stays hardcoded):_
 
-- `scripts/little_loops/config-schema.json` (`:1788-1824`) — the
+- `scripts/little_loops/config-schema.json` (`:1819-1852`) — the
   `history.compaction` block would only need new properties **if** the
   soft threshold / `sink_n` / `window_n` are made configurable. **Precision
-  note**: a *different* `compaction` concept exists at `:1337-1370` (the
+  note**: a *different* `compaction` concept exists at `:1333-1366` (the
   `pre_compact` hook's rubric-gated context-window compaction) — be
   explicit about which block any schema PR touches [Agent 2 finding]
-- `.ll/ll-config.json` (`:112-123`) — **this repo's own DB has
+- `.ll/ll-config.json` (`:118-123`) — **this repo's own DB has
   `history.compaction.enabled: true`**, so little-loops' own `.ll/history.db`
   is a live consumer: a destructive eviction pass affects this repo's
   history on the next `rebuild`/`backfill` run, not just downstream
@@ -414,35 +433,38 @@ the 7,500-token soft threshold stays hardcoded):_
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
-> ⚠ **Anchor correction:** The `session_store.py:1747+` reference used
-> throughout this issue (Summary, Current Behavior, Files-to-Modify,
-> Similar Patterns) is stale — line 1747 is unrelated
-> `issue_snapshots`/frontmatter-backfill logic. The real anchors are below;
-> update `:1747` references against them during implementation.
+> ⚠ **Anchor correction (RESOLVED by `/ll:ready-issue` on 2026-07-18):** the
+> `session_store.py:1747+` reference used throughout this issue (Summary,
+> Current Behavior, Files-to-Modify, Similar Patterns) was stale — line 1747
+> is unrelated `issue_snapshots`/frontmatter-backfill logic. All `:1747`
+> occurrences, plus every other line-number anchor in this issue, have been
+> rewritten below and throughout the file against the current tree (~320
+> lines were added to `session_store.py` between the `/ll:refine-issue` pass
+> and this correction).
 
 **Existing compaction surface (verified anchors):**
-- `summary_nodes` table DDL — `session_store.py:489-499` (in the migration
-  block starting `:474`; `level` column added v12 at `:538`). Columns:
+- `summary_nodes` table DDL — `session_store.py:497-507` (in the migration
+  block starting `:482`; `level` column added v12 at `:546`). Columns:
   `id, kind, content (single opaque TEXT — no sections today), tokens,
   parent_id, session_id, ts_start, ts_end, created_at, level`. Companion
-  `summary_spans(summary_id, message_event_id)` at `:500-504`.
-- `_compact_session_conn` — `session_store.py:2359-2449` (greedy
+  `summary_spans(summary_id, message_event_id)` at `:508-512`.
+- `_compact_session_conn` — `session_store.py:2682-2774` (greedy
   single-pass block grouping by `_estimate_tokens`, `INSERT OR IGNORE`
   idempotency via partial unique indexes; **purely additive — never
   deletes `message_events`, confirming no eviction pass exists today**).
-- `_compact_sessions` — `session_store.py:2452-2604` (ENH-1954
+- `_compact_sessions` — `session_store.py:2775-2929` (ENH-1954
   cross-session condensation; the **monotonic-update / re-parent path** to
-  reuse is at `:2590-2596`, `WHERE id IN (...) AND parent_id IS NULL` — a
+  reuse is at `:2914-2918`, `WHERE id IN (...) AND parent_id IS NULL` — a
   node is parented exactly once, never re-parented on re-run).
-- `compact_session` (public wrapper) — `session_store.py:2607`.
-- `_estimate_tokens` — `session_store.py:2178-2180`, `len(text) // 4` ("LCM
+- `compact_session` (public wrapper) — `session_store.py:2930`.
+- `_estimate_tokens` — `session_store.py:2501-2503`, `len(text) // 4` ("LCM
   convention"). This is the byte/4 heuristic to base
   `APPROX_TOKEN_SAFETY_MARGIN = 1.3` on; same convention independently in
-  `doc_counts.py:352-353`.
-- `_summarize_block` — `session_store.py:2183-2255`;
-  `_call_llm_for_summary` — `session_store.py:2258-2356`.
-- `CompactionConfig` — `config/features.py:922-953`; schema in
-  `config-schema.json:1788-1824`.
+  `doc_counts.py:353`.
+- `_summarize_block` — `session_store.py:2506-2580`;
+  `_call_llm_for_summary` — `session_store.py:2581-2681`.
+- `CompactionConfig` — `config/features.py:980-1014`; schema in
+  `config-schema.json:1819-1852`.
 
 **New sub-package layout (templates to model after):**
 - `scripts/little_loops/dependency_mapper/__init__.py:61-93` and
@@ -482,7 +504,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (`scripts/tests/test_session_store.py:2143+`): per-class
   `_make_db_with_messages` builder, `tmp_path` SQLite DBs via `connect(db)`,
   explicit run-twice idempotency asserts, and **mock `subprocess` so
-  summarization never shells out to the real host CLI** (`:2241-2242`).
+  summarization never shells out to the real host CLI** (`:2244`).
 
 ## Acceptance Criteria
 
@@ -529,18 +551,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-16_
+_Added by `/ll:confidence-check` on 2026-07-16; updated 2026-07-17 after
+`/ll:decide-issue` resolved both open decisions_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 56/100 → LOW
+**Readiness Score**: 97/100 → PROCEED
+**Outcome Confidence**: 66/100 → LOW
 
 ### Outcome Risk Factors
-- ~~Two implementation-time decisions remain open~~ **RESOLVED** (2026-07-16 by
-  `/ll:decide-issue`, see `### Decision Resolutions` under Proposed Solution):
-  the skill ships **full content** in `skills/compact-session/SKILL.md` (bare
-  name; `ll-compact-session` optional thin Codex bridge), and the eviction pass
-  runs **always-on**, independent of `CompactionConfig.enabled` (or behind a new
-  dedicated `eviction_enabled` flag). Both settled by decisive codebase evidence.
 - Moderate depth: the sliding-window selector integrates with ENH-1954's
   cross-session condensation and touches `_compact_session_conn`'s
   purely-additive contract — regression risk against 4 existing test classes
@@ -556,6 +573,8 @@ _Added by `/ll:confidence-check` on 2026-07-16_
 **Open** | Created: 2026-07-11 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-18T05:08:35 - `b50b5d3c-2ef8-4088-bf21-2dd93301043a.jsonl`
+- `/ll:confidence-check` - 2026-07-17T00:00:00Z - `b50b5d3c-2ef8-4088-bf21-2dd93301043a.jsonl`
 - `/ll:decide-issue` - 2026-07-17T04:04:52 - `9b2a6c2d-1f82-482f-81a0-7bf1d1c2e405.jsonl`
 - `/ll:confidence-check` - 2026-07-16T00:00:00Z - `cf3b0ae1-2f93-485f-aec6-d9be1ab4d928.jsonl`
 - `/ll:wire-issue` - 2026-07-17T03:54:06 - `227c564e-bdcb-41dc-a8dd-8daf6484b451.jsonl`
