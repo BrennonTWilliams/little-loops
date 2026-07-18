@@ -17,5 +17,15 @@ assertions:
 - claim: live messages.create() calls without an API key cannot be exercised in this
     environment (acknowledged constraint, not a runtime claim)
   result: untested
+- claim: tools=[...] dict accepts a cache_control key on an individual tool-definition
+    block alongside name/description/input_schema
+  result: pass
+- claim: building request kwargs (model/messages/tools with cache_control on the
+    tool block) via the SDK client does not raise client-side before dispatch
+  result: pass
+- claim: live messages.create() call with cache_control on a tool block (actual
+    cache-hit/API-acceptance round-trip) cannot be exercised in this environment
+    (no ANTHROPIC_API_KEY available; acknowledged constraint, not a runtime claim)
+  result: untested
 raw_output_path: .ll/learning-tests/raw/anthropic.txt
 ---

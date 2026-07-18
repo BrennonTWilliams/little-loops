@@ -8,5 +8,10 @@
         APIError=<class 'anthropic.APIError'>, AuthenticationError=<class 'anthropic.AuthenticationError'>, issubclass=True
 [PASS] claim 5: anthropic.__version__ is a non-empty string parseable by packaging.version.Version
         __version__ = '0.104.1'
+[PASS] claim 7: tools=[...] dict accepts a cache_control key on an individual tool-definition block alongside name/description/input_schema
+        tool dict keys = ['cache_control', 'description', 'input_schema', 'name'], cache_control round-trips = True
+[PASS] claim 8: building request kwargs (model/messages/tools with cache_control on the tool block) via the SDK client does not raise client-side before dispatch
+        client=Anthropic, tools param accepted into kwargs, tool[0].cache_control={'type': 'ephemeral'}
+[UNTESTED] claim 9: live messages.create() call with cache_control on a tool block (actual cache-hit/API-acceptance round-trip) cannot be exercised in this environment (no ANTHROPIC_API_KEY available; acknowledged constraint, not a runtime claim)
 
-SUMMARY: 5/5 passed, 0 failed
+SUMMARY: 7/9 passed, 0 failed, 2 untested
