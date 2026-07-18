@@ -1347,12 +1347,17 @@ states:
       if [ -f "$UNMET_FILE" ]; then
         UNMET=$(tr -s ' ' < "$UNMET_FILE" | sed 's/^ *//;s/ *$//')
         REASON="blocked_by $UNMET (not done)"
+        REASON_CODE="blocked_by_unmet"
       else
         REASON="remediation stalled (scores did not converge across passes) and decomposition declined to split; likely blocked on a dependency or otherwise un-actionable by automation"
+        REASON_CODE="remediation_stalled"
       fi
       echo "$ID  $REASON" >> "$RUN_DIR/deferred.txt"
-      # Set issue status so it re-surfaces when the blocker clears
-      ll-issues set-status "$ID" deferred 2>/dev/null || true
+      # Set issue status so it re-surfaces when the blocker clears; stamp the
+      # automation discriminator (ENH-2664) so downstream tooling (FEAT-2665's
+      # resurfacing sweep) can tell this circuit-breaker deferral apart from a
+      # deliberate human "not now".
+      ll-issues set-status "$ID" deferred --by automation --reason "$REASON_CODE" 2>/dev/null || true
       echo "[DEFERRED] $ID — $REASON"
     next: dequeue_next
 

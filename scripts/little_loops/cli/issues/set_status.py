@@ -42,10 +42,24 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
         completions carry a timestamp — matching the lifecycle/parallel/sync
         paths. Without it, release notes and history queries that filter on
         ``completed_at`` silently drop CLI-completed issues (BUG-942 family).
+
+        Stamps ``deferred_by``/``deferred_reason``/``deferred_date`` when moving
+        to ``deferred`` so downstream tooling (FEAT-2665's resurfacing sweep) can
+        distinguish an automation circuit-breaker deferral from a deliberate
+        human one (ENH-2664). Reuses the ``deferred_reason``/``deferred_date``
+        keys ENH-2535 already introduced for closure-context display; under
+        ``deferred_by: automation`` the value is a machine enum code instead of
+        free-text prose.
         """
         updates = {"status": status}
         if status == "done":
             updates["completed_at"] = _completed_at_now()
+        elif status == "deferred":
+            updates["deferred_by"] = getattr(args, "by", None) or "human"
+            updates["deferred_date"] = _completed_at_now()
+            reason = getattr(args, "reason", None)
+            if reason:
+                updates["deferred_reason"] = reason
         return updates
 
     path = _resolve_issue_id(config, args.issue_id)

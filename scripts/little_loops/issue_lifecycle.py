@@ -44,6 +44,30 @@ def _completed_at_now() -> str:
 
 
 # =============================================================================
+# Deferral Classification (ENH-2664)
+# =============================================================================
+
+
+class DeferBy(Enum):
+    """Who initiated a ``deferred`` status transition."""
+
+    HUMAN = "human"  # Manual `ll-issues set-status <ID> deferred` (default)
+    AUTOMATION = "automation"  # rn-implement mark_deferred circuit-breaker
+
+
+class DeferReason(Enum):
+    """Machine-readable reason code for an automation-initiated deferral.
+
+    Written into the existing ``deferred_reason`` frontmatter key (ENH-2535
+    precedent) alongside ``deferred_by: automation`` — the discriminator lets
+    readers distinguish this enum code from ENH-2535's free-text closure prose.
+    """
+
+    BLOCKED_BY_UNMET = "blocked_by_unmet"  # Unmet blocked_by dep (recoverable)
+    REMEDIATION_STALLED = "remediation_stalled"  # Stalled remediation, decomposition declined
+
+
+# =============================================================================
 # Failure Classification
 # =============================================================================
 

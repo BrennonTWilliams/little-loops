@@ -2,8 +2,9 @@
 id: ENH-2664
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-18T02:50:02Z'
+completed_at: '2026-07-18T03:26:18Z'
 discovered_date: '2026-07-18'
 discovered_by: capture-issue
 parent: EPIC-2663
@@ -285,7 +286,30 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented Option A (reuse existing `deferred_reason`/`deferred_date` keys, add
+`deferred_by`) per the recorded decision:
+
+- Added `DeferBy`/`DeferReason` enums (`issue_lifecycle.py`) documenting the
+  `human`/`automation` discriminator and the two automation reason codes.
+- `set_status.py`'s `_status_updates()` gained a `deferred` branch that stamps
+  `deferred_by` (default `human`), `deferred_date`, and `deferred_reason` (when
+  provided) — the primary stamping site, confirmed by `/ll:refine-issue` research.
+- Added `--by {human,automation}` / `--reason {blocked_by_unmet,remediation_stalled}`
+  choices-constrained flags to the `set-status` subparser.
+- `rn-implement.yaml`'s `mark_deferred` state now passes `--by automation --reason
+  <code>`, distinguishing `blocked_by_unmet` (from `route_blocked_by`) from
+  `remediation_stalled` (from `route_dec_stalled_origin`).
+- `defer_issue()` was left unchanged (optional/cosmetic step — it has zero callers
+  on the automation path per the refine-issue finding).
+- `show.py` already renders `deferred_reason`/`deferred_date` verbatim; the
+  automation enum code displays as raw text (accepted per the issue's follow-up
+  note — no `show.py` code→label mapping added for v1).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-18T03:25:41Z - `d5c676bb-de27-4239-8136-10a939bf6c45.jsonl`
+- `/ll:ready-issue` - 2026-07-18T03:17:37 - `1bc61385-8931-4b84-b29a-562a5ee0d2f6.jsonl`
 - `/ll:wire-issue` - 2026-07-18T03:12:16 - `5b371a7f-6f3f-4a6b-a7e3-0d2e9c555d54.jsonl`
 - `/ll:decide-issue` - 2026-07-18T03:05:24 - `2d062121-c6c8-4eac-acd8-deaa9fe844d1.jsonl`
 - `/ll:refine-issue` - 2026-07-18T03:01:00 - `2d062121-c6c8-4eac-acd8-deaa9fe844d1.jsonl`

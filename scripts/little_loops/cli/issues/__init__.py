@@ -759,6 +759,20 @@ Examples:
             dest="cascade_to",
             help="Status to apply to cascaded children (default: deferred)",
         )
+        sst.add_argument(
+            "--by",
+            choices=["human", "automation"],
+            default=None,
+            dest="by",
+            help="Who initiated a deferred transition (default: human)",
+        )
+        sst.add_argument(
+            "--reason",
+            choices=["blocked_by_unmet", "remediation_stalled"],
+            default=None,
+            dest="reason",
+            help="Machine-readable reason code for an automation deferral",
+        )
         add_config_arg(sst)
 
         asw = subs.add_parser(

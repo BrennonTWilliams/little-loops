@@ -177,6 +177,7 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 - Types: `BUG`, `FEAT`, `ENH`, `EPIC`
 - Priorities: P0 (critical) to P5 (low)
 - **Status values**: `open` (default), `in_progress`, `blocked`, `deferred`, `done`, `cancelled`. Do not use synonyms (`complete`, `completed`, `finished`, `wip`). `done` is the terminal-success value; the event-bus uses `"completed"` for the *event* payload, which is a different namespace. Synonyms are coerced to canonical values on read, but writing canonical values avoids ambiguity.
+- **Deferral discriminator** (ENH-2664): a `deferred` transition via `ll-issues set-status <ID> deferred` stamps `deferred_by` (`human` default, or `automation`), `deferred_reason`, and `deferred_date`. `deferred_reason`/`deferred_date` are the same keys ENH-2535 introduced for closure-context display (`show.py`); under `deferred_by: automation` the value is a machine enum code, not free-text prose. Automation reason codes (`rn-implement.yaml`'s `mark_deferred` state): `blocked_by_unmet` (unmet `blocked_by` dep — recoverable), `remediation_stalled` (stalled remediation, decomposition declined — needs human attention). Set both via `--by`/`--reason` on `set-status`.
 
 ## Important Files
 

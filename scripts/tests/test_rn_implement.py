@@ -1000,6 +1000,15 @@ class TestDeferredOnStall:
         assert "REASON" in action
         assert md["next"] == "dequeue_next"
 
+    def test_mark_deferred_stamps_automation_discriminator(self) -> None:
+        """ENH-2664: mark_deferred passes --by automation and the stall reason code
+        so downstream tooling can tell an automation circuit-breaker deferral apart
+        from a deliberate human one."""
+        action = _load_loop()["states"]["mark_deferred"]["action"]
+        assert "--by automation" in action
+        assert "--reason" in action
+        assert "remediation_stalled" in action
+
     def test_init_initializes_deferred_txt(self) -> None:
         """init seeds an empty deferred.txt alongside the other tracking files."""
         data = _load_loop()
@@ -1076,6 +1085,13 @@ class TestBlockedByGate:
         action = _load_loop()["states"]["mark_deferred"]["action"]
         assert "blocked_by_unmet_" in action
         assert "not done" in action
+
+    def test_mark_deferred_distinguishes_blocked_by_reason_code(self) -> None:
+        """ENH-2664: the blocked_by_unmet branch stamps a distinct reason code from
+        the generic remediation-stalled branch, so both routes are told apart."""
+        action = _load_loop()["states"]["mark_deferred"]["action"]
+        assert "blocked_by_unmet" in action
+        assert "remediation_stalled" in action
 
     def test_check_blocked_by_emits_unresolved_token_to_stderr(self) -> None:
         """ENH-2534: unresolved issue-file paths emit UNRESOLVED to stderr.

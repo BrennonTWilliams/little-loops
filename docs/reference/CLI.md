@@ -1147,7 +1147,7 @@ Rendering is scanning-first (ENH-2574): the title is bold, borders/field labels/
 
 The card also surfaces, when present in frontmatter (ENH-2535):
 
-- **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`).
+- **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`). Under `deferred_by: automation` (ENH-2664), `deferred_reason` holds a machine enum code (`blocked_by_unmet`, `remediation_stalled`) instead of free-text prose — rendered as-is.
 - **Relationships** — `parent` (with epic title when resolvable), `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `decomposed_into`, `affects`, `focus_area`.
 - **Discovery** — `discovered_date` (distinct from `captured_at`), `discovered_commit` (short-SHA, first 7 chars), `discovered_branch`, `discovered_source`, `discovered_external_repo`.
 - **Decision coupling** — when `decision_needed: true` is paired with `decision_ref` (e.g., `ARCHITECTURE-049`), the card renders `Decision needed → ARCHITECTURE-049`; explicit `Decision needed: no` for `decision_needed: false`.
@@ -1630,6 +1630,8 @@ Transition an issue to a new status value. Validates the target status against t
 | `status` | New status value: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` |
 | `--cascade` | Propagate status to issues with `parent: <EPIC-ID>` (EPIC closure only; only valid with `done`/`cancelled`). Only follows `parent:` edges — `relates_to:`, `blocked_by:`, and other relationship types are not traversed. |
 | `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
+| `--by <human\|automation>` | Who initiated a `deferred` transition (default: `human`). Stamped into `deferred_by`; no-op for other target statuses. |
+| `--reason <blocked_by_unmet\|remediation_stalled>` | Machine-readable reason code for an automation `deferred` transition (ENH-2664). Stamped into `deferred_reason`, reusing the same key ENH-2535 uses for closure-context prose. |
 
 **Examples:**
 ```bash
@@ -1638,6 +1640,7 @@ ll-issues sst BUG-042 done                  # BUG-042: in_progress → done
 ll-issues set-status FEAT-100 blocked
 ll-issues set-status EPIC-042 cancelled --cascade              # Close EPIC + defer children
 ll-issues set-status EPIC-042 done --cascade --cascade-to done # Close EPIC + all children
+ll-issues set-status ENH-999 deferred --by automation --reason blocked_by_unmet
 ```
 
 ---
