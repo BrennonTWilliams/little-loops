@@ -1,10 +1,11 @@
 ---
 id: ENH-2678
 title: Wire go-no-go correction_penalty into scoring + add ll-config get CLI
-status: open
+status: done
 priority: P3
 type: ENH
 discovered_date: 2026-07-18
+completed_at: '2026-07-18T19:43:15Z'
 discovered_by: ll:decide-issue
 labels:
 - history-db
@@ -250,11 +251,35 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_unknown_key_ignored`).
 - `scripts/tests/test_config_schema.py:388-522` — schema-declaration tests.
 
+## Resolution
+
+Implemented via `/ll:manage-issue`. Added `scripts/little_loops/cli/config.py`
+(`main_config()`, `ll-config get <key>` subcommand wrapping
+`BRConfig.resolve_variable()`), registered it in `cli/__init__.py` and
+`pyproject.toml`. Wired `skills/go-no-go/SKILL.md:145` to shell out to
+`ll-config get history.go_no_go.correction_penalty` instead of the dead
+`{{config...}}` prose token. Fixed the stale `analysis.evolution.*`
+references in `skills/analyze-history/SKILL.md` to `history.evolution.*`.
+Added doc entries (`docs/reference/CLI.md`, `docs/reference/API.md`,
+`commands/help.md`, `.claude/CLAUDE.md`, `README.md` CLI-tool count bump)
+and matching `test_wiring_cli_registry.py` / `test_wiring_guides_and_meta.py`
+tuples, plus `scripts/tests/test_config_cli.py`. Note: the source changes
+were found already committed as `16cc0935` (a concurrent automated run on
+this repo implemented the identical change) — this session verified the
+result (full suite green except one pre-existing, unrelated failure) and
+completed the issue-lifecycle closeout.
+
+Full suite: `python -m pytest scripts/tests/` — 15327 passed, 37 skipped, 1
+pre-existing unrelated failure (`test_context_fallbacks_match_selector_defaults`,
+fails identically on the pre-change commit; tracks a stale `outcome_threshold`
+fallback in `auto-refine-and-implement.yaml`, not part of this issue's scope).
+
 ## Status
 
-**Open** | Created: 2026-07-18 | Priority: P3
+**Done** | Created: 2026-07-18 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-18T19:42:22Z - `85d22d6e-3722-4477-8f77-c653b84cdd7c.jsonl`
 - `/ll:ready-issue` - 2026-07-18T19:33:12 - `34636038-c9ad-4b77-b634-680b13ded0fc.jsonl`
 - `/ll:confidence-check` - 2026-07-18T19:30:26 - `95343d66-04c7-4f2e-a817-6f6248fe4ccf.jsonl`
 - `/ll:wire-issue` - 2026-07-18T19:28:26 - `3e112afc-3c22-448d-a90d-3c16370e99f2.jsonl`
