@@ -8227,6 +8227,59 @@ Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that 
 
 ---
 
+## little_loops.tool_catalog
+
+Catalog-assembly for little-loops' own Anthropic Messages API tool set (FEAT-2680). Walks `skills/*/SKILL.md`, `commands/*.md`, and `agents/*.md` frontmatter and produces a full `tools` array — the single, stable data source FEAT-2672 (deferred-loading stub/resolve) and FEAT-2673 (`build_anthropic_request()`) consume instead of each reimplementing frontmatter enumeration.
+
+```python
+from little_loops.tool_catalog import ToolDefinition, assemble_tool_catalog, to_anthropic_tools
+```
+
+### ToolDefinition
+
+```python
+@dataclass(frozen=True)
+class ToolDefinition:
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    cache_control: dict[str, str] | None = None
+```
+
+Frozen, following the same crosses-a-boundary convention as `host_runner.CapabilityEntry`. `cache_control` is always `None` coming out of `assemble_tool_catalog` — no code today populates it (see FEAT-2681); callers may set it before serializing.
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | *(required)* | Skill directory name / command file stem / agent file stem. |
+| `description` | `str` | *(required)* | Frontmatter `description`, quote-stripped. |
+| `input_schema` | `dict[str, Any]` | *(required)* | Envelope-free Anthropic `input_schema` body — see below. |
+| `cache_control` | `dict[str, str] \| None` | `None` | Unset by `assemble_tool_catalog`; present in serialized output only when set. |
+
+### assemble_tool_catalog
+
+```python
+def assemble_tool_catalog(project_root: Path) -> list[ToolDefinition]: ...
+```
+
+Walks `project_root / "skills"` (`*/SKILL.md`), `project_root / "commands"` (`*.md`), and `project_root / "agents"` (`*.md`), each via `sorted(glob(...))` for deterministic order. Missing directories contribute no entries and never raise, matching the `cli/action.py:_load_skills()` / `cli/artifact.py:_load_skill_catalog()` precedent. All three walks parse frontmatter with the same `frontmatter.parse_skill_frontmatter()` — standardized on the flat parser rather than `adapters/core.py:_read_frontmatter()`'s nested-preserving variant, since `input_schema` bodies are hand-authored per entry *kind*, not derived from an agent's `tools:`/`model:` structure.
+
+`input_schema` generation has no mechanical derivation path (skills/commands' `args`/`argument-hint` frontmatter is free-text display hints with no type information; agents carry no args-equivalent field at all):
+- Skill/command **with** an `args`/`argument-hint` hint: `{"type": "object", "properties": {"args": {"type": "string", "description": <hint>}}, "required": []}`.
+- Skill/command **without** a hint: `{"type": "object", "properties": {}, "required": []}`.
+- Agent (always): fixed `{"type": "object", "properties": {"description": {...}, "prompt": {...}}, "required": ["description", "prompt"]}`, mirroring the real Agent-tool invocation contract.
+
+### to_anthropic_tools
+
+```python
+def to_anthropic_tools(entries: list[ToolDefinition]) -> list[dict[str, Any]]: ...
+```
+
+Serializes catalog entries into the literal Anthropic Messages API `tools` array shape. `cache_control` is omitted from the dict entirely when `None` — the Anthropic API rejects a literal `null` cache_control value, so `None` must never become a JSON key.
+
+---
+
 ## little_loops.adapters
 
 > `CodexEmitter` and `GeminiEmitter` are fully implemented (FEAT-2391/2392). Use `ll-adapt --host codex --apply` or `ll-adapt --host gemini --apply` to emit artifacts for a given host.
