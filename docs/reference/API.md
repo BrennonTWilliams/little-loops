@@ -3722,10 +3722,13 @@ ll-issues dt [--format text|json|markdown]
 
 Lists `status: deferred` issues with `deferred_by: automation` — the discriminator stamped by
 `ll-issues set-status <ID> deferred --by automation --reason <code>` (see `mark_deferred` in
-`loops/rn-implement.yaml`) — showing `deferred_reason` and age-since-`deferred_date`.
-`deferred_by: human` (or absent) issues are excluded. `remediation_stalled` entries rank above
-`blocked_by_unmet`; ties break oldest-first. This closes the cross-run resurfacing gap FEAT-2665
-targets: `re_enqueue_unblocked` only re-surfaces within a single run.
+`loops/rn-implement.yaml`, and the equivalent not-ready exits in `loops/autodev.yaml` —
+`mark_gate_blocked`, `record_decision_unresolved`, `recheck_after_size_review` — added by
+ENH-2666 to align autodev's not-ready handling to the same model) — showing `deferred_reason`
+and age-since-`deferred_date`. `deferred_by: human` (or absent) issues are excluded.
+`remediation_stalled` entries rank above `blocked_by_unmet`, above `gate_blocked`, above
+`decision_unresolved`, above `low_readiness`; ties break oldest-first. This closes the cross-run
+resurfacing gap FEAT-2665 targets: `re_enqueue_unblocked` only re-surfaces within a single run.
 
 #### next-issue
 

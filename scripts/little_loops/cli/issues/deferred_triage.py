@@ -9,10 +9,17 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
-# remediation_stalled ranks above blocked_by_unmet, which ranks above any other
-# (future/unknown) reason code — matches FEAT-2665's acceptance criteria.
-_REASON_RANK = {"remediation_stalled": 0, "blocked_by_unmet": 1}
-_DEFAULT_REASON_RANK = 2
+# remediation_stalled ranks above blocked_by_unmet, above autodev's three
+# not-ready codes (ENH-2666), above any other (future/unknown) reason code —
+# matches FEAT-2665's acceptance criteria.
+_REASON_RANK = {
+    "remediation_stalled": 0,
+    "blocked_by_unmet": 1,
+    "gate_blocked": 2,
+    "decision_unresolved": 3,
+    "low_readiness": 4,
+}
+_DEFAULT_REASON_RANK = 5
 
 
 def add_deferred_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

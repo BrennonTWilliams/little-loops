@@ -772,7 +772,13 @@ Examples:
         )
         sst.add_argument(
             "--reason",
-            choices=["blocked_by_unmet", "remediation_stalled"],
+            choices=[
+                "blocked_by_unmet",
+                "remediation_stalled",
+                "low_readiness",
+                "gate_blocked",
+                "decision_unresolved",
+            ],
             default=None,
             dest="reason",
             help="Machine-readable reason code for an automation deferral",

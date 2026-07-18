@@ -2,8 +2,9 @@
 id: ENH-2666
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-18T02:50:02Z'
+completed_at: '2026-07-18T14:39:55Z'
 discovered_date: '2026-07-18'
 discovered_by: capture-issue
 parent: EPIC-2663
@@ -345,7 +346,27 @@ against current code, scores unchanged._
   files without missing one; the net-new cross-loop parity fixture (step 5)
   has no existing pattern to copy exactly.
 
+## Resolution
+
+Implemented per the issue's decided policy: `autodev.yaml`'s three genuinely-open
+not-ready exits (`mark_gate_blocked`, `record_decision_unresolved`,
+`recheck_after_size_review`'s low-readiness branch) now call `ll-issues set-status
+<ID> deferred --by automation --reason <code>` alongside their existing ledger
+writes, mirroring `rn-implement.yaml`'s `mark_deferred` state. New reason codes
+`low_readiness`, `gate_blocked`, `decision_unresolved` were added to the
+`DeferReason` enum (`issue_lifecycle.py`) and the `set-status --reason` CLI
+choices, and ranked in `deferred_triage.py`'s `_REASON_RANK`. `decomposed` exits
+and `skip_inflight`'s `refine_failed` were confirmed out of scope (already close
+via `finalize-decomposition`, or a sub-loop failure rather than a not-ready
+reason) and left untouched. Ledger files were kept (not retired) as a same-run
+summary, per the issue's own framing of that tradeoff. Added a cross-loop parity
+fixture (`TestAutodevRnImplementDeferralParity`) asserting both loops' not-ready
+exits share the same `set-status ... deferred --by automation --reason ...`
+shape. Docs updated: `.claude/CLAUDE.md`, `docs/reference/CLI.md`,
+`docs/reference/API.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-18T14:39:20Z - `44f086e3-ed21-4eff-89c4-be971696cc8b.jsonl`
 - `/ll:ready-issue` - 2026-07-18T14:08:20 - `3d81431e-72db-4e00-858f-bb1c4520b6c6.jsonl`
 - `/ll:confidence-check` - 2026-07-18T05:15:00Z - `e634cd43-9a17-411a-8d29-8448876726d3.jsonl`
 - `/ll:decide-issue` - 2026-07-18T05:09:11 - `5558c7a3-aade-40dd-b6e2-1228b92927da.jsonl`

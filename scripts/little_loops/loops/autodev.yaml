@@ -372,13 +372,16 @@ states:
   record_decision_unresolved:
     # Record the still-gated issue distinctly (mirrors mark_gate_blocked) and
     # advance the queue rather than entering implement_current, where ll-auto
-    # is guaranteed to halt at the decision gate. The issue is left in place
-    # (not skipped-as-failed) so it re-surfaces once /ll:decide-issue actually
-    # resolves it.
+    # is guaranteed to halt at the decision gate. ENH-2666: deferred via the
+    # same set-status transition rn-implement's mark_deferred uses, so the
+    # issue leaves active selection and re-surfaces via FEAT-2665's triage
+    # surface rather than being retried every run.
     action: |
-      echo "${captured.input.output}" >> ${context.run_dir}/autodev-decision-unresolved.txt
+      ID="${captured.input.output}"
+      echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       rm -f ${context.run_dir}/autodev-inflight
-      echo "[DECISION_UNRESOLVED] ${captured.input.output} — decide-issue produced no actionable decision; resolve with /ll:decide-issue then re-run"
+      ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
+      echo "[DECISION_UNRESOLVED] $ID — decide-issue produced no actionable decision; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -499,14 +502,17 @@ states:
     on_error: check_impl_auth
 
   mark_gate_blocked:
-    # Record the gate-blocked issue distinctly and advance the queue. The issue is
-    # left in place (not skipped-as-failed) so it re-surfaces once its external-API
-    # deps are proven via /ll:explore-api. Clears the inflight sentinel so `done`
-    # does not warn about it.
+    # Record the gate-blocked issue distinctly and advance the queue. ENH-2666:
+    # deferred via the same set-status transition rn-implement's mark_deferred
+    # uses, so the issue leaves active selection and re-surfaces via
+    # FEAT-2665's triage surface once its external-API deps are proven, rather
+    # than being retried every run.
     action: |
-      echo "${captured.input.output}" >> ${context.run_dir}/autodev-gate-blocked.txt
+      ID="${captured.input.output}"
+      echo "$ID" >> ${context.run_dir}/autodev-gate-blocked.txt
       rm -f ${context.run_dir}/autodev-inflight
-      echo "[LEARNING_GATE_BLOCKED] ${captured.input.output} — unproven external-API deps; prove with /ll:explore-api then re-run"
+      ll-issues set-status "$ID" deferred --by automation --reason gate_blocked 2>/dev/null || true
+      echo "[LEARNING_GATE_BLOCKED] $ID — unproven external-API deps; deferred (prove with /ll:explore-api, then re-run to resurface)"
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -840,14 +846,19 @@ states:
     # so ready leaf issues are not silently dropped.
     # ENH-2404: two-space-delimited "ID  REASON" on the skip path — the
     # issue stayed below threshold after size-review declined to split it.
+    # ENH-2666: the skip path also defers the issue (mirrors rn-implement's
+    # mark_deferred), so it leaves active selection and re-surfaces via
+    # FEAT-2665's triage surface rather than being retried every run.
     action: |
-      if ll-issues check-readiness ${captured.input.output} \
+      ID="${captured.input.output}"
+      if ll-issues check-readiness "$ID" \
           --readiness ${context.readiness_threshold} \
           --outcome ${context.outcome_threshold}; then
-        echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
+        echo "$ID" >> ${context.run_dir}/autodev-passed.txt
       else
-        echo "${captured.input.output}  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
+        echo "$ID  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
         rm -f ${context.run_dir}/autodev-inflight
+        ll-issues set-status "$ID" deferred --by automation --reason low_readiness 2>/dev/null || true
         exit 1
       fi
     fragment: shell_exit

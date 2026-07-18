@@ -125,10 +125,13 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
 A `deferred` transition also stamps `deferred_by` (`human` by default, or `automation` when
-`rn-implement`'s remediation circuit-breaker parks an issue), plus `deferred_reason` and
-`deferred_date`. Run `ll-issues deferred-triage` to see the cross-run backlog of
-automation-deferred issues — grouped by reason and sorted by age — so parked issues don't
-silently disappear from view; human-deferred issues are intentionally excluded from that report.
+`rn-implement`'s remediation circuit-breaker, or `autodev`'s not-ready exits (ENH-2666), park
+an issue), plus `deferred_reason` and `deferred_date`. Both automation producers use the same
+transition — `ll-issues set-status <ID> deferred --by automation --reason <code>` — so behavior
+is predictable regardless of which orchestrator ran. Run `ll-issues deferred-triage` to see the
+cross-run backlog of automation-deferred issues — grouped by reason and sorted by age — so
+parked issues don't silently disappear from view; human-deferred issues are intentionally
+excluded from that report.
 
 As noted in [Issue File Anatomy](#issue-file-anatomy), CLI tools bucket issues by this `status` field, never by directory location.
 

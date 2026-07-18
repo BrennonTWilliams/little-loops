@@ -65,6 +65,10 @@ class DeferReason(Enum):
 
     BLOCKED_BY_UNMET = "blocked_by_unmet"  # Unmet blocked_by dep (recoverable)
     REMEDIATION_STALLED = "remediation_stalled"  # Stalled remediation, decomposition declined
+    # ENH-2666: autodev's not-ready exits, aligned to the same deferred model.
+    LOW_READINESS = "low_readiness"  # autodev: below readiness/outcome threshold
+    GATE_BLOCKED = "gate_blocked"  # autodev: unproven external-API deps
+    DECISION_UNRESOLVED = "decision_unresolved"  # autodev: decide-issue produced no decision
 
 
 # =============================================================================

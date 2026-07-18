@@ -3722,6 +3722,33 @@ class TestAutodevLoop:
         )
         assert state.get("next") == "dequeue_next"
 
+    def test_mark_gate_blocked_defers_via_set_status(self, data: dict) -> None:
+        """ENH-2666: mark_gate_blocked aligns to rn-implement's mark_deferred model —
+        stamps an automation deferral instead of leaving the issue open for retry."""
+        action = data["states"].get("mark_gate_blocked", {}).get("action", "")
+        assert "ll-issues set-status" in action and "deferred" in action
+        assert "--by automation" in action
+        assert "--reason gate_blocked" in action
+
+    def test_record_decision_unresolved_defers_via_set_status(self, data: dict) -> None:
+        """ENH-2666: record_decision_unresolved aligns to rn-implement's mark_deferred
+        model — stamps an automation deferral instead of leaving the issue open."""
+        action = data["states"].get("record_decision_unresolved", {}).get("action", "")
+        assert "ll-issues set-status" in action and "deferred" in action
+        assert "--by automation" in action
+        assert "--reason decision_unresolved" in action
+
+    def test_recheck_after_size_review_defers_low_readiness_via_set_status(
+        self, data: dict
+    ) -> None:
+        """ENH-2666: recheck_after_size_review's low_readiness skip path aligns to
+        rn-implement's mark_deferred model — stamps an automation deferral instead of
+        leaving the issue open for retry."""
+        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
+        assert "ll-issues set-status" in action and "deferred" in action
+        assert "--by automation" in action
+        assert "--reason low_readiness" in action
+
     def test_implement_current_threads_skip_learning_gate(self, data: dict) -> None:
         """implement_current must append --skip-learning-gate when the skip context is set,
         for parity with `ll-auto --skip-learning-gate`."""
@@ -4695,6 +4722,50 @@ class TestAutodevLoop:
             "implementation-phase race (BUG-2526). Without it, two concurrent "
             "autodev instances both shell to `ll-auto --only` on the main tree."
         )
+
+
+class TestAutodevRnImplementDeferralParity:
+    """ENH-2666: autodev.yaml and rn-implement.yaml must produce the same
+    lifecycle (status: deferred, deferred_by/deferred_reason shape) for their
+    respective not-ready exits, so behavior is predictable regardless of which
+    orchestrator runs."""
+
+    AUTODEV_FILE = BUILTIN_LOOPS_DIR / "autodev.yaml"
+    RN_IMPLEMENT_FILE = BUILTIN_LOOPS_DIR / "rn-implement.yaml"
+
+    # autodev's three not-ready exits that were aligned to rn-implement's
+    # mark_deferred model; excludes `decomposed` exits (already close via
+    # finalize-decomposition → status: done) and skip_inflight's
+    # refine_failed (a sub-loop failure, not a not-ready reason).
+    AUTODEV_NOT_READY_STATES = (
+        "mark_gate_blocked",
+        "record_decision_unresolved",
+        "recheck_after_size_review",
+    )
+
+    @pytest.fixture
+    def autodev_data(self) -> dict:
+        return yaml.safe_load(self.AUTODEV_FILE.read_text())
+
+    @pytest.fixture
+    def rn_implement_data(self) -> dict:
+        return yaml.safe_load(self.RN_IMPLEMENT_FILE.read_text())
+
+    @pytest.mark.parametrize("state_name", AUTODEV_NOT_READY_STATES)
+    def test_autodev_not_ready_exit_matches_mark_deferred_shape(
+        self, state_name: str, autodev_data: dict, rn_implement_data: dict
+    ) -> None:
+        """Each autodev not-ready exit uses the same set-status shape as
+        rn-implement's mark_deferred: ll-issues set-status <ID> deferred
+        --by automation --reason <code>."""
+        autodev_action = autodev_data["states"][state_name]["action"]
+        mark_deferred_action = rn_implement_data["states"]["mark_deferred"]["action"]
+
+        for action in (autodev_action, mark_deferred_action):
+            assert "ll-issues set-status" in action
+            assert "deferred" in action
+            assert "--by automation" in action
+            assert "--reason" in action
 
 
 class TestRecursiveRefineLoop:

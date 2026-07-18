@@ -297,6 +297,52 @@ class TestIssuesCLISetStatus:
         assert fm.get("deferred_reason") == "blocked_by_unmet"
         assert fm.get("deferred_date")
 
+    @pytest.mark.parametrize(
+        "reason_code",
+        ["low_readiness", "gate_blocked", "decision_unresolved"],
+    )
+    def test_set_status_deferred_stamps_autodev_reason_codes(
+        self,
+        reason_code: str,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """ENH-2666: autodev's three not-ready reason codes are accepted and stamped
+        the same way rn-implement's circuit-breaker codes are."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "deferred",
+                "--by",
+                "automation",
+                "--reason",
+                reason_code,
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("deferred_by") == "automation"
+        assert fm.get("deferred_reason") == reason_code
+        assert fm.get("deferred_date")
+
     def test_set_status_non_deferred_omits_deferral_fields(
         self,
         temp_project_dir: Path,
