@@ -1,0 +1,12 @@
+{
+  "id": "38fc9d79-da89-4ebf-9f30-8b2baee2adb8",
+  "type": "decision",
+  "timestamp": "2026-07-18T03:05:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only real difference vs Option B is the timestamp field; reusing deferred_date avoids adding a third _at/_date variant (existing closed_at vs deferred_date drift). deferred_by discriminates enum code from prose. Fewer new keys, reuses show.py render. Scored 10/12 vs 9/12.",
+  "rule": "Option A (reuse existing keys): add deferred_by, reuse deferred_reason for the enum code and deferred_date for the timestamp",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (distinct machine keys: new deferred_reason enum + deferred_at) \u2014 reproduces _at/_date naming drift, requires ~4 extra show.py sites, name-collides deferred_reason",
+  "issue": "ENH-2664"
+}
