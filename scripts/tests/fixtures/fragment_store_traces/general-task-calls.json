@@ -1,0 +1,62 @@
+[
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash", "WebSearch"]
+  },
+  {
+    "skill_body": "You are a general-task agent. Follow the loop contract on every turn.",
+    "system_prompt": "[SYSTEM PROMPT v0] general-task",
+    "tool_definitions": ["Read", "Write", "Bash"]
+  }
+]

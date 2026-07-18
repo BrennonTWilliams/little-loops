@@ -1,0 +1,52 @@
+[
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0 - strict] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  },
+  {
+    "skill_body": "You are a review-loop agent. Score the diff against the rubric.",
+    "system_prompt": "[SYSTEM PROMPT v0] review-loop",
+    "tool_definitions": ["Read", "Grep"]
+  }
+]

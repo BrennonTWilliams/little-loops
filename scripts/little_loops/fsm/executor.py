@@ -58,6 +58,7 @@ from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.issue_lifecycle import FailureType, classify_failure
+from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import get_current_session_jsonl
 from little_loops.subprocess_utils import (
     UsageCallback,
@@ -356,6 +357,13 @@ class FSMExecutor:
         self._contributed_actions: dict[str, ActionRunner] = {}
         self._contributed_evaluators: dict[str, Evaluator] = {}
         self._interceptors: list[Any] = []
+
+        # FEAT-2671: content-hash fragment-stability store. Record-only —
+        # measures whether repeated prompt-mode calls carry byte-identical
+        # (skill_body, system_prompt, tool_definitions) fragments, giving the
+        # F1 cache-marking oracle (FEAT-2673) a cheap stability signal. Never
+        # alters the emitted action.
+        self._fragment_store = FragmentStore()
 
     def request_shutdown(
         self,
@@ -1483,6 +1491,15 @@ class FSMExecutor:
         """
         action = interpolate(action_template, ctx)
         action_mode = self._action_mode(state)
+
+        # FEAT-2671: record-only fragment-stability signal. Measured on the
+        # pre-interpolation template (the closest analogue to a stable "skill
+        # body") plus state.agent/state.tools, so per-call variable
+        # substitution doesn't itself churn the key. Runs before the ENH-2486
+        # guard and FEAT-2675 compression so the signal reflects source-content
+        # stability, not the compressor's output.
+        if action_mode == "prompt":
+            self._fragment_store.put(fragment_key(action_template, state.agent, state.tools))
 
         # ENH-2486: per-invocation prompt-size guard. Measure the fully-interpolated
         # action at this single choke point (covers every action mode) and WARN when

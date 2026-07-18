@@ -267,6 +267,84 @@ class TestCompressionHook:
         assert runner.calls[0] != action
 
 
+class TestFragmentStoreHook:
+    """FEAT-2671: fragment-key recording in _run_action coexists with the
+    ENH-2486 guard and FEAT-2675 compression hook without altering the
+    emitted action or double-firing."""
+
+    def _fsm(self, action: str, next_state: str = "done") -> FSMLoop:
+        return FSMLoop(
+            name="fragment-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action=action, action_type="prompt", agent="reviewer", next=next_state
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_records_without_changing_action(self) -> None:
+        action = "short action"
+        fsm = self._fsm(action)
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=lambda _: None)
+        executor.run()
+
+        assert runner.calls[0] == action
+        assert executor._fragment_store.hits == 0
+        assert executor._fragment_store.misses == 1
+
+    def test_repeated_visits_record_a_hit(self) -> None:
+        fsm = FSMLoop(
+            name="fragment-test-loop",
+            initial="execute",
+            max_steps=2,
+            states={
+                "execute": StateConfig(
+                    action="stable action", action_type="prompt", agent="reviewer", next="execute"
+                ),
+            },
+        )
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=lambda _: None)
+        executor.run()
+
+        assert len(runner.calls) == 2
+        assert executor._fragment_store.hits == 1
+        assert executor._fragment_store.misses == 1
+
+    def test_coexists_with_guard_and_compression(self) -> None:
+        from little_loops.config import CompressionConfig
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        messages = [
+            {"role": "system", "content": "S" * 400},
+            {"role": "system", "content": "S" * 400},
+            {"role": "user", "content": "u"},
+        ]
+        action = json.dumps(messages)
+        fsm = self._fsm(action)
+        fsm.prompt_size_guard = PromptSizeGuardConfig(warn_chars=100)
+        cc = CompressionConfig.from_dict({"trigger_tokens": 1})
+
+        events: list[dict] = []
+        runner = MockActionRunner()
+        executor = FSMExecutor(
+            fsm,
+            action_runner=runner,
+            event_callback=events.append,
+            compression_config=cc,
+        )
+        executor.run()
+
+        warns = [e for e in events if e.get("event") == "prompt_size_warn"]
+        assert len(warns) == 1  # coexists — fires exactly once, no double-fire
+        assert runner.calls[0] != action  # compression still applied
+        assert executor._fragment_store.hits == 0
+        assert executor._fragment_store.misses == 1
+
+
 class TestFSMExecutorBasic:
     """Basic executor tests."""
 

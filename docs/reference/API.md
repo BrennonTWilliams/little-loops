@@ -7587,6 +7587,28 @@ Executor string adapter. Resolves the context window from `model` via `context_w
 
 ---
 
+## little_loops.prompts
+
+Content-hash fragment store (FEAT-2671, EPIC-2456 F1-prereq a). Computes a stable SHA-256 key over the three stable prompt fragments — skill body, system prompt, and tool definitions — and tracks whether each observed key repeats a prior invocation. Wired read-only into `FSMExecutor._run_action()` (prompt-mode actions only, measured on the pre-interpolation `action_template` plus `state.agent`/`state.tools`), so it never changes the emitted action. Gives the F1 cache-marking oracle (FEAT-2673) a cheap, deterministic stability signal: a hit means the fragment triple was byte-identical to an earlier call, so marking it `cache_control: ephemeral` would amortize real reads instead of paying an unamortized 1.25x write premium.
+
+```python
+from little_loops.prompts import FragmentStore, fragment_key
+
+def fragment_key(skill_body: str, system_prompt: str | None, tool_definitions: list[str] | None) -> str
+
+class FragmentStore:
+    hits: int
+    misses: int
+    def get(self, key: str) -> bool: ...     # True if key was observed before
+    def put(self, key: str) -> bool: ...     # records the observation; returns True on a repeat (hit)
+    @property
+    def hit_rate_pct(self) -> float: ...
+```
+
+`fragment_key()` hashes `json.dumps({"skill_body": ..., "system_prompt": ..., "tool_definitions": ...}, sort_keys=True, default=str)` via SHA-256, returning the full 64-char hex digest (unlike `session_store._hash_args()`'s `[:16]` truncation — this is a stability/equality signal, not a storage key needing brevity). `FragmentStore` is a small in-memory `get`/`put` store with a hit counter; `put()` is a miss the first time a key is seen and a hit on every repeat.
+
+---
+
 ## little_loops.session_store
 
 Unified SQLite session store for `.ll/history.db`. Current schema version: **24**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.

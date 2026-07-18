@@ -1,0 +1,33 @@
+{
+  "_meta": {
+    "schema_version": "1.0",
+    "type": "fragment_store_traces_manifest",
+    "name": "fragment_store_traces",
+    "description": "FEAT-2671 purpose-built fixture set modeling Tier 0-like repeated-call patterns (same skill invoked across iterations with stable vs. churning skill_body/system_prompt/tool_definitions fragments) for the fragment-store hit-rate AC. Not derived from the locked tier0_traces set, whose usage_jsonl_v1 rows carry no prompt-content fields to hash.",
+    "tags": [
+      "tier-1",
+      "epic-2456",
+      "fragment-store",
+      "trace-set"
+    ],
+    "owner": "FEAT-2671",
+    "epic": "EPIC-2456",
+    "lock_date": "2026-07-18",
+    "measurement": "FragmentStore.put() hit/miss over each call, replayed in trace order",
+    "command_options": {
+      "min_hit_rate_pct": 80.0
+    }
+  },
+  "traces": [
+    {
+      "id": "general-task-calls",
+      "path": "general-task-calls.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "review-loop-calls",
+      "path": "review-loop-calls.json",
+      "loop": "review-loop"
+    }
+  ]
+}
