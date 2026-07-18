@@ -52,7 +52,7 @@ converge on a single documented policy for not-ready issues.
 
 See Motivation — the two ledgers/status transitions above.
 
-## Proposed Behavior
+## Expected Behavior
 
 **Decision: align `autodev.yaml` to `rn-implement.yaml`'s existing model**, not the
 reverse. Every not-ready exit in `autodev.yaml` (`low_readiness`,
@@ -346,6 +346,7 @@ against current code, scores unchanged._
   has no existing pattern to copy exactly.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-18T14:08:20 - `3d81431e-72db-4e00-858f-bb1c4520b6c6.jsonl`
 - `/ll:confidence-check` - 2026-07-18T05:15:00Z - `e634cd43-9a17-411a-8d29-8448876726d3.jsonl`
 - `/ll:decide-issue` - 2026-07-18T05:09:11 - `5558c7a3-aade-40dd-b6e2-1228b92927da.jsonl`
 - `/ll:confidence-check` - 2026-07-18T00:00:00Z - `af7a2ca3-74d3-42ed-b8ca-3d1b31ba58a1.jsonl`
