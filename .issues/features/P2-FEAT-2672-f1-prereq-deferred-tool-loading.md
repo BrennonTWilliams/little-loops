@@ -11,8 +11,10 @@ parent: EPIC-2456
 relates_to:
 - FEAT-2671
 - FEAT-2673
+- FEAT-2679
 depends_on:
 - FEAT-2673
+- FEAT-2679
 decision_needed: false
 labels:
 - token-cost
@@ -20,11 +22,11 @@ labels:
 - tier-2
 learning_tests_required:
 - anthropic
-confidence_score: 45
-outcome_confidence: 38
+confidence_score: 62
+outcome_confidence: 41
 score_complexity: 5
-score_test_coverage: 18
-score_ambiguity: 5
+score_test_coverage: 19
+score_ambiguity: 7
 score_change_surface: 10
 spike_needed: true
 ---
@@ -160,6 +162,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   "Deferred tools" already means something else finding above), or is it
   out of scope until little-loops makes a direct Anthropic Messages API
   call somewhere?"
+- **Gap-analysis follow-up (2026-07-18, later pass) — the "FEAT-2671 is
+  `status: deferred`" finding above is now stale.** `FEAT-2671` completed
+  at `2026-07-18T18:39:16Z` (`status: done`) and its target module
+  `scripts/little_loops/prompts/fragment_store.py` now exists on disk
+  (confirmed via `ls`), per commit `67acb1e6 feat(prompts): content-hash
+  fragment store for cache stability (FEAT-2671)`. This resolves the
+  "Dependency risk" Outcome Risk Factor and the matching "Gaps to Address"
+  bullet below: Step 3's cache-breakpoint regression test can now run
+  against real fragment hashes rather than a synthetic input. This does
+  not affect the `blocks`/`depends_on` sequencing correction below (that
+  was about FEAT-2673 being the missing SDK call site, unrelated to
+  FEAT-2671's status).
 - **Refinement pass (2026-07-18) — the open architectural question above is
   now answerable: the missing SDK call site is planned, in FEAT-2673, and
   sequenced on the wrong side of this issue.** Grepped the whole repo for
@@ -414,10 +428,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-18_
+_Added by `/ll:confidence-check` on 2026-07-18; re-scored 2026-07-18 (later
+pass) after FEAT-2671 completed and the FEAT-2672/FEAT-2673 sequencing was
+corrected — see Gap-Analysis Correction above._
 
-**Readiness Score**: 45/100 → STOP — NOT READY
-**Outcome Confidence**: 38/100 → VERY LOW
+**Readiness Score**: ~~45/100~~ **62/100** → STOP — NOT READY
+**Outcome Confidence**: ~~38/100~~ **41/100** → VERY LOW
 
 ### Gaps to Address
 - No tool-definition catalog exists in this codebase for "deferred tool
@@ -427,17 +443,23 @@ _Added by `/ll:confidence-check` on 2026-07-18_
   "a deferred tool invoked by the model resolves to its full definition"
   has no existing data structure to attach to. Resolve what "deferred"
   means in a CLI-flag architecture (or prove a direct-SDK path exists)
-  before wiring config plumbing around it.
-- FEAT-2671 (fragment store), which Step 3's cache-breakpoint regression
-  test depends on, is `status: deferred` and not implemented — Step 3
-  cannot execute against real fragment hashes until it lands, or must be
-  scoped to a synthetic hash input in the interim.
+  before wiring config plumbing around it. **Still open** — FEAT-2673
+  (the planned SDK call site) has not landed yet.
+- ~~FEAT-2671 (fragment store), which Step 3's cache-breakpoint regression
+  test depends on, is `status: deferred` and not implemented~~ —
+  **RESOLVED 2026-07-18**: FEAT-2671 is `status: done`;
+  `scripts/little_loops/prompts/fragment_store.py` exists. Step 3 can now
+  target real fragment hashes.
 - Architecture Compliance concern: the corrected integration point
   (`subprocess_utils.run_claude_command`) is a CLI-arg assembly shim, not
   an Anthropic API request builder — confirm "withholding full tool
   definitions from the initial request" is achievable at all in a
   subprocess/host-CLI architecture before building the `DeferredToolsConfig`
-  plumbing.
+  plumbing. **Still open.**
+- New (this pass): this issue's `depends_on` now correctly points to
+  FEAT-2673 (sequencing corrected via `/ll:decide-issue`, 2026-07-18), but
+  FEAT-2673 is itself `status: open` — the dependency is correctly
+  ordered but not yet satisfied.
 
 ### Outcome Risk Factors
 - Deep architectural complexity: the deferred-loading pattern has no
@@ -449,11 +471,29 @@ _Added by `/ll:confidence-check` on 2026-07-18_
   `fsm/persistence.py`, `cli/loop/run.py`, `issue_manager.py`,
   `parallel/worker_pool.py`, `runner_spec.py`) require review even for a
   default-off config flag.
-- Dependency risk: FEAT-2671 (fragment store), which Step 3's
+- ~~Dependency risk: FEAT-2671 (fragment store), which Step 3's
   cache-breakpoint regression test relies on, is `status: deferred` and
-  not yet implemented.
+  not yet implemented.~~ **RESOLVED 2026-07-18** — see Gap-Analysis
+  Correction below. Residual dependency risk: FEAT-2673 (the SDK call
+  site this issue now correctly `depends_on`) is `status: open`, not yet
+  implemented.
+
+### Gap-Analysis Correction (2026-07-18)
+
+_Added by `/ll:refine-issue --gap-analysis` — the score above is stale on
+one input:_ FEAT-2671 is now `status: done` (completed
+`2026-07-18T18:39:16Z`; `scripts/little_loops/prompts/fragment_store.py`
+exists). The "Dependency risk" Outcome Risk Factor and its matching "Gaps
+to Address" bullet above no longer hold — that removes one of three
+readiness gaps and one of three risk factors. The remaining two Gaps to
+Address (no tool-definition catalog to defer against; CLI-shim vs.
+SDK-request-builder architecture concern) are unaffected and still block
+implementation. Re-run `/ll:confidence-check FEAT-2672` for an updated
+score.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-18T19:24:20 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
+- `/ll:refine-issue` - 2026-07-18T19:22:46 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:decide-issue` - 2026-07-18T19:08:23 - `b87fa325-b414-4446-90d5-717323b3c962.jsonl`
 - `/ll:wire-issue` - 2026-07-18T19:02:03 - `b56911e2-d36a-4d3d-ad87-565351fc7609.jsonl`
 - `/ll:refine-issue` - 2026-07-18T18:47:15 - `e1a29e23-79a5-40a2-84d8-5118e300d506.jsonl`

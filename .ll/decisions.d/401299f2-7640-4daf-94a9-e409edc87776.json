@@ -1,0 +1,11 @@
+{
+  "id": "9a4e1608-28d5-4f09-b1b0-0ea6ddf8c74d",
+  "type": "decision",
+  "timestamp": "2026-07-18T19:31:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No code path assembles full tool-definition JSON anywhere in the codebase; FEAT-2672 and FEAT-2673 both blocked on this missing catalog per their confidence checks.",
+  "rule": "Captured: F1-prereq (c) \u2014 Tool-definition JSON schema catalog for the Anthropic Messages API",
+  "scope": "issue",
+  "issue": "FEAT-2679"
+}

@@ -13,10 +13,12 @@ relates_to:
 - FEAT-2672
 - FEAT-2674
 - FEAT-2599
+- FEAT-2679
 depends_on:
 - FEAT-2671
-- FEAT-2672
+- FEAT-2679
 blocks:
+- FEAT-2672
 - FEAT-2674
 decision_needed: true
 labels:
@@ -98,6 +100,7 @@ reused block costs 1.25x.
       OQ #7) should be decided before this ships — file/link that issue.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-18T19:14:18 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:capture-issue` - 2026-07-18T15:15:21Z - captured from EPIC-2456 § Children [TBD-10] (source: thoughts/plans/2026-07-02-token-cost-reduction-architecture.md, Tier 2; report lines 53ff)
 
 ## Status

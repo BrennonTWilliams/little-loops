@@ -46,6 +46,7 @@ relates_to:
 - FEAT-2674
 - FEAT-2675
 - FEAT-2676
+- FEAT-2679
 source_artifacts:
 - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
 - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -200,8 +201,9 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 
 - **FEAT-2671** — F1-prereq (a) — content-hash fragment store: SHA-256 over `(skill_body, system_prompt, tool_definitions)`, skip re-serialization when key stable (new `prompts/fragment_store.py`). Adapted from `BerriAI/litellm/litellm/caching/caching.py`. *(filed 2026-07-18, P2; was [TBD-8])*
 - **FEAT-2672** — F1-prereq (b) — deferred tool loading: `defer_loading=True` + `tool_reference` pattern (new `tools/deferred.py`); preserves cache breakpoint across catalog churn. Vendor-measured: "cutting context usage by 90%+ while enabling applications that scale to thousands of tools." *(filed 2026-07-18, P2; was [TBD-9])*
-- **FEAT-2673** — F1 — `cache_control: ephemeral` integration + cache-marking cost oracle: introduce `anthropic` SDK; `build_anthropic_request()` in `host_runner.py`; oracle refuses to mark blocks below the provider cacheable-prefix minimum. Carries Open Questions #1/#2/#5 (`decision_needed: true`). Depends on FEAT-2671 + FEAT-2672. *(filed 2026-07-18, P2; was [TBD-10])*
+- **FEAT-2673** — F1 — `cache_control: ephemeral` integration + cache-marking cost oracle: introduce `anthropic` SDK; `build_anthropic_request()` in `host_runner.py`; oracle refuses to mark blocks below the provider cacheable-prefix minimum. Carries Open Questions #1/#2/#5 (`decision_needed: true`). Depends on FEAT-2671; blocks FEAT-2672 (deferred-tool-loading has nothing to attach to until `build_anthropic_request()` exists — sequencing corrected 2026-07-18 via `/ll:decide-issue`). *(filed 2026-07-18, P2; was [TBD-10])*
 - **FEAT-2674** — F10 — Speculative cache warming: `SkillStart` hook fires async warming request on `cache.warmable == true` and prompt >50K tokens; SDK-level `max_tokens=0` primitive as cheaper background-warm alternative. Depends on FEAT-2673. *(filed 2026-07-18, P2; was [TBD-11])*
+- **FEAT-2679** — F1-prereq (c) — Tool-definition JSON schema catalog for the Anthropic Messages API: assembles full `{"name","description","input_schema"}` tool definitions little-loops currently has no code path for (only bare tool names flow through `--tools` CSV). Blocks FEAT-2672 (nothing to defer) and FEAT-2673 (`build_anthropic_request()` has no tool blocks to mark `cache_control` on). *(filed 2026-07-18, P2)*
 
 ### Tier 3 — compaction and compression
 
@@ -338,6 +340,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-18T19:14:18 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:capture-issue` - 2026-07-18 - Filed the Tier 2 caching tranche: **FEAT-2671** (F1-prereq a, was [TBD-8]), **FEAT-2672** (F1-prereq b, was [TBD-9]), **FEAT-2673** (F1, was [TBD-10]; `decision_needed: true` for Open Questions #1/#2/#5), **FEAT-2674** (F10, was [TBD-11]; depends on FEAT-2673). Replaced the four TBD placeholders in Children and added all four to `relates_to`. Reminder recorded in FEAT-2673: decide [TBD-19] (cache x router ablation set, OQ #7) before F1 ships.
 - `/ll:capture-issue` - 2026-07-11 - Filed **FEAT-2598** (F3, was [TBD-12]) and **FEAT-2599** (F4-gated, was [TBD-13]) from the Tier 3 section of both plan docs. Replaced the two TBD placeholder bullets in Children with real child references; added both to `relates_to`.
 - epic-review - 2026-07-10 - **F7-lite budget re-scoping resolved**: chose option (a) — F7-lite owns a minimal, file-local per-worker spend accumulator (not a shared `fsm/` module) — over dropping the guard and relying on `ll-parallel --workers`. Researched first: `fsm/cost_graph.py` (F6) confirmed purely post-hoc (reads completed run artifacts only, no live accumulation, and its own scope explicitly excludes "cost ceiling guard"); F5 emits per-invocation OTel telemetry only; `ll-parallel --workers` is a pure concurrency cap with no dollar/token tracking, so it can't catch a single runaway worker. Updated Integration Map, Implementation Order diagram, Tests list, and Success Metrics to reflect the local-accumulator plan; renamed the planned test file `test_fsm_budget.py` → `test_routing_budget.py`.
