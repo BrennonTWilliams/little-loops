@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.fsm.evaluators import (
     EvaluationResult,
@@ -64,6 +64,9 @@ from little_loops.subprocess_utils import (
     _kill_process_group,
     run_claude_command,
 )
+
+if TYPE_CHECKING:
+    from little_loops.config import CompressionConfig
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -167,6 +170,7 @@ class FSMExecutor:
         circuit: RateLimitCircuit | None = None,
         run_model: str | None = None,
         working_dir: Path | None = None,
+        compression_config: CompressionConfig | None = None,
     ):
         """Initialize the executor.
 
@@ -185,6 +189,11 @@ class FSMExecutor:
                 shell/prompt/mcp subprocesses run with this cwd. Inherited by
                 nested sub-loop executors, and set to the scratch worktree path
                 when a `worktree:` sub-loop state attaches one.
+            compression_config: Optional heuristic prompt-compression config
+                (FEAT-2675). None disables compression. When set (and
+                ``heuristic_underperforms`` is False), prompt-mode actions
+                crossing the window-relative trigger are compressed before the
+                host request.
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -195,6 +204,11 @@ class FSMExecutor:
         self._circuit = circuit
         self.run_model = run_model
         self.working_dir = working_dir
+        # FEAT-2675: project-level heuristic prompt-compression config. None (default)
+        # skips compression entirely, so executors constructed without it are
+        # byte-identical to pre-FEAT-2675 behavior. Wired from BRConfig.compression
+        # by cli/loop/run.py; a resumed loop re-reads the same project config.
+        self.compression_config = compression_config
 
         # Runtime state
         self.current_state = fsm.initial
@@ -1493,6 +1507,24 @@ class FSMExecutor:
                         "est_tokens": size // 4,
                     },
                 )
+
+        # FEAT-2675: heuristic prompt compression. Runs *after* the ENH-2486 guard
+        # (so the guard keeps measuring the original assembled size — its signal is
+        # "your loop assembled a huge prompt", not the post-compression size) and
+        # *before* action_start (so the emitted/executed prompt is the compressed
+        # one). Prompt-mode only — never compress an mcp tool name or shell command.
+        cc = self.compression_config
+        if cc is not None and not cc.heuristic_underperforms and action_mode == "prompt":
+            from little_loops.compression import compress_action_text
+
+            action = compress_action_text(
+                action,
+                model=self.run_model,
+                trigger_pct=cc.trigger_pct,
+                trigger_tokens=cc.trigger_tokens,
+                max_tool_result_age_turns=cc.max_tool_result_age_turns,
+                max_assistant_tail_turns=cc.max_assistant_tail_turns,
+            )
 
         self._emit("action_start", {"action": action, "is_prompt": action_mode == "prompt"})
 

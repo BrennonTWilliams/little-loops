@@ -125,6 +125,7 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 | `circuit.repeated_failure` | unset | A single state failing the same way every iteration. See the stall detector below. |
 | `host_guard` | enabled | Host memory exhaustion from sequential LLM subprocess spawns (kills by jetsam, the macOS out-of-memory manager). See the host guard below. |
 | `prompt_size_guard` | enabled | A silently ballooning per-invocation prompt (a state re-embedding a monotonically growing captured output/artifact). WARNs when an interpolated action reaches `warn_chars`. See the prompt-size guard below. |
+| `compression.*` (project config) | trigger-gated | The same ballooning-prompt case, but **trimmed** rather than warned. Heuristic compressor (FEAT-2675) that drops stale tool results / dedupes system blocks / tail-truncates assistant turns for prompt-mode actions crossing the window-relative trigger. See heuristic prompt compression below. |
 
 ### Stall Detector (circuit-repeated-failure)
 
@@ -242,6 +243,25 @@ tokenizer dependency) and auto-persists to `<run>.events.jsonl`, so
 `ll-loop`/diagnostics can flag ballooning states after the fact. The optional
 hard-cap (route an oversized prompt to `on_error`/diagnose instead of
 dispatching it) is intentionally a follow-on, not part of this WARN-only guard.
+
+#### Heuristic prompt compression (compression.*)
+
+Where the prompt-size guard only **warns**, the FEAT-2675 heuristic compressor
+actually **trims** the prompt at the same `_run_action` choke point. It is a
+project-level `.ll/ll-config.json` namespace (`compression.*`), not a per-loop
+YAML field, and applies only to **prompt-mode** actions whose token estimate
+crosses a window-relative trigger (`trigger_pct * context_window`, or the
+absolute `trigger_tokens`, whichever is lower). See
+[CONFIGURATION.md § compression](../reference/CONFIGURATION.md#compression) for
+the full key reference.
+
+The two mechanisms **coexist without double-firing**: compression runs *after*
+the guard takes its measurement, so `prompt_size_warn` still reports the
+*original* assembled size (its signal is "this loop assembled a huge prompt"),
+while the prompt actually sent is the compressed one. Only actions that parse as
+a JSON message list are compressed; arbitrary prose passes through unchanged.
+Set `compression.heuristic_underperforms: true` to bypass the heuristic (the
+gate FEAT-2676 flips after its offline LLMLingua benchmark).
 
 ## Common Loop Patterns
 

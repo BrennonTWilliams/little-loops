@@ -312,6 +312,9 @@ little-loops/
         │   ├── __init__.py      #   Re-exports for the compaction/instant.py + compaction/result.py surface
         │   ├── instant.py       #   StreamingLLM sink+window eviction, sliding-window selection, 6-section summarizer
         │   └── result.py        #   CompactResult dataclass wrapper over summary_nodes rows
+        ├── compression/         # Zero-dependency heuristic prompt compressor (sub-package, FEAT-2675)
+        │   ├── __init__.py      #   Re-exports for the compression/heuristic.py surface
+        │   └── heuristic.py     #   3 extractive passes + compress()/compress_action_text() (window-relative trigger, len//4)
         ├── history_reader.py    # Typed read-only query API for .ll/history.db (8 query functions, 7 dataclasses)
         ├── file_utils.py        # Shared file I/O utilities (atomic writes)
         ├── user_messages.py     # User message extraction

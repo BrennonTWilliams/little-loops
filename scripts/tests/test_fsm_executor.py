@@ -175,6 +175,98 @@ class TestPromptSizeGuardWarn:
         assert not [e for e in events if e.get("event") == "prompt_size_warn"]
 
 
+class TestCompressionHook:
+    """FEAT-2675: compress() hook in _run_action coexists with the ENH-2486 guard."""
+
+    def _fsm(self, action: str, guard: Any = None) -> FSMLoop:
+        kwargs: dict[str, Any] = {}
+        if guard is not None:
+            kwargs["prompt_size_guard"] = guard
+        return FSMLoop(
+            name="compress-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(action=action, action_type="prompt", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            **kwargs,
+        )
+
+    def _config(self, **overrides: Any) -> Any:
+        from little_loops.config import CompressionConfig
+
+        return CompressionConfig.from_dict({"trigger_tokens": 1, **overrides})
+
+    def _run(self, fsm: FSMLoop, cc: Any) -> tuple[MockActionRunner, list[dict]]:
+        events: list[dict] = []
+        runner = MockActionRunner()
+        executor = FSMExecutor(
+            fsm,
+            action_runner=runner,
+            event_callback=events.append,
+            compression_config=cc,
+        )
+        executor.run()
+        return runner, events
+
+    def test_none_config_leaves_action_identical(self) -> None:
+        # No compression_config -> executor is byte-identical to pre-FEAT-2675.
+        messages = [{"role": "system", "content": "S" * 400}] * 3
+        action = json.dumps(messages)
+        fsm = self._fsm(action)
+        runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=lambda _: None)
+        executor.run()
+        assert runner.calls[0] == action
+
+    def test_json_message_list_compressed(self) -> None:
+        messages = [
+            {"role": "system", "content": "S" * 400},
+            {"role": "system", "content": "S" * 400},
+            {"role": "user", "content": "u"},
+            {"role": "assistant", "content": "a"},
+        ]
+        action = json.dumps(messages)
+        runner, _ = self._run(self._fsm(action), self._config())
+        assert runner.calls[0] != action
+        out = json.loads(runner.calls[0])
+        assert len([m for m in out if m["role"] == "system"]) == 1
+
+    def test_short_action_passes_through(self) -> None:
+        # Below-trigger short action is untouched even with compression configured.
+        from little_loops.config import CompressionConfig
+
+        cc = CompressionConfig.from_dict({})  # default 0.4 trigger_pct, huge threshold
+        runner, _ = self._run(self._fsm("short action"), cc)
+        assert runner.calls[0] == "short action"
+
+    def test_heuristic_underperforms_bypasses(self) -> None:
+        messages = [{"role": "system", "content": "S" * 400}] * 3
+        action = json.dumps(messages)
+        cc = self._config(heuristic_underperforms=True)
+        runner, _ = self._run(self._fsm(action), cc)
+        assert runner.calls[0] == action  # gate bypasses the heuristic
+
+    def test_guard_measures_uncompressed_size(self) -> None:
+        from little_loops.fsm.schema import PromptSizeGuardConfig
+
+        messages = [
+            {"role": "system", "content": "S" * 400},
+            {"role": "system", "content": "S" * 400},
+            {"role": "user", "content": "u"},
+        ]
+        action = json.dumps(messages)
+        fsm = self._fsm(action, guard=PromptSizeGuardConfig(warn_chars=100))
+        runner, events = self._run(fsm, self._config())
+
+        warns = [e for e in events if e.get("event") == "prompt_size_warn"]
+        assert len(warns) == 1  # coexists — fires exactly once, no double-fire
+        # Guard measured the ORIGINAL assembled length, not the post-compression one.
+        assert warns[0]["size"] == len(action)
+        # ...but the executed prompt is the compressed one.
+        assert runner.calls[0] != action
+
+
 class TestFSMExecutorBasic:
     """Basic executor tests."""
 

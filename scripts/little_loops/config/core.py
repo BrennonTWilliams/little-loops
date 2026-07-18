@@ -24,6 +24,7 @@ from little_loops.config.features import (
     AnalyticsCaptureConfig,
     ArtifactsConfig,
     CodeQueryConfig,
+    CompressionConfig,
     DecisionsConfig,
     DesignTokensConfig,
     EventsConfig,
@@ -222,6 +223,7 @@ class BRConfig:
             self._raw_config.get("learning_tests", {})
         )
         self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))
+        self._compression = CompressionConfig.from_dict(self._raw_config.get("compression", {}))
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
@@ -296,6 +298,11 @@ class BRConfig:
     def decisions(self) -> DecisionsConfig:
         """Get decisions log configuration."""
         return self._decisions
+
+    @property
+    def compression(self) -> CompressionConfig:
+        """Get heuristic prompt-compression configuration (FEAT-2675)."""
+        return self._compression
 
     @property
     def sync(self) -> SyncConfig:
@@ -671,6 +678,13 @@ class BRConfig:
                 "enabled": self._decisions.enabled,
                 "log_path": self._decisions.log_path,
                 "auto_generate": list(self._decisions.auto_generate),
+            },
+            "compression": {
+                "heuristic_underperforms": self._compression.heuristic_underperforms,
+                "trigger_pct": self._compression.trigger_pct,
+                "trigger_tokens": self._compression.trigger_tokens,
+                "max_tool_result_age_turns": self._compression.max_tool_result_age_turns,
+                "max_assistant_tail_turns": self._compression.max_assistant_tail_turns,
             },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,

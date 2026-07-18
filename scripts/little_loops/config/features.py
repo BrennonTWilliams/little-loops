@@ -526,6 +526,39 @@ class DecisionsConfig:
 
 
 @dataclass
+class CompressionConfig:
+    """Heuristic prompt-compression configuration (FEAT-2675, EPIC-2456 Tier 3).
+
+    Controls the zero-dependency extractive prompt compressor hooked into
+    ``FSMExecutor._run_action()``. Compression only fires for prompt-mode
+    actions whose token estimate crosses the window-relative trigger, so default
+    behavior is unchanged for prompts under the trigger.
+
+    ``heuristic_underperforms`` is the gate FEAT-2676 flips after its offline
+    LLMLingua benchmark; while ``true`` the heuristic is bypassed (its LLMLingua
+    replacement is out of scope for this issue). Default ``false`` runs the
+    heuristic.
+    """
+
+    heuristic_underperforms: bool = False
+    trigger_pct: float = 0.4
+    trigger_tokens: int | None = None
+    max_tool_result_age_turns: int = 5
+    max_assistant_tail_turns: int = 8
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CompressionConfig:
+        """Create CompressionConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(
+            heuristic_underperforms=data.get("heuristic_underperforms", False),
+            trigger_pct=data.get("trigger_pct", 0.4),
+            trigger_tokens=data.get("trigger_tokens", None),
+            max_tool_result_age_turns=data.get("max_tool_result_age_turns", 5),
+            max_assistant_tail_turns=data.get("max_assistant_tail_turns", 8),
+        )
+
+
+@dataclass
 class AnalyticsCaptureConfig:
     """Configuration for analytics capture gating (ENH-1840).
 

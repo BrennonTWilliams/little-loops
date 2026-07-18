@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "schema_version": "2.0",
+    "type": "heuristic_traces_manifest",
+    "name": "heuristic_traces",
+    "description": "FEAT-2675 locked general-task trace set for the heuristic prompt compressor's own 3-6x reduction measurement (len//4 convention, no LLMLingua). Reused by FEAT-2676 as data only.",
+    "tags": [
+      "tier-3",
+      "epic-2456",
+      "compression",
+      "trace-set"
+    ],
+    "owner": "FEAT-2675",
+    "epic": "EPIC-2456",
+    "tier": "tier-3",
+    "lock_date": "2026-07-18",
+    "measurement": "heuristic self before/after, session_store._estimate_tokens (len//4)",
+    "command_options": {
+      "count": 10,
+      "loop": "general-task",
+      "reduction_band": [
+        3.0,
+        6.0
+      ]
+    }
+  },
+  "traces": [
+    {
+      "id": "general-task-00",
+      "path": "general-task-00.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-01",
+      "path": "general-task-01.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-02",
+      "path": "general-task-02.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-03",
+      "path": "general-task-03.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-04",
+      "path": "general-task-04.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-05",
+      "path": "general-task-05.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-06",
+      "path": "general-task-06.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-07",
+      "path": "general-task-07.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-08",
+      "path": "general-task-08.json",
+      "loop": "general-task"
+    },
+    {
+      "id": "general-task-09",
+      "path": "general-task-09.json",
+      "loop": "general-task"
+    }
+  ]
+}

@@ -28,6 +28,7 @@ from little_loops.config import (
     CompactionConfig,
     ComposerAdaptiveConfig,
     ComposerConfig,
+    CompressionConfig,
     ConfidenceGateConfig,
     DecisionsConfig,
     DependencyMappingConfig,
@@ -2783,6 +2784,75 @@ class TestBRConfigDecisionsIntegration:
         assert dec["enabled"] is False
         assert dec["log_path"] == ".ll/decisions.yaml"
         assert dec["auto_generate"] == []
+
+
+class TestCompressionConfig:
+    """Tests for CompressionConfig dataclass (FEAT-2675)."""
+
+    def test_reexported_from_config_package(self) -> None:
+        # A missing config/__init__.py re-export must be caught here.
+        from little_loops.config import CompressionConfig as _CC
+
+        assert _CC is CompressionConfig
+
+    def test_from_dict_defaults(self) -> None:
+        config = CompressionConfig.from_dict({})
+        assert config.heuristic_underperforms is False
+        assert config.trigger_pct == 0.4
+        assert config.trigger_tokens is None
+        assert config.max_tool_result_age_turns == 5
+        assert config.max_assistant_tail_turns == 8
+
+    def test_from_dict_with_values(self) -> None:
+        data = {
+            "heuristic_underperforms": True,
+            "trigger_pct": 0.6,
+            "trigger_tokens": 12345,
+            "max_tool_result_age_turns": 3,
+            "max_assistant_tail_turns": 4,
+        }
+        config = CompressionConfig.from_dict(data)
+        assert config.heuristic_underperforms is True
+        assert config.trigger_pct == 0.6
+        assert config.trigger_tokens == 12345
+        assert config.max_tool_result_age_turns == 3
+        assert config.max_assistant_tail_turns == 4
+
+    def test_from_dict_ignores_unknown_keys(self) -> None:
+        config = CompressionConfig.from_dict({"trigger_pct": 0.5, "bogus": 1})
+        assert config.trigger_pct == 0.5
+
+
+class TestBRConfigCompressionIntegration:
+    """Tests for BRConfig.compression integration."""
+
+    def test_compression_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.compression.heuristic_underperforms is False
+        assert config.compression.trigger_pct == 0.4
+        assert config.compression.trigger_tokens is None
+
+    def test_compression_override_from_config(self, temp_project_dir: Path) -> None:
+        sample_config: dict[str, Any] = {
+            "compression": {"trigger_pct": 0.25, "trigger_tokens": 5000}
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.compression.trigger_pct == 0.25
+        assert config.compression.trigger_tokens == 5000
+
+    def test_compression_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "compression" in d
+        comp = d["compression"]
+        assert comp["heuristic_underperforms"] is False
+        assert comp["trigger_pct"] == 0.4
+        assert comp["trigger_tokens"] is None
+        assert comp["max_tool_result_age_turns"] == 5
+        assert comp["max_assistant_tail_turns"] == 8
 
 
 class TestDesignTokensConfig:

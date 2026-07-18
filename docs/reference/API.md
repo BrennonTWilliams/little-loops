@@ -7536,6 +7536,57 @@ Render a `<project_context>` block from *digest*, capped at *char_cap* chars. Re
 
 ---
 
+## little_loops.compression
+
+In-house, zero-dependency heuristic prompt compressor (FEAT-2675, EPIC-2456 Tier 3). Three extractive passes over a `list[dict]` (`role`/`content`) message list plus a `compress()` entry point gated on a window-relative trigger, and a `compress_action_text()` string adapter used by `FSMExecutor._run_action()`. Token estimates use the project's `len(text) // 4` convention (no BPE tokenizer). The LLMLingua-gated benchmark comparator is FEAT-2676.
+
+### drop_stale_tool_results / dedupe_stable_system_blocks / tail_truncate_assistant_turns
+
+```python
+def drop_stale_tool_results(messages: list[dict], max_age_turns: int = 5) -> list[dict]
+def dedupe_stable_system_blocks(messages: list[dict]) -> tuple[list[dict], list[int]]
+def tail_truncate_assistant_turns(messages: list[dict], max_n: int = 8) -> list[dict]
+```
+
+The three passes. `drop_stale_tool_results` drops `role=="tool"` messages older than `max_age_turns` user turns (measured from the last user turn), preserving `system` rows unconditionally. `dedupe_stable_system_blocks` keeps the first occurrence of each unique `system` block and returns `(deduped, cache_control_candidates)` where the second element lists output-list indices of surviving repeated blocks — flagged for the future F1 `cache_control` child; no marking happens here. `tail_truncate_assistant_turns` keeps only the most recent `max_n` `assistant` messages, leaving other roles untouched.
+
+### compress / CompressedResult
+
+```python
+@dataclass
+class CompressedResult:
+    messages: list[dict]
+    original_tokens: int
+    compressed_tokens: int
+    cache_control_candidates: list[int] = field(default_factory=list)
+    triggered: bool = False
+    @property
+    def reduction_ratio(self) -> float: ...
+
+def compress(
+    messages: list[dict],
+    context_window: int | None = None,
+    trigger_pct: float = 0.4,
+    trigger_tokens: int | None = None,
+    max_tool_result_age_turns: int = 5,
+    max_assistant_tail_turns: int = 8,
+) -> CompressedResult
+```
+
+Runs the three passes in order behind an effective trigger: the lower of `trigger_pct * context_window` (when the window is known) and `trigger_tokens` (when set). Below the trigger, returns the messages unchanged with `triggered=False`. When neither trigger applies (both `None`), the passes always run — the mode the locked-trace reduction measurement relies on.
+
+### compress_action_text
+
+```python
+def compress_action_text(text: str, *, model: str | None = None, context_window: int | None = None,
+                         trigger_pct: float = 0.4, trigger_tokens: int | None = None,
+                         max_tool_result_age_turns: int = 5, max_assistant_tail_turns: int = 8) -> str
+```
+
+Executor string adapter. Resolves the context window from `model` via `context_window.context_window_for()` when not given. Below the trigger, or when `text` is not a JSON message list, returns `text` **byte-identical**; above the trigger it compresses the parsed message list and re-serializes. This keeps arbitrary prose prompts unmodified while compressing the motivating case — loops re-embedding captured message-list JSON.
+
+---
+
 ## little_loops.session_store
 
 Unified SQLite session store for `.ll/history.db`. Current schema version: **24**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.

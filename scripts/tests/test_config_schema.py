@@ -292,6 +292,28 @@ class TestConfigSchema:
 
         assert data["properties"]["decisions"].get("additionalProperties") is False
 
+    def test_compression_in_schema(self) -> None:
+        """FEAT-2675: compression must be declared in config-schema.json.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing compression is rejected unless the property is
+        declared here.
+        """
+        data = json.loads(_load_schema_text())
+        assert "compression" in data["properties"], (
+            "compression is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        comp_props = data["properties"]["compression"]["properties"]
+        assert comp_props["heuristic_underperforms"]["type"] == "boolean"
+        assert comp_props["heuristic_underperforms"].get("default") is False
+        assert comp_props["trigger_pct"]["type"] == "number"
+        assert comp_props["trigger_pct"].get("default") == 0.4
+        assert comp_props["trigger_tokens"].get("default") is None
+        assert "max_tool_result_age_turns" in comp_props
+        assert "max_assistant_tail_turns" in comp_props
+        assert data["properties"]["compression"].get("additionalProperties") is False
+
     def test_health_url_in_schema(self) -> None:
         """FEAT-2551: project.health_url must be declared in config-schema.json.
 

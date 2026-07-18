@@ -116,6 +116,14 @@ For interactive editing, use `/ll:configure`.
     "clarity_threshold": 6
   },
 
+  "compression": {
+    "heuristic_underperforms": false,
+    "trigger_pct": 0.4,
+    "trigger_tokens": null,
+    "max_tool_result_age_turns": 5,
+    "max_assistant_tail_turns": 8
+  },
+
   "continuation": {
     "enabled": true,
     "include_todos": true,
@@ -1403,6 +1411,56 @@ Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `pa
       "cross_session_enabled": true,
       "max_level": null
     }
+  }
+}
+```
+
+---
+
+## `compression`
+
+Top-level block (FEAT-2675, EPIC-2456 Tier 3) governing the in-house, zero-dependency
+heuristic prompt compressor hooked into `FSMExecutor._run_action()`. It runs **only
+for prompt-mode actions** whose token estimate crosses a window-relative trigger, so
+default behavior is unchanged for prompts under the trigger. No ML/pip dependency — the
+LLMLingua-gated benchmark comparator that decides whether the heuristic underperforms
+is tracked separately under FEAT-2676.
+
+The compressor applies three extractive passes: drop tool-result messages older than
+`max_tool_result_age_turns` user turns, dedupe exact-duplicate stable `system` blocks
+(surviving repeated blocks are flagged as `cache_control` candidates for a future F1
+child — no marking happens here), and tail-truncate to the most recent
+`max_assistant_tail_turns` assistant messages. Token estimates use the project-wide
+`len(text) // 4` convention.
+
+The **effective trigger** resolves relative to the active model's context window when
+known (`trigger_pct * context_window`) and falls back to the absolute `trigger_tokens`
+otherwise; when both apply the **lower absolute value wins** (compress sooner). At the
+executor, only actions that parse as a JSON message list (the motivating case — loops
+re-embedding captured message-list JSON) are compressed; arbitrary prose prompts pass
+through byte-identical. Compression runs **after** the ENH-2486 `prompt_size_guard`
+measurement (the guard keeps reporting the original assembled size) and before the
+prompt is sent.
+
+`heuristic_underperforms` is the gate FEAT-2676 flips after its offline LLMLingua
+benchmark; while `true` the heuristic is bypassed. Default `false` runs it.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `compression.heuristic_underperforms` | `boolean` | `false` | Bypass gate flipped by FEAT-2676. `true` disables the heuristic. |
+| `compression.trigger_pct` | `number` | `0.4` | Compress once the prompt exceeds this fraction of the model's context window. |
+| `compression.trigger_tokens` | `integer\|null` | `null` | Optional absolute token trigger; lower of this and `trigger_pct` wins when both apply. |
+| `compression.max_tool_result_age_turns` | `integer` | `5` | Drop tool-result messages older than this many user turns. |
+| `compression.max_assistant_tail_turns` | `integer` | `8` | Keep only the most recent N assistant messages. |
+
+```json
+{
+  "compression": {
+    "heuristic_underperforms": false,
+    "trigger_pct": 0.4,
+    "trigger_tokens": null,
+    "max_tool_result_age_turns": 5,
+    "max_assistant_tail_turns": 8
   }
 }
 ```

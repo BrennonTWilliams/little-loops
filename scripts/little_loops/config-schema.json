@@ -590,6 +590,38 @@
       },
       "additionalProperties": false
     },
+    "compression": {
+      "type": "object",
+      "description": "Heuristic prompt-compression configuration (FEAT-2675, EPIC-2456 Tier 3). Zero-dependency extractive compressor hooked into FSMExecutor._run_action(); fires only for prompt-mode actions crossing the window-relative trigger, so default behavior is unchanged for prompts under the trigger.",
+      "properties": {
+        "heuristic_underperforms": {
+          "type": "boolean",
+          "description": "Gate flipped by FEAT-2676 after its offline LLMLingua benchmark. While true the heuristic is bypassed; false (default) runs it.",
+          "default": false
+        },
+        "trigger_pct": {
+          "type": "number",
+          "description": "Compress once the prompt token estimate exceeds this fraction of the active model's context window.",
+          "default": 0.4
+        },
+        "trigger_tokens": {
+          "type": ["integer", "null"],
+          "description": "Optional absolute token trigger for hosts that can't report a context window. When both this and trigger_pct apply, the lower absolute value wins.",
+          "default": null
+        },
+        "max_tool_result_age_turns": {
+          "type": "integer",
+          "description": "Drop tool-result messages older than this many user turns.",
+          "default": 5
+        },
+        "max_assistant_tail_turns": {
+          "type": "integer",
+          "description": "Keep only the most recent N assistant messages; older ones are tail-truncated.",
+          "default": 8
+        }
+      },
+      "additionalProperties": false
+    },
     "scan": {
       "type": "object",
       "description": "Codebase scanning settings",

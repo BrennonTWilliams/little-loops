@@ -106,6 +106,13 @@
   "learning_tests": {
     "enabled": true
   },
+  "compression": {
+    "heuristic_underperforms": false,
+    "trigger_pct": 0.4,
+    "trigger_tokens": null,
+    "max_tool_result_age_turns": 5,
+    "max_assistant_tail_turns": 8
+  },
   "prompt_optimization": {
     "enabled": false
   },
