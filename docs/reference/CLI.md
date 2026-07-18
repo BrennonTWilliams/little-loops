@@ -26,7 +26,7 @@ These flags appear across multiple tools:
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--context-limit` | | Override context window token estimate (default: from config or model-detected) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--json` | `-j` | Output as JSON (structured, machine-readable) | Most `ll-*` CLIs — see individual tool sections |
-| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links`, `ll-issues epic-progress` |
+| `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-verify-docs`, `ll-check-links`, `ll-issues epic-progress`, `ll-issues deferred-triage` |
 
 ---
 
@@ -1679,6 +1679,31 @@ The "resolved" count on the Progress line is `done + cancelled` (terminal states
 ll-issues epic-progress EPIC-1773              # Text summary (default)
 ll-issues ep EPIC-1773 --format json           # JSON object with counts and child list
 ll-issues ep EPIC-1773 --format markdown       # Markdown-formatted summary
+```
+
+---
+
+#### `ll-issues deferred-triage` / `ll-issues dt`
+
+List `status: deferred` issues that were parked by automation (`deferred_by: automation`,
+stamped by `ll-issues set-status <ID> deferred --by automation --reason <code>`), showing
+`deferred_reason` and age-since-`deferred_date`. Issues deferred by a human (`deferred_by:
+human` or no `deferred_by` at all) are excluded — this is a cross-run resurfacing report for
+the automation circuit-breaker deferral path (FEAT-2665), not a general deferred-issue list.
+
+`remediation_stalled` entries rank above `blocked_by_unmet` entries; within each group, the
+oldest issue is listed first.
+
+| Argument/Flag | Short | Default | Description |
+|---------------|-------|---------|-------------|
+| `--format` | `-f` | `text` | Output format: `text`, `json`, or `markdown` |
+| `--config` | | | Path to project root |
+
+**Examples:**
+```bash
+ll-issues deferred-triage                      # Text report (default)
+ll-issues dt --format json                     # JSON array of {issue_id, title, deferred_reason, age_days}
+ll-issues dt --format markdown                 # Markdown table
 ```
 
 ---

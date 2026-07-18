@@ -513,6 +513,35 @@ class TestReportAndTerminal:
             f"Diagnostic must name the malformed file: {warnings_text!r}"
         )
 
+    def test_report_builds_deferred_automation_breakdown(self, tmp_path: Path) -> None:
+        """FEAT-2665: report aggregates deferred_reason_<ID>.txt sidecars into
+        summary.json["deferred_automation"] — count, by_reason, and a per-issue list —
+        without dropping any existing scalar key."""
+        data = _load_loop()
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        sidecars = {
+            "deferred_reason_BUG-9.txt": "remediation_stalled\n",
+            "deferred_reason_ENH-4.txt": "blocked_by_unmet\n",
+        }
+        summary = self._run_report(data, run_dir, sidecars=sidecars)
+        assert "deferred_automation" in summary, (
+            f"summary.json must include deferred_automation: {summary}"
+        )
+        breakdown = summary["deferred_automation"]
+        assert breakdown["count"] == 2
+        assert breakdown["by_reason"] == {"remediation_stalled": 1, "blocked_by_unmet": 1}
+        by_id = {r["id"]: r["reason"] for r in breakdown["issues"]}
+        assert by_id == {"BUG-9": "remediation_stalled", "ENH-4": "blocked_by_unmet"}
+
+    def test_report_deferred_automation_empty_when_no_sidecars(self, tmp_path: Path) -> None:
+        """No deferred_reason_<ID>.txt sidecars → an empty-but-present breakdown, not a crash."""
+        data = _load_loop()
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_report(data, run_dir, sidecars={})
+        assert summary["deferred_automation"] == {"count": 0, "by_reason": {}, "issues": []}
+
     def test_report_preserves_existing_scalar_keys(self, tmp_path: Path) -> None:
         """ENH-2533: all 14 pre-existing scalar keys remain in summary.json at their
         original positions — additive change does not drop counters."""
@@ -1092,6 +1121,14 @@ class TestBlockedByGate:
         action = _load_loop()["states"]["mark_deferred"]["action"]
         assert "blocked_by_unmet" in action
         assert "remediation_stalled" in action
+
+    def test_mark_deferred_writes_reason_sidecar_for_report(self) -> None:
+        """FEAT-2665: mark_deferred writes deferred_reason_<ID>.txt so the end-of-run
+        report state can build a per-issue deferred_automation breakdown without
+        re-parsing issue frontmatter (self-contained, stdlib-only report action)."""
+        action = _load_loop()["states"]["mark_deferred"]["action"]
+        assert "deferred_reason_" in action
+        assert "$REASON_CODE" in action
 
     def test_check_blocked_by_emits_unresolved_token_to_stderr(self) -> None:
         """ENH-2534: unresolved issue-file paths emit UNRESOLVED to stderr.

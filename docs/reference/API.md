@@ -3711,6 +3711,21 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `check-decidable` | Exit 0 if an issue has >=1 enumerable option to decide between (deterministic companion to `/ll:decide-issue --validate-only`, ENH-2443) |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |
 | `epic-consistency` | Detect and reconcile EPIC body/parent drift (`--all`, `--fix`, `--format text\|json`); exits non-zero when drift found in report-only mode |
+| `deferred-triage` | List `deferred_by: automation` issues awaiting human triage, with reason + age (alias: `dt`) |
+
+#### deferred-triage
+
+```
+ll-issues deferred-triage [--format text|json|markdown]
+ll-issues dt [--format text|json|markdown]
+```
+
+Lists `status: deferred` issues with `deferred_by: automation` — the discriminator stamped by
+`ll-issues set-status <ID> deferred --by automation --reason <code>` (see `mark_deferred` in
+`loops/rn-implement.yaml`) — showing `deferred_reason` and age-since-`deferred_date`.
+`deferred_by: human` (or absent) issues are excluded. `remediation_stalled` entries rank above
+`blocked_by_unmet`; ties break oldest-first. This closes the cross-run resurfacing gap FEAT-2665
+targets: `re_enqueue_unblocked` only re-surfaces within a single run.
 
 #### next-issue
 

@@ -33,6 +33,10 @@ def main_issues() -> int:
             add_decisions_parser,
             cmd_decisions,
         )
+        from little_loops.cli.issues.deferred_triage import (
+            add_deferred_triage_parser,
+            cmd_deferred_triage,
+        )
         from little_loops.cli.issues.epic_consistency import (
             add_epic_consistency_parser,
             cmd_epic_consistency,
@@ -824,6 +828,7 @@ Examples:
         add_config_arg(sk)
 
         add_finalize_decomposition_parser(subs)
+        add_deferred_triage_parser(subs)
         add_epic_progress_parser(subs)
         add_epic_consistency_parser(subs)
         add_format_check_parser(subs)
@@ -888,6 +893,8 @@ Examples:
             return cmd_fingerprint(config, args)
         if args.command == "skip":
             return cmd_skip(config, args)
+        if args.command == "deferred-triage":
+            return cmd_deferred_triage(config, args)
         if args.command == "epic-progress":
             return cmd_epic_progress(config, args)
         if args.command == "epic-consistency":

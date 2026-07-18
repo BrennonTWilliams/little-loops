@@ -124,6 +124,12 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 
 Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
+A `deferred` transition also stamps `deferred_by` (`human` by default, or `automation` when
+`rn-implement`'s remediation circuit-breaker parks an issue), plus `deferred_reason` and
+`deferred_date`. Run `ll-issues deferred-triage` to see the cross-run backlog of
+automation-deferred issues — grouped by reason and sorted by age — so parked issues don't
+silently disappear from view; human-deferred issues are intentionally excluded from that report.
+
 As noted in [Issue File Anatomy](#issue-file-anatomy), CLI tools bucket issues by this `status` field, never by directory location.
 
 Not every issue goes through every state. A trivial bug fix might go Discovered → Ready → Completed in one session. A large feature might stay in Validating for multiple refinement cycles.

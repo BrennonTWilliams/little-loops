@@ -6037,3 +6037,178 @@ class TestIssuesCLIEpicProgress:
         assert "done" in captured.out
         # The EPIC header should appear
         assert "EPIC-001" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# deferred-triage subcommand fixtures and tests (FEAT-2665)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def issues_dir_with_deferred_triage(temp_project_dir: Path) -> Path:
+    """Issue directory with automation- and human-deferred fixtures for triage tests."""
+    issues_base = temp_project_dir / ".issues"
+    bugs_dir = issues_base / "bugs"
+    bugs_dir.mkdir(parents=True)
+    (issues_base / "completed").mkdir(parents=True)
+    (issues_base / "deferred").mkdir(parents=True)
+
+    # remediation_stalled, automation, old (should rank first, appear in output)
+    (bugs_dir / "P2-BUG-301-stalled.md").write_text(
+        "---\nstatus: deferred\ndeferred_by: automation\n"
+        "deferred_reason: remediation_stalled\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+        "# BUG-301: Remediation stalled\n"
+    )
+    # blocked_by_unmet, automation, recent (should rank second, appear in output)
+    (bugs_dir / "P2-BUG-302-unmet.md").write_text(
+        "---\nstatus: deferred\ndeferred_by: automation\n"
+        "deferred_reason: blocked_by_unmet\ndeferred_date: '2026-07-10T00:00:00Z'\n---\n"
+        "# BUG-302: Blocked by unmet dep\n"
+    )
+    # human-deferred — must be excluded
+    (bugs_dir / "P3-BUG-303-human.md").write_text(
+        "---\nstatus: deferred\ndeferred_by: human\n"
+        "deferred_reason: not a priority right now\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+        "# BUG-303: Human deferred\n"
+    )
+    # no deferred_by at all — must be excluded
+    (bugs_dir / "P3-BUG-304-no-discriminator.md").write_text(
+        "---\nstatus: deferred\ndeferred_reason: parked manually\n---\n"
+        "# BUG-304: No deferred_by\n"
+    )
+    # open issue — never a candidate
+    (bugs_dir / "P2-BUG-305-open.md").write_text("---\nstatus: open\n---\n# BUG-305: Open\n")
+
+    return issues_base
+
+
+class TestIssuesCLIDeferredTriage:
+    """Tests for ll-issues deferred-triage sub-command (FEAT-2665)."""
+
+    def test_lists_automation_deferred_only(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deferred_triage: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Automation-deferred issues appear; human/no-discriminator issues are excluded."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-301" in captured.out
+        assert "BUG-302" in captured.out
+        assert "BUG-303" not in captured.out
+        assert "BUG-304" not in captured.out
+        assert "BUG-305" not in captured.out
+
+    def test_remediation_stalled_ranked_above_blocked_by_unmet(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deferred_triage: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """remediation_stalled rows are rendered before blocked_by_unmet rows."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.index("BUG-301") < captured.out.index("BUG-302")
+
+    def test_shows_age_since_deferred(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deferred_triage: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Age since deferred_date is rendered (in days)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert re.search(r"\d+\s*d", captured.out) is not None
+
+    def test_json_format(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_deferred_triage: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--format json returns only automation-deferred entries with reason + age fields."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        ids = {row["issue_id"] for row in payload}
+        assert ids == {"BUG-301", "BUG-302"}
+        for row in payload:
+            assert "deferred_reason" in row
+            assert "age_days" in row
+
+    def test_empty_when_no_automation_deferred(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """No automation-deferred issues renders a clean empty-state message, not a crash."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0

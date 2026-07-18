@@ -1353,6 +1353,10 @@ states:
         REASON_CODE="remediation_stalled"
       fi
       echo "$ID  $REASON" >> "$RUN_DIR/deferred.txt"
+      # FEAT-2665: sidecar naming the reason code for this ID, so the end-of-run
+      # `report` state can build the deferred_automation breakdown without
+      # re-parsing issue frontmatter (report stays self-contained/stdlib-only).
+      echo "$REASON_CODE" > "$RUN_DIR/deferred_reason_$${ID}.txt"
       # Set issue status so it re-surfaces when the blocker clears; stamp the
       # automation discriminator (ENH-2664) so downstream tooling (FEAT-2665's
       # resurfacing sweep) can tell this circuit-breaker deferral apart from a
@@ -1584,6 +1588,26 @@ states:
               "remedy": "/ll:explore-api " + " ".join(targets),
           })
 
+      # 3. FEAT-2665: deferred_reason_<ID>.txt → deferred_automation breakdown.
+      # Every ID here reached mark_deferred this run (which always stamps
+      # --by automation), so no frontmatter re-read is needed to disambiguate.
+      deferred_automation_issues = []
+      deferred_automation_by_reason: dict[str, int] = {}
+      for df in sorted(run_dir.glob("deferred_reason_*.txt")):
+          did = df.stem[len("deferred_reason_"):]
+          try:
+              dreason = df.read_text().strip() or "(unknown)"
+          except Exception as exc:
+              warnings.append(f"unreadable {df.name}: {exc}")
+              continue
+          deferred_automation_issues.append({"id": did, "reason": dreason})
+          deferred_automation_by_reason[dreason] = deferred_automation_by_reason.get(dreason, 0) + 1
+      deferred_automation = {
+          "count": len(deferred_automation_issues),
+          "by_reason": deferred_automation_by_reason,
+          "issues": deferred_automation_issues,
+      }
+
       summary = {
           "total_processed": DEQUEUE_COUNT,
           "implemented": IMPLEMENTED,
@@ -1603,6 +1627,7 @@ states:
           "rate_limited": RATE_LIMITED,
           "per_issue": per_issue,
           "learning_followups": learning_followups,
+          "deferred_automation": deferred_automation,
       }
 
       (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
@@ -1625,6 +1650,10 @@ states:
       print(
           f"  Per-issue records: {len(per_issue)} | Learning followups: {len(learning_followups)}"
       )
+      if deferred_automation_issues:
+          named = ", ".join(f"{d['id']} ({d['reason']})" for d in deferred_automation_issues)
+          print(f"  Deferred (automation) — parked for human triage: {named}")
+          print("  Run `ll-issues deferred-triage` for the full cross-run resurfacing report.")
       print(f"  Summary written to: {RUN_DIR}/summary.json")
       PYEOF
     next: done
