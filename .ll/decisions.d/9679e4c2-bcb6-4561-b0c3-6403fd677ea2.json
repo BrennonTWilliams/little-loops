@@ -1,0 +1,12 @@
+{
+  "id": "6c3dc845-1313-49a9-a74c-914489f35c1f",
+  "type": "decision",
+  "timestamp": "2026-07-18T18:58:39Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "All four already-done claims verified true and tested (27/27 tests); Option B's ID-preservation rationale is moot since epic rollup is parent:-derived per-run and EPIC-1707 is already closed",
+  "rule": "Close ENH-2677 as substantially already implemented; open narrower follow-up for correction_penalty wiring + ll-config get CLI",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep ENH-2677 open, rewrite Proposed Implementation in place",
+  "issue": "ENH-2677"
+}
