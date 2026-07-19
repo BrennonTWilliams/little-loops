@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.148.0] - 2026-07-19
+
+### Added
+
+- FEAT-2672: F1-prereq (b) — Deferred tool loading
+- FEAT-2673: F1 — cache_control: ephemeral integration + cache-marking cost oracle
+- FEAT-2674: F10 — Speculative cache warming hook (+ max_tokens=0 alt)
+- FEAT-2598: F3 — Session-memory compaction: StreamingLLM eviction + 6-section schema
+- FEAT-2665: Cross-run resurfacing/triage for automation-deferred issues
+- FEAT-2671: F1-prereq (a) — Content-hash fragment store
+- FEAT-2675: F4a — Heuristic prompt compressor core + config gate wiring
+- FEAT-2679: F1-prereq (c) — Tool-definition JSON schema catalog for the Anthropic Messages API
+- FEAT-2680: F1-prereq (c.1) — Catalog-assembly function deriving Anthropic tool definitions from skill/command/agent frontmatter
+- FEAT-2681: F1-prereq (c.2) — Learning test: anthropic SDK/API accepts cache_control on a tool-definition block
+- FEAT-2682: ll-queue persistence layer and add/list/status/remove commands
+- FEAT-2683: ll-queue run: serial dequeue-and-execute worker loop
+- FEAT-2684: ll-loop run --queue compat shim and ll-loop queue migration
+- FEAT-2478: F5 — OTel gen_ai.usage.* emission + streaming parity + UUID + provider addendum
+- FEAT-2652: Per-EPIC base-branch declaration + sprint-creation validation
+- FEAT-2567: /ll:spike skill — prove unprecedented mechanisms in isolation before implementation
+- EPIC-2570: Spike Workflow — Skill, Confidence Flag & Autodev Routing
+
+### Fixed
+
+- BUG-2685: refine-to-ready-issue phantom-convergence on max_steps exhaustion
+- BUG-2662: code-run-gate interpolation crash falsely tags committed work GATE_FAILED_INFRA
+- BUG-2650: Root-cause the doc-wiring string test flake under the epic verify gate
+- BUG-2659: audit-issue-conflicts skill unreachable via /ll: slash command
+- BUG-2644: Add append-only fragment storage for .ll/decisions.yaml to remove id/merge collisions
+- BUG-2645: Add a fragment-update primitive for in-place decision mutation
+- BUG-2646: Extend decisions validation gates to the fragment path
+- BUG-2647: Update docs and config schema for .ll/decisions.d/ fragment storage
+- BUG-2648: get_project_folder encoding drops dots, breaks session resolution in worktrees
+- BUG-2649: Epic verify gate false-negatives on two non-hermetic tests under injected PYTHONPATH
+- BUG-2651: ll-history-context <ID> silently returns empty for hyphenated issue IDs
+- BUG-2654: autodev spike remedy bypassed for spike_needed issues on the decide path
+
+### Changed
+
+- ENH-2689: autodev: add reconcile step for stale issue-body sections after spike/refine plateau
+- ENH-2686: recheck_set should retry an abandoned autodev-queue residual, not just newly-detected descendants
+- ENH-2664: Tag automation deferral with a reason discriminator
+- ENH-2668: Extract shared runner abstraction (RunnerType enum + ActionSpec) from ll-harness/ll-action/ll-loop
+- ENH-2666: Reconcile autodev vs rn-implement "not ready" handling
+- ENH-2678: Wire go-no-go correction_penalty into scoring + add ll-config get CLI
+- ENH-2492: Capture orchestration run outcomes (ll-auto/ll-parallel/ll-sprint) into history.db
+- ENH-2463: Add per-loop-run summary row to history.db
+- ENH-2497: Discriminate sub-agent / Task spawns in history.db
+- ENH-2511: Capture MCP tool-call telemetry in tool_events
+- ENH-2660: Add --epic flag to rn-implement for auto-resolving children
+- ENH-2661: Add learning state badge glyph to _ACTION_TYPE_BADGES
+- ENH-2657: Detect an abandoned autodev queue in finalize (silent work loss on timeout)
+- ENH-2653: ready-issue must name the branch it checked and not reject on suspected base-branch mismatch
+- ENH-2658: Add ids filter to prompt-across-issues loop
+- ENH-2656: Single source-of-truth EPIC base-branch resolver
+- ENH-2640: autodev triage_outcome_failure spike branch routing
+- ENH-2641: spike-gate.yaml wrapper loop
+- ENH-2641: verify-detail.txt truncation hides the real failure
+- ENH-2643: Persist a merge-failure diagnostic artifact when merge_epic_branch_to_base aborts
+- ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
+- refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
+
+[1.148.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.147.0...v1.148.0
+
 ## [1.147.0] - 2026-07-15
 
 ### Added
