@@ -1549,6 +1549,41 @@ class TestNewEventReaders:
         assert len(by_branch) == 1
         assert by_branch[0].issue_id == "BUG-1"
 
+    def test_recent_learning_tests_and_find(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import find_learning_test, recent_learning_tests
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+        from little_loops.session_store import record_learning_test_event
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        path = write_record(
+            LearnTestRecord(
+                target="anthropic",
+                date="2026-07-19",
+                status="proven",
+                assertions=[Assertion(claim="streaming works", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+
+        db = tmp_path / "history.db"
+        record_learning_test_event(db, "anthropic", str(path))
+
+        events = recent_learning_tests(db=db)
+        assert len(events) == 1
+        assert events[0].record_id == "anthropic"
+        assert events[0].status == "proven"
+
+        by_status = recent_learning_tests(status="stale", db=db)
+        assert by_status == []
+
+        found = find_learning_test("anthropic", db=db)
+        assert found is not None
+        assert found.target == "anthropic"
+
+        assert find_learning_test("no-such-target", db=db) is None
+
     def test_recent_test_runs_and_pass_rate(self, tmp_path: Path) -> None:
         from little_loops.history_reader import recent_test_runs
         from little_loops.session_store import record_test_run_event

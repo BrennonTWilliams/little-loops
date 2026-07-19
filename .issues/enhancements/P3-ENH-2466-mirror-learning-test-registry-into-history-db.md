@@ -3,9 +3,10 @@ id: ENH-2466
 title: Mirror Learning Test Registry records into history.db / search_index
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-02
 captured_at: '2026-07-02T00:00:00Z'
+completed_at: '2026-07-19T17:48:45Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
@@ -692,7 +693,21 @@ anywhere. No `TestSchemaV2xLearningTestEvents`/`TestRecordLearningTestEvent`/
 `TestBackfillLearningTests` classes exist in `test_session_store.py`. This
 issue is confirmed **not started** as of 2026-07-19.
 
+## Resolution
+
+Implemented per the Selected approach (Approach A + Approach B's row-writing shape):
+
+- `session_store.py`: v26 migration adds `learning_test_events` (`record_id TEXT UNIQUE`, `target`, `status`, `assertions_json`, `date`, `raw_output_path`) plus `idx_learning_test_events_target`/`idx_learning_test_events_status`; `SCHEMA_VERSION` 25→26; `"learning_test"` added to `VALID_KINDS`/`_KIND_TABLE`. `record_learning_test_event()` UPSERTs on `record_id` (delete+reindex FTS row, mirroring `record_orchestration_run()`). `_backfill_learning_test_events()` walks `.ll/learning-tests/*.md` with `INSERT OR IGNORE`, wired into `backfill(..., registry_dir=...)` (defaults to `.ll/learning-tests`).
+- `cli/learning_tests.py`: `cmd_prove()`, `cmd_mark_stale()`, and `cmd_orphans(--mark-stale)` call a shared `_record_learning_test_mirror()` helper wrapped in `try/except: pass`.
+- `history_reader.py`: new `LearningTestEvent` dataclass, `recent_learning_tests(status=...)`, `find_learning_test(target)`.
+- `cli/session.py`: `--kind learning_test` works with no parser change (`choices=list(VALID_KINDS)` is already dynamic — confirmed the Refinement Addendum's finding). Backfill success line now reports `learning_tests=N`.
+- Deferred out of scope (per this issue's own Approach B scoping note): the "periodic reconcile at session-start" half (`backfill_worker.py`/`session_start.py` threading) — `ll-session backfill` already reconciles the registry on demand via the wired `registry_dir` default; a live session-start sweep is a separate follow-on if needed.
+- Docs: `docs/ARCHITECTURE.md` (v26 row + v1–v26 range), `docs/reference/API.md` (dataclass/function entries), `docs/reference/CLI.md` (`--kind learning_test` choices + examples), `docs/guides/LEARNING_TESTS_GUIDE.md` (discoverability note), `docs/guides/HISTORY_SESSION_GUIDE.md` (schema table through v26 + new table row), `.claude/CLAUDE.md` (`ll-session` description).
+- Tests: `TestRecordLearningTestEvent`, `TestBackfillLearningTestEvents`, schema-upgrade test in `test_session_store.py`; reader tests in `test_history_reader.py`; recorder-call + exception-swallowing tests in `test_cli_learning_tests.py`; `--kind learning_test` + backfill-count tests in `test_ll_session.py`. Full suite: 15491 passed, 38 skipped. `ruff check` and `mypy scripts/little_loops/` both clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-19T17:47:49Z - `61310421-81a9-477d-ad0e-d10b2f951666.jsonl`
+- `/ll:ready-issue` - 2026-07-19T17:24:30 - `1c4d261d-1be4-4a81-ab46-707b4bcad41d.jsonl`
 - `/ll:wire-issue` - 2026-07-19T17:18:51 - `4102e08d-70d8-45d7-a52d-b6303fe2e5b4.jsonl`
 - `/ll:decide-issue` - 2026-07-19T17:11:48 - `352c2bf4-b863-4fec-b794-1797875ee8ae.jsonl`
 - `/ll:refine-issue` - 2026-07-19T17:05:32 - `bff35f00-4a1a-4b29-95a1-4ac869332bae.jsonl`

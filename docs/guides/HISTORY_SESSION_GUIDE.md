@@ -49,7 +49,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 22, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 26, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -75,8 +75,12 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v20 | ENH-2461 | `usage_events` table (real LLM token counts + cost) |
 | v21 | FEAT-2478 | OTel `invocation_id` / `provider_vendor` attribution on `usage_events` |
 | v22 | ENH-2492 | `orchestration_runs` table (per-issue batch outcomes) |
+| v23 | ENH-2463 | `loop_runs` table (per-run FSM loop summaries) |
+| v24 | ENH-2497 | `agent_type` discriminator column on `tool_events` |
+| v25 | ENH-2511 | `mcp_server`/`mcp_tool`/`mcp_outcome`/`latency_ms` columns on `tool_events` |
+| v26 | ENH-2466 | `learning_test_events` table (Learning Test Registry mirror) |
 
-v15–v18 and v20–v22 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v26 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -101,6 +105,8 @@ v15–v18 and v20–v22 are EPIC-2457 coverage expansions and related observabil
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, and git context. Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
+| `loop_runs` | One row per completed FSM loop run: `run_id` (archive-time identifier, unique), `loop_name`, `started_at`/`ended_at`, `final_state`, `iterations`, `terminated_by`, `error`, nullable `evaluator_score`/`diagnostics_path`, and git context. Written best-effort by `FSMExecutor._finish()`. Queryable via `ll-session recent --kind loop_run` and `history_reader.recent_loop_runs()`/`find_loop_run()`/`aggregate_loop_runs()` (ENH-2463, v23). |
+| `learning_test_events` | Mirror of the Learning Test Registry (`.ll/learning-tests/*.md`): `record_id` (slugified target, unique), `target`, `status`, `assertions_json`, `date`, `raw_output_path`. Written best-effort by `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` (UPSERT — re-proves overwrite in place); reconciled from disk for out-of-band edits by `ll-session backfill`. Queryable via `ll-session recent --kind learning_test`, FTS search, and `history_reader.recent_learning_tests()`/`find_learning_test()` (ENH-2466, v26). |
 
 Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
 - `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording

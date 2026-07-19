@@ -35,6 +35,9 @@ Public API:
     recent_loop_runs(loop_name, ...) -> list[LoopRun]
     find_loop_run(run_id, ...) -> LoopRun | None
     aggregate_loop_runs(group_by, ...) -> list[dict]
+    LearningTestEvent: dataclass for learning_test_events rows (ENH-2466)
+    recent_learning_tests(status, ...) -> list[LearningTestEvent]
+    find_learning_test(target, ...) -> LearningTestEvent | None
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -203,6 +206,22 @@ class LoopRun:
     diagnostics_path: str | None
     head_sha: str | None
     branch: str | None
+
+
+@dataclass
+class LearningTestEvent:
+    """A ``learning_test_events`` row — mirror of a Learning Test Registry
+    record (``.ll/learning-tests/<slug>.md``, the ``LearnTestRecord`` dataclass
+    in ``little_loops.learning_tests``). Not to be confused with that
+    registry-file dataclass; this is the DB-side mirror row (ENH-2466)."""
+
+    ts: str
+    record_id: str
+    target: str | None
+    status: str | None
+    assertions_json: str | None
+    date: str | None
+    raw_output_path: str | None
 
 
 @dataclass
@@ -1002,6 +1021,65 @@ def recent_commit_events(
     finally:
         conn.close()
     return [_row_to_dataclass(row, CommitEvent) for row in rows]
+
+
+def recent_learning_tests(
+    *,
+    status: str | None = None,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[LearningTestEvent]:
+    """Return recent Learning Test Registry mirror rows, newest first (ENH-2466)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, record_id, target, status, assertions_json, date, raw_output_path "
+            "FROM learning_test_events "
+        )
+        params: list[Any] = []
+        if status is not None:
+            sql += "WHERE status = ? "
+            params.append(status)
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_learning_tests query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, LearningTestEvent) for row in rows]
+
+
+def find_learning_test(
+    target: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> LearningTestEvent | None:
+    """Return the mirror row for *target* (slugified to ``record_id``), or None (ENH-2466)."""
+    from little_loops.issue_parser import slugify
+
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT ts, record_id, target, status, assertions_json, date, raw_output_path "
+            "FROM learning_test_events WHERE record_id = ?",
+            (slugify(target),),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: find_learning_test query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return _row_to_dataclass(row, LearningTestEvent)
 
 
 def recent_test_runs(

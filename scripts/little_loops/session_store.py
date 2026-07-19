@@ -38,6 +38,7 @@ Public API:
     record_orchestration_run(db,...): UPSERT one per-issue batch outcome (ENH-2492)
     record_loop_run_summary(db,...): write one row to ``loop_runs`` + search_index (ENH-2463)
     update_loop_run_diagnostics(db,...): link a diagnostics artifact to its loop_runs row (ENH-2463)
+    record_learning_test_event(db,...): UPSERT one Learning Test Registry record mirror (ENH-2466)
 """
 
 from __future__ import annotations
@@ -97,6 +98,7 @@ __all__ = [
     "resolve_history_db",
     "record_retirement",
     "list_retirements",
+    "record_learning_test_event",
 ]
 
 logger = logging.getLogger(__name__)
@@ -211,7 +213,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -228,6 +230,7 @@ VALID_KINDS: tuple[str, ...] = (
     "usage",
     "orchestration_run",
     "loop_run",
+    "learning_test",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -244,6 +247,7 @@ _KIND_TABLE = {
     "usage": "usage_events",
     "orchestration_run": "orchestration_runs",
     "loop_run": "loop_runs",
+    "learning_test": "learning_test_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -827,6 +831,27 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE tool_events ADD COLUMN latency_ms INTEGER;
     CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_server ON tool_events(mcp_server);
     CREATE INDEX IF NOT EXISTS idx_tool_events_mcp_outcome ON tool_events(mcp_outcome);
+    """,
+    # v26 (ENH-2466): mirror of the Learning Test Registry (.ll/learning-tests/*.md,
+    # owned by little_loops.learning_tests) into the DB so records are discoverable
+    # via `ll-session search`/`recent`. record_id is the slugified target — the
+    # registry's own file-stem identity — not an issue ID. A file/external-source
+    # mirror written directly by producer code (record_learning_test_event) and
+    # backfill (_backfill_learning_test_events), the same shape as orchestration_runs
+    # (v22) and loop_runs (v23); intentionally excluded from raw_events rebuild.
+    """
+    CREATE TABLE IF NOT EXISTS learning_test_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        record_id TEXT NOT NULL UNIQUE,
+        target TEXT,
+        status TEXT,
+        assertions_json TEXT,
+        date TEXT,
+        raw_output_path TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_learning_test_events_target ON learning_test_events(target);
+    CREATE INDEX IF NOT EXISTS idx_learning_test_events_status ON learning_test_events(status);
     """,
 ]
 
@@ -1695,6 +1720,144 @@ def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_pa
     finally:
         conn.close()
     return bool(cursor.rowcount)
+
+
+# ---------------------------------------------------------------------------
+# Learning Test Registry mirror (ENH-2466)
+# ---------------------------------------------------------------------------
+
+
+def record_learning_test_event(
+    db_path: Path | str,
+    target: str,
+    file_path: str,
+    config: dict | None = None,
+) -> bool:
+    """UPSERT one Learning Test Registry record mirror and refresh its FTS row.
+
+    Reads the registry file at *file_path* (YAML frontmatter parsed the same
+    way as :func:`little_loops.learning_tests._read_frontmatter_yaml`) and
+    upserts it into ``learning_test_events`` keyed on ``record_id`` — the
+    slugified *target*, matching the registry's own file-stem identity. A
+    re-prove (or ``mark_stale``) overwrites the existing row's ``status``,
+    ``assertions_json``, and ``date`` rather than inserting a duplicate. The
+    matching FTS row is deleted and recreated in the same transaction so
+    stale assertion text cannot remain searchable after a status change.
+
+    Best-effort per the EPIC-1707 graceful-degradation contract: returns
+    ``False`` (does not raise) when *file_path* is missing/unreadable or
+    frontmatter fails to parse; callers should also wrap the call in
+    ``try/except: pass`` or ``contextlib.suppress(Exception)`` per the
+    ``record_issue_snapshot``/``record_commit_event`` precedent.
+
+    The ``config`` parameter is a forward-compatibility stub for a future
+    ``analytics.capture.learning_tests`` gate; it is accepted but not yet used.
+    """
+    from little_loops.issue_parser import slugify
+    from little_loops.learning_tests import _read_frontmatter_yaml
+
+    if not target:
+        return False
+    try:
+        content = Path(file_path).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    data = _read_frontmatter_yaml(content)
+    if not data:
+        return False
+
+    record_id = slugify(target)
+    status = data.get("status")
+    date = data.get("date")
+    raw_output_path = data.get("raw_output_path")
+    assertions = data.get("assertions") or []
+    assertions_json = json.dumps(assertions)
+    claims = " ".join(str(a.get("claim", "")) for a in assertions if isinstance(a, dict))
+
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT INTO learning_test_events"
+            "(ts, record_id, target, status, assertions_json, date, raw_output_path)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(record_id) DO UPDATE SET"
+            " ts=excluded.ts, target=excluded.target, status=excluded.status,"
+            " assertions_json=excluded.assertions_json, date=excluded.date,"
+            " raw_output_path=excluded.raw_output_path",
+            (ts, record_id, target, status, assertions_json, date, raw_output_path),
+        )
+        conn.execute(
+            "DELETE FROM search_index WHERE kind = ? AND ref = ?",
+            ("learning_test", record_id),
+        )
+        _index(
+            conn,
+            content=f"{target} {claims}".strip()[:512],
+            kind="learning_test",
+            ref=record_id,
+            anchor=target,
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
+def _backfill_learning_test_events(conn: sqlite3.Connection, registry_dir: Path) -> int:
+    """Seed ``learning_test_events`` from ``.ll/learning-tests/*.md`` (ENH-2466).
+
+    Follows the ``_backfill_snapshots()`` pattern: iterates ``*.md`` files,
+    reads frontmatter, inserts with ``INSERT OR IGNORE`` on the ``record_id``
+    UNIQUE constraint so re-running the backfill (or a record already written
+    by :func:`record_learning_test_event`) does not duplicate rows. This is a
+    best-effort reconcile companion for registry files edited outside the
+    ``ll-learning-tests`` CLI — it does not overwrite a live-written row's
+    newer status, unlike the CLI-path UPSERT.
+    """
+    from little_loops.issue_parser import slugify
+    from little_loops.learning_tests import _read_frontmatter_yaml
+
+    if not registry_dir.is_dir():
+        return 0
+    count = 0
+    ts = _now()
+    for md_file in sorted(registry_dir.glob("*.md")):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        data = _read_frontmatter_yaml(content)
+        if not data:
+            continue
+        target = data.get("target")
+        if not target:
+            continue
+        record_id = slugify(target)
+        status = data.get("status")
+        date = data.get("date")
+        raw_output_path = data.get("raw_output_path")
+        assertions = data.get("assertions") or []
+        assertions_json = json.dumps(assertions)
+        claims = " ".join(str(a.get("claim", "")) for a in assertions if isinstance(a, dict))
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO learning_test_events"
+            "(ts, record_id, target, status, assertions_json, date, raw_output_path)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?)",
+            (ts, record_id, target, status, assertions_json, date, raw_output_path),
+        )
+        if cursor.rowcount:
+            _index(
+                conn,
+                content=f"{target} {claims}".strip()[:512],
+                kind="learning_test",
+                ref=record_id,
+                anchor=target,
+                ts=ts,
+            )
+        count += 1
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -3336,23 +3499,28 @@ def backfill(
     config: dict | None = None,
     max_sessions: int | None = None,
     repo_root: Path | None = None,
+    registry_dir: Path | None = None,
     also_rebuild: bool = False,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
-    Reads issue-file frontmatter, FSM loop-state JSON, and git commit history
-    (ENH-2458; only when *repo_root* is given and contains ``.git``) directly.
-    Session JSONL lines are ingested into ``raw_events`` only (ENH-2581) — the
-    JSONL-derived cache tables (``tool_events``, ``message_events``,
-    ``assistant_messages``, ``skill_events``, ``sessions``) are **not**
-    populated here; call :func:`rebuild` (or pass ``also_rebuild=True`` to do
-    both in one call) to materialize them from ``raw_events``.
+    Reads issue-file frontmatter, FSM loop-state JSON, git commit history
+    (ENH-2458; only when *repo_root* is given and contains ``.git``), and the
+    Learning Test Registry (ENH-2466; only when *registry_dir* is given and is
+    a directory) directly. Session JSONL lines are ingested into
+    ``raw_events`` only (ENH-2581) — the JSONL-derived cache tables
+    (``tool_events``, ``message_events``, ``assistant_messages``,
+    ``skill_events``, ``sessions``) are **not** populated here; call
+    :func:`rebuild` (or pass ``also_rebuild=True`` to do both in one call) to
+    materialize them from ``raw_events``.
 
     Returns a per-kind count of rows inserted/derived. Sources that are
     absent are skipped silently.
     """
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
     loops_dir = loops_dir if loops_dir is not None else Path(".loops")
+    if registry_dir is None:
+        registry_dir = Path(".ll") / "learning-tests"
     conn = connect(db)
     counts: dict[str, int] = {
         "issues": 0,
@@ -3360,6 +3528,7 @@ def backfill(
         "snapshots": 0,
         "commits": 0,
         "raw_events": 0,
+        "learning_tests": 0,
     }
     try:
         if issues_dir.is_dir():
@@ -3371,6 +3540,8 @@ def backfill(
             counts["commits"] = _backfill_commit_events(conn, repo_root)
         if jsonl_files:
             counts["raw_events"] = _backfill_raw_events(conn, jsonl_files)
+        if registry_dir.is_dir():
+            counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

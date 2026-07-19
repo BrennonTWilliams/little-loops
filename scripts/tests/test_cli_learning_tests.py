@@ -184,6 +184,39 @@ class TestMainLearningTestsMarkStale:
         slug = mock_stale.call_args[0][0]
         assert slug == "anthropic-sdk-streaming"
 
+    def test_mark_stale_invokes_learning_test_event_mirror(
+        self, sample_record: LearnTestRecord
+    ) -> None:
+        """ENH-2466: mark-stale best-effort mirrors the change into history.db."""
+        with patch("sys.argv", ["ll-learning-tests", "mark-stale", "Anthropic SDK streaming"]):
+            with patch(
+                "little_loops.learning_tests.check_learning_test",
+                return_value=sample_record,
+            ):
+                with patch("little_loops.learning_tests.mark_stale"):
+                    with patch(
+                        "little_loops.session_store.record_learning_test_event"
+                    ) as mock_record:
+                        result = main_learning_tests()
+        assert result == 0
+        mock_record.assert_called_once()
+        assert mock_record.call_args[0][1] == "Anthropic SDK streaming"
+
+    def test_mark_stale_swallows_mirror_exceptions(self, sample_record: LearnTestRecord) -> None:
+        """A DB failure in the mirror write must not break mark-stale (ENH-2466)."""
+        with patch("sys.argv", ["ll-learning-tests", "mark-stale", "Anthropic SDK streaming"]):
+            with patch(
+                "little_loops.learning_tests.check_learning_test",
+                return_value=sample_record,
+            ):
+                with patch("little_loops.learning_tests.mark_stale"):
+                    with patch(
+                        "little_loops.session_store.record_learning_test_event",
+                        side_effect=RuntimeError("db boom"),
+                    ):
+                        result = main_learning_tests()
+        assert result == 0
+
 
 class TestStaleAwareCLI:
     """Tests for ll-learning-tests check --stale-aware flag (ENH-2208)."""
@@ -332,6 +365,37 @@ class TestMainLearningTestsProve:
         data = json.loads(capsys.readouterr().out)
         assert data["status"] == "refuted"
 
+    def test_prove_invokes_learning_test_event_mirror(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-2466: prove best-effort mirrors the refreshed record into history.db."""
+        record = self._make_record(status="proven")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run"),
+            patch("little_loops.learning_tests.check_learning_test", return_value=record),
+            patch("little_loops.session_store.record_learning_test_event") as mock_record,
+        ):
+            result = main_learning_tests()
+        assert result == 0
+        mock_record.assert_called_once()
+        assert mock_record.call_args[0][1] == "requests"
+
+    def test_prove_swallows_mirror_exceptions(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A DB failure in the mirror write must not break prove (ENH-2466)."""
+        record = self._make_record(status="proven")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run"),
+            patch("little_loops.learning_tests.check_learning_test", return_value=record),
+            patch(
+                "little_loops.session_store.record_learning_test_event",
+                side_effect=RuntimeError("db boom"),
+            ),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
     def test_prove_still_missing_exits_1_with_error(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -446,6 +510,25 @@ class TestMainLearningTestsOrphans:
             result = main_learning_tests()
         assert result == 0
         mock_stale.assert_called_once()
+
+    def test_mark_stale_invokes_learning_test_event_mirror(self) -> None:
+        """ENH-2466: --mark-stale best-effort mirrors each orphan into history.db."""
+        record = self._make_record("boto3")
+        with (
+            patch("sys.argv", ["ll-learning-tests", "orphans", "--mark-stale"]),
+            patch("little_loops.learning_tests.list_records", return_value=[record]),
+            patch(
+                "little_loops.learning_tests.import_scan.get_imported_packages",
+                return_value=set(),
+            ),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+            patch("little_loops.learning_tests.mark_stale"),
+            patch("little_loops.session_store.record_learning_test_event") as mock_record,
+        ):
+            result = main_learning_tests()
+        assert result == 0
+        mock_record.assert_called_once()
+        assert mock_record.call_args[0][1] == "boto3"
 
     def test_mark_stale_exits_0(self) -> None:
         record = self._make_record("boto3")

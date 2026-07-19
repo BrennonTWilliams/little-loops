@@ -681,6 +681,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v23 | `loop_runs` | One row per completed FSM loop run — final state, iteration count, terminator, error, nullable evaluator score and diagnostics-artifact path, plus git context. A producer-side sibling of `orchestration_runs`: written best-effort by `FSMExecutor._finish()` via `record_loop_run_summary()`, keyed by the archive-time `run_id` so it JOINs to `.loops/.history/<run_id>-<loop_name>/`. Idempotent via `INSERT OR IGNORE` on `run_id` (a resumed-then-completed run contributes one row). Outside `raw_events`'s rebuild scope, like `loop_events`. Enables `ll-session recent --kind loop_run`, FTS, export, and typed history-reader rollups via `recent_loop_runs()`/`find_loop_run()`/`aggregate_loop_runs()` (ENH-2463). |
 | v24 | `tool_events.agent_type`, `idx_tool_events_agent` | Nullable discriminator column on `tool_events`, populated for `tool_name="Task"` rows from `tool_input.subagent_type` (with a leading `ll:` plugin prefix stripped so built-in and plugin agent names group together); `NULL` for all other tools and pre-migration rows. Written live by `post_tool_use.handle()` and retroactively by `_backfill_tool_events()`, both inside the existing best-effort/`contextlib.suppress` write path. FTS-indexed (`kind="tool"`) so `ll-session search --fts "<agent>"` surfaces spawns. Enables `history_reader.agent_usage()` (per-agent invocation counts) and `recent_tool_events(agent_type=...)` (ENH-2497). |
 | v25 | `tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`/`latency_ms`, `idx_tool_events_mcp_server`, `idx_tool_events_mcp_outcome` | Four nullable columns on `tool_events` breaking out MCP tool calls: `mcp_server`/`mcp_tool` parsed from the `mcp__<server>__<tool>` `tool_name` prefix (populated by both the live write and `_backfill_tool_events()`); `mcp_outcome` (`success`/`error`) read from `tool_response.isError` (live write only — the backfill JSONL path has no access to the paired `tool_result` envelope); `latency_ms` from `tool_call.started_at`/`completed_at` when the host payload carries them (live write only, currently always `NULL` since Claude Code's PostToolUse payload doesn't yet supply these fields). Enables `history_reader.mcp_server_usage()`/`mcp_failure_rate()` and `recent_tool_events(mcp_server=..., mcp_tool=..., mcp_outcome=...)` (ENH-2511). |
+| v26 | `learning_test_events` | Mirror of the Learning Test Registry (`.ll/learning-tests/*.md`, owned by `little_loops.learning_tests`) into the DB: `(ts, record_id UNIQUE, target, status, assertions_json, date, raw_output_path)`, keyed on `record_id` (the slugified `target` — the registry's own file-stem identity, not an issue ID). Written best-effort by `record_learning_test_event()` from `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` (UPSERT semantics — a re-prove overwrites `status`/`assertions_json`/`date` rather than duplicating), and reconciled from disk by `_backfill_learning_test_events()` for out-of-band file edits (`INSERT OR IGNORE`, a companion for files never routed through the CLI). A file/external-source mirror like `orchestration_runs`/`loop_runs`, outside `raw_events`'s rebuild scope. Enables `ll-session recent --kind learning_test`, `ll-session search --fts ... --kind learning_test`, and `history_reader.recent_learning_tests()`/`find_learning_test()` (ENH-2466). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -725,7 +726,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v25)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v26)
     SS-->>DB: backfill_incremental() ingests JSONL into raw_events (background thread; --rebuild only when SCHEMA_VERSION > last_rebuild_version)
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -750,7 +751,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v25 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v26 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. Once the session's message total crosses the 7,500-token soft threshold, `_maybe_soft_threshold_summary()` fires a background thread that bounds its input via `compaction.instant.evict_sink_and_window()` (always-on, structural, no LLM cost) and produces a 6-section (`compaction.instant.summarize_6_section()`) summary, updating the existing per-session condensed node in place — no schema change (FEAT-2598). |
 | `compaction.instant` / `compaction.result` | `compaction/instant.py`, `compaction/result.py` | StreamingLLM-style sink+window eviction, Letta-style sliding-window selection, and the `CompactResult` dataclass wrapper over `summary_nodes` rows. Manually triggerable via `ll-compact-session` (FEAT-2598). |
@@ -816,7 +817,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v25) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v26) and CLI transport-wiring table.
 
 ---
 

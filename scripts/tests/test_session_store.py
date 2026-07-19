@@ -102,6 +102,7 @@ class TestEnsureDb:
             "skill_events",
             "cli_events",
             "issue_snapshots",
+            "learning_test_events",
         ):
             assert table in names
 
@@ -503,13 +504,19 @@ class TestBackfill:
 
     def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"
-        counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=tmp_path / "no-registry",
+        )
         assert counts == {
             "issues": 0,
             "loops": 0,
             "snapshots": 0,
             "commits": 0,
             "raw_events": 0,
+            "learning_tests": 0,
         }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
@@ -1369,7 +1376,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 25
+        assert SCHEMA_VERSION == 26
 
 
 class TestBackfillIncremental:
@@ -1814,8 +1821,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1929,8 +1936,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1981,8 +1988,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2060,7 +2067,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 25
+        assert int(version[0]) == 26
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2077,8 +2084,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3658,8 +3665,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3699,8 +3706,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 25
-        assert int(row[0]) == 25
+        assert SCHEMA_VERSION == 26
+        assert int(row[0]) == 26
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3754,7 +3761,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 25
+        assert int(version[0]) == 26
         assert "issue_snapshots" in names
 
 
@@ -4447,7 +4454,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 25
+        assert SCHEMA_VERSION == 26
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4593,7 +4600,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 25
+        assert SCHEMA_VERSION == 26
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -4734,3 +4741,170 @@ class TestLoopEventTypes:
 
         for name in ("loop_start", "loop_complete", "state_enter", "route"):
             assert name in _LOOP_EVENT_TYPES
+
+
+class TestRecordLearningTestEvent:
+    """ENH-2466: record_learning_test_event() DB write round-trip."""
+
+    @staticmethod
+    def _write_registry_file(base: Path, target: str = "anthropic") -> Path:
+        from little_loops.issue_parser import slugify
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+        record = LearnTestRecord(
+            target=target,
+            date="2026-07-19",
+            status="proven",
+            assertions=[Assertion(claim="streaming works", result="pass")],
+            raw_output_path=f".ll/learning-tests/raw/{slugify(target)}.txt",
+        )
+        return write_record(record, base_dir=base)
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_learning_test_event
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        path = self._write_registry_file(registry_dir)
+
+        db = tmp_path / "history.db"
+        assert record_learning_test_event(db, "anthropic", str(path))
+        rows = recent(db, kind="learning_test")
+        assert len(rows) == 1
+        assert rows[0]["record_id"] == "anthropic"
+        assert rows[0]["status"] == "proven"
+        assert json.loads(rows[0]["assertions_json"]) == [
+            {"claim": "streaming works", "result": "pass"}
+        ]
+
+    def test_dedupe_on_record_id_upserts(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import slugify
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+        from little_loops.session_store import record_learning_test_event
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        path = self._write_registry_file(registry_dir)
+        db = tmp_path / "history.db"
+        assert record_learning_test_event(db, "anthropic", str(path))
+
+        stale_record = LearnTestRecord(
+            target="anthropic",
+            date="2026-07-20",
+            status="stale",
+            assertions=[Assertion(claim="streaming works", result="fail")],
+            raw_output_path=f".ll/learning-tests/raw/{slugify('anthropic')}.txt",
+        )
+        write_record(stale_record, base_dir=registry_dir)
+        assert record_learning_test_event(db, "anthropic", str(path))
+
+        rows = recent(db, kind="learning_test")
+        assert len(rows) == 1
+        assert rows[0]["status"] == "stale"
+
+    def test_fts_searchable_by_claim_fragment(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_learning_test_event
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        path = self._write_registry_file(registry_dir)
+        db = tmp_path / "history.db"
+        record_learning_test_event(db, "anthropic", str(path))
+        results = search(db, query="streaming")
+        assert any(r["kind"] == "learning_test" for r in results)
+
+    def test_missing_file_is_noop(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_learning_test_event
+
+        db = tmp_path / "history.db"
+        assert not record_learning_test_event(db, "anthropic", str(tmp_path / "no-such.md"))
+        assert recent(db, kind="learning_test") == []
+
+    def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 26
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 25)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        assert "learning_test_events" in names
+
+
+class TestBackfillLearningTestEvents:
+    """ENH-2466: _backfill_learning_test_events() seeds learning_test_events from disk."""
+
+    def test_backfill_populates_from_registry(self, tmp_path: Path) -> None:
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        write_record(
+            LearnTestRecord(
+                target="anthropic",
+                date="2026-07-19",
+                status="proven",
+                assertions=[Assertion(claim="streaming works", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+        write_record(
+            LearnTestRecord(
+                target="openai",
+                date="2026-07-18",
+                status="stale",
+                assertions=[],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=registry_dir,
+        )
+        assert counts["learning_tests"] == 2
+        rows = recent(db, kind="learning_test")
+        assert {r["record_id"] for r in rows} == {"anthropic", "openai"}
+
+    def test_backfill_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        write_record(
+            LearnTestRecord(
+                target="anthropic",
+                date="2026-07-19",
+                status="proven",
+                assertions=[Assertion(claim="streaming works", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+        db = tmp_path / "history.db"
+        first = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", registry_dir=registry_dir
+        )
+        second = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", registry_dir=registry_dir
+        )
+        assert first["learning_tests"] == 1
+        assert second["learning_tests"] == 1  # files-processed count, not rows-changed
+        assert len(recent(db, kind="learning_test")) == 1
+
+    def test_backfill_skipped_without_registry_dir(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=tmp_path / "no-such-registry",
+        )
+        assert counts["learning_tests"] == 0

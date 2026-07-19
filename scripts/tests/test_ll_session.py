@@ -261,6 +261,45 @@ class TestMainSession:
         assert "corrections=0" in out
         assert "Backfilled 15" in out
 
+    def test_backfill_reports_learning_tests_count(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """backfill success line includes learning_tests= count (ENH-2466)."""
+        db = tmp_path / "session.db"
+        with patch("sys.argv", ["ll-session", "--db", str(db), "backfill"]):
+            with patch("little_loops.cli.session.backfill") as mock_backfill:
+                mock_backfill.return_value = {
+                    "issues": 0,
+                    "loops": 0,
+                    "raw_events": 0,
+                    "snapshots": 0,
+                    "commits": 0,
+                    "learning_tests": 4,
+                }
+                assert main_session() == 0
+        assert "learning_tests=4" in capsys.readouterr().out
+
+    def test_recent_kind_learning_test_accepted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """recent --kind learning_test is accepted (learning_test is in VALID_KINDS, ENH-2466)."""
+        db = tmp_path / "session.db"
+        from little_loops.session_store import ensure_db
+
+        ensure_db(db)
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "learning_test"]
+        ):
+            assert main_session() == 0
+        assert "No learning_test events" in capsys.readouterr().out
+
+    def test_search_kind_learning_test_accepted(self) -> None:
+        with patch(
+            "sys.argv", ["ll-session", "search", "--fts", "streaming", "--kind", "learning_test"]
+        ):
+            args = _parse_args()
+        assert args.kind == "learning_test"
+
     def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """The recent CLI accepts --kind message after ENH-1621."""
         db = tmp_path / "session.db"

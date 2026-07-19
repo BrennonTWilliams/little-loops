@@ -161,6 +161,13 @@ ll-learning-tests orphans --scope src/,lib/        # scan custom directories
 ll-learning-tests prove "Anthropic SDK streaming"  # trigger proving directly; no issue file needed
 ```
 
+Records are mirrored into `.ll/history.db` (`learning_test_events` table) after each `prove`/`mark-stale`/`orphans --mark-stale` call, and reconciled from disk for out-of-band edits by `ll-session backfill` (ENH-2466). This makes registry content discoverable alongside every other event kind:
+
+```bash
+ll-session search --fts "<target or claim fragment>" --kind learning_test
+ll-session recent --kind learning_test
+```
+
 ## Pre-Seeding Assumptions with `--assume`
 
 `--assume "<claim>"` pre-seeds a claim into the record with `result: untested`, without exercising it in the proof script. It's repeatable.

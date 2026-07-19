@@ -68,8 +68,27 @@ def cmd_prove(args: argparse.Namespace) -> int:
         print(f"Error: no record found for {args.target!r}", file=sys.stderr)
         return 1
 
+    _record_learning_test_mirror(args.target)
+
     print_json(record.to_dict())
     return 0 if record.status == "proven" else 1
+
+
+def _record_learning_test_mirror(target: str) -> None:
+    """Best-effort mirror write into ``learning_test_events`` (ENH-2466).
+
+    Wrapped in ``try/except: pass`` per the ``set_status.py``/
+    ``record_issue_snapshot`` graceful-degradation precedent — a DB failure
+    must never break ``ll-learning-tests prove``/``mark-stale``.
+    """
+    try:
+        from little_loops.issue_parser import slugify
+        from little_loops.session_store import record_learning_test_event
+
+        file_path = f".ll/learning-tests/{slugify(target)}.md"
+        record_learning_test_event(DEFAULT_DB_PATH, target, file_path)
+    except Exception:
+        pass
 
 
 def cmd_list(_args: argparse.Namespace) -> int:
@@ -90,6 +109,7 @@ def cmd_mark_stale(args: argparse.Namespace) -> int:
         print(f"Error: no record found for {args.target!r}", file=sys.stderr)
         return 1
     mark_stale(slugify(args.target))
+    _record_learning_test_mirror(args.target)
     return 0
 
 
@@ -134,6 +154,7 @@ def cmd_orphans(args: argparse.Namespace) -> int:
     if args.mark_stale:
         for record in orphans:
             mark_stale(slugify(record.target))
+            _record_learning_test_mirror(record.target)
         print(f"\nMarked {len(orphans)} record(s) stale.")
         return 0
 

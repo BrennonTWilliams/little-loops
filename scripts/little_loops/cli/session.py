@@ -581,7 +581,8 @@ def main_session() -> int:
                 f"Backfilled {total} rows "
                 f"(issues={counts['issues']}, loops={counts['loops']}, "
                 f"raw_events={counts.get('raw_events', 0)}, "
-                f"snapshots={counts.get('snapshots', 0)}, commits={counts.get('commits', 0)}"
+                f"snapshots={counts.get('snapshots', 0)}, commits={counts.get('commits', 0)}, "
+                f"learning_tests={counts.get('learning_tests', 0)}"
                 + (
                     f", tools={counts.get('tools', 0)}, messages={counts.get('messages', 0)}, "
                     f"sessions={counts.get('sessions', 0)}, corrections={counts.get('corrections', 0)}, "
