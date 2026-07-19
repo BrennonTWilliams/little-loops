@@ -1,0 +1,12 @@
+{
+  "id": "c0d23937-0fa0-4245-9d9c-c8249089c403",
+  "type": "decision",
+  "timestamp": "2026-07-19T22:36:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Handoff-sentinel stays artifact-only (single producer contract); drop config param to match ENH-2509's locked shared signature; defer session_end producer to a follow-on sub-issue",
+  "rule": "Resolve 3 prose contradictions inline (no formal options existed)",
+  "scope": "issue",
+  "alternatives_rejected": "Emitting handoff_needed from both context-monitor.sh and context-handoff-sentinel.sh (double-counts pressure episodes); keeping a config param not shared by ENH-2509; bundling session_end into this issue's scope",
+  "issue": "ENH-2495"
+}
