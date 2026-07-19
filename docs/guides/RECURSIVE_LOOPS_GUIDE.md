@@ -124,7 +124,12 @@ depth-first, then rolled **bottom-up** into a reassembled plan — the integrati
 phase runs **in parallel**: `synth_dispatch` background-spawns up to `synth_workers`
 (default 4) `oracles/integrate-node` workers that pop from a shared queue under a
 readiness gate (a node integrates only once all its children have, so same-depth
-nodes fold up concurrently). Per-node work is delegated to the
+nodes fold up concurrently). `synth_dispatch` gates on failure (ENH-2691): a
+whole-worker crash and a per-node integration failure (recorded in
+`failed_integrations/log.txt` even when the worker process itself exits 0) both
+route to `synth_failure_record`, which names the failed node(s) in
+`plan-rubric.md` before falling through to assembly — so a crash is no longer
+indistinguishable from a clean pass. Per-node work is delegated to the
 `oracles/plan-node-refine` sub-loop, which itself reuses the same research/synthesize
 chain as `rn-plan`. Before writing, a `preflight_check` state verifies invariants
 (ENH-2418) and can abort rather than risk a destructive write; once it passes,

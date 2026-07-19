@@ -108,8 +108,12 @@ class TestRecursiveStructure:
         ):
             assert s in fsm.states, f"missing synthesis state: {s}"
         assert fsm.states["build_synth"].next == "synth_dispatch"
-        assert fsm.states["synth_dispatch"].next == "assemble"
+        # ENH-2691: synth_dispatch gates on worker/per-node failure instead of
+        # falling through unconditionally.
+        assert fsm.states["synth_dispatch"].on_yes == "assemble"
+        assert fsm.states["synth_dispatch"].on_no == "synth_failure_record"
         assert fsm.states["synth_dispatch"].on_error == "assemble"
+        assert fsm.states["synth_failure_record"].next == "assemble"
         # The serial pop/integrate/snapshot trio is replaced by the fan-out worker.
         for s in ("synth_pop", "integrate_node", "snapshot_node"):
             assert s not in fsm.states, f"serial synthesis state {s} should be removed"
@@ -176,12 +180,135 @@ class TestRecursiveStructure:
         # Concurrency: the second worker started before the first finished.
         assert starts[1] < ends[0], "workers did not overlap — dispatch ran serially"
 
+    def test_synth_dispatch_result_ok_on_clean_pass(self, tmp_path: Path) -> None:
+        """A clean pass (all workers exit 0, no failed_integrations log) prints OK."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("p0\n")
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        fake = bindir / "ll-loop"
+        fake.write_text("#!/usr/bin/env bash\nexit 0\n")
+        fake.chmod(0o755)
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "SYNTH_DISPATCH_RESULT=OK" in result.stdout
+        assert "SYNTH_DISPATCH_RESULT=FAILED" not in result.stdout
+
+    def test_synth_dispatch_result_ok_on_empty_queue(self, tmp_path: Path) -> None:
+        """The NO_INTERNAL_NODES early exit must also print the OK marker (ENH-2691) so a
+        single evaluator pattern covers both branches without misrouting to on_no."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("")
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "4"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "SYNTH_DISPATCH_RESULT=OK" in result.stdout
+
+    def test_synth_dispatch_result_failed_on_worker_crash(self, tmp_path: Path) -> None:
+        """A worker process crash (non-zero exit) flips the result to FAILED (ENH-2691)."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("p0\n")
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        fake = bindir / "ll-loop"
+        fake.write_text("#!/usr/bin/env bash\nexit 1\n")
+        fake.chmod(0o755)
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "SYNTH_DISPATCH_RESULT=FAILED" in result.stdout
+
+    def test_synth_dispatch_result_failed_on_per_node_integration_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """A worker that exits 0 but left a per-node failure record still flips to FAILED
+        (ENH-2691) — the worker's own `integrate_error` -> `pop` loop never crashes the
+        process, so this signal must come from failed_integrations/log.txt, not $?."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "synth_queue.txt").write_text("p0\n")
+        failed_dir = rd / "failed_integrations"
+        failed_dir.mkdir()
+        (failed_dir / "log.txt").write_text("p0\n")
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        fake = bindir / "ll-loop"
+        fake.write_text("#!/usr/bin/env bash\nexit 0\n")
+        fake.chmod(0o755)
+        rendered = _render(
+            self._dispatch_action(),
+            context={"synth_workers": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{bindir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c", rendered], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "SYNTH_DISPATCH_RESULT=FAILED" in result.stdout
+
     def test_node_oracle_refines_then_decides(self) -> None:
         """The oracle scores a node then routes to the adaptive decompose decision."""
         fsm, _ = load_and_validate(NODE_ORACLE)
         assert fsm.states["score_node"].on_yes == "decide_decompose"
         assert fsm.states["decide_decompose"].next == "route_decision"
         assert fsm.states["route_decision"].on_yes == "gate_decompose"
+
+
+class TestSynthFailureRecord:
+    """ENH-2691: synth_failure_record surfaces which node(s) failed before assemble."""
+
+    def _action(self) -> str:
+        return _load_rn_refine().states["synth_failure_record"].action
+
+    def test_records_failed_node_ids_from_log(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        failed_dir = rd / "failed_integrations"
+        failed_dir.mkdir(parents=True)
+        (failed_dir / "log.txt").write_text("p0\np2\n")
+        (rd / "plan-rubric.md").write_text("")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        rubric = (rd / "plan-rubric.md").read_text()
+        assert "RECOVERY_NEEDED" in rubric
+        assert "p0" in rubric and "p2" in rubric
+
+    def test_records_generic_message_when_log_absent(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir(parents=True)
+        (rd / "plan-rubric.md").write_text("")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        rubric = (rd / "plan-rubric.md").read_text()
+        assert "RECOVERY_NEEDED" in rubric
+        assert "worker process failure" in rubric
 
 
 class TestTerminalAndDiagnoseRouting:

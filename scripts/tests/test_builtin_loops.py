@@ -9404,10 +9404,16 @@ class TestRnRefineRecursiveDecomposition:
         # replaced by a fan-out dispatch that background-spawns the
         # oracles/integrate-node worker sub-loop over the shared queue.
         states = data.get("states", {})
-        for s in ("build_synth", "synth_dispatch", "assemble", "final_score"):
+        for s in ("build_synth", "synth_dispatch", "synth_failure_record", "assemble", "final_score"):
             assert s in states, f"missing synthesis state: {s}"
         assert data.get("states", {}).get("build_synth", {}).get("next") == "synth_dispatch"
-        assert data.get("states", {}).get("synth_dispatch", {}).get("next") == "assemble"
+        # ENH-2691: synth_dispatch gates on worker/per-node failure instead of
+        # falling through unconditionally.
+        assert data.get("states", {}).get("synth_dispatch", {}).get("on_yes") == "assemble"
+        assert (
+            data.get("states", {}).get("synth_dispatch", {}).get("on_no") == "synth_failure_record"
+        )
+        assert data.get("states", {}).get("synth_failure_record", {}).get("next") == "assemble"
         # The serial states must be gone — the worker owns pop/integrate/snapshot now.
         for s in ("synth_pop", "integrate_node", "snapshot_node"):
             assert s not in states, f"serial synthesis state {s} should be removed (ENH-2565)"

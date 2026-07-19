@@ -456,6 +456,9 @@ states:
       [ -z "$QN" ] && QN=0
       if [ "$QN" -eq 0 ]; then
         echo "NO_INTERNAL_NODES"
+        # Same result marker as the normal-completion path below, so a single
+        # evaluator pattern covers both branches (ENH-2691).
+        echo "SYNTH_DISPATCH_RESULT=OK"
         exit 0
       fi
       if [ "$WORKERS" -gt "$QN" ]; then WORKERS="$QN"; fi
@@ -473,8 +476,44 @@ states:
       for p in $pids; do
         wait "$p" || FAIL=1
       done
+      # A per-node integrate_error does NOT make the worker process exit
+      # non-zero (the worker keeps draining the queue and still reaches its
+      # `done` terminal) — it only appends to failed_integrations/log.txt.
+      # Fold that signal into FAIL so it isn't silently discarded (ENH-2691).
+      FAILED_LOG="$RUN_DIR/failed_integrations/log.txt"
+      if [ -s "$FAILED_LOG" ]; then
+        FAIL=1
+      fi
       echo "SYNTH_WORKERS_DONE workers=$WORKERS fail=$FAIL"
+      if [ "$FAIL" -eq 1 ]; then
+        echo "SYNTH_DISPATCH_RESULT=FAILED"
+      else
+        echo "SYNTH_DISPATCH_RESULT=OK"
+      fi
     capture: synth_dispatch
+    evaluate:
+      type: output_contains
+      pattern: "SYNTH_DISPATCH_RESULT=OK"
+    on_yes: assemble
+    on_no: synth_failure_record
+    on_error: assemble
+
+  synth_failure_record:
+    # ENH-2691: records which node(s) failed to integrate (or, absent a
+    # per-node record, that a worker process crashed) before falling through
+    # to the existing assemble fallback. Keeps the two failure modes ("worker
+    # crashed" vs. "integration simply didn't finish") distinguishable in
+    # plan-rubric.md.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      FAILED_LOG="$RUN_DIR/failed_integrations/log.txt"
+      if [ -s "$FAILED_LOG" ]; then
+        NODES=$(tr '\n' ',' < "$FAILED_LOG" | sed 's/,$//')
+        echo "RECOVERY_NEEDED: synth_dispatch reported a worker failure; failed_integrations/log.txt lists node(s): $NODES" >> "$RUN_DIR/plan-rubric.md"
+      else
+        echo "RECOVERY_NEEDED: synth_dispatch reported a worker process failure (non-zero exit) with no per-node record in failed_integrations/log.txt." >> "$RUN_DIR/plan-rubric.md"
+      fi
     next: assemble
     on_error: assemble
 
