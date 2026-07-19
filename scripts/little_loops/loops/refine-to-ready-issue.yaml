@@ -19,6 +19,20 @@ context:
 import:
   - lib/common.yaml
 
+# BUG-2685: fire a distinct terminated_by: "stall_detected" (instead of
+# silently burning the full max_steps budget on a phantom-convergence loop,
+# e.g. a sub-loop state like confidence_check retrying without observable
+# state-level progress) before the max_steps guard would otherwise mask the
+# stall behind a misleading final_state: "done" / terminated_by: "max_steps"
+# combo. Mirrors general-task.yaml's circuit.repeated_failure config; window=3
+# is safely above this loop's one legitimate retry cycle (check_refine_limit
+# caps check_readiness retries at 1, so its triple repeats at most twice
+# consecutively in normal operation).
+circuit:
+  repeated_failure:
+    window: 3
+    on_repeated_failure: diagnose
+
 states:
   resolve_issue:
     action: >-

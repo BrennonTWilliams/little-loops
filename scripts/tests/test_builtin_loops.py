@@ -1068,6 +1068,21 @@ class TestRefineToReadyIssueSubLoop:
             f"confidence_check.on_error should be 'diagnose', got {confidence_check.get('on_error')!r}"
         )
 
+    def test_circuit_repeated_failure_configured(self, data: dict) -> None:
+        """BUG-2685: the stall detector must be wired so a phantom-convergence loop
+        (e.g. a sub-loop state retrying with no observable state-level progress) fires
+        a distinct terminated_by: "stall_detected" and routes to diagnose, instead of
+        silently burning the full max_steps budget behind a misleading
+        final_state: "done" / terminated_by: "max_steps" combo."""
+        repeated_failure = (data.get("circuit") or {}).get("repeated_failure") or {}
+        assert repeated_failure.get("window") == 3, (
+            f"circuit.repeated_failure.window should be 3, got {repeated_failure.get('window')!r}"
+        )
+        assert repeated_failure.get("on_repeated_failure") == "diagnose", (
+            "circuit.repeated_failure.on_repeated_failure should be 'diagnose', got "
+            f"{repeated_failure.get('on_repeated_failure')!r}"
+        )
+
     def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self) -> None:
         """verify_scores_persisted.on_yes must route to done in the child oracle (maps to
         confidence_check.on_success → check_readiness in the parent)."""
