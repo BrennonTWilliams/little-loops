@@ -267,6 +267,21 @@ Post-refinement wiring pass that completes an issue's **Integration Map** — th
 
 **Trigger keywords:** "wire issue", "missing integration points", "complete the wiring", "trace dependencies", "wiring pass"
 
+### `/ll:reconcile-issue`
+Rewrite an issue's `## Implementation Steps`, `## Acceptance Criteria`, and `### Files to Modify` in place from its own accumulated research findings, without appending or bulldozing human prose. Over a long refine/spike/confidence-check cycle, `/ll:refine-issue` and `/ll:confidence-check` only **append** new "Codebase Research Findings" bullets — they never rewrite the issue's own directive sections to match, so a stale section keeps re-flagging the same Concern and the Readiness score plateaus. `reconcile-issue` closes that loop with a targeted, in-place rewrite of exactly those three sections; every other section (Summary, Motivation, Proposed Solution, Codebase Research Findings, Wiring Phase, Confidence Check Notes, Session Log, etc.) is left untouched.
+
+**Arguments:**
+- `issue_id` (required): Issue ID to reconcile (e.g., `FEAT-2672`, `BUG-004`)
+- `flags` (optional): `--check` (report the plateau verdict without writing — exit 0 if a reconcilable plateau exists, exit 1 if the body is already clean; for FSM `evaluate: type: exit_code` routing)
+
+**One-shot guard**: Sets `reconcile_attempted: true` in the issue's frontmatter immediately on invocation (even on a no-op rewrite), mirroring `/ll:spike`'s `spike_attempted` convention. This arms `autodev.yaml`'s `check_reconcile_needed` one-shot guard so reconcile runs at most once per issue per autodev run.
+
+**When to run**: After a spike proves a mechanism but Readiness stays bit-identical to its pre-spike score (the plateau `autodev.yaml`'s `check_reconcile_needed` state detects, ENH-2689). Also user-invocable directly to unstick an issue whose directive sections have drifted from its accumulated research.
+
+**Distinct from**: `/ll:refine-issue` (appends new research), `/ll:ready-issue` (reconciles issue ↔ codebase accuracy), and `/ll:wire-issue` (adds integration touchpoints) — this command reconciles the issue **against itself**.
+
+**Trigger keywords:** "reconcile issue", "rewrite stale sections", "readiness plateau", "directive sections out of date"
+
 ### `/ll:tradeoff-review-issues`
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
@@ -1012,6 +1027,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `refine-issue` | Refine issues with codebase-driven research |
 | `decide-issue`^ | Resolve competing implementation options via codebase evidence scoring |
 | `wire-issue`^ | Complete integration map — trace callers, config, docs, tests |
+| `reconcile-issue` | Rewrite stale Implementation Steps/AC/Files to Modify from an issue's own findings |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `issue-workflow`^ | Quick reference for issue management workflow |
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
