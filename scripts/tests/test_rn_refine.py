@@ -726,13 +726,24 @@ class TestFinalizeSafety:
     def _finalize_action(self) -> str:
         return _load_rn_refine().states["finalize"].action
 
-    def _seed(self, tmp_path: Path, *, plan: str, source: str) -> Path:
+    def _seed(
+        self,
+        tmp_path: Path,
+        *,
+        plan: str,
+        source: str,
+        children: dict[str, str] | None = None,
+    ) -> Path:
         rd = tmp_path / "run"
         rd.mkdir()
         (rd / "plan.md").write_text(plan)
         source_path = tmp_path / "plan.md"
         source_path.write_text(source)
         (rd / ".source-path").write_text(str(source_path) + "\n")
+        for nid, final_content in (children or {}).items():
+            node_dir = rd / "nodes" / nid
+            node_dir.mkdir(parents=True, exist_ok=True)
+            (node_dir / "final.md").write_text(final_content)
         return rd
 
     def test_preflight_emits_ok_for_healthy_plan(self, tmp_path: Path) -> None:
@@ -772,6 +783,24 @@ class TestFinalizeSafety:
         assert "INVARIANT_FAIL" in result.stdout
         assert "MISSING_SECTIONS" in result.stdout
         assert "Phase 2" in result.stdout
+
+    def test_preflight_ok_when_heading_moved_to_child(self, tmp_path: Path) -> None:
+        # ENH-2690: the root decomposed and rewrote its own index heading for
+        # "Phase 2" (decide_decompose's documented behavior), but the section's
+        # content is redeemed by a child node's final.md h1 title — not lost.
+        source = "# Big Plan\n\n## Phase 1\n\n- a\n\n## Phase 2\n\n- b\n"
+        plan = "# Big Plan\n\n## Phase 1\n\n- a\n\n## Phase 2 (expanded, see below)\n"
+        rd = self._seed(
+            tmp_path,
+            plan=plan,
+            source=source,
+            children={"n1": "# Phase 2\n\n- b\n- more detail\n"},
+        )
+        rendered = _render(self._preflight_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "INVARIANT_OK" in result.stdout
+        assert "INVARIANT_FAIL" not in result.stdout
 
     def test_finalize_dry_run_does_not_overwrite_source(self, tmp_path: Path) -> None:
         source = "# original\n"

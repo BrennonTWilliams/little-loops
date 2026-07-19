@@ -551,10 +551,23 @@ states:
         echo "INVARIANT_FAIL: BELOW_FLOOR:$RATIO"
         exit 0
       fi
-      # Section-preservation check: every `## heading` in source must also be
-      # in the reassembled plan. Inline Python heredoc for reliable regex.
+      # Section-preservation check: every `## heading` in source must be
+      # accounted for somewhere in the full decomposition tree — either the
+      # reassembled root (`plan.md`) or a child node's `final.md` (whose
+      # content `decide_decompose` legitimately moved out from under a
+      # rewritten parent index heading; child h1 titles use `# `, per
+      # `materialize_children`'s `grep -m1 '^# '` convention). Inline Python
+      # heredoc for reliable regex (ENH-2690).
       SOURCE_HEADINGS=$(grep -E "^##[[:space:]]" "$SOURCE" | sed -E 's/^##[[:space:]]+//' | sort -u)
-      NEW_HEADINGS=$(grep -E "^##[[:space:]]" "$RUN_DIR/plan.md" | sed -E 's/^##[[:space:]]+//' | sort -u)
+      NEW_HEADINGS=$(
+        {
+          grep -E "^##[[:space:]]" "$RUN_DIR/plan.md" | sed -E 's/^##[[:space:]]+//'
+          for f in "$RUN_DIR"/nodes/*/final.md; do
+            [ -f "$f" ] || continue
+            grep -E "^#{1,2}[[:space:]]" "$f" | sed -E 's/^#{1,2}[[:space:]]+//'
+          done
+        } | sort -u
+      )
       MISSING=$(comm -23 <(printf "%s\n" "$SOURCE_HEADINGS") <(printf "%s\n" "$NEW_HEADINGS"))
       if [ -n "$MISSING" ]; then
         JOINED=$(echo "$MISSING" | tr '\n' ',' | sed 's/,$//')
