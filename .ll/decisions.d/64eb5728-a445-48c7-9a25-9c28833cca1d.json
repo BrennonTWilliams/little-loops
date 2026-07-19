@@ -1,0 +1,12 @@
+{
+  "id": "5959f251-240c-4fd8-8d8d-c87ee908e8ac",
+  "type": "decision",
+  "timestamp": "2026-07-19T02:48:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses established dispatch-table/Popen-detach/test scaffolding end-to-end without touching shared execution paths; Option B's fsm/runners.py insertion point is unconfirmed to exist and would touch every skill/loop invocation.",
+  "rule": "Option A: approximate SkillStart via PreToolUse Skill matcher",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: descope to max_tokens=0 only, drop the hook entirely",
+  "issue": "FEAT-2674"
+}
