@@ -2,7 +2,7 @@
 id: EPIC-2670
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-18T00:00:00Z'
 discovered_date: 2026-07-18
 discovered_by: capture-issue
@@ -18,6 +18,7 @@ labels:
 - runners
 - cli
 - scheduling
+completed_at: '2026-07-19T20:20:28Z'
 ---
 
 # EPIC-2670: Generic `ll-queue` — heterogeneous work-item queue on a shared runner abstraction
@@ -91,6 +92,13 @@ further until those are resolved (via `/ll:spike` or decisions.yaml).
   from `ll-harness`/`ll-action`/`ll-loop`.
 - **FEAT-2669** — Generic `ll-queue`: heterogeneous work-item queue with real
   add/run semantics (blocked on ENH-2668 + open questions).
+- **FEAT-2682** — `ll-queue` persistence + CRUD commands (`add`/`list`/
+  `status`/`remove`) backed by `.ll/queue.db`.
+- **FEAT-2683** — `ll-queue run` worker loop: serial dequeue-and-execute
+  dispatching through the ENH-2668 shared runner.
+- **FEAT-2684** — `ll-loop queue` compat shim: migrate FEAT-2616's
+  PID-liveness markers to the new persisted queue while preserving
+  `ll-loop queue list`/`remove` UX.
 
 ## Success Metrics
 
@@ -137,5 +145,9 @@ further until those are resolved (via `/ll:spike` or decisions.yaml).
 
 ## Status
 
-- **Current**: open
-- **Last Updated**: 2026-07-18
+- **Current**: done
+- **Last Updated**: 2026-07-19
+- **Closure**: All 5 children (ENH-2668, FEAT-2669, FEAT-2682, FEAT-2683,
+  FEAT-2684) completed 2026-07-18. Shared `RunnerType`/`ActionSpec` abstraction
+  extracted; `ll-queue` CRUD + worker loop shipped; `ll-loop queue` migrated
+  to a compat shim over the new persisted queue.
