@@ -697,11 +697,19 @@ states:
     # spike_attempted guard makes this a one-shot: a completed-or-attempted spike
     # never re-runs. On no match, fall through to check_missing_artifacts,
     # preserving the existing wire/size-review chain.
+    # ENH-2689: when a spike is about to run, snapshot the current (pre-spike)
+    # Readiness score to ${context.run_dir}/autodev-pre-spike-readiness.txt so the
+    # downstream check_reconcile_needed gate can detect a "spike ran but Readiness
+    # is bit-identical" plateau. Written only on the on_yes (spike) branch.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
-      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
+          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
+              fh.write(str(d.get('confidence_score') or ''))
+          sys.exit(0)
+      sys.exit(1)"
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_missing_artifacts
@@ -829,15 +837,83 @@ states:
     # one-shot guard prevents a double-fire across the triage and decide paths and
     # is what lets the post-spike re-entry (rerun_confidence_after_spike.next →
     # enqueue_or_skip → here) fall through cleanly to the skip write.
+    # ENH-2689: snapshot the pre-spike Readiness on the spike branch (same as
+    # check_spike_needed), and on no-match route to check_reconcile_needed rather
+    # than straight to recheck_after_size_review, so a "spike ran but Readiness is
+    # pinned" plateau gets one reconcile pass before the low_readiness deferral.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
-      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
+          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
+              fh.write(str(d.get('confidence_score') or ''))
+          sys.exit(0)
+      sys.exit(1)"
     fragment: shell_exit
     on_yes: run_spike
+    on_no: check_reconcile_needed
+    on_error: recheck_after_size_review
+
+  check_reconcile_needed:
+    # ENH-2689: plateau detector. Both the spike-triage path and the decide/
+    # size-review path funnel through check_spike_needed_before_skip →
+    # recheck_after_size_review before the low_readiness deferral. When a spike
+    # already ran (spike_attempted true, so check_spike_needed_before_skip fell
+    # through here) but the post-spike /ll:confidence-check produced a Readiness
+    # score bit-identical to the pre-spike snapshot, the findings accumulated but
+    # the issue's own directive sections were never reconciled — /ll:refine-issue
+    # only appends. Route to reconcile_current for one targeted rewrite pass.
+    # Predicate is a two-condition guard (pre-spike snapshot == current Readiness
+    # AND NOT reconcile_attempted), mirroring check_spike_needed's two-field
+    # inline-Python one-shot idiom. The reconcile_attempted guard (written by
+    # /ll:reconcile-issue) makes this fire at most once per issue per run. On no
+    # plateau, no snapshot, or any error, fall through unchanged to
+    # recheck_after_size_review — non-plateau issues behave exactly as before.
+    action: |
+      ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, os, sys
+      d = json.load(sys.stdin)
+      cur = str(d.get('confidence_score') or '')
+      attempted = d.get('reconcile_attempted') == 'true'
+      snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
+      pre = ''
+      if os.path.exists(snap):
+          with open(snap) as fh:
+              pre = fh.read().strip()
+      plateau = (pre != '' and pre == cur and not attempted)
+      sys.exit(0 if plateau else 1)"
+    fragment: shell_exit
+    on_yes: reconcile_current
     on_no: recheck_after_size_review
     on_error: recheck_after_size_review
+
+  reconcile_current:
+    # ENH-2689: targeted, in-place rewrite of the issue's Implementation Steps /
+    # Acceptance Criteria / Files to Modify sections from its own accumulated
+    # Codebase Research Findings / Wiring Phase, via the /ll:reconcile-issue skill
+    # (the state owns no rewrite logic — only the call and routing). The skill
+    # writes reconcile_attempted: true, arming the check_reconcile_needed one-shot
+    # guard. Rate-limit handling mirrors run_spike.
+    fragment: with_rate_limit_handling
+    action: "/ll:reconcile-issue ${captured.input.output}"
+    action_type: slash_command
+    next: rerun_confidence_after_reconcile
+    on_error: rerun_confidence_after_reconcile
+    on_rate_limit_exhausted: done
+
+  rerun_confidence_after_reconcile:
+    # ENH-2689: after reconcile_current rewrites the stale directive sections,
+    # re-run /ll:confidence-check once so a successful reconciliation gets one more
+    # chance to cross the readiness threshold, then fall through to
+    # recheck_after_size_review (the existing implement-or-defer gate). Mirrors
+    # rerun_confidence_after_spike's rate-limit shape.
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output}"
+    action_type: slash_command
+    next: recheck_after_size_review
+    on_error: recheck_after_size_review
+    on_rate_limit_exhausted: done
 
   recheck_after_size_review:
     # BUG-1230: size-review declined to decompose the issue (leaf-sized or

@@ -1,0 +1,12 @@
+{
+  "id": "a8043ad0-f832-4497-a6dd-bf92bd522339",
+  "type": "decision",
+  "timestamp": "2026-07-19T15:10:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses autodev.yaml's existing check_spike_needed/spike_attempted guard pattern and open_question_stall_gate consumer directly; Option B's targeted section-rewrite mechanism has no precedent and conflicts with in-repo warnings against non-additive rewrites near wiring passes.",
+  "rule": "Option A: reconcile_current state spliced into autodev.yaml",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: new --reconcile flag on /ll:refine-issue",
+  "issue": "ENH-2689"
+}

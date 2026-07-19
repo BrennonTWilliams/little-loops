@@ -228,6 +228,27 @@ class TestParseCardFields:
         assert fields["spike_attempted"] is None
         assert fields["spike_completed"] is None
 
+    def test_reconcile_attempted_surfaced_as_bool_string(self, tmp_path: Path) -> None:
+        """ENH-2689: reconcile_attempted surfaces as a lowercased boolean string
+        for autodev's check_reconcile_needed one-shot guard."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\nreconcile_attempted: true\n---\n# ENH-5101: T\n",
+            "P3-ENH-5101-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["reconcile_attempted"] == "true"
+
+    def test_reconcile_attempted_absent_is_none(self, tmp_path: Path) -> None:
+        """ENH-2689: absent reconcile_attempted surfaces as None (guard reads != 'true')."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\n---\n# ENH-5102: T\n",
+            "P3-ENH-5102-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["reconcile_attempted"] is None
+
     def test_learning_tests_as_list(self, tmp_path: Path) -> None:
         """learning_tests_required as a list produces comma-joined string."""
         path, config = self._write_issue(

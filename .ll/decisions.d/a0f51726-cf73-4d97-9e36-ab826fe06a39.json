@@ -1,0 +1,13 @@
+{
+  "id": "1dbf0c23-edc9-4173-9f1a-7c87ab44b0e5",
+  "type": "decision",
+  "timestamp": "2026-07-19T15:22:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "The A/B framing conflated two separable layers: WHERE plateau is detected+routed (orchestration, loop-owned, reuses score_stall_gate + spike_attempted guard \u2014 Option A correct here) and WHAT performs the targeted rewrite (a cross-cutting capability: autodev/rn-remediate/refine-to-ready all independently avoid the same non-additive rewrite of Implementation Steps/AC/Files-to-Modify). An inline autodev state (A) makes the capability non-reusable and non-user-invocable; a refine-issue flag (B) drags in the wrong additive-research contract and a 7-site blast radius. A skill is the composable, user-invocable home (per CLAUDE.md 'Prefer Skills over Agents'). ready-issue overlap check: adjacent but wrong home (issue\u2194codebase truth source vs issue\u2194itself; would never fire on the plateau; must not run on every issue) \u2014 but its CORRECTIONS_MADE ledger + verdict + append-log output contract is the precedent the new skill mirrors for auditability.",
+  "rule": "Option C: split \u2014 autodev.yaml keeps plateau detection (Option A's orchestration half); the targeted reconcile rewrite becomes a new /ll:reconcile-issue skill called from the reconcile_current state and independently user-invocable.",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (reconcile logic inlined in autodev state \u2014 not reusable across loops, not user-invocable); Option B (--reconcile flag on /ll:refine-issue \u2014 wrong contract, 7+ call sites with 'bulldoze' warnings); reconcile as a mode of /ll:ready-issue (rejected: reconciles issue\u2194codebase not issue\u2194itself, invisible to its triggers, runs on every issue).",
+  "issue": "ENH-2689",
+  "supersedes": "a8043ad0-f832-4497-a6dd-bf92bd522339"
+}

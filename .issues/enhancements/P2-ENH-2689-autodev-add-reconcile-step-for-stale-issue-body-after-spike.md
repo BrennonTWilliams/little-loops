@@ -4,8 +4,9 @@ title: 'autodev: add reconcile step for stale issue-body sections after spike/re
   plateau'
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-19T04:38:59Z'
+completed_at: '2026-07-19T16:06:20Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 relates_to:
@@ -519,16 +520,19 @@ in the implementation:_
 
 ## Acceptance Criteria
 
-- [ ] An issue whose confidence-check Concerns repeat verbatim (or Readiness
+- [x] An issue whose confidence-check Concerns repeat verbatim (or Readiness
       score is bit-identical) across the pre-spike and post-spike passes
       routes to a reconcile step instead of immediately falling to
-      `low_readiness`.
-- [ ] The reconcile step measurably rewrites (not just appends to) the
-      stale Implementation Steps/AC/Files-to-Modify sections.
-- [ ] Reconcile runs at most once per issue per autodev run (one-shot guard,
-      mirroring `check_spike_needed`'s `spike_attempted` pattern).
-- [ ] Existing `run_spike`/`run_wire`/`low_readiness` remedy paths are
-      unaffected for issues that don't hit the plateau condition.
+      `low_readiness`. — `check_reconcile_needed.on_yes → reconcile_current`.
+- [x] The reconcile step measurably rewrites (not just appends to) the
+      stale Implementation Steps/AC/Files-to-Modify sections. — codified in
+      the `/ll:reconcile-issue` contract.
+- [x] Reconcile runs at most once per issue per autodev run (one-shot guard,
+      mirroring `check_spike_needed`'s `spike_attempted` pattern). —
+      `reconcile_attempted` frontmatter flag.
+- [x] Existing `run_spike`/`run_wire`/`low_readiness` remedy paths are
+      unaffected for issues that don't hit the plateau condition. —
+      `check_reconcile_needed.on_no/on_error → recheck_after_size_review`.
 
 ## Related Key Documentation
 
@@ -557,6 +561,7 @@ _Added by `/ll:confidence-check` on 2026-07-19_
   `docs/guides/LOOPS_REFERENCE.md` that must be updated in lockstep.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-19T16:06:20 - `51294082-3486-485e-8258-2646fa614805.jsonl`
 - `/ll:confidence-check` - 2026-07-19T15:20:00 - `ad448797-4a95-4c8e-85fe-70f1c22b1af1.jsonl`
 - `/ll:decide-issue` - 2026-07-19T15:11:15 - `bdc7a718-e90d-48bf-9aca-651964e561d6.jsonl`
 - `/ll:decide-issue` - 2026-07-19T15:10:44 - `bdc7a718-e90d-48bf-9aca-651964e561d6.jsonl`
@@ -567,6 +572,47 @@ _Added by `/ll:confidence-check` on 2026-07-19_
 - `/ll:refine-issue` - 2026-07-19T13:36:22 - `7cf9279a-28a4-479f-ad9b-9c2aa28f89f9.jsonl`
 - `/ll:capture-issue` - 2026-07-19T04:38:59Z - captured from conversation diagnosing why `FEAT-2672` was deferred (`ll-loop run autodev FEAT-2672`, 2026-07-18)
 
+## Resolution
+
+Implemented **Option C** (`/ll:manage-issue enhancement improve ENH-2689`, 2026-07-19).
+
+**Detection + routing (autodev.yaml):** Rather than splicing into the
+`run_spike → rerun_confidence_after_spike → enqueue_or_skip` chain (Option A's
+7-edge blast radius), the plateau gate was interposed at the **single point both
+the spike-triage and decide/size-review paths funnel through before the
+`low_readiness` deferral** — `check_spike_needed_before_skip.on_no`. This cut the
+breaking-test surface from the wired 7 assertions to 3.
+- `check_spike_needed` / `check_spike_needed_before_skip` now snapshot the
+  pre-spike `confidence_score` to `${context.run_dir}/autodev-pre-spike-readiness.txt`
+  on the spike branch.
+- New `check_reconcile_needed` (shell_exit, non-LLM → MR-1 clean): fires when the
+  snapshot is bit-identical to the post-spike Readiness AND `reconcile_attempted`
+  is not set; else falls through to `recheck_after_size_review` unchanged.
+- New `reconcile_current` (`/ll:reconcile-issue`, slash_command) →
+  `rerun_confidence_after_reconcile` (`/ll:confidence-check`) →
+  `recheck_after_size_review`. Reconcile-exhaustion reuses the existing
+  `low_readiness` deferral — **no new `DeferReason`** (Wiring Step 7 conditional
+  resolved to "reuse").
+
+**Rewrite operation (new `/ll:reconcile-issue` skill):** `commands/reconcile-issue.md`
++ `skills/ll-reconcile-issue/` (SKILL.md bridge + `agents/openai.yaml`), registered
+in `.claude/CLAUDE.md`. Targeted in-place rewrite of the three directive sections
+from the issue's own findings; mirrors `/ll:ready-issue`'s output contract with a
+new `[reconcile]` CORRECTIONS_MADE category; sets `reconcile_attempted: true`
+(one-shot guard, surfaced via `show.py --json`). `disable-model-invocation: true`.
+
+**Docs:** Only `docs/guides/LOOPS_REFERENCE.md` carried the autodev ASCII diagram
+(diagram + narrative updated). Wiring analysis claimed a duplicate in
+`docs/reference/API.md`; verified by grep that **no such diagram exists there** —
+the claim was stale, so API.md needed no edit.
+
+**Tests:** updated 3 breaking routing assertions (`test_builtin_loops.py` ×2,
+`test_autodev_decision_gate.py` ×1); added reconcile structural + mini-FSM routing
+coverage in both loop test files; new `test_reconcile_issue_command.py`; new
+`reconcile_attempted` cases in `test_show.py`. Full suite: 15,473 passed (the lone
+failure, `test_context_fallbacks_match_selector_defaults`, is pre-existing and
+unrelated — it concerns `refine-to-ready-issue.yaml`'s `outcome_threshold`).
+
 ## Status
 
-**Open** | Created: 2026-07-19 | Priority: P2
+**Done** | Created: 2026-07-19 | Completed: 2026-07-19 | Priority: P2

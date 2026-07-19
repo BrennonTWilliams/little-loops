@@ -462,12 +462,154 @@ class TestDecidePathSpikeGate:
     def test_gate_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["check_spike_needed_before_skip"]
         assert state.get("on_yes") == "run_spike", "spike match must reach run_spike (AC 1)"
-        # No-match must preserve the leaf-skip regression (AC 3): fall through to
-        # the existing low_readiness write, NOT the triage-path check_missing_artifacts.
-        assert state.get("on_no") == "recheck_after_size_review", (
-            "no-match must fall through to the existing low_readiness skip (AC 3)"
+        # No-match must preserve the leaf-skip regression (AC 3). ENH-2689 routes
+        # the on_no edge through check_reconcile_needed (a pass-through for
+        # non-plateau issues) before the low_readiness write; on_error still skips
+        # straight to recheck_after_size_review.
+        assert state.get("on_no") == "check_reconcile_needed", (
+            "ENH-2689: no-match routes through check_reconcile_needed before the "
+            "low_readiness skip (AC 3 preserved via its recheck_after_size_review fall-through)"
         )
         assert state.get("on_error") == "recheck_after_size_review"
+
+
+class TestReconcilePlateauStructural:
+    """ENH-2689: structural assertions on the post-spike reconcile plateau triad
+    (check_reconcile_needed / reconcile_current / rerun_confidence_after_reconcile).
+
+    Mirrors TestDecidePathSpikeGate for the sibling gate that catches a
+    "spike ran but Readiness is bit-identical" plateau and routes one
+    /ll:reconcile-issue pass before the low_readiness deferral.
+    """
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_reconcile_states_exist(self, data: dict[str, Any]) -> None:
+        states = data.get("states", {})
+        for name in (
+            "check_reconcile_needed",
+            "reconcile_current",
+            "rerun_confidence_after_reconcile",
+        ):
+            assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
+
+    def test_spike_gate_routes_to_reconcile_gate(self, data: dict[str, Any]) -> None:
+        """check_spike_needed_before_skip.on_no now interposes the reconcile gate."""
+        state = data["states"]["check_spike_needed_before_skip"]
+        assert state.get("on_no") == "check_reconcile_needed"
+
+    def test_reconcile_predicate_reads_snapshot_and_guard(self, data: dict[str, Any]) -> None:
+        """Predicate: pre-spike snapshot == current Readiness AND NOT reconcile_attempted."""
+        state = data["states"]["check_reconcile_needed"]
+        action = state.get("action", "")
+        assert state.get("fragment") == "shell_exit"
+        assert "autodev-pre-spike-readiness.txt" in action
+        assert "confidence_score" in action
+        assert "reconcile_attempted" in action, (
+            "reconcile gate must read reconcile_attempted for the one-shot guard (AC 3)"
+        )
+
+    def test_reconcile_gate_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["check_reconcile_needed"]
+        assert state.get("on_yes") == "reconcile_current", "plateau must reach reconcile (AC 1)"
+        # Non-plateau / error must preserve the leaf-skip (AC 4).
+        assert state.get("on_no") == "recheck_after_size_review"
+        assert state.get("on_error") == "recheck_after_size_review"
+
+    def test_reconcile_current_invokes_skill(self, data: dict[str, Any]) -> None:
+        state = data["states"]["reconcile_current"]
+        assert "/ll:reconcile-issue" in state.get("action", "")
+        assert state.get("action_type") == "slash_command"
+        assert state.get("next") == "rerun_confidence_after_reconcile"
+        assert state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_reconcile_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["rerun_confidence_after_reconcile"]
+        assert "/ll:confidence-check" in state.get("action", "")
+        assert state.get("next") == "recheck_after_size_review"
+        assert state.get("on_error") == "recheck_after_size_review"
+
+
+class TestReconcilePlateauRouting:
+    """ENH-2689: FSMExecutor-driven assertions on the reconcile gate routing.
+
+    Mirrors TestCheckDecisionAtDequeueRouting's mini-FSM shape: the gate must
+    fire reconcile_current on a plateau (exit 0) and fall through to
+    recheck_after_size_review when there is no plateau (exit 1) or on error.
+    """
+
+    @pytest.fixture
+    def reconcile_chain_fsm(self) -> Any:
+        return _loop(
+            name="autodev-reconcile-gate-mini",
+            initial="check_spike_needed_before_skip",
+            states={
+                "check_spike_needed_before_skip": _state(
+                    action="false",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="run_spike",
+                    on_no="check_reconcile_needed",
+                    on_error="recheck_after_size_review",
+                ),
+                "check_reconcile_needed": _state(
+                    action="reconcile-predicate",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="reconcile_current",
+                    on_no="recheck_after_size_review",
+                    on_error="recheck_after_size_review",
+                ),
+                "run_spike": _state(action="true", action_type="shell", next="done"),
+                "reconcile_current": _state(action="true", action_type="shell", next="done"),
+                "recheck_after_size_review": _state(
+                    action="true", action_type="shell", next="done"
+                ),
+                "done": _state(terminal=True),
+            },
+        )
+
+    def test_plateau_routes_to_reconcile(self, reconcile_chain_fsm: Any) -> None:
+        """Snapshot == current AND not attempted (exit 0) → reconcile_current fires
+        before any low_readiness deferral."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("reconcile-predicate", {"exit_code": 0}),
+            ]
+        )
+        _result, visited = _run_decision_chain(reconcile_chain_fsm, runner)
+        assert "reconcile_current" in visited, f"visited={visited!r}"
+        assert "recheck_after_size_review" not in visited, (
+            f"reconcile must precede (and here replace) the skip; visited={visited!r}"
+        )
+
+    def test_no_plateau_falls_through_to_recheck(self, reconcile_chain_fsm: Any) -> None:
+        """No plateau (exit 1) → recheck_after_size_review, reconcile skipped (AC 4)."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("reconcile-predicate", {"exit_code": 1}),
+            ]
+        )
+        _result, visited = _run_decision_chain(reconcile_chain_fsm, runner)
+        assert "recheck_after_size_review" in visited, f"visited={visited!r}"
+        assert "reconcile_current" not in visited, f"visited={visited!r}"
+
+    def test_predicate_error_falls_through_to_recheck(self, reconcile_chain_fsm: Any) -> None:
+        """Predicate error (exit 2) fail-opens to recheck_after_size_review."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("reconcile-predicate", {"exit_code": 2, "stderr": "boom"}),
+            ]
+        )
+        _result, visited = _run_decision_chain(reconcile_chain_fsm, runner)
+        assert "recheck_after_size_review" in visited, f"visited={visited!r}"
+        assert "reconcile_current" not in visited, f"visited={visited!r}"
 
 
 class TestCheckDecisionBeforeSizeReviewRouting:

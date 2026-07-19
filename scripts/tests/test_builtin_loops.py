@@ -4015,9 +4015,15 @@ class TestAutodevLoop:
             f"got {state.get('on_no')!r}"
         )
         gate = data["states"].get("check_spike_needed_before_skip", {})
-        assert gate.get("on_no") == "recheck_after_size_review", (
-            "the spike gate must preserve the BUG-1230 leaf-skip by falling through "
-            "to recheck_after_size_review on no match"
+        assert gate.get("on_no") == "check_reconcile_needed", (
+            "ENH-2689: the spike gate's no-match edge now routes through "
+            "check_reconcile_needed (which itself falls through to "
+            "recheck_after_size_review) before the BUG-1230 leaf-skip"
+        )
+        reconcile_gate = data["states"].get("check_reconcile_needed", {})
+        assert reconcile_gate.get("on_no") == "recheck_after_size_review", (
+            "check_reconcile_needed must preserve the BUG-1230 leaf-skip by "
+            "falling through to recheck_after_size_review on no plateau"
         )
 
     def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
@@ -4271,17 +4277,86 @@ class TestAutodevLoop:
 
     def test_decide_path_spike_gate_falls_through_to_low_readiness_skip(self, data: dict) -> None:
         """BUG-2654: on no match, the decide-path gate must preserve the existing
-        low_readiness leaf-skip by falling through to recheck_after_size_review —
-        NOT the triage-path check_missing_artifacts fall-through (AC 3)."""
+        low_readiness leaf-skip — NOT the triage-path check_missing_artifacts
+        fall-through (AC 3). ENH-2689 interposes check_reconcile_needed on the
+        on_no edge (a pass-through for non-plateau issues), while on_error still
+        skips straight to recheck_after_size_review."""
         state = data["states"].get("check_spike_needed_before_skip", {})
-        assert state.get("on_no") == "recheck_after_size_review", (
-            f"check_spike_needed_before_skip.on_no should be 'recheck_after_size_review', "
-            f"got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_reconcile_needed", (
+            f"check_spike_needed_before_skip.on_no should be 'check_reconcile_needed' "
+            f"(ENH-2689), got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "recheck_after_size_review", (
             f"check_spike_needed_before_skip.on_error should be 'recheck_after_size_review', "
             f"got {state.get('on_error')!r}"
         )
+
+    # ENH-2689: post-spike reconcile plateau states — check_reconcile_needed
+    # detects a bit-identical pre/post-spike Readiness plateau and routes one
+    # /ll:reconcile-issue pass before the low_readiness deferral.
+
+    def test_reconcile_states_exist(self, data: dict) -> None:
+        """The three ENH-2689 reconcile states must be present."""
+        states = data.get("states", {})
+        for name in (
+            "check_reconcile_needed",
+            "reconcile_current",
+            "rerun_confidence_after_reconcile",
+        ):
+            assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
+
+    def test_spike_gates_snapshot_pre_spike_readiness(self, data: dict) -> None:
+        """Both spike guards must snapshot the pre-spike Readiness score to the
+        run_dir file that check_reconcile_needed reads (ENH-2689)."""
+        for gate in ("check_spike_needed", "check_spike_needed_before_skip"):
+            action = data["states"].get(gate, {}).get("action", "")
+            assert "autodev-pre-spike-readiness.txt" in action, (
+                f"{gate} must snapshot pre-spike Readiness for the reconcile plateau check"
+            )
+            assert "confidence_score" in action, (
+                f"{gate} must write confidence_score into the pre-spike snapshot"
+            )
+
+    def test_check_reconcile_needed_predicate_reads_snapshot_and_guard(self, data: dict) -> None:
+        """Predicate is a two-condition one-shot: pre-spike snapshot == current
+        Readiness AND NOT reconcile_attempted."""
+        state = data["states"].get("check_reconcile_needed", {})
+        action = state.get("action", "")
+        assert state.get("fragment") == "shell_exit"
+        assert "autodev-pre-spike-readiness.txt" in action, (
+            "check_reconcile_needed must read the pre-spike snapshot"
+        )
+        assert "confidence_score" in action, "must compare against current confidence_score"
+        assert "reconcile_attempted" in action, (
+            "check_reconcile_needed must read reconcile_attempted for the one-shot guard"
+        )
+
+    def test_check_reconcile_needed_routing(self, data: dict) -> None:
+        """on_yes → reconcile_current; on_no/on_error → recheck_after_size_review
+        (non-plateau issues fall through unchanged, AC 4)."""
+        state = data["states"].get("check_reconcile_needed", {})
+        assert state.get("on_yes") == "reconcile_current"
+        assert state.get("on_no") == "recheck_after_size_review"
+        assert state.get("on_error") == "recheck_after_size_review"
+
+    def test_reconcile_current_invokes_reconcile_skill(self, data: dict) -> None:
+        """reconcile_current calls /ll:reconcile-issue and routes to the rerun."""
+        state = data["states"].get("reconcile_current", {})
+        assert "/ll:reconcile-issue" in state.get("action", "")
+        assert state.get("action_type") == "slash_command"
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "rerun_confidence_after_reconcile"
+        assert state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert state.get("on_rate_limit_exhausted") == "done"
+
+    def test_rerun_confidence_after_reconcile_routing(self, data: dict) -> None:
+        """After reconcile, re-score once, then fall to recheck_after_size_review."""
+        state = data["states"].get("rerun_confidence_after_reconcile", {})
+        assert "/ll:confidence-check" in state.get("action", "")
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "recheck_after_size_review"
+        assert state.get("on_error") == "recheck_after_size_review"
+        assert state.get("on_rate_limit_exhausted") == "done"
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
         """triage_outcome_failure.on_error must fall back safely to detect_children."""

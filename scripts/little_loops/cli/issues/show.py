@@ -192,6 +192,10 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     spike_needed_raw = frontmatter.get("spike_needed")
     spike_attempted_raw = frontmatter.get("spike_attempted")
     spike_completed_raw = frontmatter.get("spike_completed")
+    # ENH-2689: reconcile one-shot guard read by autodev's check_reconcile_needed.
+    # Written by /ll:reconcile-issue. Surfaced as a lowercased boolean string,
+    # mirroring spike_attempted.
+    reconcile_attempted_raw = frontmatter.get("reconcile_attempted")
     implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
     learning_tests_raw = frontmatter.get("learning_tests_required")
 
@@ -379,6 +383,10 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         else None,
         "spike_completed": str(spike_completed_raw).lower()
         if spike_completed_raw is not None
+        else None,
+        # ENH-2689: reconcile one-shot guard for autodev check_reconcile_needed.
+        "reconcile_attempted": str(reconcile_attempted_raw).lower()
+        if reconcile_attempted_raw is not None
         else None,
         "learning_tests_required": ", ".join(str(t) for t in learning_tests_raw)
         if learning_tests_raw

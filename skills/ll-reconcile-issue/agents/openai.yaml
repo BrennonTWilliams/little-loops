@@ -1,0 +1,3 @@
+interface:
+  display_name: "Reconcile Issue"
+  short_description: "Reconcile an issue's directive sections against its own research findings"
