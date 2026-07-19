@@ -4,8 +4,9 @@ title: recheck_set should retry an abandoned autodev-queue residual, not just ne
   descendants
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-19T00:06:49Z'
+completed_at: '2026-07-19T00:26:55Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 decision_needed: false
@@ -133,6 +134,48 @@ already mitigated (`finalize` independently reconstructs ground truth; the
 5-cycle cap already bounds oscillation), but this narrower abandoned-residual
 retry gap remained genuinely open.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-19
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (`recheck_set`):
+  after computing `NEW` (newly-detected descendants), also read
+  `$RUN_DIR/autodev-queue.txt` for any non-blank residual IDs left by an
+  abandoned mid-drain `autodev` sub-loop (ENH-2657's detection signal), union
+  them into `COMBINED`, and re-dispatch that combined batch. Only IDs not
+  already present in `dispatched.txt` are appended to it (via `comm -23`), so
+  residual IDs — already seeded there from the initial batch — are not
+  double-appended, preserving `comm -23` dedup in later cycles and
+  `finalize`'s `PARKED_RATE` denominator.
+- `scripts/tests/test_builtin_loops.py`: added
+  `test_recheck_set_folds_back_abandoned_residual` (residual ID is
+  re-dispatched, not double-appended to `dispatched.txt`) and
+  `test_recheck_set_no_residual_no_new_exits` (a clean drain still exits 1 →
+  `verify`, unaffected by this change).
+
+No change was needed in `finalize`'s `ABANDONED` bookkeeping: `autodev-queue.txt`
+is re-seeded fresh by `autodev`'s `init` state on every `delegate` re-entry, and
+`dequeue_next` pops an ID off the queue file the moment it starts processing —
+so a residual ID that resolves (closes or parks) in a later re-dispatch cycle
+is already absent from the queue file by the time `finalize` reads it, with no
+extra subtraction required.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 15422 passed, 38 skipped;
+  1 pre-existing unrelated failure in
+  `TestRefineToReadyIssueSubLoop::test_context_fallbacks_match_selector_defaults`,
+  confirmed present on `main` before this change via `git stash`)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Loop validation: PASS (`ll-loop validate auto-refine-and-implement`)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-19T00:26:21Z - `247eb738-9347-42db-8dda-e921e7abb69e.jsonl`
+- `/ll:ready-issue` - 2026-07-19T00:16:32 - `123f26d8-1adb-4b93-a855-7cc24d596b38.jsonl`
 - `/ll:capture-issue` - 2026-07-19T00:06:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/131d616b-8bc8-4181-ba3e-85addbd0ab47.jsonl`
 - `/ll:confidence-check` - 2026-07-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07318bbe-02cd-47aa-b2ec-75cb18452d3e.jsonl`

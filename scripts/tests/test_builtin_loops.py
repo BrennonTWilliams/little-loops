@@ -2113,6 +2113,67 @@ class TestAutoRefineAndImplementLoop:
         )
         assert "recheck-count" in action, "recheck_set must cap re-dispatch cycles"
 
+    def test_recheck_set_folds_back_abandoned_residual(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2686: recheck_set must fold ${run_dir}/autodev-queue.txt residual
+        IDs (abandoned mid-drain, ENH-2657's detection signal) into the
+        re-dispatch batch — not just newly-detected descendants. Residual IDs
+        are already present in dispatched.txt from the initial seed, so the
+        comm -23 diff against dispatched.txt alone excludes them forever
+        without this explicit union."""
+        action = data["states"]["recheck_set"].get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        # dispatched.txt already contains both IDs from the initial seed.
+        (run_dir / "auto-refine-and-implement-dispatched.txt").write_text("ENH-1\nENH-2\n")
+        # ENH-1 was abandoned mid-drain (still sitting in the residual queue).
+        (run_dir / "autodev-queue.txt").write_text("ENH-1\n")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_python3 = bin_dir / "python3"
+        # Stub SprintManager resolution to return the same descendant set as
+        # before (no NEW descendants) — isolates the residual-fold behavior.
+        mock_python3.write_text("#!/bin/bash\necho 'ENH-1,ENH-2'\n")
+        mock_python3.chmod(0o755)
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.scope}", "EPIC-9")
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert result.returncode == 0, (
+            f"recheck_set must exit 0 to re-dispatch the abandoned residual: {result.stderr}"
+        )
+        assert "ENH-1" in result.stdout, (
+            f"abandoned residual ENH-1 must be re-dispatched: {result.stdout!r}"
+        )
+        dispatched = (run_dir / "auto-refine-and-implement-dispatched.txt").read_text()
+        assert dispatched.count("ENH-1") == 1, (
+            "residual ID already in dispatched.txt must not be appended a "
+            f"second time (breaks later comm -23 dedup): {dispatched!r}"
+        )
+
+    def test_recheck_set_no_residual_no_new_exits(self, data: dict, tmp_path: Path) -> None:
+        """A clean drain (no residual, no new descendants) must still exit 1
+        (routes to verify) — ENH-2686 must not turn every recheck into a
+        re-dispatch when there is genuinely nothing left to do."""
+        action = data["states"]["recheck_set"].get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "auto-refine-and-implement-dispatched.txt").write_text("ENH-1\nENH-2\n")
+        # No autodev-queue.txt at all — mirrors a fully-drained autodev run.
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        mock_python3 = bin_dir / "python3"
+        mock_python3.write_text("#!/bin/bash\necho 'ENH-1,ENH-2'\n")
+        mock_python3.chmod(0o755)
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.scope}", "EPIC-9")
+        script = f"export PATH={bin_dir}:$PATH\n" + script
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert result.returncode == 1, (
+            f"recheck_set must exit 1 when there is nothing new or residual: {result.stdout!r}"
+        )
+
     def test_resolve_set_seeds_dispatched_ledger(self, data: dict) -> None:
         """ENH-2615: resolve_set must record the initially-dispatched IDs so
         recheck_set can diff later resolutions against what already ran."""

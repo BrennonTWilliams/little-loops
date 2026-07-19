@@ -320,17 +320,27 @@ states:
       sort -u "$RUN_DIR/auto-refine-and-implement-dispatched.txt" 2>/dev/null \
         > "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt" || true
       NEW=$(printf '%s\n' "$LIST" | tr ',' '\n' | grep -v '^[[:space:]]*$' | sort -u \
-        | comm -23 - "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt" \
-        | paste -sd ',' -)
-      NEW=$(printf '%s' "$NEW" | tr -d '[:space:]')
-      if [ -z "$NEW" ]; then
+        | comm -23 - "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt")
+      # ENH-2686: fold back any abandoned mid-drain residual — issues autodev
+      # left in $RUN_DIR/autodev-queue.txt when it hit timeout/max_steps
+      # (the same file finalize's ABANDONED count reads, ENH-2657). These IDs
+      # are already present in dispatched.txt from the initial seed, so NEW's
+      # comm -23 against dispatched.txt permanently excludes them without
+      # this explicit union — they'd never get another delegate pass.
+      RESIDUAL=$(grep '[^[:space:]]' "$RUN_DIR/autodev-queue.txt" 2>/dev/null | sort -u || true)
+      COMBINED=$(printf '%s\n%s\n' "$NEW" "$RESIDUAL" | grep -v '^[[:space:]]*$' | sort -u)
+      if [ -z "$COMBINED" ]; then
         exit 1
       fi
       echo $((N + 1)) > "$RUN_DIR/auto-refine-and-implement-recheck-count.txt"
-      printf '%s\n' "$NEW" | tr ',' '\n' | grep -v '^[[:space:]]*$' \
+      # Only append IDs not already in dispatched.txt — residual IDs were
+      # already seeded there (initial seed or a prior recheck cycle), so
+      # re-appending them would break comm -23's dedup for later cycles.
+      comm -23 <(printf '%s\n' "$COMBINED") "$RUN_DIR/auto-refine-and-implement-dispatched-sorted.txt" \
         >> "$RUN_DIR/auto-refine-and-implement-dispatched.txt"
-      echo "recheck_set: re-dispatching new descendants: $NEW" >&2
-      printf '%s\n' "$NEW"
+      COMBINED_CSV=$(printf '%s\n' "$COMBINED" | paste -sd ',' -)
+      echo "recheck_set: re-dispatching: $COMBINED_CSV" >&2
+      printf '%s\n' "$COMBINED_CSV"
     fragment: shell_exit
     capture: issue_set
     on_yes: delegate
