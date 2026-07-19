@@ -1,0 +1,12 @@
+{
+  "id": "d3fe3a48-228f-40b6-a856-111ebbe884ed",
+  "type": "decision",
+  "timestamp": "2026-07-18T20:59:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Strongest direct codebase precedent for each (IssuePriorityQueue ordering, shipped ll-loop queue compat surface, scratch-pad convention for large output) plus project preference to keep v1 minimal per Scope Boundaries",
+  "rule": "Serial v1 execution, compat shim for ll-loop run --queue, numeric priority reusing IssuePriorityQueue, hybrid inline/scratch result storage",
+  "scope": "issue",
+  "alternatives_rejected": "Bounded ThreadPoolExecutor concurrency (WorkerPool pattern); breaking change to ll-loop run --queue; simple FIFO priority; flat inline result storage",
+  "issue": "FEAT-2669"
+}

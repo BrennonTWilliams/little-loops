@@ -622,6 +622,18 @@
       },
       "additionalProperties": false
     },
+    "cache": {
+      "type": "object",
+      "description": "Cache-marking oracle configuration (FEAT-2673, EPIC-2456 F1). Only consulted when orchestration.request_path == 'sdk'; the CLI shell path never carries a cache_control parameter regardless of this config.",
+      "properties": {
+        "require_repeat": {
+          "type": "boolean",
+          "description": "When true (default), the oracle marks a block cache_control:ephemeral only once its FEAT-2671 fragment key has already been observed as a repeat, avoiding an unamortized 1.25x write premium on first sight.",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
     "scan": {
       "type": "object",
       "description": "Codebase scanning settings",
@@ -1534,6 +1546,12 @@
           "type": "string",
           "enum": ["claude-code", "codex", "opencode", "pi"],
           "description": "Override the host CLI used by orchestration scripts. Mirrors the LL_HOST_CLI environment variable; env var takes precedence if both are set."
+        },
+        "request_path": {
+          "type": "string",
+          "enum": ["cli", "sdk"],
+          "default": "cli",
+          "description": "FEAT-2673 (EPIC-2456 F1): 'cli' (default) uses the existing CLI shell-subprocess path, unchanged. 'sdk' opts into the Anthropic SDK request path (build_anthropic_request()), the only path that can carry a cache_control parameter and unlock the 0.1x-read / 1.25x-write prompt-caching discount."
         },
         "composer": {
           "type": "object",

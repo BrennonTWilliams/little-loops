@@ -23,6 +23,7 @@ from little_loops.config.cli import CliConfig, RefineStatusConfig
 from little_loops.config.features import (
     AnalyticsCaptureConfig,
     ArtifactsConfig,
+    CacheConfig,
     CodeQueryConfig,
     CompressionConfig,
     DecisionsConfig,
@@ -225,6 +226,7 @@ class BRConfig:
         )
         self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))
         self._compression = CompressionConfig.from_dict(self._raw_config.get("compression", {}))
+        self._cache = CacheConfig.from_dict(self._raw_config.get("cache", {}))
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
@@ -305,6 +307,11 @@ class BRConfig:
     def compression(self) -> CompressionConfig:
         """Get heuristic prompt-compression configuration (FEAT-2675)."""
         return self._compression
+
+    @property
+    def cache(self) -> CacheConfig:
+        """Get cache-marking oracle configuration (FEAT-2673)."""
+        return self._cache
 
     @property
     def sync(self) -> SyncConfig:
@@ -692,6 +699,9 @@ class BRConfig:
                 "trigger_tokens": self._compression.trigger_tokens,
                 "max_tool_result_age_turns": self._compression.max_tool_result_age_turns,
                 "max_assistant_tail_turns": self._compression.max_assistant_tail_turns,
+            },
+            "cache": {
+                "require_repeat": self._cache.require_repeat,
             },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,

@@ -559,6 +559,29 @@ class CompressionConfig:
 
 
 @dataclass
+class CacheConfig:
+    """Cache-marking oracle configuration (FEAT-2673, EPIC-2456 F1).
+
+    Governs :func:`~little_loops.cache_marking_oracle.decide_cache_marking`,
+    consulted only when ``orchestration.request_path == "sdk"`` — the CLI
+    shell path never sees a ``cache_control`` parameter regardless of this
+    config. ``require_repeat`` mirrors the oracle's own conservative default:
+    a block is marked only once its FEAT-2671 fragment key has already been
+    observed as a repeat. The reuse-*frequency* threshold (EPIC-2456 OQ #5)
+    is intentionally not configurable yet — it needs empirical derivation
+    from ``history.db`` reuse distributions before a non-default is safe to
+    expose.
+    """
+
+    require_repeat: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CacheConfig:
+        """Create CacheConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(require_repeat=data.get("require_repeat", True))
+
+
+@dataclass
 class AnalyticsCaptureConfig:
     """Configuration for analytics capture gating (ENH-1840).
 

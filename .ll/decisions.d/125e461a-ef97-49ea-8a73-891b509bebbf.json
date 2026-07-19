@@ -1,0 +1,12 @@
+{
+  "id": "d8a46fea-4ca2-41ae-9c28-8fe9dc857c66",
+  "type": "decision",
+  "timestamp": "2026-07-18T19:53:29Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only option with existing reusable enumeration precedent (_load_skills, _load_skill_catalog, parse_skill_frontmatter) and a live test pattern to extend; scored 10/12 vs Option A 0/12 (no read channel into Claude Code's internal tool defs) and Option B 6/12 (tools/list absent from mcp_call.py, .mcp.json has zero configured servers).",
+  "rule": "Option C \u2014 derive Anthropic tools[] catalog from little-loops' own skills/*/SKILL.md, commands/*.md, agents/*.md frontmatter",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: Claude Code internal tool/skill definitions (no read-access boundary exists); Option B: MCP tools/list surface (must be built from scratch, nothing to enumerate today)",
+  "issue": "FEAT-2679"
+}

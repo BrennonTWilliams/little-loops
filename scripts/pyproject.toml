@@ -40,6 +40,12 @@ dependencies = [
     "wcwidth>=0.2",
     "questionary>=2.0",
     "rich>=13.0",
+    # Bounded pin (FEAT-2673 OQ #1): this is the EPIC's only network-side SDK
+    # dependency and the sole proof of cache_control behavior has untested
+    # live-API assertions (.ll/learning-tests/anthropic.md) — an upper bound
+    # turns an unverified upstream shape change into a loud install failure
+    # instead of a silent oracle break.
+    "anthropic>=0.104,<1.0",
 ]
 
 [project.urls]

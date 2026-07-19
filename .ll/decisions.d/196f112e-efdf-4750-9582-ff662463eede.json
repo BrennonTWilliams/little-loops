@@ -1,0 +1,12 @@
+{
+  "id": "8ee484e9-eb1f-4121-a948-4c6d22970430",
+  "type": "decision",
+  "timestamp": "2026-07-18T23:46:06Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Sole network SDK dependency in the EPIC and first non-CLI request path in host_runner.py; only proven behavior (cache_control acceptance) has untested live-API assertions. A bounded pin converts an unverifiable upstream shape change into a loud install-time CI failure (per OQ #1's mandated install-verification test) rather than a silent runtime break in the cache-marking oracle.",
+  "rule": "anthropic SDK dependency pinned as anthropic>=X.Y,<X+1 (bounded minimum-version pin)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: bare anthropic>=X.Y pin matching the project's universal dependency-pin convention (pyyaml>=6.0, ruamel.yaml>=0.18) \u2014 rejected because this dependency's risk profile (sole network SDK client, untested live cache_control behavior) differs materially from the rest of the pin list.",
+  "issue": "FEAT-2673"
+}

@@ -31,7 +31,11 @@ import tomllib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
+
+from little_loops.cache_marking_oracle import decide_cache_marking
+from little_loops.prompts import FragmentStore, fragment_key
+from little_loops.tool_catalog import ToolDefinition, to_anthropic_tools
 
 __all__ = [
     "CapabilityEntry",
@@ -49,6 +53,7 @@ __all__ = [
     "OpenCodeRunner",
     "PiRunner",
     "apply_host_cli_from_config",
+    "build_anthropic_request",
     "resolve_host",
 ]
 
@@ -1253,3 +1258,71 @@ def apply_host_cli_from_config(config: object) -> None:
         return  # config object doesn't support orchestration (e.g. tests)
     if host_cli:
         os.environ["LL_HOST_CLI"] = host_cli
+
+
+def build_anthropic_request(
+    *,
+    skill_body: str,
+    system_prompt: str | None,
+    tools: list[ToolDefinition] | None,
+    messages: list[dict[str, Any]],
+    model: str,
+    fragment_store: FragmentStore,
+    require_repeat: bool = True,
+) -> dict[str, Any]:
+    """Build Anthropic Messages API request kwargs with oracle-gated caching.
+
+    FEAT-2673 (EPIC-2456 F1) — the first non-CLI-subprocess request path in
+    this module. Only builds request kwargs suitable for
+    ``anthropic.Anthropic().messages.create(**kwargs)``; does not perform the
+    network call, so it stays usable behind the
+    ``orchestration.request_path == "sdk"`` opt-in without importing the
+    ``anthropic`` package eagerly here.
+
+    Computes one FEAT-2671 fragment key over ``(skill_body, system_prompt,
+    tool_definitions)`` representing the whole stable prefix and asks the F1
+    cache-marking oracle (:func:`~little_loops.cache_marking_oracle.decide_cache_marking`)
+    whether that combined prefix is above the provider's cacheable-prefix
+    minimum and has already been observed as a repeat. When the oracle
+    authorizes marking, ``cache_control: {"type": "ephemeral"}`` is attached
+    to the system block and to the *last* tool-definition block — the
+    Anthropic convention for a cache breakpoint, where caching applies to
+    everything up to and including the marked block, so a single mark covers
+    both the system and tool prefix.
+
+    Always calls ``fragment_store.put()`` to record this call's observation
+    (regardless of the decision), so a later call with the identical prefix
+    is recognized as a repeat and becomes eligible for marking.
+
+    ``require_repeat`` mirrors ``config.cache.require_repeat`` — callers
+    wire the config value through explicitly; this function has no config
+    dependency of its own.
+    """
+    tool_names = [t.name for t in (tools or [])]
+    key = fragment_key(skill_body, system_prompt, tool_names)
+
+    combined_text = "\n".join(text for text in (skill_body, system_prompt or "", *tool_names) if text)
+    decision = decide_cache_marking(
+        block_text=combined_text,
+        fragment_key=key,
+        fragment_store=fragment_store,
+        model=model,
+        require_repeat=require_repeat,
+    )
+    fragment_store.put(key)
+
+    request: dict[str, Any] = {"model": model, "messages": messages}
+
+    if system_prompt:
+        system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
+        if decision.should_mark:
+            system_block["cache_control"] = {"type": "ephemeral"}
+        request["system"] = [system_block]
+
+    if tools:
+        tool_dicts = to_anthropic_tools(tools)
+        if decision.should_mark and tool_dicts:
+            tool_dicts[-1] = {**tool_dicts[-1], "cache_control": {"type": "ephemeral"}}
+        request["tools"] = tool_dicts
+
+    return request

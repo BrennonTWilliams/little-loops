@@ -67,9 +67,18 @@ class OrchestrationConfig:
     by :func:`~little_loops.host_runner.apply_host_cli_from_config` to export
     the config value into the environment before :func:`~little_loops.host_runner.resolve_host`
     runs. The env var takes precedence if already set.
+
+    ``request_path`` (FEAT-2673, EPIC-2456 F1) selects between the existing
+    CLI shell-subprocess path (``"cli"``, default — unchanged behavior) and
+    the opt-in Anthropic SDK path (``"sdk"``) that calls
+    :func:`~little_loops.host_runner.build_anthropic_request`. The 0.1x-read
+    / 1.25x-write cache discount only exists when the request body carries a
+    ``cache_control`` parameter, which is unreachable over the CLI shell
+    path, so ``"sdk"`` must be explicitly opted into.
     """
 
     host_cli: str | None = None
+    request_path: str = "cli"
     composer: ComposerConfig = field(default_factory=ComposerConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
 
@@ -78,6 +87,7 @@ class OrchestrationConfig:
         """Create OrchestrationConfig from dictionary."""
         return cls(
             host_cli=data.get("host_cli"),
+            request_path=data.get("request_path", "cli"),
             composer=ComposerConfig.from_dict(data.get("composer", {})),
             cluster=ClusterConfig.from_dict(data.get("cluster", {})),
         )
