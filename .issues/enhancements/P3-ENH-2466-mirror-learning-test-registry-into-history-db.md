@@ -8,7 +8,7 @@ discovered_date: 2026-07-02
 captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
-decision_needed: true
+decision_needed: false
 labels:
 - enhancement
 - history-db
@@ -93,10 +93,34 @@ Bump `SCHEMA_VERSION`. Add `"learning_test"` to `_VALID_KINDS` and `"learning_te
 ### Producer wiring
 
 - **Approach A (per-CLI event)**: `ll-learning-tests prove` invokes a new `record_learning_test_event(...)` after each prove.
+  > **Selected:** Approach A — matches the direct-call idiom used by all four existing recorders (`record_issue_snapshot`, `record_commit_event`, `record_test_run_event`, `record_skill_event`); no new infrastructure required.
 - **Approach B (filesystem watch)**: A periodic background scan walks `.ll/learning-tests/*.md` and reconciles (similar to `_backfill_*` family). Use mtime + content-hash dedupe.
+  > **Selected (companion):** Approach B's row-writing shape (mirroring `_backfill_snapshots()`) — kept as a best-effort backfill/reconcile companion to Approach A so hand-edited registry files aren't missed. The "periodic reconcile at session start" half requires new `backfill_worker.py` plumbing (see Decision Rationale) and is scoped as an explicit follow-on step, not bundled into the initial producer wiring.
 - **Approach C (event-bus emit)**: Add an `EventBus.emit({"kind": "learning_test", ...})` call to `ll-learning-tests` writes; subscribe a small transport that writes to the table.
+  > **Rejected:** `EventBus` is instantiated only in 4 FSM-loop/orchestration entry points and has zero precedent as a general recorder-dispatch mechanism; wiring it here would require a new hardcoded branch in `SQLiteTransport.send()` and a new DES variant registration for `ll-verify-des-audit` — net-new infrastructure with no benefit over the direct-call pattern.
 
-Recommend **B + C combined**: filesystem reconcile for cold-start, event-bus emit for live updates. Both best-effort (`contextlib.suppress(Exception)`).
+**Decided**: Approach A (primary) + Approach B's backfill shape (best-effort companion for out-of-band edits). Approach C is dropped. Both writes best-effort (`try/except: pass` or `contextlib.suppress(Exception)`, per the EPIC-1707 graceful-degradation contract).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-19.
+
+**Selected**: Approach A (per-CLI event) as the primary producer, paired with Approach B's row-writing shape as a best-effort backfill/reconcile companion. Approach C (event-bus emit) is rejected.
+
+**Reasoning**: Three parallel codebase-pattern-finder agents found that all four existing `record_*_event` recorders (`record_issue_snapshot` in `set_status.py`, `record_commit_event` via `post_commit.py`, `record_test_run_event` via `pytest_history_plugin.py`, `record_skill_event` via `user_prompt_submit.py`) use the identical direct-call shape Approach A proposes — local import, `resolve_history_db()`, bare `try/except: pass`, invoked immediately at the CLI/hook call site. Approach B's `_backfill_*` row-writing pattern (directory walk → parse → `INSERT OR IGNORE` → `_index()`) also has strong precedent (`_backfill_snapshots`, `_backfill_issues`, `_backfill_commit_events`), so it's retained as a companion to catch registry files edited outside the CLI — but its "periodic reconcile at session start" half has zero existing call site (`backfill_worker.py` only ever calls `backfill_incremental()` for JSONL, never a directory-walk backfill) and needs new plumbing, so it is scoped as a follow-on rather than bundled into the core producer wiring. Approach C was rejected because `EventBus` is a narrowly-scoped FSM-loop/issue-lifecycle abstraction with exactly one hardcoded subscriber (`SQLiteTransport`, two event families only); adopting it here would mean instantiating an `EventBus` in a CLI that has never used one, adding a new branch to shared dispatch code, and registering a new DES variant — three files of new infrastructure for no gain over the pattern every other recorder already uses.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| A — per-CLI event | 3/3 | 3/3 | 2/3 | 3/3 | 11/12 |
+| B — filesystem watch/backfill | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| C — event-bus emit | 0/3 | 0/3 | 1/3 | 1/3 | 2/12 |
+
+**Key evidence**:
+- A: four existing call sites (`set_status.py`, `post_commit.py`, `pytest_history_plugin.py`, `user_prompt_submit.py`) use the exact shape this option proposes; only gap is CLI-call-site test coverage, which none of the existing sites have either.
+- B: `_backfill_snapshots()`/`_backfill_issues()`/`_backfill_commit_events()` give a directly reusable row-writing template, but `session_start.py`/`backfill_worker.py` currently perform zero directory-walk reconciliation — only JSONL ingestion — so session-start wiring is new plumbing.
+- C: `EventBus`/`Transport` exist but are scoped to FSM-loop/issue-lifecycle events only; `SQLiteTransport.send()` hardcodes exactly two event families and silently drops anything else; `ll-verify-des-audit` would additionally require a new DES variant registration for any new `emit()` call site.
 
 ### FTS5 indexing
 
@@ -160,6 +184,9 @@ Add to `history_reader.py`:
 - `scripts/little_loops/cli/history_context.py` (`ll-history-context`) — consumers that read `search_index` benefit from new `kind="learning_test"` rows automatically (no code change required there).
 - `scripts/little_loops/hooks/session_start.py` (line 122) — the existing `ensure_db()` call already creates the new table on session start; no change needed but verifies the migration is applied.
 - `scripts/little_loops/issue_history/evolution.py` — history-db consumer; may consume `find_learning_tests()` in future work.
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-19):_
+- `scripts/little_loops/cli/ctx_stats.py` (`ll-ctx-stats`) — `_compute_learning_tests_stats()`/`_load_lt_config()` is a **second, independent** reader of `.ll/learning-tests/*.md` via `learning_tests.list_records()`, entirely outside `VALID_KINDS`/`_KIND_TABLE`. No change required for this issue's scope, but its "Learning tests" dashboard section will not reflect the new `learning_test_events` table unless a future issue rewires it — noted so implementers don't assume `ll-ctx-stats` needs editing here.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/hooks/session_start.py` — the existing no-change note is incomplete if the stated periodic reconcile/session-start requirement remains: `ensure_db()` creates the table but the current detached `backfill_worker` only ingests JSONL, so the registry path must be passed through the worker or reconciled in a separate best-effort step.
@@ -488,7 +515,187 @@ in `try/except Exception: pass` (or `contextlib.suppress(Exception)`); reads
 return `[]`/`None` on missing DB. New `record_learning_test_event()` and
 `_backfill_learning_test_events()` must conform.
 
+## Wiring Addendum (2026-07-19 — `/ll:wire-issue` third pass)
+
+_Three parallel wiring agents (caller/importer tracer, side-effect tracer, test-gap
+finder) re-verified the Integration Map against the current tree. Findings below
+are additive; they correct/refine guidance already in this issue rather than
+introducing new required files._
+
+### A. Test template correction — record/backfill split beats the single-class `TestOrchestrationRuns` template
+
+The 2026-07-16 addendum (§3) named `TestOrchestrationRuns` (`test_session_store.py:4438`)
+as the closest current template. That guidance is superseded: `learning_test_events`
+has **both** a live per-CLI-call recorder **and** a file-backfill path (`.ll/learning-tests/*.md`),
+which `orchestration_runs` does not (it has no on-disk backfill source). The closer
+structural analogue is the **split-class** pattern:
+
+- `TestRecordCommitEvent` — `test_session_store.py:4238-4286` (roundtrip, dedupe-on-key,
+  FTS-searchable, explicit-field-not-overridden) → template for `TestRecordLearningTestEvent`.
+- `TestBackfillCommitEvents` — `test_session_store.py:4289-4363` (idempotent, skip-when-source-absent,
+  populates-from-disk) → template for `TestBackfillLearningTestEvents`; substitute its git-repo
+  fixture for a `.ll/learning-tests/*.md`-populated directory.
+- Schema-upgrade-test idiom (`_bootstrap_schema_at(db, N)` → `ensure_db(db)` → assert table/index
+  exist) is shown in both `TestOrchestrationRuns.test_v21_db_upgrades_gains_orchestration_runs`
+  (4449-4473) and `TestRecordTestRunEvent.test_v14_db_upgrades_gains_test_run_events` (4423-4435) —
+  either remains a valid template for the upgrade-test method/class.
+
+### B. `test_verify_kinds.py` needs no new test case — it already self-enforces
+
+`TestRun.test_clean_state_returns_zero` (`test_verify_kinds.py:19-23`) runs the real,
+unmocked `_run()` against the live `_MIGRATIONS`/`_KIND_TABLE`/`_KINDLESS_TABLES` state.
+If `learning_test_events` lands without a `_KIND_TABLE` entry, this test fails automatically.
+Implementation Step 17 / Wiring Phase step 17 ("run `ll-verify-kinds`'s pytest gate") is
+correct as stated — no new test method is required in `test_verify_kinds.py` itself.
+
+### C. No shared `.ll/learning-tests` fixture exists in `conftest.py` — reuse the local pattern from `test_learning_tests.py`
+
+`scripts/tests/conftest.py` only provides a generic `temp_project_dir` fixture (creates
+`.ll/`, nothing under it). The `learning_tests_dir` + `sample_record` fixture pair in
+`scripts/tests/test_learning_tests.py:20-40` (which layers on `temp_project_dir` and writes
+real `.md` files via `write_record()`) is the established way to materialize sample registry
+records for a test. A new `TestBackfillLearningTestEvents` class in `test_session_store.py`
+should define an equivalent in-class fixture (matching how `TestBackfillCommitEvents` builds
+its own `repo` fixture in-class) rather than importing across test files.
+
+### D. `test_cli_learning_tests.py` producer-call assertions need no new fixture plumbing
+
+`TestMainLearningTestsMarkStale`/`Prove`/`Orphans` (`test_cli_learning_tests.py:154, 280, 351`)
+are 100% `unittest.mock.patch`-based with no real DB. The "recorder was called" assertion
+Implementation Step 15 asks for follows the exact idiom already used at
+`TestMainLearningTestsMarkStale.test_mark_stale_found_returns_0` (156-164,
+`mock_stale.assert_called_once()`): add
+`with patch("little_loops.session_store.record_learning_test_event") as mock_record: ...`
+to each existing test rather than writing new fixture infrastructure.
+
+### E. Corrected count of bare `SCHEMA_VERSION` literal-assertion sites
+
+The 2026-07-16 addendum's table (§2) listed 9 `assert SCHEMA_VERSION == 20/25` sites needing
+a bump. A fuller sweep found **~18 bare-literal sites** in `test_session_store.py` (approximate
+line numbers: 79, 343, 689, 1086, 1152, 1329, 1371-1372, 1817, 1932, 1969, 1984, 2080, 2137,
+3035, 3661, 3702, 3955, 4450, 4596) — sites comparing `int(version) == SCHEMA_VERSION` are
+self-referential and don't need edits; only the bare-literal-number sites do. Re-grep for
+`SCHEMA_VERSION == ` at implementation time rather than trusting either count, since the file
+keeps growing new sibling-migration tests.
+
+### F. Naming-collision risk (informational, no code change required)
+
+`docs/reference/EVENT-SCHEMA.md` and `scripts/little_loops/observability/schema.py` define an
+unrelated "learning" DES event family (`learning_target_proven`, `learning_target_stale`,
+`learning_explore_invoked`, etc. — FSM loop-dispatch telemetry, not registry mirroring). No
+code path connects it to this issue's `learning_test_events` table/`"learning_test"` kind, but
+implementers grepping "learning" in docs should not conflate the two.
+
+## Refinement Addendum (2026-07-19 — re-verified post-2026-07-16)
+
+_Added by `/ll:refine-issue` — three-agent codebase verification
+(codebase-locator / codebase-analyzer / codebase-pattern-finder). All findings
+below are additive and supplement the existing sections without rewriting
+them; cross-reference the 2026-07-16 addendum above when reading — several of
+its anchors are now further drifted, and one is corrected below._
+
+### 1. CRITICAL — dataclass name is `LearnTestRecord`, not `LearningTestRecord`
+
+The Proposed Solution and prior Codebase Research Findings sections above
+repeatedly reference a `LearningTestRecord` dataclass. That name does not
+exist anywhere in the codebase. The actual dataclass at
+`scripts/little_loops/learning_tests/__init__.py:44-71` is named
+**`LearnTestRecord`** (fields unchanged: `target: str`, `date: str`,
+`status: Literal["proven", "refuted", "stale"]`,
+`assertions: list[Assertion]`, `raw_output_path: str | None`). It is also
+referenced (by its correct name) in `learning_tests/gate.py`. Any new
+`history_reader.py` dataclass or docstring added for this issue should avoid
+reusing the confusing `LearningTestRecord` name to prevent collision/typo
+risk with the real registry type — e.g. call the new history.db mirror
+dataclass `LearningTestEvent` (as already proposed in the Integration Map)
+and reference `LearnTestRecord` (correct spelling) when describing the
+source type it mirrors.
+
+### 2. SCHEMA_VERSION has moved 20 → 25 — anchor table below supersedes the 2026-07-16 one
+
+Five sibling migrations landed in the three days since the last refine pass,
+each shifting every downstream line number in `session_store.py`. `ll-verify-kinds`
+scope is unaffected in kind (still register in `_KIND_TABLE`, not
+`_KINDLESS_TABLES`), but the concrete slot and every anchor below moved:
+
+| Item | 2026-07-16 addendum claimed | Current (2026-07-19) |
+|------|-----------------------------|------------------------|
+| `SCHEMA_VERSION` | line 207, value `20` | line 214, value `25` |
+| `VALID_KINDS` tuple | 209-222 | 216-231 (still 14 entries, no `learning_test`) |
+| `_KIND_TABLE` dict | 223-236 | 232-247 (still 14 entries, no `learning_test` key) |
+| `_KINDLESS_TABLES` | 244-255 | 255-266 (still 8 members) |
+| `__all__` | 32 entries, 61-93 | 33 entries, 67-100 (net +1: `record_retirement`/`list_retirements` now present; no learning-test export yet) |
+| v20 `usage_events` block (previously "most recent") | 709-733 | comment starts 720, `CREATE TABLE` at 730 |
+| `_index()` | 890-903 | 987-1000 (body unchanged) |
+| `record_issue_snapshot()` | 1001-1051 | starts 1098 |
+| `record_commit_event()` | 1222-1272 | starts 1319 |
+| `recent()` | 1462-1484 | starts 1745 |
+| `_backfill_snapshots()` | 1728-1773 | starts 2035 |
+| `backfill()` orchestrator / `counts` dict init | 2924-2980 / 2951-2957 | starts 3330 / 3357-3363 (`counts` keys still `issues, loops, snapshots, commits, raw_events` — no `learning_tests` key yet) |
+| `history_reader.py` Public API docstring | 1-42 | 1-50 (`Public API:` heading at line 8) |
+| `history_reader.py` dataclass block | 67-243 | ~76-290 (more dataclasses now exist, e.g. `SectionProvider`, `ProjectDigest`) |
+| `history_reader.recent_commit_events()` | 651-686 | starts 969 |
+| `test_session_store.py:TestSchemaV14` | 3688 | 3691 |
+| `test_session_store.py:TestRecordIssueSnapshot` | 3758 | 3761 |
+| `test_session_store.py:TestBackfillSnapshots` | 3831 | 3834 |
+| `test_session_store.py:_bootstrap_schema_at` | 3891 | 3894 |
+| `assert SCHEMA_VERSION == 20` literals | 7 occurrences: 1372, 1817, 1932, 1984, 2080, 3658, 3699 | now `== 25` at 1372, 1817, 1932, 1984, 2080, 3661, 3702, **plus two new sites at 4450 and 4596** (9 total) |
+
+`cli/session.py` `search_parser`/`recent_parser` `--kind` (99-106 / 112-118)
+and `cli/learning_tests.py` `cmd_prove`/`cmd_mark_stale`/`cmd_orphans`/
+`main_learning_tests` (48-72/84/96/143-145) are **unchanged** — exact match,
+confirming the CLI-wiring section of this issue needs no anchor updates.
+
+Drift is cumulative and non-uniform (+97 → +283/+307 → +406 across the file),
+caused by five unrelated migrations inserted at multiple points: v21
+(FEAT-2478, OTel `gen_ai.*` on `usage_events`), v22 (ENH-2492,
+`orchestration_runs` — per-issue outcomes), v23 (ENH-2463, `loop_runs`), v24
+(ENH-2497, `agent_type` column on `tool_events`), v25 (ENH-2511,
+`mcp_server`/`mcp_tool`/`mcp_outcome`/`latency_ms` columns on `tool_events`).
+**Re-read the live `SCHEMA_VERSION` at implementation time rather than
+trusting `25` here** — per the Scope Boundary above, this is a fast-moving
+shared slot across EPIC-2457 siblings.
+
+### 3. Newer table-add precedents than `usage_events` (v20) — use these instead
+
+Two genuine **new-table** migrations landed since the 2026-07-16 addendum
+named v20 as "closest current template" — that guidance is now itself stale:
+
+- **`orchestration_runs` (v22, ENH-2492)** — `session_store.py:756-782`. Direct-write execution ground truth (`ll-auto`/`ll-parallel`/`ll-sprint`), intentionally excluded from `raw_events` rebuild.
+- **`loop_runs` (v23, ENH-2463)** — `session_store.py:783-808`. One row per completed loop run; producer-side direct-write sibling of `orchestration_runs`, also excluded from `raw_events` rebuild.
+
+Both are closer structural analogues to `learning_test_events` than
+`usage_events` is, since all three (`orchestration_runs`, `loop_runs`,
+`learning_test_events`) are **file/external-source mirrors written directly
+by producer code**, not `raw_events`-derived. Their paired test classes are
+current templates too:
+
+- `TestOrchestrationRuns` — `test_session_store.py:4438`, combining a
+  schema-upgrade assertion (`test_v21_db_upgrades_gains_orchestration_runs`,
+  line 4449, using `_bootstrap_schema_at(db, 21)`) with a roundtrip test in
+  one class — a tighter template than the issue's previously-cited separate
+  `TestSchemaV19...`/`TestRecordX`/`TestBackfillX` three-class split.
+- `TestRecordCommitEvent` (4238), `TestBackfillCommitEvents` (4289; note:
+  separate class from record, not merged — confirms both class-split styles
+  coexist in the file, pick either), `TestRecordTestRunEvent` (4365, embeds
+  its own upgrade test as a method rather than a separate class).
+
+v24/v25 are `ALTER TABLE tool_events ADD COLUMN` blocks, not new-table
+precedents — skip them as templates for this issue.
+
+### 4. Confirmed: zero partial implementation exists
+
+Full-file scan of `session_store.py` (`_MIGRATIONS` lines 346-830, `grep
+learning_test`) found no `learning_test_events` table, no `"learning_test"`
+in `VALID_KINDS`/`_KIND_TABLE`, and no `record_learning_test_event` symbol
+anywhere. No `TestSchemaV2xLearningTestEvents`/`TestRecordLearningTestEvent`/
+`TestBackfillLearningTests` classes exist in `test_session_store.py`. This
+issue is confirmed **not started** as of 2026-07-19.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-07-19T17:18:51 - `4102e08d-70d8-45d7-a52d-b6303fe2e5b4.jsonl`
+- `/ll:decide-issue` - 2026-07-19T17:11:48 - `352c2bf4-b863-4fec-b794-1797875ee8ae.jsonl`
+- `/ll:refine-issue` - 2026-07-19T17:05:32 - `bff35f00-4a1a-4b29-95a1-4ac869332bae.jsonl`
 - `/ll:ready-issue` - 2026-07-17T22:46:55 - `6de2c4b0-59eb-45b9-812c-4633494e7ce9.jsonl`
 - `/ll:confidence-check` - 2026-07-17T00:00:00Z - `fb8ca0b8-a409-438d-a477-431cb6de1cd0.jsonl`
 - `/ll:format-issue` - 2026-07-17T22:42:06 - `3c693d1b-b435-412e-b697-77d3cd96161d.jsonl`
