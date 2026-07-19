@@ -1777,6 +1777,8 @@ Manage rules, decisions, and exceptions log.
 | `--rationale` | all | Why this entry applies (required) |
 | `--issue` | all | Related issue ID |
 | `--label` | all | Comma-separated labels |
+| `--source-session <SESSION_ID>` | all | Session ID that produced this entry (provenance backlink; ENH-2667) |
+| `--source-issue-id <ISSUE_ID>` | all | Issue ID that produced this entry (provenance backlink; ENH-2667) |
 | `--enforcement` | rule | `required` or `advisory` (default: `advisory`) |
 | `--rule-ref` | exception | Rule being excepted (required for exception) |
 | `--alternatives-rejected` | decision, exception | Alternatives considered |

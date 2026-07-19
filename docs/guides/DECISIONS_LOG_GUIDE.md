@@ -298,6 +298,17 @@ ll-issues decisions add \
   --rule-ref RULE-TESTING-001 \
   --rationale "Thin wrapper over well-tested library; exception bounded to ll-gitignore" \
   --issue FEAT-700
+
+# Stamp provenance backlinks (ENH-2667) so the entry traces back to the
+# session and issue that produced it
+ll-issues decisions add \
+  --type decision \
+  --category architecture \
+  --rule "Use atomic_write for decisions.d fragments" \
+  --rationale "Prevents partial writes under concurrent EPIC-branch appends" \
+  --issue ENH-2667 \
+  --source-session abc123-session-id \
+  --source-issue-id ENH-2667
 ```
 
 Entry IDs are auto-generated as a random UUID4 (e.g.

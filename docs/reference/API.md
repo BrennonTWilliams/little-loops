@@ -68,6 +68,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.output.parse` | Stop-sequence / prefill JSON output helpers (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost |
 | `little_loops.output_cleaner` | Anti-event + duplicate-window pre-filter (`filter_output`) that trims tool/log noise before it enters context |
 | `little_loops.ab_writer` | A/B baseline results aggregation and `ab.json` writer (FEAT-1790). Provides `ABResults` dataclass + summary calculation + JSON schema generation. |
+| `little_loops.cache_marking_oracle` | Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1) — decides whether a stable prompt block is safe to mark `cache_control: ephemeral` via a per-model token-floor gate plus a `FragmentStore` reuse-repeat gate. |
 | `little_loops.analytics` | Analytics subpackage — association-rule mining (lift/PMI) and per-evaluator Bernoulli variance for loop diagnostics. |
 | `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. |
 | `little_loops.extensions` | Reference extension implementations — `ReferenceInterceptorExtension` copy-paste starting point for custom interceptors / event handlers. |
@@ -7618,6 +7619,31 @@ def compress_action_text(text: str, *, model: str | None = None, context_window:
 ```
 
 Executor string adapter. Resolves the context window from `model` via `context_window.context_window_for()` when not given. Below the trigger, or when `text` is not a JSON message list, returns `text` **byte-identical**; above the trigger it compresses the parsed message list and re-serializes. This keeps arbitrary prose prompts unmodified while compressing the motivating case — loops re-embedding captured message-list JSON.
+
+---
+
+## little_loops.cache_marking_oracle
+
+Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1 — Goal #3). Decides which stable prompt blocks (system / tool / stable-skill) are safe to mark with `cache_control: {"type": "ephemeral", ...}` without risking the unamortized 1.25x write premium (Anthropic prompt caching: writes cost 1.25x, reads cost 0.1x — marking a block that's never reused is a pure 1.25x loss). Two independent gates must both pass: (1) a per-model **cacheable-prefix minimum** (1024 tokens for Sonnet, 4096 for Opus; unknown models fall back to the conservative Opus floor), and (2) a **reuse-stability signal** from `little_loops.prompts.fragment_store.FragmentStore` (FEAT-2671) — a block is only marked once its content-hash key has already been observed at least once, so the oracle never pays the write premium on a fragment that's never reused. `require_repeat=False` disables gate 2 for callers with a stronger external stability signal.
+
+```python
+from little_loops.cache_marking_oracle import (
+    CacheMarkingDecision,       # frozen dataclass: should_mark: bool, reason: str
+    CACHEABLE_PREFIX_MINIMUMS,  # {"sonnet": 1024, "opus": 4096}
+    decide_cache_marking,
+)
+
+def decide_cache_marking(
+    *,
+    block_text: str,
+    fragment_key: str,
+    fragment_store: FragmentStore,
+    model: str = "sonnet",
+    require_repeat: bool = True,
+) -> CacheMarkingDecision: ...
+```
+
+`fragment_store` is consulted read-only via `.get()` — it does not record an observation; callers own the `put()` lifecycle. Token estimation uses the project-wide `len(text) // 4` convention (no BPE tokenizer in the codebase). Never raises.
 
 ---
 
