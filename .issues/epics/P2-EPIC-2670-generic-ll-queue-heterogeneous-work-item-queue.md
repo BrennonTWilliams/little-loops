@@ -3,10 +3,16 @@ id: EPIC-2670
 type: EPIC
 priority: P2
 status: open
-captured_at: "2026-07-18T00:00:00Z"
+captured_at: '2026-07-18T00:00:00Z'
 discovered_date: 2026-07-18
 discovered_by: capture-issue
-relates_to: [ENH-2668, FEAT-2669, EPIC-2616, ENH-2620]
+relates_to:
+- ENH-2668
+- EPIC-2616
+- ENH-2620
+- FEAT-2682
+- FEAT-2683
+- FEAT-2684
 labels:
 - queue
 - runners
