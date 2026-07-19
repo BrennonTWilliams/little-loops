@@ -32,7 +32,7 @@ def cmd_next_action(config: BRConfig, args: argparse.Namespace) -> int:
 
     refine_cap: int = getattr(args, "refine_cap", 5)
     default_ready: int = getattr(args, "ready_threshold", 85)
-    default_outcome: int = getattr(args, "outcome_threshold", 70)
+    default_outcome: int = getattr(args, "outcome_threshold", 65)
 
     config_path = config.project_root / ".ll" / "ll-config.json"
     try:

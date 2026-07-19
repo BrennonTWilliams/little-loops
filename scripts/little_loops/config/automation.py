@@ -136,7 +136,7 @@ class ConfidenceGateConfig:
 
     enabled: bool = False
     readiness_threshold: int = 85
-    outcome_threshold: int = 70
+    outcome_threshold: int = 65
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ConfidenceGateConfig:
@@ -145,7 +145,7 @@ class ConfidenceGateConfig:
         return cls(
             enabled=data.get("enabled", False),
             readiness_threshold=data.get("readiness_threshold", legacy),
-            outcome_threshold=data.get("outcome_threshold", 70),
+            outcome_threshold=data.get("outcome_threshold", 65),
         )
 
 

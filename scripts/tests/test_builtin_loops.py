@@ -1389,14 +1389,14 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_context_fallbacks_match_selector_defaults(self, data: dict) -> None:
-        """context.readiness_threshold and outcome_threshold must be 85/70 to match next-action defaults (BUG-2035)."""
+        """context.readiness_threshold and outcome_threshold must be 85/65 to match next-action defaults (BUG-2035)."""
         ctx = data.get("context", {})
         assert ctx.get("readiness_threshold") == 85, (
             f"context.readiness_threshold should be 85 (matches next-action fallback), "
             f"got {ctx.get('readiness_threshold')!r}"
         )
-        assert ctx.get("outcome_threshold") == 70, (
-            f"context.outcome_threshold should be 70 (matches next-action fallback), "
+        assert ctx.get("outcome_threshold") == 65, (
+            f"context.outcome_threshold should be 65 (matches next-action fallback), "
             f"got {ctx.get('outcome_threshold')!r}"
         )
 

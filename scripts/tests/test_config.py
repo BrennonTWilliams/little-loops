@@ -477,7 +477,7 @@ class TestConfidenceGateConfig:
 
         assert config.enabled is False
         assert config.readiness_threshold == 85
-        assert config.outcome_threshold == 70
+        assert config.outcome_threshold == 65
 
     def test_threshold_fallback_sets_readiness_threshold(self) -> None:
         """Test that legacy threshold key falls back to set readiness_threshold."""
