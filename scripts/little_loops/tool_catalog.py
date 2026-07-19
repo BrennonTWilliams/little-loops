@@ -3,9 +3,10 @@
 Walks ``skills/*/SKILL.md``, ``commands/*.md``, and ``agents/*.md``
 frontmatter and produces a full Anthropic ``tools`` array
 (``{"name", "description", "input_schema"}`` per entry, optional
-``cache_control``). This is the single, stable data source FEAT-2672
-(deferred-loading stub/resolve) and FEAT-2673 (``build_anthropic_request()``)
-consume instead of each reimplementing frontmatter enumeration.
+``cache_control``, optional ``defer_loading``). This is the single, stable
+data source FEAT-2672 (deferred tool loading) and FEAT-2673
+(``build_anthropic_request()``) consume instead of each reimplementing
+frontmatter enumeration.
 
 ``input_schema`` bodies are hand-authored per entry *kind*, not derived
 mechanically from frontmatter: skills/commands carry only free-text
@@ -154,15 +155,24 @@ def assemble_tool_catalog(project_root: Path) -> list[ToolDefinition]:
     return entries
 
 
-def to_anthropic_tools(entries: list[ToolDefinition]) -> list[dict[str, Any]]:
+def to_anthropic_tools(
+    entries: list[ToolDefinition], *, defer_loading_threshold: int | None = None
+) -> list[dict[str, Any]]:
     """Serialize catalog entries into the Anthropic Messages API ``tools`` shape.
 
     ``cache_control`` is omitted entirely when unset — the Anthropic API
     rejects a literal ``null`` cache_control value, so ``None`` must not
     become a JSON key at all.
+
+    ``defer_loading_threshold`` (FEAT-2672, EPIC-2456 F1): when set, entries
+    at or past this index get ``defer_loading: True``, withholding their full
+    definition from the assembled system prompt unless the model searches for
+    them via a server-side search tool (see
+    ``host_runner.build_anthropic_request``, which injects that search tool).
+    ``None`` (default) leaves every entry unflagged — unchanged behavior.
     """
     tools: list[dict[str, Any]] = []
-    for entry in entries:
+    for index, entry in enumerate(entries):
         tool: dict[str, Any] = {
             "name": entry.name,
             "description": entry.description,
@@ -170,5 +180,7 @@ def to_anthropic_tools(entries: list[ToolDefinition]) -> list[dict[str, Any]]:
         }
         if entry.cache_control is not None:
             tool["cache_control"] = entry.cache_control
+        if defer_loading_threshold is not None and index >= defer_loading_threshold:
+            tool["defer_loading"] = True
         tools.append(tool)
     return tools

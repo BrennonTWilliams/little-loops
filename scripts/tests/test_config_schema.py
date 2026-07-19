@@ -314,6 +314,26 @@ class TestConfigSchema:
         assert "max_assistant_tail_turns" in comp_props
         assert data["properties"]["compression"].get("additionalProperties") is False
 
+    def test_deferred_tools_in_schema(self) -> None:
+        """FEAT-2672: deferred_tools must be declared in config-schema.json.
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing deferred_tools is rejected unless the property is
+        declared here.
+        """
+        data = json.loads(_load_schema_text())
+        assert "deferred_tools" in data["properties"], (
+            "deferred_tools is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        dt_props = data["properties"]["deferred_tools"]["properties"]
+        assert dt_props["threshold"]["type"] == ["integer", "null"]
+        assert dt_props["threshold"].get("default") is None
+        assert dt_props["search_tool_variant"]["type"] == "string"
+        assert dt_props["search_tool_variant"]["enum"] == ["bm25", "regex"]
+        assert dt_props["search_tool_variant"].get("default") == "bm25"
+        assert data["properties"]["deferred_tools"].get("additionalProperties") is False
+
     def test_health_url_in_schema(self) -> None:
         """FEAT-2551: project.health_url must be declared in config-schema.json.
 

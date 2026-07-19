@@ -27,6 +27,7 @@ from little_loops.config.features import (
     CodeQueryConfig,
     CompressionConfig,
     DecisionsConfig,
+    DeferredToolsConfig,
     DesignTokensConfig,
     EventsConfig,
     HistoryConfig,
@@ -227,6 +228,9 @@ class BRConfig:
         self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))
         self._compression = CompressionConfig.from_dict(self._raw_config.get("compression", {}))
         self._cache = CacheConfig.from_dict(self._raw_config.get("cache", {}))
+        self._deferred_tools = DeferredToolsConfig.from_dict(
+            self._raw_config.get("deferred_tools", {})
+        )
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
         self._dependency_mapping = DependencyMappingConfig.from_dict(
             self._raw_config.get("dependency_mapping", {})
@@ -312,6 +316,11 @@ class BRConfig:
     def cache(self) -> CacheConfig:
         """Get cache-marking oracle configuration (FEAT-2673)."""
         return self._cache
+
+    @property
+    def deferred_tools(self) -> DeferredToolsConfig:
+        """Get deferred tool-loading configuration (FEAT-2672)."""
+        return self._deferred_tools
 
     @property
     def sync(self) -> SyncConfig:
@@ -702,6 +711,10 @@ class BRConfig:
             },
             "cache": {
                 "require_repeat": self._cache.require_repeat,
+            },
+            "deferred_tools": {
+                "threshold": self._deferred_tools.threshold,
+                "search_tool_variant": self._deferred_tools.search_tool_variant,
             },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,

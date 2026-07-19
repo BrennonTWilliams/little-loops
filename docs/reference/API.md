@@ -8299,7 +8299,7 @@ Schema: `queue_entries(id, action, enqueued_at, priority, status, result)`. `act
 
 ## little_loops.tool_catalog
 
-Catalog-assembly for little-loops' own Anthropic Messages API tool set (FEAT-2680). Walks `skills/*/SKILL.md`, `commands/*.md`, and `agents/*.md` frontmatter and produces a full `tools` array — the single, stable data source FEAT-2672 (deferred-loading stub/resolve) and FEAT-2673 (`build_anthropic_request()`) consume instead of each reimplementing frontmatter enumeration.
+Catalog-assembly for little-loops' own Anthropic Messages API tool set (FEAT-2680). Walks `skills/*/SKILL.md`, `commands/*.md`, and `agents/*.md` frontmatter and produces a full `tools` array — the single, stable data source FEAT-2672 (deferred tool loading) and FEAT-2673 (`build_anthropic_request()`) consume instead of each reimplementing frontmatter enumeration.
 
 ```python
 from little_loops.tool_catalog import ToolDefinition, assemble_tool_catalog, to_anthropic_tools
@@ -8343,10 +8343,14 @@ Walks `project_root / "skills"` (`*/SKILL.md`), `project_root / "commands"` (`*.
 ### to_anthropic_tools
 
 ```python
-def to_anthropic_tools(entries: list[ToolDefinition]) -> list[dict[str, Any]]: ...
+def to_anthropic_tools(
+    entries: list[ToolDefinition], *, defer_loading_threshold: int | None = None
+) -> list[dict[str, Any]]: ...
 ```
 
 Serializes catalog entries into the literal Anthropic Messages API `tools` array shape. `cache_control` is omitted from the dict entirely when `None` — the Anthropic API rejects a literal `null` cache_control value, so `None` must never become a JSON key.
+
+`defer_loading_threshold` (FEAT-2672, EPIC-2456 F1): when set, entries at or past this catalog index get `defer_loading: True`, withholding their full definition from the assembled system prompt unless the model searches for them via a server-side search tool. `None` (default) leaves every entry unflagged — unchanged behavior. Setting `defer_loading: True` has no effect unless the request's `tools` array also carries a `tool_search_tool_bm25_20251119` / `tool_search_tool_regex_20251119` entry — see `host_runner.build_anthropic_request()`, which injects that entry automatically.
 
 ---
 

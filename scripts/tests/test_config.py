@@ -31,6 +31,7 @@ from little_loops.config import (
     CompressionConfig,
     ConfidenceGateConfig,
     DecisionsConfig,
+    DeferredToolsConfig,
     DependencyMappingConfig,
     DesignTokensConfig,
     DuplicateDetectionConfig,
@@ -2871,6 +2872,59 @@ class TestBRConfigCompressionIntegration:
         assert comp["trigger_tokens"] is None
         assert comp["max_tool_result_age_turns"] == 5
         assert comp["max_assistant_tail_turns"] == 8
+
+
+class TestDeferredToolsConfig:
+    """Tests for DeferredToolsConfig dataclass (FEAT-2672)."""
+
+    def test_reexported_from_config_package(self) -> None:
+        # A missing config/__init__.py re-export must be caught here.
+        from little_loops.config import DeferredToolsConfig as _DTC
+
+        assert _DTC is DeferredToolsConfig
+
+    def test_from_dict_defaults(self) -> None:
+        config = DeferredToolsConfig.from_dict({})
+        assert config.threshold is None
+        assert config.search_tool_variant == "bm25"
+
+    def test_from_dict_with_values(self) -> None:
+        data = {"threshold": 5, "search_tool_variant": "regex"}
+        config = DeferredToolsConfig.from_dict(data)
+        assert config.threshold == 5
+        assert config.search_tool_variant == "regex"
+
+    def test_from_dict_ignores_unknown_keys(self) -> None:
+        config = DeferredToolsConfig.from_dict({"threshold": 3, "bogus": 1})
+        assert config.threshold == 3
+
+
+class TestBRConfigDeferredToolsIntegration:
+    """Tests for BRConfig.deferred_tools integration."""
+
+    def test_deferred_tools_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.deferred_tools.threshold is None
+        assert config.deferred_tools.search_tool_variant == "bm25"
+
+    def test_deferred_tools_override_from_config(self, temp_project_dir: Path) -> None:
+        sample_config: dict[str, Any] = {
+            "deferred_tools": {"threshold": 10, "search_tool_variant": "regex"}
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.deferred_tools.threshold == 10
+        assert config.deferred_tools.search_tool_variant == "regex"
+
+    def test_deferred_tools_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "deferred_tools" in d
+        dt = d["deferred_tools"]
+        assert dt["threshold"] is None
+        assert dt["search_tool_variant"] == "bm25"
 
 
 class TestDesignTokensConfig:

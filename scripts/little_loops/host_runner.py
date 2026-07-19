@@ -1260,6 +1260,25 @@ def apply_host_cli_from_config(config: object) -> None:
         os.environ["LL_HOST_CLI"] = host_cli
 
 
+_SEARCH_TOOL_TYPES = {
+    "bm25": "tool_search_tool_bm25_20251119",
+    "regex": "tool_search_tool_regex_20251119",
+}
+
+
+def _build_search_tool_entry(variant: str) -> dict[str, str]:
+    """Build the one server-side search-tool entry `defer_loading` requires.
+
+    Per the installed ``anthropic`` SDK: a tool flagged ``defer_loading: True``
+    has no effect unless a ``tool_search_tool_bm25_20251119`` or
+    ``tool_search_tool_regex_20251119`` entry is also present in the request's
+    ``tools`` array (see ``ToolSearchToolBm25_20251119Param`` /
+    ``ToolSearchToolRegex20251119Param``).
+    """
+    tool_type = _SEARCH_TOOL_TYPES.get(variant, _SEARCH_TOOL_TYPES["bm25"])
+    return {"type": tool_type, "name": f"tool_search_tool_{variant}"}
+
+
 def build_anthropic_request(
     *,
     skill_body: str,
@@ -1269,6 +1288,8 @@ def build_anthropic_request(
     model: str,
     fragment_store: FragmentStore,
     require_repeat: bool = True,
+    defer_loading_threshold: int | None = None,
+    search_tool_variant: str = "bm25",
 ) -> dict[str, Any]:
     """Build Anthropic Messages API request kwargs with oracle-gated caching.
 
@@ -1297,6 +1318,14 @@ def build_anthropic_request(
     ``require_repeat`` mirrors ``config.cache.require_repeat`` — callers
     wire the config value through explicitly; this function has no config
     dependency of its own.
+
+    ``defer_loading_threshold``/``search_tool_variant`` mirror
+    ``config.deferred_tools`` (FEAT-2672, EPIC-2456 F1) the same way:
+    threaded through to :func:`~little_loops.tool_catalog.to_anthropic_tools`,
+    and — when any tool ends up ``defer_loading: True`` — this function
+    prepends the one server-side search-tool entry the SDK requires for that
+    flag to have any effect. ``defer_loading_threshold=None`` (default) skips
+    both, leaving ``tools`` serialized exactly as before this feature.
     """
     tool_names = [t.name for t in (tools or [])]
     key = fragment_key(skill_body, system_prompt, tool_names)
@@ -1320,9 +1349,11 @@ def build_anthropic_request(
         request["system"] = [system_block]
 
     if tools:
-        tool_dicts = to_anthropic_tools(tools)
+        tool_dicts = to_anthropic_tools(tools, defer_loading_threshold=defer_loading_threshold)
         if decision.should_mark and tool_dicts:
             tool_dicts[-1] = {**tool_dicts[-1], "cache_control": {"type": "ephemeral"}}
+        if any(t.get("defer_loading") for t in tool_dicts):
+            tool_dicts = [_build_search_tool_entry(search_tool_variant), *tool_dicts]
         request["tools"] = tool_dicts
 
     return request

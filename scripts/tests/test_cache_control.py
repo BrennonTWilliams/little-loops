@@ -13,6 +13,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from little_loops.cache_marking_oracle import (
@@ -219,6 +221,71 @@ class TestBuildAnthropicRequest:
         build_anthropic_request(**kwargs)
         assert store.hits == 1
         assert store.misses == 1
+
+    def _search_tool_entries(self, request: dict[str, Any]) -> list[dict[str, Any]]:
+        return [t for t in request["tools"] if t.get("type", "").startswith("tool_search_tool_")]
+
+    def test_search_tool_injected_when_any_tool_deferred(self) -> None:
+        store = FragmentStore()
+        request = build_anthropic_request(
+            skill_body=LONG_TEXT,
+            system_prompt=LONG_TEXT,
+            tools=self._tools(),
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=store,
+            defer_loading_threshold=0,
+        )
+        search_entries = self._search_tool_entries(request)
+        assert len(search_entries) == 1
+        assert search_entries[0]["type"] == "tool_search_tool_bm25_20251119"
+
+    def test_no_search_tool_and_no_defer_when_below_threshold(self) -> None:
+        store = FragmentStore()
+        request = build_anthropic_request(
+            skill_body=LONG_TEXT,
+            system_prompt=LONG_TEXT,
+            tools=self._tools(),
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=store,
+        )
+        assert self._search_tool_entries(request) == []
+        assert all("defer_loading" not in t for t in request["tools"])
+
+    def test_search_tool_variant_regex(self) -> None:
+        store = FragmentStore()
+        request = build_anthropic_request(
+            skill_body=LONG_TEXT,
+            system_prompt=LONG_TEXT,
+            tools=self._tools(),
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=store,
+            defer_loading_threshold=0,
+            search_tool_variant="regex",
+        )
+        search_entries = self._search_tool_entries(request)
+        assert search_entries[0]["type"] == "tool_search_tool_regex_20251119"
+
+    def test_search_tool_param_validates_against_installed_sdk(self) -> None:
+        import pydantic
+        from anthropic.types.tool_search_tool_bm25_20251119_param import (
+            ToolSearchToolBm25_20251119Param,
+        )
+
+        store = FragmentStore()
+        request = build_anthropic_request(
+            skill_body=LONG_TEXT,
+            system_prompt=LONG_TEXT,
+            tools=self._tools(),
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=store,
+            defer_loading_threshold=0,
+        )
+        search_entry = self._search_tool_entries(request)[0]
+        pydantic.TypeAdapter(ToolSearchToolBm25_20251119Param).validate_python(search_entry)
 
 
 class TestDefaultBehaviorUnchanged:

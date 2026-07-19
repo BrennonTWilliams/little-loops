@@ -3,8 +3,9 @@ id: FEAT-2672
 title: "F1-prereq (b) \u2014 Deferred tool loading"
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-18T15:15:21Z'
+completed_at: '2026-07-19T05:24:10Z'
 discovered_date: 2026-07-18
 discovered_by: capture-issue
 parent: EPIC-2456
@@ -22,13 +23,16 @@ labels:
 - tier-2
 learning_tests_required:
 - anthropic
-confidence_score: 86
-outcome_confidence: 59
-score_complexity: 12
-score_test_coverage: 19
-score_ambiguity: 16
-score_change_surface: 12
+confidence_score: 78
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 15
+score_change_surface: 25
 spike_needed: true
+spike_attempted: true
+spike_completed: true
+size: Very Large
 ---
 
 # FEAT-2672: F1-prereq (b) — Deferred tool loading
@@ -53,14 +57,35 @@ shrinks the initial prompt regardless of whether F1 caching is enabled.
 
 ## Implementation Steps
 
-1. New module `scripts/little_loops/tools/deferred.py` (~90 LOC):
-   `tool_reference` stub emission (name + one-line description + defer
-   marker) and on-demand resolution of full definitions.
-2. Integration point is the prompt-assembly path (`fsm/runners.py`) ahead
-   of `resolve_host()`; behavior gated behind a config flag (default off
-   until FEAT-2673 lands and measurements exist).
-3. Use FEAT-2671's fragment hashes to verify prefix byte-stability across
-   catalog churn in tests.
+_Reconciled 2026-07-19 — the steps below replace the original "stub
+emission + on-demand resolution" framing, which the Codebase Research
+Findings below determined was based on a mistaken premise (no separate stub
+payload exists in the vendor mechanism; see the "Refinement pass
+(2026-07-19, later pass)" finding for the full derivation). The findings are
+kept as historical record; these steps reflect the corrected, spike-proven
+shape only._
+
+1. Add `defer_loading: bool` support to `scripts/little_loops/tool_catalog.py`:
+   extend `to_anthropic_tools()` so it sets `defer_loading: True` on each
+   `ToolDefinition` entry once the catalog exceeds a configurable
+   size threshold (no new stub data structure — the full `ToolDefinition`
+   is still serialized, just flagged).
+2. In `scripts/little_loops/host_runner.py:build_anthropic_request()`,
+   inject exactly one `ToolSearchToolBm25_20251119Param` (or
+   `ToolSearchToolRegex20251119Param`) entry into the request's `tools`
+   array whenever any tool is deferred — without this entry present,
+   `defer_loading: True` has no effect server-side.
+3. Add `DeferredToolsConfig` (modeled on `CacheConfig`,
+   `config/features.py:560-580`), consulted only when
+   `orchestration.request_path == "sdk"`; wire into `BRConfig` and
+   `FSMExecutor` construction. Default off — behavior is unchanged unless
+   the threshold is configured (AC bullet 3).
+4. Promote `scripts/tests/spike/tool_defer_loading/defer_assembly.py`'s
+   proven assembly logic into `tool_catalog.py`/`host_runner.py` (informs,
+   not copied verbatim — see Spike Results § Promotion).
+5. Verify prefix byte-stability across catalog churn using FEAT-2671's
+   fragment hashes (`scripts/little_loops/prompts/fragment_store.py`, now
+   implemented) as the regression test for the cache-breakpoint AC.
 
 ### Codebase Research Findings
 
@@ -374,9 +399,27 @@ specific test classes, not new architectural surface:_
 
 ## Files to Modify
 
-- new `scripts/little_loops/tools/deferred.py` (~90 LOC)
-- `scripts/little_loops/fsm/runners.py` (gated wiring)
-- new `scripts/tests/test_deferred_tools.py`
+_Reconciled 2026-07-19 — replaces the superseded `deferred.py`/`fsm/runners.py`
+list below with the targets Wiring Phase — Round 3 identified; see that
+section for line-number detail:_
+
+- `scripts/little_loops/tool_catalog.py` — add `defer_loading` threshold
+  logic to `to_anthropic_tools()`/`ToolDefinition` serialization (~line 27,
+  ~line 157)
+- `scripts/little_loops/host_runner.py:build_anthropic_request()` — inject
+  the search-tool entry into `tools` when any tool is deferred (~lines
+  1263-1328)
+- `scripts/little_loops/config/features.py` — new `DeferredToolsConfig`
+  dataclass, modeled on `CacheConfig` (~lines 560-580)
+- `scripts/little_loops/config/core.py`, `config/__init__.py`,
+  `config-schema.json` — wiring sites (see Codebase Research Findings below
+  for exact line numbers)
+- `scripts/tests/test_tool_catalog.py` — `defer_loading`-flagged entry case
+  (~line 178, `TestToAnthropicTools`)
+- `scripts/tests/test_cache_control.py` — search-tool injection case
+  (~line 126, `TestBuildAnthropicRequest`)
+- `scripts/tests/test_config.py` — `TestDeferredToolsConfig` /
+  `TestBRConfigDeferredToolsIntegration`, mirroring `TestCompressionConfig`
 
 ### Wiring Phase — Round 3 (added by `/ll:wire-issue`)
 
@@ -573,13 +616,118 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] Cache breakpoint (static-prefix hash per FEAT-2671) survives a
       5-skill catalog churn (regression test, per EPIC-2456 Success
       Metrics F1 row).
-- [ ] Deferred stubs round-trip: a deferred tool invoked by the model
-      resolves to its full definition without error.
+- [ ] Client-side request construction round-trips: `to_anthropic_tools()`
+      sets `defer_loading: True` above the configured threshold and
+      `build_anthropic_request()` injects exactly one search-tool entry,
+      both validating against the installed `anthropic` SDK's `ToolParam`/
+      `ToolSearchToolBm25_20251119Param` types (proven in the spike;
+      production code must match). Live network resolution — the model
+      invoking the search tool and resolving a `tool_reference` back to the
+      deferred tool — is out of scope per Spike Results (no
+      `ANTHROPIC_API_KEY`/OAuth profile in this environment). _Reconciled
+      2026-07-19 — replaces the superseded "deferred stub round-trips to
+      full definition" framing, which assumed a client-side resolve step
+      that the vendor mechanism doesn't have._
 - [ ] Default-off; no behavior change unless the config flag is set.
 
 ## Confidence Check Notes
 
-_Re-scored `/ll:confidence-check` on 2026-07-18 (latest pass) — both
+_Added by `/ll:confidence-check` on 2026-07-18 (reconfirmation pass) —
+verified against current repo state: FEAT-2673 is `status: done`; FEAT-2679
+is `status: done` (archived to `.issues/completed/`), and its decomposed
+children FEAT-2680/FEAT-2681 are both `status: done`. `defer_loading` is
+still absent from `scripts/little_loops/tool_catalog.py` and
+`host_runner.py:build_anthropic_request()` (confirmed via grep — this
+issue's own not-yet-implemented scope, not a regression). The installed
+`anthropic` SDK (0.104.1) still exposes
+`tool_search_tool_bm25_20251119_param` confirming the mechanism is real, not
+speculative. The `anthropic` learning test is still `proven` (7/0/2, no
+`missing`/`refuted` target, so the Phase 3 hard override does not apply). No
+spike artifact exists for this issue (`spike_attempted`/`spike_completed`
+unset), so `spike_needed: true` carries forward unchanged. No new
+corrections found via `ll-history-context` beyond the existing recorded
+one. No inputs changed since the immediately-preceding pass; scores and
+Concerns are unchanged._
+
+**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 73/100 → MODERATE
+
+### Concerns
+- Same as the prior pass, still unresolved: Implementation Steps 1-3 and AC
+  bullet 2 describe the superseded "stub emission + on-demand resolution"
+  framing instead of the corrected mechanism (per-tool `defer_loading` flag +
+  one server-side search-tool entry). Files to Modify also still lists the
+  superseded `deferred.py`/`fsm/runners.py` targets rather than the corrected
+  `tool_catalog.py`/`host_runner.py:build_anthropic_request()` sites Wiring
+  Phase — Round 3 identifies. Rewrite both sections before implementation.
+- Two design parameters remain undecided: the catalog-size threshold above
+  which `defer_loading: True` is set, and which search-tool variant to
+  inject (`tool_search_tool_bm25_20251119` vs.
+  `tool_search_tool_regex_20251119`).
+
+---
+
+_Prior pass — Added by `/ll:confidence-check` on 2026-07-19 (later pass) — reconfirms the
+immediately-preceding pass. No inputs changed: both `depends_on` entries
+remain `done`, `tool_catalog.py`/`build_anthropic_request()` are unchanged,
+and the `anthropic` learning test is still `proven` (no `missing`/`refuted`
+target, so the Phase 3 hard override does not apply). Scores are unchanged
+from the prior pass._
+
+**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 73/100 → MODERATE
+
+### Concerns
+- Same as the prior pass, still unresolved: Implementation Steps 1-3 and AC
+  bullet 2 describe the superseded "stub emission + on-demand resolution"
+  framing instead of the corrected mechanism (per-tool `defer_loading` flag +
+  one server-side search-tool entry). Files to Modify also still lists the
+  superseded `deferred.py`/`fsm/runners.py` targets rather than the corrected
+  `tool_catalog.py`/`host_runner.py:build_anthropic_request()` sites Wiring
+  Phase — Round 3 identifies. Rewrite both sections before implementation.
+- Two design parameters remain undecided: the catalog-size threshold above
+  which `defer_loading: True` is set, and which search-tool variant to
+  inject (`tool_search_tool_bm25_20251119` vs.
+  `tool_search_tool_regex_20251119`).
+
+---
+
+_Prior pass — Added by `/ll:confidence-check` on 2026-07-19 — re-scored after the
+"Refinement pass (2026-07-19, later pass)" corrected the mechanism's shape
+(per-tool `defer_loading` flag + one server-side search-tool entry, not a
+client stub/resolve boundary). This resolved the prior pass's "novel
+mechanism, no internal precedent" outcome risk (raises Outcome Confidence)
+but also surfaced that the issue body's own Implementation Steps/AC/Files to
+Modify were never updated to match the correction (caps Readiness — see
+Concerns)._
+
+**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 73/100 → MODERATE
+
+### Concerns
+- Implementation Steps 1-3 and Acceptance Criteria bullet 2 still describe
+  the superseded "`tool_reference` stub emission + on-demand resolution"
+  framing. The 2026-07-19 later-pass research finding shows the real
+  mechanism is a per-tool `defer_loading: True` flag on the existing full
+  `ToolDefinition` plus one server-side search-tool entry injected into the
+  request — there is no local stub payload or resolve function to write.
+  Rewrite Implementation Steps and the AC round-trip bullet before
+  implementation so a reader following the issue body top-to-bottom doesn't
+  build the wrong thing.
+- Files to Modify (`new deferred.py`, `fsm/runners.py`,
+  `test_deferred_tools.py`) reflects the same superseded framing. Wiring
+  Phase — Round 3 already identifies the corrected targets
+  (`tool_catalog.py`, `host_runner.py:build_anthropic_request()`,
+  `test_tool_catalog.py`, `test_cache_control.py`) but they were never
+  folded into the Files to Modify list itself.
+- Two design parameters remain undecided: the catalog-size threshold above
+  which `defer_loading: True` gets set, and which search-tool variant to
+  inject (`tool_search_tool_bm25_20251119` vs.
+  `tool_search_tool_regex_20251119`).
+
+---
+
+_Prior pass — Re-scored `/ll:confidence-check` on 2026-07-18 (latest pass) — both
 `depends_on` entries (FEAT-2673, FEAT-2679) are now `done`/`completed`,
 `scripts/little_loops/tool_catalog.py` exists with a working
 `assemble_tool_catalog()`/`to_anthropic_tools()`, and
@@ -733,7 +881,192 @@ architectural blockers that drove the STOP — NOT READY verdict no longer
 hold. Re-run `/ll:confidence-check FEAT-2672` for an updated score before
 implementation.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-18 (reconfirmation pass) —
+verified against current repo state: `defer_loading` is still absent from
+`scripts/little_loops/tool_catalog.py` and
+`host_runner.py:build_anthropic_request()` (grep confirmed — this issue's
+own not-yet-implemented scope, not a regression); both `depends_on` entries
+(FEAT-2673, FEAT-2679) remain `done`; the `anthropic` learning test is still
+`proven` (no `missing`/`refuted` target, so the Phase 3 hard override does
+not apply); no spike artifact exists for this issue and neither
+`spike_attempted` nor `spike_completed` is set, so `spike_needed: true`
+carries forward unchanged. No inputs changed since the immediately-preceding
+pass; scores and Concerns are unchanged._
+
+**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 73/100 → MODERATE
+
+### Concerns
+- Same as the prior pass, still unresolved: Implementation Steps 1-3 and AC
+  bullet 2 describe the superseded "stub emission + on-demand resolution"
+  framing instead of the corrected mechanism (per-tool `defer_loading` flag +
+  one server-side search-tool entry). Files to Modify also still lists the
+  superseded `deferred.py`/`fsm/runners.py` targets rather than the corrected
+  `tool_catalog.py`/`host_runner.py:build_anthropic_request()` sites Wiring
+  Phase — Round 3 identifies. Rewrite both sections before implementation.
+- Two design parameters remain undecided: the catalog-size threshold above
+  which `defer_loading: True` is set, and which search-tool variant to
+  inject (`tool_search_tool_bm25_20251119` vs.
+  `tool_search_tool_regex_20251119`).
+
+---
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-07-19_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|-----------------------------------|-----------|--------|
+| Novel mechanism: no internal precedent for the request shape | `TestDeferLoadingAssembly::test_defer_loading_flag_set_above_threshold`, `test_tool_param_with_defer_loading_validates_against_sdk` | ✓ pass |
+| No existing test exercises the risky core (search-tool injection) | `TestDeferLoadingAssembly::test_search_tool_injected_when_any_tool_deferred`, `test_search_tool_param_validates_against_sdk` | ✓ pass |
+| Default-off / no behavior change unless flag is set (AC bullet 3) | `TestDeferLoadingAssembly::test_no_search_tool_and_no_defer_when_below_threshold` | ✓ pass |
+| Isolation guard | `TestSpikeIsolation::test_spike_does_not_import_tool_catalog_or_host_runner` | ✓ pass |
+
+The spike confirms the mechanism's corrected shape (per-tool `defer_loading`
+flag + one `ToolSearchToolBm25_20251119Param` entry, no client-side
+stub/resolve boundary) round-trips through the actual installed `anthropic`
+SDK (0.104.1) `ToolParam`/`ToolSearchToolBm25_20251119Param` TypedDict
+validation. **Residual, deliberately out-of-scope gap** (unchanged): a live
+network round trip proving the model actually resolves a `tool_reference`
+back to a deferred tool's definition was not and cannot be proven in this
+environment (no `ANTHROPIC_API_KEY`/OAuth profile configured) — see the
+plan's Out of Scope section.
+
+**Spike location**: `scripts/tests/spike/tool_defer_loading/`
+**Verification**: 6 spike tests + 35 regression tests (`test_tool_catalog.py`,
+`test_cache_control.py`) pass, 0 failures, across 3 commands.
+**Promotion**: `defer_assembly.py`'s logic informs (but is not moved
+verbatim into) the real `tool_catalog.py`/`host_runner.py` changes in a
+separate implementation PR — see plan's Promotion section for why.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-19 (post-spike reconfirmation) —
+re-scored after `Spike Results` (added `/ll:spike` on 2026-07-19) retired the
+"novel mechanism, no internal precedent" outcome risk that drove the prior
+Ambiguity score: re-ran `python -m pytest scripts/tests/spike/tool_defer_loading/`
+directly (6 passed, matching the issue's own claim), confirming
+`defer_loading`/`ToolSearchToolBm25_20251119Param` round-trip through the
+installed `anthropic` SDK (0.104.1) type validation. Both `depends_on` entries
+(FEAT-2673, FEAT-2679) remain `done`/decomposed-done. `defer_loading` is still
+absent from `scripts/little_loops/tool_catalog.py` and
+`host_runner.py:build_anthropic_request()` (grep confirmed — this issue's own
+not-yet-implemented scope, not a regression). The `anthropic` learning test is
+still `proven` (7/0/2, no `missing`/`refuted` target, so the Phase 3 hard
+override does not apply). `spike_attempted`/`spike_completed` are both already
+`true` in frontmatter, so Phase 4.10 does not re-flag `spike_needed`. Readiness
+is unchanged — the spike proves the *mechanism*, not the issue body itself,
+and Implementation Steps 1-3 / AC bullet 2 / Files to Modify still describe
+the superseded "stub emission" framing rather than the corrected
+flag-plus-search-tool shape. Outcome Confidence rises: Ambiguity (Criterion C)
+moves 10 → 15, since the one design uncertainty the spike could retire (is the
+mechanism real and does it validate against the SDK) is now proven, leaving
+only two narrow, low-stakes tuning parameters undecided (catalog-size
+threshold; bm25 vs. regex search-tool variant) rather than open mechanism
+risk._
+
+**Readiness Score**: 78/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 78/100 → MODERATE
+
+### Concerns
+- ~~Still unresolved (spike does not fix this): Implementation Steps 1-3 and
+  AC bullet 2 describe the superseded "stub emission + on-demand resolution"
+  framing instead of the corrected mechanism... Files to Modify also still
+  lists the superseded `deferred.py`/`fsm/runners.py` targets...~~
+  **RESOLVED (`/ll:ready-issue`, 2026-07-19)**: verified directly against
+  current body content — Implementation Steps (see the "_Reconciled
+  2026-07-19_" note preceding step 1), AC bullet 2 (see its own "_Reconciled
+  2026-07-19_" note), and Files to Modify (see its "_Reconciled 2026-07-19_"
+  note) were all already rewritten to the corrected `defer_loading`
+  flag + server-side search-tool shape by the time this Concerns paragraph
+  was written; the paragraph itself was simply never refreshed after that
+  reconciliation landed. No further edit to those three sections is needed.
+- Two design parameters remain undecided: the catalog-size threshold above
+  which `defer_loading: True` is set, and which search-tool variant to
+  inject (`tool_search_tool_bm25_20251119` vs.
+  `tool_search_tool_regex_20251119`). The spike deliberately took these as
+  test parameters, not production recommendations. This does not block
+  implementation — both are ordinary tunable defaults (config-gated, per
+  `DeferredToolsConfig`), not open architectural questions; pick reasonable
+  defaults (e.g. bm25 for general-purpose relevance, a threshold in line with
+  the spike's test fixtures) during implementation and leave them
+  configurable, consistent with Implementation Step 1's "configurable size
+  threshold" framing.
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-07-19
+- **Status**: Completed
+- **Gate note**: `confidence_score` (78) was below `readiness_threshold` (85);
+  proceeded via `--force-implement` per user decision — the spike had already
+  retired the mechanism-risk concern, and the remaining "Concerns" text was
+  itself stale (the sections it flagged as unreconciled were already
+  reconciled).
+
+### Changes Made
+- `scripts/little_loops/tool_catalog.py`: `to_anthropic_tools()` gained a
+  `defer_loading_threshold` kwarg — entries at or past that catalog index get
+  `defer_loading: True`.
+- `scripts/little_loops/host_runner.py`: `build_anthropic_request()` gained
+  `defer_loading_threshold`/`search_tool_variant` kwargs; prepends one
+  `tool_search_tool_bm25_20251119`/`tool_search_tool_regex_20251119` entry to
+  `request["tools"]` whenever any tool ends up deferred.
+- `scripts/little_loops/config/features.py`: new `DeferredToolsConfig`
+  dataclass (`threshold: int | None`, `search_tool_variant: str`), modeled on
+  the sibling `CacheConfig` (both SDK-path-only, no `FSMExecutor` hook — there
+  is no production caller of `build_anthropic_request()` yet).
+- `scripts/little_loops/config/core.py`, `config/__init__.py`,
+  `config-schema.json`: wired `deferred_tools` through `BRConfig` the same way
+  as `compression`/`cache`.
+- `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`: documented the
+  new config block and function signatures.
+- Tests: `test_tool_catalog.py`, `test_cache_control.py`, `test_config.py`,
+  `test_config_schema.py`.
+
+### Scope Note
+Wiring Phase step 4/item 5 ("wire `BRConfig.deferred_tools` into
+`FSMExecutor` construction") did not apply: `build_anthropic_request()` has no
+production caller anywhere in this codebase (confirmed by grep — only
+`test_cache_control.py` calls it), so there is no executor hook to attach a
+config value to. `CacheConfig` (FEAT-2673, the issue's own "Corrected
+config-gate precedent") is in the identical position — plumbed through
+`BRConfig` but never wired into `FSMExecutor` — so `DeferredToolsConfig`
+follows that precedent rather than `CompressionConfig`'s (which does have a
+live `_run_action()` hook). No `tools/deferred.py` module, `tools/__init__.py`
+shim, or `FSMExecutor`/`fsm/persistence.py`/`cli/loop/run.py` changes were
+needed as a result — those Wiring Phase items were written for a
+`FSMExecutor`-hook shape this issue's corrected scope doesn't have.
+
+### Verification Results
+- Tests: PASS (15,444 passed, 38 skipped; the one pre-existing failure —
+  `TestRefineToReadyIssueSubLoop::test_context_fallbacks_match_selector_defaults`
+  — reproduces identically on `main` before this change, unrelated)
+- Lint: PASS
+- Types: PASS (pre-existing `ruamel` stub-noise across 189 unrelated files;
+  zero errors in any file this issue touched)
+- Integration: PASS (no duplication; new config dataclass follows the
+  `CacheConfig` pattern exactly)
+
+---
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-19T05:30:00 - `9a4bf915-d3b0-4986-858a-ddbb40cb9719.jsonl`
+- `/ll:ready-issue` - 2026-07-19T05:00:37 - `4d354d8b-5bb2-4b87-8bf3-926d342e5b76.jsonl`
+- `/ll:confidence-check` - 2026-07-19T00:00:00 - `18aa116b-f213-4db9-8a27-b0448d9dfcae.jsonl`
+- `/ll:spike` - 2026-07-19T03:22:23 - `e1e3a554-864a-4109-aede-b97393bb60d7.jsonl`
+- `/ll:confidence-check` - 2026-07-18T19:35:00 - `7af0807a-9766-4055-92b0-2950879fc869.jsonl`
+- `/ll:confidence-check` - 2026-07-18T19:30:00 - `4d93509e-d6ca-4541-857b-4f279bf9654b.jsonl`
+- `/ll:confidence-check` - 2026-07-19T04:00:00 - `4a557ab0-a7b4-4144-912f-ce0604aee317.jsonl`
+- `/ll:confidence-check` - 2026-07-19T03:30:00 - `968ef71f-5d9b-44a5-bd76-421dbf2f0ee0.jsonl`
+- `/ll:confidence-check` - 2026-07-19T03:15:00 - `b3471fc7-a56f-4fd1-8955-b948371c8cf9.jsonl`
+- `/ll:spike` - 2026-07-19T03:01:30 - `7fa15b96-1b5a-4590-9520-c5ba3e81ead6.jsonl`
 - `/ll:wire-issue` - 2026-07-19T02:37:33 - `81077550-80be-4a35-a86e-a553e526bfc0.jsonl`
 - `/ll:refine-issue` - 2026-07-19T02:35:03 - `753893c4-589d-4538-958d-a739df464207.jsonl`
 - `/ll:confidence-check` - 2026-07-19T01:51:03 - `e6eb119e-11a8-41a7-88eb-e78ef50149d0.jsonl`

@@ -204,3 +204,32 @@ class TestToAnthropicTools:
 
     def test_empty_list_roundtrips(self) -> None:
         assert to_anthropic_tools([]) == []
+
+    def test_no_defer_loading_when_threshold_unset(self) -> None:
+        entries = [
+            ToolDefinition(name="t0", description="d" * 20, input_schema={"type": "object"}),
+            ToolDefinition(name="t1", description="d" * 20, input_schema={"type": "object"}),
+        ]
+        tools = to_anthropic_tools(entries)
+        assert all("defer_loading" not in t for t in tools)
+
+    def test_defer_loading_flag_set_above_threshold(self) -> None:
+        entries = [
+            ToolDefinition(name="t0", description="d" * 20, input_schema={"type": "object"}),
+            ToolDefinition(name="t1", description="d" * 20, input_schema={"type": "object"}),
+            ToolDefinition(name="t2", description="d" * 20, input_schema={"type": "object"}),
+        ]
+        tools = to_anthropic_tools(entries, defer_loading_threshold=1)
+        assert "defer_loading" not in tools[0]
+        assert tools[1]["defer_loading"] is True
+        assert tools[2]["defer_loading"] is True
+
+    def test_defer_loading_validates_against_installed_sdk(self) -> None:
+        import pydantic
+        from anthropic.types import ToolParam
+
+        entries = [
+            ToolDefinition(name="t0", description="d" * 20, input_schema={"type": "object"})
+        ]
+        tools = to_anthropic_tools(entries, defer_loading_threshold=0)
+        pydantic.TypeAdapter(ToolParam).validate_python(tools[0])

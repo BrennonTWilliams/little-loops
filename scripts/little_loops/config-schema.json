@@ -634,6 +634,24 @@
       },
       "additionalProperties": false
     },
+    "deferred_tools": {
+      "type": "object",
+      "description": "Deferred tool-loading configuration (FEAT-2672, EPIC-2456 F1). Only consulted when orchestration.request_path == 'sdk'; the CLI shell path never serializes a tool-definition catalog at all.",
+      "properties": {
+        "threshold": {
+          "type": ["integer", "null"],
+          "description": "Catalog index at or past which to_anthropic_tools() sets defer_loading: True on each tool. null (default) leaves every tool unflagged.",
+          "default": null
+        },
+        "search_tool_variant": {
+          "type": "string",
+          "enum": ["bm25", "regex"],
+          "description": "Which server-side search-tool type to inject when any tool is deferred (tool_search_tool_bm25_20251119 or tool_search_tool_regex_20251119).",
+          "default": "bm25"
+        }
+      },
+      "additionalProperties": false
+    },
     "scan": {
       "type": "object",
       "description": "Codebase scanning settings",

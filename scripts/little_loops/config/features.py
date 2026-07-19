@@ -582,6 +582,31 @@ class CacheConfig:
 
 
 @dataclass
+class DeferredToolsConfig:
+    """Deferred tool-loading configuration (FEAT-2672, EPIC-2456 F1).
+
+    Governs :func:`~little_loops.tool_catalog.to_anthropic_tools`'s
+    ``defer_loading`` threshold and
+    :func:`~little_loops.host_runner.build_anthropic_request`'s matching
+    search-tool injection — the same ``orchestration.request_path == "sdk"``
+    gate as :class:`CacheConfig`, since the CLI shell path never serializes a
+    tool-definition catalog at all. ``threshold: None`` (default) sets no
+    tool's ``defer_loading`` flag — unchanged behavior.
+    """
+
+    threshold: int | None = None
+    search_tool_variant: str = "bm25"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DeferredToolsConfig:
+        """Create DeferredToolsConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(
+            threshold=data.get("threshold", None),
+            search_tool_variant=data.get("search_tool_variant", "bm25"),
+        )
+
+
+@dataclass
 class AnalyticsCaptureConfig:
     """Configuration for analytics capture gating (ENH-1840).
 

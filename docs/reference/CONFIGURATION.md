@@ -1476,6 +1476,38 @@ benchmark; while `true` the heuristic is bypassed. Default `false` runs it.
 
 ---
 
+## `deferred_tools`
+
+Top-level block (FEAT-2672, EPIC-2456 F1) governing per-tool `defer_loading` and
+the matching server-side search-tool injection. Only consulted when
+`orchestration.request_path == "sdk"` — the CLI shell path never serializes a
+tool-definition catalog at all, so this block has no effect there.
+
+`threshold` sets the catalog index at or past which
+`tool_catalog.to_anthropic_tools()` flags each tool `defer_loading: True`,
+withholding its full definition from the assembled system prompt unless the
+model searches for it. `null` (default) flags nothing — unchanged behavior.
+Whenever any tool ends up flagged, `host_runner.build_anthropic_request()`
+prepends exactly one search-tool entry to the request's `tools` array — without
+it, `defer_loading: True` has no effect server-side. `search_tool_variant`
+picks which one: `"bm25"` (default, general-purpose relevance) or `"regex"`.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `deferred_tools.threshold` | `integer\|null` | `null` | Catalog index at or past which tools get `defer_loading: True`. `null` disables deferred loading entirely. |
+| `deferred_tools.search_tool_variant` | `string` | `"bm25"` | Server-side search-tool type to inject when any tool is deferred: `"bm25"` or `"regex"`. |
+
+```json
+{
+  "deferred_tools": {
+    "threshold": null,
+    "search_tool_variant": "bm25"
+  }
+}
+```
+
+---
+
 ## `observability`
 
 Top-level block (FEAT-2478) governing OTel `gen_ai.*` attribute shaping and the
