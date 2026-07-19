@@ -34,7 +34,9 @@ Exit codes:
 """,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-    get_parser = subparsers.add_parser("get", help="Resolve a dot-path config key and print its value")
+    get_parser = subparsers.add_parser(
+        "get", help="Resolve a dot-path config key and print its value"
+    )
     get_parser.add_argument(
         "key",
         metavar="KEY",

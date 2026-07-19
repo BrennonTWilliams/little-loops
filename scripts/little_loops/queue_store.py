@@ -182,9 +182,7 @@ def _priority_rank(priority: str) -> int:
     try:
         return PRIORITY_TIERS.index(priority.upper())
     except ValueError as exc:
-        raise ValueError(
-            f"Invalid priority {priority!r}; must be one of {PRIORITY_TIERS}"
-        ) from exc
+        raise ValueError(f"Invalid priority {priority!r}; must be one of {PRIORITY_TIERS}") from exc
 
 
 def _serialize_action(action: ActionSpec) -> str:

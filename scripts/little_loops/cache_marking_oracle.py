@@ -99,7 +99,9 @@ def decide_cache_marking(
         )
 
     if not require_repeat:
-        return CacheMarkingDecision(should_mark=True, reason="reuse gate disabled (require_repeat=False)")
+        return CacheMarkingDecision(
+            should_mark=True, reason="reuse gate disabled (require_repeat=False)"
+        )
 
     is_repeat = fragment_store.get(fragment_key)
     if not is_repeat:

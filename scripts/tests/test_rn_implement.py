@@ -1488,7 +1488,7 @@ class TestEpicFlagInit:
             "#!/bin/sh\n"
             'if [ "$1" = "path" ]; then echo "/x/.issues/epics/P3-$2-slug.md"; exit 0; fi\n'
             'if [ "$1" = "list" ]; then\n'
-            "  echo '[{\"id\":\"ENH-100\"},{\"id\":\"ENH-101\"},{\"id\":\"ENH-100\"}]'\n"
+            '  echo \'[{"id":"ENH-100"},{"id":"ENH-101"},{"id":"ENH-100"}]\'\n'
             "  exit 0\n"
             "fi\n"
         )

@@ -134,7 +134,9 @@ def cmd_run(
         target=str(path),
         args={"max_steps": fsm.max_steps, "max_iterations": fsm.max_iterations},
     )
-    logger.debug(f"loop action spec: {loop_spec.name} ({loop_spec.runner.value}) -> {loop_spec.target}")
+    logger.debug(
+        f"loop action spec: {loop_spec.name} ({loop_spec.runner.value}) -> {loop_spec.target}"
+    )
 
     # Apply overrides
     if getattr(args, "max_steps", None):

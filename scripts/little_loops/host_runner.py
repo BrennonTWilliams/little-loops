@@ -1330,7 +1330,9 @@ def build_anthropic_request(
     tool_names = [t.name for t in (tools or [])]
     key = fragment_key(skill_body, system_prompt, tool_names)
 
-    combined_text = "\n".join(text for text in (skill_body, system_prompt or "", *tool_names) if text)
+    combined_text = "\n".join(
+        text for text in (skill_body, system_prompt or "", *tool_names) if text
+    )
     decision = decide_cache_marking(
         block_text=combined_text,
         fragment_key=key,

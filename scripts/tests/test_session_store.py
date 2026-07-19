@@ -4605,8 +4605,7 @@ class TestLoopRuns:
             indexes = {
                 r[0]
                 for r in conn.execute(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='index' AND tbl_name='loop_runs'"
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='loop_runs'"
                 )
             }
         finally:
@@ -4707,9 +4706,7 @@ class TestLoopRuns:
         # other fields untouched by the diagnostics-only update
         assert rows[0]["terminated_by"] == "terminal"
 
-    def test_update_loop_run_diagnostics_missing_run_id_returns_false(
-        self, tmp_path: Path
-    ) -> None:
+    def test_update_loop_run_diagnostics_missing_run_id_returns_false(self, tmp_path: Path) -> None:
         update_loop_run_diagnostics = self._diagnostics_updater()
         db = tmp_path / "history.db"
         ensure_db(db)

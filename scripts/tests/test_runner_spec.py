@@ -24,7 +24,9 @@ from little_loops.host_runner import HostInvocation
 from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
 
 
-def _make_completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
@@ -85,9 +87,7 @@ class TestRunActionDispatch:
         spec = ActionSpec(name="x", runner=RunnerType.SKILL, target="x", timeout=1)
         with (
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
-            patch(
-                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=1)
-            ),
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=1)),
         ):
             result = run_action(spec)
 
@@ -95,7 +95,9 @@ class TestRunActionDispatch:
         assert result.exit_code == 2
 
     def test_prompt_dispatch_matches_legacy_shape(self) -> None:
-        spec = ActionSpec(name="p", runner=RunnerType.PROMPT, target="What is 2+2?", args={"model": None})
+        spec = ActionSpec(
+            name="p", runner=RunnerType.PROMPT, target="What is 2+2?", args={"model": None}
+        )
         with (
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="4")),

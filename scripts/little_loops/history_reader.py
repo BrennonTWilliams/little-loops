@@ -710,14 +710,16 @@ def mcp_server_usage(
     for row in rows:
         completions = row["completions"] or 0
         successes = row["successes"] or 0
-        result.append({
-            "mcp_server": row["mcp_server"],
-            "invocations": row["invocations"],
-            "completions": completions,
-            "successes": successes,
-            "success_rate": (successes / completions) if completions else None,
-            "avg_latency_ms": row["avg_latency_ms"],
-        })
+        result.append(
+            {
+                "mcp_server": row["mcp_server"],
+                "invocations": row["invocations"],
+                "completions": completions,
+                "successes": successes,
+                "success_rate": (successes / completions) if completions else None,
+                "avg_latency_ms": row["avg_latency_ms"],
+            }
+        )
     return result
 
 
@@ -760,13 +762,15 @@ def mcp_failure_rate(
     for row in rows:
         invocations = row["invocations"] or 0
         error_count = row["error_count"] or 0
-        result.append({
-            "mcp_server": row["mcp_server"],
-            "mcp_tool": row["mcp_tool"],
-            "invocations": invocations,
-            "error_count": error_count,
-            "failure_rate": (error_count / invocations) if invocations else None,
-        })
+        result.append(
+            {
+                "mcp_server": row["mcp_server"],
+                "mcp_tool": row["mcp_tool"],
+                "invocations": invocations,
+                "error_count": error_count,
+                "failure_rate": (error_count / invocations) if invocations else None,
+            }
+        )
     return result
 
 

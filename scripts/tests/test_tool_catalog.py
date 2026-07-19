@@ -228,8 +228,6 @@ class TestToAnthropicTools:
         import pydantic
         from anthropic.types import ToolParam
 
-        entries = [
-            ToolDefinition(name="t0", description="d" * 20, input_schema={"type": "object"})
-        ]
+        entries = [ToolDefinition(name="t0", description="d" * 20, input_schema={"type": "object"})]
         tools = to_anthropic_tools(entries, defer_loading_threshold=0)
         pydantic.TypeAdapter(ToolParam).validate_python(tools[0])

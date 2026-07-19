@@ -87,9 +87,7 @@ class TestSchemaV25McpColumns:
 
 
 class TestMcpToolLiveWrite:
-    def test_live_write_populates_mcp_columns_on_success(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_live_write_populates_mcp_columns_on_success(self, tmp_path: Path, monkeypatch) -> None:
         _write_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         payload = {
@@ -159,9 +157,7 @@ class TestMcpToolLiveWrite:
             conn.close()
         assert latency_ms == 250
 
-    def test_live_write_leaves_latency_null_when_absent(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_live_write_leaves_latency_null_when_absent(self, tmp_path: Path, monkeypatch) -> None:
         _write_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         payload = {
@@ -287,9 +283,7 @@ class TestBackfillMcpColumns:
             "type": "assistant",
             "sessionId": "sess-backfill-non-mcp",
             "timestamp": "2026-07-01T00:00:00Z",
-            "message": {
-                "content": [{"type": "tool_use", "name": "Write", "input": {}}]
-            },
+            "message": {"content": [{"type": "tool_use", "name": "Write", "input": {}}]},
         }
         jsonl_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
@@ -321,9 +315,33 @@ class TestMcpUsageAggregation:
         conn = sqlite3.connect(str(db))
         try:
             rows = [
-                ("2026-07-01T00:00:00Z", "s1", "mcp__pencil__draw", "pencil", "draw", "success", 100),
-                ("2026-07-01T00:01:00Z", "s1", "mcp__pencil__draw", "pencil", "draw", "success", 200),
-                ("2026-07-01T00:02:00Z", "s1", "mcp__pencil__draw", "pencil", "draw", "error", None),
+                (
+                    "2026-07-01T00:00:00Z",
+                    "s1",
+                    "mcp__pencil__draw",
+                    "pencil",
+                    "draw",
+                    "success",
+                    100,
+                ),
+                (
+                    "2026-07-01T00:01:00Z",
+                    "s1",
+                    "mcp__pencil__draw",
+                    "pencil",
+                    "draw",
+                    "success",
+                    200,
+                ),
+                (
+                    "2026-07-01T00:02:00Z",
+                    "s1",
+                    "mcp__pencil__draw",
+                    "pencil",
+                    "draw",
+                    "error",
+                    None,
+                ),
                 ("2026-07-01T00:03:00Z", "s1", "Write", None, None, None, None),
             ]
             conn.executemany(

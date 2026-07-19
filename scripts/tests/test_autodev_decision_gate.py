@@ -779,9 +779,7 @@ class TestAssertDecisionClearedStructural:
         )
         assert state.get("next") == "dequeue_next"
 
-    def test_record_decision_unresolved_defers_via_set_status(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_record_decision_unresolved_defers_via_set_status(self, data: dict[str, Any]) -> None:
         """ENH-2666: record_decision_unresolved aligns to rn-implement's mark_deferred
         model — stamps an automation deferral instead of leaving the issue open."""
         action = data["states"].get("record_decision_unresolved", {}).get("action", "")

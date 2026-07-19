@@ -122,8 +122,12 @@ def cmd_deferred_triage(config: BRConfig, args: argparse.Namespace) -> int:
         return 0
 
     if fmt == "markdown":
-        lines = ["## Deferred Triage (automation)", "", "| Issue | Reason | Age | Title |",
-                  "| --- | --- | --- | --- |"]
+        lines = [
+            "## Deferred Triage (automation)",
+            "",
+            "| Issue | Reason | Age | Title |",
+            "| --- | --- | --- | --- |",
+        ]
         for row in rows:
             age_str = f"{row['age_days']}d" if row["age_days"] is not None else "?"
             lines.append(

@@ -200,9 +200,7 @@ class TestUpdateEntryResult:
     def test_updates_status_and_result(self, tmp_path: Path) -> None:
         db = tmp_path / "queue.db"
         entry = add_entry(_spec(), db_path=db)
-        updated = update_entry_result(
-            entry.id, "done", {"exit_code": 0, "error": None}, db_path=db
-        )
+        updated = update_entry_result(entry.id, "done", {"exit_code": 0, "error": None}, db_path=db)
         assert updated is True
 
         fetched = get_entry(entry.id, db)

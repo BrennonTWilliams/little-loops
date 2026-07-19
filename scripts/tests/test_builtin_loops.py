@@ -1917,7 +1917,7 @@ class TestPromptAcrossIssuesLoop:
         assert "${context.ids}" in init_action or "context.ids" in init_action
         # The branch must write pending.txt directly when ids is set,
         # bypassing ll-issues list.
-        assert "tr ',' '\\n'" in init_action or "tr \",\" \"\\n\"" in init_action, (
+        assert "tr ',' '\\n'" in init_action or 'tr "," "\\n"' in init_action, (
             "init action must split ids on commas into pending.txt (ENH-2658)"
         )
 
@@ -2128,9 +2128,7 @@ class TestAutoRefineAndImplementLoop:
         )
         assert "recheck-count" in action, "recheck_set must cap re-dispatch cycles"
 
-    def test_recheck_set_folds_back_abandoned_residual(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_recheck_set_folds_back_abandoned_residual(self, data: dict, tmp_path: Path) -> None:
         """ENH-2686: recheck_set must fold ${run_dir}/autodev-queue.txt residual
         IDs (abandoned mid-drain, ENH-2657's detection signal) into the
         re-dispatch batch — not just newly-detected descendants. Residual IDs

@@ -208,10 +208,7 @@ def cmd_remove(args: argparse.Namespace) -> int:
     json_mode = getattr(args, "json", False)
 
     if entry.status != "pending" and not getattr(args, "force", False):
-        msg = (
-            f"Entry '{entry.id[:8]}' is {entry.status}, not pending; "
-            "use --force to remove anyway"
-        )
+        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not pending; use --force to remove anyway"
         if json_mode:
             print_json({"error": msg, "id": entry.id})
         else:
@@ -255,7 +252,11 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "stdout": result.stdout,
                 "stderr": result.stderr,
             }
-            status = "done" if not result.timed_out and result.error is None and result.exit_code == 0 else "failed"
+            status = (
+                "done"
+                if not result.timed_out and result.error is None and result.exit_code == 0
+                else "failed"
+            )
 
         update_entry_result(entry.id, status, result_dict, db_path=QUEUE_DB_PATH)
         processed.append({"id": entry.id, "status": status, "result": result_dict})
@@ -343,9 +344,7 @@ Examples:
             description="Show a queue entry by full id or 8+-char prefix",
         )
         status_parser.add_argument("id", help="Entry id (full uuid or 8+-char prefix)")
-        status_parser.add_argument(
-            "--json", action="store_true", default=False, help="JSON output"
-        )
+        status_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
 
         remove_parser = subparsers.add_parser(
             "remove",
@@ -359,9 +358,7 @@ Examples:
             default=False,
             help="Remove even if the entry is not pending",
         )
-        remove_parser.add_argument(
-            "--json", action="store_true", default=False, help="JSON output"
-        )
+        remove_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
 
         run_parser = subparsers.add_parser(
             "run",

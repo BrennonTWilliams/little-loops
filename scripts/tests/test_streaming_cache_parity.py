@@ -226,10 +226,18 @@ class TestStreamingParityChecker:
 
         checker = StreamingParityChecker()
         diffs = checker.diff(
-            {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
-             "cache_creation_tokens": 0},
-            {"input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0,
-             "cache_creation_tokens": 0},
+            {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+            },
+            {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+            },
         )
         assert [d.field for d in diffs] == list(TOKEN_FIELDS)
         assert all(d.within_threshold for d in diffs)
@@ -238,11 +246,18 @@ class TestStreamingParityChecker:
         from little_loops.observability import StreamingParityChecker
 
         checker = StreamingParityChecker(threshold=PARITY_REL_TOLERANCE)
-        blocking = {"input_tokens": 1000, "output_tokens": 20,
-                    "cache_read_tokens": 0, "cache_creation_tokens": 0}
-        streaming = {"input_tokens": 1010, "output_tokens": 20,  # 1% drift
-                     "cache_read_tokens": 0, "cache_creation_tokens": 0}
+        blocking = {
+            "input_tokens": 1000,
+            "output_tokens": 20,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
+        streaming = {
+            "input_tokens": 1010,
+            "output_tokens": 20,  # 1% drift
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
         assert not checker.within_threshold(blocking, streaming)
-        input_diff = next(d for d in checker.diff(blocking, streaming)
-                          if d.field == "input_tokens")
+        input_diff = next(d for d in checker.diff(blocking, streaming) if d.field == "input_tokens")
         assert not input_diff.within_threshold

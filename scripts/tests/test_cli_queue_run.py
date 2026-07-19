@@ -25,12 +25,16 @@ def _isolate_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _add(target: str, *, priority: str = "P3") -> str:
-    with patch("sys.argv", ["ll-queue", "add", target, "--runner", "cmd", "--priority", priority, "--json"]):
+    with patch(
+        "sys.argv", ["ll-queue", "add", target, "--runner", "cmd", "--priority", priority, "--json"]
+    ):
         main_queue()
     return target
 
 
-def _add_and_get_id(capsys: pytest.CaptureFixture[str], target: str, *, priority: str = "P3") -> str:
+def _add_and_get_id(
+    capsys: pytest.CaptureFixture[str], target: str, *, priority: str = "P3"
+) -> str:
     with patch(
         "sys.argv", ["ll-queue", "add", target, "--runner", "cmd", "--priority", priority, "--json"]
     ):
@@ -53,7 +57,9 @@ class TestCmdRunEmptyQueue:
 
 
 class TestCmdRunDispatchOrder:
-    def test_run_dispatches_in_priority_fifo_order(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_dispatches_in_priority_fifo_order(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         _add("low", priority="P4")
         _add("high", priority="P0")
         _add("mid", priority="P2")

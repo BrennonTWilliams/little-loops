@@ -62,9 +62,7 @@ class TestClassifyAction:
         assert spec.runner == RunnerType.CMD
 
     def test_runner_override_skips_classification(self) -> None:
-        spec = _classify_action(
-            "anything", runner_override="mcp", timeout=120, arg_pairs=None
-        )
+        spec = _classify_action("anything", runner_override="mcp", timeout=120, arg_pairs=None)
         assert spec.runner == RunnerType.MCP
         assert spec.target == "anything"
 
@@ -148,9 +146,7 @@ class TestCmdList:
     def test_list_orders_by_priority(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch("sys.argv", ["ll-queue", "add", "low", "--runner", "cmd", "--priority", "P4"]):
             main_queue()
-        with patch(
-            "sys.argv", ["ll-queue", "add", "high", "--runner", "cmd", "--priority", "P0"]
-        ):
+        with patch("sys.argv", ["ll-queue", "add", "high", "--runner", "cmd", "--priority", "P0"]):
             main_queue()
         capsys.readouterr()
 

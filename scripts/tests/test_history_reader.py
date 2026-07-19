@@ -1757,8 +1757,12 @@ class TestNewEventReaders:
         assert callable(aggregate), "aggregate_loop_runs must exist"
 
         db = tmp_path / "history.db"
-        recorder(db, run_id="run-1", loop_name="rn-implement", iterations=2, terminated_by="terminal")
-        recorder(db, run_id="run-2", loop_name="rn-implement", iterations=4, terminated_by="terminal")
+        recorder(
+            db, run_id="run-1", loop_name="rn-implement", iterations=2, terminated_by="terminal"
+        )
+        recorder(
+            db, run_id="run-2", loop_name="rn-implement", iterations=4, terminated_by="terminal"
+        )
 
         stats = aggregate(group_by="loop_name", db=db)
         assert stats == [{"loop_name": "rn-implement", "runs": 2, "avg_iterations": 3.0}]

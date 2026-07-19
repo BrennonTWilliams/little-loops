@@ -66,4 +66,6 @@ class TestSpikeIsolation:
                 imported.update(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module)
-        assert not (imported & forbidden), f"spike imports forbidden module(s): {imported & forbidden}"
+        assert not (imported & forbidden), (
+            f"spike imports forbidden module(s): {imported & forbidden}"
+        )

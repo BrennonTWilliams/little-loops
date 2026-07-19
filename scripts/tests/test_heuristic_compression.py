@@ -93,7 +93,9 @@ class TestReductionBand:
         )
 
     def test_mean_in_band(self) -> None:
-        ratios = [compress(_load_trace(t), context_window=None).reduction_ratio for t in LOCKED_TRACE_IDS]
+        ratios = [
+            compress(_load_trace(t), context_window=None).reduction_ratio for t in LOCKED_TRACE_IDS
+        ]
         mean = sum(ratios) / len(ratios)
         assert REDUCTION_MIN <= mean <= REDUCTION_MAX
 

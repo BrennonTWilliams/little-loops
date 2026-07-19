@@ -35,9 +35,7 @@ class TestGet:
         ):
             assert main_config() == 0
         assert capsys.readouterr().out.strip() == "-0.2"
-        mock_cfg.resolve_variable.assert_called_once_with(
-            "history.go_no_go.correction_penalty"
-        )
+        mock_cfg.resolve_variable.assert_called_once_with("history.go_no_go.correction_penalty")
 
     def test_unknown_key_prints_nothing(self, capsys: pytest.CaptureFixture[str]) -> None:
         mock_cfg = MagicMock()

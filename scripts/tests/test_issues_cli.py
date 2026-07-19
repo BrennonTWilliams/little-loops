@@ -6073,8 +6073,7 @@ def issues_dir_with_deferred_triage(temp_project_dir: Path) -> Path:
     )
     # no deferred_by at all — must be excluded
     (bugs_dir / "P3-BUG-304-no-discriminator.md").write_text(
-        "---\nstatus: deferred\ndeferred_reason: parked manually\n---\n"
-        "# BUG-304: No deferred_by\n"
+        "---\nstatus: deferred\ndeferred_reason: parked manually\n---\n# BUG-304: No deferred_by\n"
     )
     # open issue — never a candidate
     (bugs_dir / "P2-BUG-305-open.md").write_text("---\nstatus: open\n---\n# BUG-305: Open\n")
