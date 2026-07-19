@@ -1,0 +1,11 @@
+{
+  "id": "89166f88-a2eb-4e22-a738-c5c94b7245df",
+  "type": "decision",
+  "timestamp": "2026-07-19T00:07:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2657 added detection (abandoned verdict) but not recovery; recheck_set's dispatched-ledger diff permanently excludes mid-drain abandoned IDs since they were seeded into dispatched.txt upfront.",
+  "rule": "Captured: recheck_set should retry an abandoned autodev-queue residual, not just newly-detected descendants",
+  "scope": "issue",
+  "issue": "ENH-2686"
+}
