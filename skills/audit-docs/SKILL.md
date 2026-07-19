@@ -58,13 +58,34 @@ subagent architecture in `audit-claude-config`.
 
 Discover the file list **only** — do not read file bodies here.
 
+`full` and `dir:`/bare-path scopes must exclude non-documentation
+directories that happen to contain markdown — issue-tracker files
+(`.issues/`), planning notes (`thoughts/`), loop/runtime artifacts
+(`.loops/`, `.ll/`, `logs/`, `.pytest_cache/`, `.demo/`), and Claude Code
+plugin components (`skills/`, `commands/`, `agents/`, `hooks/` — these are
+commands and agent definitions, not documentation), plus vendored
+dependencies (`node_modules/`, `.venv/`, `venv/`, anywhere in the tree, not
+just at the repo root). Skipping this exclusion list is the single biggest
+cause of this skill overflowing context or exhausting concurrent-agent
+limits: in a repo with a large issue backlog, `full` scope can otherwise
+discover thousands of files instead of dozens.
+
 ```bash
 SCOPE="${scope:-readme}"
 
+DOC_PRUNE=( -not -path "*/.git/*" -not -path "*/node_modules/*" \
+    -not -path "*/.venv/*" -not -path "*/venv/*" \
+    -not -path "./.issues/*" -not -path "./thoughts/*" \
+    -not -path "./.loops/*" -not -path "./.ll/*" -not -path "./logs/*" \
+    -not -path "./.pytest_cache/*" -not -path "./.demo/*" \
+    -not -path "./skills/*" -not -path "./commands/*" \
+    -not -path "./agents/*" -not -path "./hooks/*" )
+
 case "$SCOPE" in
     full)
-        # Find all markdown files
-        find . -name "*.md" -not -path "./.git/*" -not -path "./node_modules/*"
+        # Find all documentation markdown files (excludes issues/thoughts/
+        # loop artifacts/plugin components/vendored deps — see above)
+        find . -name "*.md" "${DOC_PRUNE[@]}"
         ;;
     readme)
         # Start with README, follow links
@@ -75,23 +96,47 @@ case "$SCOPE" in
         echo "${SCOPE#file:}"
         ;;
     dir:*)
-        # All markdown under a directory
-        find "${SCOPE#dir:}" -name "*.md" -not -path "*/.git/*"
+        # All markdown under a directory (same doc-only excludes as `full`)
+        find "${SCOPE#dir:}" -name "*.md" "${DOC_PRUNE[@]}"
         ;;
     */|*/*)
         # Bare directory path (e.g. docs/guides/)
-        find "${SCOPE%/}" -name "*.md" -not -path "*/.git/*"
+        find "${SCOPE%/}" -name "*.md" "${DOC_PRUNE[@]}"
         ;;
 esac
 ```
 
+**Large-scope guard**: if the discovered file count exceeds 30, do not
+proceed directly to Phase 2. Show the user the count and use
+`AskUserQuestion` (single-select) to confirm:
+- Question: "Discovered N documentation files for this audit — auditing all
+  of them will spawn many subagent batches. Proceed?"
+- Options:
+  - "Proceed with all N files"
+  - "Narrow scope" — stop here and suggest the user re-run with a smaller
+    `dir:<subpath>` scope
+Only continue to Phase 2 after the user confirms.
+
 ### 2. Audit Each Document (Fan Out to Subagents)
 
 **Do not read the files yourself.** For each discovered file, spawn a
-`codebase-analyzer` subagent via the `Task` tool. Spawn them in parallel,
-batching ~4–6 `Task` calls per message (a single message with multiple `Task`
-calls runs them concurrently). For a single-file scope (`readme`, `file:`),
-one subagent is fine.
+`codebase-analyzer` subagent via the `Task` tool. For a single-file scope
+(`readme`, `file:`), one subagent is fine.
+
+For multi-file scopes, this is a **required sequential batch loop, not
+optional guidance**:
+1. Split the discovered file list into fixed batches of **at most 6 files**.
+2. Send **one batch's worth of `Task` calls in a single message** (a message
+   with multiple `Task` calls runs them concurrently — that's the
+   parallelism). Never put more than 6 `Task` calls in one message.
+3. **Wait for every result in that batch to return** before sending the
+   next batch's `Task` calls. Never send a new batch while a previous
+   batch's results are still outstanding.
+4. Repeat until all discovered files have been audited.
+
+This bounds concurrent-agent usage to 6 at a time regardless of total file
+count, which is what keeps `full`/`dir:` scopes from exhausting the
+concurrent-agent API limit.
 
 Give each subagent this verbatim assignment (substitute `<FILE>`):
 

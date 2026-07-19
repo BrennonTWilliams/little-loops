@@ -1,0 +1,14 @@
+{
+  "id": "3b190979-c782-4671-81e3-b9ccfea3fc8d",
+  "type": "rule",
+  "timestamp": "2026-07-19T02:30:16Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "Advisory phrasing like 'batching ~4-6 Task calls per message' had no enforced wait, letting fan-out exceed concurrent-agent API limits or accumulate excessive context from Task exchanges.",
+  "rule": "Subagent fan-out batch limits in skills must be an explicit, enforced sequential loop (spawn \u2264N, wait for all results, r",
+  "enforcement": "advisory",
+  "issue": "BUG-2688"
+}
