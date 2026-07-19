@@ -1,0 +1,12 @@
+{
+  "id": "67a84bd2-7d09-4b9a-a270-82675def3288",
+  "type": "decision",
+  "timestamp": "2026-07-19T17:11:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Direct-call recorder pattern (record_issue_snapshot/record_commit_event/record_test_run_event/record_skill_event) is the established idiom with 4 existing precedents; event-bus is scoped to FSM-loop/issue-lifecycle only with a hardcoded 2-family SQLiteTransport dispatch and would need new DES variant registration; backfill shape reused for out-of-band edit reconciliation but session-start wiring scoped as follow-on.",
+  "rule": "Approach A (per-CLI event) + Approach B backfill shape (companion); Approach C (event-bus) rejected",
+  "scope": "issue",
+  "alternatives_rejected": "Approach C (event-bus emit); Approach B alone without Approach A",
+  "issue": "ENH-2466"
+}
