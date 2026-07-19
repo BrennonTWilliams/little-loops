@@ -970,6 +970,14 @@ class TestFinalizeSafety:
         assert fsm.states["final_score"].on_yes == "preflight_check"
         assert fsm.states["final_score"].on_no == "preflight_check"
 
+    def test_description_states_final_score_is_advisory(self) -> None:
+        # ENH-2692: root-level rubric verdict has no effect on control flow
+        # (both on_yes/on_no route to preflight_check above); the loop
+        # description must say so explicitly rather than implying the
+        # write-back is gated on rubric convergence.
+        fsm = _load_rn_refine()
+        assert "ADVISORY" in fsm.description
+
 
 # ---------------------------------------------------------------------------
 # ENH-2565: readiness-gated pop + concurrency core

@@ -1,0 +1,12 @@
+{
+  "id": "ad71ae6d-d8c3-4ba1-882d-56b7e3115141",
+  "type": "decision",
+  "timestamp": "2026-07-19T19:06:06Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "House-wide ADVISORY convention already exists (vision_gate, verify_verdict); final_score's own comment already states advisory intent; no downstream consumer relies on the misleading 'refined to rubric convergence' claim. Option A has zero precedent for a root-level post-reassembly loop-back and would overturn a documented design decision.",
+  "rule": "Option B: rn-refine final_score verdict is advisory (description wording fix)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add a bounded refine_iteration-style loop-back on the reassembled root, gated by a max-root-iterations counter",
+  "issue": "ENH-2692"
+}

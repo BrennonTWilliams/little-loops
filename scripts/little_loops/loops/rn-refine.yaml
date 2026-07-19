@@ -17,8 +17,10 @@ description: |
     4. Once the whole tree is refined, leaves are rolled UP bottom-first: each
        internal node integrates its refined children into a coherent section, until
        the root is reassembled into a single improved plan.
-    5. The reassembled plan is scored, written back over the user's source file
-       in-place, and a tree summary is reported.
+    5. The reassembled plan is scored against the same rubric and a tree summary is
+       reported, then the result is written back over the user's source file
+       in-place. This final score is ADVISORY — it does not gate the write-back;
+       real convergence happens per-node in step 1-3, before reassembly.
 
   Per-node refinement and the decompose decision are delegated to the reusable
   oracles/plan-node-refine sub-loop; each node is a self-contained mini-plan under
@@ -536,10 +538,12 @@ states:
     on_error: finalize
 
   final_score:
-    # Score the fully reassembled plan on the 9-dimension rubric. This records final
-    # quality (written to plan-rubric.md); it does not loop — the recursive per-node
-    # refinement is where convergence happens. Both verdicts proceed to the preflight
-    # check (ENH-2418), which gates the destructive in-place overwrite.
+    # ADVISORY — scores the fully reassembled plan on the 9-dimension rubric and
+    # records the result (written to plan-rubric.md), but does not gate the
+    # write-back: both ALL_VERY_HIGH and ITERATE verdicts proceed to the same
+    # preflight check (ENH-2418), which is what actually gates the destructive
+    # in-place overwrite. Real convergence happens per-node during the tree walk,
+    # before reassembly — this state does not loop.
     fragment: plan_rubric_score
     on_yes: preflight_check
     on_no: preflight_check
