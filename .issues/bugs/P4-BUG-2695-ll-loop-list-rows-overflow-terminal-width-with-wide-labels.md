@@ -7,7 +7,7 @@ status: done
 completed_at: 2026-07-09T02:16:40Z
 ---
 
-# BUG-2554: `ll-loop list` rows overflow terminal width when labels are wide
+# BUG-2695: `ll-loop list` rows overflow terminal width when labels are wide
 
 ## Summary
 

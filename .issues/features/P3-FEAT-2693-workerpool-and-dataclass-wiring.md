@@ -1,5 +1,5 @@
 ---
-id: FEAT-2452
+id: FEAT-2693
 title: "per-EPIC integration branch \u2014 WorkerPool + WorkerResult dataclass wiring"
 type: FEAT
 priority: P3
@@ -36,7 +36,7 @@ score_change_surface: 10
 size: Very Large
 ---
 
-# FEAT-2452: per-EPIC integration branch — WorkerPool + WorkerResult dataclass wiring
+# FEAT-2693: per-EPIC integration branch — WorkerPool + WorkerResult dataclass wiring
 
 ## Summary
 

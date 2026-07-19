@@ -1,5 +1,5 @@
 ---
-id: ENH-2641
+id: ENH-2699
 title: spike-gate.yaml wrapper loop
 type: ENH
 priority: P3
@@ -21,7 +21,7 @@ score_change_surface: 23
 completed_at: '2026-07-15T18:32:07Z'
 ---
 
-# ENH-2641: spike-gate.yaml wrapper loop
+# ENH-2699: spike-gate.yaml wrapper loop
 
 ## Summary
 
