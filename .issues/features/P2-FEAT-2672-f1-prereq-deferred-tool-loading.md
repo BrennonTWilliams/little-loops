@@ -22,12 +22,12 @@ labels:
 - tier-2
 learning_tests_required:
 - anthropic
-confidence_score: 62
-outcome_confidence: 41
-score_complexity: 5
+confidence_score: 86
+outcome_confidence: 59
+score_complexity: 12
 score_test_coverage: 19
-score_ambiguity: 7
-score_change_surface: 10
+score_ambiguity: 16
+score_change_surface: 12
 spike_needed: true
 ---
 
@@ -203,6 +203,124 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   table) before this issue is implementation-ready — this refine pass did
   not modify cross-issue relationship fields, since that's a multi-file
   sequencing decision outside `/ll:refine-issue`'s single-issue scope.
+- **Refinement pass (2026-07-19) — the blocking dependency landed, and it
+  built exactly the tool-definition catalog this issue was waiting on.**
+  `FEAT-2673` is now `status: done` (`Completed at: 2026-07-19`, commit
+  `783a1d0a feat(cache): F1 — cache_control:ephemeral integration +
+  cache-marking oracle`). That work introduced a prerequisite module this
+  issue's earlier passes didn't know about, added by an *earlier* FEAT-2673
+  commit: `scripts/little_loops/tool_catalog.py` (commit `4c0757bc
+  feat(tool-catalog): add Anthropic tool-definition catalog assembly`).
+  This resolves the two "Still open" Gaps to Address in Confidence Check
+  Notes ("no tool-definition catalog exists to defer against" /
+  "confirm... achievable at all in a subprocess/host-CLI architecture"):
+  - `tool_catalog.py` defines `ToolDefinition` (frozen dataclass: `name`,
+    `description`, `input_schema`, `cache_control: dict[str, str] | None`),
+    `assemble_tool_catalog(project_root)` (walks `skills/*/SKILL.md`,
+    `commands/*.md`, `agents/*.md` frontmatter into a `list[ToolDefinition]`),
+    and `to_anthropic_tools(entries)` (serializes to the Anthropic Messages
+    API `tools` array shape, `{"name", "description", "input_schema"}` +
+    optional `cache_control`). This **is** the full tool-schema catalog
+    the earlier findings said didn't exist.
+  - `host_runner.py:build_anthropic_request()` (lines 1263-1328) already
+    consumes `tools: list[ToolDefinition] | None`, calls
+    `to_anthropic_tools()` at line 1323, and attaches
+    `cache_control: {"type": "ephemeral"}` to the *last* tool dict when the
+    F1 oracle authorizes marking (line 1324-1325) — a working, tested SDK
+    request-builder path (`scripts/tests/test_cache_control.py`) that a
+    deferred-tool stub/resolve boundary can now attach to directly, instead
+    of the CLI-shim `subprocess_utils.run_claude_command()` call site the
+    prior passes settled on as a fallback.
+  - **No production caller assembles the catalog yet.** Grepped for
+    `build_anthropic_request(` outside its own definition and
+    `test_cache_control.py` — zero hits. `assemble_tool_catalog()` /
+    `to_anthropic_tools()` exist and are tested but nothing in
+    `fsm/executor.py`, `subprocess_utils.py`, or `issue_manager.py` calls
+    them yet. This issue (FEAT-2672) is positioned to be that first
+    production caller: emit `tool_reference` stubs from
+    `assemble_tool_catalog()`'s output instead of full `ToolDefinition`
+    entries, with on-demand resolution back to the full entry, gated behind
+    `orchestration.request_path == "sdk"` (see corrected config-gate
+    precedent below) — since deferred-loading only has meaning on the SDK
+    path in the first place (the CLI shell path never serializes a tool
+    JSON body at all, per the earlier "no tool-definition catalog" finding
+    about the `--tools` CSV flag, which still holds for that path).
+  - **Corrected config-gate precedent** (supersedes the `CompressionConfig`
+    reference below, since this is now literally the same feature family):
+    `CacheConfig` (`scripts/little_loops/config/features.py:560-580`,
+    FEAT-2673's own config) is the closer template — it's `consulted only
+    when orchestration.request_path == "sdk"`, the identical gate this
+    issue's `DeferredToolsConfig` should share. Wiring sites, mirrored
+    exactly: `config/core.py:229` (`self._cache =
+    CacheConfig.from_dict(...)`), `config/core.py:312-313` (`cache`
+    property accessor), `config/core.py:703` (`to_dict()` `"cache": {...}`
+    key), `config/__init__.py:81,90` (re-export + `__all__`), and
+    `config-schema.json:627` (schema block, `additionalProperties: false`
+    pattern). `orchestration.request_path` itself lives in
+    `config/orchestration.py:81` (`OrchestrationConfig.request_path: str =
+    "cli"`, default `"cli"` — `"sdk"` is the opt-in value both `CacheConfig`
+    and this issue's deferred-loading behavior require).
+
+- **Refinement pass (2026-07-19, later pass) — the mechanism is
+  server-side, not a client stub/resolve boundary; this changes what
+  `deferred.py` needs to build.** Inspected the installed `anthropic` SDK
+  (0.104.1) type definitions directly (`anthropic/types/tool_param.py`,
+  `tool_search_tool_bm25_20251119_param.py`,
+  `tool_search_tool_regex_20251119_param.py`,
+  `tool_reference_block_param.py`) — this resolves the "no internal
+  precedent for a stub/resolve boundary" / "novel mechanism" concern in
+  Confidence Check Notes § Outcome Risk Factors, but by showing the concern
+  was based on a mistaken premise, not by finding a precedent:
+  - `defer_loading: bool` is a per-tool field on `ToolParam` itself
+    (`tool_param.py`) — "If true, tool will not be included in initial
+    system prompt. Only loaded when returned via tool_reference from tool
+    search." The client still sends the tool's **full** `input_schema` in
+    the request (same `ToolParam` shape `to_anthropic_tools()` already
+    produces); it just adds `defer_loading: True` to the dict. There is no
+    separate "stub" payload shape to construct — no smaller
+    name+description-only object exists in the SDK types. This directly
+    contradicts Implementation Step 1's premise ("`tool_reference` stub
+    emission (name + one-line description + defer marker)") — the
+    "stub" is the vendor's internal prompt-assembly detail, not something
+    this codebase serializes.
+  - Making `defer_loading` do anything requires including a **server tool**
+    in the same request's `tools` array: `ToolSearchToolBm25_20251119Param`
+    or `ToolSearchToolRegex20251119Param` (`type:
+    "tool_search_tool_bm25_20251119"` / `"tool_search_tool_regex_20251119"`,
+    both also carry their own `defer_loading`/`cache_control`/`strict`
+    fields). Without one of these present, marking tools `defer_loading:
+    True` has no effect — there is nothing to trigger a search.
+  - Resolution is a **round-trip through the model**, not a local function
+    call: the model invokes the search tool → server returns a
+    `tool_search_tool_result` content block
+    (`ToolSearchToolResultBlockParam`) wrapping a
+    `tool_search_tool_search_result` block
+    (`ToolSearchToolSearchResultBlockParam`) whose `tool_references` field
+    is a list of `ToolReferenceBlockParam` (`{"type": "tool_reference",
+    "tool_name": str}`). The model then uses that reference to invoke the
+    actual tool in a later turn. There is no client-side "resolve a stub
+    back to its full definition" step to write — `deferred.py`'s "on-demand
+    resolution of full definitions" (Implementation Step 1) has nothing to
+    resolve locally; the full definition was already sent in the initial
+    request (just flagged `defer_loading: True` so the server excludes it
+    from the assembled system prompt unless searched for).
+  - **Net effect on this issue's scope**: `deferred.py`'s actual
+    responsibility narrows to (a) setting `defer_loading: True` on
+    `ToolDefinition`/`to_anthropic_tools()` output above some catalog-size
+    threshold, and (b) injecting exactly one
+    `ToolSearchToolBm25_20251119Param`/`ToolSearchToolRegex20251119Param`
+    entry into the `tools` array passed to `build_anthropic_request()`. No
+    stub data structure, no resolve function, no round-trip test against a
+    local registry — the "round-trip" AC ("a deferred tool invoked by the
+    model resolves to its full definition without error") can only be
+    proven against a live API call (search tool response → model calls the
+    referenced tool), which is the same `ANTHROPIC_API_KEY`/OAuth-profile
+    limitation already noted under Confidence Check Notes § Concerns. This
+    is a smaller, better-defined `deferred.py` than the "stub/resolve
+    boundary" framing in Implementation Steps and Confidence Check Notes
+    assumed — Implementation Step 1 and the AC bullet on stub round-tripping
+    should be revised before implementation to reflect the flag-plus-search-
+    tool shape rather than a custom stub/resolve mechanism.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -259,6 +377,39 @@ specific test classes, not new architectural surface:_
 - new `scripts/little_loops/tools/deferred.py` (~90 LOC)
 - `scripts/little_loops/fsm/runners.py` (gated wiring)
 - new `scripts/tests/test_deferred_tools.py`
+
+### Wiring Phase — Round 3 (added by `/ll:wire-issue`)
+
+_The "Refinement pass (2026-07-19, later pass)" finding under Implementation
+Steps corrected the mechanism's actual shape (flag + server-side search tool,
+not a client stub/resolve boundary) but the concrete files that correction
+implies were never added to Files to Modify — the list above still only
+reflects the superseded framing. Verified directly against source (not
+re-guessed):_
+
+15. `scripts/little_loops/tool_catalog.py` — `ToolDefinition`
+    (`@dataclass(frozen=True)`, line ~27) has no `defer_loading` field, and
+    `to_anthropic_tools()` (line ~157) has no corresponding serialization
+    branch (confirmed by reading both directly). Per the corrected scope,
+    this is where `defer_loading: True` gets set above the catalog-size
+    threshold — not in a new `deferred.py` stub module.
+16. `scripts/little_loops/host_runner.py:build_anthropic_request()`
+    (lines 1263-1328) — confirmed by reading directly: builds the `tools`
+    request array via `to_anthropic_tools()` (line 1323) with no path that
+    injects a `ToolSearchToolBm25_20251119Param` /
+    `ToolSearchToolRegex20251119Param` entry. Per the corrected scope, this
+    function (or a wrapper around it) is where that one search-tool entry
+    must be added to the `tools` array — without it, `defer_loading: True`
+    on any tool has no effect.
+17. `scripts/tests/test_tool_catalog.py` — has `TestToAnthropicTools` (line
+    ~178) but no case covering a `defer_loading`-flagged entry; add one
+    alongside the existing `cache_control` omitted-when-unset case (same
+    file, same "omit falsy key entirely" pattern at line ~171).
+18. `scripts/tests/test_cache_control.py` — has `TestBuildAnthropicRequest`
+    (line ~126); add a case asserting the search-tool entry is injected into
+    `request["tools"]` when deferred-loading is active, and that no
+    behavior changes when it isn't (`TestDefaultBehaviorUnchanged`, line
+    ~224, is the existing default-off pattern to extend).
 
 ### Codebase Research Findings
 
@@ -428,9 +579,80 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-18; re-scored 2026-07-18 (later
-pass) after FEAT-2671 completed and the FEAT-2672/FEAT-2673 sequencing was
-corrected — see Gap-Analysis Correction above._
+_Re-scored `/ll:confidence-check` on 2026-07-18 (latest pass) — both
+`depends_on` entries (FEAT-2673, FEAT-2679) are now `done`/`completed`,
+`scripts/little_loops/tool_catalog.py` exists with a working
+`assemble_tool_catalog()`/`to_anthropic_tools()`, and
+`host_runner.py:build_anthropic_request()` (lines 1263-1328) is a working,
+tested integration point. Both prior "Still open" architectural gaps are
+resolved — see the earlier passes' notes below for history._
+
+**Readiness Score**: ~~45/100~~ ~~62/100~~ **86/100** → PROCEED WITH CAUTION
+**Outcome Confidence**: ~~38/100~~ ~~41/100~~ **59/100** → LOW
+
+### Concerns (this pass)
+- No internal precedent for a stub/resolve boundary in this codebase's
+  request-building path — `skill_expander.py` is the closest structural
+  analog but runs the inverse direction (collapses a reference into a full
+  body, rather than the other way around). This makes `deferred.py`'s core
+  logic a novel mechanism even though its attachment point
+  (`build_anthropic_request()`'s `tools` param) is now solid.
+- Confirmed (this pass): the installed `anthropic` SDK (0.104.1) does expose
+  the vendor's actual mechanism — `anthropic.types.ToolParam` carries a
+  `defer_loading` key and `anthropic.types.ToolReferenceBlock` /
+  `ToolReferenceBlockParam` exist — so this is not a speculative vendor
+  feature. However, no learning test exercises `defer_loading`/
+  `tool_reference` specifically (the existing `anthropic` learning-test
+  record only proves `cache_control` on tool blocks); a live round-trip
+  (deferred tool invoked → resolved) cannot be proven in this environment
+  (no `ANTHROPIC_API_KEY`).
+
+### Correction (2026-07-19) — "no `ANTHROPIC_API_KEY`" is a proving-environment
+gap, not an architectural blocker
+
+_Raised in conversation and verified against the `claude-api` skill's
+authentication reference — do not cite this as a reason SDK-based
+token-reduction features are unavailable to Claude Code/Claude.ai
+subscription users:_ the Anthropic SDK auth chain resolves
+`ANTHROPIC_API_KEY` → `ANTHROPIC_AUTH_TOKEN` → the active OAuth profile from
+`ant auth login` (the same underlying mechanism Claude Code's own `/login`
+uses) → Workload Identity Federation → a default on-disk profile. A
+subscription-only user with no console.anthropic.com API key can still
+authenticate `anthropic.Anthropic()` calls via that OAuth profile — Bearer
+token on `Authorization` plus the `anthropic-beta: oauth-2025-04-20` header
+for raw HTTP; the SDK's zero-arg client picks it up automatically. Request
+features (`defer_loading`/`tool_reference`, `cache_control`) are request-body
+fields and work identically regardless of which auth method authenticated
+the call.
+
+The "no `ANTHROPIC_API_KEY`" note above (and the identical note under FEAT-2673)
+means only that this *specific sandboxed session* had neither an API key nor
+an OAuth profile configured to exercise a live round-trip — not that the
+mechanism is unavailable to subscription users in general. If a live-round-trip
+proof is still needed, `ant auth login` (or an already-authenticated Claude
+Code session's own credential) is a viable path to obtain one; it does not
+require a separate paid API console key.
+- Broad blast radius unchanged: 6 downstream call sites
+  (`fsm/executor.py`, `fsm/persistence.py`, `cli/loop/run.py`,
+  `issue_manager.py`, `parallel/worker_pool.py`, `runner_spec.py`) still
+  need gated-behavior review even though the flag defaults off.
+
+### Outcome Risk Factors (this pass)
+- Novel mechanism: the stub/resolve boundary has no internal precedent to
+  model against; recommend proving the resolve-on-demand round trip in
+  isolation (the issue's frontmatter already carries `spike_needed: true`
+  from an earlier pass — unchanged) before building the surrounding
+  `DeferredToolsConfig` plumbing.
+- Client-side construction of a `defer_loading`/`tool_reference` request can
+  be proven against the installed SDK, but the live-call resolution
+  behavior stays unverified until an `ANTHROPIC_API_KEY` is available in a
+  test environment.
+
+---
+
+_Prior pass — Added by `/ll:confidence-check` on 2026-07-18; re-scored
+2026-07-18 (later pass) after FEAT-2671 completed and the FEAT-2672/FEAT-2673
+sequencing was corrected — see Gap-Analysis Correction above._
 
 **Readiness Score**: ~~45/100~~ **62/100** → STOP — NOT READY
 **Outcome Confidence**: ~~38/100~~ **41/100** → VERY LOW
@@ -491,7 +713,31 @@ SDK-request-builder architecture concern) are unaffected and still block
 implementation. Re-run `/ll:confidence-check FEAT-2672` for an updated
 score.
 
+### Gap-Analysis Correction (2026-07-19)
+
+_Added by `/ll:refine-issue --auto` — both remaining "Still open" Gaps to
+Address above are now resolved:_ `FEAT-2673` completed
+(`Completed at: 2026-07-19`) and its work included
+`scripts/little_loops/tool_catalog.py` (`ToolDefinition`,
+`assemble_tool_catalog()`, `to_anthropic_tools()`) plus a working
+`build_anthropic_request()` in `host_runner.py` that already consumes that
+catalog. See the "Refinement pass (2026-07-19)" finding under Implementation
+Steps for the full detail. This issue's `depends_on: [FEAT-2673, FEAT-2679]`
+is now satisfied for FEAT-2673. `FEAT-2679` (the other `depends_on` entry)
+is `status: completed`, decomposed by `rn-decompose` into `FEAT-2680`
+(catalog-assembly function — this is the commit that produced
+`tool_catalog.py`) and `FEAT-2681` (learning test proving the `anthropic`
+SDK accepts `cache_control` on tool blocks), both themselves
+`status: Completed`. Both `depends_on` entries are now satisfied. Both
+architectural blockers that drove the STOP — NOT READY verdict no longer
+hold. Re-run `/ll:confidence-check FEAT-2672` for an updated score before
+implementation.
+
 ## Session Log
+- `/ll:wire-issue` - 2026-07-19T02:37:33 - `81077550-80be-4a35-a86e-a553e526bfc0.jsonl`
+- `/ll:refine-issue` - 2026-07-19T02:35:03 - `753893c4-589d-4538-958d-a739df464207.jsonl`
+- `/ll:confidence-check` - 2026-07-19T01:51:03 - `e6eb119e-11a8-41a7-88eb-e78ef50149d0.jsonl`
+- `/ll:refine-issue` - 2026-07-19T01:45:58 - `5e405597-56a2-4bf9-bf4d-c431a74d8e56.jsonl`
 - `/ll:confidence-check` - 2026-07-18T19:24:20 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:refine-issue` - 2026-07-18T19:22:46 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:decide-issue` - 2026-07-18T19:08:23 - `b87fa325-b414-4446-90d5-717323b3c962.jsonl`

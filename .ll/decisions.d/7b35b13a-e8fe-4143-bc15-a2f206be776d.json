@@ -1,0 +1,12 @@
+{
+  "id": "ea862042-86a8-49b1-9bf1-5adeb660f1af",
+  "type": "decision",
+  "timestamp": "2026-07-19T00:26:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Config-only addition reusing a fully-implemented, executor-wired, test-covered mechanism; Option B (deferred dispatch guard) requires net-new executor plumbing to expose terminated_by to captured with no existing read-side precedent.",
+  "rule": "Option A \u2014 enable circuit.repeated_failure/StallDetector in refine-to-ready-issue.yaml",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: dispatch-guard via deferred_by/deferred_reason discriminator on autodev.yaml recheck_set \u2014 write-side idiom is reusable but the guard/read side and terminated_by exposure are net-new; tracked as viable follow-on (see ENH-2686).",
+  "issue": "BUG-2685"
+}

@@ -141,6 +141,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   round-trip assertions are `untested`** (no `ANTHROPIC_API_KEY` in this
   environment). The actual server-side acceptance/effect of `cache_control`
   has not been verified against a live request.
+  - **Correction (2026-07-19):** "no `ANTHROPIC_API_KEY` in this environment"
+    is a proving-environment gap specific to this sandbox, not evidence that
+    Claude Code/Claude.ai subscription users lack SDK access. The Anthropic
+    SDK auth chain resolves `ANTHROPIC_API_KEY` → `ANTHROPIC_AUTH_TOKEN` →
+    the active OAuth profile from `ant auth login` (the same mechanism
+    Claude Code's own `/login` uses) → Workload Identity Federation → an
+    on-disk default profile. A subscription-only user with no
+    console.anthropic.com API key can still authenticate
+    `anthropic.Anthropic()` / `build_anthropic_request()` calls via that
+    OAuth profile (Bearer token + `anthropic-beta: oauth-2025-04-20` header
+    on raw HTTP); `cache_control` and other request-body fields work
+    identically regardless of which auth method authenticated the call. A
+    live round-trip proof — if still wanted — is obtainable via
+    `ant auth login` or an already-authenticated Claude Code session's own
+    credential, not only via a paid API console key. See the identical
+    correction on FEAT-2672.
 - Two of the three stated prerequisites are **already done**, closing prior
   open gaps:
   - `scripts/little_loops/prompts/fragment_store.py` (FEAT-2671, done) —
