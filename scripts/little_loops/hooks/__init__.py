@@ -134,6 +134,7 @@ def main_hooks() -> int:
         intent=intent,
         payload=payload,
         cwd=os.getcwd(),
+        session_id=payload.get("session_id"),
     )
     result = handler(event)
     if result.stdout is not None:

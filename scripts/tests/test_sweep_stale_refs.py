@@ -92,6 +92,18 @@ class TestSweepStaleRefsBaseline:
         assert result.exit_code == 0
         assert result.feedback is None
 
+    def test_writes_lifecycle_row(self, in_tmp: Path) -> None:
+        """Every invocation emits exactly one stale_ref_sweep row, findings=0 (ENH-2495)."""
+        from little_loops.history_reader import recent_lifecycle_events
+
+        _write_config(in_tmp)
+        result = handle(_event(cwd=str(in_tmp)))
+        assert result.exit_code == 0
+
+        rows = recent_lifecycle_events(event="stale_ref_sweep", db=in_tmp / ".ll" / "history.db")
+        assert len(rows) == 1
+        assert rows[0].detail["findings"] == 0
+
 
 # ---------------------------------------------------------------------------
 # TestSweepStaleRefsDetection
@@ -266,6 +278,19 @@ class TestSweepStaleRefsGracefulDegradation:
         (ll_dir / "ll-config.json").write_text("{not valid json{{", encoding="utf-8")
         result = handle(_event(cwd=str(in_tmp)))
         assert result.exit_code == 0
+
+    def test_writes_lifecycle_row_silently_with_broken_db(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LL_HISTORY_DB pointed at a directory → recorder fails silently,
+        sweep's primary job (advisory feedback) still completes (ENH-2495)."""
+        self_setup_dir = in_tmp / "broken-db"
+        self_setup_dir.mkdir()
+        monkeypatch.setenv("LL_HISTORY_DB", str(self_setup_dir))
+        _write_config(in_tmp)
+        result = handle(_event(cwd=str(in_tmp)))
+        assert result.exit_code == 0
+        assert not (self_setup_dir / "session_lifecycle_events").exists()
 
 
 # ---------------------------------------------------------------------------

@@ -1817,6 +1817,7 @@ class TestNewEventReaders:
         from little_loops.history_reader import (
             find_session_for_issue_transition,
             recent_commit_events,
+            recent_lifecycle_events,
             recent_skill_events,
             recent_test_runs,
             summarize_skills,
@@ -1828,7 +1829,81 @@ class TestNewEventReaders:
         assert summarize_skills(db=db) == []
         assert recent_commit_events(db=db) == []
         assert recent_test_runs(db=db) == []
+        assert recent_lifecycle_events(db=db) == []
         assert find_session_for_issue_transition("X-1", "done", db=db) is None
+
+
+class TestRecentLifecycleEvents:
+    """ENH-2495: recent_lifecycle_events() over session_lifecycle_events."""
+
+    def test_recent_lifecycle_events_filter_by_event(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_lifecycle_events
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db, session_id="s1", event="handoff_needed", ts="2026-07-19T10:00:00Z"
+        )
+        record_session_lifecycle_event(
+            db, session_id="s1", event="compaction", ts="2026-07-19T11:00:00Z"
+        )
+
+        rows = recent_lifecycle_events(event="handoff_needed", db=db)
+        assert len(rows) == 1
+        assert rows[0].event == "handoff_needed"
+
+    def test_recent_lifecycle_events_newest_first_and_detail_roundtrip(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.history_reader import recent_lifecycle_events
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db,
+            session_id="s1",
+            event="stale_ref_sweep",
+            detail={"findings": 3},
+            ts="2026-07-19T10:00:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id="s1",
+            event="stale_ref_sweep",
+            detail={"findings": 5},
+            ts="2026-07-19T11:00:00Z",
+        )
+
+        rows = recent_lifecycle_events(db=db)
+        assert [r.detail["findings"] for r in rows] == [5, 3]
+
+    def test_recent_lifecycle_events_empty_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_lifecycle_events
+
+        assert recent_lifecycle_events(db=tmp_path / "nope" / "history.db") == []
+
+
+class TestHandoffFrequency:
+    """ENH-2495: handoff_frequency() counts handoff_needed rows."""
+
+    def test_handoff_frequency_with_since_filter(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import handoff_frequency
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db, session_id="s1", event="handoff_needed", ts="2026-07-19T10:00:00Z"
+        )
+        record_session_lifecycle_event(
+            db, session_id="s1", event="compaction", ts="2026-07-19T10:30:00Z"
+        )
+        record_session_lifecycle_event(
+            db, session_id="s1", event="handoff_needed", ts="2026-07-19T11:00:00Z"
+        )
+
+        assert handoff_frequency(db=db) == 2
+        assert handoff_frequency(since="2026-07-19T10:30:00Z", db=db) == 1
+        assert handoff_frequency(db=tmp_path / "nope" / "history.db") == 0
 
 
 class TestUsageEventReaders:

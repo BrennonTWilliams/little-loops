@@ -124,6 +124,20 @@ class TestIdempotencyGuard:
         assert result.exit_code == 2
         assert (tmp_path / ".ll" / "ll-continue-prompt.md").is_file()
 
+    def test_does_not_emit_compaction_lifecycle_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """pre_compact_handoff dedupes a continuation artifact, not a DB event —
+        the compaction row is owned exclusively by pre_compact.handle() (ENH-2495)."""
+        from little_loops.history_reader import recent_lifecycle_events
+
+        monkeypatch.chdir(tmp_path)
+        result = pre_compact_handoff.handle(_event())
+        assert result.exit_code == 2
+
+        rows = recent_lifecycle_events(event="compaction", db=tmp_path / ".ll" / "history.db")
+        assert rows == []
+
     def test_writes_when_state_file_malformed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

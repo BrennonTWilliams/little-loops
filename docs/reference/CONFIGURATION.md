@@ -1181,6 +1181,8 @@ Settings for hook adapter selection.
 
 Rubric-gated compaction timing (ENH-2341). When enabled, the `precompact.sh` hook evaluates four structural conditions over the recent transcript before writing state. All conditions must pass; any failure causes the hook to return exit 0 without writing state (compaction still fires but without a continuation snapshot). Disabled by default.
 
+A successful state write (rubric-gated or not) also emits a best-effort `compaction` row into `.ll/history.db`'s `session_lifecycle_events` table (ENH-2495) — queryable via `ll-session recent --kind session_lifecycle`.
+
 | Key | Default | Description |
 |-----|---------|-------------|
 | `hooks.pre_compact.rubric.enabled` | `false` | Enable rubric-gated compaction timing. When `false`, falls back to original threshold-only behaviour. |

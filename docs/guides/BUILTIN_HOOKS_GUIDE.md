@@ -152,6 +152,8 @@ Runs once, at the start of each session — catching drift left over from the *p
 
 The dispatch intent stays `session_end` (host-agnostic) and the adapter file is still named `session-end.sh` — only the Claude Code `hooks.json` event binding changed. On Codex, which has no separate `SessionEnd` event, `session_end` is mapped onto its `Stop` event instead (ENH-2105).
 
+Every invocation also writes one best-effort `stale_ref_sweep` row to `.ll/history.db`'s `session_lifecycle_events` table (findings count, fix mode) — including zero findings — so churn is queryable via `ll-session recent --kind session_lifecycle` (ENH-2495).
+
 ---
 
 ## UserPromptSubmit
@@ -267,6 +269,8 @@ The hook most users notice. After each tool call it estimates how much context y
 
 It also resets its estimate after a compaction event.
 
+The first threshold crossing per pressure episode also writes a best-effort `handoff_needed` row to `.ll/history.db`'s `session_lifecycle_events` table (threshold percent, token count, context limit) via a `python3 -c '...' || true` shell-out that never affects this hook's exit code (ENH-2495).
+
 - `context_monitor.enabled` (default **true**)
 - `context_monitor.auto_handoff_threshold` (default `80`, range 50–95)
 - `context_monitor.context_limit_estimate` (default `0` = auto-detect model limit; `[1m]`-suffixed model ids resolve to 1M by identifier, or the transcript baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback)
@@ -372,6 +376,8 @@ Fires just before Claude Code compacts the conversation. It snapshots task state
 > `[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work.`
 
 This is what lets a post-compaction context pick up mid-task. Always on; writes are atomic with a fail-open advisory lock. See [Session Handoff](SESSION_HANDOFF.md).
+
+A successful state write also emits a best-effort `compaction` row to `.ll/history.db`'s `session_lifecycle_events` table. `pre_compact_handoff` (the companion continuation-prompt hook) does NOT emit a second row — this is the single authoritative producer for the `compaction` discriminator (ENH-2495).
 
 **Rubric-gated timing (opt-in):** When `hooks.pre_compact.rubric.enabled: true`, the hook first evaluates four structural conditions over the recent transcript before writing state. If any condition fails, the hook returns exit 0 without writing state — the compaction still happens but without a continuation snapshot. Enable with:
 

@@ -99,6 +99,7 @@ __all__ = [
     "record_retirement",
     "list_retirements",
     "record_learning_test_event",
+    "record_session_lifecycle_event",
 ]
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -231,6 +232,7 @@ VALID_KINDS: tuple[str, ...] = (
     "orchestration_run",
     "loop_run",
     "learning_test",
+    "session_lifecycle",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -248,6 +250,7 @@ _KIND_TABLE = {
     "orchestration_run": "orchestration_runs",
     "loop_run": "loop_runs",
     "learning_test": "learning_test_events",
+    "session_lifecycle": "session_lifecycle_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -852,6 +855,25 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_learning_test_events_target ON learning_test_events(target);
     CREATE INDEX IF NOT EXISTS idx_learning_test_events_status ON learning_test_events(status);
+    """,
+    # v27 (ENH-2495/ENH-2509): session-lifecycle / handoff transitions. event is
+    # an open TEXT discriminator (no CHECK constraint) so ENH-2509's worktree_*
+    # values can share this table per the /ll:decide-issue Option A coordination.
+    # No natural UNIQUE key — two lifecycle transitions in the same second are
+    # improbable, so plain INSERT is sufficient (unlike learning_test_events'
+    # UPSERT-on-record_id shape).
+    """
+    CREATE TABLE IF NOT EXISTS session_lifecycle_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        event TEXT NOT NULL,
+        detail TEXT,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_event ON session_lifecycle_events(event);
+    CREATE INDEX IF NOT EXISTS idx_lifecycle_session ON session_lifecycle_events(session_id);
     """,
 ]
 
@@ -1858,6 +1880,60 @@ def _backfill_learning_test_events(conn: sqlite3.Connection, registry_dir: Path)
             )
         count += 1
     return count
+
+
+# ---------------------------------------------------------------------------
+# Session-lifecycle events (ENH-2495 / ENH-2509)
+# ---------------------------------------------------------------------------
+
+
+def record_session_lifecycle_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    event: str,
+    detail: dict | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    ts: str | None = None,
+) -> bool:
+    """Write one row to ``session_lifecycle_events`` and index it in ``search_index``.
+
+    Records session-lifecycle / handoff transitions (``handoff_needed``,
+    ``compaction``, ``stale_ref_sweep``, plus ENH-2509's ``worktree_*``
+    discriminators). Best-effort per the EPIC-1707 graceful-degradation
+    contract: returns ``False`` (never raises) on any ``sqlite3.Error`` so a
+    hook's primary job is never blocked by a missing/locked database.
+    """
+    detail_json = json.dumps(detail) if detail is not None else None
+    ts = ts or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = connect(db_path)
+        conn.execute(
+            "INSERT INTO session_lifecycle_events"
+            "(ts, session_id, event, detail, head_sha, branch)"
+            " VALUES(?, ?, ?, ?, ?, ?)",
+            (ts, session_id, event, detail_json, head_sha, branch),
+        )
+        _index(
+            conn,
+            content=f"{event} {session_id or ''} {json.dumps(detail or {})}"[:512],
+            kind="session_lifecycle",
+            ref=session_id or "",
+            anchor=event,
+            ts=ts,
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "record_session_lifecycle_event: insert failed for event=%r", event, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -3892,6 +3968,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "usage_event": ("usage_events", "ts"),
     "orchestration_run": ("orchestration_runs", "ended_at"),
     "loop_run": ("loop_runs", "ended_at"),
+    "session_lifecycle_event": ("session_lifecycle_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -3906,6 +3983,7 @@ _EXPORT_DEFAULT_TABLES = [
     "test_run_event",
     "usage_event",
     "orchestration_run",
+    "session_lifecycle_event",
 ]
 
 

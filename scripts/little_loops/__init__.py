@@ -47,7 +47,11 @@ from little_loops.observability import (
 )
 from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
 from little_loops.pii import apply_pii_action, detect_pii, redact_pii
-from little_loops.session_store import SQLiteTransport, record_issue_snapshot
+from little_loops.session_store import (
+    SQLiteTransport,
+    record_issue_snapshot,
+    record_session_lifecycle_event,
+)
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.testing import LLTestBus
 from little_loops.transport import (
@@ -106,6 +110,7 @@ __all__ = [
     "OTelTransport",
     "SQLiteTransport",
     "record_issue_snapshot",
+    "record_session_lifecycle_event",
     "Transport",
     "UnixSocketTransport",
     "WebhookTransport",

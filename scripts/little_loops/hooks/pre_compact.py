@@ -163,7 +163,25 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 atomic_write_json(state_file, state)
         except TimeoutError:
             atomic_write_json(state_file, state)
+
+        _record_compaction(state["compacted_at"], event.session_id)
     except Exception:
         return LLHookResult(exit_code=0)
 
     return LLHookResult(exit_code=2, feedback=_FEEDBACK)
+
+
+def _record_compaction(compacted_at: str, session_id: str | None) -> None:
+    """Best-effort ``compaction`` lifecycle row — never raises (ENH-2495)."""
+    try:
+        from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+
+        record_session_lifecycle_event(
+            resolve_history_db(Path.cwd() / ".ll" / "history.db"),
+            session_id=session_id,
+            event="compaction",
+            detail={"source": "host_precompact", "state_preserved": True},
+            ts=compacted_at,
+        )
+    except Exception:
+        pass

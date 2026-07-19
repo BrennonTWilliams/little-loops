@@ -24,6 +24,7 @@ fi
 
 # Read configuration with defaults
 THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
+SENTINEL_THRESHOLD=$(ll_config_value "context_monitor.sentinel_threshold" "50")
 # context_limit_estimate is an optional override/fallback; auto-detection sets the final limit below.
 CONFIG_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "")
 STATE_FILE=$(ll_config_value "context_monitor.state_file" ".ll/ll-context-state.json")
@@ -42,7 +43,28 @@ POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent"
 USE_TRANSCRIPT_BASELINE=$(ll_config_value "context_monitor.use_transcript_baseline" "true")
 
 # Extract tool information from input (single jq pass — avoids 3× re-parsing of potentially large INPUT)
-IFS=$'\t' read -r TOOL_NAME TRANSCRIPT_PATH <<< "$(echo "$INPUT" | jq -r '[(.tool_name // ""), (.transcript_path // "")] | @tsv' 2>/dev/null)"
+# Uses \x1f (unit separator) rather than @tsv's tab: bash `read` treats tab as
+# "IFS whitespace" and collapses consecutive delimiters even when IFS is set
+# to tab alone, silently shifting later fields when transcript_path is empty.
+IFS=$'\x1f' read -r TOOL_NAME TRANSCRIPT_PATH SESSION_ID <<< "$(echo "$INPUT" | jq -r '[(.tool_name // ""), (.transcript_path // ""), (.session_id // "")] | join("\u001f")' 2>/dev/null)"
+
+# Best-effort "handoff_needed" lifecycle row (ENH-2495). Shells out with
+# `|| true` so a DB write failure can never flip this hook's exit code.
+record_handoff_needed() {
+    python3 -c '
+import json, sys
+from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+record_session_lifecycle_event(
+    resolve_history_db(".ll/history.db"),
+    session_id=sys.argv[1] or None,
+    event="handoff_needed",
+    detail=json.loads(sys.argv[2]),
+)
+' "$SESSION_ID" \
+        "$(printf '{"threshold_pct":%s,"sentinel_threshold":%s,"token_count":%s,"context_limit":%s}' \
+            "$USAGE_PERCENT" "$SENTINEL_THRESHOLD" "$NEW_TOKENS" "$CONTEXT_LIMIT")" \
+        >/dev/null 2>&1 || true
+}
 # Note: TOOL_RESPONSE is no longer extracted here — estimate_tokens reads .tool_response
 # directly from $INPUT, avoiding a full serialization of the response into a shell variable.
 # Model detection is deferred to main() after state read, where the cached value is checked first.
@@ -352,9 +374,11 @@ main() {
 
     # Check if threshold reached
     if [ "$USAGE_PERCENT" -ge "$THRESHOLD" ]; then
+        CROSSED_NOW=0
         # Record threshold crossing time if not already set
         if [ -z "$THRESHOLD_CROSSED_AT" ] || [ "$THRESHOLD_CROSSED_AT" = "null" ]; then
             THRESHOLD_CROSSED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            CROSSED_NOW=1
             NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$THRESHOLD_CROSSED_AT" '.threshold_crossed_at = $t')
             # Append-only crossing log for diagnostics (preserves evidence across state-file overwrites)
             printf '%s | %s/%s (%s%%) | tool=%s\n' \
@@ -366,6 +390,7 @@ main() {
         if [ "$HANDOFF_COMPLETE" = "true" ]; then
             write_state "$NEW_STATE"
             release_lock "$STATE_LOCK"
+            [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
             exit 0
         fi
 
@@ -382,6 +407,7 @@ main() {
                 NEW_STATE=$(echo "$NEW_STATE" | jq '.handoff_complete = true')
                 write_state "$NEW_STATE"
                 release_lock "$STATE_LOCK"
+                [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
                 exit 0
             fi
         fi
@@ -392,6 +418,7 @@ main() {
         if [ "$LAST_EPOCH" -gt 0 ] && [ $((NOW_EPOCH - LAST_EPOCH)) -lt 60 ]; then
             write_state "$NEW_STATE"
             release_lock "$STATE_LOCK"
+            [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
             exit 0
         fi
 
@@ -402,9 +429,11 @@ main() {
         if ! write_state "$NEW_STATE"; then
             # State write failed - release lock and exit
             release_lock "$STATE_LOCK"
+            [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
             exit 0
         fi
         release_lock "$STATE_LOCK"
+        [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
         echo "[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated). Run /ll:handoff to preserve your work before context exhaustion." >&2
         exit 2
     fi

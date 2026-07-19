@@ -561,6 +561,50 @@ class TestHooksMainModule:
         assert rc == 0
         assert captured[0].host == "claude-code"
 
+    def test_main_hooks_session_id_propagates_from_payload(self, monkeypatch, tmp_path) -> None:
+        """session_id in the host payload reaches LLHookEvent.session_id (ENH-2495)."""
+        import io
+
+        from little_loops import hooks as hooks_pkg
+
+        captured: list[LLHookEvent] = []
+
+        def stub_handler(event: LLHookEvent) -> LLHookResult:
+            captured.append(event)
+            return LLHookResult(exit_code=0)
+
+        monkeypatch.setattr(hooks_pkg, "_dispatch_table", lambda: {"session_start": stub_handler})
+        monkeypatch.setattr(sys, "argv", ["little_loops.hooks", "session_start"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO('{"session_id": "abc123"}'))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+
+        rc = hooks_pkg.main_hooks()
+        assert rc == 0
+        assert captured[0].session_id == "abc123"
+
+    def test_main_hooks_session_id_defaults_to_none(self, monkeypatch, tmp_path) -> None:
+        """Missing session_id in the host payload leaves LLHookEvent.session_id None (ENH-2495)."""
+        import io
+
+        from little_loops import hooks as hooks_pkg
+
+        captured: list[LLHookEvent] = []
+
+        def stub_handler(event: LLHookEvent) -> LLHookResult:
+            captured.append(event)
+            return LLHookResult(exit_code=0)
+
+        monkeypatch.setattr(hooks_pkg, "_dispatch_table", lambda: {"session_start": stub_handler})
+        monkeypatch.setattr(sys, "argv", ["little_loops.hooks", "session_start"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+
+        rc = hooks_pkg.main_hooks()
+        assert rc == 0
+        assert captured[0].session_id is None
+
     def test_dispatch_table_merges_hook_intent_registry(self, monkeypatch) -> None:
         """_dispatch_table() merges _HOOK_INTENT_REGISTRY with built-ins; built-ins win on collision.
 

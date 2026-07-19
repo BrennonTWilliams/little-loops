@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), and `LearningTestEvent` (ENH-2466); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), and `recent_learning_tests()` / `find_learning_test()` (ENH-2466). All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -4119,8 +4119,8 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 - `--db PATH` — Path to the session database (default: `.ll/history.db`)
 
 **Subcommands:**
-- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}`, `--limit N` (default 20), `--json`
-- `recent` — Most recent rows for an event kind; requires `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run}` (or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
+- `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind` (choices come from `VALID_KINDS`: `tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle`), `--limit N` (default 20), `--json`
+- `recent` — Most recent rows for an event kind; requires `--kind` (same `VALID_KINDS` choices as `search`, or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
 - `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
 - `rebuild` — Wipe+re-derive the JSONL-derived cache tables (and their `search_index` rows) from `raw_events`; optional `--config PATH`, `--json` (ENH-2581)
 - `compact` — Sweep `raw_events` rows past the retention cutoff into per-session `kind='retention'` summary nodes, marking them `compacted=1`; optional `--and-prune` (also runs `prune` afterward), `--config PATH`, `--json` (ENH-2581)
@@ -6938,6 +6938,9 @@ from little_loops.history_reader import (
     LearningTestEvent,       # ENH-2466
     recent_learning_tests,   # ENH-2466
     find_learning_test,      # ENH-2466
+    LifecycleEvent,          # ENH-2495
+    recent_lifecycle_events, # ENH-2495
+    handoff_frequency,       # ENH-2495
 )
 ```
 
@@ -7349,6 +7352,34 @@ def find_learning_test(target: str, *, db: Path | str = DEFAULT_DB_PATH) -> Lear
 
 Read the `learning_test_events` mirror of the Learning Test Registry (`.ll/learning-tests/*.md`, ENH-2466). `LearningTestEvent` is the DB-side mirror row — not to be confused with `little_loops.learning_tests.LearnTestRecord`, the registry-file dataclass it mirrors. `recent_learning_tests()` filters by exact `status`; `find_learning_test()` looks up a single row by `target` (slugified to `record_id` internally). Both return `[]`/`None` on unavailable or pre-v26 databases.
 
+### LifecycleEvent / recent_lifecycle_events / handoff_frequency
+
+```python
+@dataclass
+class LifecycleEvent:
+    id: int
+    ts: str
+    session_id: str | None
+    event: str
+    detail: dict | None
+    head_sha: str | None
+    branch: str | None
+
+
+def recent_lifecycle_events(
+    *,
+    event: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[LifecycleEvent]
+
+
+def handoff_frequency(*, since: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> int
+```
+
+Read the `session_lifecycle_events` table — session-lifecycle/handoff transitions written by `record_session_lifecycle_event()` (ENH-2495). `LifecycleEvent.detail` is parsed from the stored JSON `TEXT` column into a `dict` (unlike `CommitEvent.files_json`/`LearningTestEvent.assertions_json`, which stay raw strings). `recent_lifecycle_events()` filters by exact `event` discriminator and/or `ts >= since`. `handoff_frequency()` counts `handoff_needed` rows, optionally since a timestamp — the metric for "how often does this project hit the context-handoff threshold?". Both return `[]`/`0` on unavailable databases.
+
 ### sessions_for_issue
 
 ```python
@@ -7701,11 +7732,11 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **24**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **27**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 26
+    SCHEMA_VERSION,        # 27
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -7718,6 +7749,7 @@ from little_loops.session_store import (
     record_loop_run_summary, # write a loop_runs row (ENH-2463)
     update_loop_run_diagnostics, # link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_learning_test_event, # UPSERT one learning_test_events row (ENH-2466)
+    record_session_lifecycle_event, # write a session_lifecycle_events row (ENH-2495)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -7887,6 +7919,23 @@ def _backfill_learning_test_events(conn: sqlite3.Connection, registry_dir: Path)
 ```
 
 UPSERT one `learning_test_events` row mirroring a Learning Test Registry record and refresh its FTS row (ENH-2466). `record_learning_test_event()` reads the `.md` file at `file_path`, keys the row on `record_id` (the slugified `target`), and is called best-effort from `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` — a re-prove overwrites `status`/`assertions_json`/`date` rather than inserting a duplicate. `_backfill_learning_test_events()` is the reconcile companion: it walks `registry_dir` (`.ll/learning-tests/*.md`) with `INSERT OR IGNORE` on `record_id` so out-of-band file edits still land, without overwriting a live-written row's newer status. Wired into `backfill(db, ..., registry_dir=...)`, defaulting to `.ll/learning-tests` when not given.
+
+### record_session_lifecycle_event
+
+```python
+def record_session_lifecycle_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    event: str,
+    detail: dict | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    ts: str | None = None,
+) -> bool
+```
+
+Write one `session_lifecycle_events` row and index it in `search_index` with `kind="session_lifecycle"` (ENH-2495). `event` is an open TEXT discriminator (no CHECK constraint) — `handoff_needed`, `compaction`, `stale_ref_sweep` are the v1 producers; ENH-2509 shares the table with `worktree_*` values. Best-effort: catches `sqlite3.Error` internally and returns `False` (never raises), so a hook's primary job is never blocked by a missing/locked database. One authoritative producer per discriminator — `context-monitor.sh`'s first 80%-threshold crossing per pressure episode (`handoff_needed`), `pre_compact.handle()` after state persistence (`compaction`), `sweep_stale_refs.handle()` once per invocation including zero findings (`stale_ref_sweep`).
 
 ### record_retirement
 

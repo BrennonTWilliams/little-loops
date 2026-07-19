@@ -50,6 +50,39 @@ class TestHandleHappyPath:
         assert "T" in state["compacted_at"]
         assert state["recent_plan_files"] == []
 
+    def test_writes_compaction_lifecycle_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A successful state write also emits a compaction lifecycle row (ENH-2495)."""
+        from little_loops.history_reader import recent_lifecycle_events
+
+        monkeypatch.chdir(tmp_path)
+        event = LLHookEvent(host="claude-code", intent="pre_compact", payload={}, session_id="s1")
+        result = pre_compact.handle(event)
+        assert result.exit_code == 2
+
+        state_file = tmp_path / ".ll" / "ll-precompact-state.json"
+        state = json.loads(state_file.read_text())
+
+        rows = recent_lifecycle_events(event="compaction", db=tmp_path / ".ll" / "history.db")
+        assert len(rows) == 1
+        assert rows[0].session_id == "s1"
+        assert rows[0].ts == state["compacted_at"]
+        assert rows[0].detail == {"source": "host_precompact", "state_preserved": True}
+
+    def test_writes_compaction_lifecycle_row_silently_with_broken_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A broken/locked DB never blocks the primary state-file write (ENH-2495)."""
+        monkeypatch.chdir(tmp_path)
+        broken = tmp_path / "broken-db"
+        broken.mkdir()
+        monkeypatch.setenv("LL_HISTORY_DB", str(broken))
+
+        result = pre_compact.handle(_event())
+        assert result.exit_code == 2
+        assert (tmp_path / ".ll" / "ll-precompact-state.json").is_file()
+
     def test_creates_state_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """``.ll/`` is created when missing (matches shell ``mkdir -p``)."""
         monkeypatch.chdir(tmp_path)

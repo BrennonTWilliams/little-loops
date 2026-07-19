@@ -297,6 +297,80 @@ class TestContextMonitor:
         assert result.returncode == 2
         assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
 
+    def test_writes_lifecycle_row_on_threshold_crossing(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The first 80%-threshold crossing emits a handoff_needed lifecycle row (ENH-2495)."""
+        import os
+
+        from little_loops.history_reader import recent_lifecycle_events
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        db_path = tmp_path / ".ll" / "history.db"
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 500},
+            "session_id": "sess-xyz",
+        }
+        env = os.environ.copy()
+        env["LL_CONTEXT_LIMIT"] = "50000"
+        env["LL_HANDOFF_THRESHOLD"] = "1"
+        env["LL_HISTORY_DB"] = str(db_path)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 2
+
+        rows = recent_lifecycle_events(event="handoff_needed", db=db_path)
+        assert len(rows) == 1
+        assert rows[0].session_id == "sess-xyz"
+        assert rows[0].detail["threshold_pct"] >= 1
+
+    def test_python_failure_does_not_flip_exit_code(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A broken LL_HISTORY_DB (directory, not a file) must not change the
+        hook's primary exit code — the shell-out is `|| true` guarded (ENH-2495)."""
+        import os
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        broken_db = tmp_path / "broken-db"
+        broken_db.mkdir()
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 500},
+        }
+        env = os.environ.copy()
+        env["LL_CONTEXT_LIMIT"] = "50000"
+        env["LL_HANDOFF_THRESHOLD"] = "1"
+        env["LL_HISTORY_DB"] = str(broken_db)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 2
+
     def test_known_model_auto_detection(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

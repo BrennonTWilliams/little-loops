@@ -2482,7 +2482,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -2490,7 +2490,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466). |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466); `session_lifecycle` exposes session-lifecycle/handoff transitions — `handoff_needed`/`compaction`/`stale_ref_sweep` (ENH-2495). |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--mcp-server NAME` / `--mcp-tool NAME` / `--mcp-outcome {success,error,timeout}` | With `--kind tool`, filter to MCP tool-call rows by server/tool/outcome (`tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`, ENH-2511). Ignored for other `--kind` values. |
 | `--limit N` | Maximum rows (default: 20) |
@@ -2557,7 +2557,7 @@ idempotent and byte-lossless — running it twice is a no-op on the second pass.
 
 | Flag | Description |
 |------|-------------|
-| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run` |
+| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `session_lifecycle_event` |
 | `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
 | `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
 | `-o / --output FILE` | Write output to FILE instead of stdout |
@@ -2571,6 +2571,7 @@ ll-session recent --kind test_run               # Recent pytest runs (ENH-2459)
 ll-session recent --kind orchestration_run       # Per-issue automation outcomes (ENH-2492)
 ll-session recent --kind loop_run                # Recent FSM loop run summaries (ENH-2463)
 ll-session recent --kind learning_test           # Recent Learning Test Registry mirror rows (ENH-2466)
+ll-session recent --kind session_lifecycle       # Recent session-lifecycle/handoff transitions (ENH-2495)
 ll-session search --fts "streaming" --kind learning_test  # Registry records by claim/target (ENH-2466)
 ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)

@@ -3,9 +3,10 @@ id: ENH-2495
 title: Record session-lifecycle / handoff events into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-05
 captured_at: '2026-07-05T00:00:00Z'
+completed_at: '2026-07-19T23:25:47Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
@@ -1050,6 +1051,65 @@ earlier text. Each step cites the live anchor it replaces._
   entry, new public helpers, new CLI `--kind` value. Existing schemas
   unchanged; existing hooks continue to write to their original tables.
 
+## Resolution
+
+Implemented per the Resolved Producer Contract and the 2026-07-19 full-rewrite
+Implementation Steps (22–33):
+
+- **Schema**: v27 migration adds `session_lifecycle_events`
+  `(id, ts, session_id, event, detail, head_sha, branch)` + two indexes;
+  `SCHEMA_VERSION` bumped 26→27; `"session_lifecycle"` added to `VALID_KINDS`/
+  `_KIND_TABLE`; `record_session_lifecycle_event()` added to `session_store.py`
+  (models `record_skill_event`'s body shape + `record_commit_event`'s `bool`
+  return contract, per Step 23); `_EXPORT_TABLE_MAP`/`_EXPORT_DEFAULT_TABLES`
+  gained `session_lifecycle_event` entries (Step 25).
+- **Producers** (one authoritative producer per discriminator, per the
+  Resolved Producer Contract): `context-monitor.sh`'s first 80%-threshold
+  crossing per pressure episode → `handoff_needed` (bash shell-out with
+  `|| true`, Step 27 — `context-handoff-sentinel.sh` stays artifact-only per
+  Step 28); `pre_compact.handle()` after state persistence → `compaction`
+  (Step 30 — `pre_compact_handoff.handle()` emits nothing, locked in by a
+  negative-control test); `sweep_stale_refs.handle()` once per invocation
+  including zero findings → `stale_ref_sweep` (Step 29).
+- **Dispatcher fix** (Step 26): `main_hooks()` now passes
+  `session_id=payload.get("session_id")` when constructing `LLHookEvent`.
+- **Bug found and fixed during implementation**: the original single-jq-pass
+  extraction in `context-monitor.sh` used `@tsv` + `IFS=$'\t' read`, which
+  silently shifts fields when an interior field (`transcript_path`) is empty —
+  bash treats tab as "IFS whitespace" and collapses consecutive delimiters
+  even when IFS is set to tab alone. Switched to `\x1f` (unit separator) via
+  `join("")`, which is not whitespace-collapsed.
+- **Read API**: `history_reader.LifecycleEvent` (parses `detail` JSON into a
+  `dict`, unlike sibling `*_json` columns which stay raw strings),
+  `recent_lifecycle_events(event, since, limit)`, `handoff_frequency(since)`.
+- **CLI**: `session_lifecycle` flows through `VALID_KINDS` automatically —
+  no duplicated argparse choices lists to edit, confirming the full-rewrite
+  pass's anchor correction over the earlier (incorrect) "two lists" note.
+- **Out of scope, confirmed unchanged**: a true `session_end` producer
+  (Step 31) remains deferred to a follow-on sub-issue — not implemented here.
+- **Tests**: `TestSchemaV27`, `TestRecordSessionLifecycleEvent`,
+  `TestRecentLifecycleEvents`, `TestHandoffFrequency`, per-producer
+  graceful-degradation tests (`sweep_stale_refs`, `pre_compact`,
+  `context-monitor.sh` subprocess-level), the `pre_compact_handoff`
+  negative-control test, and the dispatcher `session_id` propagation tests.
+  All 11 `SCHEMA_VERSION == 26` test-literal sites plus 8 additional
+  `int(row[0]) == 26` / `int(version[0]) == 26` full-migration-check sites
+  (not caught by the issue's original grep, which only searched for the
+  `SCHEMA_VERSION ==` pattern) were bumped to 27. Full suite:
+  15518 passed, 38 skipped.
+- **Docs**: `docs/ARCHITECTURE.md`, `docs/reference/API.md`,
+  `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`,
+  `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `docs/reference/CONFIGURATION.md`,
+  `.claude/CLAUDE.md` updated. Deferred as follow-on cleanup (not required by
+  Acceptance Criteria): backfilling the v21–v26 schema-version-table rows in
+  `docs/ARCHITECTURE.md`/`HISTORY_SESSION_GUIDE.md` that had already drifted
+  before this issue (those tables were current as of this pass, so no backlog
+  existed); the optional `analytics.capture.session_lifecycle_events` config
+  gate proposed in the second-pass Wiring Additions (not in Acceptance
+  Criteria or core Scope Boundaries — lifecycle producers are unconditional
+  best-effort writes, same as `corrections`/`file_events` today without a
+  dedicated flag).
+
 ## Status
 
 **Open** | Created: 2026-07-05 | Priority: P3
@@ -1198,6 +1258,7 @@ best-evidenced pass:
    growing this issue's blast radius further.
 
 ## Session Log
+- `/ll:manage-issue fix` - 2026-07-19T23:24:39Z - `b0f63cd3-69e9-4e57-ad7d-00b5f1b7b80c.jsonl`
 - `/ll:ready-issue` - 2026-07-19T22:42:53 - `51b0ed9e-d527-4b05-9340-b38244f69150.jsonl`
 - `/ll:confidence-check` - 2026-07-19T00:00:00Z - `926de526-7a59-4baf-abfe-5ac37cfae19f.jsonl`
 - `/ll:decide-issue` - 2026-07-19T22:36:41 - `a4d44b24-82b1-4bf5-9f50-d3f765694441.jsonl`

@@ -171,6 +171,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
         done_ids: set[str] = {i.issue_id for i in done_issues}
 
         if not done_ids:
+            _record_sweep(cwd, event.session_id, findings=0, fix_mode=fix_mode)
             return LLHookResult(exit_code=0)
 
         # Collect open issues (default call skips done/cancelled/deferred)
@@ -191,6 +192,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 all_findings.append((path, lineno, issue_id, snippet))
 
         if not all_findings:
+            _record_sweep(cwd, event.session_id, findings=0, fix_mode=fix_mode)
             return LLHookResult(exit_code=0)
 
         lines = [f"[ll] {len(all_findings)} stale cross-issue reference(s) found:"]
@@ -198,7 +200,23 @@ def handle(event: LLHookEvent) -> LLHookResult:
             lines.append(f"  {path}:{lineno}: [{issue_id}] {snippet}")
         feedback = "\n".join(lines)
 
+        _record_sweep(cwd, event.session_id, findings=len(all_findings), fix_mode=fix_mode)
         return LLHookResult(exit_code=0, feedback=feedback)
 
     except Exception:
         return LLHookResult(exit_code=0)
+
+
+def _record_sweep(cwd: Path, session_id: str | None, *, findings: int, fix_mode: str) -> None:
+    """Best-effort ``stale_ref_sweep`` lifecycle row — never raises (ENH-2495)."""
+    try:
+        from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+
+        record_session_lifecycle_event(
+            resolve_history_db(cwd / ".ll" / "history.db"),
+            session_id=session_id,
+            event="stale_ref_sweep",
+            detail={"findings": findings, "fix_mode": fix_mode, "trigger": "session_start"},
+        )
+    except Exception:
+        pass

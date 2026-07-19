@@ -246,7 +246,7 @@ Examples:
             "Types to include (default: all non-message tables). "
             "Choices: session, issue_event, issue_snapshot, skill_event, "
             "loop_event, correction, summary_node, message_event, commit_event, "
-            "test_run_event, usage_event, orchestration_run"
+            "test_run_event, usage_event, orchestration_run, session_lifecycle_event"
         ),
     )
     export_parser.add_argument(

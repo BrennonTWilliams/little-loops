@@ -1376,7 +1376,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 26
+        assert SCHEMA_VERSION == 27
 
 
 class TestBackfillIncremental:
@@ -1821,8 +1821,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1936,8 +1936,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1988,8 +1988,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2067,7 +2067,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 26
+        assert int(version[0]) == 27
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2084,8 +2084,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3665,8 +3665,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3706,8 +3706,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 26
-        assert int(row[0]) == 26
+        assert SCHEMA_VERSION == 27
+        assert int(row[0]) == 27
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3761,7 +3761,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 26
+        assert int(version[0]) == 27
         assert "issue_snapshots" in names
 
 
@@ -4454,7 +4454,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 26
+        assert SCHEMA_VERSION == 27
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4600,7 +4600,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 26
+        assert SCHEMA_VERSION == 27
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -4821,7 +4821,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 26
+        assert SCHEMA_VERSION == 27
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -4908,3 +4908,79 @@ class TestBackfillLearningTestEvents:
             registry_dir=tmp_path / "no-such-registry",
         )
         assert counts["learning_tests"] == 0
+
+
+class TestSchemaV27:
+    """v27 migration adds the session_lifecycle_events table (ENH-2495)."""
+
+    def test_session_lifecycle_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(session_lifecycle_events)")}
+        finally:
+            conn.close()
+        assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
+
+    def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 27
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 26)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            conn.close()
+        assert "session_lifecycle_events" in names
+
+
+class TestRecordSessionLifecycleEvent:
+    """ENH-2495: record_session_lifecycle_event() DB write round-trip."""
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        assert record_session_lifecycle_event(
+            db,
+            session_id="s1",
+            event="handoff_needed",
+            detail={"threshold_pct": 82},
+        )
+        rows = recent(db, kind="session_lifecycle")
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s1"
+        assert rows[0]["event"] == "handoff_needed"
+        assert json.loads(rows[0]["detail"]) == {"threshold_pct": 82}
+
+    def test_event_discriminator_filters(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(db, session_id="s1", event="handoff_needed")
+        record_session_lifecycle_event(db, session_id="s1", event="stale_ref_sweep")
+        rows = recent(db, kind="session_lifecycle")
+        assert {r["event"] for r in rows} == {"handoff_needed", "stale_ref_sweep"}
+
+    def test_fts_searchable_by_event(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(db, session_id="s1", event="compaction")
+        results = search(db, query="compaction")
+        assert any(r["kind"] == "session_lifecycle" for r in results)
+
+    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        db = tmp_path / "history.db"
+        assert not session_store.record_session_lifecycle_event(
+            db, session_id="s1", event="handoff_needed"
+        )

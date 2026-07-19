@@ -38,6 +38,9 @@ Public API:
     LearningTestEvent: dataclass for learning_test_events rows (ENH-2466)
     recent_learning_tests(status, ...) -> list[LearningTestEvent]
     find_learning_test(target, ...) -> LearningTestEvent | None
+    LifecycleEvent: dataclass for session_lifecycle_events rows (ENH-2495)
+    recent_lifecycle_events(event, since, ...) -> list[LifecycleEvent]
+    handoff_frequency(since, ...) -> int
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -54,6 +57,7 @@ Public API:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sqlite3
@@ -222,6 +226,21 @@ class LearningTestEvent:
     assertions_json: str | None
     date: str | None
     raw_output_path: str | None
+
+
+@dataclass
+class LifecycleEvent:
+    """A ``session_lifecycle_events`` row — a session-lifecycle / handoff
+    transition (``handoff_needed``, ``compaction``, ``stale_ref_sweep``, plus
+    ENH-2509's ``worktree_*`` discriminators sharing this table) (ENH-2495)."""
+
+    id: int
+    ts: str
+    session_id: str | None
+    event: str
+    detail: dict | None
+    head_sha: str | None
+    branch: str | None
 
 
 @dataclass
@@ -1080,6 +1099,75 @@ def find_learning_test(
     if row is None:
         return None
     return _row_to_dataclass(row, LearningTestEvent)
+
+
+def recent_lifecycle_events(
+    *,
+    event: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[LifecycleEvent]:
+    """Return recent session-lifecycle events, newest first, optionally filtered (ENH-2495)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT id, ts, session_id, event, detail, head_sha, branch "
+            "FROM session_lifecycle_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if event is not None:
+            clauses.append("event = ?")
+            params.append(event)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_lifecycle_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    results = []
+    for row in rows:
+        kwargs = dict(row)
+        detail_raw = kwargs.get("detail")
+        kwargs["detail"] = json.loads(detail_raw) if detail_raw else None
+        results.append(LifecycleEvent(**kwargs))
+    return results
+
+
+def handoff_frequency(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> int:
+    """Count of ``handoff_needed`` lifecycle events, optionally since a timestamp (ENH-2495)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return 0
+    try:
+        sql = "SELECT COUNT(*) FROM session_lifecycle_events WHERE event = 'handoff_needed'"
+        params: list[Any] = []
+        if since is not None:
+            sql += " AND ts >= ?"
+            params.append(since)
+        row = conn.execute(sql, params).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: handoff_frequency query failed", exc_info=True)
+        return 0
+    finally:
+        conn.close()
+    return int(row[0]) if row else 0
 
 
 def recent_test_runs(
