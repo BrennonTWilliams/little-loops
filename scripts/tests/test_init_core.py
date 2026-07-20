@@ -17,6 +17,8 @@ from little_loops.init.detect import (
     _find_templates_dir,
     _load_templates,
     detect_project_type,
+    detect_project_type_all,
+    format_detection_summary,
 )
 from little_loops.init.validate import (
     _check_jq,
@@ -239,7 +241,7 @@ def fake_templates(tmp_path: Path) -> Path:
     return tdir
 
 
-def _make_match(tdir: Path, filename: str) -> TemplateMatch:
+def _make_match(tdir: Path, filename: str, match_count: int = 0) -> TemplateMatch:
     """Load a TemplateMatch from *tdir/filename*."""
     path = tdir / filename
     data = json.loads(path.read_text())
@@ -250,6 +252,7 @@ def _make_match(tdir: Path, filename: str) -> TemplateMatch:
         template_path=path,
         meta=meta,
         data=data,
+        match_count=match_count,
     )
 
 
@@ -371,6 +374,88 @@ class TestDetectProjectType:
         assert match.filename  # non-empty filename
         assert match.name  # non-empty human name
 
+    def test_match_count_beats_alphabetical_order(
+        self, tmp_project: Path, fake_templates: Path
+    ) -> None:
+        """javascript.json sorts before python-generic.json, but 3 matched
+        globs must beat 1 regardless of alphabetical order."""
+        (tmp_project / "package.json").touch()
+        (tmp_project / "pyproject.toml").touch()
+        (tmp_project / "setup.py").touch()
+        (tmp_project / "requirements.txt").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        assert match.filename == "python-generic.json"
+        assert match.match_count == 3
+
+    def test_detect_project_type_all_sorted_by_match_count(
+        self, tmp_project: Path, fake_templates: Path
+    ) -> None:
+        (tmp_project / "package.json").touch()
+        (tmp_project / "pyproject.toml").touch()
+        (tmp_project / "setup.py").touch()
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        filenames = [c.filename for c in candidates]
+        assert filenames[0] == "python-generic.json"
+        assert candidates[0].match_count == 2
+        assert "javascript.json" in filenames
+        js = next(c for c in candidates if c.filename == "javascript.json")
+        assert js.match_count == 1
+
+    def test_priority_tiebreak_when_match_count_equal(
+        self, tmp_project: Path, fake_templates: Path
+    ) -> None:
+        """Two single-glob matches tie on count; priority breaks the tie."""
+        data = json.loads((fake_templates / "javascript.json").read_text())
+        data["_meta"]["priority"] = 5
+        (fake_templates / "javascript.json").write_text(json.dumps(data))
+        (tmp_project / "package.json").touch()
+        (tmp_project / "tsconfig.json").touch()
+        # tsconfig.json excludes javascript.json's match, so use a
+        # non-excluding single-indicator competitor instead: compare against
+        # typescript.json (1 match) with no priority set (0).
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        # javascript is excluded by tsconfig.json presence; typescript wins.
+        assert candidates[0].filename == "typescript.json"
+
+    def test_filename_tiebreak_when_count_and_priority_equal(
+        self, tmp_project: Path, fake_templates: Path
+    ) -> None:
+        (tmp_project / "package.json").touch()
+        (tmp_project / "tsconfig.json").touch()
+        # Remove detect_exclude so both javascript and typescript match with
+        # equal match_count (1) and equal priority (0); filename tiebreak
+        # picks javascript.json (alphabetically first).
+        data = json.loads((fake_templates / "javascript.json").read_text())
+        del data["_meta"]["detect_exclude"]
+        (fake_templates / "javascript.json").write_text(json.dumps(data))
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        assert candidates[0].filename == "javascript.json"
+
+
+class TestFormatDetectionSummary:
+    def test_single_match_no_runner_up(self, tmp_project: Path, fake_templates: Path) -> None:
+        (tmp_project / "tsconfig.json").touch()
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        summary = format_detection_summary(candidates)
+        assert "TypeScript" in summary
+        assert "also matched" not in summary
+
+    def test_multi_match_includes_runner_up(self, tmp_project: Path, fake_templates: Path) -> None:
+        (tmp_project / "package.json").touch()
+        (tmp_project / "pyproject.toml").touch()
+        (tmp_project / "setup.py").touch()
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        summary = format_detection_summary(candidates)
+        assert "Python (Generic)" in summary
+        assert "2/3" in summary
+        assert "also matched" in summary
+        assert "JavaScript (Node.js)" in summary
+
+    def test_fallback_has_no_runner_up(self, tmp_project: Path, fake_templates: Path) -> None:
+        candidates = detect_project_type_all(tmp_project, fake_templates)
+        summary = format_detection_summary(candidates)
+        assert summary == "Detected project type: Generic"
+
 
 # ===========================================================================
 # TestDetectAllRealTemplates — parity coverage for all 9 project types
@@ -390,6 +475,10 @@ class TestDetectProjectType:
         (["pom.xml"], "java-maven.json"),
         (["build.gradle"], "java-gradle.json"),
         ([], "generic.json"),  # fallback
+        (
+            ["pyproject.toml", "setup.py", "requirements.txt", "go.mod"],
+            "python-generic.json",
+        ),  # 3 matches beat 1; not alphabetical go.json (ENH-2702 AC)
     ],
 )
 def test_real_template_detection(

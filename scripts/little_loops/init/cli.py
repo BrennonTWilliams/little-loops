@@ -246,7 +246,11 @@ def _run_yes(
         print_logo()
 
     from little_loops.init.core import build_config
-    from little_loops.init.detect import detect_documents, detect_project_type
+    from little_loops.init.detect import (
+        detect_documents,
+        detect_project_type_all,
+        format_detection_summary,
+    )
     from little_loops.init.install_check import (
         InstallStatus,
         check_version,
@@ -372,8 +376,9 @@ def _run_yes(
                         file=sys.stderr,
                     )
 
-    template = detect_project_type(project_root, templates_dir)
-    print(f"Detected project type: {template.name}")
+    candidates = detect_project_type_all(project_root, templates_dir)
+    template = candidates[0]
+    print(format_detection_summary(candidates))
 
     documents_categories = detect_documents(project_root)
     if documents_categories:
@@ -500,11 +505,13 @@ def _run_plan(
 ) -> int:
     """Emit a machine-readable JSON plan without writing anything."""
     from little_loops.init.core import build_config
-    from little_loops.init.detect import detect_documents, detect_project_type
+    from little_loops.init.detect import detect_documents, detect_project_type_all
     from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
 
-    template = detect_project_type(project_root, templates_dir)
+    candidates = detect_project_type_all(project_root, templates_dir)
+    template = candidates[0]
+    runner_up = next((c for c in candidates[1:] if c.match_count > 0), None)
     documents_categories = detect_documents(project_root)
     introspection = introspect(project_root, template)
     choices: dict[str, Any] = {"project_name": project_root.name}
@@ -524,6 +531,12 @@ def _run_plan(
             "template_name": template.filename,
             "project_type": template.name,
             "project_name": project_root.name,
+            "match_count": template.match_count,
+            "runner_up": (
+                {"project_type": runner_up.name, "match_count": runner_up.match_count}
+                if runner_up
+                else None
+            ),
         },
         "proposed_config": config,
         "host_options": {

@@ -3,8 +3,9 @@ id: ENH-2702
 title: Score template detection by match count instead of first-alphabetical
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-07-19T00:00:00Z'
+completed_at: '2026-07-20T05:41:21Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 parent: EPIC-2700
@@ -12,6 +13,12 @@ labels:
 - init
 - cli
 - detection
+confidence_score: 97
+outcome_confidence: 70
+score_complexity: 15
+score_test_coverage: 22
+score_ambiguity: 15
+score_change_surface: 18
 ---
 
 # ENH-2702: Score template detection by match count instead of first-alphabetical
@@ -119,6 +126,18 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `cli_args.py` — a new `--type` flag should follow that same inline-registration
   convention rather than adding a shared helper.
 
+> ⚠ **Anchor refresh** (`/ll:refine-issue`, 2026-07-20): `detect.py` line
+> references above are still exact (`any()` check at line 185, `detect_exclude`
+> veto at line 189, `matches[0]` at line 204 — file is unchanged at 211 lines).
+> The `cli.py`/`tui.py` line numbers have drifted from unrelated edits since the
+> last refine pass and should be re-verified at implementation time:
+> `_run_yes()`'s `print(f"Detected project type: ...")` is now at
+> `cli.py:376` (was 359-360); `_run_plan()`'s `"detected"` block is now at
+> `cli.py:522-527` (was 465, 472-477); `main_init()` now starts at `cli.py:637`
+> and runs to end-of-file (836 lines total; was 609-687). `tui.py`'s banner
+> line (`f"... detected [cyan]{template.name}..."`) is at `tui.py:258` (was
+> 253-259) — this one is still accurate.
+
 ## Acceptance Criteria
 
 - Fixture: repo with `pyproject.toml` + `setup.py` + `requirements.txt` and a
@@ -147,12 +166,38 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   optional `--type <template>` override flag, inline per existing convention
   (not via `cli_args.py`).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/init/SKILL.md` — **conditional on the `--type` override flag being
+  implemented**: the frontmatter `description` (line 10) enumerates
+  passthrough flags (`--yes, --force, --dry-run, --hosts, --codex`) and the
+  body's bash flag-extraction logic (~line 35, assembled ~line 48) has no
+  conditional for `--type`. Without this update, `/ll:init --type <x>` would
+  silently drop the flag instead of forwarding it to `ll-init` [Agent 2
+  finding].
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/core.py:77` (`build_config()`) — consumes the
   winning `TemplateMatch`; unaffected by scoring changes as long as the
   `TemplateMatch` shape stays compatible.
 - `scripts/little_loops/init/tui.py:254-255` — reads `template.data` /
   `template.meta.get("command_options", {})` from the returned match.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/introspect.py:22` (`introspect(root, template)`)
+  — imports and takes `TemplateMatch` as a parameter, wrapping it in
+  `IntrospectResult`; only reads existing fields, so additive-safe, but this
+  is a real caller missing from the map above [Agent 1/2 finding].
+- `scripts/little_loops/init/__init__.py` (lines 4, 34, 40, 46) — re-exports
+  `TemplateMatch` and `detect_project_type` as public API; a new
+  `match_count` field on the frozen `TemplateMatch` dataclass flows through
+  automatically but has no default value, so **every direct
+  `TemplateMatch(...)` construction site must add the new field** —
+  confirmed construction sites besides `detect_project_type()` itself are
+  test fixtures (`_make_match()` in `test_init_core.py`) [Agent 2 finding].
+- `scripts/little_loops/cli/__init__.py:96` — re-exports `main_init` from
+  `little_loops.init.cli`; no change needed unless `main_init()`'s signature
+  changes (it won't — `--type` is an internal argparse addition) [Agent 1
+  finding, FYI only].
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/route_table.py:389` — `(-len(op), op)` tuple sort
@@ -175,11 +220,86 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_init_core.py:56-239` — `fake_templates`/`tmp_project`
   fixtures and `_make_match()` helper (lines 242-253) for constructing a
   `TemplateMatch` by hand if a test needs to assert on runner-up display
-  without going through full glob matching.
+  without going through full glob matching. **Note**: this helper is a
+  second direct-construction site for `TemplateMatch` — if a `match_count`
+  field is added without a default, `_make_match()` must be updated in
+  lockstep or every test using it breaks [Agent 2 finding].
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_core.py:1537` — `test_plan_emits_json`: asserts
+  only `"detected" in plan` (key presence), not sub-key values — safe
+  against the scoring change, but should be extended to assert
+  `plan["detected"]` contains runner-up info once that's added [Agent 3
+  finding].
+- `scripts/tests/test_init_core.py:1594` — `test_unknown_feature_flag_exits_2`
+  is the established pattern for an invalid-value CLI flag (exit 2, message
+  in stderr, no config written) — follow this shape for a `--type
+  <template>` validation test (unknown template name) [Agent 3 finding].
+- `scripts/tests/test_init_core.py:1615` — `test_plan_reflects_feature_flags`
+  is the established pattern for asserting a flag's effect surfaces in
+  `plan["proposed_config"]` under `--plan` — directly applicable to
+  verifying `--type` overrides `plan["detected"]["template_name"]` [Agent 3
+  finding].
+- `scripts/tests/test_init_tui.py` — no test currently greps/asserts the
+  Rich console banner text (`tui.py:257-259`); the two fixtures that call
+  `detect_project_type()` directly (`TestBuildFinalConfig.generic_template`
+  line ~550-555, `TestBuildFinalConfigParity.generic_template` line
+  ~1088-1093) always resolve to the generic fallback against an empty
+  `tmp_path`, so they're unaffected by match-count scoring — flagged as
+  covered-but-shallow, not a gap requiring new assertions [Agent 1/3
+  finding].
+- `scripts/tests/test_init_introspect.py` — imports `detect_project_type`
+  for manifest-derived-command integration tests; should be re-run (not
+  necessarily edited) since `introspect()` consumes `TemplateMatch` [Agent 1
+  finding].
+- `scripts/tests/integration/test_init_e2e.py` — real end-to-end tests via
+  `_run_init()` against real bundled templates. All current fixtures use
+  empty `tmp_path` project dirs that resolve to the generic fallback
+  regardless of scoring algorithm (low risk), but this is the
+  highest-risk test file for a live behavior shift if any two real
+  templates in `scripts/little_loops/templates/*.json` share overlapping
+  `detect` globs where match-count changes the winner vs. today's
+  alphabetical order — worth a manual check against the real template set
+  at implementation time. No test in this file asserts stdout content, so
+  print-message changes won't break it [Agent 2/3 finding].
+- Sort-key testing convention: `scripts/tests/test_ll_loop_edit_routes.py`
+  (`test_cond_pattern_ops_match_all_ops` line 893,
+  `test_parse_cond_cell_longest_match_gte` line 904) is the closer
+  precedent for this issue's `(-match_count, -priority, filename)` sort —
+  combines a regression guard against the old naive behavior, an
+  exhaustive-domain gate, and a specific tie-break-winner test. Mirror this
+  shape: N-glob-match beats 1-glob-match regardless of alphabetical order,
+  equal match-count falls through to priority, equal match-count+priority
+  falls through to filename [Agent 3 finding].
 
 ### Documentation
 - No dedicated docs page for template-detection internals was found; no
   doc update appears required beyond the issue itself.
+
+_Wiring pass added by `/ll:wire-issue`: this claim covers detection
+**internals** only — the following user-facing surfaces DO need updates,
+found by tracing beyond the internals-only search above:_
+- `docs/reference/CLI.md`, `### ll-init` section — has no `--type` row
+  today; if the `--type <template>` override flag is implemented, add one
+  here worded distinctly from the *other* `--type`/`-T` rows this same doc
+  already documents for `ll-issues`/`ll-auto`/`ll-parallel`/`ll-sprint`
+  (issue-type filtering, different semantics) — otherwise a reader could
+  conflate the two [Agent 2 finding].
+- `docs/guides/GETTING_STARTED.md` — has its own ll-init flag table
+  (~lines 95-100, missing `--type`) and a "Detected project types" prose
+  block (~line 73) that describes detection at a high level but not the
+  alphabetical-tiebreak-vs-scoring behavior; update both if the override
+  flag or scoring behavior should be user-facing documented [Agent 2
+  finding].
+- `skills/init/SKILL.md`, frontmatter `description` (line 10) — explicitly
+  enumerates the flags this skill wrapper passes through: `"Optional
+  flags: --yes, --force, --dry-run, --hosts, --codex"`. **This list omits
+  `--type` today, and the skill body's bash flag-extraction logic (~line
+  35, assembled at ~line 48) has no conditional for it** — if `--type` is
+  implemented on `ll-init` but not wired through this skill, invoking
+  `/ll:init --type <template>` would silently drop the flag rather than
+  forward it to `ll-init` [Agent 2 finding — moved to Files to Modify
+  below since this is a functional gap, not just a docs gap].
 
 ## Scope Boundaries
 
@@ -199,6 +319,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Open** | Created: 2026-07-19 | Priority: P4
 
+## Resolution
+
+Replaced the `any()` boolean match check with a per-template glob match
+count. `detect_project_type()` is now a thin wrapper around the new
+`detect_project_type_all()`, which returns the full candidate list sorted by
+`(-match_count, -meta.priority, filename)` — index 0 is the winner, the rest
+are runners-up. `detect_exclude` remains an unconditional hard veto. A new
+`format_detection_summary()` helper renders "Detected: X — n/m indicators;
+also matched: Y (k/j)" and replaces the old name-only print in `_run_yes()`
+(cli.py) and the Rich banner in `run_tui()` (tui.py); `_run_plan()`'s
+`"detected"` JSON block gained `match_count` and `runner_up` keys.
+`TemplateMatch` gained a defaulted `match_count: int = 0` field so existing
+direct-construction sites (fallback path, `_make_match()` test helper) keep
+working unchanged.
+
+`--type <template>` CLI override was left out of scope — it was "Consider" in
+the Proposed Solution, not in the Acceptance Criteria.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-20T05:40:50Z - `972ed3f7-7dc0-45b6-84f2-87e44802d703.jsonl`
+- `/ll:ready-issue` - 2026-07-20T05:33:05 - `69ba6a83-d807-4e01-ad6a-f8465c6ceae4.jsonl`
+- `/ll:wire-issue` - 2026-07-20T05:29:27 - `85578b13-5934-4dd2-9984-2a5c178628a6.jsonl`
+- `/ll:refine-issue` - 2026-07-20T05:22:50 - `0e52c174-61b1-4c97-a898-72a5570ae694.jsonl`
 - `/ll:refine-issue` - 2026-07-19T23:04:20 - `c0ad722f-fe1d-4ab6-8062-9c79877dc3cc.jsonl`

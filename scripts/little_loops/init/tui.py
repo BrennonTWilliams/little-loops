@@ -147,7 +147,7 @@ def run_tui(
     if sys.stdout.isatty():
         print_logo()
 
-    from little_loops.init.detect import detect_project_type
+    from little_loops.init.detect import detect_project_type_all, format_detection_summary
     from little_loops.init.install_check import (
         InstallStatus,
         check_version,
@@ -250,12 +250,14 @@ def run_tui(
                 f"{'v' + installed_version if installed_version else '(version unknown)'} ✓[/dim]"
             )
 
-    template = detect_project_type(project_root, templates_dir)
+    candidates = detect_project_type_all(project_root, templates_dir)
+    template = candidates[0]
     project_data = template.data.get("project", {})
     cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
 
     console.print(
-        f"\n[bold blue]little-loops setup[/bold blue] — detected [cyan]{template.name}[/cyan]\n"
+        f"\n[bold blue]little-loops setup[/bold blue] — "
+        f"{format_detection_summary(candidates)}\n"
     )
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
