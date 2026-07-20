@@ -3,17 +3,17 @@ id: ENH-2496
 title: Config-change audit trail (.ll/ll-config.json) in history.db
 type: ENH
 priority: P3
-status: open
+status: cancelled
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - config
-  - captured
+- enhancement
+- history-db
+- config
+- captured
 ---
 
 # ENH-2496: Config-change audit trail (.ll/ll-config.json) in history.db
@@ -446,7 +446,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-07-05 | Priority: P3
+**Cancelled** | Created: 2026-07-05 | Priority: P3
+
+**Won't Do** (2026-07-20): Closed by user request without implementation.
 
 ---
 

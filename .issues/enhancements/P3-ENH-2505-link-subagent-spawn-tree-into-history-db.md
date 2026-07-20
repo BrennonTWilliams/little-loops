@@ -1,23 +1,30 @@
 ---
 id: ENH-2505
-title: Link subagent session-tree (parent→child) into history.db
+title: "Link subagent session-tree (parent\u2192child) into history.db"
 type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
-depends_on: [ENH-2497]
+depends_on:
+- ENH-2497
 learning_tests_required:
-  - sqlite3
-  - claude-code-hooks
+- sqlite3
+- claude-code-hooks
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - agents
-  - captured
+- enhancement
+- history-db
+- agents
+- captured
+confidence_score: 100
+outcome_confidence: 70
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # ENH-2505: Link subagent session-tree (parent→child) into history.db
@@ -65,16 +72,20 @@ agent_type, started_at, ended_at)` so the spawn tree is queryable.
 ## Expected Behavior
 
 - A `subagent_runs` table records one row per subagent spawn with
-  `parent_session_id`, `child_session_id`, `agent_type`, `started_at`,
+  `parent_session_id`, `agent_id`, `agent_type`, `started_at`,
   `ended_at` (nullable while running), and `status` (`running` |
   `completed` | `failed` | `timeout`).
-- The Agent tool's `tool_response` payload carries the child session_id;
-  extract it in `post_tool_use` and write the row at end-of-spawn
-  (best-effort).
-- A small SessionEnd/Stop hook updates `ended_at` for any rows whose
-  child_session_id has since stopped (best-effort, batched).
+- `SubagentStart` supplies `agent_id`/`agent_type` (and the parent
+  `session_id`) at spawn time; write the row from that payload
+  (best-effort). **Note**: `agent_id` (e.g. `"def456"`) is a spawn-local
+  identifier, not a `sessions.session_id` — the subagent's transcript is
+  a *nested* file (`<transcript_dir>/subagents/agent-<id>.jsonl`), not a
+  top-level session row. Do not assume a join against `sessions` on this
+  column.
+- `SubagentStop` supplies `agent_transcript_path` and updates `ended_at`
+  / `status` for the matching `agent_id` row (best-effort).
 - `ll-session recent --kind subagent_run` returns rows; FTS matches
-  `child_session_id` / `agent_type`.
+  `agent_id` / `agent_type`.
 - Future `ll-ctx-stats` per-agent block can roll up
   "subagents spawned by this session" alongside the executor tool-count.
 
@@ -87,47 +98,58 @@ CREATE TABLE IF NOT EXISTS subagent_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
     parent_session_id TEXT,
-    child_session_id TEXT,
+    agent_id TEXT,
     agent_type TEXT,              -- "codebase-locator" | "Explore" | "loop-specialist" | ...
+    agent_transcript_path TEXT,   -- nested transcript path from SubagentStop
     started_at TEXT,
     ended_at TEXT,                -- NULL while running
     status TEXT,                  -- "running" | "completed" | "failed" | "timeout"
     head_sha TEXT,
     branch TEXT,
-    UNIQUE(child_session_id)      -- one row per child; INSERT OR IGNORE on replay
+    UNIQUE(parent_session_id, agent_id)  -- one row per (parent, agent_id); INSERT OR IGNORE on replay
 );
 CREATE INDEX IF NOT EXISTS idx_subagent_parent ON subagent_runs(parent_session_id);
-CREATE INDEX IF NOT EXISTS idx_subagent_child ON subagent_runs(child_session_id);
+CREATE INDEX IF NOT EXISTS idx_subagent_agent_id ON subagent_runs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_subagent_agent ON subagent_runs(agent_type);
 CREATE INDEX IF NOT EXISTS idx_subagent_status ON subagent_runs(status);
 ```
 
-Bump `SCHEMA_VERSION`. Add `"subagent_run"` to `_VALID_KINDS` and
+**Naming decision (resolved 2026-07-20, see "Naming Decision" below)**: the
+child-identifier column is `agent_id`, matching the `SubagentStart`/
+`SubagentStop` payload verbatim — not `child_session_id`. `agent_id` is
+spawn-local (e.g. `"def456"`), scoped to its parent session, not a global
+session id, so the UNIQUE constraint is a composite
+`(parent_session_id, agent_id)`, not a bare `UNIQUE(agent_id)`.
+
+Bump `SCHEMA_VERSION`. Add `"subagent_run"` to `VALID_KINDS` and
 `"subagent_run": "subagent_runs"` to `_KIND_TABLE`.
 
 ### Producer wiring
 
-- In `scripts/little_loops/hooks/post_tool_use.py`, when
-  `tool_name == "Agent"` (or `"Task"` for older Claude Code versions),
-  extract `child_session_id` from `tool_response` and call
-  `record_subagent_run(db_path, parent_session_id=..., child_session_id=...,
+- `SubagentStart` fires with `session_id` (parent), `agent_id`, and
+  `agent_type` in its payload; the handler calls
+  `record_subagent_run(db_path, parent_session_id=session_id, agent_id=...,
   agent_type=..., started_at=..., status="running")`.
-- The Stop hook (`scripts/little_loops/hooks/stop.py` or equivalent)
-  updates `ended_at` for any rows where `child_session_id IN (this
-  session)` and `ended_at IS NULL`. Best-effort, batched.
+- `SubagentStop` fires with `agent_id`, `agent_type`, and
+  `agent_transcript_path`; the handler updates `ended_at`, `status`, and
+  `agent_transcript_path` for the row matching
+  `(parent_session_id, agent_id)`. Best-effort, batched.
 - Backfill: extend `_backfill_tool_events` (or add a sibling
-  `_backfill_subagent_runs`) to walk the assistant block for
-  `tool_name="Task"` and the user block for the matching child session
-  log; populate rows from historical JSONL.
+  `_backfill_subagent_runs`) to walk each session's nested
+  `subagents/agent-<id>.jsonl` transcripts (discoverable from the parent's
+  transcript directory) and populate rows from historical JSONL.
 
 ### Read API
 
-- `history_reader.subagent_tree(session_id)` — returns the parent +
-  immediate children + grandchild counts for a session.
+- `history_reader.subagent_tree(session_id)` — returns the direct
+  `agent_id` spawns for a parent session, plus grandchild counts derived
+  by recursing into each nested `agent_transcript_path` (not a join
+  against `sessions`, since subagent transcripts are nested files, not
+  top-level session rows).
 - `history_reader.subagent_retries(agent_type, since=None)` — counts of
   same-agent re-spawns by a single parent (the "oscillation" signal).
-- `history_reader.subagent_budget(session_id)` — total child-session
-  duration rollup (the "burn budget" signal).
+- `history_reader.subagent_budget(session_id)` — total subagent-run
+  duration rollup for a parent session (the "burn budget" signal).
 
 ### CLI surface
 
@@ -138,16 +160,16 @@ Bump `SCHEMA_VERSION`. Add `"subagent_run"` to `_VALID_KINDS` and
 ## Acceptance Criteria
 
 - Schema migration lands; `subagent_runs` exists; `SCHEMA_VERSION` bumped.
-- An `Agent` spawn writes one row with the correct `parent_session_id`,
-  `child_session_id`, `agent_type`, and `started_at`.
-- A child session's end updates the parent row's `ended_at` and `status`
-  (best-effort).
+- A `SubagentStart` event writes one row with the correct
+  `parent_session_id`, `agent_id`, `agent_type`, and `started_at`.
+- A `SubagentStop` event updates the matching row's `ended_at`, `status`,
+  and `agent_transcript_path` (best-effort).
 - `ll-session recent --kind subagent_run` returns rows; FTS matches
   `agent_type`.
-- Writes are best-effort: a missing/malformed response payload writes
-  `child_session_id=NULL` (or skips), never raises.
+- Writes are best-effort: a missing/malformed payload writes
+  `agent_id=NULL` (or skips), never raises.
 - Tests cover: spawn, end, replay idempotency (`INSERT OR IGNORE` on
-  `child_session_id`), missing-field graceful handling.
+  `(parent_session_id, agent_id)`), missing-field graceful handling.
 
 ## Sources
 
@@ -194,7 +216,7 @@ This is the meaningful implementation choice an implementer must resolve before 
 - `scripts/little_loops/session_store.py` — bump `SCHEMA_VERSION = 20` (line 207) to `21` after ENH-2497 lands, then to `22` for this issue; append `_MIGRATIONS` entry creating `subagent_runs`; add `"subagent_run"` to `VALID_KINDS` (line 209); add `"subagent_run": "subagent_runs"` to `_KIND_TABLE` (line 223); add `record_subagent_run(...)` writer (template: `record_test_run_event` at line 1352 or `record_commit_event` at lines 1078-1087); add `_backfill_subagent_runs(...)` companion to `_backfill_tool_events` (line 1836); wire it into `rebuild()` orchestrator at lines 2838-2893.
 - `scripts/little_loops/hooks/post_tool_use.py` — if Option A is chosen, add Agent/Task-specific branch in the analytics-gated insert block (lines 158-180) that calls `record_subagent_run(...)` after extracting child ID from `tool_response`. If Option B, no change to this file.
 - `scripts/little_loops/hooks/__init__.py` — register new intent handlers if Option B (`subagent_start`, `subagent_stop`) in `_dispatch_table()` at lines 74-92; update `_USAGE` static intent list at lines 50-56 (the `_USAGE` banner is a discoverability surface — `reference_dispatch_table_usage_banner` memory notes it must be updated when new hook intents are added).
-- `scripts/little_loops/hooks/sweep_stale_refs.py` — extend the existing `session_end` handler to also `UPDATE subagent_runs SET ended_at = ?, status = ?` for any rows whose `child_session_id` matches this session (best-effort, batched). Or fold this into a new SubagentStop handler if Option B is chosen.
+- `scripts/little_loops/hooks/sweep_stale_refs.py` — extend the existing `session_end` handler to also `UPDATE subagent_runs SET ended_at = ?, status = ?` for any rows whose `agent_id` matches an unstopped spawn from this session (best-effort, batched fallback for the case a `SubagentStop` was missed). Or fold this into a new SubagentStop handler if Option B is chosen.
 - `hooks/hooks.json` — if Option B, add `SubagentStart` and `SubagentStop` event bindings; if neither, leave Stop bindings alone (they currently only call shell cleanup scripts).
 - `scripts/little_loops/history_reader.py` — add `SubagentRun` dataclass (template: `RunEvent` at lines 138-161); add three helpers: `subagent_tree(session_id)`, `subagent_retries(agent_type, since=None)`, `subagent_budget(session_id)`. Templates: `recent_test_runs()` (lines 689-725) for the dataclass mapping shape; `issue_effort()` (line 767) and `lookup_session_metadata()` (line 836) for tree/rollup queries.
 - `scripts/little_loops/cli/session.py` — `recent --kind` choices derive from `VALID_KINDS` (lines 112-130); will auto-include `subagent_run` once registered. Optional follow-on `tree <session_id>` subcommand.
@@ -257,11 +279,29 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ENH-2497 is **planned, not landed** — its issue file remains `status: open`; `SCHEMA_VERSION` is still 20; `tool_events` has no `agent_type` column; `post_tool_use.py` does not extract `subagent_type`; `_backfill_tool_events()` does not extract `block["input"]["subagent_type"]`; there are no `agent_usage()` or `recent_tool_events()` reader helpers. ENH-2497 plans to bump `SCHEMA_VERSION` to `21` (adding `agent_type` column to `tool_events`). Because ENH-2505 `depends_on: [ENH-2497]`, **ENH-2505 must bump to v22, not v21**, and must append after the ENH-2497 migration entry. The `agent_type` column added by ENH-2497 is the parent table's existing discriminator; ENH-2505's `subagent_runs.agent_type` denormalizes the same value for tree-query convenience.
 
+> ⚠ **Stale as of 2026-07-20** — see "Staleness Correction" subsection below. ENH-2497 has since landed; all version numbers and line references above are superseded.
+
+### Staleness Correction (2026-07-20 re-run of `/ll:refine-issue --auto`)
+
+_The dependency this issue is blocked on has since landed, and the codebase has moved through four more schema migrations. This subsection corrects the drift; it does not replace the analysis above, which remains useful for the Option A/B reasoning trail._
+
+- **ENH-2497 is landed**, not open. `ll-issues show ENH-2497` reports `Status: Completed`. It shipped as schema **v24** (`scripts/little_loops/session_store.py:816-824`, comment tags `ENH-2497`): `ALTER TABLE tool_events ADD COLUMN agent_type TEXT;` plus `idx_tool_events_agent` index. Reader helpers `agent_usage()` and `recent_tool_events()` exist in `history_reader.py` (confirmed via `scripts/tests/test_enh_2497_agent_type.py`, which also documents the v24 migration test pattern — `TestSchemaV24AgentType`, `_bootstrap_schema_at(db, 23)` then `ensure_db(db)`).
+- **`SCHEMA_VERSION` is now 27** (`session_store.py:217`), not 20. Migrations since v24: **v25** (ENH-2511, `mcp_server`/`mcp_tool`/`mcp_outcome`/`latency_ms` on `tool_events`, `session_store.py:825-837`), **v26** (ENH-2466, `learning_test_events` table, `session_store.py:838-857`), **v27** (ENH-2495/ENH-2509, `session_lifecycle_events` table, `session_store.py:859-877`). **A new `subagent_runs` migration for this issue must be appended as v28**, not v22.
+- **`VALID_KINDS` is now at `session_store.py:219`, `_KIND_TABLE` at `session_store.py:237`** (both shifted from the 209/223 cited earlier in this document due to the four intervening migrations).
+- **The Option A vs. Option B question is now empirically resolved, confirming the earlier decision.** `post_tool_use.py`'s Task-tool handling block calls `_normalize_agent_type(tool_input.get("subagent_type"))` at **line 168-169**, reading the agent label from `tool_input` (the call), not `tool_response`. `tool_response` is read separately (~lines 152, 176-178) but only for `isError` / `bytes_out` / `mcp_outcome` — **no session-id-shaped field is extracted from it anywhere in the file**. This confirms — with a live code read rather than a zero-grep-match absence — that Option A's premise (child session id in `tool_response`) does not hold in this codebase today. The already-selected **Option B (SubagentStart/SubagentStop lifecycle hooks) remains correct** and does not need to be revisited.
+- **SubagentStart/SubagentStop still do not exist anywhere in the repo** — confirmed via grep on `hooks/hooks.json`, `scripts/little_loops/hooks/__init__.py`, and a repo-wide `subagent_start|subagent_stop|subagent-start|subagent-stop` search (only match: this issue file itself). The wiring described in the Integration Map is still fully greenfield.
+- **Fresher template citations** (supersede the ones earlier in this section, which now point at different code after the version bump):
+  - Schema migration template: v26/v27 above (`session_store.py:838-877`) — clearer recent examples of `CREATE TABLE IF NOT EXISTS ... UNIQUE ...` + indexes than what was cited previously.
+  - Idempotent writer template: `record_commit_event()` is now at `session_store.py:1396-1446` (guard `inserted = bool(cursor.rowcount)`); sibling patterns `record_test_run_event` (writer ~1526, guard ~1672) and `record_loop_run_event` (writer ~1721, guard ~1740).
+  - Host-agnostic hook handler + adapter + dispatch template: `scripts/little_loops/hooks/session_start.py:75` (`handle(event: LLHookEvent) -> LLHookResult`), adapter `hooks/adapters/claude-code/session-start.sh` (`cat` stdin → `python -m little_loops.hooks session_start`), registered in `hooks/hooks.json:10` and `scripts/little_loops/hooks/__init__.py:88-97` (`_dispatch_table()`'s `built_ins` dict). This is the exact 3-layer triad the new `subagent_start`/`subagent_stop` handlers should follow.
+  - Reader rollup/aggregation template: `issue_effort()` (`history_reader.py:1506-1538`, `COUNT`/`MIN`/`MAX` single-row rollup), `worktree_summary()` (`history_reader.py:1174-1208`, `COUNT(*) FILTER (WHERE event = ...)` grouped rollup), `aggregate_loop_runs()` (`history_reader.py:1423-1449`, whitelisted `GROUP BY` pattern) — all return `None`/`[]` on missing DB via `_connect_readonly()` (`history_reader.py:339`). Use these over the `recent_test_runs()` citation earlier in this section for the tree/budget/retries helpers.
+- **No test file exists yet** for this issue (`scripts/tests/*subagent*.py` glob returns no files) — the suggested `test_enh_2505_subagent_runs.py` file from the Tests subsection above is still accurate and still needs to be created.
+
 ### Idempotency & Best-Effort Conventions
 
 - All hook writes must be wrapped in `with contextlib.suppress(Exception):` per the EPIC-1707 best-effort contract — see `post_tool_use.py:158` and `session_start.py:75`. New producer code must follow.
-- `INSERT OR IGNORE` + `cursor.rowcount` guard (the `record_commit_event` pattern at `session_store.py:1078-1087`) for replay safety; `UNIQUE(child_session_id)` constraint enforces single-row-per-child.
-- Missing/malformed payloads write `child_session_id=NULL` (or skip), never raise.
+- `INSERT OR IGNORE` + `cursor.rowcount` guard (the `record_commit_event` pattern at `session_store.py:1078-1087`) for replay safety; `UNIQUE(parent_session_id, agent_id)` composite constraint enforces single-row-per-spawn (an `agent_id` is scoped to its parent session, not globally unique on its own).
+- Missing/malformed payloads write `agent_id=NULL` (or skip), never raise.
 - Four existing precedents for `UNIQUE` + `INSERT OR IGNORE`: v3 (ENH-1690) `idx_issue_events_dedup`, v9 (ENH-1904) `idx_corrections_dedup`, v11 `idx_assistant_messages_dedup`, v17 (ENH-2458) `commit_sha TEXT NOT NULL UNIQUE` declared inline.
 
 ### Test Patterns
@@ -269,7 +309,7 @@ ENH-2497 is **planned, not landed** — its issue file remains `status: open`; `
 - Use `_bootstrap_schema_at(db, version)` helper (`scripts/tests/test_session_store.py:3891-3911`) for v22 migration test.
 - Add `TestSchemaV22SubagentRuns` class modeled on `TestSchemaV20UsageEvents` (lines 3221-3243).
 - Upgrade-pattern test (model on `TestSchemaV15SkillCompletionColumns` lines 3914-3956): bootstrap at v21, insert pre-migration rows, run `ensure_db(db)` to bump to v22, assert `row["new_column"] is None` on pre-existing rows.
-- Idempotency test (model on `record_commit_event` test at lines 4256-4264): call `record_subagent_run` twice with the same `child_session_id`, assert second call is a no-op.
+- Idempotency test (model on `record_commit_event` test at lines 4256-4264): call `record_subagent_run` twice with the same `(parent_session_id, agent_id)`, assert second call is a no-op.
 - `ll-verify-kinds` test will validate `_KIND_TABLE` registration; no new test required but the gate must pass.
 
 ### Documentation Updates
@@ -286,9 +326,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Open Questions for Implementer
 
 1. Does Claude Code's PostToolUse response actually carry a child-session identifier (e.g., under `tool_response`)? Empirical verification needed before Option A is viable. Check the kill-analysis referenced in the issue (`autodev-bug2501-kill-analysis.md`) for any captured PostToolUse payload samples.
-2. Should `child_session_id` be renamed `agent_id` for fidelity to the Claude Code hook payload if Option B is chosen?
+2. ~~Should `child_session_id` be renamed `agent_id` for fidelity to the Claude Code hook payload if Option B is chosen?~~ **Resolved 2026-07-20 — see "Naming Decision" below.**
 3. Is the backfill feasible from JSONL alone? `SubagentStop` documented sample places child transcripts at `<parent_transcript_path>/subagents/<agent_id>.jsonl`, which is discoverable during backfill.
 4. Does the `ll-ctx-stats` per-agent block need to roll up against `subagent_runs`, or is that a separate follow-on (the issue mentions it as "future")?
+
+### Naming Decision
+
+Decided during `/ll:confidence-check` follow-up on 2026-07-20.
+
+**Selected**: `agent_id` (not `child_session_id`), with a **composite**
+`UNIQUE(parent_session_id, agent_id)` constraint (not a bare
+`UNIQUE(agent_id)`).
+
+**Reasoning**: `docs/claude-code/hooks-reference.md` (`SubagentStart`/
+`SubagentStop` sections) documents `agent_id` as a spawn-local identifier
+(example values: `"agent-abc123"`, `"def456"`) — it is not a
+`sessions.session_id`. The subagent's transcript is stored as a *nested*
+file (`<parent-transcript-dir>/subagents/agent-<id>.jsonl`), not a
+top-level session with its own row in the `sessions` table. Naming the
+column `child_session_id` would have implied a join against `sessions`
+that does not hold — `subagent_tree()` and friends must instead recurse
+via `agent_transcript_path`, not `sessions.session_id`. Because `agent_id`
+is scoped to its parent (not globally unique across all sessions), the
+uniqueness constraint must be the composite
+`(parent_session_id, agent_id)` pair rather than `agent_id` alone, or a
+replay could silently collide two different parents' spawns that happen
+to reuse the same `agent_id` value.
+
+This resolves Open Question #2 and corrects the Read API description
+above (originally written assuming a `sessions`-table join).
 
 ### Decision Rationale
 
@@ -353,6 +419,9 @@ The wrap belongs in ENH-2506's dispatcher-level wrapper, not duplicated in
 this issue's per-handler body.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-20T00:00:00Z - `08a90449-d727-4ea4-8c30-244ca2ad7678.jsonl`
+- `/ll:confidence-check` - 2026-07-20T00:00:00Z - `fafd5571-7c8d-4594-b219-0c7ca7229d44.jsonl`
+- `/ll:refine-issue` - 2026-07-20T22:31:58 - `83f47fa3-b788-4e86-83c7-99cdc314f94f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T14:03:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T13:59:18 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:32:24 - `93986e3c-827b-4964-9860-7394e662a283.jsonl`

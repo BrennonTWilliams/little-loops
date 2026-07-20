@@ -3,17 +3,17 @@ id: ENH-2494
 title: Capture lint/typecheck/format gate results into history.db
 type: ENH
 priority: P3
-status: open
+status: cancelled
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - ci
-  - captured
+- enhancement
+- history-db
+- ci
+- captured
 ---
 
 # ENH-2494: Capture lint/typecheck/format gate results into history.db
@@ -388,7 +388,9 @@ _Added by `/ll:refine-issue` — surfaced during the 2026-07-16 re-verification:
 
 ## Status
 
-**Open** | Created: 2026-07-05 | Priority: P3
+**Cancelled** | Created: 2026-07-05 | Priority: P3
+
+**Won't Do** (2026-07-20): Closed by user request without implementation.
 
 ---
 

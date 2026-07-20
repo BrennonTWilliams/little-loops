@@ -1,0 +1,7 @@
+first insert rowcount: 1
+second insert (dup) rowcount: 0
+row count after dup insert: 1
+new row insert rowcount: 1
+update nonexistent rowcount: 0
+agent_type after ALTER on pre-existing row: None
+row access by name works: True
