@@ -10,6 +10,12 @@ from little_loops.init.install_check import (
     fetch_latest_pypi,
     installed_package_version,
 )
+from little_loops.init.introspect import (
+    Ambiguity,
+    IntrospectedValue,
+    IntrospectResult,
+    introspect,
+)
 from little_loops.init.validate import DepWarning, validate_deps
 from little_loops.init.writers import (
     deploy_design_tokens,
@@ -28,6 +34,9 @@ __all__ = [
     "InstallStatus",
     "TemplateMatch",
     "DepWarning",
+    "Ambiguity",
+    "IntrospectedValue",
+    "IntrospectResult",
     "build_config",
     "check_version",
     "deploy_design_tokens",
@@ -39,6 +48,7 @@ __all__ = [
     "fetch_latest_pypi",
     "install_codex_adapter",
     "installed_package_version",
+    "introspect",
     "make_issue_dirs",
     "make_learning_tests_dir",
     "merge_settings",

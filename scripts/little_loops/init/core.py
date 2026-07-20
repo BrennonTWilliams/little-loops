@@ -91,6 +91,9 @@ def build_config(
             Recognised keys:
             - ``project_name`` (str): value written to project.name.
             - ``src_dir`` (str): override project.src_dir.
+            - ``test_cmd`` / ``lint_cmd`` / ``format_cmd`` / ``type_cmd`` (str):
+              override the matching project.* command.
+            - ``scan_focus_dirs`` (list[str]): override scan.focus_dirs.
             - ``product_enabled`` (bool): include product section.
             - ``analytics_enabled`` (bool): include analytics section.
             - ``context_monitor_enabled`` (bool): include context_monitor.
@@ -117,13 +120,24 @@ def build_config(
         project["name"] = choices["project_name"]
     if choices.get("src_dir"):
         project["src_dir"] = choices["src_dir"]
+    if choices.get("test_cmd"):
+        project["test_cmd"] = choices["test_cmd"]
+    if choices.get("lint_cmd"):
+        project["lint_cmd"] = choices["lint_cmd"]
+    if choices.get("format_cmd"):
+        project["format_cmd"] = choices["format_cmd"]
+    if choices.get("type_cmd"):
+        project["type_cmd"] = choices["type_cmd"]
     config["project"] = project
 
     # --- issues ---
     config["issues"] = dict(data.get("issues", {}))
 
     # --- scan ---
-    config["scan"] = dict(data.get("scan", {}))
+    scan: dict[str, Any] = dict(data.get("scan", {}))
+    if choices.get("scan_focus_dirs"):
+        scan["focus_dirs"] = choices["scan_focus_dirs"]
+    config["scan"] = scan
 
     # --- learning_tests (always written) ---
     learning_tests_enabled = bool(

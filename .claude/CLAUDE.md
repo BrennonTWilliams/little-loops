@@ -189,7 +189,7 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 ## CLI Tools
 
 The `scripts/` directory contains Python CLI tools:
-- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select; always writes `loops.run_defaults` into generated config; detects existing install and version drift)
+- `ll-init` - Initialize little-loops for a project (headless core; `--yes`, `--dry-run`, `--plan`/`apply`, `--hosts` multi-select; always writes `loops.run_defaults` into generated config; detects existing install and version drift; `init/introspect.py` derives `project.src_dir`/`{test,lint,format,type}_cmd`/`scan.focus_dirs` from declared repo manifests instead of template literals, tagging each with `declared`/`inferred`/`default` provenance — existing config always wins on re-init, FEAT-2703)
 - `ll-auto` - Process all backlog issues sequentially in priority order (`--skip-learning-gate` bypasses the per-issue learning-test gate)
 - `ll-parallel` - Process issues concurrently using isolated git worktrees. Canonical parallel substrate (used by `ll-sprint` multi-issue waves); intentionally kept as Python with no FSM equivalent — the FSM engine has no concurrency primitive (see `docs/ARCHITECTURE.md` § Orchestration Layers)
 - `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering

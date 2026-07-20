@@ -3,8 +3,9 @@ id: FEAT-2703
 title: 'init/introspect.py: manifest-declared commands + src_dir detection with provenance'
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-19T00:00:00Z'
+completed_at: '2026-07-20T04:25:08Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 parent: EPIC-2700
@@ -107,7 +108,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `_run_yes()` only pre-populates `choices["project_name"]` /
   `choices["src_dir"]` from an existing `.ll/ll-config.json`
   (`cli.py:362-395`); no other project/scan field currently flows through
-  `choices` at all. `_run_plan()` (`cli.py:455-488`) has no existing-config
+  `choices` at all. `_run_plan()` (`cli.py:468-504`) has no existing-config
   pre-population step. Both call `build_config(template, choices)` as their
   single wiring point — introspection must run between
   `detect_project_type()` and this call in both functions.
@@ -119,7 +120,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   "existing-config values still win" requirement must be satisfied at the
   earlier `choices` pre-population step (as `src_dir` already is today), not
   assumed from this merge.
-- `_run_apply()` (`cli.py:491-571`) never calls `build_config`/introspection
+- `_run_apply()` (`cli.py:507-588`) never calls `build_config`/introspection
   — it replays a previously emitted `--plan` JSON's `proposed_config`. Any
   provenance surfaced by introspection must be baked into `_run_plan`'s JSON
   output for `apply` to see it later.
@@ -174,7 +175,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   `type_cmd`/`scan.focus_dirs`, following the existing `src_dir` per-field
   pattern.
 - `scripts/little_loops/init/cli.py` — `_run_yes()` (choices assembly at
-  lines 362-395) and `_run_plan()` (choices assembly at lines 465-469), both
+  lines 362-395) and `_run_plan()` (choices assembly at lines 479-481), both
   of which call `build_config(template, choices)` as the single wiring
   point.
 - New file `scripts/little_loops/init/introspect.py` — net-new; no
@@ -187,7 +188,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   123-146) — second override point after `build_config()`; introspection
   output must respect its existing-config-vs-fresh-build precedence, not
   fight it.
-- `scripts/little_loops/init/cli.py:_run_apply()` (lines 491-571) — doesn't
+- `scripts/little_loops/init/cli.py:_run_apply()` (lines 507-588) — doesn't
   call `build_config`/introspection; replays a prior `--plan` JSON's
   `proposed_config`, so provenance must already be baked into `_run_plan`'s
   output.
@@ -229,15 +230,16 @@ _Wiring pass added by `/ll:wire-issue`:_
   dedup + `_EXCLUDE_DIRS` skip-list, existence-only today.
 
 ### Tests
-- `scripts/tests/test_init_core.py` `TestBuildConfig`, `TestDetectProjectType`,
-  `TestDetectAllRealTemplates` (lines 310-406) — existing test classes to
-  extend; `fake_templates` fixture (lines 68-90).
+- `scripts/tests/test_init_core.py` `TestDetectProjectType` (lines 310-413,
+  including its `test_real_template_detection` case at line 395) and
+  `TestBuildConfig` (lines 414-669) — existing test classes to extend;
+  `fake_templates` fixture (lines 68-90).
 - `scripts/tests/test_init_core.py:test_plan_emits_json` (lines 1537-1548) —
   asserts `plan` JSON keys (`detected`/`proposed_config`/`host_options`/
   `warnings`); extend if a `provenance`/`ambiguities` key is added.
 - `scripts/tests/integration/test_init_e2e.py` —
   `test_plan_apply_produces_same_artifacts_as_yes` (lines 97-142) and
-  `test_plan_output_has_no_logo_and_stays_valid_json` (lines 179-193) —
+  `test_plan_output_has_no_logo_and_stays_valid_json` (lines 235-249) —
   round-trip and stdout-purity tests that must keep passing.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -321,12 +323,44 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Risk**: Low-Medium — additive with existing-config precedence; main risk
   is over-eager inference, bounded by the declarations-only rule.
 
+## Resolution
+
+Implemented `scripts/little_loops/init/introspect.py`: `IntrospectedValue`/
+`Ambiguity`/`IntrospectResult` dataclasses and `introspect(root, template)`,
+deriving `project.{test,lint,format,type}_cmd`, `project.src_dir`, and
+`scan.focus_dirs` from `pyproject.toml` tool tables (with a bounded
+one-level nested-manifest search — needed for this repo's own
+`scripts/pyproject.toml`), `package.json` scripts, and package-layout
+markers. Wired into `build_config()` (new per-field override hooks for the
+4 commands + a new `scan` override hook), `_run_yes`/`_run_plan` (choices
+seeded from introspection at lowest priority, existing-config values
+extended to win for all 5 fields — not just `src_dir` as before — and
+explicit CLI overrides highest), and exported from `init/__init__.py`.
+`_run_plan`'s JSON gained `provenance`/`ambiguities` keys (outside
+`proposed_config.project` per the schema's `additionalProperties: false`).
+TUI (`tui.py:_build_final_config`) parity intentionally out of scope — see
+plan's design note #9.
+
+Found and fixed one implementation bug via dogfooding against this repo
+before shipping: the command-candidate picker fell back to a bare tool-name
+substring (e.g. `"ruff"` instead of `"ruff check ."`) when a template had no
+`_meta.command_options` pool (e.g. `generic.json`); added a static
+tool→command fallback table and a regression test.
+
+34 new/extended tests (`test_init_introspect.py`, `test_init_e2e.py`
+`TestInitHeadlessIntrospection`); full suite: 15550 passed, 38 skipped.
+Docs updated: `CONFIGURATION.md`, `CLI.md`, `.claude/CLAUDE.md`.
+
+Plan: `thoughts/shared/plans/2026-07-19-FEAT-2703-management.md`
+
 ## Status
 
-**Open** | Created: 2026-07-19 | Priority: P3
+**Done** | Created: 2026-07-19 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-20T04:24:25Z - `7d11f305-4e22-4532-840f-5711358c283f.jsonl`
+- `/ll:ready-issue` - 2026-07-20T03:56:49 - `c804f7b8-e7d9-4ebc-bec7-d3c4b63bd342.jsonl`
 - `/ll:confidence-check` - 2026-07-19T00:00:00Z - `2bf40c36-bc5b-4516-92e5-7318c04cf6f2.jsonl`
 - `/ll:wire-issue` - 2026-07-20T03:48:17 - `02470d90-3174-4a5f-b25a-e883b8f60e66.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:53:43 - `4598d4c4-6d97-4b71-a7aa-d801448f1c41.jsonl`

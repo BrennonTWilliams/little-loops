@@ -303,6 +303,16 @@ Project-level settings for commands:
 | `run_cmd` | `null` | Optional run/start command (smoke test) |
 | `health_url` | `null` | Optional service health probe URL (FEAT-2551, used by `oracles/code-run-gate` `service_health` state) |
 
+On a fresh (non-`--force`) `ll-init`, `src_dir`/`test_cmd`/`lint_cmd`/
+`format_cmd`/`type_cmd`/`scan.focus_dirs` are no longer pure template
+literals — `init/introspect.py` first inspects the repo's own manifests
+(`pyproject.toml` tool tables, `package.json` scripts, package-layout
+markers) and adopts a value only when unambiguously declared, tagging it
+`declared`/`inferred` in the printed summary and the `--plan` JSON's
+`provenance` key; anything not found stays the table default above, tagged
+`default` (FEAT-2703). Re-init with an existing `.ll/ll-config.json` is
+unaffected — existing values always win.
+
 ### `issues`
 
 Issue management settings:

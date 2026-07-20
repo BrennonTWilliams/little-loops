@@ -212,6 +212,20 @@ def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[st
     return choices
 
 
+def _print_introspection_summary(introspection: Any) -> None:
+    """Print each non-default introspected value plus any unresolved ambiguity."""
+    for dotted_key, iv in introspection.values.items():
+        if iv.provenance == "default":
+            continue
+        field = dotted_key.split(".", 1)[1]
+        print(f"  {field}: {iv.value}  ({iv.provenance}: {iv.evidence})")
+    for ambiguity in introspection.ambiguities:
+        print(
+            f"  {ambiguity.field}: kept template default — "
+            f"{len(ambiguity.candidates)} candidates found ({', '.join(ambiguity.candidates)})"
+        )
+
+
 def _run_yes(
     project_root: Path,
     templates_dir: Path,
@@ -239,6 +253,7 @@ def _run_yes(
         detect_installation,
         fetch_latest_pypi,
     )
+    from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         deploy_design_tokens,
@@ -366,14 +381,27 @@ def _run_yes(
         n_product = len(documents_categories.get("product", {}).get("files", []))
         print(f"Detected {n_arch} architecture docs, {n_product} product docs")
 
-    # Build choices: start from existing config values, then apply CLI overrides.
+    introspection = introspect(project_root, template)
+    _print_introspection_summary(introspection)
+
+    # Build choices: introspection fills gaps first (lowest priority), then
+    # existing config values win, then explicit CLI overrides win.
     choices: dict[str, Any] = {"project_name": project_root.name}
+    for dotted_key, iv in introspection.values.items():
+        section, field = dotted_key.split(".", 1)
+        flat_key = f"scan_{field}" if section == "scan" else field
+        choices[flat_key] = iv.value
     if existing_config:
         _ex_proj = existing_config.get("project", {})
         if _ex_proj.get("name"):
             choices["project_name"] = _ex_proj["name"]
         if _ex_proj.get("src_dir"):
             choices["src_dir"] = _ex_proj["src_dir"]
+        for _field in ("test_cmd", "lint_cmd", "format_cmd", "type_cmd"):
+            if _ex_proj.get(_field):
+                choices[_field] = _ex_proj[_field]
+        if existing_config.get("scan", {}).get("focus_dirs"):
+            choices["scan_focus_dirs"] = existing_config["scan"]["focus_dirs"]
         choices.update(
             {
                 "product_enabled": existing_config.get("product", {}).get("enabled", True),
@@ -473,11 +501,17 @@ def _run_plan(
     """Emit a machine-readable JSON plan without writing anything."""
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_documents, detect_project_type
+    from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
 
     template = detect_project_type(project_root, templates_dir)
     documents_categories = detect_documents(project_root)
+    introspection = introspect(project_root, template)
     choices: dict[str, Any] = {"project_name": project_root.name}
+    for dotted_key, iv in introspection.values.items():
+        section, field = dotted_key.split(".", 1)
+        flat_key = f"scan_{field}" if section == "scan" else field
+        choices[flat_key] = iv.value
     if feature_choices:
         choices.update(feature_choices)
     config = build_config(template, choices)
@@ -499,6 +533,19 @@ def _run_plan(
             "suggested_settings_file": ".claude/settings.local.json",
         },
         "warnings": [{"message": w.message, "install_hint": w.install_hint} for w in warnings],
+        "provenance": [
+            {
+                "field": dotted_key,
+                "value": iv.value,
+                "provenance": iv.provenance,
+                "evidence": iv.evidence,
+            }
+            for dotted_key, iv in introspection.values.items()
+        ],
+        "ambiguities": [
+            {"field": a.field, "candidates": a.candidates, "note": a.note}
+            for a in introspection.ambiguities
+        ],
     }
     print(json.dumps(plan, indent=2))
     return 0

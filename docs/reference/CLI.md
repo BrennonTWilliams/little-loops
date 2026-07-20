@@ -45,7 +45,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--yes` | `-y` | Accept all defaults; run non-interactively. Merges existing config values when a config is present. Loop run defaults: `clear: true`, `show_diagrams: "clean"`. |
 | `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
 | `--dry-run` | `-n` | Preview actions without writing files |
-| `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings}` without writing anything |
+| `--plan` | | Emit a JSON plan `{detected, proposed_config, host_options, warnings, provenance, ambiguities}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703) |
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `opencode`, `pi`). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
