@@ -3,8 +3,9 @@ id: ENH-2701
 title: Call detect_documents() from _run_yes (headless/TUI parity)
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-19T00:00:00Z'
+completed_at: '2026-07-20T01:31:44Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 parent: EPIC-2700
@@ -202,12 +203,41 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   path.
 - **Risk**: Low — additive, guarded by existing-config precedence.
 
+## Resolution
+
+Implemented Option B exactly as decided: `detect_documents()` is now called
+in both `_run_yes` and `_run_plan` (`scripts/little_loops/init/cli.py`).
+
+- `_run_yes`: calls `detect_documents(project_root)` after
+  `detect_project_type`, prints a one-line `Detected N architecture docs, M
+  product docs` summary, and — after `build_config()` returns — assembles
+  `config["documents"] = {"enabled": True, "categories": documents_categories}`
+  only when `existing_config.get("documents")` is falsy, so the
+  new-config-wins `merge_with_existing()` (BUG-2310) never clobbers a
+  hand-edited `documents` section on re-init.
+- `_run_plan`: calls `detect_documents()` and assembles `config["documents"]`
+  unconditionally (this path has no existing-config merge to guard against),
+  so the plan JSON's `proposed_config` reflects detected docs.
+- Updated the stale `documents ... remain interactive-only` comment at the
+  top of `cli.py`.
+- Added `TestInitHeadlessDocumentDetection` to
+  `scripts/tests/integration/test_init_e2e.py` (TDD: written red, then made
+  green) covering all three acceptance criteria: fresh `--yes` populates
+  categories, re-init with an existing `documents` section leaves it
+  untouched, and `--plan` includes detected categories in `proposed_config`.
+  `test_yes_preserves_unmodeled_keys` (test_init_core.py) still passes
+  unchanged.
+
+Full suite: `python -m pytest scripts/tests/` — 15523 passed, 38 skipped.
+`ruff check`, `ruff format --check`, and `mypy` all clean.
+
 ## Status
 
-**Open** | Created: 2026-07-19 | Priority: P3
+**Done** | Created: 2026-07-19 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue implement` - 2026-07-20T01:31:00 - `97fcf517-d025-4dd0-bc9e-e5734e8074d5.jsonl`
 - `/ll:ready-issue` - 2026-07-20T01:22:48 - `f755a306-3301-4aaf-b211-0cdaefb2de8e.jsonl`
 - `/ll:decide-issue` - 2026-07-19T23:54:32 - `bc31c482-dece-432a-a346-aa0a810887d7.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:41:29 - `926de526-7a59-4baf-abfe-5ac37cfae19f.jsonl`

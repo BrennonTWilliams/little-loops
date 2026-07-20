@@ -15,8 +15,9 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 # Feature keys toggleable via --enable/--disable in the headless path. These map
 # to the ``*_enabled`` choice keys honored by build_config(). Richer features
-# (parallel, sync, documents, design_tokens, confidence_gate, tdd) carry
-# sub-config and remain interactive-only.
+# (parallel, sync, design_tokens, confidence_gate, tdd) carry sub-config and
+# remain interactive-only. ``documents`` is auto-detected in the headless path
+# (ENH-2701) but still isn't toggleable via --enable/--disable.
 _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
     {
         "product",
@@ -231,7 +232,7 @@ def _run_yes(
         print_logo()
 
     from little_loops.init.core import build_config
-    from little_loops.init.detect import detect_project_type
+    from little_loops.init.detect import detect_documents, detect_project_type
     from little_loops.init.install_check import (
         InstallStatus,
         check_version,
@@ -359,6 +360,12 @@ def _run_yes(
     template = detect_project_type(project_root, templates_dir)
     print(f"Detected project type: {template.name}")
 
+    documents_categories = detect_documents(project_root)
+    if documents_categories:
+        n_arch = len(documents_categories.get("architecture", {}).get("files", []))
+        n_product = len(documents_categories.get("product", {}).get("files", []))
+        print(f"Detected {n_arch} architecture docs, {n_product} product docs")
+
     # Build choices: start from existing config values, then apply CLI overrides.
     choices: dict[str, Any] = {"project_name": project_root.name}
     if existing_config:
@@ -393,6 +400,12 @@ def _run_yes(
     if feature_choices:
         choices.update(feature_choices)
     config = build_config(template, choices)
+
+    # documents is unmodeled by build_config (mirrors tui.py's post-build
+    # assembly); only inject detected categories when no existing documents
+    # section would otherwise be clobbered by the new_config-wins merge below.
+    if documents_categories and not existing_config.get("documents"):
+        config["documents"] = {"enabled": True, "categories": documents_categories}
 
     # Preserve any config keys build_config does not model (BUG-2310); --force
     # bypasses the merge to reset to template defaults.
@@ -459,14 +472,17 @@ def _run_plan(
 ) -> int:
     """Emit a machine-readable JSON plan without writing anything."""
     from little_loops.init.core import build_config
-    from little_loops.init.detect import detect_project_type
+    from little_loops.init.detect import detect_documents, detect_project_type
     from little_loops.init.validate import validate_deps
 
     template = detect_project_type(project_root, templates_dir)
+    documents_categories = detect_documents(project_root)
     choices: dict[str, Any] = {"project_name": project_root.name}
     if feature_choices:
         choices.update(feature_choices)
     config = build_config(template, choices)
+    if documents_categories:
+        config["documents"] = {"enabled": True, "categories": documents_categories}
     warnings = validate_deps(config, _plugin_version(), project_root)
 
     plan: dict[str, Any] = {

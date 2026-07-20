@@ -142,6 +142,62 @@ class TestInitHeadlessEndToEnd:
             assert (root / ".issues" / "bugs").is_dir(), f"bugs dir missing in {root}"
 
 
+class TestInitHeadlessDocumentDetection:
+    """detect_documents() wiring into the headless --yes/--plan paths (ENH-2701)."""
+
+    def test_yes_populates_documents_categories_from_detected_docs(self, tmp_path: Path) -> None:
+        project = tmp_path / "docs_project"
+        project.mkdir()
+        (project / "docs").mkdir()
+        (project / "docs" / "architecture.md").write_text("# Architecture\n")
+        (project / "roadmap.md").write_text("# Roadmap\n")
+
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        config = json.loads((project / ".ll" / "ll-config.json").read_text())
+        categories = config["documents"]["categories"]
+        assert "docs/architecture.md" in categories["architecture"]["files"]
+        assert "roadmap.md" in categories["product"]["files"]
+
+    def test_yes_leaves_existing_documents_section_untouched(self, tmp_path: Path) -> None:
+        project = tmp_path / "docs_reinit"
+        project.mkdir()
+        (project / "docs").mkdir()
+        (project / "docs" / "architecture.md").write_text("# Architecture\n")
+
+        (project / ".ll").mkdir()
+        existing = {
+            "documents": {
+                "enabled": True,
+                "categories": {"custom": {"description": "hand-edited", "files": ["x.md"]}},
+            }
+        }
+        (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        config = json.loads((project / ".ll" / "ll-config.json").read_text())
+        assert config["documents"]["categories"] == {
+            "custom": {"description": "hand-edited", "files": ["x.md"]}
+        }
+
+    def test_plan_includes_detected_documents_categories(self, tmp_path: Path) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        project = tmp_path / "docs_plan"
+        project.mkdir()
+        (project / "docs").mkdir()
+        (project / "docs" / "architecture.md").write_text("# Architecture\n")
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            assert _run_init(["--plan", "--root", str(project)]) == 0
+        plan = json.loads(buf.getvalue())
+        categories = plan["proposed_config"]["documents"]["categories"]
+        assert "docs/architecture.md" in categories["architecture"]["files"]
+
+
 class TestInitLogoBanner:
     """The CLI logo banner prints on human-facing runs but never pollutes the
     machine-readable --plan JSON output."""
