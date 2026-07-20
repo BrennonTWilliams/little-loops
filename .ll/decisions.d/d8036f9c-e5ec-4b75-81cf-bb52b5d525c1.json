@@ -1,0 +1,11 @@
+{
+  "id": "0fb643cb-2379-4de9-98bd-83c21d96e8e4",
+  "type": "decision",
+  "timestamp": "2026-07-20T13:49:30Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Wall-clock timeout mid-walk forfeits the entire deliverable because build_synth only fires on QUEUE_EMPTY; a time-aware drain in dequeue_next converts total-loss timeouts into partial written-back plans (audit 2026-07-20).",
+  "rule": "Captured: rn-refine soft-deadline drain reserving wall-clock for synthesis",
+  "scope": "issue",
+  "issue": "ENH-2707"
+}
