@@ -52,6 +52,13 @@ context:
   # nodes/*/final.md and skipping the hours-long refinement, e.g.:
   #   ll-loop run rn-refine "path/to/plan.md" --context resume=1 --context run_dir=<prior>
   resume: ""           # non-empty + an existing nodes/ dir => resume into synthesis
+  # ENH-2707: soft-deadline drain. Mirrors the top-level `timeout:` above — there
+  # is no engine-side ${loop.timeout} interpolation, so this must be kept in sync
+  # by hand if `timeout:` changes. dequeue_next stops popping the queue once
+  # elapsed wall-clock reaches (timeout_total - synth_reserve), draining whatever
+  # is left into build_synth instead of forfeiting the whole run to the kill.
+  timeout_total: 21600 # keep equal to the top-level `timeout:` field above
+  synth_reserve: 3600  # seconds reserved for bottom-up synthesis + write-back
 
 states:
   init:
@@ -120,10 +127,12 @@ states:
     # a different re-entry point. Reconciles against the same on-disk completion
     # markers `classify_node` reads (node_outcome_<id>.txt) plus queue.txt, rather
     # than trusting the resume flag alone.
-    #   RESUME_WALK  — queue.txt non-empty, OR a visited node has no outcome file
-    #                  (the true in-flight node at kill time) -> resume_reconcile
-    #   RESUME_SYNTH — queue empty and every visited node has an outcome file
-    #                  -> resume_build_synth (ENH-2565, unchanged)
+    #   RESUME_WALK  — queue.txt non-empty, OR undrained.txt non-empty (ENH-2707
+    #                  soft-deadline drain left nodes undrained), OR a visited
+    #                  node has no outcome file (the true in-flight node at kill
+    #                  time) -> resume_reconcile
+    #   RESUME_SYNTH — queue and undrained both empty and every visited node has
+    #                  an outcome file -> resume_build_synth (ENH-2565, unchanged)
     #   FRESH        — no resume flag / no prior tree -> dequeue_next
     action_type: shell
     action: |
@@ -132,6 +141,7 @@ states:
       if [ -n "$RESUME" ] && [ -d "$RUN_DIR/nodes" ]; then
         QUEUE="$RUN_DIR/queue.txt"
         VISITED="$RUN_DIR/visited.txt"
+        UNDRAINED="$RUN_DIR/undrained.txt"
         INCOMPLETE=0
         if [ -s "$VISITED" ]; then
           while IFS= read -r NID; do
@@ -139,7 +149,7 @@ states:
             [ -f "$RUN_DIR/node_outcome_$${NID}.txt" ] || { INCOMPLETE=1; break; }
           done < "$VISITED"
         fi
-        if [ -s "$QUEUE" ] || [ "$INCOMPLETE" -eq 1 ]; then
+        if [ -s "$QUEUE" ] || [ -s "$UNDRAINED" ] || [ "$INCOMPLETE" -eq 1 ]; then
           echo "RESUME_WALK"
         else
           echo "RESUME_SYNTH"
@@ -175,11 +185,16 @@ states:
     # idiom (oracles/plan-node-refine.yaml:310-313) with PENDING in place of
     # CHILD_IDS. Nodes already sitting in queue.txt (never dequeued) are kept
     # after the reconciled prefix, unchanged.
+    # ENH-2707: undrained.txt nodes (parked by dequeue_next's soft-deadline
+    # drain) were never dequeued, so they never entered visited.txt and
+    # PENDING alone would never see them — merge them back in after PENDING,
+    # then clear undrained.txt so this is idempotent on repeated resumes.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
       QUEUE="$RUN_DIR/queue.txt"
       VISITED="$RUN_DIR/visited.txt"
+      UNDRAINED="$RUN_DIR/undrained.txt"
       PENDING=""
       if [ -s "$VISITED" ]; then
         while IFS= read -r NID; do
@@ -190,9 +205,11 @@ states:
         done < "$VISITED"
       fi
       EXISTING=$(cat "$QUEUE" 2>/dev/null || true)
-      { for n in $PENDING; do echo "$n"; done; echo "$EXISTING"; } \
+      UNDRAINED_IDS=$(cat "$UNDRAINED" 2>/dev/null || true)
+      { for n in $PENDING; do echo "$n"; done; printf '%s\n' "$UNDRAINED_IDS"; echo "$EXISTING"; } \
         | grep -v '^[[:space:]]*$' > "$QUEUE.tmp"
       mv "$QUEUE.tmp" "$QUEUE"
+      : > "$UNDRAINED"
       echo "RECONCILED $(grep -c '[^[:space:]]' "$QUEUE" 2>/dev/null || echo 0)"
     capture: resume_reconcile
     next: dequeue_next
@@ -202,10 +219,26 @@ states:
     # Pop the head of the work-tree queue (depth-first: children are prepended by a
     # decomposing node, so a whole subtree is refined before the next sibling).
     # An empty queue means the entire tree is refined → move to bottom-up synthesis.
+    # ENH-2707: soft-deadline drain. Before popping, check elapsed wall-clock
+    # (${loop.elapsed_ms} — the engine's own live timeout formula, already
+    # resume-aware via elapsed_offset_ms) against the reserved synthesis budget.
+    # If the deadline is hit with nodes still queued, park them in undrained.txt
+    # and route to build_synth exactly like QUEUE_EMPTY, instead of leaving the
+    # run to be killed by the loop-level `timeout:` with zero deliverable.
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
       QUEUE="$RUN_DIR/queue.txt"
+      if [ -s "$QUEUE" ]; then
+        ELAPSED_MS=${loop.elapsed_ms}
+        BUDGET_MS=$(( (${context.timeout_total:default=21600} - ${context.synth_reserve:default=3600}) * 1000 ))
+        if [ "$ELAPSED_MS" -ge "$BUDGET_MS" ]; then
+          cp "$QUEUE" "$RUN_DIR/undrained.txt"
+          : > "$QUEUE"
+          echo "DEADLINE_DRAIN"
+          exit 0
+        fi
+      fi
       if [ ! -s "$QUEUE" ]; then
         echo "QUEUE_EMPTY"
         exit 0
@@ -220,7 +253,7 @@ states:
       echo "$CURRENT"
     evaluate:
       type: output_contains
-      pattern: "QUEUE_EMPTY"
+      pattern: "QUEUE_EMPTY|DEADLINE_DRAIN"
     capture: input
     on_yes: build_synth
     on_no: read_depth
@@ -534,6 +567,14 @@ states:
         cp "$RUN_DIR/nodes/n0/plan.md" "$RUN_DIR/plan.md"
         echo "RECOVERY_NEEDED: nodes/n0/final.md was missing; plan.md is the refined-but-not-integrated root (bottom-up integration did not complete before assemble ran)." >> "$RUN_DIR/plan-rubric.md"
       fi
+      # ENH-2707: soft-deadline drain marker. undrained.txt is non-empty only when
+      # dequeue_next hit the elapsed-vs-budget guard with nodes still queued —
+      # reuse the RECOVERY_NEEDED contract (advisory-only, report greps for it).
+      if [ -s "$RUN_DIR/undrained.txt" ]; then
+        NODES=$(tr '\n' ',' < "$RUN_DIR/undrained.txt" | sed 's/,$//')
+        SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "<original plan file>")
+        echo "PARTIAL_DRAIN: soft deadline reached before the tree finished walking; undrained node(s): $NODES. Resume with: ll-loop run rn-refine \"$SOURCE\" --context resume=1 --context run_dir=$RUN_DIR" >> "$RUN_DIR/plan-rubric.md"
+      fi
     next: final_score
     on_error: finalize
 
@@ -697,7 +738,13 @@ states:
       Step 1: Read ${captured.run_dir.output}/plan-rubric.md and report the final
       dimension scores and aggregate verdict. If the file contains a
       "RECOVERY_NEEDED" line, surface it prominently — it means root integration
-      never completed and the written-back plan is refined-but-not-integrated.
+      never completed and the written-back plan is refined-but-not-integrated. If
+      it contains a "PARTIAL_DRAIN" line (ENH-2707), surface that prominently too
+      — it means the run hit its soft wall-clock deadline before the whole tree
+      was walked, so the written-back plan is an honest partial improvement, not
+      full convergence. Print the exact `ll-loop run rn-refine ... --context
+      resume=1 --context run_dir=...` command from that line so the user can
+      finish the drained nodes.
 
       Step 2: Summarize the decomposition tree from ${captured.run_dir.output}/edges.tsv
       and ${captured.run_dir.output}/depth_map.txt: how many nodes, the maximum depth

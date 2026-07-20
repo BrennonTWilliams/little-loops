@@ -433,6 +433,59 @@ class TestDequeuePlumbing:
         result = _bash(rendered, tmp_path)
         assert "QUEUE_EMPTY" in result.stdout
 
+    def _dequeue_action(self) -> str:
+        return _load_rn_refine().states["dequeue_next"].action
+
+    def test_deadline_drain_parks_queue_and_emits_sentinel(self, tmp_path: Path) -> None:
+        """ENH-2707: past the soft deadline, a non-empty queue is drained instead
+        of popped — undrained.txt captures the remainder and queue.txt is emptied."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "queue.txt").write_text("n5\nn6\nn7\n")
+        (rd / "depth_map.txt").write_text("n5 1\nn6 1\nn7 1\n")
+        (rd / "visited.txt").write_text("")
+        (rd / "dequeue_count.txt").write_text("0")
+        ctx = InterpolationContext(
+            context={"timeout_total": "21600", "synth_reserve": "3600"},
+            captured={"run_dir": {"output": str(rd)}},
+            elapsed_ms=18_000_001,  # 1ms past (timeout_total - synth_reserve)
+        )
+        rendered = interpolate(self._dequeue_action(), ctx)
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "DEADLINE_DRAIN" in result.stdout
+        assert "QUEUE_EMPTY" not in result.stdout
+        assert (rd / "undrained.txt").read_text() == "n5\nn6\nn7\n"
+        assert (rd / "queue.txt").read_text().strip() == ""
+
+    def test_before_deadline_still_pops_normally(self, tmp_path: Path) -> None:
+        """Elapsed time under the reserved-synthesis budget must not trigger a drain."""
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "queue.txt").write_text("n0\n")
+        (rd / "depth_map.txt").write_text("n0 0\n")
+        (rd / "visited.txt").write_text("")
+        (rd / "dequeue_count.txt").write_text("0")
+        ctx = InterpolationContext(
+            context={"timeout_total": "21600", "synth_reserve": "3600"},
+            captured={"run_dir": {"output": str(rd)}},
+            elapsed_ms=1_000,
+        )
+        rendered = interpolate(self._dequeue_action(), ctx)
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "n0"
+        assert "DEADLINE_DRAIN" not in result.stdout
+        assert not (rd / "undrained.txt").exists()
+
+    def test_deadline_drain_evaluator_routes_to_build_synth(self) -> None:
+        """The widened evaluator pattern must still route both sentinels to build_synth,
+        leaving the QUEUE_EMPTY on_yes/on_no wiring exercised by TestRecursiveStructure
+        unchanged (ENH-2707 widens the pattern instead of adding a chained gate)."""
+        fsm = _load_rn_refine()
+        assert fsm.states["dequeue_next"].evaluate.pattern == "QUEUE_EMPTY|DEADLINE_DRAIN"
+        assert fsm.states["dequeue_next"].on_yes == "build_synth"
+
 
 # ---------------------------------------------------------------------------
 # Oracle decompose bookkeeping — child-id allocation + depth-first enqueue
@@ -600,6 +653,14 @@ class TestResumeRouting:
     def test_resume_context_knob_declared(self) -> None:
         assert "resume" in _load_rn_refine().context
 
+    def test_deadline_drain_context_knobs_declared(self) -> None:
+        """ENH-2707: synth_reserve + its timeout_total mirror must be declared context
+        vars (the engine exposes no ${loop.timeout} interpolation to read the
+        top-level `timeout:` field directly, so it must be hand-mirrored)."""
+        ctx = _load_rn_refine().context
+        assert ctx["synth_reserve"] == 3600
+        assert ctx["timeout_total"] == _load_rn_refine().timeout
+
     def test_resume_build_synth_routes_to_dispatch(self) -> None:
         assert _load_rn_refine().states["resume_build_synth"].next == "synth_dispatch"
 
@@ -654,6 +715,23 @@ class TestResumeRouting:
         result = _bash(rendered, tmp_path)
         assert "RESUME_WALK" in result.stdout
 
+    def test_check_resume_emits_resume_walk_when_undrained_nonempty(self, tmp_path: Path) -> None:
+        """ENH-2707: a soft-deadline drain empties queue.txt into undrained.txt, so a
+        naive queue-emptiness check would misroute a drained run to RESUME_SYNTH even
+        though nodes were never walked."""
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF\n")
+        (rd / "queue.txt").write_text("")
+        (rd / "undrained.txt").write_text("n5\nn6\n")
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action, context={"resume": "1"}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert "RESUME_WALK" in result.stdout
+
 
 class TestResumeReconcile:
     """resume_reconcile re-queues visited-but-outcome-less nodes ahead of anything
@@ -689,6 +767,24 @@ class TestResumeReconcile:
         assert result.returncode == 0, result.stderr
         order = [ln for ln in (rd / "queue.txt").read_text().splitlines() if ln.strip()]
         assert order == ["n1", "n2"]
+
+    def test_merges_undrained_nodes_back_into_queue_and_clears_it(self, tmp_path: Path) -> None:
+        """ENH-2707: nodes parked by the soft-deadline drain were never dequeued, so
+        they never entered visited.txt — PENDING alone would never see them. They
+        must merge back in (after PENDING, before any never-dequeued queue tail) and
+        undrained.txt must be cleared so a repeat resume is idempotent."""
+        rd = tmp_path / "run"
+        rd.mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\nn19\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF\n")
+        (rd / "queue.txt").write_text("")  # drain emptied this
+        (rd / "undrained.txt").write_text("n5\nn6\nn7\n")
+        rendered = _render(self._action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        order = [ln for ln in (rd / "queue.txt").read_text().splitlines() if ln.strip()]
+        assert order == ["n19", "n5", "n6", "n7"]
+        assert (rd / "undrained.txt").read_text().strip() == ""
 
 
 class TestInitResumeShortCircuit:
@@ -814,6 +910,41 @@ class TestAssembleAndFinalize:
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0
         assert (rd / "plan.md").read_text() == "# assembled\n"
+
+    def test_assemble_writes_partial_drain_marker_when_undrained_nonempty(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2707: when dequeue_next's soft-deadline drain left nodes unwalked,
+        assemble must append a PARTIAL_DRAIN marker (reusing the RECOVERY_NEEDED
+        contract) naming the undrained nodes and the resume command."""
+        rd = tmp_path / "run"
+        (rd / "nodes" / "n0").mkdir(parents=True)
+        (rd / "nodes" / "n0" / "final.md").write_text("# assembled\n")
+        (rd / "undrained.txt").write_text("n5\nn6\n")
+        (rd / ".source-path").write_text("/tmp/orig-plan.md\n")
+        action = _load_rn_refine().states["assemble"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        rubric = (rd / "plan-rubric.md").read_text()
+        assert "PARTIAL_DRAIN" in rubric
+        assert "n5,n6" in rubric
+        assert "--context resume=1" in rubric
+        assert "/tmp/orig-plan.md" in rubric
+
+    def test_assemble_omits_partial_drain_marker_when_undrained_empty(
+        self, tmp_path: Path
+    ) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes" / "n0").mkdir(parents=True)
+        (rd / "nodes" / "n0" / "final.md").write_text("# assembled\n")
+        action = _load_rn_refine().states["assemble"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert not (rd / "plan-rubric.md").exists() or (
+            "PARTIAL_DRAIN" not in (rd / "plan-rubric.md").read_text()
+        )
 
     def test_finalize_overwrites_source_in_place(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
