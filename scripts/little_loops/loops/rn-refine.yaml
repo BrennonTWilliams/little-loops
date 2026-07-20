@@ -354,6 +354,7 @@ states:
   record_capped:
     action_type: shell
     action: |
+      echo "${captured.input.output}" >> "${captured.run_dir.output}/capped.txt"
       echo "[CAPPED] ${captured.input.output} (refined; decomposition suppressed by cap)"
     next: dequeue_next
     on_error: dequeue_next
@@ -700,10 +701,42 @@ states:
       SOURCE=$(cat "$RUN_DIR/.source-path" 2>/dev/null || echo "")
       DRY_RUN="${context.dry_run:default=false}"
       CONFIRM="${context.confirm_overwrite:default=false}"
+      # ENH-2709: machine-readable run-status artifacts. Every exit branch of
+      # this state writes summary.json (+ writeback.json), so an auditor can
+      # read run status from the run dir alone instead of parsing events.jsonl.
+      count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
+      NODES_PROCESSED=$(cat "$RUN_DIR/dequeue_count.txt" 2>/dev/null || echo 0)
+      LEAVES=$(count leaves.txt)
+      CAPPED=$(count capped.txt)
+      FAILED=$(count failed_nodes.txt)
+      PENDING=$(( $(count queue.txt) + $(count undrained.txt) ))
+      WIP=0
+      if [ -s "$RUN_DIR/visited.txt" ]; then
+        while IFS= read -r NID; do
+          [ -z "$NID" ] && continue
+          [ -f "$RUN_DIR/node_outcome_$${NID}.txt" ] || WIP=$((WIP + 1))
+        done < "$RUN_DIR/visited.txt"
+      fi
+      TERMINATED_BY=success
+      if [ -s "$RUN_DIR/undrained.txt" ]; then TERMINATED_BY=timeout; fi
+      write_summary() {
+        printf '{"nodes_processed": %s, "leaves": %s, "capped": %s, "failed": %s, "pending_queue": %s, "wip_nodes": %s, "source_overwritten": %s, "terminated_by": "%s"}\n' \
+          "$NODES_PROCESSED" "$LEAVES" "$CAPPED" "$FAILED" "$PENDING" "$WIP" "$1" "$TERMINATED_BY" \
+          > "$RUN_DIR/summary.json"
+      }
+      write_writeback() {
+        printf '{"written": %s, "timestamp": "%s", "source_path": "%s", "backup_path": %s}\n' \
+          "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SOURCE" "$2" \
+          > "$RUN_DIR/writeback.json"
+      }
       if [ -z "$SOURCE" ] || [ ! -f "$RUN_DIR/plan.md" ]; then
+        write_summary false
+        write_writeback false null
         exit 0
       fi
       if [ "$DRY_RUN" = "true" ]; then
+        write_summary false
+        write_writeback false null
         echo "DRY_RUN: source left unchanged at $SOURCE"
         exit 0
       fi
@@ -712,12 +745,16 @@ states:
       TS=$(date -u +%Y%m%dT%H%M%SZ)
       BACKUP="$RUN_DIR/source-backup-$TS.md"
       if [ "$CONFIRM" = "true" ]; then
+        write_summary false
+        write_writeback false null
         echo "CONFIRM_REQUIRED: set --context confirm_overwrite=true to overwrite $SOURCE"
         exit 0
       fi
       cp "$SOURCE" "$BACKUP"
       echo "BACKUP_PATH=$BACKUP"
       cp "$RUN_DIR/plan.md" "$SOURCE"
+      write_summary true
+      write_writeback true "\"$BACKUP\""
     next: report
     on_error: report
 
@@ -730,9 +767,38 @@ states:
     terminal: true
     action: |
       RUN_DIR="${captured.run_dir.output}"
+      # ENH-2709: persist the abort status as summary.json (same counters the
+      # success path writes) so the run dir is auditable without events.jsonl.
+      count() { awk 'NF{c++} END{print c+0}' "$RUN_DIR/$1" 2>/dev/null || echo 0; }
+      NODES_PROCESSED=$(cat "$RUN_DIR/dequeue_count.txt" 2>/dev/null || echo 0)
+      LEAVES=$(count leaves.txt)
+      CAPPED=$(count capped.txt)
+      FAILED=$(count failed_nodes.txt)
+      PENDING=$(( $(count queue.txt) + $(count undrained.txt) ))
+      WIP=0
+      if [ -s "$RUN_DIR/visited.txt" ]; then
+        while IFS= read -r NID; do
+          [ -z "$NID" ] && continue
+          [ -f "$RUN_DIR/node_outcome_$${NID}.txt" ] || WIP=$((WIP + 1))
+        done < "$RUN_DIR/visited.txt"
+      fi
+      export RUN_DIR NODES_PROCESSED LEAVES CAPPED FAILED PENDING WIP
       python3 -c "
       import json, os
       run_dir = os.environ.get('RUN_DIR', '')
+      env_int = lambda k: int(os.environ.get(k, '0') or '0')
+      summary = {
+          'nodes_processed': env_int('NODES_PROCESSED'),
+          'leaves': env_int('LEAVES'),
+          'capped': env_int('CAPPED'),
+          'failed': env_int('FAILED'),
+          'pending_queue': env_int('PENDING'),
+          'wip_nodes': env_int('WIP'),
+          'source_overwritten': False,
+          'terminated_by': 'aborted',
+      }
+      with open(os.path.join(run_dir, 'summary.json'), 'w') as f:
+          json.dump(summary, f, indent=2)
       print(json.dumps({
           'success': False,
           'summary': 'rn-refine finalize aborted: diff-size invariant violated; source left unchanged.',

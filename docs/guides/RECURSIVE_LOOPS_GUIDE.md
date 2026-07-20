@@ -38,7 +38,7 @@ There are two sub-families, joined by that shared idea:
 | Loop | Family | Role | Input | Output |
 |------|--------|------|-------|--------|
 | `rn-plan` | Planning | Entry point | A task description (string) | `plan.md` + `plan-rubric.md` + `research.md` |
-| `rn-refine` | Planning | Entry point / orchestrator | Path to an existing `plan.md` | Recursively refined `plan.md` (in place) |
+| `rn-refine` | Planning | Entry point / orchestrator | Path to an existing `plan.md` | Recursively refined `plan.md` (in place) + `summary.json` + `writeback.json` |
 | `rn-implement` | Implementation | Entry point / orchestrator | Issue ID(s) | Implemented issues + `summary.json` |
 | `rn-remediate` | Implementation | Sub-loop (per issue) | One issue ID | Outcome token |
 | `rn-decompose` | Implementation | Sub-loop (per issue) | One issue ID | Outcome token + enqueued children |

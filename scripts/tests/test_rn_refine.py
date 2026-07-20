@@ -12,6 +12,7 @@ real action bodies rendered through the engine's interpolator.
 from __future__ import annotations
 
 import ast
+import json
 import os
 import subprocess
 import sys
@@ -1411,3 +1412,136 @@ class TestSynthPopReadinessGate:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout == "DRAIN\n"
+
+
+# ---------------------------------------------------------------------------
+# Run-dir observability artifacts (ENH-2709): summary.json + writeback.json
+# ---------------------------------------------------------------------------
+
+
+class TestRunSummaryArtifacts:
+    """Every finalize-family exit must leave a machine-readable summary.json
+    (and finalize a writeback.json) so run status is auditable from the run
+    dir alone, without parsing events.jsonl (ENH-2709)."""
+
+    _SUMMARY_KEYS = {
+        "nodes_processed",
+        "leaves",
+        "capped",
+        "failed",
+        "pending_queue",
+        "wip_nodes",
+        "source_overwritten",
+        "terminated_by",
+    }
+
+    def _finalize_action(self) -> str:
+        return _load_rn_refine().states["finalize"].action
+
+    def _aborted_action(self) -> str:
+        return _load_rn_refine().states["finalize_aborted"].action
+
+    def _seed(self, tmp_path: Path, *, with_source: bool = True) -> Path:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "plan.md").write_text("# Plan\n\n## Phase 1\n\n- refined\n")
+        if with_source:
+            source_path = tmp_path / "plan.md"
+            source_path.write_text("# Plan\n\n## Phase 1\n\n- orig\n")
+            (rd / ".source-path").write_text(str(source_path) + "\n")
+        # Ledger files the summary is computed from.
+        (rd / "dequeue_count.txt").write_text("3\n")
+        (rd / "leaves.txt").write_text("n1\nn2\n")
+        (rd / "failed_nodes.txt").write_text("n3\n")
+        # visited has 3 nodes; only n1/n2 have outcome tokens -> wip = 1 (n3... use n4)
+        (rd / "visited.txt").write_text("n1\nn2\nn4\n")
+        (rd / "node_outcome_n1.txt").write_text("REFINED_LEAF\n")
+        (rd / "node_outcome_n2.txt").write_text("REFINED_LEAF\n")
+        return rd
+
+    def _run_finalize(self, rd: Path, tmp_path: Path, *, context: dict | None = None):
+        rendered = _render(
+            self._finalize_action(),
+            context=context,
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        return _bash(rendered, tmp_path)
+
+    def test_finalize_success_writes_summary_and_writeback(self, tmp_path: Path) -> None:
+        rd = self._seed(tmp_path)
+        result = self._run_finalize(rd, tmp_path)
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((rd / "summary.json").read_text())
+        assert set(summary) == self._SUMMARY_KEYS
+        assert summary["nodes_processed"] == 3
+        assert summary["leaves"] == 2
+        assert summary["capped"] == 0
+        assert summary["failed"] == 1
+        assert summary["pending_queue"] == 0
+        assert summary["wip_nodes"] == 1  # n4 visited but no outcome token
+        assert summary["source_overwritten"] is True
+        assert summary["terminated_by"] == "success"
+        writeback = json.loads((rd / "writeback.json").read_text())
+        assert writeback["written"] is True
+        assert writeback["source_path"] == str(tmp_path / "plan.md")
+        assert writeback["backup_path"] is not None
+        assert Path(writeback["backup_path"]).exists()
+        assert writeback["timestamp"]
+        # Source really was overwritten.
+        assert (tmp_path / "plan.md").read_text() == (rd / "plan.md").read_text()
+
+    def test_finalize_dry_run_writes_summary_with_written_false(self, tmp_path: Path) -> None:
+        rd = self._seed(tmp_path)
+        result = self._run_finalize(rd, tmp_path, context={"dry_run": "true"})
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((rd / "summary.json").read_text())
+        assert summary["source_overwritten"] is False
+        writeback = json.loads((rd / "writeback.json").read_text())
+        assert writeback["written"] is False
+        assert writeback["backup_path"] is None
+        assert (tmp_path / "plan.md").read_text() == "# Plan\n\n## Phase 1\n\n- orig\n"
+
+    def test_finalize_missing_source_guard_still_writes_summary(self, tmp_path: Path) -> None:
+        rd = self._seed(tmp_path, with_source=False)
+        result = self._run_finalize(rd, tmp_path)
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((rd / "summary.json").read_text())
+        assert summary["source_overwritten"] is False
+        writeback = json.loads((rd / "writeback.json").read_text())
+        assert writeback["written"] is False
+
+    def test_finalize_derives_timeout_from_undrained(self, tmp_path: Path) -> None:
+        rd = self._seed(tmp_path)
+        (rd / "undrained.txt").write_text("n5\nn6\n")
+        result = self._run_finalize(rd, tmp_path)
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((rd / "summary.json").read_text())
+        assert summary["terminated_by"] == "timeout"
+        assert summary["pending_queue"] == 2  # undrained nodes count as pending
+        # Timeout with a drained queue still writes back the partial plan.
+        assert summary["source_overwritten"] is True
+
+    def test_finalize_aborted_writes_summary(self, tmp_path: Path) -> None:
+        rd = self._seed(tmp_path)
+        rendered = _render(self._aborted_action(), captured={"run_dir": {"output": str(rd)}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 1  # terminal failure exit preserved
+        summary = json.loads((rd / "summary.json").read_text())
+        assert set(summary) >= self._SUMMARY_KEYS
+        assert summary["terminated_by"] == "aborted"
+        assert summary["source_overwritten"] is False
+        # stdout payload contract preserved for the report/diagnose path
+        assert "original_unchanged" in result.stdout
+
+    def test_record_capped_appends_to_capped_txt(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["record_capped"].action
+        rendered = _render(
+            action,
+            captured={"run_dir": {"output": str(rd)}, "input": {"output": "n7"}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (rd / "capped.txt").exists(), "record_capped must append to capped.txt"
+        assert "n7" in (rd / "capped.txt").read_text()
