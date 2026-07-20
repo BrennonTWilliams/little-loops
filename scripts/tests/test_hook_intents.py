@@ -450,6 +450,63 @@ class TestHooksMainModule:
         assert result.stdout == ""
         assert result.stderr == ""
 
+    def test_dispatch_subagent_start_happy_path(self, tmp_path) -> None:
+        """``subagent_start`` intent runs the handler and exits 0 (ENH-2505)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "subagent_start"],
+            input=json.dumps(
+                {"session_id": "parent-1", "agent_id": "agent-abc", "agent_type": "Explore"}
+            ),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+
+    def test_dispatch_subagent_start_malformed_payload(self, tmp_path) -> None:
+        """A missing agent_id is a silent best-effort no-op, not a failure (ENH-2505)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "subagent_start"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0
+
+    def test_dispatch_subagent_stop_happy_path(self, tmp_path) -> None:
+        """``subagent_stop`` intent runs the handler and exits 0 (ENH-2505)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "subagent_stop"],
+            input=json.dumps(
+                {
+                    "session_id": "parent-1",
+                    "agent_id": "agent-abc",
+                    "agent_type": "Explore",
+                    "agent_transcript_path": "/tmp/parent-1/subagents/agent-abc.jsonl",
+                }
+            ),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+
+    def test_dispatch_subagent_stop_malformed_payload(self, tmp_path) -> None:
+        """A missing agent_id is a silent best-effort no-op, not a failure (ENH-2505)."""
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "subagent_stop"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0
+
     def test_dispatch_unknown_intent(self) -> None:
         """Unknown intent name exits non-zero with an error message on stderr."""
         result = subprocess.run(
@@ -634,5 +691,7 @@ class TestHooksMainModule:
         assert "pre_compact_handoff" in table
         assert "session_end" in table
         assert "session_start" in table
+        assert "subagent_start" in table
+        assert "subagent_stop" in table
         # Built-in shadows extension on collision.
         assert table["session_start"] is not shadow_handler

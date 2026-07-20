@@ -6941,8 +6941,37 @@ from little_loops.history_reader import (
     LifecycleEvent,          # ENH-2495
     recent_lifecycle_events, # ENH-2495
     handoff_frequency,       # ENH-2495
+    SubagentRun,             # ENH-2505
+    subagent_tree,           # ENH-2505
+    subagent_retries,        # ENH-2505
+    subagent_budget,         # ENH-2505
 )
 ```
+
+### SubagentRun
+
+Dataclass for `subagent_runs` rows — one Task/Agent spawn (ENH-2505). `agent_id` is spawn-local (scoped to `parent_session_id`, not a `sessions.session_id`); a subagent's transcript is a nested file, not a joinable top-level session row.
+
+```python
+@dataclass
+class SubagentRun:
+    ts: str
+    parent_session_id: str | None
+    agent_id: str | None
+    agent_type: str | None
+    agent_transcript_path: str | None
+    started_at: str | None
+    ended_at: str | None
+    status: str | None
+```
+
+```python
+def subagent_tree(session_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> list[SubagentRun]
+def subagent_retries(agent_type: str, *, since: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> list[dict]
+def subagent_budget(session_id: str, *, db: Path | str = DEFAULT_DB_PATH) -> dict | None
+```
+
+`subagent_tree()` returns the direct `agent_id` spawns for a parent session (no grandchild recursion — that requires re-parsing each `agent_transcript_path`, not a SQL join). `subagent_retries()` returns per-parent re-spawn counts for a given `agent_type`, restricted to parents that spawned it more than once (the "oscillation" signal). `subagent_budget()` returns `{"spawn_count", "total_duration_s"}` for a parent session (the "burn budget" signal), or `None` when no rows exist.
 
 ### UserCorrection
 
@@ -7732,11 +7761,11 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **27**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **28**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 27
+    SCHEMA_VERSION,        # 28
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -7750,6 +7779,8 @@ from little_loops.session_store import (
     update_loop_run_diagnostics, # link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_learning_test_event, # UPSERT one learning_test_events row (ENH-2466)
     record_session_lifecycle_event, # write a session_lifecycle_events row (ENH-2495)
+    record_subagent_run_start, # write a running subagent_runs row from SubagentStart (ENH-2505)
+    record_subagent_run_stop, # UPDATE ended_at/status/agent_transcript_path from SubagentStop (ENH-2505)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)

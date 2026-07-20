@@ -214,7 +214,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -233,6 +233,7 @@ VALID_KINDS: tuple[str, ...] = (
     "loop_run",
     "learning_test",
     "session_lifecycle",
+    "subagent_run",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -251,6 +252,7 @@ _KIND_TABLE = {
     "loop_run": "loop_runs",
     "learning_test": "learning_test_events",
     "session_lifecycle": "session_lifecycle_events",
+    "subagent_run": "subagent_runs",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -874,6 +876,31 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_lifecycle_event ON session_lifecycle_events(event);
     CREATE INDEX IF NOT EXISTS idx_lifecycle_session ON session_lifecycle_events(session_id);
+    """,
+    # v28 (ENH-2505): subagent spawn tree. agent_id is spawn-local (scoped to
+    # its parent session, not a sessions.session_id) per SubagentStart/
+    # SubagentStop's documented payload, so the UNIQUE constraint is the
+    # composite (parent_session_id, agent_id) pair, not agent_id alone — two
+    # different parents could otherwise reuse the same agent_id and collide.
+    """
+    CREATE TABLE IF NOT EXISTS subagent_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        parent_session_id TEXT,
+        agent_id TEXT,
+        agent_type TEXT,
+        agent_transcript_path TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        status TEXT,
+        head_sha TEXT,
+        branch TEXT,
+        UNIQUE(parent_session_id, agent_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_subagent_parent ON subagent_runs(parent_session_id);
+    CREATE INDEX IF NOT EXISTS idx_subagent_agent_id ON subagent_runs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_subagent_agent ON subagent_runs(agent_type);
+    CREATE INDEX IF NOT EXISTS idx_subagent_status ON subagent_runs(status);
     """,
 ]
 
@@ -1964,6 +1991,142 @@ def record_session_lifecycle_event(
         if conn is not None:
             conn.close()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Subagent-run events (ENH-2505)
+# ---------------------------------------------------------------------------
+
+
+def record_subagent_run_start(
+    db_path: Path | str,
+    *,
+    parent_session_id: str | None,
+    agent_id: str | None,
+    agent_type: str | None,
+    started_at: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    ts: str | None = None,
+) -> bool:
+    """Write one row to ``subagent_runs`` for a ``SubagentStart`` spawn.
+
+    Idempotent via ``INSERT OR IGNORE`` on the ``(parent_session_id, agent_id)``
+    UNIQUE constraint, mirroring :func:`record_commit_event` — a replayed
+    SubagentStart (e.g. backfill re-run) contributes exactly one row. Best-effort
+    per the EPIC-1707 contract: returns ``False`` (never raises) on any
+    ``sqlite3.Error`` or a missing ``agent_id``.
+    """
+    if not agent_id:
+        return False
+    ts = ts or _now()
+    started_at = started_at or ts
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = connect(db_path)
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO subagent_runs("
+            "ts, parent_session_id, agent_id, agent_type, started_at, status, "
+            "head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, parent_session_id, agent_id, agent_type, started_at, "running", head_sha, branch),
+        )
+        inserted = bool(cursor.rowcount)
+        if inserted:
+            _index(
+                conn,
+                content=f"{agent_type or ''} {agent_id} {parent_session_id or ''}".strip()[:512],
+                kind="subagent_run",
+                ref=agent_id,
+                anchor=agent_type or "",
+                ts=ts,
+            )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "record_subagent_run_start: insert failed for agent_id=%r", agent_id, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return inserted
+
+
+def record_subagent_run_stop(
+    db_path: Path | str,
+    *,
+    parent_session_id: str | None,
+    agent_id: str | None,
+    agent_type: str | None = None,
+    agent_transcript_path: str | None = None,
+    status: str = "completed",
+    ended_at: str | None = None,
+) -> bool:
+    """Update the matching ``subagent_runs`` row for a ``SubagentStop`` event.
+
+    Matches on the ``(parent_session_id, agent_id)`` composite key. Best-effort:
+    returns ``False`` (never raises) when no matching row exists yet, the
+    ``agent_id`` is missing, or a ``sqlite3.Error`` occurs — mirroring
+    :func:`update_loop_run_diagnostics`.
+    """
+    if not agent_id:
+        return False
+    ended_at = ended_at or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = connect(db_path)
+        cursor = conn.execute(
+            "UPDATE subagent_runs SET ended_at = ?, status = ?, "
+            "agent_transcript_path = COALESCE(?, agent_transcript_path), "
+            "agent_type = COALESCE(?, agent_type) "
+            "WHERE agent_id = ? AND parent_session_id IS ?",
+            (ended_at, status, agent_transcript_path, agent_type, agent_id, parent_session_id),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "record_subagent_run_stop: update failed for agent_id=%r", agent_id, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return bool(cursor.rowcount)
+
+
+def _backfill_subagent_runs(conn: sqlite3.Connection, sessions_root: Path) -> int:
+    """Seed ``subagent_runs`` from nested ``subagents/agent-<id>.jsonl`` transcripts.
+
+    Discovers subagent transcripts under each parent session's transcript
+    directory (``<session-dir>/subagents/*.jsonl``) and writes one completed row
+    per nested file found, since a persisted transcript implies the spawn ran to
+    completion (the live ``SubagentStart``/``SubagentStop`` hooks capture
+    ``running``/``failed``/``timeout`` states that backfill cannot reconstruct
+    after the fact). Idempotent via the same ``INSERT OR IGNORE`` as the live
+    writer.
+    """
+    count = 0
+    for subagents_dir in sessions_root.glob("*/subagents"):
+        parent_session_id = subagents_dir.parent.name
+        for transcript in subagents_dir.glob("*.jsonl"):
+            agent_id = transcript.stem
+            try:
+                mtime = datetime.fromtimestamp(transcript.stat().st_mtime, tz=UTC).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
+            except OSError:
+                continue
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO subagent_runs("
+                "ts, parent_session_id, agent_id, agent_transcript_path, started_at, "
+                "ended_at, status"
+                ") VALUES(?, ?, ?, ?, ?, ?, ?)",
+                (mtime, parent_session_id, agent_id, str(transcript), mtime, mtime, "completed"),
+            )
+            if cursor.rowcount:
+                count += 1
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -3606,16 +3769,18 @@ def backfill(
     max_sessions: int | None = None,
     repo_root: Path | None = None,
     registry_dir: Path | None = None,
+    sessions_root: Path | None = None,
     also_rebuild: bool = False,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
 
     Reads issue-file frontmatter, FSM loop-state JSON, git commit history
-    (ENH-2458; only when *repo_root* is given and contains ``.git``), and the
+    (ENH-2458; only when *repo_root* is given and contains ``.git``), the
     Learning Test Registry (ENH-2466; only when *registry_dir* is given and is
-    a directory) directly. Session JSONL lines are ingested into
-    ``raw_events`` only (ENH-2581) — the JSONL-derived cache tables
-    (``tool_events``, ``message_events``, ``assistant_messages``,
+    a directory), and nested subagent transcripts (ENH-2505; only when
+    *sessions_root* is given and is a directory) directly. Session JSONL lines
+    are ingested into ``raw_events`` only (ENH-2581) — the JSONL-derived cache
+    tables (``tool_events``, ``message_events``, ``assistant_messages``,
     ``skill_events``, ``sessions``) are **not** populated here; call
     :func:`rebuild` (or pass ``also_rebuild=True`` to do both in one call) to
     materialize them from ``raw_events``.
@@ -3635,6 +3800,7 @@ def backfill(
         "commits": 0,
         "raw_events": 0,
         "learning_tests": 0,
+        "subagent_runs": 0,
     }
     try:
         if issues_dir.is_dir():
@@ -3648,6 +3814,8 @@ def backfill(
             counts["raw_events"] = _backfill_raw_events(conn, jsonl_files)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
+        if sessions_root is not None and sessions_root.is_dir():
+            counts["subagent_runs"] = _backfill_subagent_runs(conn, sessions_root)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

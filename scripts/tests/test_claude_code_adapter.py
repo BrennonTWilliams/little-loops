@@ -184,3 +184,90 @@ class TestClaudeCodeAdapterIntegration:
         assert result.returncode == 0, (
             f"adapter exited {result.returncode}; stderr={result.stderr!r}"
         )
+
+    def test_subagent_start_adapter_exists_and_executable(self) -> None:
+        """hooks/adapters/claude-code/subagent-start.sh must exist and be executable (ENH-2505)."""
+        adapter = ADAPTER_DIR / "subagent-start.sh"
+        assert adapter.is_file(), f"{adapter} does not exist"
+        assert os.access(adapter, os.X_OK), f"{adapter} is not executable"
+
+    def test_subagent_stop_adapter_exists_and_executable(self) -> None:
+        """hooks/adapters/claude-code/subagent-stop.sh must exist and be executable (ENH-2505)."""
+        adapter = ADAPTER_DIR / "subagent-stop.sh"
+        assert adapter.is_file(), f"{adapter} does not exist"
+        assert os.access(adapter, os.X_OK), f"{adapter} is not executable"
+
+    def test_hooks_json_has_subagent_start(self) -> None:
+        """hooks/hooks.json must have a SubagentStart entry pointing to subagent-start.sh."""
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "SubagentStart" in data["hooks"], "hooks.json is missing SubagentStart key"
+        cmds = [
+            h["command"]
+            for group in data["hooks"]["SubagentStart"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("subagent-start.sh" in cmd for cmd in cmds), (
+            f"expected subagent-start.sh in a SubagentStart command; got {cmds!r}"
+        )
+
+    def test_hooks_json_has_subagent_stop(self) -> None:
+        """hooks/hooks.json must have a SubagentStop entry pointing to subagent-stop.sh."""
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "SubagentStop" in data["hooks"], "hooks.json is missing SubagentStop key"
+        cmds = [
+            h["command"]
+            for group in data["hooks"]["SubagentStop"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("subagent-stop.sh" in cmd for cmd in cmds), (
+            f"expected subagent-stop.sh in a SubagentStop command; got {cmds!r}"
+        )
+
+    def test_subagent_start_adapter_round_trip(self, tmp_path: Path) -> None:
+        """subagent-start.sh pipes stdin through the Python dispatcher and exits 0."""
+        adapter = ADAPTER_DIR / "subagent-start.sh"
+        payload = json.dumps(
+            {
+                "session_id": "parent-1",
+                "agent_id": "agent-abc",
+                "agent_type": "Explore",
+                "hook_event_name": "SubagentStart",
+            }
+        )
+        result = subprocess.run(
+            [BASH, str(adapter)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )
+
+    def test_subagent_stop_adapter_round_trip(self, tmp_path: Path) -> None:
+        """subagent-stop.sh pipes stdin through the Python dispatcher and exits 0."""
+        adapter = ADAPTER_DIR / "subagent-stop.sh"
+        payload = json.dumps(
+            {
+                "session_id": "parent-1",
+                "agent_id": "agent-abc",
+                "agent_type": "Explore",
+                "agent_transcript_path": "/tmp/parent-1/subagents/agent-abc.jsonl",
+                "hook_event_name": "SubagentStop",
+            }
+        )
+        result = subprocess.run(
+            [BASH, str(adapter)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )

@@ -300,6 +300,25 @@ class TestMainSession:
             args = _parse_args()
         assert args.kind == "learning_test"
 
+    def test_recent_kind_subagent_run_accepted(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """recent --kind subagent_run is accepted (subagent_run is in VALID_KINDS, ENH-2505)."""
+        db = tmp_path / "session.db"
+        from little_loops.session_store import ensure_db
+
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "subagent_run"]):
+            assert main_session() == 0
+        assert "No subagent_run events" in capsys.readouterr().out
+
+    def test_search_kind_subagent_run_accepted(self) -> None:
+        with patch(
+            "sys.argv", ["ll-session", "search", "--fts", "Explore", "--kind", "subagent_run"]
+        ):
+            args = _parse_args()
+        assert args.kind == "subagent_run"
+
     def test_recent_message_kind(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """The recent CLI accepts --kind message after ENH-1621."""
         db = tmp_path / "session.db"

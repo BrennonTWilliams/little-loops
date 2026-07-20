@@ -517,6 +517,7 @@ class TestBackfill:
             "commits": 0,
             "raw_events": 0,
             "learning_tests": 0,
+            "subagent_runs": 0,
         }
 
     def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
@@ -1376,7 +1377,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 27
+        assert SCHEMA_VERSION == 28
 
 
 class TestBackfillIncremental:
@@ -1821,8 +1822,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1991,8 +1992,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2043,8 +2044,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2122,7 +2123,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 27
+        assert int(version[0]) == 28
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2139,8 +2140,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3720,8 +3721,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3761,8 +3762,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 27
-        assert int(row[0]) == 27
+        assert SCHEMA_VERSION == 28
+        assert int(row[0]) == 28
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3816,7 +3817,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 27
+        assert int(version[0]) == 28
         assert "issue_snapshots" in names
 
 
@@ -4509,7 +4510,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 27
+        assert SCHEMA_VERSION == 28
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4655,7 +4656,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 27
+        assert SCHEMA_VERSION == 28
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -4876,13 +4877,15 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 27
+        assert SCHEMA_VERSION == 28
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
         finally:
             conn.close()
         assert "learning_test_events" in names
@@ -4979,16 +4982,62 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 27
+        assert SCHEMA_VERSION == 28
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
         conn = sqlite3.connect(str(db))
         try:
-            names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
         finally:
             conn.close()
         assert "session_lifecycle_events" in names
+
+
+class TestSchemaV28:
+    """v28 migration adds the subagent_runs table (ENH-2505)."""
+
+    def test_subagent_runs_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(subagent_runs)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "parent_session_id",
+            "agent_id",
+            "agent_type",
+            "agent_transcript_path",
+            "started_at",
+            "ended_at",
+            "status",
+            "head_sha",
+            "branch",
+        }
+
+    def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 28
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 27)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "subagent_runs" in names
+
+    def test_subagent_run_id_is_kinded(self) -> None:
+        assert "subagent_run" in VALID_KINDS
+        assert _KIND_TABLE["subagent_run"] == "subagent_runs"
 
 
 class TestRecordSessionLifecycleEvent:

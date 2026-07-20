@@ -574,6 +574,7 @@ def main_session() -> int:
                 config=_config,
                 max_sessions=max_sessions,
                 repo_root=Path.cwd(),
+                sessions_root=project_folder,
                 also_rebuild=getattr(args, "rebuild", False),
             )
             total = sum(counts.values())

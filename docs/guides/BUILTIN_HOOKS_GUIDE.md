@@ -25,6 +25,7 @@ When you install the little-loops plugin, it registers a set of Claude Code life
 - [PostToolUse](#posttooluse)
 - [Stop](#stop)
 - [PreCompact](#precompact)
+- [SubagentStart / SubagentStop](#subagentstart--subagentstop)
 - [Turning Hooks Off](#turning-hooks-off)
 - [Configuration Reference](#configuration-reference)
 - [See Also](#see-also)
@@ -68,6 +69,8 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionEnd** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
+| **SubagentStart** | subagent-start | Records a subagent (Task/Agent) spawn in `subagent_runs` | — | on |
+| **SubagentStop** | subagent-stop | Closes out the matching `subagent_runs` row with `ended_at`/`status` | — | on |
 
 The rest of this guide walks each event in firing order.
 
@@ -94,6 +97,10 @@ The tool finishes
   → PostToolUse (analytics, if enabled): records tool + file events to history.db
   → PostToolUse (context monitor): estimates context usage; nudges handoff near the limit
   → PostToolUse (issue completion log): if issue was just marked done, appends session log
+
+A subagent is spawned (Agent/Task tool)
+  → SubagentStart: records a running row in subagent_runs
+  → SubagentStop: closes the row out with ended_at/status when the subagent finishes
 
 Context window fills up (Claude Code fires PreCompact before compacting)
   → PreCompact (precompact.sh): snapshots task state to .ll/ll-precompact-state.json
@@ -402,6 +409,18 @@ Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-preco
 **Two content paths**: when `.ll/ll-session-events.jsonl` is present (written by the `session-capture.sh` PostToolUse hook when `session_capture.enabled: true`), the handler builds the continuation prompt from structured event data — deduplicating file edits by subject and surfacing only unresolved errors. When the event log is absent, it falls back to a git-diff/loop-state snapshot. Enable `session_capture.enabled` to get richer, event-structured continuation prompts; the fallback still produces a usable prompt without it.
 
 Use `/ll:resume` after compaction to re-inject the continuation prompt. Always on; passive counterpart to the active `/ll:handoff` command. See [Session Handoff](SESSION_HANDOFF.md).
+
+---
+
+## SubagentStart / SubagentStop
+
+**Hooks:** `subagent-start.sh` → `little_loops.hooks.subagent_start.handle`, `subagent-stop.sh` → `little_loops.hooks.subagent_stop.handle`
+
+Fire when the `Agent`/`Task` tool spawns a subagent (`SubagentStart`) and when that subagent finishes (`SubagentStop`), recording the spawn tree into `.ll/history.db`'s `subagent_runs` table so it's queryable without re-parsing JSONL transcripts (ENH-2505).
+
+`SubagentStart` writes a `running` row keyed on `(parent_session_id, agent_id)` — `agent_id` is a spawn-local identifier (e.g. `"agent-abc123"`) scoped to its parent session, not a top-level `sessions.session_id`. `SubagentStop` updates that row's `ended_at`, `status` (`completed`), and `agent_transcript_path` (the nested transcript, `<parent-transcript-dir>/subagents/agent-<id>.jsonl`). Both are best-effort: a missing/malformed payload is a silent no-op, never a blocking failure. Always on; exits 0 (never blocks, never surfaces feedback).
+
+Query the tree with `ll-session recent --kind subagent_run`, or via `history_reader.subagent_tree(session_id)` / `subagent_retries(agent_type)` / `subagent_budget(session_id)` for the "which parent burns the most subagent budget" / "which agent type oscillates" questions. See [HISTORY_SESSION_GUIDE.md](HISTORY_SESSION_GUIDE.md).
 
 ---
 

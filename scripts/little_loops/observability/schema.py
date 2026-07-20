@@ -506,6 +506,14 @@ class TestRunEventVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class SubagentRunVariant(DESVariant):
+    """``record_subagent_run_start``/``record_subagent_run_stop`` write to
+    ``subagent_runs`` (SubagentStart/SubagentStop hooks + backfill, ENH-2505)."""
+
+    type: Literal["subagent_run"] = "subagent_run"
+
+
+@dataclass(frozen=True)
 class CliEventVariant(DESVariant):
     """``cli_event_context`` writes to ``cli_events`` (every CLI entry point)."""
 
@@ -624,6 +632,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     IssueSnapshotVariant,
     CommitEventVariant,
     TestRunEventVariant,
+    SubagentRunVariant,
     CliEventVariant,
     LoopEventBackfillVariant,
     MessageEventVariant,

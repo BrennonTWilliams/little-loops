@@ -3,9 +3,10 @@ id: ENH-2505
 title: "Link subagent session-tree (parent\u2192child) into history.db"
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
 captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-20T23:42:10Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 depends_on:
@@ -88,6 +89,23 @@ agent_type, started_at, ended_at)` so the spawn tree is queryable.
   `agent_id` / `agent_type`.
 - Future `ll-ctx-stats` per-agent block can roll up
   "subagents spawned by this session" alongside the executor tool-count.
+
+## Impact
+
+- **Who's affected**: Anyone debugging subagent-heavy automation runs
+  (`ll-parallel`, `ll-sprint`, `rn-*` recursive loops) or analyzing budget
+  burn across a fleet of Task spawns — currently limited to hand-walking
+  JSONL transcripts session-by-session.
+- **Severity if unaddressed**: Medium — no data loss or breakage, but the
+  spawn tree stays unqueryable, so questions like "which parent burns the
+  most subagent budget" or "which agent type oscillates" require manual
+  JSONL archaeology every time (as the kill-analysis in
+  `autodev-bug2501-kill-analysis.md` had to do).
+- **Scope of change**: One new table (`subagent_runs`, schema v28), two
+  new best-effort lifecycle hook handlers (`SubagentStart`/
+  `SubagentStop`), three new `history_reader` helpers, and one new
+  `ll-session --kind subagent_run` value — additive only, no changes to
+  existing tables or read paths.
 
 ## Proposed Solution
 
@@ -389,7 +407,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-07-06 | Priority: P3 | Decision Needed: yes (child-session identifier source)
+**Open** | Created: 2026-07-06 | Priority: P3 | Decision Needed: no (child-session identifier source resolved 2026-07-20 — see "Naming Decision" and "Decision Rationale")
 
 ---
 
@@ -418,7 +436,61 @@ exactly one telemetry wrap per `SubagentStart` / `SubagentStop` invocation.
 The wrap belongs in ENH-2506's dispatcher-level wrapper, not duplicated in
 this issue's per-handler body.
 
+## Resolution
+
+Implemented as Option B (`SubagentStart`/`SubagentStop` lifecycle hooks) per
+the issue's decided rationale:
+
+- Schema migration v28 adds `subagent_runs` (`scripts/little_loops/session_store.py`):
+  `UNIQUE(parent_session_id, agent_id)` composite key, four indexes.
+  `VALID_KINDS`/`_KIND_TABLE` gained `"subagent_run"`.
+- `record_subagent_run_start()` (`INSERT OR IGNORE`, idempotent replay) and
+  `record_subagent_run_stop()` (`UPDATE` on the composite key, best-effort) —
+  modeled on `record_commit_event()`/`update_loop_run_diagnostics()`.
+  `_backfill_subagent_runs()` seeds historical rows from nested
+  `subagents/*.jsonl` transcripts (wired into `backfill(sessions_root=...)`
+  and the `ll-session backfill` CLI via `get_project_folder()`).
+- New host-agnostic handlers `hooks/subagent_start.py` / `subagent_stop.py`,
+  registered in `hooks/__init__.py`'s `_dispatch_table()` + `_USAGE`, with
+  Claude Code adapters `hooks/adapters/claude-code/subagent-start.sh` /
+  `subagent-stop.sh` and `SubagentStart`/`SubagentStop` bindings in
+  `hooks/hooks.json`. No `hook_event_context` telemetry wrap added here per
+  the ENH-2506 scope-boundary note above — that wrap belongs in ENH-2506's
+  dispatcher-level wrapper.
+- `history_reader.py` gained the `SubagentRun` dataclass and
+  `subagent_tree()`/`subagent_retries()`/`subagent_budget()` readers.
+  `subagent_tree()` returns direct children only — grandchild recursion
+  requires re-parsing each `agent_transcript_path`, not a SQL join, per the
+  "Naming Decision" section above.
+- `observability/schema.py` gained `SubagentRunVariant` in `DES_VARIANTS`
+  (registry completeness; the audit walker only scans `event_bus.emit`/
+  `self._emit` call sites, which this Channel-A direct writer doesn't use).
+- Tests: new `scripts/tests/test_enh_2505_subagent_runs.py` (writer
+  round-trip, replay idempotency, reader API, hook handlers, backfill), plus
+  a `TestSchemaV28` migration class in `test_session_store.py` and coverage
+  additions to `test_claude_code_adapter.py` (adapter existence + round-trip),
+  `test_hook_intents.py` (dispatch registration + CLI round-trip),
+  `test_ll_session.py` (`--kind subagent_run`), and the stale
+  `SCHEMA_VERSION == 27` sanity assertions scattered across
+  `test_session_store.py` (bumped to 28). `test_des_schema.py` and
+  `test_verify_kinds.py` already parametrize over the full registry/table
+  set, so no edits were needed there — both gates plus `ll-verify-des-audit`
+  pass unchanged.
+- Docs: `docs/ARCHITECTURE.md` (v28 schema row), `docs/reference/API.md`
+  (new `session_store`/`history_reader` exports, stale `SCHEMA_VERSION`
+  example fixed), `docs/reference/CLI.md` (`--kind subagent_run`),
+  `docs/guides/HISTORY_SESSION_GUIDE.md`, and
+  `docs/guides/BUILTIN_HOOKS_GUIDE.md` (new lifecycle-table row + dedicated
+  section).
+
+Full suite (`python -m pytest scripts/tests/`, 15641 passed / 38 skipped),
+`ruff check`/`ruff format --check`, `mypy` (no new errors — only pre-existing
+repo-wide `ruamel` stub warnings), `ll-verify-kinds`, and
+`ll-verify-des-audit` all pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-20T23:41:14Z - `918e74d7-bdb8-4897-82ad-f60e5f91108e.jsonl`
+- `/ll:ready-issue` - 2026-07-20T22:59:03 - `979aa45d-ce9d-401a-ad2b-aedea8458837.jsonl`
 - `/ll:confidence-check` - 2026-07-20T00:00:00Z - `08a90449-d727-4ea4-8c30-244ca2ad7678.jsonl`
 - `/ll:confidence-check` - 2026-07-20T00:00:00Z - `fafd5571-7c8d-4594-b219-0c7ca7229d44.jsonl`
 - `/ll:refine-issue` - 2026-07-20T22:31:58 - `83f47fa3-b788-4e86-83c7-99cdc314f94f.jsonl`
