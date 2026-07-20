@@ -185,6 +185,28 @@ def _warn_adapter_staleness(hosts: list[str], project_root: Path) -> None:
         )
 
 
+def _warn_config_drift(existing_config: dict[str, Any], introspection: Any) -> None:
+    """Warn when a freshly-introspected declared value diverges from stored config.
+
+    Warn-only, like :func:`_warn_adapter_staleness`: only ``declared`` provenance
+    (a manifest unambiguously states the value) triggers a warning — ``inferred``
+    values are too noisy to surface here. The existing config value is always
+    kept (BUG-2310); this is purely informational.
+    """
+    for dotted_key, iv in introspection.values.items():
+        if iv.provenance != "declared":
+            continue
+        section, field = dotted_key.split(".", 1)
+        existing_value = existing_config.get(section, {}).get(field)
+        if existing_value and existing_value != iv.value:
+            print(
+                f"Warning: config has {field} {existing_value!r} but {iv.evidence} declares "
+                f"{iv.value!r} — keeping existing config value.\n"
+                "  Review: ll-init --plan",
+                file=sys.stderr,
+            )
+
+
 def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[str, Any]:
     """Translate --enable/--disable feature names into build_config choice keys.
 
@@ -388,6 +410,8 @@ def _run_yes(
 
     introspection = introspect(project_root, template)
     _print_introspection_summary(introspection)
+    if existing_config:
+        _warn_config_drift(existing_config, introspection)
 
     # Build choices: introspection fills gaps first (lowest priority), then
     # existing config values win, then explicit CLI overrides win.
@@ -508,12 +532,16 @@ def _run_plan(
     from little_loops.init.detect import detect_documents, detect_project_type_all
     from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
+    from little_loops.init.writers import load_existing_config
 
     candidates = detect_project_type_all(project_root, templates_dir)
     template = candidates[0]
     runner_up = next((c for c in candidates[1:] if c.match_count > 0), None)
     documents_categories = detect_documents(project_root)
     introspection = introspect(project_root, template)
+    existing_config = load_existing_config(project_root)
+    if existing_config:
+        _warn_config_drift(existing_config, introspection)
     choices: dict[str, Any] = {"project_name": project_root.name}
     for dotted_key, iv in introspection.values.items():
         section, field = dotted_key.split(".", 1)

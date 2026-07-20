@@ -285,6 +285,56 @@ class TestInitHeadlessIntrospection:
         fields = {p["field"] for p in plan["provenance"]}
         assert "project.lint_cmd" in fields
 
+    def test_yes_reinit_warns_on_divergent_declared_test_cmd(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Re-init warns (stderr) on declared/stored divergence but keeps the stored value."""
+        project = tmp_path / "drift_reinit"
+        project.mkdir()
+        (project / "pyproject.toml").write_text(
+            '[tool.pytest.ini_options]\ntestpaths = ["scripts/tests"]\n'
+        )
+
+        (project / ".ll").mkdir()
+        existing = {"project": {"test_cmd": "python -m pytest scripts/tests/ -v"}}
+        (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
+
+        err = capsys.readouterr().err
+        assert "test_cmd" in err
+        assert "python -m pytest scripts/tests/ -v" in err
+        assert "ll-init --plan" in err
+        config = json.loads((project / ".ll" / "ll-config.json").read_text())
+        assert config["project"]["test_cmd"] == "python -m pytest scripts/tests/ -v"
+
+    def test_plan_reflects_divergent_declared_test_cmd_against_existing_config(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--plan against an existing config surfaces the same drift warning as --yes."""
+        import io
+        from contextlib import redirect_stdout
+
+        project = tmp_path / "drift_plan"
+        project.mkdir()
+        (project / "pyproject.toml").write_text(
+            '[tool.pytest.ini_options]\ntestpaths = ["scripts/tests"]\n'
+        )
+
+        (project / ".ll").mkdir()
+        existing = {"project": {"test_cmd": "python -m pytest scripts/tests/ -v"}}
+        (project / ".ll" / "ll-config.json").write_text(json.dumps(existing))
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            assert _run_init(["--plan", "--root", str(project)]) == 0
+        plan = json.loads(buf.getvalue())  # --plan stdout stays pure JSON
+        assert "provenance" in plan
+
+        err = capsys.readouterr().err
+        assert "test_cmd" in err
+        assert "python -m pytest scripts/tests/ -v" in err
+
 
 class TestInitLogoBanner:
     """The CLI logo banner prints on human-facing runs but never pollutes the

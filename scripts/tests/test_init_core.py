@@ -1635,6 +1635,8 @@ class TestMainInit:
         assert "proposed_config" in plan
         assert "host_options" in plan
         assert "warnings" in plan
+        assert "provenance" in plan
+        assert "ambiguities" in plan
 
     def test_yes_enable_feature_flags_write_sections(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
@@ -2540,6 +2542,61 @@ class TestDispatchHostUpgrade:
         from little_loops.init.cli import _warn_adapter_staleness
 
         _warn_adapter_staleness(["claude-code"], tmp_project)
+        assert capsys.readouterr().err == ""
+
+    def test_warn_config_drift_prints_hint_on_declared_divergence(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_config_drift
+        from little_loops.init.introspect import IntrospectedValue, IntrospectResult
+
+        introspection = IntrospectResult(
+            values={
+                "project.test_cmd": IntrospectedValue(
+                    value="python -m pytest scripts/tests/",
+                    provenance="declared",
+                    evidence="[tool.pytest.ini_options] in pyproject.toml",
+                )
+            },
+            ambiguities=[],
+        )
+        _warn_config_drift({"project": {"test_cmd": "pytest"}}, introspection)
+        err = capsys.readouterr().err
+        assert "pytest" in err and "python -m pytest scripts/tests/" in err
+        assert "ll-init --plan" in err
+
+    def test_warn_config_drift_silent_when_matched(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_config_drift
+        from little_loops.init.introspect import IntrospectedValue, IntrospectResult
+
+        introspection = IntrospectResult(
+            values={
+                "project.test_cmd": IntrospectedValue(
+                    value="pytest", provenance="declared", evidence="declared in pyproject.toml"
+                )
+            },
+            ambiguities=[],
+        )
+        _warn_config_drift({"project": {"test_cmd": "pytest"}}, introspection)
+        assert capsys.readouterr().err == ""
+
+    def test_warn_config_drift_silent_on_inferred_divergence(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.init.cli import _warn_config_drift
+        from little_loops.init.introspect import IntrospectedValue, IntrospectResult
+
+        introspection = IntrospectResult(
+            values={
+                "project.src_dir": IntrospectedValue(
+                    value="src/", provenance="inferred", evidence="sole package marker"
+                )
+            },
+            ambiguities=[],
+        )
+        _warn_config_drift({"project": {"src_dir": "scripts/"}}, introspection)
         assert capsys.readouterr().err == ""
 
 
