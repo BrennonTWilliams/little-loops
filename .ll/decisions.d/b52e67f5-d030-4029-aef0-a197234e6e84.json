@@ -1,0 +1,14 @@
+{
+  "id": "5564730b-ae70-41ad-93c7-5dc93e75e857",
+  "type": "rule",
+  "timestamp": "2026-07-20T01:22:43Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "cli_event_context's unguarded INSERT crashed every ll-* CLI (including read-only commands) whenever history.db was locked, because optional bookkeeping was allowed to abort the primary operation it wrapped.",
+  "rule": "Analytics/telemetry writes (SQLite or otherwise) wrapping a CLI/command body must be fail-open: catch DB errors, log a w",
+  "enforcement": "advisory",
+  "issue": "BUG-2706"
+}

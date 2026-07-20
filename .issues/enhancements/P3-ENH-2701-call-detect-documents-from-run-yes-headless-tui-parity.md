@@ -12,7 +12,7 @@ labels:
 - init
 - cli
 - detection
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-2701: Call `detect_documents()` from `_run_yes` (headless/TUI parity)
@@ -75,6 +75,8 @@ directly after `build_config()` returns — mirroring the TUI's existing
 `_build_final_config()` pattern verbatim (`tui.py:552-557` compute step,
 `tui.py:704-708` assembly step).
 
+> **Selected:** Option B — mirrors the TUI's proven `_build_final_config()` assembly and the existing `install_source` post-`build_config()` idiom in `_run_yes`; only a new existing-config guard is required.
+
 **Recommended**: Option B — mirrors a pattern already proven by the TUI,
 avoids widening `build_config()`'s already-large modeled-section surface
 (project/issues/scan/learning_tests/analytics/context_monitor/product/decisions/
@@ -95,6 +97,41 @@ only assemble/inject the detected `documents` section when
 re-run would silently overwrite hand-edited categories with freshly detected
 ones. `test_yes_preserves_unmodeled_keys` (`test_init_core.py:1408`) already
 asserts the current (accidental) preservation behavior and must keep passing.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-19.
+
+**Selected**: Option B — call `detect_documents()` in `_run_yes`/`_run_plan` and
+assemble `config["documents"]` directly after `build_config()` returns.
+
+**Reasoning**: The exact assembly shape already exists verbatim in the TUI's
+`_build_final_config()` (`tui.py:552-557`, `704-708`), and `_run_yes` already
+uses the identical post-`build_config()` direct-assignment idiom for
+`install_source` (`cli.py:401-402`) — so Option B is a copy of proven code plus
+one new existing-config guard. Option A would restructure a deliberate
+architectural boundary: `documents` is explicitly modeled *outside*
+`build_config()` today (tested as an "unmodeled section" at
+`test_init_core.py:1408`), and `build_config()` has no precedent for a
+data-carrying (non-scalar) `choices` key.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (build_config param) | 1/3 | 1/3 | 2/3 | 1/3 | 5/12 |
+| Option B (post-build_config assembly) | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+
+**Key evidence**:
+- Option A: `detect_documents()` output shape is reusable, but `build_config()`
+  has no data-carrying-choices-key precedent and `documents` is architected as a
+  section `build_config()` never emits — Option A restructures that boundary
+  (reuse score 1).
+- Option B: mirrors `tui.py:704-708` verbatim, reuses the unmodified
+  `detect_documents()` detector, and follows the existing `install_source`
+  post-build assignment precedent; the only genuinely new logic is the
+  `existing_config.get("documents")` guard needed to keep
+  `test_yes_preserves_unmodeled_keys` passing (reuse score 2).
 
 ## Acceptance Criteria
 
@@ -165,4 +202,5 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-19T23:54:32 - `bc31c482-dece-432a-a346-aa0a810887d7.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:41:29 - `926de526-7a59-4baf-abfe-5ac37cfae19f.jsonl`

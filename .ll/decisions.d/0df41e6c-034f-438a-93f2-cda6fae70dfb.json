@@ -1,0 +1,12 @@
+{
+  "id": "34d105fb-390e-4404-8b74-cd08dd0ec038",
+  "type": "decision",
+  "timestamp": "2026-07-19T23:54:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors TUI _build_final_config() verbatim and the existing install_source post-build idiom in _run_yes; only a new existing-config guard is needed. Scored 11/12 vs Option A 5/12.",
+  "rule": "Option B \u2014 assemble config[documents] after build_config() returns",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 add documents_categories choices-key to build_config() (restructures a deliberate boundary; no data-carrying-choices-key precedent)",
+  "issue": "ENH-2701"
+}

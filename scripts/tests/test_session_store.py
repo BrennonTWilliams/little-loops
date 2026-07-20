@@ -1838,6 +1838,61 @@ class TestCliEventContext:
         assert len(rows) == 1
         assert rows[0]["binary"] == "ll-test-env-var"
 
+    def test_cli_event_locked_db_does_not_crash_body(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A locked/unavailable DB on enter must not block the wrapped command.
+
+        Regression: cli_event_context wraps ~20+ ll-* entry points; an unguarded
+        ``INSERT INTO cli_events`` that raised ``OperationalError: database is
+        locked`` used to crash the entire command before it did any work. The
+        analytics row must be skipped (EPIC-1707 graceful degradation) while the
+        body still runs.
+        """
+        import little_loops.session_store as ss
+
+        def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(ss, "connect", _locked_connect)
+
+        db = tmp_path / "session.db"
+        ran = False
+        with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
+            ran = True
+        assert ran, "wrapped command body must run even when the analytics INSERT fails"
+
+    def test_cli_event_locked_exit_update_does_not_mask_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lock on the exit UPDATE must not raise out of a successful command."""
+        import little_loops.session_store as ss
+
+        real_connect = ss.connect
+
+        class _FailUpdateConn:
+            def __init__(self, inner: sqlite3.Connection) -> None:
+                self._inner = inner
+
+            def execute(self, sql: str, *params: object) -> object:
+                if sql.startswith("UPDATE cli_events"):
+                    raise sqlite3.OperationalError("database is locked")
+                return self._inner.execute(sql, *params)
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self._inner, name)
+
+        def _wrapped_connect(*a: object, **k: object) -> object:
+            return _FailUpdateConn(real_connect(*a, **k))
+
+        monkeypatch.setattr(ss, "connect", _wrapped_connect)
+
+        db = tmp_path / "session.db"
+        ran = False
+        with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
+            ran = True
+        assert ran, "command body must complete even when the exit UPDATE fails"
+
     def test_cli_event_context_explicit_path_not_redirected(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -1204,21 +1204,41 @@ def cli_event_context(
 ) -> Generator[None, None, None]:
     """Insert a ``cli_events`` row on enter; update exit_code and duration_ms on exit.
 
+    Best-effort per the EPIC-1707 graceful-degradation contract (matching
+    :func:`skill_event_context`): a missing, locked, or otherwise unavailable
+    database must never block the wrapped command. If the enter ``INSERT`` fails
+    (e.g. ``OperationalError: database is locked`` under multi-writer contention),
+    the analytics row is skipped and the command body still runs; a failure of the
+    exit ``UPDATE`` never masks a successful command either. Only errors raised by
+    the wrapped body propagate.
+
     The ``config`` parameter is a forward-compatibility stub for ENH-1835 gating;
     it is accepted but not yet used.
     """
     if args is None:
         args = []
     effective_path = resolve_history_db(db_path)
-    conn = connect(effective_path)
+    conn: sqlite3.Connection | None = None
+    row_id: int | None = None
     start = time.time()
     ts = _now()
-    cursor = conn.execute(
-        "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
-        (ts, binary, json.dumps(args[:50])),
-    )
-    row_id = cursor.lastrowid
-    conn.commit()
+    try:
+        conn = connect(effective_path)
+        cursor = conn.execute(
+            "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
+            (ts, binary, json.dumps(args[:50])),
+        )
+        row_id = cursor.lastrowid
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning("cli_event_context: insert failed for %r", binary, exc_info=True)
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        conn = None
+        row_id = None
     exit_code = 0
     try:
         yield
@@ -1226,13 +1246,23 @@ def cli_event_context(
         exit_code = 1
         raise
     finally:
-        duration_ms = int((time.time() - start) * 1000)
-        conn.execute(
-            "UPDATE cli_events SET exit_code=?, duration_ms=? WHERE id=?",
-            (exit_code, duration_ms, row_id),
-        )
-        conn.commit()
-        conn.close()
+        if conn is not None and row_id is not None:
+            duration_ms = int((time.time() - start) * 1000)
+            try:
+                conn.execute(
+                    "UPDATE cli_events SET exit_code=?, duration_ms=? WHERE id=?",
+                    (exit_code, duration_ms, row_id),
+                )
+                conn.commit()
+            except sqlite3.Error:
+                logger.warning(
+                    "cli_event_context: exit update failed for %r", binary, exc_info=True
+                )
+            finally:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
 
 
 @dataclass
