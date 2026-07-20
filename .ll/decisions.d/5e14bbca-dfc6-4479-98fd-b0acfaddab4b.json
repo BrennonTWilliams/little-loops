@@ -1,0 +1,12 @@
+{
+  "id": "702fd1cd-1f56-47cc-a7a7-4af7732b6a5a",
+  "type": "decision",
+  "timestamp": "2026-07-20T21:12:28Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Avoids the decision/materialization race by short-circuiting before the vulnerable window, rather than relying on a provisional token that the existing resume reader can't safely distinguish from a completed outcome.",
+  "rule": "Deadline propagation",
+  "scope": "issue",
+  "alternatives_rejected": "Provisional sentinel at decision time",
+  "issue": "ENH-2708"
+}

@@ -277,7 +277,8 @@ class TestRecursiveStructure:
         fsm, _ = load_and_validate(NODE_ORACLE)
         assert fsm.states["score_node"].on_yes == "decide_decompose"
         assert fsm.states["decide_decompose"].next == "route_decision"
-        assert fsm.states["route_decision"].on_yes == "gate_decompose"
+        assert fsm.states["route_decision"].on_yes == "check_decompose_deadline"
+        assert fsm.states["check_decompose_deadline"].on_yes == "gate_decompose"
 
 
 class TestSynthFailureRecord:
@@ -580,6 +581,88 @@ class TestGateDecomposeCaps:
 
     def test_ok_under_caps(self, tmp_path: Path) -> None:
         assert "OK" in self._run(tmp_path, "0", "3", "40", "2")
+
+
+# ---------------------------------------------------------------------------
+# ENH-2708: deadline_epoch propagation — decide/materialize durability gap
+# ---------------------------------------------------------------------------
+
+
+class TestComputeDeadline:
+    """rn-refine's compute_deadline turns remaining budget into an absolute cutoff."""
+
+    def _action(self) -> str:
+        return _load_rn_refine().states["compute_deadline"].action
+
+    def test_emits_epoch_seconds_ahead_of_now(self, tmp_path: Path) -> None:
+        ctx = InterpolationContext(
+            context={"timeout_total": "21600", "synth_reserve": "3600"},
+            elapsed_ms=1_000_000,  # 1000s elapsed
+        )
+        rendered = interpolate(self._action(), ctx)
+        before = _bash("date +%s", tmp_path)
+        result = _bash(rendered, tmp_path)
+        after = _bash("date +%s", tmp_path)
+        assert result.returncode == 0, result.stderr
+        deadline = int(result.stdout.strip())
+        # remaining = 21600 - 3600 - 1000 = 17000s
+        expected_low = int(before.stdout.strip()) + 17000
+        expected_high = int(after.stdout.strip()) + 17000
+        assert expected_low <= deadline <= expected_high
+
+    def test_past_budget_clamps_to_zero_remaining(self, tmp_path: Path) -> None:
+        ctx = InterpolationContext(
+            context={"timeout_total": "21600", "synth_reserve": "3600"},
+            elapsed_ms=999_000_000,  # far past the whole budget
+        )
+        rendered = interpolate(self._action(), ctx)
+        before = _bash("date +%s", tmp_path)
+        result = _bash(rendered, tmp_path)
+        after = _bash("date +%s", tmp_path)
+        assert result.returncode == 0, result.stderr
+        deadline = int(result.stdout.strip())
+        assert int(before.stdout.strip()) <= deadline <= int(after.stdout.strip())
+
+    def test_refine_node_binds_deadline_epoch_from_capture(self) -> None:
+        with_ = _load_rn_refine().states["refine_node"].with_
+        assert with_["deadline_epoch"] == "${captured.deadline_epoch.output:default=0}"
+
+
+class TestDecomposeDeadline:
+    """ENH-2708: check_decompose_deadline short-circuits DECOMPOSE to a capped leaf
+    when the parent's own hard-kill deadline has already passed, instead of risking
+    an external kill mid gate_decompose -> materialize_children -> emit_decomposed."""
+
+    def _action(self) -> str:
+        fsm, _ = load_and_validate(NODE_ORACLE)
+        return fsm.states["check_decompose_deadline"].action
+
+    def test_routes_through_check_decompose_deadline_before_gate(self) -> None:
+        fsm, _ = load_and_validate(NODE_ORACLE)
+        assert fsm.states["route_decision"].on_yes == "check_decompose_deadline"
+        assert fsm.states["check_decompose_deadline"].on_yes == "gate_decompose"
+        assert fsm.states["check_decompose_deadline"].on_no == "emit_capped"
+
+    def test_no_deadline_set_is_ok(self, tmp_path: Path) -> None:
+        rendered = _render(self._action(), context={"deadline_epoch": "0"})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "OK" in result.stdout
+
+    def test_deadline_already_passed(self, tmp_path: Path) -> None:
+        past = str(int(_bash("date +%s", tmp_path).stdout.strip()) - 100)
+        rendered = _render(self._action(), context={"deadline_epoch": past})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "DEADLINE_PASSED" in result.stdout
+
+    def test_deadline_still_ahead(self, tmp_path: Path) -> None:
+        future = str(int(_bash("date +%s", tmp_path).stdout.strip()) + 3600)
+        rendered = _render(self._action(), context={"deadline_epoch": future})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "OK" in result.stdout
+        assert "DEADLINE_PASSED" not in result.stdout
 
 
 # ---------------------------------------------------------------------------

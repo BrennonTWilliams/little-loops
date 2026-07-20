@@ -29,9 +29,19 @@ description: |
       node_id: "${captured.input.output}"
       depth: "${captured.current_depth.output}"
       max_depth: "${context.max_depth}"
+      deadline_epoch: "${captured.deadline_epoch.output}"
     on_success: classify_node
     on_failure: classify_node
     on_error: record_node_crash
+
+  ENH-2708: deadline_epoch (absolute epoch seconds, 0 = no deadline) is the
+  parent's own external-kill cutoff, propagated because this sub-loop's
+  ${loop.elapsed_ms} starts fresh per invocation and knows nothing of the
+  parent's cumulative budget. check_decompose_deadline consults it right
+  after the DECOMPOSE decision is captured but before the multi-step
+  gate_decompose -> materialize_children -> emit_decomposed dance runs, so a
+  decision made too close to the parent's hard-kill deadline is finalized as
+  a capped leaf in one shot instead of risking loss mid-materialization.
 
 initial: setup
 max_steps: 60
@@ -68,12 +78,19 @@ parameters:
     type: integer
     required: false
     description: "Global cap on total nodes; decomposition is suppressed once reached"
+  deadline_epoch:
+    type: integer
+    required: false
+    description: >-
+      Absolute epoch seconds after which the parent's own external-kill
+      deadline is reached; 0 (default) means no deadline is tracked.
 
 context:
   depth: 0
   max_depth: 3
   max_node_iters: 2
   max_nodes: 40
+  deadline_epoch: 0
 
 states:
   setup:
@@ -244,9 +261,32 @@ states:
       type: output_contains
       source: "${captured.decision.output}"
       pattern: "DECISION: DECOMPOSE"
-    on_yes: gate_decompose
+    on_yes: check_decompose_deadline
     on_no: emit_leaf
     on_error: emit_leaf
+
+  check_decompose_deadline:
+    # ENH-2708: the DECOMPOSE decision (and its child .md files + rewritten
+    # plan.md index) is already on disk at this point — only the multi-step
+    # gate_decompose -> materialize_children -> emit_decomposed bookkeeping
+    # remains, and each of those is a separate FSM step an external kill can
+    # land between. If the parent's own hard-kill deadline is already here,
+    # skip that dance entirely and finalize as a capped leaf in one shot
+    # rather than risk losing the decision with no outcome token at all.
+    action_type: shell
+    action: |
+      DEADLINE="${context.deadline_epoch:default=0}"
+      if [ "$DEADLINE" -gt 0 ] && [ "$(date +%s)" -ge "$DEADLINE" ]; then
+        echo "DEADLINE_PASSED"
+      else
+        echo "OK"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "OK"
+    on_yes: gate_decompose
+    on_no: emit_capped
+    on_error: gate_decompose
 
   gate_decompose:
     # Safety caps on the adaptive depth. Decomposition is suppressed when the

@@ -265,6 +265,24 @@ states:
     action: |
       cat "${captured.run_dir.output}/current_depth.txt" 2>/dev/null || echo 0
     capture: current_depth
+    next: compute_deadline
+    on_error: compute_deadline
+
+  compute_deadline:
+    # ENH-2708: convert this run's own remaining wall-clock budget into an
+    # absolute epoch-seconds deadline for the sub-loop to self-check against.
+    # The sub-loop's own ${loop.elapsed_ms} starts fresh per invocation, so it
+    # cannot see the parent's cumulative elapsed time — only an absolute
+    # cutoff computed here (mirrors the ENH-2707 dequeue_next budget math)
+    # carries that information across the with: boundary.
+    action_type: shell
+    action: |
+      BUDGET_S=$(( ${context.timeout_total:default=21600} - ${context.synth_reserve:default=3600} ))
+      ELAPSED_S=$(( ${loop.elapsed_ms} / 1000 ))
+      REMAINING_S=$(( BUDGET_S - ELAPSED_S ))
+      if [ "$REMAINING_S" -lt 0 ]; then REMAINING_S=0; fi
+      echo $(( $(date +%s) + REMAINING_S ))
+    capture: deadline_epoch
     next: refine_node
     on_error: refine_node
 
@@ -281,6 +299,10 @@ states:
       max_depth: "${context.max_depth}"
       max_node_iters: "${context.max_node_iters}"
       max_nodes: "${context.max_nodes}"
+      # ENH-2708: absolute epoch-seconds cutoff so the sub-loop can
+      # short-circuit before the decide->materialize window if compute_deadline
+      # didn't capture (e.g. errored) default to 0 = no deadline tracked.
+      deadline_epoch: "${captured.deadline_epoch.output:default=0}"
     on_success: classify_node
     on_failure: classify_node
     on_error: record_node_crash
