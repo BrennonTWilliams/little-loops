@@ -1207,6 +1207,77 @@ class TestActiveWorktreeProtection:
         assert "Test error" in (result.error or "")
 
 
+class TestWorktreeProducerWiring:
+    """Tests for ENH-2509 session_lifecycle_events producer wiring."""
+
+    def test_process_issue_emits_worktree_create(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """_process_issue() emits a worktree_create row after _setup_worktree succeeds."""
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch(
+                    "little_loops.parallel.worker_pool.record_session_lifecycle_event"
+                ) as mock_record:
+                    with patch.object(
+                        worker_pool,
+                        "_run_claude_command",
+                        side_effect=Exception("stop after setup"),
+                    ):
+                        worker_pool._process_issue(mock_issue)
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        assert kwargs["event"] == "worktree_create"
+        assert kwargs["detail"]["issue_id"] == "BUG-001"
+
+    def test_cleanup_worktree_emits_worktree_delete(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup_worktree() emits a worktree_delete row after successful removal."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001-20260101-000000"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        with patch.object(worker_pool._git_lock, "run") as mock_git_run:
+            mock_git_run.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
+                with patch("shutil.rmtree"):
+                    with patch(
+                        "little_loops.parallel.worker_pool.record_session_lifecycle_event"
+                    ) as mock_record:
+                        worker_pool._cleanup_worktree(worktree_path)
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        assert kwargs["event"] == "worktree_delete"
+        assert kwargs["detail"]["issue_id"] == "BUG-001"
+
+    def test_setup_worktree_failure_does_not_raise_recorder_error(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """A record_session_lifecycle_event failure must not surface (best-effort)."""
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch(
+                    "little_loops.parallel.worker_pool.record_session_lifecycle_event",
+                    side_effect=RuntimeError("db locked"),
+                ):
+                    with patch.object(
+                        worker_pool,
+                        "_run_claude_command",
+                        side_effect=Exception("stop after setup"),
+                    ):
+                        # Must not raise despite the recorder failure.
+                        worker_pool._process_issue(mock_issue)
+
+
 class TestWorkerPoolHelpers:
     """Tests for helper methods."""
 

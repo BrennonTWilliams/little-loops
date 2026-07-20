@@ -37,7 +37,11 @@ from little_loops.parallel.types import (
 )
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry
-from little_loops.session_store import record_orchestration_run, resolve_history_db
+from little_loops.session_store import (
+    record_orchestration_run,
+    record_session_lifecycle_event,
+    resolve_history_db,
+)
 from little_loops.worktree_utils import (
     _is_ll_branch,
     _is_ll_worktree,
@@ -359,6 +363,18 @@ class ParallelOrchestrator:
                             cwd=self.repo_path,
                             timeout=10,
                         )
+
+                    with suppress(Exception):
+                        record_session_lifecycle_event(
+                            resolve_history_db(),
+                            session_id=None,
+                            event="worktree_delete",
+                            detail={
+                                "worktree_path": str(worktree_path),
+                                "branch": branch_name,
+                                "reason": "orphan_cleanup",
+                            },
+                        )
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
 
@@ -612,6 +628,17 @@ class ParallelOrchestrator:
 
                 if result.returncode == 0:
                     self.logger.success(f"  Successfully merged {info.issue_id}")
+                    with suppress(Exception):
+                        record_session_lifecycle_event(
+                            resolve_history_db(),
+                            session_id=None,
+                            event="worktree_merge",
+                            detail={
+                                "worktree_path": str(info.worktree_path),
+                                "branch": info.branch_name,
+                                "issue_id": info.issue_id,
+                            },
+                        )
                     # Clean up the worktree after successful merge
                     self._git_lock.run(
                         ["worktree", "remove", "--force", str(info.worktree_path)],
@@ -623,6 +650,17 @@ class ParallelOrchestrator:
                         cwd=self.repo_path,
                         timeout=10,
                     )
+                    with suppress(Exception):
+                        record_session_lifecycle_event(
+                            resolve_history_db(),
+                            session_id=None,
+                            event="worktree_delete",
+                            detail={
+                                "worktree_path": str(info.worktree_path),
+                                "branch": info.branch_name,
+                                "issue_id": info.issue_id,
+                            },
+                        )
                 else:
                     self.logger.warning(f"  Failed to merge {info.issue_id}: {result.stderr}")
                     # Abort the merge if it failed

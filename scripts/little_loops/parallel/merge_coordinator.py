@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING
@@ -21,6 +22,7 @@ from little_loops.parallel.types import (
     ParallelConfig,
     WorkerResult,
 )
+from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
 
 if TYPE_CHECKING:
     from little_loops.logger import Logger
@@ -1042,6 +1044,19 @@ class MergeCoordinator:
         with self._lock:
             self._merged.append(result.issue_id)
 
+        with suppress(Exception):
+            record_session_lifecycle_event(
+                resolve_history_db(),
+                session_id=None,
+                event="worktree_merge",
+                detail={
+                    "worktree_path": str(result.worktree_path),
+                    "branch": result.branch_name,
+                    "issue_id": result.issue_id,
+                    "merge_target": result.epic_branch or self.config.base_branch,
+                },
+            )
+
         # Cleanup worktree and branch
         self._cleanup_worktree(result.worktree_path, result.branch_name)
 
@@ -1095,6 +1110,14 @@ class MergeCoordinator:
                 ["branch", "-D", branch_name],
                 cwd=self.repo_path,
                 timeout=10,
+            )
+
+        with suppress(Exception):
+            record_session_lifecycle_event(
+                resolve_history_db(),
+                session_id=None,
+                event="worktree_delete",
+                detail={"worktree_path": str(worktree_path), "branch": branch_name},
             )
 
     @property

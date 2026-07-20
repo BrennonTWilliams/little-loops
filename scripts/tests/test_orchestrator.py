@@ -1397,6 +1397,113 @@ class TestMergePendingWorktrees:
         assert "parallel/bug-001-20260117-120000" in merge_called[0]
 
 
+class TestMergePendingWorktreesProducerWiring:
+    """Tests for ENH-2509 session_lifecycle_events producer wiring."""
+
+    def test_emits_worktree_merge_and_delete_on_success(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A successful merge emits worktree_merge then worktree_delete rows."""
+        from little_loops.parallel.types import PendingWorktreeInfo
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-001-20260117-120000"
+        worktree_path.mkdir()
+
+        info = PendingWorktreeInfo(
+            worktree_path=worktree_path,
+            branch_name="parallel/bug-001-20260117-120000",
+            issue_id="BUG-001",
+            commits_ahead=3,
+            has_uncommitted_changes=False,
+            changed_files=[],
+        )
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        with patch(
+            "little_loops.parallel.orchestrator.record_session_lifecycle_event"
+        ) as mock_record:
+            orchestrator._merge_pending_worktrees([info])
+
+        events = [call.kwargs["event"] for call in mock_record.call_args_list]
+        assert events == ["worktree_merge", "worktree_delete"]
+
+
+class TestOrphanCleanupProducerWiring:
+    """Tests for ENH-2509 session_lifecycle_events producer wiring in orphan sweep."""
+
+    def test_emits_worktree_delete_with_null_session_id(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A successful orphan cleanup emits worktree_delete with session_id=None."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-stale"
+        stale_dir.mkdir()
+        (stale_dir / ".ll-session-99999").write_text("99999")
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            with patch(
+                "little_loops.parallel.orchestrator.record_session_lifecycle_event"
+            ) as mock_record:
+                orchestrator._cleanup_orphaned_worktrees()
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        assert kwargs["event"] == "worktree_delete"
+        assert kwargs["session_id"] is None
+        assert kwargs["detail"]["reason"] == "orphan_cleanup"
+
+    def test_dry_run_does_not_emit(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """dry_run=True performs no op, so no lifecycle event is emitted."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-stale"
+        stale_dir.mkdir()
+        (stale_dir / ".ll-session-99999").write_text("99999")
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[:3] == ["worktree", "list", "--porcelain"]:
+                result.stdout = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            with patch(
+                "little_loops.parallel.orchestrator.record_session_lifecycle_event"
+            ) as mock_record:
+                orchestrator._cleanup_orphaned_worktrees(dry_run=True)
+
+        mock_record.assert_not_called()
+
+
 class TestEpicCompletionMerge:
     """Tests for the EPIC-completion merge/PR trigger (FEAT-2449).
 

@@ -2603,3 +2603,55 @@ class TestEpicBranchMergeTarget:
 
             fetch_cmds = [c for c in captured_commands if "fetch" in c and config.base_branch in c]
             assert len(fetch_cmds) >= 1
+
+
+class TestFinalizeMergeProducerWiring:
+    """Tests for ENH-2509 session_lifecycle_events producer wiring in _finalize_merge."""
+
+    def test_finalize_merge_emits_worktree_merge(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """_finalize_merge() emits a worktree_merge row before cleanup."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        worker_result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=temp_git_repo / ".worktrees" / "worker-bug-001",
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        with patch.object(coordinator, "_cleanup_worktree"):
+            with patch(
+                "little_loops.parallel.merge_coordinator.record_session_lifecycle_event"
+            ) as mock_record:
+                coordinator._finalize_merge(request)
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        assert kwargs["event"] == "worktree_merge"
+        assert kwargs["detail"]["issue_id"] == "BUG-001"
+
+    def test_cleanup_worktree_emits_worktree_delete(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """MergeCoordinator._cleanup_worktree() emits a worktree_delete row."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        worktree_path = temp_git_repo / ".worktrees" / "worker-bug-001"
+        worktree_path.mkdir(parents=True)
+
+        with patch(
+            "little_loops.parallel.merge_coordinator.record_session_lifecycle_event"
+        ) as mock_record:
+            coordinator._cleanup_worktree(worktree_path, "parallel/bug-001")
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        assert kwargs["event"] == "worktree_delete"
+        assert kwargs["detail"]["branch"] == "parallel/bug-001"

@@ -1906,6 +1906,116 @@ class TestHandoffFrequency:
         assert handoff_frequency(db=tmp_path / "nope" / "history.db") == 0
 
 
+class TestWorktreeSummary:
+    """ENH-2509: worktree_summary() rolls up worktree_* lifecycle events per issue."""
+
+    def test_per_issue_rollup(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import worktree_summary
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-001"},
+            ts="2026-07-19T10:00:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_merge",
+            detail={"issue_id": "BUG-001"},
+            ts="2026-07-19T10:05:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_delete",
+            detail={"issue_id": "BUG-001"},
+            ts="2026-07-19T10:06:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-002"},
+            ts="2026-07-19T11:00:00Z",
+        )
+        # Non-worktree events must not pollute the rollup.
+        record_session_lifecycle_event(
+            db, session_id="s1", event="handoff_needed", ts="2026-07-19T12:00:00Z"
+        )
+
+        rows = worktree_summary(db=db)
+        by_issue = {r["issue_id"]: r for r in rows}
+        assert by_issue["BUG-001"]["created"] == 1
+        assert by_issue["BUG-001"]["merged"] == 1
+        assert by_issue["BUG-001"]["deleted"] == 1
+        assert by_issue["BUG-002"]["created"] == 1
+        assert by_issue["BUG-002"]["merged"] == 0
+
+    def test_issue_id_filter(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import worktree_summary
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-001"},
+            ts="2026-07-19T10:00:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-002"},
+            ts="2026-07-19T11:00:00Z",
+        )
+
+        rows = worktree_summary(issue_id="BUG-001", db=db)
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "BUG-001"
+
+    def test_since_filter(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import worktree_summary
+        from little_loops.session_store import record_session_lifecycle_event
+
+        db = tmp_path / "history.db"
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-001"},
+            ts="2026-07-19T10:00:00Z",
+        )
+        record_session_lifecycle_event(
+            db,
+            session_id=None,
+            event="worktree_create",
+            detail={"issue_id": "BUG-002"},
+            ts="2026-07-19T12:00:00Z",
+        )
+
+        rows = worktree_summary(since="2026-07-19T11:00:00Z", db=db)
+        assert [r["issue_id"] for r in rows] == ["BUG-002"]
+
+    def test_empty_on_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import worktree_summary
+
+        assert worktree_summary(db=tmp_path / "nope" / "history.db") == []
+
+    def test_empty_db_returns_empty_list(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import worktree_summary
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert worktree_summary(db=db) == []
+
+
 class TestUsageEventReaders:
     """ENH-2461: recent_usage_events / aggregate_usage over usage_events."""
 

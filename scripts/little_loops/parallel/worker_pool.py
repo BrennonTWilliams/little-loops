@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -24,6 +25,7 @@ from little_loops.host_runner import resolve_host
 from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
+from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
 from little_loops.subprocess_utils import (
     assemble_guillotine_prompt,
     detect_context_handoff,
@@ -386,6 +388,18 @@ class WorkerPool:
                     else None
                 ),
             )
+            with suppress(Exception):
+                record_session_lifecycle_event(
+                    resolve_history_db(),
+                    session_id=None,
+                    event="worktree_create",
+                    detail={
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        "issue_id": issue.issue_id,
+                        "parent_sha": baseline_head_sha,
+                    },
+                )
 
             # Register worktree as active to prevent cleanup while in use (BUG-142)
             with self._process_lock:
@@ -791,6 +805,18 @@ class WorkerPool:
             git_lock=self._git_lock,
             delete_branch=delete_branch,
         )
+        with suppress(Exception):
+            match = re.match(r"^worker-(.+)-\d{8}-\d{6}$", worktree_path.name)
+            record_session_lifecycle_event(
+                resolve_history_db(),
+                session_id=None,
+                event="worktree_delete",
+                detail={
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "issue_id": match.group(1).upper() if match else None,
+                },
+            )
 
     def _run_claude_command(
         self,

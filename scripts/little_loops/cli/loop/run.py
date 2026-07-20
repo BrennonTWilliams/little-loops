@@ -11,6 +11,7 @@ import re
 import subprocess
 import time
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -472,6 +473,24 @@ def cmd_run(
                 git_lock=_git_lock,
             )
 
+            with suppress(Exception):
+                from little_loops.session_store import (
+                    record_session_lifecycle_event,
+                    resolve_history_db,
+                )
+
+                record_session_lifecycle_event(
+                    resolve_history_db(),
+                    session_id=None,
+                    event="worktree_create",
+                    detail={
+                        "worktree_path": str(_worktree_path),
+                        "branch": _branch_name,
+                        "loop_name": loop_name,
+                        "parent_sha": _base_commit,
+                    },
+                )
+
             logger.info(f"Worktree: {_worktree_path}")
             logger.info(f"Branch:   {_branch_name}")
 
@@ -515,6 +534,23 @@ def cmd_run(
                     git_lock=_git_lock,
                     delete_branch=_delete_branch,
                 )
+
+                with suppress(Exception):
+                    from little_loops.session_store import (
+                        record_session_lifecycle_event,
+                        resolve_history_db,
+                    )
+
+                    record_session_lifecycle_event(
+                        resolve_history_db(),
+                        session_id=None,
+                        event="worktree_delete",
+                        detail={
+                            "worktree_path": str(_worktree_path),
+                            "branch": _branch_name,
+                            "loop_name": loop_name,
+                        },
+                    )
 
             atexit.register(_cleanup_worktree_on_exit)
 

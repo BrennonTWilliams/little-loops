@@ -41,6 +41,7 @@ Public API:
     LifecycleEvent: dataclass for session_lifecycle_events rows (ENH-2495)
     recent_lifecycle_events(event, since, ...) -> list[LifecycleEvent]
     handoff_frequency(since, ...) -> int
+    worktree_summary(issue_id, since, ...) -> list[dict] (ENH-2509)
     find_session_for_issue_transition(issue_id, transition, ...) -> str | None
     sessions_for_issue(issue_id, ...) -> list[SessionRef]
     issue_effort(issue_id, ...) -> dict | None
@@ -1168,6 +1169,50 @@ def handoff_frequency(
     finally:
         conn.close()
     return int(row[0]) if row else 0
+
+
+def worktree_summary(
+    *,
+    issue_id: str | None = None,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-issue worktree op counts from ``worktree_*`` lifecycle events (ENH-2509).
+
+    Returns one dict per issue_id with ``created``/``merged``/``deleted`` counts,
+    derived from ``json_extract(detail, '$.issue_id')``. Rows with no ``issue_id``
+    in ``detail`` (e.g. orphan-sweep cleanups) group under ``issue_id=None``.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT json_extract(detail, '$.issue_id') AS issue_id, "
+            "COUNT(*) FILTER (WHERE event = 'worktree_create') AS created, "
+            "COUNT(*) FILTER (WHERE event = 'worktree_merge') AS merged, "
+            "COUNT(*) FILTER (WHERE event = 'worktree_delete') AS deleted "
+            "FROM session_lifecycle_events WHERE event LIKE 'worktree_%' "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if issue_id is not None:
+            clauses.append("json_extract(detail, '$.issue_id') = ?")
+            params.append(issue_id)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "AND " + " AND ".join(clauses) + " "
+        sql += "GROUP BY 1 ORDER BY 1"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: worktree_summary query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
 
 
 def recent_test_runs(

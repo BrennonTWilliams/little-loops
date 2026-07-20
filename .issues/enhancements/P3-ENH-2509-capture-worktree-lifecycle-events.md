@@ -3,18 +3,25 @@ id: ENH-2509
 title: Capture worktree lifecycle events into session_lifecycle_events
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-20T16:33:48Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - worktree
-  - widening
-  - captured
+- enhancement
+- history-db
+- worktree
+- widening
+- captured
+confidence_score: 98
+outcome_confidence: 90
+score_complexity: 21
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 21
 ---
 
 # ENH-2509: Capture worktree lifecycle events into session_lifecycle_events
@@ -328,12 +335,77 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-07-16):_
     `TestOrphanCleanupProducerWiring` asserting
     `event="worktree_delete"` rows with `session_id=None`.
 
+18. **(Wiring pass — `/ll:wire-issue`, 2026-07-20)** In
+    `scripts/tests/test_merge_coordinator.py`, add
+    `TestFinalizeMergeProducerWiring` covering the `_finalize_merge`
+    producer site (Phase 2 step 7). This file exists (2400+ lines) but
+    has **no** test that calls `_finalize_merge()` directly or patches
+    `record_session_lifecycle_event` — confirmed via grep (zero
+    matches for either). Existing coverage is indirect only
+    (`TestProcessMergeStashIntegration`, `TestMergeLoopExceptionHandling`,
+    `TestProcessMergeFallbackSequence`), so a real `record_*` call
+    inserted at that site would ship untested unless this class is
+    added. Model it on `test_worker_pool.py`'s
+    `TestWorkerPoolWorktreeManagement` (line 633) — construct a
+    `MergeRequest`/`WorkerResult`, patch
+    `record_session_lifecycle_event` at its import location in
+    `merge_coordinator.py`, call `_finalize_merge(request)` directly,
+    assert the mock received `event="worktree_merge"`.
+
 ### Phase 4 — CLI follow-on (optional)
 
-18. Add `ll-session worktree-summary [--since 7d]` subcommand to
+19. Add `ll-session worktree-summary [--since 7d]` subcommand to
     `scripts/little_loops/cli/session.py` mirroring the
     `skill-stats` shape (subprocess invocation of internal
     `worktree_summary()` helper).
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-20):_
+
+- `scripts/little_loops/history_reader.py` — module docstring's
+  function inventory (alongside `summarize_skills(...)` at line ~29)
+  needs a `worktree_summary(...)` entry once the function is added.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — line 44's capability table
+  row (`ll-session recent --kind session_lifecycle`) and line 83's
+  schema-version table row (`v27 | ENH-2495 | session_lifecycle_events
+  table (handoff/compaction/sweep transitions)`) describe the table's
+  existing discriminator set only; both read as stale once
+  `worktree_*` rows exist. Update to mention the worktree
+  discriminators.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` (lines 155, 272, 380) —
+  establishes a per-discriminator "single authoritative producer" doc
+  convention for `session_lifecycle_events` (one note per event type:
+  `stale_ref_sweep`, `handoff_needed`, `compaction`). No equivalent
+  note exists yet for `worktree_create`/`worktree_merge`/
+  `worktree_delete`; consider a parallel note in
+  `docs/ARCHITECTURE.md` (already a known target) rather than editing
+  this hook-focused file directly, since the producers here are
+  orchestration code, not hooks.
+- **Phase 4-gated only** (skip unless step 19 lands): if the
+  `ll-session worktree-summary` subcommand is added —
+  `commands/help.md` line 299 (`ll-session` subcommand parenthetical)
+  and `scripts/little_loops/cli/session.py`'s own module docstring
+  `Subcommands:` block (lines 7-22) both need a `worktree-summary`
+  line; these are two separate enumerations, confirmed by direct read.
+- `commands/cleanup-worktrees.md` — describes `/ll:cleanup-worktrees`
+  delegating to `_cleanup_orphaned_worktrees`; no functional
+  dependency, but that call gains a new best-effort
+  `worktree_delete` side-effect (step 9) that this doc doesn't
+  mention. Advisory only.
+
+### Implementation Note — `_setup_worktree` delegates the actual git op
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-20):_
+
+`worker_pool.py`'s `_setup_worktree` (line 684) does not itself run
+`git worktree add` — it delegates immediately to
+`little_loops.worktree_utils.setup_worktree(...)`. This doesn't change
+the wiring plan (step 5 still wraps the call to `_setup_worktree` in
+`worker_pool.py`, emitting the record after the delegate returns
+successfully) but clarifies that the record call belongs in the
+wrapper, not inside `worktree_utils.py` itself — confirmed by reading
+`worker_pool.py:684-700`.
 
 ## Codebase Research Findings
 
@@ -417,7 +489,102 @@ conceptually cleanest when both halves land together; the diff is
 small (one migration + one recorder + one new column entry), and it
 avoids the cross-issue review burden of split landings.
 
+### Status Update — 2026-07-20 (prerequisite landed)
+
+_Added by `/ll:refine-issue` — based on codebase analysis of the current
+working tree. This is the most significant change since the last refine
+pass: the entire premise of the Decision Point above ("ENH-2495 has not
+landed") is now false._
+
+**ENH-2495 shipped and closed on 2026-07-19** (`status: done`,
+`completed_at: '2026-07-19T23:25:47Z'`). The foundation this issue
+assumed needed co-implementing already exists in the tree:
+
+| Item | Status |
+|------|--------|
+| `SCHEMA_VERSION` | **27** (the `session_lifecycle_events` migration is the v27 entry, the last one in `_MIGRATIONS`, `session_store.py:351-878`). Next open slot for new work is **v28** — but no new migration is needed for ENH-2509's remaining scope. |
+| `session_lifecycle_events` table | Exists (`session_store.py:866-877`), columns `(id, ts, session_id, event, detail, head_sha, branch)` exactly as specified. |
+| `"session_lifecycle"` in `VALID_KINDS` / `_KIND_TABLE` | Already present (`session_store.py:219-236`, `237-254`). |
+| `record_session_lifecycle_event(db_path, *, session_id, event, detail=None, head_sha=None, branch=None, ts=None) -> bool` | Implemented at `session_store.py:1920`. Signature has **no `config=` param** — matches this issue's locked expectation. Docstring at line 1930 already explicitly mentions "ENH-2509's `worktree_*` discriminators" as a forward-reference. |
+| `history_reader.recent_lifecycle_events()` | Implemented (`history_reader.py:1104`). |
+| `history_reader.handoff_frequency()` | Implemented (`history_reader.py:1148`). |
+| `history_reader.worktree_summary()` | **Still does not exist** — this is genuinely ENH-2509-scoped work, not absorbed by ENH-2495. |
+| `ll-session recent --kind session_lifecycle` | Already works today, independent of any ENH-2509 work landing. |
+
+**Effect on this issue's scope**: Phase 1 of the Implementation Steps
+below ("Pre-requisite: ENH-2495-absorbed work", steps 1-4) is **already
+done** and should be skipped entirely. This issue is now purely
+**Phase 2 (producer wiring) + the `worktree_summary` reader + Phase 3
+(tests) + optional Phase 4 (CLI)** — i.e., closer to the originally
+rejected Option C in effect (ENH-2509 consumes an already-shipped
+table), even though it arrived via ENH-2495 landing independently
+rather than via Option B's "wait." No further decision is needed; the
+remaining work is additive against a stable, already-tested schema.
+
+#### Anchor Drift Corrections (2026-07-20)
+
+Producer-wiring anchors from the Implementation Steps below have
+drifted slightly since the 2026-07-16 pass (repo has seen substantial
+churn). Function names and files are still correct; only line numbers
+need adjustment:
+
+| File | Anchor | 2026-07-16 line | Live line (2026-07-20) |
+|------|--------|------------------|--------------------------|
+| `scripts/little_loops/parallel/worker_pool.py` | `_setup_worktree` | 684 | 684 (unchanged) |
+| `scripts/little_loops/parallel/worker_pool.py` | `_cleanup_worktree` | 756 | 756 (unchanged) |
+| `scripts/little_loops/parallel/worker_pool.py` | `cleanup_all_worktrees` | 1818 | 1818 (unchanged) |
+| `scripts/little_loops/parallel/merge_coordinator.py` | `_finalize_merge` | 1030 | 1030 (unchanged) |
+| `scripts/little_loops/parallel/merge_coordinator.py` | cleanup call site (inside `_finalize_merge`) | 1066 | **1046** (the `_cleanup_worktree` method definition itself is at 1066 — the original anchor conflated the call site with the definition) |
+| `scripts/little_loops/parallel/orchestrator.py` | `_merge_pending_worktrees` | 552-627 | **561** (def line; body extends to ~630) |
+| `scripts/little_loops/parallel/orchestrator.py` | `_cleanup_orphaned_worktrees` | 274 | **283** |
+| `scripts/little_loops/cli/loop/run.py` | `cmd_run()` worktree setup (`setup_worktree()` call) | 448 | **466** (import of `setup_worktree`/`cleanup_worktree` at line 437) |
+| `scripts/little_loops/cli/loop/run.py` | `_cleanup_worktree_on_exit` closure def | 460 | **478** |
+| `scripts/little_loops/cli/loop/run.py` | `atexit.register(_cleanup_worktree_on_exit)` | 493 | **519** |
+
+Re-verify all anchors again immediately before implementation, since
+this repo's churn rate means further drift is likely between now and
+then.
+
+## Resolution
+
+Implemented Phase 2 (producer wiring) + `history_reader.worktree_summary()` +
+Phase 3 tests against the already-shipped ENH-2495 foundation (`SCHEMA_VERSION
+= 27`, `session_lifecycle_events` table, `record_session_lifecycle_event`).
+No migration needed — this issue was purely additive.
+
+- `history_reader.worktree_summary(issue_id=None, since=None, db=...)` — new
+  reader aggregating per-issue `worktree_create`/`worktree_merge`/
+  `worktree_delete` counts via `json_extract(detail, '$.issue_id')`.
+- Producer wiring (all best-effort, `with suppress(Exception): record_session_
+  lifecycle_event(resolve_history_db(), ...)`, `session_id=None` at every site
+  per the research findings):
+  - `worker_pool.py` `_process_issue()` — `worktree_create` after
+    `_setup_worktree()` succeeds; `_cleanup_worktree()` — `worktree_delete`
+    (issue_id recovered from the `worker-<id>-<timestamp>` dir-name regex).
+  - `merge_coordinator.py` `_finalize_merge()` — `worktree_merge` before
+    cleanup; `_cleanup_worktree()` — `worktree_delete`.
+  - `orchestrator.py` `_merge_pending_worktrees()` — `worktree_merge` then
+    `worktree_delete` on successful merge; `_cleanup_orphaned_worktrees()` —
+    `worktree_delete` with `reason: orphan_cleanup`, skipped on `dry_run=True`.
+  - `cli/loop/run.py` `cmd_run()` — `worktree_create` after `setup_worktree()`;
+    `_cleanup_worktree_on_exit()` — `worktree_delete`.
+- Tests: `TestWorktreeProducerWiring` (test_worker_pool.py),
+  `TestFinalizeMergeProducerWiring` (test_merge_coordinator.py),
+  `TestMergePendingWorktreesProducerWiring` + `TestOrphanCleanupProducerWiring`
+  (test_orchestrator.py), `TestLoopWorktreeProducerWiring`
+  (test_cli_loop_worktree.py), `TestWorktreeSummary`
+  (test_history_reader.py) — 17 new tests, all passing.
+- Phase 4 (optional `ll-session worktree-summary` CLI subcommand) was not
+  implemented — out of the locked Acceptance Criteria scope.
+- Full suite: `python -m pytest scripts/tests/` — 15590 passed, 38 skipped.
+  `ruff check scripts/` and `python -m mypy scripts/little_loops/` clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-20T16:33:19Z - `264befe0-57f3-448a-876a-2faa5d23e776.jsonl`
+- `/ll:ready-issue` - 2026-07-20T16:18:09 - `8a92fa00-a6c9-4ec8-87e2-a35497fd8cd6.jsonl`
+- `/ll:confidence-check` - 2026-07-20T00:00:00Z - `b88f4ae2-cbf2-4e53-8c30-4b7a732f8dc7.jsonl`
+- `/ll:wire-issue` - 2026-07-20T16:14:13 - `94b2a2c7-70bf-4533-9ade-1d3dee767b05.jsonl`
+- `/ll:refine-issue` - 2026-07-20T16:07:39 - `a4b1c142-25f4-4358-a874-645800a690ce.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:58:08 - `f851ce48-4854-433f-8843-c76d107c3eed.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:refine-issue` - 2026-07-16T16:48:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

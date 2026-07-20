@@ -811,6 +811,111 @@ class TestCmdRunWorktree:
         assert "--worktree and --background cannot be combined" in str(exc_info.value)
 
 
+class TestLoopWorktreeProducerWiring:
+    """Tests for ENH-2509 session_lifecycle_events producer wiring in cmd_run(--worktree)."""
+
+    def _make_args(self, **kwargs: object) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_steps": None,
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": False,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "follow": False,
+            "show_diagrams": None,
+            "diagram_edge_labels": None,
+            "diagram_state_detail": None,
+            "diagram_scope": None,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": None,
+            "worktree": True,
+            "program_md": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def _make_loop(self, tmp_path: Path) -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_worktree_create_emits_lifecycle_event(self, tmp_path: Path) -> None:
+        """cmd_run(worktree=True) emits a worktree_create row after setup_worktree succeeds."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = Logger(use_color=False)
+
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree", return_value=None),
+            patch("little_loops.cli.loop.run.os.chdir"),
+            patch("little_loops.cli.loop.run.atexit.register"),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.session_store.record_session_lifecycle_event") as mock_record,
+        ):
+            _mock_br_config(mock_cfg, tmp_path)
+
+            cmd_run("test-loop", args, loops_dir, logger)
+
+        create_calls = [
+            c for c in mock_record.call_args_list if c.kwargs.get("event") == "worktree_create"
+        ]
+        assert len(create_calls) == 1
+        assert create_calls[0].kwargs["detail"]["loop_name"] == "test-loop"
+
+    def test_worktree_delete_emits_lifecycle_event(self, tmp_path: Path) -> None:
+        """_cleanup_worktree_on_exit emits a worktree_delete row after cleanup_worktree succeeds."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        args = self._make_args()
+        logger = Logger(use_color=False)
+        registered: list = []
+        chdir_calls: list = []
+
+        with (
+            patch("little_loops.config.BRConfig") as mock_cfg,
+            patch("little_loops.worktree_utils.setup_worktree"),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
+            patch("little_loops.cli.loop.run.os.chdir", side_effect=chdir_calls.append),
+            patch("little_loops.cli.loop.run.atexit.register", side_effect=registered.append),
+            patch("little_loops.cli.loop.run.run_foreground", return_value=0),
+            patch("little_loops.transport.wire_transports"),
+            patch("little_loops.session_store.record_session_lifecycle_event") as mock_record,
+        ):
+            _mock_br_config(mock_cfg, tmp_path)
+
+            cmd_run("test-loop", args, loops_dir, logger)
+
+            if chdir_calls:
+                Path(chdir_calls[-1]).mkdir(parents=True, exist_ok=True)
+
+            cleanup_fn = next(fn for fn in registered if fn.__name__ == "_cleanup_worktree_on_exit")
+            cleanup_fn()
+
+        delete_calls = [
+            c for c in mock_record.call_args_list if c.kwargs.get("event") == "worktree_delete"
+        ]
+        assert len(delete_calls) == 1
+        assert delete_calls[0].kwargs["detail"]["loop_name"] == "test-loop"
+
+
 # ---------------------------------------------------------------------------
 # BUG-2386: absolute loops_dir regression
 # ---------------------------------------------------------------------------
