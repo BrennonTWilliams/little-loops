@@ -13,6 +13,12 @@ labels:
 - cli
 - detection
 - provenance
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-2703: `init/introspect.py` — manifest-declared commands + `src_dir` detection with provenance
@@ -143,6 +149,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   presence) — new tests should follow the `fake_templates` fixture's
   `json.dumps({...})` real-content pattern (lines 68-90) instead.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `config-schema.json`'s `project` object declares `"additionalProperties":
+  false` — provenance metadata (e.g. a `src_dir_provenance` field) cannot be
+  added inside `config["project"]` without a schema change. Provenance data
+  must live outside the `project` object — as a plan-level sibling key
+  (`plan["provenance"]`, per ENH-2704's own proposal), not nested inside
+  `proposed_config.project`. This constrains where `introspect()`'s output
+  can be surfaced in `_run_plan`'s JSON. [Agent 2 finding]
+- All 8 project-type templates' `_meta.command_options` (already confirmed
+  present for `python-generic.json`) omit a `type_cmd` candidate list even
+  where `project.type_cmd` is non-null (e.g. python's `mypy`, typescript's
+  `tsc --noEmit`). `type_cmd` introspection (`[tool.mypy]` presence, per
+  this issue's own Proposed Solution) has no seeded candidate pool to draw
+  from and needs its own manifest-table-presence check, unlike
+  test/lint/format which can pick among `command_options` candidates.
+  [Agent 2 finding]
+
 ## Integration Map
 
 ### Files to Modify
@@ -168,6 +191,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   call `build_config`/introspection; replays a prior `--plan` JSON's
   `proposed_config`, so provenance must already be baked into `_run_plan`'s
   output.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/tui.py:_build_final_config()` (~lines 630-670)
+  — a **third caller of `build_config()`**, missed by the original
+  Integration Map. It already collects `test_cmd`/`lint_cmd`/`type_cmd`/
+  `format_cmd`/`scan_focus_dirs` as local parameters but does not thread
+  them into the `choices` dict it passes to `build_config()` — only
+  `project_name`/`src_dir`/feature toggles are wired today. Interactive
+  `ll-init` (non-`--yes`/`--plan`) will silently miss introspected values
+  unless this is wired for parity, or the issue explicitly scopes TUI
+  parity out. [Agent 2 finding]
+- `scripts/little_loops/init/__init__.py` (lines 3-49) — central export hub
+  that imports and re-exports ~20 symbols from `core`/`detect`/
+  `install_check`/`validate`/`writers` into `__all__`. New
+  `IntrospectedValue`/`introspect()` symbols from `introspect.py` follow
+  this same convention and must be added here to be importable the way
+  every other init-module symbol is. [Agent 1 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/host_runner.py` `CapabilityEntry` (lines 123-133) /
@@ -199,6 +239,54 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `test_plan_apply_produces_same_artifacts_as_yes` (lines 97-142) and
   `test_plan_output_has_no_logo_and_stays_valid_json` (lines 179-193) —
   round-trip and stdout-purity tests that must keep passing.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_core.py:TestBuildConfigSchemaParity.test_emitted_defaults_match_schema`
+  — currently excludes `project`/`scan` via a `_TEMPLATE_DERIVED` set from
+  schema-default parity checking; confirms these sections are already
+  understood as template/introspection-sourced, not schema-sourced — no
+  drift risk, but worth a comment/awareness note. [Agent 3 finding]
+- `scripts/tests/test_init_tui.py` — TUI-specific tests (`_wire_q`
+  prompt-queue harness) covering `tui.py`; must extend if
+  `_build_final_config()` is wired for introspection parity (see Dependent
+  Files finding above). [Agent 3 finding]
+- New test file `scripts/tests/test_init_introspect.py` (naming-convention
+  peer to `test_init_install.py`) — no test currently exercises
+  content-sensitive manifest parsing (`pyproject.toml`
+  `[tool.pytest.ini_options]`, `package.json` `scripts.test`, etc.); closest
+  patterns to combine: `test_host_runner.py`'s
+  `test_build_streaming_injects_persona_when_toml_present`/`_falls_back_when_toml_absent`
+  (real TOML content in `tmp_path`, present/absent pairing) and
+  `test_init_core.py`'s `TestValidateDeps` (direct-call + dataclass-field
+  assertions on the returned provenance value). [Agent 3 finding]
+- **Coverage gap**: no existing e2e test in `test_init_e2e.py` writes a real
+  `pyproject.toml`/`package.json` into a `tmp_path` project and asserts on
+  the resulting `.ll/ll-config.json`'s `project.test_cmd`/`project.src_dir`
+  — meaning nothing today would catch introspection regressing these values
+  from template literals to detected ones. Follow the
+  `TestInitHeadlessDocumentDetection` pattern (`test_init_e2e.py:145`) which
+  already wires a comparable filesystem-probing feature
+  (`detect_documents()`) end-to-end at both unit and e2e level. [Agent 3
+  finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` (`### project` table, ~lines 289-304) —
+  documents `src_dir`/`test_cmd`/`lint_cmd`/`type_cmd`/`format_cmd` as
+  static template defaults; needs a note that `ll-init` may now derive
+  these from repo manifests when unambiguous. [Agent 2 finding]
+- `docs/reference/CLI.md` (`### ll-init`, ~lines 35-95) — documents the
+  `--plan` JSON shape (`{detected, proposed_config, host_options,
+  warnings}`); update if this issue's own output (not just ENH-2704's
+  serialization) changes any field. [Agent 2 finding]
+- `.claude/CLAUDE.md` `## CLI Tools` → `ll-init` bullet — per this project's
+  own convention (every CLI tool gets a one-line capability summary),
+  landing manifest-declared detection is the kind of behavior change that
+  bullet normally documents. [Agent 2 finding]
+- `skills/init/SKILL.md` — thin argv-forwarding stub; low-touch since it
+  doesn't enumerate config fields today, but scan for staleness if FEAT-2705
+  supersedes it. [Agent 2 finding]
 
 ## Acceptance Criteria
 
@@ -239,4 +327,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-19T00:00:00Z - `2bf40c36-bc5b-4516-92e5-7318c04cf6f2.jsonl`
+- `/ll:wire-issue` - 2026-07-20T03:48:17 - `02470d90-3174-4a5f-b25a-e883b8f60e66.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:53:43 - `4598d4c4-6d97-4b71-a7aa-d801448f1c41.jsonl`
