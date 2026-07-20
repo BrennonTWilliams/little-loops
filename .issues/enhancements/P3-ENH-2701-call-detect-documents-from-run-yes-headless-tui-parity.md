@@ -13,6 +13,12 @@ labels:
 - cli
 - detection
 decision_needed: false
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-2701: Call `detect_documents()` from `_run_yes` (headless/TUI parity)
@@ -202,5 +208,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-20T01:22:48 - `f755a306-3301-4aaf-b211-0cdaefb2de8e.jsonl`
 - `/ll:decide-issue` - 2026-07-19T23:54:32 - `bc31c482-dece-432a-a346-aa0a810887d7.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:41:29 - `926de526-7a59-4baf-abfe-5ac37cfae19f.jsonl`

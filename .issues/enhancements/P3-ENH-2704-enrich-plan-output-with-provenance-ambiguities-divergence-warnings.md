@@ -38,6 +38,44 @@ proposed values are verified facts and *which* need judgment.
   detection now disagrees with them; `--upgrade` is silent too (only adapter
   staleness is warned, cli.py:165-184).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/init/introspect.py` does not exist yet (confirmed via
+  glob, zero matches). FEAT-2703 is `status: open`, unimplemented — this
+  issue's `depends_on: FEAT-2703` is a real, currently-unmet blocker, not
+  just a suggested ordering.
+- `_run_plan` (`init/cli.py:455-488`) **never loads `existing_config`** —
+  unlike `_run_yes`, it builds `config` purely from `template` + `choices`
+  with no `load_existing_config()`/`merge_with_existing()` call at all. It
+  has exactly one output statement, `print(json.dumps(plan, indent=2))` at
+  line 487 — no other stdout/stderr writes in this function today, so the
+  "stdout stays pure JSON" acceptance criterion already holds structurally
+  and only needs preserving, not establishing.
+- `_run_yes` (`init/cli.py:214-452`): `existing_config = load_existing_config(project_root)`
+  at line 260; `choices` pre-population from `existing_config` at lines
+  362-392 (`src_dir`, feature flags); `config = merge_with_existing(config,
+  existing_config, force)` at **line 399** — the exact call the Proposed
+  Solution below targets; `upgrade` branch (calls `_dispatch_host_upgrade`)
+  vs. warn-only branch (calls `_warn_adapter_staleness`) split at lines
+  431-438 — these two are **mutually exclusive** today (if/else), whereas
+  `_warn_config_drift` must fire on both re-init *and* `--upgrade`, so it
+  cannot simply piggyback on that existing if/else split.
+- `build_config()` (`init/core.py:77-200`): `project` block (lines 114-120)
+  is `dict(data.get("project", {}))` — a straight template copy. Only
+  `project["name"]` and `project["src_dir"]` have any override path via
+  `choices` today; `test_cmd`/`lint_cmd`/`format_cmd`/`type_cmd` and all of
+  `scan.*` (lines 122-126) have **zero** override mechanism in
+  `build_config` currently — every one of those is a pure template literal,
+  confirming FEAT-2703 must land first since `provenance` is meaningless
+  without an override contract for these keys.
+- `_run_apply` (`init/cli.py:491-571`): line 528,
+  `config = plan.get("proposed_config") or plan`, is the **only** plan key
+  ever read — confirms the round-trip acceptance criterion holds today by
+  construction; new `provenance`/`ambiguities` top-level keys are silently
+  ignored.
+
 ## Expected Behavior
 
 `ll-init --plan` output shape (additive keys):
@@ -84,6 +122,103 @@ is purely informational.
 - Document the plan schema in the CLI epilog / docs so external tooling can
   rely on it.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `_warn_config_drift(existing_config, introspected)` should model
+  `_warn_adapter_staleness()` (`init/cli.py:165-184`) — the existing
+  divergence-warning pattern in this same file: compare two named sources of
+  a fact, warn only on inequality, `print(..., file=sys.stderr)`. The
+  `_run_yes` loop at lines 440-447 shows the established stderr-warning
+  convention for reuse (`f"Warning: {w.message}"` + optional
+  `install_hint` line, `file=sys.stderr`).
+- Unlike `_warn_adapter_staleness` (called only from the non-upgrade
+  `else` branch, line 438), `_warn_config_drift` must be called
+  unconditionally near the `merge_with_existing` call (line 399) — config
+  drift is orthogonal to whether host adapters are being regenerated, so it
+  cannot reuse the existing `if upgrade: ... else: ...` branch structure at
+  lines 431-438.
+- A ready-made `value + source + evidence` dataclass shape already exists
+  in this codebase to model `IntrospectedValue` after:
+  `CapabilityEntry`/`HookEntry` (`host_runner.py:123-145`,
+  `frozen=True`, `Literal` status field + `note: str` evidence field) and
+  `ProviderStatus` (`codequery/core.py:47-66`).
+- The `ambiguities` list's `{"key", "candidates", "note"}` shape mirrors the
+  existing `DependencyProposal` dataclass
+  (`dependency_mapper/models.py:11-31`, fields `reason`/`rationale`/
+  `confidence`) and its JSON serialization in `cli/deps.py:379-420` — a
+  precedent for flattening a list of proposal-like dataclasses into a
+  `--format json`/`--plan` payload.
+- `DepWarning` (`init/validate.py:14-19`, fields `message`/`install_hint`)
+  is the dataclass `_run_plan`'s existing `warnings` key already serializes
+  as flat dicts (`cli.py:485`) — the `provenance`/`ambiguities` dict shapes
+  in this issue's example JSON should follow that same flat-dict-per-entry
+  convention for consistency.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/init/cli.py` — `_run_plan()` (lines 455-488): thread
+  FEAT-2703's `introspect(project_root, template)` output into `choices`
+  before `build_config()`, then serialize `provenance`/`ambiguities` onto
+  the `plan` dict before the single `print(json.dumps(plan, indent=2))`
+  call at line 487.
+- `scripts/little_loops/init/cli.py` — `_run_yes()`: call
+  `_warn_config_drift(existing_config, introspected)` near the
+  `merge_with_existing` call at line 399, unconditionally (both the
+  re-init and `--upgrade` paths, independent of the existing
+  `upgrade`/warn-only if/else split at lines 431-438).
+- `scripts/little_loops/init/core.py` — `build_config()` (lines 77-200):
+  needs an override path for `project.test_cmd`/`lint_cmd`/`format_cmd`/
+  `type_cmd` and `scan.focus_dirs`, which currently have none (this is
+  FEAT-2703's responsibility, but ENH-2704's provenance serialization
+  depends on it existing).
+- `docs/reference/CLI.md` (line 48 documents the current `--plan` shape) —
+  extend with the new `provenance`/`ambiguities` keys.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/init/cli.py:528` — `_run_apply()` reads only
+  `plan.get("proposed_config") or plan`; new top-level keys are inert here
+  by construction, satisfying the round-trip acceptance criterion without
+  changes to `_run_apply`.
+
+### Similar Patterns
+- `scripts/little_loops/init/cli.py:165-184` — `_warn_adapter_staleness()`,
+  the stderr divergence-warning pattern to model `_warn_config_drift` after.
+- `scripts/little_loops/host_runner.py:123-145` — `CapabilityEntry`/
+  `HookEntry`, a `frozen=True` dataclass pairing a value with a `Literal`
+  status and a `note: str` evidence field, structurally close to
+  `IntrospectedValue`.
+- `scripts/little_loops/dependency_mapper/models.py:11-31` +
+  `scripts/little_loops/cli/deps.py:379-420` — `DependencyProposal` list
+  serialized to JSON, the closest existing precedent for the `ambiguities`
+  list shape.
+
+### Tests
+- `scripts/tests/test_init_core.py` — `test_plan_emits_json`
+  (lines 1537-1548) asserts the current plan keys; extend for
+  `provenance`/`ambiguities`. `TestValidateDeps` version-mismatch tests
+  (lines 1275-1291) and the `_warn_adapter_staleness` stderr triad
+  (lines 2416-2454: warned-when-diverged / silent-when-matched /
+  noop-when-not-applicable) are the test-shape template for
+  `_warn_config_drift`.
+- `scripts/tests/test_init_core.py` — `TestDetectProjectType` /
+  `test_real_template_detection` (lines 310-399) shows the fixture pattern
+  for manifest-driven detection tests (write real TOML/JSON content, not
+  just `.touch()`, when table content like `[tool.pytest.ini_options]`
+  matters — relevant for the multi-candidate `src_dir` ambiguity fixture).
+- `scripts/tests/integration/test_init_e2e.py` —
+  `test_plan_output_has_no_logo_and_stays_valid_json` (lines 179-193) is the
+  existing model for asserting `--plan` stdout purity;
+  `test_plan_apply_produces_same_artifacts_as_yes` (lines 97-142) is the
+  existing plan→apply round-trip test to extend.
+
+### Documentation
+- `docs/reference/CLI.md` — `ll-init` section (lines 35-95) documents the
+  current `--plan` output shape; needs the new keys added per the issue's
+  own "Document the plan schema" note.
+
 ## Acceptance Criteria
 
 - `ll-init --plan` on a fixture with mixed declared/default values emits a
@@ -113,3 +248,7 @@ is purely informational.
 ## Status
 
 **Open** | Created: 2026-07-19 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-07-19T22:49:02 - `51b0ed9e-d527-4b05-9340-b38244f69150.jsonl`
