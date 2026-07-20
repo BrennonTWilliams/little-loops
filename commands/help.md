@@ -238,8 +238,8 @@ META-ANALYSIS
 SESSION & CONFIG
 ----------------
 /ll:init [flags]
-    Initialize little-loops configuration (delegates to ll-init CLI)
-    Flags: --yes, --force, --dry-run, --hosts, --codex
+    Initialize little-loops: plan -> inspect (settle ambiguous values from repo) -> apply -> smoke-check
+    Flags: --force, --dry-run, --hosts, --codex, --upgrade
 
 /ll:configure [area]
     Interactive configuration editor

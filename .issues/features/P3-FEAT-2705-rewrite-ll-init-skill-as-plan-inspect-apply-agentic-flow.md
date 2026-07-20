@@ -1,10 +1,11 @@
 ---
 id: FEAT-2705
-title: Rewrite /ll:init skill as plan → inspect → apply agentic flow
+title: "Rewrite /ll:init skill as plan \u2192 inspect \u2192 apply agentic flow"
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-19T00:00:00Z'
+completed_at: '2026-07-20T13:47:13Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
 parent: EPIC-2700
@@ -17,6 +18,14 @@ labels:
 - skills
 - plan-apply
 - agentic
+confidence_score: 100
+outcome_confidence: 52
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 10
+implementation_order_risk: true
+size: Very Large
 ---
 
 # FEAT-2705: Rewrite `/ll:init` skill as plan → inspect → apply agentic flow
@@ -26,7 +35,7 @@ labels:
 The `/ll:init` skill (skills/init/SKILL.md) is a flag-forwarding stub that
 delegates to `ll-init --yes` — the one place where an LLM is already in the
 loop runs the dumbest code path. Rewrite it as the intelligence layer over
-the existing `--plan` / `apply --config` seam (init/cli.py:455-571): run the
+the existing `--plan` / `apply --config` seam (init/cli.py:525-677): run the
 plan, have Claude resolve exactly the values the plan marks as unverified or
 ambiguous by reading the repo, then apply the corrected plan and smoke-check
 the commands.
@@ -54,14 +63,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   today: `### 1. Parse Flags` (SKILL.md:24-42) only recognizes `--force`,
   `--dry-run`, `--hosts`, `--codex`, `--upgrade` (the last is parsed but only
   ever forwarded to `ll-init --yes --upgrade`, never used to branch the flow).
-- **Dependency chain is unmet today**: `ENH-2704` (`depends_on: FEAT-2703`)
-  and `FEAT-2703` are both `status: open`. `_run_plan`
-  (`scripts/little_loops/init/cli.py:455-488`) currently emits only
-  `{detected, proposed_config, host_options, warnings}` — no `provenance` or
-  `ambiguities` keys exist yet. Step 2 of this issue's Expected Behavior has
-  no data source to parse until both upstream issues land.
-- `_run_apply` (`cli.py:491-571`) reads only `plan.get("proposed_config") or
-  plan` (line 528) — any `provenance`/`ambiguities` keys the skill's
+- **Dependency chain is now unblocked** (updated 2026-07-20; the previous
+  pass's "chain is unmet today" finding is now stale — both `ENH-2704` and
+  `FEAT-2703` are `status: done`). `_run_plan`
+  (`scripts/little_loops/init/cli.py:525-573`) now emits `{detected,
+  proposed_config, host_options, warnings, provenance, ambiguities}` —
+  confirmed by direct read of the current source. `provenance` is a flat list
+  of `{field, value, provenance, evidence}` objects (one per
+  `introspection.values` entry; `field` is the dotted key e.g.
+  `"project.test_cmd"`, `provenance` is `"declared"`/`"inferred"`/`"default"`
+  per `init/introspect.py:41-47`'s `IntrospectedValue`); `ambiguities` is a
+  list of `{field, candidates, note}` objects per `init/introspect.py:50-55`'s
+  `Ambiguity` dataclass. Step 2 of this issue's Expected Behavior now has a
+  real data source to parse — this issue is ready to implement.
+- `_run_apply` (`cli.py:595-677`) reads only `plan.get("proposed_config") or
+  plan` (line ~628) — any `provenance`/`ambiguities` keys the skill's
   corrected plan JSON carries are silently ignored by `apply`, so edits must
   land inside `proposed_config` itself to take effect (matches the "edit only
   ambiguous/default-provenance keys in `proposed_config`" rule already in
@@ -74,7 +90,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   longer lossy.
 - `_run_apply` has **no `upgrade` parameter at all** — it always calls
   `_dispatch_host_adapters(hosts, project_root, plugin_root, force=force)`
-  (`cli.py:561`), never `_dispatch_host_upgrade`. Since this issue's Scope
+  (`cli.py:665`), never `_dispatch_host_upgrade`. Since this issue's Scope
   Boundaries exclude changes to `ll-init` CLI behavior, Open Question 1 below
   is effectively settled by this constraint: the skill cannot get upgrade
   semantics through `apply` and must fall back to invoking
@@ -114,7 +130,7 @@ apply then the upgrade path — decide during implementation).
 - Instruct the skill to edit **only** ambiguous/default-provenance keys in
   `proposed_config` — declared values and the untouched remainder pass
   through verbatim, so apply-side merge semantics (BUG-2310 preservation at
-  cli.py:532) do the rest.
+  cli.py:636) do the rest.
 - Keep total added latency proportional to ambiguity count: a fully-declared
   repo should be nearly as fast as `--yes`.
 
@@ -143,7 +159,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
     `tail -20` redirect pattern from `.claude/CLAUDE.md` § Automation for
     large output.
 - The `--plan`/`apply -c <file>` CLI seam already documents the exact
-  round-trip in its own epilog (`cli.py:591-592`):
+  round-trip in its own epilog (`cli.py:695-696`):
   `%(prog)s --plan` then `%(prog)s apply --config plan.json` — this issue's
   skill is a direct wrapper around that existing, documented contract, not a
   new interface.
@@ -173,11 +189,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   process.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/init/cli.py:455-488` (`_run_plan`) and `:491-571`
+- `scripts/little_loops/init/cli.py:525-573` (`_run_plan`) and `:595-677`
   (`_run_apply`) — the skill's sole CLI touchpoints; both are read-only from
-  this issue's perspective (Scope Boundaries exclude CLI changes) but their
-  current I/O contract (`--plan` stdout shape, `apply -c <file>` semantics)
-  bounds what the skill can rely on until `ENH-2704`/`FEAT-2703` land.
+  this issue's perspective (Scope Boundaries exclude CLI changes). Their I/O
+  contract (`--plan` stdout shape including `provenance`/`ambiguities`,
+  `apply -c <file>` semantics) is now stable — `ENH-2704`/`FEAT-2703` are both
+  `status: done`, so this bound is settled, not pending.
 - `scripts/tests/test_wiring_init_and_configure.py` — asserts `/ll:init` is
   documented/wired correctly; will need to keep passing against the rewritten
   SKILL.md frontmatter/examples.
@@ -207,6 +224,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `ll-harness`) rather than pytest, since the flow under test is Claude's own
   reasoning over `--plan` output.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed no live pytest assertion pins the current flag-parsing bash stub
+  (`### 1. Parse Flags`, direct `ll-init --yes $FLAGS` exec) — those
+  assertions in `test_wiring_init_and_configure.py` were already retired
+  under ENH-1982, well before this issue. The rewrite will not break any
+  existing pytest assertion; only the two `test_file_exists` /
+  `test_string_absent_from_doc` entries for `skills/init/SKILL.md` remain
+  live and are unaffected by the rewrite's content. [Agent 3 finding]
+- `ll-harness skill init ...` is the concrete invocation idiom to use for
+  the two new fixtures, per the documented example at
+  `docs/reference/CLI.md:219` (`ll-harness skill refine-issue P2-ENH-1229
+  --semantic "..." --output json`). [Agent 3 finding]
+- `scripts/tests/integration/test_init_e2e.py::TestInitHeadlessIntrospection`
+  (lines 204-286) is the closest reusable pattern for constructing the two
+  fixtures' underlying repo states — it builds `tmp_path` fixture repos
+  (`pyproject.toml`/`package.json`) and asserts on `--plan` JSON
+  `provenance`/`ambiguities` shape via `redirect_stdout` capture. A
+  Makefile-driven ambiguous-`src_dir` fixture follows the identical
+  `tmp_path`-project-construction pattern, substituting a `Makefile` and
+  asserting an `ambiguities` entry for `project.src_dir`. [Agent 3 finding]
+
 ### Documentation
 - SKILL.md `## Examples` section (lines 51-59) — rewrite to reflect the new
   four-step flow instead of pure `--yes` passthrough.
@@ -214,16 +252,40 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   describe `--plan`/`apply` at the CLI level and need no change from this
   issue (only the skill wrapper changes).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` (lines 30-37) — describes `/ll:init` as a
+  "Redirect stub — delegates to `ll-init`" that "runs `ll-init --yes` with any
+  recognized flags passed through." This is the current stub behavior being
+  replaced; must be rewritten to describe the plan → inspect → apply → verify
+  flow. [Agent 2 finding]
+- `docs/guides/GETTING_STARTED.md` (lines 95-100) — documents `--plan`/
+  `--dry-run` and the `{detected, proposed_config, host_options, warnings,
+  provenance, ambiguities}` shape, framing it as "piping into
+  `ll-init apply --config`" — this is exactly the workflow the rewritten
+  skill now performs internally; verify the guide's framing still matches
+  once the skill exists (readers may now be pointed at `/ll:init` instead of
+  the raw CLI dance). [Agent 1 + Agent 2 finding]
+- `skills/init/agents/openai.yaml` — generated Codex-adapter artifact (via
+  `ll-adapt --host codex --apply` / `adapt_skills_for_codex.py`) whose
+  committed `short_description` currently reads "Redirect stub — delegates to
+  ll-init CLI for project bootstrap and config setup." It is not hand-edited
+  but will be stale after the rewrite until regenerated. [Agent 1 + Agent 2
+  finding]
+- `skills/configure/SKILL.md:429` and `skills/audit-claude-config/SKILL.md:462`
+  — one-line "Related commands" cross-references to `/ll:init`'s purpose;
+  low-risk, update only if the one-line description of what `/ll:init` does
+  changes materially. [Agent 1 + Agent 2 finding]
+
 ### Configuration
 - N/A — no `.ll/ll-config.json` schema changes; this issue only changes how
   the skill drives the existing CLI.
 
 ## Implementation Steps
 
-1. Gate on upstream dependency: confirm `ENH-2704`'s `provenance`/
-   `ambiguities` keys are present in `ll-init --plan` output (i.e. `FEAT-2703`
-   + `ENH-2704` are `done`) before starting — this issue's step 2 has no
-   data source otherwise.
+1. ~~Gate on upstream dependency~~ — confirmed unblocked (2026-07-20):
+   `FEAT-2703` and `ENH-2704` are both `status: done`, and `ll-init --plan`
+   (`cli.py:525-573`) now emits `provenance`/`ambiguities` keys per the
+   Codebase Research Findings above. Start directly at step 2.
 2. Rewrite `skills/init/SKILL.md` frontmatter: add `Read`, `Grep`, `Glob`,
    and a bounded smoke-check `Bash` entry to `allowed-tools`; keep the
    existing `flags` argument contract.
@@ -249,6 +311,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    (unambiguous-plan passthrough; ambiguous-`src_dir` + Makefile-driven
    test target) and verify against `scripts/tests/test_wiring_init_and_configure.py`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation:_
+
+10. Update `docs/reference/COMMANDS.md` — its `/ll:init` section still
+    describes the old "Redirect stub — delegates to `ll-init`" behavior;
+    rewrite to describe the plan → inspect → apply → verify flow.
+11. Verify `docs/guides/GETTING_STARTED.md`'s `--plan`/`--dry-run` section
+    still reads correctly now that `/ll:init` performs that workflow
+    internally; update the framing if it still tells readers to do the
+    plan→apply dance by hand.
+12. After the rewrite lands, run `ll-adapt --host codex --apply` to
+    regenerate `skills/init/agents/openai.yaml` — its committed
+    `short_description` still reads "Redirect stub — delegates to ll-init
+    CLI" and will be stale until regenerated from the new SKILL.md
+    frontmatter.
+
 ## Acceptance Criteria
 
 - On a repo with an unambiguous plan (all keys `declared`), the skill applies
@@ -270,12 +350,60 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Impact
 
-- **Priority**: P3 — biggest capability jump of the epic; depends on the
-  contract from ENH-2704.
+- **Priority**: P3 — biggest capability jump of the epic; the contract from
+  `ENH-2704` (`status: done`) is now available, so this issue is unblocked.
 - **Effort**: Medium — mostly skill authoring + fixtures for the two
   behavioral tests.
 - **Risk**: Low-Medium — worst case equals today's behavior (apply an
   unedited plan); guarded by the edit-only-unverified-keys rule.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-20_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 52/100 → LOW
+
+### Outcome Risk Factors
+- Complexity is dominated by breadth rather than depth: the rewrite touches ~6-7 sites (SKILL.md rewrite, docs/reference/COMMANDS.md, docs/guides/GETTING_STARTED.md, the generated `skills/init/agents/openai.yaml`, plus two new test fixtures), each individually mechanical/local, but coordinating all of them correctly is the main risk.
+- Skill-level test coverage is currently indirect — only file-existence/wiring assertions cover `skills/init/SKILL.md` today, and the underlying `--plan`/`apply` CLI plumbing is well tested but the LLM-driven Inspect step (Claude reading repo files to settle ambiguous values) has no automated check of its own.
+- The two required behavioral fixtures (unambiguous-plan passthrough; ambiguous-src_dir + Makefile) don't exist yet, but they're co-deliverables of this issue (Implementation Step 9) rather than a blocking precondition — build and run them (`ll-harness skill init ...`) alongside the SKILL.md rewrite so the agentic Inspect step is verified before merge, not left untested.
+- Broad dependent surface (7 files: wiring test, `commands/help.md`, two docs pages, the Codex adapter artifact, and two cross-referencing skills) means it's easy to update the SKILL.md body correctly but miss one of the peripheral references, leaving stale documentation.
+
+## Resolution
+
+Rewrote `skills/init/SKILL.md` as a seven-step plan → inspect → apply →
+handle-upgrade → verify → report flow: `allowed-tools` gains `Read`/`Grep`/
+`Glob` plus a second, bounded `Bash` entry alongside the existing
+`Bash(ll-init:*)`. The Inspect step edits only `proposed_config` keys tagged
+`inferred`/`default` or listed in `ambiguities`; declared values and the
+untouched remainder pass through verbatim. `--dry-run` stops after Inspect
+and prints the corrected plan; `--upgrade` falls back to a separate
+`ll-init --yes --upgrade` call since `apply` has no upgrade path. Verify runs
+the settled `test_cmd`/`lint_cmd` once, foreground-blocking, via the same
+scratch-pad `tail -20` pattern as `manage-issue` Phase 4 — a failing command
+downgrades to a warning, never a rollback.
+
+Added `scripts/tests/test_init_skill_fixtures.py` with the two behavioral
+fixtures: an unambiguous fully-declared repo (proves Inspect is a no-op and
+`apply` on the unedited plan matches `--yes`) and an ambiguous-`src_dir` +
+Makefile-driven-test-target repo (proves `--plan` surfaces the `src_dir`
+ambiguity and leaves `test_cmd` at `default`, since `introspect()` has no
+Makefile support — exactly the gap the skill's live Inspect step is meant to
+close via `ll-harness skill init`, which the test file's docstring points
+future runs at).
+
+Updated `docs/reference/COMMANDS.md`'s `/ll:init` entry and `commands/help.md`
+to describe the new flow, added a pointer from `docs/guides/GETTING_STARTED.md`
+to `/ll:init` for ambiguous/monorepo layouts, and hand-corrected the stale
+`skills/init/agents/openai.yaml` `short_description` — `ll-adapt --host codex
+--apply` only creates this sidecar when absent and unconditionally skips
+`disable-model-invocation: true` skills, so it cannot regenerate an existing
+one; `init` is both.
+
+Full suite: `python -m pytest scripts/tests/` — 15571 passed, 38 skipped.
+`ruff check`/`ruff format --check` and `python -m mypy
+scripts/little_loops/` clean.
 
 ## Status
 
@@ -283,4 +411,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-20T13:47:13 - `d739cec2-3cde-4131-9087-a0f61bbd799e.jsonl`
+- `/ll:ready-issue` - 2026-07-20T13:32:00 - `93c2d444-850f-407e-84da-650077e447c9.jsonl`
+- `/ll:confidence-check` - 2026-07-20T00:00:00Z - `5123a462-6f55-45be-ac8d-cb404b0a57ce.jsonl`
+- `/ll:wire-issue` - 2026-07-20T06:15:29 - `592879e4-4dfd-43ba-ae01-6f6588974794.jsonl`
+- `/ll:refine-issue` - 2026-07-20T06:09:13 - `7f5255e5-ef11-4454-b1e2-d0b9f4ce4c17.jsonl`
 - `/ll:refine-issue` - 2026-07-19T22:59:21 - `b98aa7db-da27-43b3-85e6-fb1720608033.jsonl`

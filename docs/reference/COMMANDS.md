@@ -28,13 +28,22 @@ Not all commands support all flags. See individual command documentation for sup
 ## Setup & Configuration
 
 ### `/ll:init`
-Redirect stub — delegates to `ll-init` for project bootstrap and config setup.
+Agentic plan → inspect → apply → verify wrapper over `ll-init`'s `--plan`/`apply` seam.
 
-**Flags:** `--yes` (accepts all defaults), `--force`, `--dry-run`, `--hosts`
+**Flags:** `--force`, `--dry-run`, `--hosts`, `--codex`, `--upgrade`
 
-Prints a one-line handoff banner, then runs `ll-init --yes` with any recognized flags passed through. For full interactive setup use `ll-init` directly in a terminal.
+Runs `ll-init --plan`, then reads the repo to settle any `inferred`/`default`-provenance
+value or listed ambiguity (monorepos, Makefile-driven test targets, custom runners) that
+the deterministic introspection pass in `ll-init` couldn't confidently resolve on its own.
+Applies the corrected plan via `ll-init apply --config`, then runs the settled
+`test_cmd`/`lint_cmd` once as a smoke check (a failing command is reported as a warning,
+never a rollback). `--dry-run` stops after settling and prints the corrected plan instead
+of applying. A fully-declared repo has nothing to settle, so the flow is nearly as fast as
+a direct CLI run.
 
-**CLI equivalent:** `ll-init --yes` (canonical path; run directly in a terminal for more control)
+**CLI equivalent:** `ll-init --plan` then `ll-init apply --config plan.json` (the raw
+two-step dance this skill automates); `ll-init --yes` remains available for a
+non-agentic, defaults-only run.
 
 ### `/ll:help`
 List all available little-loops commands with descriptions.

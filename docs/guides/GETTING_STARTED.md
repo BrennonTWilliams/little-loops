@@ -100,6 +100,11 @@ ll-init
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
 | `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `opencode`, `pi` | Only needed if you use little-loops with multiple AI coding tools |
 
+**Ambiguous or monorepo layouts:** rather than piping `--plan` into `apply --config`
+by hand, run `/ll:init` inside Claude Code — it drives this same seam but reads your
+repo to settle whichever fields introspection tagged `inferred`/`default` or listed
+under `ambiguities` before applying.
+
 ### Key Config Fields
 
 The three fields most relevant to beginners:
