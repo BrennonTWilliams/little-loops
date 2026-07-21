@@ -4511,9 +4511,11 @@ class TestAutodevLoop:
         assert state.get("next") == "mark_decide_ran"
 
     def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
-        """run_decide.on_error must fall through to recheck_after_decide (degraded mode)."""
+        """ENH-2717: run_decide.on_error must route to check_decision_after_decide_error, which
+        short-circuits to record_decision_unresolved if decision_needed is still true rather than
+        falling through to a redundant run_size_review."""
         state = data["states"].get("run_decide", {})
-        assert state.get("on_error") == "recheck_after_decide"
+        assert state.get("on_error") == "check_decision_after_decide_error"
 
     def test_run_decide_on_rate_limit_exhausted_routes_to_done(self, data: dict) -> None:
         """run_decide.on_rate_limit_exhausted must terminate the loop."""

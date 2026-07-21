@@ -308,8 +308,20 @@ states:
     action: "/ll:decide-issue ${captured.input.output} --auto"
     action_type: slash_command
     next: mark_decide_ran
-    on_error: recheck_after_decide
+    on_error: check_decision_after_decide_error
     on_rate_limit_exhausted: done
+
+  check_decision_after_decide_error:
+    # ENH-2717: run_decide.on_error can't distinguish "decide genuinely
+    # failed/was interrupted" from other failure modes, but if decision_needed
+    # is still true the blocker is already fully known — short-circuit
+    # straight to record_decision_unresolved instead of paying for a redundant
+    # run_size_review call that would just re-discover the same flag.
+    action: "ll-issues check-flag ${captured.input.output} decision_needed"
+    fragment: shell_exit
+    on_yes: record_decision_unresolved
+    on_no: recheck_after_decide
+    on_error: recheck_after_decide
 
   mark_decide_ran:
     # ENH-1415: record that decide has already run for the current issue so
