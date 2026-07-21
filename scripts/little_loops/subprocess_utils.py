@@ -299,6 +299,7 @@ def run_claude_command(
     resume_session: bool = False,
     model: str | None = None,
     automation_profile: str | None = None,
+    post_stream_close_grace_seconds: int = 300,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -326,6 +327,11 @@ def run_claude_command(
             profile name. When set, forwarded to ``build_streaming()`` so
             ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` are injected into the child
             environment. ``None`` (default) preserves full unpruned behavior.
+        post_stream_close_grace_seconds: Grace period (seconds) to wait for the
+            process to exit on its own after stdout/stderr streams close before
+            force-killing the process group. Must accommodate synchronous
+            parallel Agent tool calls (`run_in_background: false`) that can
+            still be running when the parent's own streams close (BUG-2718).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -508,12 +514,19 @@ def run_claude_command(
                 if result_seen:
                     break
 
+            logger.debug(
+                "Process %s streams closed via %s; waiting up to %ss before kill",
+                process.pid,
+                "result event" if result_seen else "natural EOF, no result event",
+                post_stream_close_grace_seconds,
+            )
             try:
-                process.wait(timeout=30)
+                process.wait(timeout=post_stream_close_grace_seconds)
             except subprocess.TimeoutExpired:
                 logger.warning(
-                    "Process %s did not exit within 30s after streams closed, killing",
+                    "Process %s did not exit within %ss after streams closed, killing",
                     process.pid,
+                    post_stream_close_grace_seconds,
                 )
                 _kill_process_group(process)
                 try:

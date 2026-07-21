@@ -464,6 +464,7 @@ Sequential automation configuration.
 class AutomationConfig:
     timeout_seconds: int = 3600
     idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
+    post_stream_close_grace_seconds: int = 300  # Grace before force-kill after streams close
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2

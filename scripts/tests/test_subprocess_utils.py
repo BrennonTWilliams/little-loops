@@ -16,6 +16,7 @@ import io
 import os
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
@@ -1295,7 +1296,7 @@ class TestRunClaudeCommandWaitTimeout:
         mock_process.wait.assert_called_once_with(timeout=10)
 
     def test_wait_has_timeout_on_normal_completion(self) -> None:
-        """process.wait(timeout=30) called on normal exit."""
+        """process.wait(timeout=300) called on normal exit (BUG-2718 default)."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -1309,7 +1310,7 @@ class TestRunClaudeCommandWaitTimeout:
 
                 run_claude_command("test")
 
-        mock_process.wait.assert_called_once_with(timeout=30)
+        mock_process.wait.assert_called_once_with(timeout=300)
 
     def test_logs_warning_when_wait_times_out_after_kill(self) -> None:
         """Warning logged when process doesn't terminate after kill."""
@@ -1352,15 +1353,15 @@ class TestRunClaudeCommandWaitTimeout:
                             )
 
     def test_kills_process_when_normal_wait_times_out(self) -> None:
-        """Process group killed and waited again when normal wait(timeout=30) expires."""
+        """Process group killed and waited again when normal wait(timeout=300) expires."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
         mock_process.returncode = None
         mock_process.pid = 55555
-        # First wait(timeout=30) times out, second wait(timeout=10) succeeds
+        # First wait(timeout=300) times out, second wait(timeout=10) succeeds
         mock_process.wait.side_effect = [
-            subprocess.TimeoutExpired("cmd", 30),
+            subprocess.TimeoutExpired("cmd", 300),
             None,
         ]
         mock_process.kill = Mock()
@@ -1375,14 +1376,57 @@ class TestRunClaudeCommandWaitTimeout:
                         run_claude_command("test")
 
                         mock_logger.warning.assert_called_once_with(
-                            "Process %s did not exit within 30s after streams closed, killing",
+                            "Process %s did not exit within %ss after streams closed, killing",
                             55555,
+                            300,
                         )
 
         mock_killpg.assert_called_once_with(99, signal.SIGKILL)
         assert mock_process.wait.call_count == 2
-        mock_process.wait.assert_any_call(timeout=30)
+        mock_process.wait.assert_any_call(timeout=300)
         mock_process.wait.assert_any_call(timeout=10)
+
+    def test_post_stream_close_grace_seconds_is_configurable(self) -> None:
+        """post_stream_close_grace_seconds param overrides the wait() timeout."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+
+                run_claude_command("test", post_stream_close_grace_seconds=900)
+
+        mock_process.wait.assert_called_once_with(timeout=900)
+
+    def test_process_not_killed_while_still_running_within_grace_period(self) -> None:
+        """BUG-2718 regression: a real child that closes its stdout/stderr streams
+        but keeps running past the old fixed 30s default is not force-killed as
+        long as it exits within the (now-configurable) grace period — the
+        scenario hit by synchronous parallel Agent tool calls still in flight
+        when the parent's own streams close."""
+        from little_loops.host_runner import HostInvocation
+
+        script = (
+            "import os, sys, time\n"
+            "sys.stdout.flush(); sys.stderr.flush()\n"
+            "os.close(1); os.close(2)\n"
+            "time.sleep(0.5)\n"
+        )
+        mock_invocation = HostInvocation(binary=sys.executable, args=["-c", script], env={})
+        mock_runner = Mock()
+        mock_runner.build_streaming.return_value = mock_invocation
+
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=mock_runner):
+            with patch("os.killpg") as mock_killpg:
+                result = run_claude_command("test", post_stream_close_grace_seconds=5)
+
+        mock_killpg.assert_not_called()
+        assert result.returncode == 0
 
 
 # =============================================================================
@@ -2347,7 +2391,7 @@ class TestRunClaudeCommandResultBreak:
         assert usage_calls == [(1000, 200)]
         # Clean return (not a TimeoutExpired); process reaped via wait().
         assert result.returncode == 0
-        mock_process.wait.assert_called_once_with(timeout=30)
+        mock_process.wait.assert_called_once_with(timeout=300)
 
 
 # =============================================================================

@@ -16,6 +16,10 @@ class AutomationConfig:
 
     timeout_seconds: int = 3600
     idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
+    # Grace period after stdout/stderr streams close before force-killing the
+    # process group (BUG-2718). Must accommodate synchronous parallel Agent
+    # tool calls that can still be running after the parent's own streams close.
+    post_stream_close_grace_seconds: int = 300
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2
@@ -28,6 +32,7 @@ class AutomationConfig:
         return cls(
             timeout_seconds=data.get("timeout_seconds", 3600),
             idle_timeout_seconds=data.get("idle_timeout_seconds", 0),
+            post_stream_close_grace_seconds=data.get("post_stream_close_grace_seconds", 300),
             state_file=data.get("state_file", ".auto-manage-state.json"),
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),

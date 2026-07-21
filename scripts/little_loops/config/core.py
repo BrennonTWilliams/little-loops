@@ -623,6 +623,7 @@ class BRConfig:
             "automation": {
                 "timeout_seconds": self._automation.timeout_seconds,
                 "idle_timeout_seconds": self._automation.idle_timeout_seconds,
+                "post_stream_close_grace_seconds": self._automation.post_stream_close_grace_seconds,
                 "state_file": self._automation.state_file,
                 "worktree_base": self._automation.worktree_base,
                 "max_workers": self._automation.max_workers,

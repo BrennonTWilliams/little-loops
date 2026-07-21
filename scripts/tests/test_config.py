@@ -322,6 +322,7 @@ class TestAutomationConfig:
             "max_workers": 4,
             "stream_output": False,
             "idle_timeout_seconds": 30,
+            "post_stream_close_grace_seconds": 600,
             "max_continuations": 5,
         }
         config = AutomationConfig.from_dict(data)
@@ -332,6 +333,7 @@ class TestAutomationConfig:
         assert config.max_workers == 4
         assert config.stream_output is False
         assert config.idle_timeout_seconds == 30
+        assert config.post_stream_close_grace_seconds == 600
         assert config.max_continuations == 5
 
     def test_from_dict_with_defaults(self) -> None:
@@ -344,6 +346,7 @@ class TestAutomationConfig:
         assert config.max_workers == 2
         assert config.stream_output is True
         assert config.idle_timeout_seconds == 0
+        assert config.post_stream_close_grace_seconds == 300
         assert config.max_continuations == 3
 
 
@@ -882,6 +885,19 @@ class TestBRConfig:
 
         assert "idle_timeout_seconds" in result["automation"]
         assert result["automation"]["idle_timeout_seconds"] == 0
+
+    def test_to_dict_automation_post_stream_close_grace_seconds(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports post_stream_close_grace_seconds (BUG-2718)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "post_stream_close_grace_seconds" in result["automation"]
+        assert result["automation"]["post_stream_close_grace_seconds"] == 300
 
     def test_resolve_variable(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test resolve_variable resolves config paths."""

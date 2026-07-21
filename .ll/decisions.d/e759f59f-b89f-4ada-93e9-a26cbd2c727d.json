@@ -1,0 +1,12 @@
+{
+  "id": "5eb0e834-2e40-4b9d-a46d-05e259dff854",
+  "type": "decision",
+  "timestamp": "2026-07-21T06:43:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B reuses an established 3-part config-promotion pattern (AutomationConfig + config-schema.json + resolve_variable/to_dict) that already repeats 3+ times, and run_claude_command already threads config-sourced timeout/idle_timeout from 7 call sites. Option A (psutil liveness polling) has zero precedent for children()/cpu_times() polling anywhere in scripts/, and fsm/host_guard.py deliberately avoids psutil for a similar resource-probing need.",
+  "rule": "Option B: raise the flat 30s post-stream-close constant via config, not psutil liveness polling",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: psutil-based liveness polling (poll process-group children/CPU-time to a longer cap) \u2014 wholly new infrastructure with no existing test scaffolding for a live grandchild process",
+  "issue": "BUG-2718"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "7a1dcd1b-da6f-4741-90ba-e3f78a7905c0",
+  "type": "decision",
+  "timestamp": "2026-07-21T06:11:28Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Tied 8/12 scoring on host-resume (A) vs compact-summary injection (B); tie broken on risk severity \u2014 BUG-1385 confirms A's --continue/--resume resolves to most-recent-session with no concurrency-safe precedent under ll-parallel/ll-sprint, while B's cost is a bounded per-hop summarization call reusing tested FEAT-2598 infra and preserving the ENH-2486 fresh-session invariant.",
+  "rule": "Option B: compact-summary injection via FEAT-2598 compact_session/compact_result_for_session",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: session_mode continue via host-level resume \u2014 rejected due to unmitigated most-recent-session concurrency hazard",
+  "issue": "FEAT-2711"
+}

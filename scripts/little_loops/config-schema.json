@@ -298,6 +298,12 @@
           "default": 0,
           "minimum": 0
         },
+        "post_stream_close_grace_seconds": {
+          "type": "integer",
+          "description": "Grace period after stdout/stderr streams close before force-killing the process group. Must accommodate synchronous parallel Agent tool calls still in flight when the parent's own streams close (BUG-2718).",
+          "default": 300,
+          "minimum": 30
+        },
         "max_continuations": {
           "type": "integer",
           "description": "Maximum number of continuation prompts before automation stops.",

@@ -44,6 +44,7 @@ For interactive editing, use `/ll:configure`.
   "automation": {
     "timeout_seconds": 3600,
     "idle_timeout_seconds": 0,
+    "post_stream_close_grace_seconds": 300,
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
@@ -357,6 +358,7 @@ Sequential automation settings (ll-auto):
 |-----|---------|-------------|
 | `timeout_seconds` | `3600` | Per-issue timeout |
 | `idle_timeout_seconds` | `0` | Seconds of idle inactivity before automation considers the session idle (0 to disable) |
+| `post_stream_close_grace_seconds` | `300` | Grace period after stdout/stderr streams close before force-killing the process group; must accommodate synchronous parallel Agent tool calls still in flight (BUG-2718) |
 | `state_file` | `.auto-manage-state.json` | State persistence |
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
