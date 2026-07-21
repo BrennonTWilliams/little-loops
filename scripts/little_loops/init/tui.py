@@ -256,8 +256,7 @@ def run_tui(
     cmd_options: dict[str, list[str]] = template.meta.get("command_options", {})
 
     console.print(
-        f"\n[bold blue]little-loops setup[/bold blue] — "
-        f"{format_detection_summary(candidates)}\n"
+        f"\n[bold blue]little-loops setup[/bold blue] — {format_detection_summary(candidates)}\n"
     )
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])

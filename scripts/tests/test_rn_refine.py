@@ -1016,9 +1016,7 @@ class TestAssembleAndFinalize:
         assert "--context resume=1" in rubric
         assert "/tmp/orig-plan.md" in rubric
 
-    def test_assemble_omits_partial_drain_marker_when_undrained_empty(
-        self, tmp_path: Path
-    ) -> None:
+    def test_assemble_omits_partial_drain_marker_when_undrained_empty(self, tmp_path: Path) -> None:
         rd = tmp_path / "run"
         (rd / "nodes" / "n0").mkdir(parents=True)
         (rd / "nodes" / "n0" / "final.md").write_text("# assembled\n")

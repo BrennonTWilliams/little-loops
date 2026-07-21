@@ -600,8 +600,7 @@ class TestPhase3bMaterializeInformalDecisions:
 
     def test_materialize_step_documented(self) -> None:
         assert "Materialize alternatives" in self._phase_text(), (
-            "Phase 3b Resolution Logic must document the materialize-alternatives step "
-            "(ENH-2715)"
+            "Phase 3b Resolution Logic must document the materialize-alternatives step (ENH-2715)"
         )
 
     def test_materialize_reuses_enh_2607_template(self) -> None:

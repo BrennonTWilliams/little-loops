@@ -69,9 +69,7 @@ class TestBatchDiscount:
 
     def test_is_batch_halves_cost(self) -> None:
         cost_sync = estimate_cost_usd("claude-sonnet-4-6", 1000, 200, 50, 50)
-        cost_batch = estimate_cost_usd(
-            "claude-sonnet-4-6", 1000, 200, 50, 50, is_batch=True
-        )
+        cost_batch = estimate_cost_usd("claude-sonnet-4-6", 1000, 200, 50, 50, is_batch=True)
         assert cost_sync is not None
         assert cost_batch is not None
         assert cost_batch == cost_sync * BATCH_DISCOUNT

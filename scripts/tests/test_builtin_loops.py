@@ -9404,7 +9404,13 @@ class TestRnRefineRecursiveDecomposition:
         # replaced by a fan-out dispatch that background-spawns the
         # oracles/integrate-node worker sub-loop over the shared queue.
         states = data.get("states", {})
-        for s in ("build_synth", "synth_dispatch", "synth_failure_record", "assemble", "final_score"):
+        for s in (
+            "build_synth",
+            "synth_dispatch",
+            "synth_failure_record",
+            "assemble",
+            "final_score",
+        ):
             assert s in states, f"missing synthesis state: {s}"
         assert data.get("states", {}).get("build_synth", {}).get("next") == "synth_dispatch"
         # ENH-2691: synth_dispatch gates on worker/per-node failure instead of

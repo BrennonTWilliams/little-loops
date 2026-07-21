@@ -195,9 +195,7 @@ def main_history_context() -> int:
             try:
                 from little_loops.config import BRConfig as _BRConfig
 
-                _pruning_gate_enabled = (
-                    _BRConfig(Path.cwd()).history.automation_pruning.enabled
-                )
+                _pruning_gate_enabled = _BRConfig(Path.cwd()).history.automation_pruning.enabled
             except Exception:
                 pass
             if _pruning_gate_enabled:

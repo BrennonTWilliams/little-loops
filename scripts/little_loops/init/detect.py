@@ -258,9 +258,7 @@ def format_detection_summary(matches: list[TemplateMatch]) -> str:
 
     runners_up = [m for m in matches[1:] if m.match_count > 0]
     if runners_up:
-        parts = [
-            f"{m.name} ({m.match_count}/{len(m.meta.get('detect', []))})" for m in runners_up
-        ]
+        parts = [f"{m.name} ({m.match_count}/{len(m.meta.get('detect', []))})" for m in runners_up]
         summary += "; also matched: " + ", ".join(parts)
 
     return summary

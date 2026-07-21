@@ -1484,7 +1484,7 @@ def _text_from_content_blocks(content: Any) -> str:
     return "".join(parts)
 
 
-def _usage_from_response(response: Any, *, is_batch: bool = False) -> "TokenUsage":
+def _usage_from_response(response: Any, *, is_batch: bool = False) -> TokenUsage:
     """Normalize an SDK ``Message.usage`` block into a :class:`TokenUsage`."""
     from little_loops.subprocess_utils import TokenUsage
 
@@ -1509,7 +1509,7 @@ def dispatch_anthropic_request(
     require_repeat: bool = True,
     defer_loading_threshold: int | None = None,
     search_tool_variant: str = "bm25",
-) -> "ActionResult":
+) -> ActionResult:
     """Dispatch one prompt-mode action via a live ``messages.create()`` call.
 
     **Performs a network call** — unlike :func:`build_anthropic_request`, which
@@ -1611,7 +1611,7 @@ def poll_batch_result(
     max_wait_seconds: float = 3600.0,
     backoff_factor: float = 1.5,
     max_poll_interval_seconds: float = 60.0,
-) -> "ActionResult":
+) -> ActionResult:
     """Poll a submitted batch to completion and return its one result. **Network calls.**
 
     Polls ``client.messages.batches.retrieve(batch_id)`` with exponential
@@ -1627,9 +1627,9 @@ def poll_batch_result(
     """
     import time
 
-    from little_loops.fsm.types import ActionResult
-
     import anthropic
+
+    from little_loops.fsm.types import ActionResult
 
     start = time.time()
     client = anthropic.Anthropic()
