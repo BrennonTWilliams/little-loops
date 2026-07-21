@@ -1,0 +1,11 @@
+{
+  "id": "fc8d6722-1a5a-47c8-9688-0ea63125af83",
+  "type": "decision",
+  "timestamp": "2026-07-21T03:45:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FEAT-2673/FEAT-2710 built request-building infrastructure but no live network call is wired into executor.py's dispatch path; blocks realizing both features' promised discounts.",
+  "rule": "Captured: Wire live Anthropic SDK/Batches API dispatch into fsm/executor.py",
+  "scope": "issue",
+  "issue": "FEAT-2716"
+}
