@@ -1,0 +1,11 @@
+{
+  "id": "3918de12-4acb-4cb1-8cf4-93ed25376dbe",
+  "type": "decision",
+  "timestamp": "2026-07-21T02:05:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Verdict states billed at flagship rates; MR-1 pairing provides the quality gate ENH-2490 lacked",
+  "rule": "Captured: per-state model pinning in loop YAML",
+  "scope": "issue",
+  "issue": "ENH-2713"
+}

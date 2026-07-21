@@ -1,0 +1,11 @@
+{
+  "id": "1bf48e9e-9196-477f-be6d-c3a1bf123720",
+  "type": "decision",
+  "timestamp": "2026-07-21T02:05:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "HostRunner resume primitive exists but fsm/runners.py never uses it; opt-in session_mode: continue",
+  "rule": "Captured: FSM session reuse across states",
+  "scope": "issue",
+  "issue": "FEAT-2711"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "a7d3d14c-62dd-4dcd-90e8-16148175f156",
+  "type": "decision",
+  "timestamp": "2026-07-21T02:05:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Full skill catalog re-sent on every FSM state; CLI-path analogue of FEAT-2672 deferred tool loading",
+  "rule": "Captured: FSM invocation catalog pruning",
+  "scope": "issue",
+  "issue": "ENH-2714"
+}

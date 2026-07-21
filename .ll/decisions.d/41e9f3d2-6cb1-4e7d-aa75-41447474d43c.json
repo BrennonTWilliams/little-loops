@@ -1,0 +1,11 @@
+{
+  "id": "c914be57-a0ec-4e02-be8e-afcba3ee45c4",
+  "type": "decision",
+  "timestamp": "2026-07-21T02:05:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Flat 50% discount on batchable automation; unconsidered by both token-cost plans; rides FEAT-2673 SDK path",
+  "rule": "Captured: Message Batches API request path",
+  "scope": "issue",
+  "issue": "FEAT-2710"
+}

@@ -48,6 +48,11 @@ relates_to:
 - FEAT-2676
 - FEAT-2680
 - FEAT-2681
+- FEAT-2710
+- FEAT-2711
+- ENH-2712
+- ENH-2713
+- ENH-2714
 source_artifacts:
 - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
 - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -219,6 +224,14 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 - **[TBD-17]** `routing.precedence` config-schema entry — explicit `--model` flag > loop YAML `model:` > per-state ceiling-overshoot downshift. Add to `config-schema.json` + `.ll/ll-config.json` `orchestration.routing.precedence` enum **before** body work.
 - **[TBD-18]** F7-lite — In-process model router + FrugalGPT cascade skeleton + RouteLLM quantile-calibration helper (new `routing/calibrate.py` ported verbatim). Per-worker spend tracked via a minimal, file-local accumulator owned by F7-lite (not a shared `fsm/` module — that scope was cancelled with F2; see Integration Map). **Latency/score ring buffer keyed by `(provider, model)`, not global** — required for correctness with omp's 40+ providers.
 
+### Transport & waste tranche (captured 2026-07-21 — levers outside the original five tiers)
+
+- **FEAT-2710** — Message Batches API request path: flat 50% discount on batchable automation (`ll-auto`, verify loops, background summarization); rides FEAT-2673's SDK path. *(filed 2026-07-21, P2)*
+- **FEAT-2711** — FSM session reuse for continuity-of-reasoning chains: opt-in `session_mode: continue` threading the existing `HostRunner` `resume` primitive through `fsm/runners.py`; narrowed to sequential chains where state N+1 needs state N's working context (prefix-cost lever moved to ENH-2714; step-0 viability gate before implementation). *(filed 2026-07-21, re-scoped 2026-07-20, P2→P3)*
+- **ENH-2712** — Wasted-run token attribution: `ll-ctx-stats waste` view joining F5/F6 telemetry against terminal run outcome; may reorder remaining epic priorities. *(filed 2026-07-21, P2)*
+- **ENH-2713** — Per-state `model:` pinning in loop YAML (haiku for verdict states): static precursor to F7-lite with MR-1 as the quality gate; loop-YAML half of deferred ENH-2490. *(filed 2026-07-21, P3)*
+- **ENH-2714** — Automation-context static-prefix pruning for FSM invocations: broadened from catalog-only to the full static prefix (catalog narrowing + gated SessionStart/memory/digest hook output + host-flag CLAUDE.md suppression); supersedes FEAT-2711 as the default per-invocation savings lever. *(filed 2026-07-21, re-scoped 2026-07-20, P3→P2)*
+
 ### Cross-tier verification
 
 - **[TBD-19]** Joint cache × router 2×2 ablation matrix (`scripts/little_loops/dev/measure_cache_routing_interaction.py`) — greenfield research output; verify on representative `ll-loop` traces.
@@ -341,6 +354,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:capture-issue` - 2026-07-21 - Filed the transport & waste tranche from a "higher-value levers we haven't considered" review: **FEAT-2710** (Message Batches API request path, 50% discount), **FEAT-2711** (FSM session reuse via existing `resume` primitive), **ENH-2712** (wasted-run token attribution view), **ENH-2713** (per-state model pinning in loop YAML), **ENH-2714** (FSM invocation catalog pruning). All parented here and added to `relates_to`; new Children subsection added between Tier 4 and Cross-tier verification.
 - `/ll:decide-issue` - 2026-07-18T19:14:18 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:capture-issue` - 2026-07-18 - Filed the Tier 2 caching tranche: **FEAT-2671** (F1-prereq a, was [TBD-8]), **FEAT-2672** (F1-prereq b, was [TBD-9]), **FEAT-2673** (F1, was [TBD-10]; `decision_needed: true` for Open Questions #1/#2/#5), **FEAT-2674** (F10, was [TBD-11]; depends on FEAT-2673). Replaced the four TBD placeholders in Children and added all four to `relates_to`. Reminder recorded in FEAT-2673: decide [TBD-19] (cache x router ablation set, OQ #7) before F1 ships.
 - `/ll:capture-issue` - 2026-07-11 - Filed **FEAT-2598** (F3, was [TBD-12]) and **FEAT-2599** (F4-gated, was [TBD-13]) from the Tier 3 section of both plan docs. Replaced the two TBD placeholder bullets in Children with real child references; added both to `relates_to`.

@@ -1,0 +1,11 @@
+{
+  "id": "daa8e0f0-7050-4720-be90-6d60ee6d690c",
+  "type": "decision",
+  "timestamp": "2026-07-21T02:05:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No measurement of tokens spent on runs producing no accepted artifact; query layer over existing F5/F6 telemetry",
+  "rule": "Captured: wasted-run token attribution view",
+  "scope": "issue",
+  "issue": "ENH-2712"
+}
