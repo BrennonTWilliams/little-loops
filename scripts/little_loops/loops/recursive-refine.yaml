@@ -341,7 +341,12 @@ states:
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
-        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+        # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
+        # (deterministic), with the prose marker as a tolerant fallback that
+        # accepts wiki-link drift ("Decomposed from [[ID]]").
+        if [ -n "$child_file" ] && { \
+             grep -qE "^parent:[[:space:]]*['\"]?$PARENT_ID['\"]?[[:space:]]*$" "$child_file" \
+             || grep -qE "Decomposed from (\[\[)?$PARENT_ID([^0-9]|$)" "$child_file"; }; then
           echo "$child_id"
         fi
       done < ${context.run_dir}/recursive-refine-diff-ids.txt \
@@ -639,7 +644,12 @@ states:
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
-        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+        # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
+        # (deterministic), with the prose marker as a tolerant fallback that
+        # accepts wiki-link drift ("Decomposed from [[ID]]").
+        if [ -n "$child_file" ] && { \
+             grep -qE "^parent:[[:space:]]*['\"]?$PARENT_ID['\"]?[[:space:]]*$" "$child_file" \
+             || grep -qE "Decomposed from (\[\[)?$PARENT_ID([^0-9]|$)" "$child_file"; }; then
           echo "$child_id"
         fi
       done < ${context.run_dir}/recursive-refine-diff-ids.txt \

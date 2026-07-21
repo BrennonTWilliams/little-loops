@@ -3917,10 +3917,19 @@ class TestAutodevLoop:
         )
 
     def test_check_broke_down_on_yes_routes_to_recheck_scores(self, data: dict) -> None:
-        """check_broke_down.on_yes (flag=0 OR no children) must route to recheck_scores."""
+        """check_broke_down.on_yes (flag=0 OR no children) routes through the
+        BUG-2729 parent-resolved gate, which falls through to recheck_scores on
+        unresolved parents and recovers sub-loop children on resolved ones."""
         state = data["states"].get("check_broke_down", {})
-        assert state.get("on_yes") == "recheck_scores", (
-            f"check_broke_down.on_yes should be 'recheck_scores', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_parent_resolved", (
+            f"check_broke_down.on_yes should be 'check_parent_resolved', got {state.get('on_yes')!r}"
+        )
+        gate = data["states"].get("check_parent_resolved", {})
+        assert gate.get("on_no") == "recheck_scores", (
+            "check_parent_resolved must fall through to recheck_scores on unresolved parents"
+        )
+        assert gate.get("on_yes") == "recover_subloop_children", (
+            "check_parent_resolved.on_yes must route to recover_subloop_children"
         )
 
     def test_check_broke_down_on_no_routes_to_enqueue_or_skip(self, data: dict) -> None:
@@ -3931,11 +3940,49 @@ class TestAutodevLoop:
         )
 
     def test_check_broke_down_on_error_routes_to_recheck_scores(self, data: dict) -> None:
-        """check_broke_down.on_error must route to recheck_scores (fail-safe)."""
+        """check_broke_down.on_error must route through the parent-resolved gate
+        (fail-safe: treat as not broken down)."""
         state = data["states"].get("check_broke_down", {})
-        assert state.get("on_error") == "recheck_scores", (
-            f"check_broke_down.on_error should be 'recheck_scores', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_parent_resolved", (
+            f"check_broke_down.on_error should be 'check_parent_resolved', got {state.get('on_error')!r}"
         )
+
+    def test_recover_subloop_children_recovers_by_parent_frontmatter(self, data: dict) -> None:
+        """BUG-2729: recover_subloop_children must match children by frontmatter
+        parent field, prepend them to the queue, and never set-status the parent."""
+        state = data["states"].get("recover_subloop_children", {})
+        action = state.get("action", "")
+        assert "i.get('parent')" in action, (
+            "recover_subloop_children must match children via the parent frontmatter field"
+        )
+        assert "autodev-queue.txt" in action
+        assert "set-status" not in action, (
+            "recover_subloop_children must never change the parent's status"
+        )
+        assert state.get("next") == "dequeue_next"
+
+    def test_child_detection_matches_parent_frontmatter(self, data: dict) -> None:
+        """BUG-2729: detect_children and enqueue_or_skip must match provenance on
+        the frontmatter parent: line (deterministic), not only the exact prose
+        marker — 'Decomposed from [[ID]]' wiki-link drift defeated the literal grep."""
+        for name in ("detect_children", "enqueue_or_skip"):
+            action = data["states"].get(name, {}).get("action", "")
+            assert "^parent:" in action, (
+                f"{name} must grep the frontmatter parent: line for child provenance"
+            )
+            assert "Decomposed from (\\[\\[)?" in action, (
+                f"{name}'s prose fallback must tolerate wiki-link drift"
+            )
+
+    def test_defer_sites_guard_resolved_status(self, data: dict) -> None:
+        """BUG-2729: every automation defer site must check current status and
+        never flip an already done/cancelled issue to deferred."""
+        for name in ("recheck_after_size_review", "mark_gate_blocked", "record_decision_unresolved"):
+            action = data["states"].get(name, {}).get("action", "")
+            assert "set-status" in action, f"{name} should still own its defer transition"
+            assert '"$STATUS" = "done"' in action and '"$STATUS" = "cancelled"' in action, (
+                f"{name} must guard set-status deferred behind a done/cancelled status check"
+            )
 
     def test_tmp_files_use_autodev_namespace(self, data: dict) -> None:
         """All new bookkeeping temp files must use the autodev-* namespace, not recursive-refine-*."""
@@ -4003,14 +4050,24 @@ class TestAutodevLoop:
         )
 
     def test_enqueue_or_skip_on_no_routes_to_recheck_after_size_review(self, data: dict) -> None:
-        """enqueue_or_skip.on_no (no children) routes through the decide-path spike
-        gate before recheck_after_size_review (BUG-1230 skip path, now gated by
-        BUG-2654's check_spike_needed_before_skip which itself falls through to
-        recheck_after_size_review on no match)."""
+        """enqueue_or_skip.on_no (no children) routes through the BUG-2729
+        parent-resolved gate, then the decide-path spike gate, before
+        recheck_after_size_review (BUG-1230 skip path, gated by BUG-2654's
+        check_spike_needed_before_skip which itself falls through to
+        recheck_after_size_review via check_reconcile_needed)."""
         state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_no") == "check_spike_needed_before_skip", (
-            f"enqueue_or_skip.on_no should be 'check_spike_needed_before_skip', "
+        assert state.get("on_no") == "check_parent_resolved_post_size_review", (
+            f"enqueue_or_skip.on_no should be 'check_parent_resolved_post_size_review', "
             f"got {state.get('on_no')!r}"
+        )
+        resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
+        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
+            "check_parent_resolved_post_size_review must preserve the BUG-2654 spike "
+            "gate on unresolved parents"
+        )
+        assert resolved_gate.get("on_yes") == "recover_subloop_children", (
+            "check_parent_resolved_post_size_review.on_yes must route to "
+            "recover_subloop_children"
         )
         gate = data["states"].get("check_spike_needed_before_skip", {})
         assert gate.get("on_no") == "check_reconcile_needed", (
@@ -4251,13 +4308,18 @@ class TestAutodevLoop:
         assert state.get("on_rate_limit_exhausted") == "done"
 
     def test_enqueue_or_skip_on_no_routes_to_decide_path_spike_gate(self, data: dict) -> None:
-        """BUG-2654: enqueue_or_skip.on_no (no children) must route through the
-        decide-path spike gate before any low_readiness skip, so a spike_needed
-        issue arriving via the decide/size-review path gets its one shot at run_spike."""
+        """BUG-2654: enqueue_or_skip.on_no (no children) must still reach the
+        decide-path spike gate before any low_readiness skip — now via the
+        BUG-2729 parent-resolved gate, whose on_no preserves the spike gate edge."""
         state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_no") == "check_spike_needed_before_skip", (
-            f"enqueue_or_skip.on_no should be 'check_spike_needed_before_skip', "
+        assert state.get("on_no") == "check_parent_resolved_post_size_review", (
+            f"enqueue_or_skip.on_no should be 'check_parent_resolved_post_size_review', "
             f"got {state.get('on_no')!r}"
+        )
+        resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
+        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
+            "the parent-resolved gate must fall through to check_spike_needed_before_skip "
+            "so spike_needed issues keep their one shot at run_spike"
         )
 
     def test_decide_path_spike_gate_routes_to_run_spike(self, data: dict) -> None:

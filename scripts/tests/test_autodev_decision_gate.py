@@ -442,11 +442,17 @@ class TestDecidePathSpikeGate:
         )
 
     def test_enqueue_or_skip_routes_to_spike_gate(self, data: dict[str, Any]) -> None:
-        """The no-children skip edge must reach the spike gate, not skip directly."""
+        """The no-children skip edge must still reach the spike gate — now via the
+        BUG-2729 parent-resolved gate, whose on_no preserves the spike gate edge."""
         state = data["states"]["enqueue_or_skip"]
-        assert state.get("on_no") == "check_spike_needed_before_skip", (
-            "enqueue_or_skip.on_no must route through the spike gate before "
-            "recheck_after_size_review (BUG-2654)"
+        assert state.get("on_no") == "check_parent_resolved_post_size_review", (
+            "enqueue_or_skip.on_no must route through the BUG-2729 parent-resolved "
+            "gate before the spike gate"
+        )
+        resolved_gate = data["states"]["check_parent_resolved_post_size_review"]
+        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
+            "check_parent_resolved_post_size_review.on_no must preserve the spike "
+            "gate edge (BUG-2654) so pending spikes keep their one shot at run_spike"
         )
 
     def test_gate_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:

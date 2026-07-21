@@ -392,8 +392,16 @@ states:
       ID="${captured.input.output}"
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       rm -f ${context.run_dir}/autodev-inflight
-      ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
-      echo "[DECISION_UNRESOLVED] $ID — decide-issue produced no actionable decision; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
+      # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
+        echo "[DECISION_UNRESOLVED] $ID — decide-issue produced no actionable decision; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
+      fi
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -523,8 +531,16 @@ states:
       ID="${captured.input.output}"
       echo "$ID" >> ${context.run_dir}/autodev-gate-blocked.txt
       rm -f ${context.run_dir}/autodev-inflight
-      ll-issues set-status "$ID" deferred --by automation --reason gate_blocked 2>/dev/null || true
-      echo "[LEARNING_GATE_BLOCKED] $ID — unproven external-API deps; deferred (prove with /ll:explore-api, then re-run to resurface)"
+      # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason gate_blocked 2>/dev/null || true
+        echo "[LEARNING_GATE_BLOCKED] $ID — unproven external-API deps; deferred (prove with /ll:explore-api, then re-run to resurface)"
+      fi
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -566,7 +582,14 @@ states:
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
-        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+        # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
+        # (deterministic — written by issue-size-review), with the prose marker
+        # as a tolerant fallback (accepts wiki-link drift like
+        # "Decomposed from [[ID]]"). An exact-literal prose grep alone rejected
+        # real children and cascaded into a wrong low_readiness deferral.
+        if [ -n "$child_file" ] && { \
+             grep -qE "^parent:[[:space:]]*['\"]?$PARENT_ID['\"]?[[:space:]]*$" "$child_file" \
+             || grep -qE "Decomposed from (\[\[)?$PARENT_ID([^0-9]|$)" "$child_file"; }; then
           echo "$child_id"
         fi
       done < ${context.run_dir}/autodev-diff-ids.txt \
@@ -647,9 +670,71 @@ states:
       type: output_numeric
       operator: lt
       target: 1
-    on_yes: recheck_scores    # 0 → flag unset OR no children → proceed normally
-    on_no: enqueue_or_skip    # 1 → flag set AND children exist → skip
+    on_yes: check_parent_resolved   # 0 → flag unset OR no children → check status first
+    on_no: enqueue_or_skip          # 1 → flag set AND children exist → skip
+    on_error: check_parent_resolved
+
+  check_parent_resolved:
+    # BUG-2729 postmortem: broke-down flag set but no detectable children used
+    # to assume BUG-1183 (analysis-only size review) and re-run size-review —
+    # but when the sub-loop already marked the parent done/cancelled,
+    # decomposition DID happen and only child *detection* failed. Re-running
+    # size-review then deferring a done issue is wrong on both counts. Check
+    # the parent's current status; if the sub-loop resolved it, route to
+    # recover_subloop_children instead of the score/size-review chain.
+    # `show --json` reports status capitalized ("Deferred") — lowercase before
+    # comparing.
+    action: |
+      STATUS=$(ll-issues show ${captured.input.output} --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: recover_subloop_children
+    on_no: recheck_scores
     on_error: recheck_scores
+
+  recover_subloop_children:
+    # BUG-2729 postmortem: the parent is already resolved (done/cancelled) by
+    # the sub-loop — typically via decomposition. Recover any open children by
+    # deterministic frontmatter `parent:` match across the current issue list
+    # (covers marker-drift cases where detect_children's diff+grep missed
+    # them) and prepend depth-first, mirroring enqueue_children. Records the
+    # parent as decomposed (children found) or resolved_by_subloop (none) —
+    # never defers it.
+    action: |
+      ID="${captured.input.output}"
+      ll-issues list --json | python3 -c "
+      import json, sys
+      try:
+          issues = json.load(sys.stdin)
+          for cid in sorted(i['id'] for i in issues
+                            if i.get('parent') == '$ID'
+                            and (i.get('status') or 'open').lower() in ('open', 'in_progress')):
+              print(cid)
+      except Exception:
+          pass
+      " > ${context.run_dir}/autodev-new-children.txt || true
+      if [ -s ${context.run_dir}/autodev-new-children.txt ]; then
+        CHILDREN=$(cat ${context.run_dir}/autodev-new-children.txt)
+        EXISTING=$(cat ${context.run_dir}/autodev-queue.txt 2>/dev/null || true)
+        { echo "$CHILDREN"; echo "$EXISTING"; } \
+          | grep -v '^[[:space:]]*$' \
+          > ${context.run_dir}/autodev-queue.txt
+        CHILD_COUNT=$(wc -l < ${context.run_dir}/autodev-new-children.txt | tr -d ' ')
+        echo "$ID  decomposed" >> ${context.run_dir}/autodev-skipped.txt
+        echo "Parent $ID resolved by sub-loop; recovered and enqueued $CHILD_COUNT child issue(s)"
+      else
+        echo "$ID  resolved_by_subloop" >> ${context.run_dir}/autodev-skipped.txt
+        echo "[RESOLVED] $ID already resolved by sub-loop; advancing queue"
+      fi
+      rm -f ${context.run_dir}/autodev-inflight
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   recheck_scores:
     # Gate before size-review: if the issue already meets thresholds, skip
@@ -803,7 +888,14 @@ states:
       PARENT_ID="${captured.input.output}"
       while IFS= read -r child_id; do
         child_file=$(ll-issues path "$child_id" 2>/dev/null)
-        if [ -n "$child_file" ] && grep -q "Decomposed from $PARENT_ID" "$child_file"; then
+        # BUG-2729 postmortem: match provenance on frontmatter `parent:` first
+        # (deterministic — written by issue-size-review), with the prose marker
+        # as a tolerant fallback (accepts wiki-link drift like
+        # "Decomposed from [[ID]]"). An exact-literal prose grep alone rejected
+        # real children and cascaded into a wrong low_readiness deferral.
+        if [ -n "$child_file" ] && { \
+             grep -qE "^parent:[[:space:]]*['\"]?$PARENT_ID['\"]?[[:space:]]*$" "$child_file" \
+             || grep -qE "Decomposed from (\[\[)?$PARENT_ID([^0-9]|$)" "$child_file"; }; then
           echo "$child_id"
         fi
       done < ${context.run_dir}/autodev-diff-ids.txt \
@@ -830,8 +922,29 @@ states:
       fi
     fragment: shell_exit
     on_yes: dequeue_next
-    on_no: check_spike_needed_before_skip
+    on_no: check_parent_resolved_post_size_review
     on_error: dequeue_next
+
+  check_parent_resolved_post_size_review:
+    # BUG-2729 postmortem: same guard as check_parent_resolved, on the
+    # post-size-review no-children edge. run_size_review (or the sub-loop
+    # before it) may have resolved the parent with children the diff+grep
+    # missed; without this gate the chain falls through to
+    # recheck_after_size_review, which would defer an already-done issue as
+    # low_readiness. On unresolved parents, behaviour is unchanged
+    # (→ check_spike_needed_before_skip).
+    action: |
+      STATUS=$(ll-issues show ${captured.input.output} --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: recover_subloop_children
+    on_no: check_spike_needed_before_skip
+    on_error: check_spike_needed_before_skip
 
   check_spike_needed_before_skip:
     # BUG-2654: the decide path (recheck_after_decide.on_no → snap_and_size_review
@@ -944,6 +1057,18 @@ states:
           --outcome ${context.outcome_threshold}; then
         echo "$ID" >> ${context.run_dir}/autodev-passed.txt
       else
+        # BUG-2729 postmortem: never flip an already-resolved issue to
+        # deferred — a done/cancelled status here means the sub-loop (or
+        # size-review) resolved it and only child detection fell short.
+        STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+          | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+          2>/dev/null || echo "")
+        if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+          echo "$ID  resolved_by_subloop" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+          exit 1
+        fi
         echo "$ID  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
         rm -f ${context.run_dir}/autodev-inflight
         ll-issues set-status "$ID" deferred --by automation --reason low_readiness 2>/dev/null || true
