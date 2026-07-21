@@ -1,0 +1,11 @@
+{
+  "id": "fcb48406-7239-492e-b599-bbaae309c2f9",
+  "type": "decision",
+  "timestamp": "2026-07-21T03:08:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "decide-issue's --auto mode only deposits new options via refine-issue or locks in an explicit recommendation marker; it never reformats existing informal decision prose into scoreable structure",
+  "rule": "Captured: decide-issue --auto should reformat found-but-unstructured open decisions",
+  "scope": "issue",
+  "issue": "ENH-2715"
+}
