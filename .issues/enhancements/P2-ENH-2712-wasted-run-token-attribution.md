@@ -3,7 +3,7 @@ id: ENH-2712
 type: ENH
 title: "Wasted-run token attribution \u2014 ll-ctx-stats waste view over history.db"
 priority: P2
-status: open
+status: cancelled
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -17,11 +17,28 @@ relates_to:
 - FEAT-2478
 - ENH-2477
 - ENH-2461
+- ENH-2721
+- ENH-2722
 decision_needed: false
 size: Very Large
+confidence_score: 100
+outcome_confidence: 61
+score_complexity: 7
+score_test_coverage: 20
+score_ambiguity: 24
+score_change_surface: 10
+spike_needed: true
+spike_attempted: true
+spike_completed: true
 ---
 
 # ENH-2712: Wasted-run token attribution — ll-ctx-stats waste view over history.db
+
+**Split 2026-07-21** into two child issues along the risk boundary the `/ll:confidence-check` outcome-confidence assessment surfaced (deep schema/writer work vs. mechanical query/CLI work):
+- **ENH-2721** — `usage_events` `run_id` column + live per-invocation writer (schema migration, promotes the spike at `scripts/tests/spike/usage_events_run_id_writer/`)
+- **ENH-2722** — `ll-ctx-stats` waste view over `history.db` (read-only query + CLI layer), `blocked_by: ENH-2721`
+
+All research, the Option A/B decision rationale, wiring findings, and spike results below remain valid and were carried forward into the two children verbatim; this issue is kept for history and cancelled rather than deleted.
 
 ## Summary
 
@@ -91,6 +108,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`ll-loop diagnose-evaluators` is not reusable here**: it's filesystem/JSONL-based (`scripts/little_loops/analytics/variance.py:162`, reads `.loops/.history/*/events.jsonl`), has zero token/cost awareness, and reads a different corpus than `.ll/history.db`. The `diff_stall`/`score_stall` evaluators it indirectly relates to (`fsm/evaluators.py:572,667`) run live during execution and emit routing verdicts, not waste labels — no code exists today that classifies per-iteration token waste; this remains genuinely new work, matching the issue's own "follow-on" framing for per-iteration discard tracking.
 - **Step 2 test pattern**: `TestCostAttribution` (`scripts/tests/test_history_reader.py:92-181`) — seeds `usage_events` via `conn.executemany(...)`, asserts `cost_attribution(db=missing) == []`, and asserts `ValueError` on an unwhitelisted `group_by` (SQL-injection regression test). `test_aggregate_loop_runs` (same file, ~line 1786) shows the alternate producer-side seeding idiom via `session_store.record_loop_run_summary(...)`. Both `TestMissingDatabase`/`TestEmptyTables` (lines 29-89) establish the always-`[]`-never-raise contract a new test class should also cover.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. **Correct the migration version**: this issue's Option A/B analysis assumes a "v24" migration; `SCHEMA_VERSION` is actually 28, so the new migration is **v29**. Before writing the migration, reconcile with `.ll/decisions.yaml` `ARCHITECTURE-145` (ENH-2461), which previously rejected FK-style column additions onto `usage_events` for a different join target — confirm this issue's `run_id` column is still the right call given that precedent, or cite why it differs.
+6. Add `TestSchemaV29` in `scripts/tests/test_session_store.py` (model: `TestSchemaV28`, line 4999) and update `TestSchemaV20UsageEvents.test_usage_events_columns` (line 3287) to include `"run_id"` in its exact-set assertion.
+7. Bump all 12+ hardcoded `SCHEMA_VERSION == 28` assertions to 29 across `test_session_store.py`, `test_assistant_messages.py:88`, `test_enh_2511_mcp_telemetry.py:18`, `test_enh_2497_agent_type.py:17`, `test_queue_store.py:14`.
+8. Add a `run_id`-population test to `TestBackfillUsageEvents` (`test_session_store.py:3124`) and a `TestWasteAttribution` class to `test_history_reader.py` (model: `TestCostAttribution`, line 92).
+9. Add the missing `ctx_stats.py` regression test proving `LL_HISTORY_DB`/`history.db_path` config overrides are honored (no such test exists today) — this is the actual proof the ENH-2623 bypass fix works.
+10. Update `docs/guides/HISTORY_SESSION_GUIDE.md` and `docs/observability/otel-mapping.md` schema/query references, `docs/reference/CLI.md`'s `ll-ctx-stats` entry, and `config-schema.json`'s `analytics.capture.usage_events` description if the write-through ships.
+
 ## Acceptance Criteria
 
 - [ ] `waste_attribution()` returns per-loop totals: tokens_total, tokens_wasted, waste_pct, run counts.
@@ -111,6 +139,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/fsm/executor.py:2582` (`_finish()`) — writes `loop_runs` rows via `record_loop_run_summary()`; the natural sibling site for a `run_id`-stamped `usage_events` write if Option A is chosen
 - `scripts/little_loops/cli/loop/info.py:1161,1217` (`cmd_diagnose_evaluators()`, `cmd_calibrate_budget()`) — related but separate waste-adjacent tooling (evaluator health, not token cost); no code change needed but worth cross-referencing in docs
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/history.py:245,262,299,316` — reference implementation for the `ctx_stats.py` `resolve_history_db()` fix: `from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db` then `resolve_history_db(project_root / DEFAULT_DB_PATH)` [Agent 2 finding]
+- **Schema-version correction**: `SCHEMA_VERSION` is currently **28** (`session_store.py:217`), not 24 as this issue's Option A text assumes — a new migration for the `run_id` column would be **v29**, not v24. `_MIGRATIONS` list ends at index 27 (~line 905). [Agent 2 + Agent 3 finding]
+- **Prior decision precedent to reconcile**: `.ll/decisions.yaml` `ARCHITECTURE-145` (from ENH-2461) previously rejected FK-style column additions onto `usage_events` (joining to `tool_events.id`), establishing `usage_events` as an "independent table (join on `session_id`, `ts`) + per-call grain." A `run_id` FK-style column under this issue's Option A is the same shape of change that decision rejected for a different target — worth reconciling/citing before implementing, via `ll-issues decisions list` [Agent 2 finding]
+- `scripts/little_loops/config-schema.json` (~line 1749-1752) — `analytics.capture.usage_events` description text asserts *"usage_events is currently derived by the raw_events rebuild parser, not a live per-event writer"*; a run_id write-through near `record_loop_run_summary()`/`_backfill_usage_events()` would contradict this claim and the description needs updating [Agent 2 finding]
+
 ### Similar Patterns
 - `history_reader.py:854` `cost_attribution()` — token-sum rollup with whitelisted `GROUP BY`
 - `history_reader.py:1550` `aggregate_loop_runs()` — outcome rollup by `loop_name`/`terminated_by`
@@ -120,12 +154,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_history_reader.py` — `TestCostAttribution` (lines 92-181) and `test_aggregate_loop_runs` (~line 1786) are the fixture-seeding templates; `TestMissingDatabase`/`TestEmptyTables` (lines 29-89) for the never-raise contract
 - `scripts/tests/test_cli_ctx_stats.py` — `test_json_mode` / `test_json_mode_skill_health_present` (lines 282-366) for CLI-level `--json` assertions
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_store.py:4999` `TestSchemaV28` — exact migration-test template to copy for the new `run_id` migration (`TestSchemaV29`): column-set assertion + `test_v27_db_upgrades_gains_subagent_runs`-style upgrade-from-prior-version check. `_bootstrap_schema_at()` (line 3957) is the shared helper for the upgrade test [Agent 3 finding]
+- `scripts/tests/test_session_store.py:3287` `TestSchemaV20UsageEvents.test_usage_events_columns` — **will break**: exact-set (`cols == {...}`) assertion over `usage_events` columns; must add `"run_id"` to the expected set if Option A ships [Agent 2 + Agent 3 finding]
+- **12+ hardcoded `SCHEMA_VERSION == 28` assertions will break** and must be bumped to 29 across: `scripts/tests/test_session_store.py` (lines 1380, 1825-1826, 1995-1996, 2047-2048, 2126, 2143-2144, 3724-3725, 3765-3766, 3820, 4513, 4659, 4880, 4985, 5025), `scripts/tests/test_assistant_messages.py:88`, `scripts/tests/test_enh_2511_mcp_telemetry.py:18`, `scripts/tests/test_enh_2497_agent_type.py:17`, `scripts/tests/test_queue_store.py:14` [Agent 2 finding]
+- `scripts/tests/test_session_store.py:3124` `TestBackfillUsageEvents` (`test_rebuild_is_idempotent_for_usage` at 3259-3281) — new test needed proving backfilled rows get the correct `run_id` and stay idempotent on re-run [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py` — verify `record_loop_run_summary()` caller in `_finish()` still passes if a `run_id`-stamped `usage_events` write-through is added alongside it [Agent 1 finding]
+- **New test gap (no existing coverage)**: `test_cli_ctx_stats.py` has no test that sets `LL_HISTORY_DB` env or `history.db_path` config with no `--db` flag — this is the actual regression proof for the `resolve_history_db()` fix; it would fail today and pass once `ctx_stats.py` routes through `resolve_history_db()` [Agent 3 finding]
+- New `TestWasteAttribution` class in `test_history_reader.py`, mirroring `TestCostAttribution`'s `_seed`/group-by/injection-guard/missing-db shape [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/API.md` — `history_reader.py` module reference section needs a `waste_attribution()` entry
-- `docs/ARCHITECTURE.md` — schema-versions table (documents `loop_runs`/`usage_events`/`orchestration_runs`) needs an entry if Option A's v24 migration is chosen
+- `docs/ARCHITECTURE.md` — schema-versions table (documents `loop_runs`/`usage_events`/`orchestration_runs`) needs an entry for the v29 migration (corrected from v24)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md` (~line 108 `usage_events` row, ~line 112 `loop_runs` row) — separate schema reference table from ARCHITECTURE.md's; needs the same v29/`run_id`/`waste_attribution()` updates [Agent 2 finding]
+- `docs/observability/otel-mapping.md` (~lines 55-65 "Persistence", ~67-74 "Cost attribution query") — documents `cost_attribution()` and the `invocation_id`/`provider_vendor` forward-compat columns; `run_id` is the same shape of forward-compat column and `waste_attribution()` is the same shape of query function, both in this doc's existing scope [Agent 2 finding]
+- `docs/reference/CLI.md` (`### ll-ctx-stats`, lines 270-289) — CLI reference entry needs a new "waste" JSON-key/section documented, following the existing per-key pattern [Agent 2 finding]
+- `commands/help.md:300` — one-line `ll-ctx-stats` description in the master command list; cosmetic update only if the tool's stated scope meaningfully expands [Agent 2 finding]
 
 ### Configuration
-- None — read-only feature; `resolve_history_db()` (`session_store.py:179`) is the only config-path touchpoint, and only to fix `ctx_stats.py`'s existing bypass
+- `resolve_history_db()` (`session_store.py:179`) is the only config-path touchpoint, and only to fix `ctx_stats.py`'s existing bypass
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` (~line 1749-1752, `analytics.capture.usage_events` description) — needs updating if Option A's write-through ships (see Dependent Files note above) [Agent 2 finding]
 
 ## Impact
 
@@ -133,7 +185,43 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Effort**: Small (~100 LOC + tests), assuming outcome data exists; Medium if an outcome column must be backfilled.
 - **Risk**: Low — read-only analytics.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-21_
+
+**Readiness Score**: 100/100 → STRONG GO
+**Outcome Confidence**: 61/100 → MODERATE (re-scored 2026-07-21 after confirming the `ARCHITECTURE-145` precedent is reconciled)
+
+### Outcome Risk Factors
+- Deep per-site complexity: the plan requires a new schema migration (v29) plus a live per-invocation `usage_events` writer wired into `fsm/executor.py`'s `_finish()`, and cascades into 12+ hardcoded `SCHEMA_VERSION == 28` assertions across 5 test files — this is architectural-level work, not a mechanical substitution.
+- ~~No existing live per-invocation writer exists yet... unproven internal mechanism with no test coverage~~ — **retired by the 2026-07-21 spike** (`scripts/tests/spike/usage_events_run_id_writer/`): 5 tests proved the write mechanism, `run_id` derivation parity with `_finish()`, and concurrency safety under `ll-parallel`/`ll-sprint`-style overlap. Test coverage score raised 15→20 accordingly.
+- Broad change surface: touches `session_store.py` (migration + write-through), `fsm/executor.py`, `history_reader.py`, `ctx_stats.py`, 4+ test files, and 4+ documentation files (`HISTORY_SESSION_GUIDE.md`, `otel-mapping.md`, `CLI.md`, `config-schema.json`) — wide blast radius beyond the core query/CLI layer the issue title implies.
+- ~~Unreconciled precedent: `ARCHITECTURE-145`... no `.ll/decisions.yaml` entry formally reconciles them yet~~ — **retired**: `ARCHITECTURE-146` (`.ll/decisions.d/e01ffb15-39ab-46f4-827c-39c2a34c947b.json`, 2026-07-21T17:41:50Z) already reconciles this — `run_id` is a live per-invocation write authoritative at write time, not a backfill-derived FK, so `ARCHITECTURE-145`'s rejection doesn't apply. Ambiguity score raised 20→24 accordingly.
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-07-21_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| No live per-invocation writer exists; unproven mid-run write mechanism | `TestUsageEventsRunIdWriter::test_single_run_stamps_correct_run_id` | ✓ pass |
+| Concurrent `ll-parallel`/`ll-sprint` writers could cross-attribute or corrupt `run_id` | `TestUsageEventsRunIdWriter::test_concurrent_runs_do_not_cross_attribute` | ✓ pass |
+| Concurrent writes under `busy_timeout`/WAL could silently drop rows | `TestUsageEventsRunIdWriter::test_concurrent_runs_lose_no_writes` | ✓ pass |
+| `run_id` derivation must match `_finish()`'s inline format exactly for a drop-in wire-up | `TestUsageEventsRunIdWriter::test_run_id_derivation_matches_executor_format` | ✓ pass |
+| Isolation guard (spike must not depend on production modules) | `TestUsageEventsRunIdWriter::test_spike_does_not_import_production_modules` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/usage_events_run_id_writer/`
+**Verification**: 5 spike tests pass; existing `usage_events`/`SchemaV28` (9 tests) and `CostAttribution` (4 tests) regression suites unaffected — 18 tests across 3 commands.
+**Promotion**: move `record_usage_event()`/`derive_run_id()` to `scripts/little_loops/spike/usage_events_run_id_writer/` in a separate PR, then wire the real v29 migration and `_finish()` call-site change as the actual ENH-2712 implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-21T18:15:00 - `bc2b7cf0-fc25-4700-a6e3-c95ced3f3fa8.jsonl`
+- `/ll:confidence-check` - 2026-07-21T18:00:00 - `08339d06-d2c5-4f76-a31f-71e1fb61d2d9.jsonl`
+- `/ll:spike` - 2026-07-21T17:36:14 - `74d7879e-9d6d-4546-b56a-52662ad4ace0.jsonl`
+- `/ll:confidence-check` - 2026-07-21T17:29:51 - `086fb7d0-d311-4b83-80fa-36c69997912d.jsonl`
+- `/ll:wire-issue` - 2026-07-21T17:23:04 - `712f520b-f072-48e5-bf39-095b885a0afe.jsonl`
 - `/ll:decide-issue` - 2026-07-21T05:10:29 - `255186e7-f4f9-45b7-b959-38186bd122ed.jsonl`
 - `/ll:refine-issue` - 2026-07-21T04:58:15 - `1992a3d7-7ba0-476d-80b0-50ba3a3e1eb8.jsonl`
 - `/ll:capture-issue` - 2026-07-21T02:03:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79ab3d38-0b67-42aa-9ad2-b6f2af55d225.jsonl`

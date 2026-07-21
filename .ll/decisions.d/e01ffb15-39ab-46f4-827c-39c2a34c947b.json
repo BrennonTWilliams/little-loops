@@ -1,0 +1,17 @@
+{
+  "id": "afb52fde-b04e-45f8-a6ea-69a0520bec72",
+  "type": "decision",
+  "timestamp": "2026-07-21T17:41:50Z",
+  "category": "architecture",
+  "labels": [
+    "token-cost",
+    "history-db",
+    "schema"
+  ],
+  "rationale": "ARCHITECTURE-145 rejected FK-style columns on usage_events (e.g. to tool_events.id) because every _backfill_* table is derived independently from raw_events transcript lines with no FSM-state boundaries, so only per-call grain is derivable \u2014 a cross-table FK would contradict the independent-parser rebuild() architecture. ENH-2712's run_id column is a different shape: it is stamped by a live per-invocation writer hooked at fsm/executor.py _finish() (the same call site as record_loop_run_summary()), at the moment the run_id is already known, not reconstructed after the fact from raw_events. There is no rebuild/rebackfill ambiguity to preserve, because the value is authoritative at write time. Proven viable by the 2026-07-21 spike (scripts/tests/spike/usage_events_run_id_writer/, 5/5 tests): live write mechanism, run_id derivation parity with _finish(), and concurrency safety under ll-parallel/ll-sprint-style overlapping runs.",
+  "rule": "usage_events run_id column (Option A, ENH-2712) is a live per-invocation write, not a backfill-derived FK \u2014 ARCHITECTURE-145's rejection does not apply",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (time-range join, usage_events.ts BETWEEN loop_runs.started_at AND ended_at) \u2014 no schema change needed, but silently misattributes tokens under the concurrent-run case ll-parallel/ll-sprint exist to support, since loop_runs has no session_id to scope the join; rejected in ENH-2712's own Option A/B analysis before this reconciliation was drafted.",
+  "issue": "ENH-2712",
+  "source_issue_id": "ENH-2712"
+}

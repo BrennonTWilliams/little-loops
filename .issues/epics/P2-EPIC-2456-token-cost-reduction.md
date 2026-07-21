@@ -53,6 +53,10 @@ relates_to:
 - ENH-2712
 - ENH-2713
 - ENH-2714
+- ENH-2719
+- ENH-2720
+- ENH-2721
+- ENH-2722
 source_artifacts:
 - thoughts/plans/2026-07-02-token-cost-reduction-architecture.md
 - thoughts/plans/2026-07-02-token-cost-optimal-techniques.md
@@ -232,6 +236,11 @@ Tier 0 and Tier 1 children are filed (IDs below); Tier 2–4 entries remain **pl
 - **ENH-2713** — Per-state `model:` pinning in loop YAML (haiku for verdict states): static precursor to F7-lite with MR-1 as the quality gate; loop-YAML half of deferred ENH-2490. *(filed 2026-07-21, P3)*
 - **ENH-2714** — Automation-context static-prefix pruning for FSM invocations: broadened from catalog-only to the full static prefix (catalog narrowing + gated SessionStart/memory/digest hook output + host-flag CLAUDE.md suppression); supersedes FEAT-2711 as the default per-invocation savings lever. *(filed 2026-07-21, re-scoped 2026-07-20, P3→P2)*
 
+### Verification & adoption tranche (captured 2026-07-21 — closure gate + default flips)
+
+- **ENH-2719** — Realized-savings verification and closure gate: run every shipped child's Success-Metrics gate (F1 >50% `cache_read` share, F3 50–70% shrink, F4 3–6×, F10 >80% warmed hits, Tier 0 delta) against real runs, record before/after $/run in this epic, file follow-ups for failed gates. The epic cannot close without this report. *(filed 2026-07-21, P2)*
+- **ENH-2720** — Default-flip tranche: flip `orchestration.request_path` default `"cli"` → `"sdk"` (plus per-loop `"batch"` for latency-insensitive automation) once ENH-2719's runs demonstrate parity and realized savings; caching/Batches/warming/deferred-tools are all dormant under the current default. Depends on ENH-2719. *(filed 2026-07-21, P2)*
+
 ### Cross-tier verification
 
 - **[TBD-19]** Joint cache × router 2×2 ablation matrix (`scripts/little_loops/dev/measure_cache_routing_interaction.py`) — greenfield research output; verify on representative `ll-loop` traces.
@@ -354,6 +363,7 @@ Tracking the questions raised in the plan files that need resolution before fili
 **Open** | Created: 2026-07-02 | Priority: P2
 
 ## Session Log
+- `/ll:capture-issue` - 2026-07-21 - Filed the verification & adoption tranche: **ENH-2719** (realized-savings verification and closure gate — no measured numbers exist yet for any shipped gate) and **ENH-2720** (flip `orchestration.request_path` default to `sdk`/per-loop `batch` after ENH-2719's parity evidence; depends_on ENH-2719). Both parented here, added to `relates_to`, new Children subsection inserted before Cross-tier verification. Compression confirmed already default-on (`cli/loop/run.py` wires `BRConfig.compression`), so it is excluded from the flip tranche.
 - `/ll:capture-issue` - 2026-07-21 - Filed the transport & waste tranche from a "higher-value levers we haven't considered" review: **FEAT-2710** (Message Batches API request path, 50% discount), **FEAT-2711** (FSM session reuse via existing `resume` primitive), **ENH-2712** (wasted-run token attribution view), **ENH-2713** (per-state model pinning in loop YAML), **ENH-2714** (FSM invocation catalog pruning). All parented here and added to `relates_to`; new Children subsection added between Tier 4 and Cross-tier verification.
 - `/ll:decide-issue` - 2026-07-18T19:14:18 - `4fd1c868-e4bb-4ba3-ab7e-80d1d257cbcd.jsonl`
 - `/ll:capture-issue` - 2026-07-18 - Filed the Tier 2 caching tranche: **FEAT-2671** (F1-prereq a, was [TBD-8]), **FEAT-2672** (F1-prereq b, was [TBD-9]), **FEAT-2673** (F1, was [TBD-10]; `decision_needed: true` for Open Questions #1/#2/#5), **FEAT-2674** (F10, was [TBD-11]; depends on FEAT-2673). Replaced the four TBD placeholders in Children and added all four to `relates_to`. Reminder recorded in FEAT-2673: decide [TBD-19] (cache x router ablation set, OQ #7) before F1 ships.

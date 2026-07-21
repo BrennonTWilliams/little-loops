@@ -1,0 +1,11 @@
+{
+  "id": "c8f6de92-a99d-4c7f-b7a4-5ea04622072b",
+  "type": "decision",
+  "timestamp": "2026-07-21T17:24:43Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Shipped caching/Batches/warming code is dormant under the cli default; flip is parity-gated, with CLI fallback required when SDK/key absent",
+  "rule": "Captured: flip orchestration.request_path default cli\u2192sdk/batch only after ENH-2719 parity verification",
+  "scope": "issue",
+  "issue": "ENH-2720"
+}
