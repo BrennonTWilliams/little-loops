@@ -29,6 +29,9 @@ score_test_coverage: 20
 score_ambiguity: 14
 score_change_surface: 18
 size: Very Large
+deferred_by: automation
+deferred_date: '2026-07-21T05:24:42Z'
+deferred_reason: low_readiness
 ---
 
 # FEAT-2676: F4b — LLMLingua benchmark comparator + heuristic_underperforms gate flip

@@ -3,7 +3,7 @@ id: FEAT-2711
 type: FEAT
 title: FSM session reuse for continuity-of-reasoning state chains
 priority: P3
-status: open
+status: deferred
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -29,6 +29,9 @@ spike_needed: true
 spike_attempted: true
 spike_completed: true
 size: Very Large
+deferred_by: automation
+deferred_date: '2026-07-21T06:29:54Z'
+deferred_reason: low_readiness
 ---
 
 # FEAT-2711: FSM session reuse for continuity-of-reasoning state chains
