@@ -374,20 +374,32 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `orchestration.request_path: sdk` actually dispatches via
+- [x] `orchestration.request_path: sdk` actually dispatches via
       `anthropic.Anthropic().messages.create()` instead of the CLI
-      subprocess, for eligible prompt-mode states.
-- [ ] `orchestration.request_path: batch` submits via the Batches API, polls
+      subprocess, for eligible prompt-mode states. `FSMExecutor._dispatch_live()`
+      (`fsm/executor.py:1997-2085`) branches to `host_runner.dispatch_anthropic_request()`
+      when `_resolve_request_path(state) == "sdk"`; verified by
+      `test_request_path_sdk_calls_dispatch_not_cli` and
+      `test_state_level_request_path_overrides_orchestration_default`.
+- [x] `orchestration.request_path: batch` submits via the Batches API, polls
       to completion, and returns results through the existing parse path
-      (completes FEAT-2710's unmet AC).
-- [ ] Interrupted batch runs resume polling from a persisted `batch_id`
+      (completes FEAT-2710's unmet AC). Verified by
+      `test_request_path_batch_submits_polls_and_clears_tracker`.
+- [x] Interrupted batch runs resume polling from a persisted `batch_id`
       instead of double-submitting (completes FEAT-2710's unmet AC).
-- [ ] Default (`"cli"`) behavior is byte-identical to today — verified by a
+      Verified by `test_request_path_batch_resumes_without_double_submit`
+      and `test_request_path_batch_timeout_leaves_tracker_for_resume`.
+- [x] Default (`"cli"`) behavior is byte-identical to today — verified by a
       regression test asserting the CLI dispatch path is untouched when
-      `request_path` resolves to `"cli"` or is absent.
-- [ ] F5/F6 telemetry (`observability/tracing.py`, per-state cost table)
+      `request_path` resolves to `"cli"` or is absent. See
+      `test_request_path_cli_default_unaffected`.
+- [x] F5/F6 telemetry (`observability/tracing.py`, per-state cost table)
       correctly reflects the 0.1x/1.25x cache discount and 0.5x batch
       discount for requests that actually took the SDK/batch path.
+      `fsm/cost_graph.py:227,234` reads `row["is_batch"]` and threads it
+      into `estimate_cost_usd(..., is_batch=is_batch)`; verified by
+      `test_is_batch_row_applies_discount` and
+      `test_missing_is_batch_defaults_to_full_price`.
 
 ## Impact
 
@@ -402,6 +414,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   results) that need explicit handling.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-21T04:46:42 - `b84944fe-c817-4cd3-ba89-3c3da6b98373.jsonl`
 - `ll-auto` - 2026-07-21T04:17:39 - `d4623838-b304-4773-a76e-441d55a3f4db.jsonl`
 - `/ll:ready-issue` - 2026-07-21T04:01:51 - `f5aaf22c-811d-462b-b31d-6ae7c262f366.jsonl`
 - `/ll:confidence-check` - 2026-07-20T00:00:00 - `e4fe1818-4578-4dc7-afe5-bfd31d710f44.jsonl`
@@ -413,7 +426,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-**Open** | Created: 2026-07-21 | Priority: P2
+**Done** | Created: 2026-07-21 | Priority: P2
 
 
 ---
@@ -421,16 +434,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Resolution
 
 - **Action**: implement
-- **Completed**: 2026-07-20
-- **Status**: Completed (automated fallback)
-- **Implementation**: Command exited early but issue was addressed
-
+- **Completed**: 2026-07-21
+- **Status**: Completed
+- **Implementation**: Live SDK/Batches dispatch wired into `FSMExecutor._dispatch_live()`
 
 ### Files Changed
-- See git history for details
+- `scripts/little_loops/fsm/executor.py` — `_resolve_request_path()` / `_dispatch_live()`
+- `scripts/little_loops/host_runner.py` — `dispatch_anthropic_request()`, `dispatch_batch_request()`, `poll_batch_result()`
+- `scripts/little_loops/fsm/cost_graph.py` — threads `is_batch` into `estimate_cost_usd()`
+- `scripts/little_loops/fsm/batch_tracker.py`, `scripts/little_loops/fsm/persistence.py`,
+  `scripts/little_loops/cli/loop/lifecycle.py`, `scripts/little_loops/cli/loop/run.py`,
+  `scripts/little_loops/subprocess_utils.py`
 
 ### Verification Results
-- Automated verification passed
+- `test_host_runner_dispatch.py`: 10/10 passed
+- `test_fsm_executor.py -k "request_path or batch"`: 6/6 passed
+- `test_fsm_cost_graph.py` batch-discount cases: passed
+- All 5 Acceptance Criteria confirmed met against `HEAD`, re-verified via `/ll:ready-issue` on 2026-07-21
 
 ### Commits
-- See git log for details
+- `ce7174b4` — "wire FSM executor to live SDK/Batches API dispatch (FEAT-2716)"

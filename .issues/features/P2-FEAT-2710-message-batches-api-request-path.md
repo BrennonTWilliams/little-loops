@@ -3,7 +3,7 @@ id: FEAT-2710
 type: FEAT
 title: Message Batches API request path (50% discount on batchable automation)
 priority: P2
-status: in_progress
+status: done
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -27,6 +27,7 @@ score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 18
 decision_needed: false
+completed_at: '2026-07-21T04:45:17Z'
 ---
 
 # FEAT-2710: Message Batches API request path (50% discount on batchable automation)
@@ -213,9 +214,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `orchestration.request_path: batch` submits via the Batches API and returns results through the existing parse path. **Not met** — `build_batch_request()` builds submission kwargs (host_runner.py); no code calls `anthropic.Anthropic().messages.batches.create(**kwargs)` or routes executor state execution through it. Matches the exact gap the Confidence Check flagged: FEAT-2673's "sdk" path never got a live dispatch call either, so there is no existing synchronous SDK call site to fork a batch variant from — building one is a separate, larger, higher-risk change to `fsm/executor.py`'s core dispatch path.
-- [x] Batch requests are priced at 0.5× in the F6 cost table and F5 telemetry. `estimate_cost_usd(..., is_batch=True)` applies `BATCH_DISCOUNT` (0.5). Not yet *called* with `is_batch=True` anywhere, since no code path produces batch usage events yet (depends on the AC above) — the pricing primitive itself is complete and tested.
-- [ ] Interrupted runs resume polling from persisted batch IDs (no double-submit). **Not met** — `fsm/batch_tracker.py`'s `BatchTracker` provides the atomic-file bookkeeping primitive (mirrors `RateLimitCircuit`), but nothing calls `record_submitted()`/`get_batch_id()` yet since there is no poll loop to resume (depends on the first AC).
+- [x] `orchestration.request_path: batch` submits via the Batches API and returns results through the existing parse path. **Met** (2026-07-21 via FEAT-2716, commit `ce7174b4`) — `FSMExecutor._dispatch_live()` (`fsm/executor.py:1997-2085`) routes `request_path == "batch"` prompt-mode states through `host_runner.dispatch_batch_request()` → `poll_batch_result()`.
+- [x] Batch requests are priced at 0.5× in the F6 cost table and F5 telemetry. `estimate_cost_usd(..., is_batch=True)` applies `BATCH_DISCOUNT` (0.5), and is now actually invoked with `is_batch=True` since FEAT-2716 tags batch usage events accordingly.
+- [x] Interrupted runs resume polling from persisted batch IDs (no double-submit). **Met** (2026-07-21 via FEAT-2716, commit `ce7174b4`) — `_dispatch_live()` checks `BatchTracker.get_batch_id()` before submitting; a non-`None` value resumes polling with the persisted `custom_id` instead of resubmitting. Verified by `test_fsm_executor.py::test_request_path_batch_resumes_without_double_submit`.
 - [x] Default behavior unchanged; batch is opt-in per config/loop/state. `orchestration.request_path` still defaults to `"cli"`; `StateConfig.request_path` defaults to `None` (falls through to config default), following the exact `model` field precedent.
 
 ### Partial Implementation Notes (2026-07-21)
@@ -238,6 +239,24 @@ larger and riskier change to the core loop-execution path than this issue's
 follow-up issue scoped explicitly to "wire live SDK/batch dispatch into
 `fsm/executor.py`" that covers both request paths together, rather than
 retrofitting it piecemeal under this issue's title.
+
+## Resolution (2026-07-21)
+
+The recommended follow-up, FEAT-2716, landed the live SDK/Batches dispatch
+call in commit `ce7174b4` ("wire FSM executor to live SDK/Batches API
+dispatch"), completing both ACs this issue had deferred. Verified directly
+against `HEAD` during `/ll:ready-issue`:
+
+- `test_host_runner_dispatch.py` — 10/10 passed
+- `test_fsm_executor.py -k "request_path or batch"` — 6/6 passed, including
+  `test_request_path_batch_resumes_without_double_submit`
+- The 13 unrelated failures elsewhere in `test_fsm_executor.py` (signal
+  handling, timeout defaults, stall detector) reproduce identically on `main`
+  at `f4ef4a87`, before this issue or FEAT-2716 existed — pre-existing, not a
+  regression from this work.
+
+All four Acceptance Criteria are now met. Closing as already fixed via
+FEAT-2716.
 
 ## Impact
 
@@ -272,6 +291,7 @@ core dependency gap below is unchanged and re-verified against current code.
   round-trip is still unverified against the real SDK surface.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-21T04:45:18 - `b84944fe-c817-4cd3-ba89-3c3da6b98373.jsonl`
 - `/ll:manage-issue` (partial implementation — infra layer only, see Partial Implementation Notes) - 2026-07-21T03:40:13Z - `4ea8aa10-aefa-44df-b782-f67007fcc175.jsonl`
 - `/ll:refine-issue` - 2026-07-21T03:23:28 - `46a0022c-3c8d-4a4a-8dd4-91d37d76136b.jsonl`
 - `/ll:confidence-check` - 2026-07-20T00:00:00 - `97856e1e-43f1-4a41-b60e-e38c58d369df.jsonl`
@@ -288,4 +308,4 @@ core dependency gap below is unchanged and re-verified against current code.
 
 ## Status
 
-**Open** | Created: 2026-07-21 | Priority: P2
+**Done** | Created: 2026-07-21 | Priority: P2
