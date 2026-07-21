@@ -83,8 +83,9 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v26 | ENH-2466 | `learning_test_events` table (Learning Test Registry mirror) |
 | v27 | ENH-2495 | `session_lifecycle_events` table (handoff/compaction/sweep transitions) |
 | v28 | ENH-2505 | `subagent_runs` table (subagent Task/Agent spawn tree) |
+| v29 | ENH-2723 | `run_id` column on `usage_events` |
 
-v15–v18 and v20–v28 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v29 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 

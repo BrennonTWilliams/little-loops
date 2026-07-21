@@ -7762,11 +7762,11 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **28**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **29**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 28
+    SCHEMA_VERSION,        # 29
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection

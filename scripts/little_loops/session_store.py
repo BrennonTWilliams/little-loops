@@ -214,7 +214,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -901,6 +901,15 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_subagent_agent_id ON subagent_runs(agent_id);
     CREATE INDEX IF NOT EXISTS idx_subagent_agent ON subagent_runs(agent_type);
     CREATE INDEX IF NOT EXISTS idx_subagent_status ON subagent_runs(status);
+    """,
+    # v29 (ENH-2723): run_id column on usage_events, decomposed from ENH-2721.
+    # Nullable, additive, no FK — usage_events is deliberately an independent
+    # table joined at the application/query level (ARCHITECTURE-145, ENH-2461),
+    # not FK-linked to loop_runs. Unpopulated until the live writer (ENH-2724)
+    # and backfill (ENH-2725) land.
+    """
+    ALTER TABLE usage_events ADD COLUMN run_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_usage_events_run_id ON usage_events(run_id);
     """,
 ]
 
