@@ -26,7 +26,13 @@ import yaml
 
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, ParameterSpec, StateConfig
+from little_loops.fsm.schema import (
+    EvaluateConfig,
+    FSMLoop,
+    ParameterSpec,
+    PruningProfileConfig,
+    StateConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +233,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "parse_swallow_ok",
         "policy_dims_scored_ok",
         "unsafe_context_interpolation_ok",
+        "pruning_profile",
+        "pruning_profile_ok",
         "import",
         "fragments",
         "from",
@@ -1274,6 +1282,8 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_parse_swallow(fsm))
 
+    errors.extend(_validate_pruning_profile(fsm))
+
     errors.extend(_validate_unsafe_context_interpolation(fsm))
 
     errors.extend(_validate_classify_route_default(fsm))
@@ -2036,6 +2046,79 @@ def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
                 severity=ValidationSeverity.WARNING,
             )
         )
+    return errors
+
+
+_SKILL_INVOKE_RE = re.compile(r"/ll:([a-zA-Z0-9_-]+)")
+
+
+def _effective_pruning_profile(fsm: FSMLoop, state: StateConfig) -> PruningProfileConfig | None:
+    """Resolve the effective pruning profile for a state: state override, then loop default."""
+    if state.pruning_profile is not None:
+        return state.pruning_profile
+    return fsm.pruning_profile
+
+
+def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-12 (ENH-2714): automation-context pruning-profile consistency.
+
+    Two checks against the resolved pruning profile (state ``pruning_profile:``
+    override, else the loop-level default):
+
+    1. ERROR — a state's own ``tools:`` allowlist excludes a ``/ll:<skill>``
+       it actually invokes via ``action:``. The state would fail at runtime
+       because its own narrowing flags block its own action.
+    2. WARN — a state runs under a profile with ``suppress_catalog: true`` and
+       invokes a ``/ll:<skill>`` action. Catalog suppression removes the skill
+       listing the host needs to resolve the slash command, so the invocation
+       may fail depending on host behavior.
+
+    Suppressed by ``pruning_profile_ok: true`` at the loop top-level.
+    """
+    if fsm.pruning_profile_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if not state.action or not state.action.lstrip().startswith("/"):
+            continue
+        match = _SKILL_INVOKE_RE.search(state.action)
+        if match is None:
+            continue
+        skill = match.group(1)
+
+        # Check 1 (ERROR): state's own tools: allowlist excludes its own skill.
+        if state.tools is not None and skill not in state.tools:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] action invokes /ll:{skill} but the "
+                        f"state's own tools: allowlist {state.tools!r} excludes it — "
+                        "the state would fail to resolve its own action at runtime. "
+                        "Add the skill to tools:, or set `pruning_profile_ok: true` "
+                        "at the loop top-level to suppress. (ENH-2714 MR-12)"
+                    ),
+                    path=f"states.{state_name}.tools",
+                    severity=ValidationSeverity.ERROR,
+                )
+            )
+
+        # Check 2 (WARN): catalog-suppressed profile but state invokes a skill.
+        profile = _effective_pruning_profile(fsm, state)
+        if profile is not None and profile.enabled and profile.suppress_catalog:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] runs under a pruning profile with "
+                        "suppress_catalog: true and invokes /ll:"
+                        f"{skill} — catalog suppression removes the skill listing "
+                        "the host needs to resolve slash commands. Verify the host "
+                        "still resolves this skill, or set `pruning_profile_ok: true` "
+                        "at the loop top-level to suppress. (ENH-2714 MR-12)"
+                    ),
+                    path=f"states.{state_name}.action",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
     return errors
 
 

@@ -350,10 +350,46 @@
         }
       },
       "additionalProperties": false
+    },
+    "pruning_profile": {
+      "$ref": "#/definitions/pruningProfileConfig",
+      "description": "ENH-2714: loop-level default automation-context static-prefix pruning profile; state-level pruning_profile overrides it per state. Unset (default) = full unpruned behavior."
+    },
+    "pruning_profile_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "ENH-2714 MR-12: suppresses the self-contradictory-allowlist (ERROR) and catalog-suppressed-but-skill-invoking (WARN) pruning-profile validation rule."
     }
   },
   "additionalProperties": false,
   "definitions": {
+    "pruningProfileConfig": {
+      "type": "object",
+      "description": "ENH-2714: opt-in automation-context static-prefix pruning profile. Sets LL_AUTOMATION=1 / LL_AUTOMATION_PROFILE=<name> in the child process environment so automation-aware hooks suppress their static-prefix output.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch. When false the profile is inert even if other fields are set."
+        },
+        "name": {
+          "type": "string",
+          "default": "default",
+          "description": "Profile name propagated as LL_AUTOMATION_PROFILE."
+        },
+        "suppress_catalog": {
+          "type": "boolean",
+          "default": false,
+          "description": "Narrow the skill/command catalog via tools: allowlist mapped to the host's narrowing flags (only on hosts confirming tool_allowlist via ll-doctor)."
+        },
+        "suppress_claude_md": {
+          "type": "boolean",
+          "default": false,
+          "description": "Suppress CLAUDE.md loading for this invocation (only on hosts confirming claude_md_suppression via ll-doctor)."
+        }
+      },
+      "additionalProperties": false
+    },
     "stateConfig": {
       "type": "object",
       "description": "Configuration for a single FSM state",
@@ -512,6 +548,10 @@
             "type": "string"
           },
           "description": "List of tool names to pass as --tools CSV to the Claude CLI subprocess. Only used for prompt-mode states. Ignored for shell-mode states."
+        },
+        "pruning_profile": {
+          "$ref": "#/definitions/pruningProfileConfig",
+          "description": "ENH-2714: state-level automation-context static-prefix pruning profile override. Takes precedence over the loop-level default when set."
         },
         "model": {
           "type": "string",

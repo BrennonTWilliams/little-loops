@@ -95,6 +95,12 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     prompt = " ".join(parts)
     stream_callback: Callable[[str, bool], None] | None = spec.args.get("stream_callback")
 
+    # ENH-2714: opt-in automation-context static-prefix pruning profile, threaded
+    # through from the caller (ll-harness/ll-action/ll-loop) so those CLIs don't
+    # silently bypass pruning outside the FSM executor path. None (default)
+    # preserves full unpruned behavior.
+    automation_profile: str | None = spec.args.get("automation_profile")
+
     if stream_callback is not None:
         from little_loops.subprocess_utils import run_claude_command
 
@@ -106,12 +112,13 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 command=command,
                 timeout=spec.timeout,
                 stream_callback=stream_callback,
+                automation_profile=automation_profile,
             )
             return RunnerResult(stdout="", stderr="", exit_code=proc.returncode)
         except subprocess.TimeoutExpired:
             return RunnerResult(stdout="", stderr="", exit_code=124, timed_out=True)
 
-    inv = resolve_host().build_streaming(prompt=prompt)
+    inv = resolve_host().build_streaming(prompt=prompt, automation_profile=automation_profile)
     try:
         proc = subprocess.run(
             [inv.binary, *inv.args],

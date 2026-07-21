@@ -1576,6 +1576,19 @@ class FSMExecutor:
             extra_kwargs: dict[str, Any] = {}
             if self.working_dir is not None:
                 extra_kwargs["working_dir"] = self.working_dir
+            # ENH-2714: resolve the pruning profile — state-level override wins,
+            # falls through to the loop-level default; None (unset either place)
+            # preserves full unpruned behavior. Only meaningful in prompt mode
+            # (host CLI invocations); shell/mcp actions don't consult it.
+            _pruning_profile_cfg = state.pruning_profile or self.fsm.pruning_profile
+            _automation_profile: str | None = None
+            if (
+                action_mode == "prompt"
+                and _pruning_profile_cfg is not None
+                and _pruning_profile_cfg.enabled
+            ):
+                _automation_profile = _pruning_profile_cfg.name
+
             result = self.action_runner.run(
                 action,
                 timeout=state.timeout or self.fsm.default_timeout or 3600,
@@ -1585,6 +1598,7 @@ class FSMExecutor:
                 tools=state.tools if action_mode == "prompt" else None,
                 on_usage=on_usage,
                 model=(state.model or self.run_model) if action_mode == "prompt" else None,
+                automation_profile=_automation_profile,
                 **extra_kwargs,
             )
 

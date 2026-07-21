@@ -408,6 +408,69 @@ class PromptSizeGuardConfig:
 
 
 @dataclass
+class PruningProfileConfig:
+    """Opt-in automation-context static-prefix pruning profile (ENH-2714).
+
+    A tight, controlled FSM state whose prompt fully specifies the task
+    doesn't need the full skill/command catalog, SessionStart hook's config +
+    project_context digest, or memory/session-digest injection re-sent on
+    every invocation. Declaring this profile at loop level (default for all
+    states) or state level (overrides the loop default) sets
+    ``LL_AUTOMATION=1`` / ``LL_AUTOMATION_PROFILE=<name>`` in the child
+    process environment (``host_runner.py`` ``build_streaming(...,
+    automation_profile=...)``), which automation-aware hooks
+    (``session_start.py``, ``history_context.py``) check to suppress their
+    static-prefix output. ``suppress_catalog``/``suppress_claude_md`` are
+    narrowing flags consulted only on hosts whose capability is confirmed via
+    ``ll-doctor`` (``HostCapabilities.tool_allowlist`` /
+    ``claude_md_suppression``); unconfirmed hosts no-op cleanly. Default is
+    unset (``None`` on both loop and state) — full unpruned behavior.
+
+    Attributes:
+        enabled: Master switch. When False, the profile is inert even if
+            other fields are set (mirrors ``PromptSizeGuardConfig.enabled``).
+        name: Profile name propagated as ``LL_AUTOMATION_PROFILE``. Purely
+            informational for hooks that don't branch on profile identity
+            today; reserved for future per-profile tuning.
+        suppress_catalog: When True (and the resolved host confirms
+            ``tool_allowlist``), narrow the skill/command catalog via the
+            state/loop ``tools:`` allowlist mapped to the host's narrowing
+            flags.
+        suppress_claude_md: When True (and the resolved host confirms
+            ``claude_md_suppression``), suppress CLAUDE.md loading for this
+            invocation.
+    """
+
+    enabled: bool = True
+    name: str = "default"
+    suppress_catalog: bool = False
+    suppress_claude_md: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON/YAML serialization (skip-if-default)."""
+        result: dict[str, Any] = {}
+        if not self.enabled:
+            result["enabled"] = self.enabled
+        if self.name != "default":
+            result["name"] = self.name
+        if self.suppress_catalog:
+            result["suppress_catalog"] = self.suppress_catalog
+        if self.suppress_claude_md:
+            result["suppress_claude_md"] = self.suppress_claude_md
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PruningProfileConfig:
+        """Create from dictionary (JSON/YAML deserialization)."""
+        return cls(
+            enabled=data.get("enabled", True),
+            name=data.get("name", "default"),
+            suppress_catalog=data.get("suppress_catalog", False),
+            suppress_claude_md=data.get("suppress_claude_md", False),
+        )
+
+
+@dataclass
 class LearningConfig:
     """Per-state configuration for FEAT-1283 `type: learning` dispatch.
 
@@ -570,6 +633,7 @@ class StateConfig:
     on_throttle_hard: str | None = None
     learning: LearningConfig | None = None
     cost_ceiling: CostCeilingConfig | None = None
+    pruning_profile: PruningProfileConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -651,6 +715,8 @@ class StateConfig:
             result["learning"] = self.learning.to_dict()
         if self.cost_ceiling is not None:
             result["cost_ceiling"] = self.cost_ceiling.to_dict()
+        if self.pruning_profile is not None:
+            result["pruning_profile"] = self.pruning_profile.to_dict()
 
         return result
 
@@ -676,6 +742,10 @@ class StateConfig:
         cost_ceiling = None
         if "cost_ceiling" in data:
             cost_ceiling = CostCeilingConfig.from_dict(data["cost_ceiling"])
+
+        pruning_profile = None
+        if "pruning_profile" in data:
+            pruning_profile = PruningProfileConfig.from_dict(data["pruning_profile"])
 
         _known_on_keys = {
             "on_yes",
@@ -734,6 +804,7 @@ class StateConfig:
             on_throttle_hard=data.get("on_throttle_hard"),
             learning=learning,
             cost_ceiling=cost_ceiling,
+            pruning_profile=pruning_profile,
             fragment_name=data.get("fragment_name"),
             fragment_bindings=data.get("fragment_bindings", {}),
             fragment_parameters={
@@ -1126,6 +1197,9 @@ class FSMLoop:
     # Per-invocation interpolated-prompt size guard (ENH-2486). Default-enabled;
     # WARNs (does not route) when an interpolated action reaches warn_chars.
     prompt_size_guard: PromptSizeGuardConfig = field(default_factory=PromptSizeGuardConfig)
+    # Loop-level default automation-context pruning profile (ENH-2714); state-level
+    # StateConfig.pruning_profile overrides it. None (default) = full unpruned behavior.
+    pruning_profile: PruningProfileConfig | None = None
     meta_self_eval_ok: bool = False
     shared_state_ok: bool = False
     partial_route_ok: bool = False
@@ -1138,6 +1212,9 @@ class FSMLoop:
     parse_swallow_ok: bool = False
     policy_dims_scored_ok: bool = False
     unsafe_context_interpolation_ok: bool = False
+    # MR-12 (ENH-2714) suppression flag: silences the self-contradictory
+    # allowlist / catalog-suppressed-but-skill-invoking validation rule.
+    pruning_profile_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1217,6 +1294,9 @@ class FSMLoop:
         if prompt_size_guard_dict:
             result["prompt_size_guard"] = prompt_size_guard_dict
 
+        if self.pruning_profile is not None:
+            result["pruning_profile"] = self.pruning_profile.to_dict()
+
         if self.meta_self_eval_ok:
             result["meta_self_eval_ok"] = self.meta_self_eval_ok
         if self.shared_state_ok:
@@ -1241,6 +1321,8 @@ class FSMLoop:
             result["policy_dims_scored_ok"] = self.policy_dims_scored_ok
         if self.unsafe_context_interpolation_ok:
             result["unsafe_context_interpolation_ok"] = self.unsafe_context_interpolation_ok
+        if self.pruning_profile_ok:
+            result["pruning_profile_ok"] = self.pruning_profile_ok
 
         return result
 
@@ -1271,6 +1353,10 @@ class FSMLoop:
         prompt_size_guard = PromptSizeGuardConfig()
         if "prompt_size_guard" in data and data["prompt_size_guard"] is not None:
             prompt_size_guard = PromptSizeGuardConfig.from_dict(data["prompt_size_guard"])
+
+        pruning_profile = None
+        if "pruning_profile" in data and data["pruning_profile"] is not None:
+            pruning_profile = PruningProfileConfig.from_dict(data["pruning_profile"])
 
         parameters = {
             name: ParameterSpec.from_dict(spec) for name, spec in data.get("parameters", {}).items()
@@ -1321,6 +1407,7 @@ class FSMLoop:
             circuit=circuit,
             host_guard=host_guard,
             prompt_size_guard=prompt_size_guard,
+            pruning_profile=pruning_profile,
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
             shared_state_ok=data.get("shared_state_ok", False),
             partial_route_ok=data.get("partial_route_ok", False),
@@ -1333,6 +1420,7 @@ class FSMLoop:
             parse_swallow_ok=data.get("parse_swallow_ok", False),
             policy_dims_scored_ok=data.get("policy_dims_scored_ok", False),
             unsafe_context_interpolation_ok=data.get("unsafe_context_interpolation_ok", False),
+            pruning_profile_ok=data.get("pruning_profile_ok", False),
             imports=data.get("import", []),
         )
 

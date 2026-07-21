@@ -1015,6 +1015,28 @@ class SessionDigestConfig:
 
 
 @dataclass
+class AutomationPruningConfig:
+    """Automation-context static-prefix pruning gate (ENH-2714).
+
+    Independent of ``session_digest.enabled`` — this config controls whether
+    the ``LL_AUTOMATION=1`` env-signal gate in ``session_start.py``/
+    ``ll-history-context`` is honored at all, not what content the digest
+    itself contains. Default ``enabled=True`` matches the FSM runner's opt-in
+    posture: the env var is only ever set by a loop/state that explicitly
+    declares a ``pruning_profile``, so honoring it by default is safe — this
+    flag exists as an escape hatch to force full unpruned hook output even
+    under automation invocations (debugging, auditing).
+    """
+
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AutomationPruningConfig:
+        """Create AutomationPruningConfig from dictionary."""
+        return cls(enabled=data.get("enabled", True))
+
+
+@dataclass
 class EvolutionConfig:
     """Feedback evolution configuration (ENH-1911)."""
 
@@ -1136,6 +1158,7 @@ class HistoryConfig:
         default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
     )
     session_digest: SessionDigestConfig = field(default_factory=SessionDigestConfig)
+    automation_pruning: AutomationPruningConfig = field(default_factory=AutomationPruningConfig)
     evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
     go_no_go: GoNoGoConfig = field(default_factory=GoNoGoConfig)
     capture_issue: CaptureIssueConfig = field(default_factory=CaptureIssueConfig)
@@ -1154,6 +1177,9 @@ class HistoryConfig:
                 ["create-sprint", "scope-epic", "manage-issue", "review-epic"],
             ),
             session_digest=SessionDigestConfig.from_dict(data.get("session_digest", {})),
+            automation_pruning=AutomationPruningConfig.from_dict(
+                data.get("automation_pruning", {})
+            ),
             evolution=EvolutionConfig.from_dict(data.get("evolution", {})),
             go_no_go=GoNoGoConfig.from_dict(data.get("go_no_go", {})),
             capture_issue=CaptureIssueConfig.from_dict(data.get("capture_issue", {})),

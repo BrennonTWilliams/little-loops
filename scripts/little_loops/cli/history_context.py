@@ -183,6 +183,26 @@ def main_history_context() -> int:
         parser = _build_parser()
         args = parser.parse_args()
 
+        # ENH-2714: automation-context static-prefix pruning. Under an
+        # automation profile, exit 0 with no output — this CLI's whole
+        # purpose is injecting historical-context prefix content that a
+        # tightly-scoped automation invocation doesn't need. Mirrors the
+        # --for-skill guard immediately below.
+        import os as _os
+
+        if _os.environ.get("LL_AUTOMATION"):
+            _pruning_gate_enabled = True
+            try:
+                from little_loops.config import BRConfig as _BRConfig
+
+                _pruning_gate_enabled = (
+                    _BRConfig(Path.cwd()).history.automation_pruning.enabled
+                )
+            except Exception:
+                pass
+            if _pruning_gate_enabled:
+                return 0
+
         # Mutual-exclusion guard: require exactly one of issue_id or --project.
         if args.project and args.issue_id:
             parser.error("--project and ISSUE_ID are mutually exclusive")

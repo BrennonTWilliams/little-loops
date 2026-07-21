@@ -294,6 +294,7 @@ def run_claude_command(
     tools: list[str] | None = None,
     resume_session: bool = False,
     model: str | None = None,
+    automation_profile: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -317,6 +318,10 @@ def run_claude_command(
             plus the model ID from the stream-json result event.
         resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation. Used for the Option E explicit-handoff path.
+        automation_profile: ENH-2714 opt-in automation-context static-prefix pruning
+            profile name. When set, forwarded to ``build_streaming()`` so
+            ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` are injected into the child
+            environment. ``None`` (default) preserves full unpruned behavior.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -333,6 +338,7 @@ def run_claude_command(
         agent=agent,
         tools=tools,
         model=model,
+        automation_profile=automation_profile,
     )
     cmd_args = [invocation.binary, *invocation.args]
 

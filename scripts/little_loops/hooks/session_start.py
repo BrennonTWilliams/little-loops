@@ -88,6 +88,29 @@ def handle(event: LLHookEvent) -> LLHookResult:
     with contextlib.suppress(OSError):
         _PRIOR_SESSION_STATE.unlink()
 
+    # ENH-2714: automation-context static-prefix pruning. Under an automation
+    # profile (LL_AUTOMATION=1, set by FSM/runner invocations that opt into
+    # pruning), suppress the config-JSON + project_context digest payload
+    # entirely — the invoking state's prompt fully specifies the task and
+    # doesn't need this static prefix re-sent on every iteration. Interactive
+    # sessions (no LL_AUTOMATION) are unaffected.
+    import os as _os
+
+    if _os.environ.get("LL_AUTOMATION"):
+        _pruning_gate_enabled = True
+        with contextlib.suppress(Exception):
+            from little_loops.config.features import HistoryConfig as _HistoryConfig
+
+            _early_config_path = resolve_config_path(cwd)
+            _early_raw: dict[str, Any] = {}
+            if _early_config_path is not None:
+                _early_raw = json.loads(_early_config_path.read_text(encoding="utf-8"))
+            _pruning_gate_enabled = _HistoryConfig.from_dict(
+                _early_raw.get("history", {})
+            ).automation_pruning.enabled
+        if _pruning_gate_enabled:
+            return LLHookResult(exit_code=0, feedback=None, stdout=None)
+
     # 2. Resolve base config.
     config_path = resolve_config_path(cwd)
     base_config: dict[str, Any] = {}

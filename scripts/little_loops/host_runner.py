@@ -191,11 +191,18 @@ class HostRunner(Protocol):
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         """Build an invocation that streams structured output.
 
         Used by the long-running orchestration paths (``ll-auto``, ``ll-parallel``,
         ``fsm.runners``) that need to consume turn-by-turn JSON events.
+
+        ``automation_profile`` (ENH-2714), when set, injects ``LL_AUTOMATION=1``
+        and ``LL_AUTOMATION_PROFILE=<profile>`` into the child environment so
+        automation-aware hooks (SessionStart digest, history-context CLI) can
+        suppress their static-prefix output. ``None`` (the default) preserves
+        full unpruned behavior.
         """
         ...
 
@@ -253,6 +260,7 @@ class ClaudeCodeRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         args: list[str] = [
             "--dangerously-skip-permissions",
@@ -275,6 +283,9 @@ class ClaudeCodeRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
+        if automation_profile is not None:
+            env["LL_AUTOMATION"] = "1"
+            env["LL_AUTOMATION_PROFILE"] = automation_profile
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -368,6 +379,17 @@ class ClaudeCodeRunner:
                     "full",
                     "claude CLI honors an inline --json-schema flag; FSM evaluators "
                     "append it for schema-constrained verdicts",
+                ),
+                # ENH-2714: automation-profile invocations rely on CLAUDE.md still
+                # loading normally (suppression is via env-gated hook output, not a
+                # host flag that skips CLAUDE.md itself) — confirmed via the
+                # LL_AUTOMATION signal path, not a dedicated CLI flag.
+                CapabilityEntry(
+                    "claude_md_suppression",
+                    "full",
+                    "claude-code honors the LL_AUTOMATION/LL_AUTOMATION_PROFILE env "
+                    "signal; automation-aware hooks (SessionStart digest, "
+                    "history-context) suppress their static-prefix output",
                 ),
             ],
         )
@@ -497,6 +519,7 @@ class CodexRunner:
         tools: list[str] | None = None,
         sandbox_mode: str | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         del model  # codex does not support --model in streaming mode
         if agent is not None:
@@ -530,6 +553,9 @@ class CodexRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
+        if automation_profile is not None:
+            env["LL_AUTOMATION"] = "1"
+            env["LL_AUTOMATION_PROFILE"] = automation_profile
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -653,6 +679,13 @@ class CodexRunner:
                     "codex uses --output-schema (temp file), not the inline --json-schema "
                     "flag FSM evaluators append; evaluators fall back to prompt-and-parse",
                 ),
+                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
+                CapabilityEntry(
+                    "claude_md_suppression",
+                    "unsupported",
+                    "codex CLAUDE.md/AGENTS.md suppression support not confirmed; "
+                    "defer-until-confirmed, mirrors tool_allowlist posture",
+                ),
             ],
         )
 
@@ -684,6 +717,7 @@ class OpenCodeRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
@@ -756,6 +790,7 @@ class PiRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "Pi orchestration not yet wired — see FEAT-992. "
@@ -865,6 +900,7 @@ class GeminiRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         if agent:
             warnings.warn(
@@ -898,6 +934,9 @@ class GeminiRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
+        if automation_profile is not None:
+            env["LL_AUTOMATION"] = "1"
+            env["LL_AUTOMATION_PROFILE"] = automation_profile
         env.update(self._worktree_env(working_dir))
 
         return HostInvocation(
@@ -990,6 +1029,13 @@ class GeminiRunner:
                     "gemini CLI has no inline --json-schema flag; FSM evaluators fall "
                     "back to prompt-and-parse",
                 ),
+                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist.
+                CapabilityEntry(
+                    "claude_md_suppression",
+                    "unsupported",
+                    "gemini CLAUDE.md/GEMINI.md suppression support not confirmed; "
+                    "defer-until-confirmed, mirrors tool_allowlist posture",
+                ),
             ],
         )
 
@@ -1042,6 +1088,7 @@ class OmpRunner:
         agent: str | None = None,
         tools: list[str] | None = None,
         model: str | None = None,
+        automation_profile: str | None = None,
     ) -> HostInvocation:
         if agent:
             warnings.warn(
@@ -1065,6 +1112,9 @@ class OmpRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
+        if automation_profile is not None:
+            env["LL_AUTOMATION"] = "1"
+            env["LL_AUTOMATION_PROFILE"] = automation_profile
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1148,6 +1198,15 @@ class OmpRunner:
                     "unsupported",
                     "omp has no inline --json-schema flag; FSM evaluators fall back to "
                     "prompt-and-parse",
+                ),
+                # ENH-2714: defer-until-confirmed, same posture as tool_allowlist=True
+                # for omp — narrowing exists but CLAUDE.md-equivalent suppression is
+                # unconfirmed.
+                CapabilityEntry(
+                    "claude_md_suppression",
+                    "unsupported",
+                    "omp CLAUDE.md-equivalent suppression support not confirmed; "
+                    "defer-until-confirmed",
                 ),
             ],
         )

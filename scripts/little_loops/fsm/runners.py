@@ -48,6 +48,7 @@ class ActionRunner(Protocol):
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation_profile: str | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -62,6 +63,9 @@ class ActionRunner(Protocol):
             on_usage_detailed: Optional callback invoked with a TokenUsage dataclass on completion
             working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
                 inherits the parent process's cwd (existing behavior).
+            automation_profile: ENH-2714 opt-in automation-context static-prefix
+                pruning profile name (prompt-mode only). None preserves full
+                unpruned behavior.
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -100,6 +104,7 @@ class DefaultActionRunner:
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation_profile: str | None = None,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -115,6 +120,9 @@ class DefaultActionRunner:
             model: Optional model override to pass as --model to Claude CLI (prompt-mode only)
             working_dir: Optional cwd for the spawned subprocess (ENH-2609). None
                 inherits the parent process's cwd.
+            automation_profile: ENH-2714 opt-in automation-context static-prefix
+                pruning profile name (prompt-mode only). None preserves full
+                unpruned behavior.
 
         Returns:
             ActionResult with execution details
@@ -165,6 +173,7 @@ class DefaultActionRunner:
                     on_usage_detailed=_collect_usage,
                     model=model,
                     working_dir=working_dir,
+                    automation_profile=automation_profile,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -308,6 +317,7 @@ class SimulationActionRunner:
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
         working_dir: Path | None = None,
+        automation_profile: str | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -322,6 +332,7 @@ class SimulationActionRunner:
             on_usage_detailed: Ignored in simulation
             model: Ignored in simulation
             working_dir: Ignored in simulation
+            automation_profile: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
