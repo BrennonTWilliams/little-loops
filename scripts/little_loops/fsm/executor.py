@@ -1590,14 +1590,16 @@ class FSMExecutor:
             # falls through to the loop-level default; None (unset either place)
             # preserves full unpruned behavior. Only meaningful in prompt mode
             # (host CLI invocations); shell/mcp actions don't consult it.
+            # Kwarg-gated (only passed when set), same as working_dir above, so
+            # ActionRunner implementations predating ENH-2714 — including
+            # third-party extension runners and test doubles — keep working.
             _pruning_profile_cfg = state.pruning_profile or self.fsm.pruning_profile
-            _automation_profile: str | None = None
             if (
                 action_mode == "prompt"
                 and _pruning_profile_cfg is not None
                 and _pruning_profile_cfg.enabled
             ):
-                _automation_profile = _pruning_profile_cfg.name
+                extra_kwargs["automation_profile"] = _pruning_profile_cfg.name
 
             result = self.action_runner.run(
                 action,
@@ -1608,7 +1610,6 @@ class FSMExecutor:
                 tools=state.tools if action_mode == "prompt" else None,
                 on_usage=on_usage,
                 model=(state.model or self.run_model) if action_mode == "prompt" else None,
-                automation_profile=_automation_profile,
                 **extra_kwargs,
             )
 

@@ -2216,6 +2216,7 @@ class TestRunClaudeCommandHostRunner:
             agent=None,
             tools=None,
             model=None,
+            automation_profile=None,
         )
         assert captured_args[0][0] == "myhost"
 
