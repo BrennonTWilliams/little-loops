@@ -743,6 +743,10 @@ class PersistentExecutor:
                     "model": event.get("model", "unknown"),
                     "timestamp": event.get("ts", ""),
                 }
+                # FEAT-2716: additive flag — only present (True) for batch-dispatch
+                # usage, so existing readers ignoring unknown keys are unaffected.
+                if event.get("is_batch"):
+                    entry["is_batch"] = True
                 # FEAT-2478 — stamp OTel-canonical gen_ai.usage.* keys alongside the
                 # flat keys (additive; flat-key consumers cost_graph/_print_usage_summary
                 # ignore the extras). The four token gen_ai keys derive purely from the

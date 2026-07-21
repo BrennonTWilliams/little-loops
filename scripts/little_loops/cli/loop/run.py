@@ -571,6 +571,7 @@ def cmd_run(
             pid=os.getpid(),
             run_model=getattr(args, "run_model", None) or None,
             compression_config=_config.compression,
+            orchestration_config=_config.orchestration,
         )
 
         # Register signal handlers for graceful shutdown

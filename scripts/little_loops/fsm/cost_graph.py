@@ -224,6 +224,7 @@ class CostReport:
             cr = int(row.get("cache_read_tokens", 0) or 0)
             cc = int(row.get("cache_creation_tokens", 0) or 0)
             wallclock = int(row.get("wallclock_ms", 0) or 0)
+            is_batch = bool(row.get("is_batch", False))
             bucket = buckets[state]
             bucket["iterations"] += 1
             bucket["input_tokens"] += inp
@@ -231,7 +232,7 @@ class CostReport:
             bucket["cache_read_tokens"] += cr
             bucket["cache_creation_tokens"] += cc
             bucket["wallclock_ms"] += wallclock
-            cost = estimate_cost_usd(model, inp, out, cr, cc)
+            cost = estimate_cost_usd(model, inp, out, cr, cc, is_batch=is_batch)
             if cost is None:
                 bucket["has_unknown_model"] = True
             else:

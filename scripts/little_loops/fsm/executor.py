@@ -67,7 +67,7 @@ from little_loops.subprocess_utils import (
 )
 
 if TYPE_CHECKING:
-    from little_loops.config import CompressionConfig
+    from little_loops.config import CompressionConfig, OrchestrationConfig
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -172,6 +172,7 @@ class FSMExecutor:
         run_model: str | None = None,
         working_dir: Path | None = None,
         compression_config: CompressionConfig | None = None,
+        orchestration_config: OrchestrationConfig | None = None,
     ):
         """Initialize the executor.
 
@@ -195,6 +196,12 @@ class FSMExecutor:
                 ``heuristic_underperforms`` is False), prompt-mode actions
                 crossing the window-relative trigger are compressed before the
                 host request.
+            orchestration_config: Optional :class:`OrchestrationConfig` (FEAT-2716).
+                None (default) behaves exactly as ``request_path == "cli"`` — the
+                CLI subprocess dispatch path, unchanged from pre-FEAT-2716
+                behavior — so existing callers/tests are unaffected. Per-state
+                ``StateConfig.request_path`` overrides this default per FEAT-2710's
+                resolved precedent (state wins, falls through to this default).
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -205,6 +212,7 @@ class FSMExecutor:
         self._circuit = circuit
         self.run_model = run_model
         self.working_dir = working_dir
+        self.orchestration_config = orchestration_config
         # FEAT-2675: project-level heuristic prompt-compression config. None (default)
         # skips compression entirely, so executors constructed without it are
         # byte-identical to pre-FEAT-2675 behavior. Wired from BRConfig.compression
@@ -1569,6 +1577,8 @@ class FSMExecutor:
                 on_output_line=_on_line,
                 on_usage=on_usage,
             )
+        elif action_mode == "prompt" and self._resolve_request_path(state) in ("sdk", "batch"):
+            result = self._dispatch_live(state, action, ctx)
         else:
             # working_dir is kwarg-gated (only passed when set) so ActionRunner
             # implementations predating ENH-2609 — including third-party
@@ -1628,6 +1638,10 @@ class FSMExecutor:
             payload["cache_read_tokens"] = total_cache_read
             payload["cache_creation_tokens"] = total_cache_creation
             payload["model"] = model
+            # FEAT-2716: one result per action in practice, so take the last
+            # event's is_batch flag the same way `model` is taken above.
+            if result.usage_events[-1].is_batch:
+                payload["is_batch"] = True
         self._emit("action_complete", payload)
 
         # ENH-2453: cumulative subprocess RSS budget accounting. Modeled on the
@@ -1979,6 +1993,95 @@ class FSMExecutor:
         if state.action is not None and state.action.startswith("/"):
             return "prompt"
         return "shell"
+
+    def _resolve_request_path(self, state: StateConfig) -> str:
+        """Resolve the effective request_path: state override, else config default.
+
+        Mirrors ``state.model or self.run_model`` — state-level
+        ``StateConfig.request_path`` wins; falls through to
+        ``self.orchestration_config.request_path`` when unset. No
+        ``orchestration_config`` (the default for executors not threaded with
+        one) resolves to ``"cli"``, matching pre-FEAT-2716 behavior.
+        """
+        if state.request_path:
+            return state.request_path
+        if self.orchestration_config is not None:
+            return self.orchestration_config.request_path
+        return "cli"
+
+    def _dispatch_live(
+        self, state: StateConfig, action: str, ctx: InterpolationContext
+    ) -> ActionResult:
+        """Dispatch a prompt-mode action via the live SDK or Batches API path.
+
+        FEAT-2716. Only called when ``_resolve_request_path(state)`` is
+        ``"sdk"`` or ``"batch"`` for a prompt-mode state. Builds a
+        single-user-turn request (mirroring the CLI action-runner's
+        stateless-per-action contract) and normalizes the response into the
+        same :class:`ActionResult` shape the CLI path produces, so the rest of
+        ``_run_action`` (preview extraction, event emission, usage
+        aggregation) works unchanged.
+        """
+        from little_loops import host_runner
+        from little_loops.fsm.batch_tracker import BatchTracker
+        from little_loops.prompts import FragmentStore
+
+        model = state.model or self.run_model or ""
+        fragment_store = FragmentStore()
+        request_path = self._resolve_request_path(state)
+
+        if request_path == "sdk":
+            return host_runner.dispatch_anthropic_request(
+                action=action,
+                system_prompt=None,
+                tools=None,
+                model=model,
+                fragment_store=fragment_store,
+            )
+
+        # request_path == "batch"
+        run_dir = self.fsm.context.get("run_dir", "")
+        if not run_dir:
+            return ActionResult(
+                output="",
+                stderr="request_path 'batch' requires a run_dir context value",
+                exit_code=1,
+                duration_ms=0,
+            )
+        tracker = BatchTracker(Path(run_dir) / "batch_id.json")
+
+        batch_id = tracker.get_batch_id()
+        if batch_id is None:
+            # Fresh submission: mint a new custom_id for this state visit.
+            custom_id = f"{self.fsm.name}-{self.current_state}-{self.iteration}"
+            try:
+                batch_id = host_runner.dispatch_batch_request(
+                    custom_id=custom_id,
+                    action=action,
+                    system_prompt=None,
+                    tools=None,
+                    model=model,
+                    fragment_store=fragment_store,
+                )
+            except Exception as exc:  # anthropic.APIError and friends
+                return ActionResult(
+                    output="", stderr=f"Batch submission failed: {exc}", exit_code=1, duration_ms=0
+                )
+            tracker.record_submitted(batch_id, custom_id)
+        else:
+            # Resume case: reuse the persisted custom_id so results-matching
+            # doesn't drift if iteration/state changed across the interruption.
+            custom_id = tracker.get_custom_id() or ""
+
+        try:
+            result = host_runner.poll_batch_result(batch_id=batch_id, custom_id=custom_id)
+        except host_runner.BatchPollTimeout as exc:
+            # Leave the tracker file in place — a resumed run retries against
+            # the same batch_id instead of double-submitting.
+            return ActionResult(output="", stderr=str(exc), exit_code=1, duration_ms=0)
+
+        tracker.clear()
+        return result
 
     def _execute_with_baseline(
         self,

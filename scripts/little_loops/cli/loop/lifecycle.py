@@ -572,7 +572,11 @@ def cmd_resume(
         else None
     )
     executor = PersistentExecutor(
-        fsm, loops_dir=loops_dir, circuit=circuit, instance_id=instance_id
+        fsm,
+        loops_dir=loops_dir,
+        circuit=circuit,
+        instance_id=instance_id,
+        orchestration_config=config.orchestration,
     )
 
     # Register signal handlers for graceful shutdown (same as cmd_run)

@@ -210,6 +210,47 @@ class TestCostReport:
                 "wallclock_ms",
             } <= set(entry.keys())
 
+    def test_is_batch_row_applies_discount(self, tmp_path: Path) -> None:
+        """FEAT-2716: a row with is_batch: true gets the 50% batch discount."""
+        p = tmp_path / "usage.jsonl"
+        row = {
+            "state": "research",
+            "iteration": 1,
+            "action_type": "prompt",
+            "input_tokens": 1000,
+            "output_tokens": 200,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "model": "claude-sonnet-4-6",
+            "timestamp": "2026-07-07T10:00:00Z",
+            "wallclock_ms": 1000,
+            "is_batch": True,
+        }
+        p.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        report = CostReport.from_usage_jsonl(p)
+        assert len(report.states) == 1
+        # (1000*3 + 200*15) / 1e6 = 0.006, halved by the batch discount = 0.003
+        assert report.states[0].cost_usd == pytest.approx(0.003)
+
+    def test_missing_is_batch_defaults_to_full_price(self, tmp_path: Path) -> None:
+        """Rows without is_batch (pre-FEAT-2716 data) are priced at full rate."""
+        p = tmp_path / "usage.jsonl"
+        row = {
+            "state": "research",
+            "iteration": 1,
+            "action_type": "prompt",
+            "input_tokens": 1000,
+            "output_tokens": 200,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+            "model": "claude-sonnet-4-6",
+            "timestamp": "2026-07-07T10:00:00Z",
+            "wallclock_ms": 1000,
+        }
+        p.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        report = CostReport.from_usage_jsonl(p)
+        assert report.states[0].cost_usd == pytest.approx(0.006)
+
     def test_table_matches_existing_layout(self, fixture_jsonl: Path) -> None:
         """The full table() output must include the same header + separator."""
         report = CostReport.from_usage_jsonl(fixture_jsonl)

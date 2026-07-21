@@ -50,6 +50,10 @@ class TokenUsage:
     cache_read_tokens: int
     cache_creation_tokens: int
     model: str
+    is_batch: bool = False
+    """True when this usage came from the Message Batches API (FEAT-2716),
+    eligible for the flat 50% batch discount in :func:`~little_loops.pricing.estimate_cost_usd`.
+    Defaults to False so every existing construction site is unaffected."""
 
 
 # Detailed usage callback — receives all four token fields plus model ID.

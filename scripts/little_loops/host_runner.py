@@ -31,11 +31,15 @@ import tomllib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 from little_loops.cache_marking_oracle import decide_cache_marking
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.tool_catalog import ToolDefinition, to_anthropic_tools
+
+if TYPE_CHECKING:
+    from little_loops.fsm.types import ActionResult
+    from little_loops.subprocess_utils import TokenUsage
 
 __all__ = [
     "CapabilityEntry",
@@ -54,6 +58,10 @@ __all__ = [
     "PiRunner",
     "apply_host_cli_from_config",
     "build_anthropic_request",
+    "build_batch_request",
+    "dispatch_anthropic_request",
+    "dispatch_batch_request",
+    "poll_batch_result",
     "resolve_host",
 ]
 
@@ -1464,3 +1472,205 @@ def build_batch_request(
         search_tool_variant=search_tool_variant,
     )
     return {"requests": [{"custom_id": custom_id, "params": params}]}
+
+
+def _text_from_content_blocks(content: Any) -> str:
+    """Concatenate ``type == "text"`` blocks from an SDK Message's ``content``."""
+    parts: list[str] = []
+    for block in content or []:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            parts.append(getattr(block, "text", ""))
+    return "".join(parts)
+
+
+def _usage_from_response(response: Any, *, is_batch: bool = False) -> "TokenUsage":
+    """Normalize an SDK ``Message.usage`` block into a :class:`TokenUsage`."""
+    from little_loops.subprocess_utils import TokenUsage
+
+    usage = response.usage
+    return TokenUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=getattr(usage, "cache_read_input_tokens", None) or 0,
+        cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None) or 0,
+        model=response.model,
+        is_batch=is_batch,
+    )
+
+
+def dispatch_anthropic_request(
+    *,
+    action: str,
+    system_prompt: str | None = None,
+    tools: list[ToolDefinition] | None = None,
+    model: str,
+    fragment_store: FragmentStore,
+    require_repeat: bool = True,
+    defer_loading_threshold: int | None = None,
+    search_tool_variant: str = "bm25",
+) -> "ActionResult":
+    """Dispatch one prompt-mode action via a live ``messages.create()`` call.
+
+    **Performs a network call** — unlike :func:`build_anthropic_request`, which
+    only builds request kwargs. Builds a single-user-turn request (mirrors the
+    CLI action-runner's stateless-per-action contract), calls
+    ``anthropic.Anthropic().messages.create(**request)``, and normalizes the
+    response into the same :class:`~little_loops.fsm.types.ActionResult` shape
+    ``action_runner.run()`` returns. ``anthropic.APIError`` (and subclasses) is
+    caught and returned as a nonzero-exit-code result rather than raised.
+    """
+    import time
+
+    from little_loops.fsm.types import ActionResult
+
+    request = build_anthropic_request(
+        skill_body=action,
+        system_prompt=system_prompt,
+        tools=tools,
+        messages=[{"role": "user", "content": action}],
+        model=model,
+        fragment_store=fragment_store,
+        require_repeat=require_repeat,
+        defer_loading_threshold=defer_loading_threshold,
+        search_tool_variant=search_tool_variant,
+    )
+
+    start = time.time()
+    import anthropic
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(**request)
+    except anthropic.APIError as exc:
+        return ActionResult(
+            output="",
+            stderr=str(exc),
+            exit_code=1,
+            duration_ms=int((time.time() - start) * 1000),
+        )
+
+    return ActionResult(
+        output=_text_from_content_blocks(response.content),
+        stderr="",
+        exit_code=0,
+        duration_ms=int((time.time() - start) * 1000),
+        usage_events=[_usage_from_response(response)],
+    )
+
+
+def dispatch_batch_request(
+    *,
+    custom_id: str,
+    action: str,
+    system_prompt: str | None = None,
+    tools: list[ToolDefinition] | None = None,
+    model: str,
+    fragment_store: FragmentStore,
+    require_repeat: bool = True,
+    defer_loading_threshold: int | None = None,
+    search_tool_variant: str = "bm25",
+) -> str:
+    """Submit one request to the Message Batches API. **Performs a network call.**
+
+    Builds submission kwargs via :func:`build_batch_request` (a single-user-turn
+    request, mirroring :func:`dispatch_anthropic_request`), calls
+    ``anthropic.Anthropic().messages.batches.create(**kwargs)``, and returns the
+    new batch's id. Submission bookkeeping (persisting the returned id so a
+    resumed run doesn't double-submit) is the caller's responsibility — see
+    ``fsm/batch_tracker.py``.
+    """
+    import anthropic
+
+    kwargs = build_batch_request(
+        custom_id=custom_id,
+        skill_body=action,
+        system_prompt=system_prompt,
+        tools=tools,
+        messages=[{"role": "user", "content": action}],
+        model=model,
+        fragment_store=fragment_store,
+        require_repeat=require_repeat,
+        defer_loading_threshold=defer_loading_threshold,
+        search_tool_variant=search_tool_variant,
+    )
+    client = anthropic.Anthropic()
+    batch = client.messages.batches.create(**kwargs)
+    return batch.id
+
+
+class BatchPollTimeout(RuntimeError):
+    """Raised by :func:`poll_batch_result` when a batch doesn't end before the deadline."""
+
+
+def poll_batch_result(
+    *,
+    batch_id: str,
+    custom_id: str,
+    poll_interval_seconds: float = 5.0,
+    max_wait_seconds: float = 3600.0,
+    backoff_factor: float = 1.5,
+    max_poll_interval_seconds: float = 60.0,
+) -> "ActionResult":
+    """Poll a submitted batch to completion and return its one result. **Network calls.**
+
+    Polls ``client.messages.batches.retrieve(batch_id)`` with exponential
+    backoff (capped at ``max_poll_interval_seconds``) until
+    ``processing_status == "ended"`` or ``max_wait_seconds`` elapses, then
+    fetches ``client.messages.batches.results(batch_id)`` and returns the
+    entry matching ``custom_id``, normalized into an
+    :class:`~little_loops.fsm.types.ActionResult`. Raises
+    :class:`BatchPollTimeout` if the deadline passes before the batch ends —
+    callers should leave the batch tracker file in place on this error so a
+    resumed run retries against the same ``batch_id`` instead of
+    double-submitting.
+    """
+    import time
+
+    from little_loops.fsm.types import ActionResult
+
+    import anthropic
+
+    start = time.time()
+    client = anthropic.Anthropic()
+    interval = poll_interval_seconds
+    while True:
+        batch = client.messages.batches.retrieve(batch_id)
+        if batch.processing_status == "ended":
+            break
+        if time.time() - start >= max_wait_seconds:
+            raise BatchPollTimeout(
+                f"Batch {batch_id} did not end within {max_wait_seconds}s "
+                f"(last status: {batch.processing_status})"
+            )
+        time.sleep(interval)
+        interval = min(interval * backoff_factor, max_poll_interval_seconds)
+
+    duration_ms = int((time.time() - start) * 1000)
+
+    for entry in client.messages.batches.results(batch_id):
+        if entry.custom_id != custom_id:
+            continue
+        result = entry.result
+        if result.type == "succeeded":
+            message = result.message
+            return ActionResult(
+                output=_text_from_content_blocks(message.content),
+                stderr="",
+                exit_code=0,
+                duration_ms=duration_ms,
+                usage_events=[_usage_from_response(message, is_batch=True)],
+            )
+        return ActionResult(
+            output="",
+            stderr=f"Batch request {custom_id} did not succeed: {result.type}",
+            exit_code=1,
+            duration_ms=duration_ms,
+        )
+
+    return ActionResult(
+        output="",
+        stderr=f"No result found for custom_id={custom_id!r} in batch {batch_id}",
+        exit_code=1,
+        duration_ms=duration_ms,
+    )

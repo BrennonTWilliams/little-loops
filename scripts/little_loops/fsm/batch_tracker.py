@@ -52,6 +52,14 @@ class BatchTracker:
         batch_id = current.get("batch_id")
         return str(batch_id) if batch_id is not None else None
 
+    def get_custom_id(self) -> str | None:
+        """Return the outstanding custom_id (for matching batch results), or None if absent."""
+        current = self._read()
+        if current is None:
+            return None
+        custom_id = current.get("custom_id")
+        return str(custom_id) if custom_id is not None else None
+
     def clear(self) -> None:
         """Remove the state file once the batch has been retrieved. No-op if absent."""
         try:

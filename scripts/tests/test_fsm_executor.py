@@ -56,6 +56,7 @@ class MockActionRunner:
         on_usage_detailed: Any = None,
         model: str | None = None,
         working_dir: Any = None,
+        automation_profile: str | None = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
@@ -68,6 +69,7 @@ class MockActionRunner:
             on_usage,
             on_usage_detailed,
             model,
+            automation_profile,
         )
         self.working_dirs.append(working_dir)
         self.calls.append(action)
@@ -9158,3 +9160,226 @@ class TestStderrPreview:
         preview = completes[0]["stderr_preview"]
         assert len(preview) == 2000
         assert preview.endswith("TAIL")
+
+
+class TestRequestPathDispatchWiring:
+    """FEAT-2716: request_path == 'sdk'/'batch' branches before action_runner.run()."""
+
+    def _sdk_fsm(self) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="ask",
+            states={
+                "ask": StateConfig(
+                    action="Say hi",
+                    action_type="prompt",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_request_path_sdk_calls_dispatch_not_cli(self) -> None:
+        """request_path='sdk' at the orchestration level bypasses action_runner.run()."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="should not be used")
+
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+        assert executor.prev_result is not None
+        assert executor.prev_result["output"] == "hi from sdk"
+
+    def test_state_level_request_path_overrides_orchestration_default(self) -> None:
+        """StateConfig.request_path='sdk' wins even when orchestration default is 'cli'."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="ask",
+            states={
+                "ask": StateConfig(
+                    action="Say hi",
+                    action_type="prompt",
+                    request_path="sdk",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="cli"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
+    def test_request_path_cli_default_unaffected(self) -> None:
+        """No orchestration_config and no state override: byte-identical CLI dispatch."""
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls == ["Say hi"]
+        assert executor.prev_result is not None
+        assert executor.prev_result["output"] == "cli output"
+
+    def test_request_path_batch_submits_polls_and_clears_tracker(self, tmp_path: Path) -> None:
+        """request_path='batch' submits, polls to completion, and clears the tracker."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm = self._sdk_fsm()
+        fsm.context["run_dir"] = str(run_dir)
+        mock_runner = MockActionRunner()
+
+        batch_result = ActionResult(output="hi from batch", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_batch_request",
+                return_value="msgbatch_123",
+            ) as mock_submit,
+            patch(
+                "little_loops.host_runner.poll_batch_result",
+                return_value=batch_result,
+            ) as mock_poll,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="batch"),
+            )
+            executor.run()
+
+        assert mock_submit.called
+        assert mock_poll.called
+        assert mock_runner.calls == []
+        assert not (run_dir / "batch_id.json").exists()
+
+    def test_request_path_batch_resumes_without_double_submit(self, tmp_path: Path) -> None:
+        """An existing batch_id.json is reused instead of submitting again."""
+        from little_loops.config.orchestration import OrchestrationConfig
+        from little_loops.fsm.batch_tracker import BatchTracker
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        tracker = BatchTracker(run_dir / "batch_id.json")
+        tracker.record_submitted("msgbatch_existing", "custom-existing")
+
+        fsm = self._sdk_fsm()
+        fsm.context["run_dir"] = str(run_dir)
+        mock_runner = MockActionRunner()
+        batch_result = ActionResult(output="resumed", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch("little_loops.host_runner.dispatch_batch_request") as mock_submit,
+            patch(
+                "little_loops.host_runner.poll_batch_result",
+                return_value=batch_result,
+            ) as mock_poll,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="batch"),
+            )
+            executor.run()
+
+        assert not mock_submit.called
+        mock_poll.assert_called_once_with(batch_id="msgbatch_existing", custom_id="custom-existing")
+
+    def test_request_path_batch_timeout_leaves_tracker_for_resume(self, tmp_path: Path) -> None:
+        """A poll timeout returns a failed ActionResult and does not clear the tracker."""
+        from little_loops import host_runner
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm = self._sdk_fsm()
+        fsm.context["run_dir"] = str(run_dir)
+        mock_runner = MockActionRunner()
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_batch_request",
+                return_value="msgbatch_123",
+            ),
+            patch(
+                "little_loops.host_runner.poll_batch_result",
+                side_effect=host_runner.BatchPollTimeout("timed out"),
+            ),
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="no", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="batch"),
+            )
+            executor.run()
+
+        assert (run_dir / "batch_id.json").exists()
+        assert executor.prev_result is not None
+        assert executor.prev_result["exit_code"] == 1
