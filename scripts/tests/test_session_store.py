@@ -37,6 +37,7 @@ from little_loops.session_store import (
     recent,
     recompress_raw_events,
     record_correction,
+    record_loop_run_summary,
     search,
 )
 from little_loops.transport import Transport
@@ -3279,6 +3280,140 @@ class TestBackfillUsageEvents:
         finally:
             conn.close()
         assert n == 1
+
+    def test_run_id_backfilled_from_unambiguous_loop_run_window(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:01:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] == "20260713T030000-rn-implement"
+
+    def test_run_id_stays_null_with_no_matching_window(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T04:00:00Z",
+            ended_at="2026-07-13T04:05:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] is None
+
+    def test_run_id_stays_null_when_windows_overlap(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T025900-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:02:00Z",
+            terminated_by="terminal",
+        )
+        record_loop_run_summary(
+            db,
+            run_id="20260713T025930-rn-refine",
+            loop_name="rn-refine",
+            started_at="2026-07-13T02:59:30Z",
+            ended_at="2026-07-13T03:03:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] is None
+
+    def test_run_id_backfill_idempotent_on_rerun(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:01:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT run_id FROM usage_events").fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "20260713T030000-rn-implement"
 
 
 class TestSchemaV20UsageEvents:

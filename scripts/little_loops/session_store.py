@@ -2694,6 +2694,34 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
     return count
 
 
+def _load_loop_run_windows(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
+    """Return ``(started_at, ended_at, run_id)`` triples for run_id backfill joins.
+
+    ``loop_runs`` has no ``session_id`` (ENH-2725 research), so this is the only
+    correlation available between a ``usage_events`` row and its owning run: a
+    timestamp-window join. Rows with a NULL boundary can't participate in a
+    window comparison and are excluded up front.
+    """
+    rows = conn.execute(
+        "SELECT started_at, ended_at, run_id FROM loop_runs "
+        "WHERE started_at IS NOT NULL AND ended_at IS NOT NULL"
+    ).fetchall()
+    return [(r[0], r[1], r[2]) for r in rows]
+
+
+def _derive_run_id_for_ts(ts: str, windows: list[tuple[str, str, str]]) -> str | None:
+    """Stamp ``run_id`` only when exactly one ``loop_runs`` window contains *ts*.
+
+    Concurrent/overlapping ``loop_runs`` (e.g. ``ll-parallel`` worktree runs)
+    make the join ambiguous; per the ENH-2725 decision, ambiguous or
+    zero-match rows stay ``NULL`` rather than guessing (Option A).
+    """
+    if not ts:
+        return None
+    matches = [run_id for started_at, ended_at, run_id in windows if started_at <= ts <= ended_at]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
@@ -2708,10 +2736,16 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     the transcript stream carries no FSM-state boundary, so per-state grain is
     not derivable from this source (ENH-2461 Addendum 2). *source* accepts either
     JSONL files or a ``raw_events`` cursor — see :func:`_iter_events`.
+
+    ``run_id`` is backfilled via a timestamp-window join against ``loop_runs``
+    (ENH-2725) — see :func:`_derive_run_id_for_ts`. Rows with no derivable
+    ``run_id`` stay ``NULL``, matching the live-writer path's behavior for
+    non-loop sessions.
     """
     from little_loops.pricing import estimate_cost_usd
 
     count = 0
+    windows = _load_loop_run_windows(conn)
     for line, source_label in _iter_events(source):
         try:
             record = json.loads(line)
@@ -2743,10 +2777,12 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             int(cache_read or 0),
             int(cache_creation or 0),
         )
+        run_id = _derive_run_id_for_ts(ts, windows)
         conn.execute(
             "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
-            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
+            "run_id) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 session_id,
@@ -2757,6 +2793,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                 cache_read,
                 cache_creation,
                 cost_usd,
+                run_id,
             ),
         )
         _index(
