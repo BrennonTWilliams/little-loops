@@ -1,0 +1,12 @@
+{
+  "id": "ce830035-b44e-48fc-ade7-3f9e0e10d7d5",
+  "type": "decision",
+  "timestamp": "2026-07-21T05:10:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B's time-range join silently misattributes tokens under ll-parallel/ll-sprint concurrency (no session_id on loop_runs to scope it), directly undermining the issue's waste-ranking goal; a wrong ranking is worse than no ranking.",
+  "rule": "Option A \u2014 schema run_id join key on usage_events, live per-invocation writer",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 time-range join (usage_events.ts BETWEEN loop_runs.started_at/ended_at), zero-migration but silently incorrect under concurrent loop runs",
+  "issue": "ENH-2712"
+}
