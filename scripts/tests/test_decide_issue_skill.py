@@ -579,3 +579,58 @@ class TestPattern3bDeclarativeRecommendation:
             "Phase 3b-i must restrict the NO_ACTIONABLE_DECISIONS exit to an existing, "
             "all-resolved ## Open Questions section"
         )
+
+
+class TestPhase3bMaterializeInformalDecisions:
+    """Phase 3b Resolution Logic must document reformatting informal decisions into
+    structured options and routing to full Phase 4-7 scoring (ENH-2715).
+
+    Previously a clear winner always short-circuited to a lock-in-only exit, skipping
+    Phase 4-7 evidence scoring even when the underlying decision already existed in the
+    issue as informal prose (Pattern-4 bullets or Open-Questions alternatives). This
+    materializes the alternatives as **Option A**/**Option B** blocks and routes to Phase 4.
+    """
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_materialize_step_documented(self) -> None:
+        assert "Materialize alternatives" in self._phase_text(), (
+            "Phase 3b Resolution Logic must document the materialize-alternatives step "
+            "(ENH-2715)"
+        )
+
+    def test_materialize_reuses_enh_2607_template(self) -> None:
+        text = self._phase_text()
+        assert "ENH-2607" in text, (
+            "Materialization must document reusing the ENH-2607 bold-label option template "
+            "from commands/refine-issue.md"
+        )
+        assert "**Option A**" in text and "**Option B**" in text, (
+            "Materialization must document the **Option A**/**Option B** target shape"
+        )
+
+    def test_pattern_d_no_longer_requires_existing_bullet_only(self) -> None:
+        text = self._phase_text()
+        assert "Open Questions" in text and "no pre-existing bullet is required" in text, (
+            "Pattern D's Requirement must be relaxed to also match alternatives named "
+            "inline in an unresolved Open Questions item, not just existing Pattern-4 bullets"
+        )
+
+    def test_route_to_phase_4_after_materialize_documented(self) -> None:
+        text = self._phase_text()
+        assert "proceeding to Phase 4" in text or "proceed directly to **Phase 4**" in text, (
+            "Phase 3b must document routing to Phase 4 scoring after a successful "
+            "materialization instead of the lock-in-only exit"
+        )
+
+    def test_lock_in_only_path_preserved_for_already_structured_case(self) -> None:
+        text = self._phase_text()
+        assert "Lock in without scoring" in text, (
+            "Phase 3b must preserve the original lock-in-only path for cases where "
+            "alternatives are already structured or no reformattable shape was found"
+        )

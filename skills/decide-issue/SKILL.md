@@ -245,7 +245,12 @@ Match: prose naming a winning option without a provisional wrapper:
   **Recommended**: (b)  /  the recommendation is now (b)  /  Refresh N supersedes prior — (a)+(b)
 Candidate: the referenced option(s); multi-part winners like (a)+(b) are allowed.
 Requirement: the referent must exist as a Pattern-4 bullet option in `## Proposed Solution` or
-`## Codebase Research Findings`. A marker with a matching option is a **clear winner** — treat as decided.
+`## Codebase Research Findings` (existing-bullet case), OR the referent must be one of 2+
+concrete alternatives named inline in an unresolved `## Open Questions` item (ENH-2715) — e.g.
+"could do X or Y" with a stated preference; no pre-existing bullet is required for this shape,
+since the alternatives are materialized as structured options in Resolution Logic step 1 below.
+A marker (or an Open-Questions item naming a preference among 2+ alternatives) with a
+resolvable referent is a **clear winner** — treat as decided.
 ```
 
 For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
@@ -257,8 +262,37 @@ Classify each match as:
 - **Ambiguous**: multiple alternatives listed, no single preference expressed.
 
 **If exactly one clear winner is found:**
-1. Edit the issue text to make the approach declarative — for Patterns A–C remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`, `"must be replaced with"`); for Pattern D add a `> **Selected:** (x) — per the stated recommendation` callout on the recommended bullet. State the concrete approach as decided.
-2. Use the Edit tool (inline `---` block replacement — same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
+
+1. **Materialize alternatives, if not already structured (ENH-2715)**: check whether the clear
+   winner's named alternatives already exist as `### Option A`/`### Option B` (Pattern 1) or
+   `**Option A**`/`**Option B**` (Pattern 2) blocks under `## Proposed Solution`. They do NOT
+   for two cases this step exists to handle: (a) the referent is only a Pattern-4 bullet (`- (a)
+   ...` / `- (b) ...`), or (b) the referent is an Open-Questions-named alternative with no
+   pre-existing bullet at all. For either case, rewrite the named alternatives in place as
+   `**Option A**`/`**Option B**` blocks under `## Proposed Solution`, reusing the exact
+   bold-label template `commands/refine-issue.md`'s "Decision-Point Formatting" rule already
+   produces (ENH-2607) — additive/rewrite-in-place of the same prose already matched, never
+   inventing alternatives beyond what was named:
+   ```markdown
+   **Option A**: [first alternative, verbatim from the existing text]
+
+   **Option B**: [second alternative, verbatim from the existing text]
+   ```
+   If the alternatives were already structured as Pattern 1/2 blocks, this step is a no-op —
+   proceed directly to step 3.
+2. **Re-scan and route to full scoring (ENH-2715)**: after materializing, re-run the Phase 3
+   extraction. If it now finds `OPTIONS >= 2` (the materialized blocks match Pattern 2): log
+   `✓ Phase 3b: materialized informal decision as structured options — proceeding to Phase 4
+   scoring`, then proceed directly to **Phase 4** (Gather Codebase Evidence) for full
+   evidence-based scoring instead of the lock-in-only exit in step 3. Phase 4–7 independently
+   adds the `> **Selected:**` callout and `### Decision Rationale` subsection once scoring
+   completes, and Phase 7b sets `decision_needed: false` — skip steps 3–4 below for this path.
+3. **Lock in without scoring** (alternatives were already structured, or materialization found
+   no 2+-alternative shape to reformat): edit the issue text to make the approach declarative —
+   for Patterns A–C remove the provisional qualifier (`e.g.,`/parenthetical wrapper, `TBD`,
+   `"must be replaced with"`); for Pattern D add a `> **Selected:** (x) — per the stated
+   recommendation` callout on the recommended bullet. State the concrete approach as decided.
+4. Use the Edit tool (inline `---` block replacement — same pattern as Phase 7b) to set `decision_needed: false` in the issue frontmatter:
    ```
    READ the current --- frontmatter block (from opening --- to closing ---)
    FIND the decision_needed field:
@@ -267,8 +301,8 @@ Classify each match as:
    USE Edit tool to replace the entire --- block with the updated block
    ```
    **Idempotency**: if `decision_needed` is already `false`, skip the write and log `✓ decision_needed already false — no update needed`.
-3. Log: `✓ Phase 3b: resolved provisional decision — [approach] locked in; decision_needed set to false`
-4. Proceed to Phase 8 (Append Session Log) and Phase 9 (Output Report), skipping Phases 4–7.
+5. Log: `✓ Phase 3b: resolved provisional decision — [approach] locked in; decision_needed set to false`
+6. Proceed to Phase 8 (Append Session Log) and Phase 9 (Output Report), skipping Phases 4–7 — except the materialize-and-score path in step 2, which proceeds through Phase 4–7 normally before reaching Phase 8/9.
 
 **If no clear winner (zero candidates or all ambiguous):**
 1. Log: `✗ Phase 3b: no resolvable provisional decision found — leaving decision_needed unchanged`

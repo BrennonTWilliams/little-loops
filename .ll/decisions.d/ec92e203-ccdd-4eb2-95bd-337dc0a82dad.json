@@ -1,0 +1,12 @@
+{
+  "id": "485871d5-9f41-4a14-8730-31a7ad650a57",
+  "type": "decision",
+  "timestamp": "2026-07-21T03:13:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "fsm/executor.py:1600 already resolves model this way; giving request_path the same field name but non-shadowing semantics would create two identically-named config keys with different meanings",
+  "rule": "request_path: per-state StateConfig.request_path overrides global orchestration.request_path (state.request_path or self.orchestration_config.request_path), mirroring the existing State.model resolution idiom",
+  "scope": "issue",
+  "alternatives_rejected": "distinct/non-shadowing per-state setting",
+  "issue": "FEAT-2710"
+}

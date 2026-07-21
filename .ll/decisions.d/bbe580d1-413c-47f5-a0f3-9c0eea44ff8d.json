@@ -1,0 +1,12 @@
+{
+  "id": "1a7ef224-74b4-4202-9d42-2a86b90263c5",
+  "type": "decision",
+  "timestamp": "2026-07-21T03:23:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors the completed ENH-2607 precedent (extend an existing enrichment rule in place) and reuses Phase 3b's shared _phase_text() test-slice helper; avoids duplicating Phase 2.5's re-scan/re-branch machinery in a new phase.",
+  "rule": "Option B: Extend Phase 3b's Resolution Logic in place to materialize informal decisions into Option A/B blocks, rather than adding a new Phase 3c",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: new Phase 3c step (scored 8/12 vs Option B's 10/12) \u2014 would duplicate Phase 2.5's re-scan logic in a parallel construct",
+  "issue": "ENH-2715"
+}

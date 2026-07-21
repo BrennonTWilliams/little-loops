@@ -1,0 +1,12 @@
+{
+  "id": "7cc267db-c003-4e44-ae41-7ea7c723e19e",
+  "type": "decision",
+  "timestamp": "2026-07-21T03:13:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "both call sites (cost_graph.py:234, session_store.py:2678) call positionally; an appended default param is a strict superset with zero caller risk, and avoids hand-syncing a duplicated 7-model x 4-field rate table forever",
+  "rule": "batch pricing: multiplier parameter (e.g. is_batch: bool = False) appended to the end of estimate_cost_usd()'s signature, not a parallel batch rate table",
+  "scope": "issue",
+  "alternatives_rejected": "parallel batch MODEL_PRICING table",
+  "issue": "FEAT-2710"
+}
