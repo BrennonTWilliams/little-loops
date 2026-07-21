@@ -1148,6 +1148,20 @@ Settings for the host CLI used by orchestration scripts (`ll-auto`, `ll-parallel
 | Key | Default | Description |
 |-----|---------|-------------|
 | `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, or `"pi"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
+| `request_path` | `"cli"` | Dispatch mechanism for prompt-mode FSM states: `"cli"` (default, unchanged — CLI shell subprocess via `resolve_host()`), `"sdk"` (opt-in, calls the `anthropic` SDK's `messages.create()` directly — required for the F1 prompt-caching discount, since `cache_control` is unreachable over the CLI path), or `"batch"` (opt-in, submits via the Message Batches API for a flat 50% discount on input+output tokens, FEAT-2710). Per-state `StateConfig.request_path` overrides this default the same way `State.model` overrides `run_model`. |
+
+`"batch"` trades latency for cost — results arrive asynchronously via
+submit → poll (exponential backoff, capped interval) → retrieve — so it's
+only suitable for latency-insensitive states/loops (e.g. `ll-auto` backlog
+processing, verification/adversarial-verify loops, eval harness runs), never
+interactive ones. The submitted batch id is persisted under
+`${context.run_dir}/` via `fsm/batch_tracker.py`'s `BatchTracker`, so an
+interrupted run resumes polling the existing batch instead of
+double-submitting. See
+[ARCHITECTURE.md § SDK/Batches Dispatch Path](../ARCHITECTURE.md#sdkbatches-dispatch-path-orchestrationrequest_path)
+for the dispatch mechanism and
+[API.md § little_loops.host_runner](API.md#little_loopshost_runner) for the
+function reference.
 
 #### `orchestration.composer`
 

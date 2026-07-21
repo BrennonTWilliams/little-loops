@@ -8341,6 +8341,69 @@ invocation = runner.build_streaming(prompt="Hello, world")
 # subprocess.run([invocation.binary, *invocation.args], env={**os.environ, **invocation.env})
 ```
 
+### build_anthropic_request / build_batch_request / dispatch_anthropic_request / dispatch_batch_request / poll_batch_result
+
+`orchestration.request_path` opt-in dispatch (FEAT-2673, FEAT-2710, FEAT-2716,
+EPIC-2456 F1) — a request path structurally distinct from the `HostRunner`
+Protocol above: it calls the `anthropic` SDK's `messages.create()` /
+`messages.batches.*` directly rather than shelling out to a host CLI
+subprocess.
+
+```python
+def build_anthropic_request(*, skill_body, system_prompt, tools, messages, model,
+                             fragment_store, require_repeat=True,
+                             defer_loading_threshold=None,
+                             search_tool_variant="bm25") -> dict[str, Any]: ...
+
+def build_batch_request(*, custom_id, skill_body, system_prompt, tools, messages,
+                         model, fragment_store, require_repeat=True,
+                         defer_loading_threshold=None,
+                         search_tool_variant="bm25") -> dict[str, Any]: ...
+
+def dispatch_anthropic_request(*, action, system_prompt=None, tools=None, model,
+                                fragment_store, require_repeat=True,
+                                defer_loading_threshold=None,
+                                search_tool_variant="bm25") -> ActionResult: ...
+
+def dispatch_batch_request(*, custom_id, action, system_prompt=None, tools=None,
+                            model, fragment_store, require_repeat=True,
+                            defer_loading_threshold=None,
+                            search_tool_variant="bm25") -> str: ...
+
+def poll_batch_result(*, batch_id, custom_id, poll_interval_seconds=5.0,
+                       max_wait_seconds=3600.0, backoff_factor=1.5,
+                       max_poll_interval_seconds=60.0) -> ActionResult: ...
+```
+
+**Behavior:**
+- `build_anthropic_request()` / `build_batch_request()` only assemble request
+  kwargs (system/tools/messages, plus F1 cache-marking `cache_control` blocks
+  and F1 deferred-tool-loading search-tool injection) — no network call. This
+  keeps the `anthropic` package import lazy for callers that stay on the
+  default `"cli"` path.
+- `dispatch_anthropic_request()` builds via `build_anthropic_request()`, then
+  calls `anthropic.Anthropic().messages.create(**request)` and normalizes the
+  response into an `ActionResult` (same contract `action_runner.run()`
+  returns for the CLI subprocess path). `anthropic.APIError` is caught and
+  returned as a nonzero-exit-code result rather than raised.
+- `dispatch_batch_request()` builds via `build_batch_request()`, submits via
+  `anthropic.Anthropic().messages.batches.create(**kwargs)`, and returns the
+  new batch's id. Persisting that id so a resumed run doesn't double-submit
+  is the caller's responsibility — see `fsm/batch_tracker.py`'s
+  `BatchTracker`.
+- `poll_batch_result()` polls `messages.batches.retrieve()` with exponential
+  backoff (capped at `max_poll_interval_seconds`) until
+  `processing_status == "ended"` or `max_wait_seconds` elapses, then fetches
+  `messages.batches.results()` and returns the entry matching `custom_id` as
+  an `ActionResult`. Raises `BatchPollTimeout` on deadline — callers should
+  leave the batch tracker file in place on that error so a resumed run
+  retries against the same `batch_id`.
+- `FSMExecutor._resolve_request_path()` / `_dispatch_live()`
+  (`fsm/executor.py`) are the sole production call sites, gated on
+  `state.request_path or orchestration_config.request_path` resolving to
+  `"sdk"`/`"batch"` for `action_mode == "prompt"` states. Default (`"cli"`)
+  behavior is unaffected.
+
 ### HostNotConfigured
 
 Raised when no host runner can be resolved from env or binary probe. The error message includes a remediation hint pointing at the `LL_HOST_CLI` and `LL_HOOK_HOST` env vars and the `orchestration.host_cli` config key so users have a clear path to fix the failure.

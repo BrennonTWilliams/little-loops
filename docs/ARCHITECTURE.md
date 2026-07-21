@@ -872,6 +872,23 @@ FSM handoff.
 New host-CLI call sites MUST go through `resolve_host()` rather than
 adding new `"claude"` literals. See
 [HOST_COMPATIBILITY.md](reference/HOST_COMPATIBILITY.md#orchestration-cli)
+
+### SDK/Batches Dispatch Path (`orchestration.request_path`)
+
+The same `host_runner.py` module also hosts a second, structurally distinct
+mechanism (FEAT-2673, FEAT-2710, FEAT-2716, EPIC-2456 F1): opt-in dispatch
+straight through the `anthropic` SDK client instead of a host-CLI
+subprocess. It does not implement `HostRunner` and produces no
+`HostInvocation` — `build_anthropic_request()`/`build_batch_request()`
+assemble request kwargs, and `dispatch_anthropic_request()`/
+`dispatch_batch_request()`/`poll_batch_result()` perform the actual
+`anthropic.Anthropic().messages.create()` / `.messages.batches.*` network
+calls, normalizing responses into the same `ActionResult` shape the
+CLI-subprocess path returns. `FSMExecutor` selects between the two
+mechanisms per state via `state.request_path or
+orchestration_config.request_path` (`"cli"` default, `"sdk"`, or `"batch"`);
+see [API.md § little_loops.host_runner](reference/API.md#little_loopshost_runner)
+for the dispatch function reference.
 for the per-host orchestration matrix and
 [API Reference — little_loops.host_runner](reference/API.md#little_loopshost_runner)
 for the full public surface.
