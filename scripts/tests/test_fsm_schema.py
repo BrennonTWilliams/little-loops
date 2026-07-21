@@ -2440,6 +2440,41 @@ class TestModelStateConfig:
         assert restored.model == "claude-haiku-4-5-20251001"
 
 
+class TestHaikuGeneratorOkFlag:
+    """ENH-2713: FSMLoop.haiku_generator_ok suppression flag."""
+
+    def test_defaults_to_false(self) -> None:
+        """haiku_generator_ok defaults to False."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={"work": StateConfig(action="echo hi", terminal=True)},
+        )
+        assert fsm.haiku_generator_ok is False
+
+    def test_to_dict_excludes_when_false(self) -> None:
+        """to_dict omits haiku_generator_ok when False (default)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={"work": StateConfig(action="echo hi", terminal=True)},
+        )
+        assert "haiku_generator_ok" not in fsm.to_dict()
+
+    def test_round_trip(self) -> None:
+        """haiku_generator_ok: true round-trips through to_dict/from_dict."""
+        original = FSMLoop(
+            name="test",
+            initial="work",
+            states={"work": StateConfig(action="echo hi", terminal=True)},
+            haiku_generator_ok=True,
+        )
+        d = original.to_dict()
+        assert d["haiku_generator_ok"] is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.haiku_generator_ok is True
+
+
 class TestRequestPathStateConfig:
     """Tests for request_path: FSM state field (FEAT-2710)."""
 

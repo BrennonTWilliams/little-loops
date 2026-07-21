@@ -32,6 +32,7 @@ from little_loops.fsm.validation import (
     _validate_classify_route_default,
     _validate_evaluator,
     _validate_generator_fix_discipline,
+    _validate_haiku_pinned_generator,
     _validate_harness_multimodal_evaluator_blind_spot,
     _validate_input_key_without_guard,
     _validate_llm_evidence_contract,
@@ -1359,6 +1360,150 @@ class TestModelStateValidation:
         errors = _validate_state_action("check", state)
         warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
         assert any("model" in w.message and "ignored" in w.message for w in warnings)
+
+    def test_model_on_shell_state_with_llm_structured_evaluate_no_warning(self) -> None:
+        """ENH-2713: model: on a shell state IS used when paired with an
+        llm_structured evaluate block, so the "ignored" WARNING must not fire."""
+        state = StateConfig(
+            action="run.sh",
+            action_type="shell",
+            model="claude-haiku-4-5-20251001",
+            evaluate=EvaluateConfig(type="llm_structured"),
+            on_yes="done",
+            on_no="work",
+        )
+        errors = _validate_state_action("work", state)
+        model_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "model" in e.message
+        ]
+        assert model_warnings == []
+
+
+class TestHaikuPinnedGenerator:
+    """ENH-2713: haiku-pinned generator states get a WARN — no MR-1 backstop."""
+
+    def _fsm(self, work_state: StateConfig, *, haiku_generator_ok: bool = False) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": work_state,
+                "done": make_state(terminal=True),
+            },
+            haiku_generator_ok=haiku_generator_ok,
+        )
+
+    def test_fires_for_haiku_pinned_generator_state(self) -> None:
+        """A prompt-action generator state (graded by a non-LLM evaluator, so its
+        content is never quality-checked) pinned to haiku is flagged."""
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model="claude-haiku-4-5-20251001",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.model"
+
+    def test_does_not_fire_for_haiku_pinned_verdict_state(self) -> None:
+        """An llm_structured verdict state pinned to haiku is not flagged."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                model="claude-haiku-4-5-20251001",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert errors == []
+
+    def test_does_not_fire_for_non_haiku_model(self) -> None:
+        """A generator state pinned to a non-haiku model is not flagged."""
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model="claude-opus-4-8",
+                next="done",
+            )
+        )
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert errors == []
+
+    def test_does_not_fire_without_model(self) -> None:
+        """A generator state with no model: override is not flagged."""
+        fsm = self._fsm(make_state(action="/ll:write-summary", action_type="prompt", next="done"))
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert errors == []
+
+    def test_suppressed_by_haiku_generator_ok(self) -> None:
+        """haiku_generator_ok: true suppresses the rule."""
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model="claude-haiku-4-5-20251001",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            ),
+            haiku_generator_ok=True,
+        )
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the haiku-pinned-generator WARN."""
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model="claude-haiku-4-5-20251001",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = validate_fsm(fsm)
+        matches = [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING and "(ENH-2713)" in e.message
+        ]
+        assert len(matches) == 1
+
+    def test_haiku_generator_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level haiku_generator_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally pins haiku on a generator state\n"
+            "initial: work\n"
+            "haiku_generator_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: /ll:write-summary\n"
+            "    action_type: prompt\n"
+            "    model: claude-haiku-4-5-20251001\n"
+            "    evaluate:\n"
+            "      type: exit_code\n"
+            "    on_yes: done\n"
+            "    on_no: work\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
 
 
 class TestArtifactIsolation:

@@ -555,7 +555,7 @@
         },
         "model": {
           "type": "string",
-          "description": "Model override to pass as --model to the Claude CLI subprocess for this state only. Only used for prompt-mode states (action_type: prompt or slash_command). Ignored for shell/mcp_tool/contract states — a validation WARNING is emitted if set on those types. Absent = inherits the global --model flag or host default."
+          "description": "Model override for this state only. For prompt-mode states (action_type: prompt or slash_command), passed as --model to the host CLI subprocess. For llm_structured/check_semantic evaluate blocks, overrides the model used for verdict dispatch regardless of action_type (e.g. a shell action with an llm_structured evaluate block). Ignored for shell/mcp_tool/contract states with no LLM-judged evaluate block — a validation WARNING is emitted in that case. Absent = inherits the global --model/--llm-model flag or loop-level llm.model default."
         },
         "request_path": {
           "type": "string",

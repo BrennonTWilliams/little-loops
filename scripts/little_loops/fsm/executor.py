@@ -1821,7 +1821,7 @@ class FSMExecutor:
                     else:
                         result = evaluate_llm_structured(
                             action_result.output,
-                            model=self.fsm.llm.model,
+                            model=state.model or self.fsm.llm.model,
                             max_tokens=self.fsm.llm.max_tokens,
                             timeout=self.fsm.llm.timeout,
                         )
@@ -1868,6 +1868,7 @@ class FSMExecutor:
                 output=eval_input,
                 exit_code=action_result.exit_code if action_result else 0,
                 context=ctx,
+                model=state.model or self.fsm.llm.model,
             )
 
         self._emit(

@@ -235,6 +235,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "unsafe_context_interpolation_ok",
         "pruning_profile",
         "pruning_profile_ok",
+        "haiku_generator_ok",
         "import",
         "fragments",
         "from",
@@ -666,8 +667,14 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
                 )
             )
 
-    # model: override is silently ignored for non-prompt states (host CLI is not invoked)
-    if state.model is not None and state.action_type not in ("prompt", "slash_command", None):
+    # model: override is silently ignored for non-prompt action states UNLESS an
+    # llm_structured/check_semantic evaluate block consumes it for verdict dispatch
+    # (ENH-2713 — model: now threads into the evaluator path too, not just actions).
+    if (
+        state.model is not None
+        and state.action_type not in ("prompt", "slash_command", None)
+        and not _is_llm_judged(state)
+    ):
         errors.append(
             ValidationError(
                 message="model: override is ignored for shell/mcp_tool/contract states",
@@ -1306,6 +1313,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     errors.extend(_validate_capture_reachability(fsm))
 
     errors.extend(_validate_llm_evidence_contract(fsm))
+    errors.extend(_validate_haiku_pinned_generator(fsm))
 
     return errors
 
@@ -2164,6 +2172,43 @@ def _validate_llm_evidence_contract(fsm: FSMLoop) -> list[ValidationError]:
                     severity=ValidationSeverity.WARNING,
                 )
             )
+    return errors
+
+
+def _validate_haiku_pinned_generator(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule (ENH-2713): haiku-pinned generator states.
+
+    Haiku pinning is intended for cheap, rigidly-templated verdict states
+    (check_semantic/llm_structured), which MR-1 already gates with a non-LLM
+    evaluator in their routing chain — a wrong verdict from a cheaper model is
+    caught by that external signal. A state whose `model:` names a haiku
+    variant but is NOT LLM-judged (i.e. it generates/writes artifacts rather
+    than producing a verdict) has no equivalent quality backstop.
+
+    Suppressed by ``haiku_generator_ok: true`` at the loop top-level.
+    """
+    if fsm.haiku_generator_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if state.model is None or "haiku" not in state.model.lower():
+            continue
+        if _is_llm_judged(state):
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] model: '{state.model}' pins a haiku variant "
+                    "on a generator state (not an evaluator/verdict state). Haiku pinning "
+                    "is intended for cheap check_semantic/llm_structured verdicts, which "
+                    "MR-1 already gates with a non-LLM evaluator — generator output has no "
+                    "equivalent quality backstop. Set `haiku_generator_ok: true` to suppress. "
+                    "(ENH-2713)"
+                ),
+                path=f"states.{state_name}.model",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
     return errors
 
 

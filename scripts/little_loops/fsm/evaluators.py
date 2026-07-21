@@ -1764,6 +1764,7 @@ def evaluate(
     output: str,
     exit_code: int,
     context: InterpolationContext,
+    model: str | None = None,
 ) -> EvaluationResult:
     """Dispatch to appropriate evaluator based on config type.
 
@@ -1772,6 +1773,9 @@ def evaluate(
         output: Action stdout
         exit_code: Action exit code
         context: Runtime context for variable interpolation
+        model: Model identifier for the ``llm_structured`` evaluator (state
+            ``model:`` override or the loop's ``llm.model`` default). Ignored
+            by every other evaluator type.
 
     Returns:
         EvaluationResult from the appropriate evaluator
@@ -1960,6 +1964,7 @@ def evaluate(
             schema=config.schema,
             min_confidence=config.min_confidence,
             uncertain_suffix=config.uncertain_suffix,
+            model=model or DEFAULT_LLM_MODEL,
         )
 
     elif eval_type == "mcp_result":

@@ -31,7 +31,7 @@ from little_loops.fsm.evaluators import (
     evaluate_score_stall,
 )
 from little_loops.fsm.interpolation import InterpolationContext
-from little_loops.fsm.schema import EvaluateConfig
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL, EvaluateConfig
 
 
 class TestEvaluationResult:
@@ -1333,6 +1333,34 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "yes"
         assert result.details["confident"] is True
+
+    def test_dispatch_llm_structured_uses_default_model_when_none_passed(self, mock_cli) -> None:
+        """ENH-2713: evaluate() without a model= kwarg falls back to DEFAULT_LLM_MODEL
+        (pre-existing behavior — evaluate_llm_structured's own default)."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
+
+        config = EvaluateConfig(type="llm_structured")
+        ctx = InterpolationContext()
+        evaluate(config, "test output", 0, ctx)
+
+        call_args = mock_run.call_args[0][0]
+        model_arg = call_args[call_args.index("--model") + 1]
+        assert model_arg == DEFAULT_LLM_MODEL
+
+    def test_dispatch_llm_structured_threads_model_kwarg(self, mock_cli) -> None:
+        """ENH-2713: evaluate()'s model= kwarg reaches evaluate_llm_structured's
+        --model CLI flag for the explicit llm_structured evaluate branch."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
+
+        config = EvaluateConfig(type="llm_structured")
+        ctx = InterpolationContext()
+        evaluate(config, "test output", 0, ctx, model="claude-haiku-4-5-20251001")
+
+        call_args = mock_run.call_args[0][0]
+        model_arg = call_args[call_args.index("--model") + 1]
+        assert model_arg == "claude-haiku-4-5-20251001"
 
     def test_dispatch_llm_with_config_options(self, mock_cli) -> None:
         """llm_structured uses config options."""

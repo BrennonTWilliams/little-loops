@@ -1115,6 +1115,113 @@ states:
         assert "disabled" in result.details["error"]
 
 
+class TestStateModelEvaluatorThreading:
+    """ENH-2713: state.model reaches the evaluator/verdict dispatch, not just actions."""
+
+    def test_state_model_used_for_default_prompt_evaluation(self) -> None:
+        """A state.model override is passed to evaluate_llm_structured for default prompt eval."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        state = make_test_state(
+            action="/some-slash-command",
+            model="claude-haiku-4-5-20251001",
+            on_yes="done",
+            on_error="done",
+        )
+        action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured") as mock_llm:
+            executor._evaluate(state, action_result, ctx)
+
+        assert mock_llm.call_args.kwargs["model"] == "claude-haiku-4-5-20251001"
+
+    def test_loop_llm_model_used_as_fallback_for_default_prompt_evaluation(self) -> None:
+        """Without a state.model override, the loop's llm.model default is used."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = make_test_fsm()
+        fsm.llm = LLMConfig(model="claude-opus-4-8")
+        executor = FSMExecutor(fsm)
+        state = make_test_state(
+            action="/some-slash-command",
+            on_yes="done",
+            on_error="done",
+        )
+        action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured") as mock_llm:
+            executor._evaluate(state, action_result, ctx)
+
+        assert mock_llm.call_args.kwargs["model"] == "claude-opus-4-8"
+
+    def test_state_model_used_for_explicit_llm_structured_evaluate(self) -> None:
+        """A state.model override reaches evaluate_llm_structured via the explicit
+        evaluate: {type: llm_structured} branch (evaluators.evaluate() dispatcher)."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        state = make_test_state(
+            action="run.sh",
+            model="claude-haiku-4-5-20251001",
+            evaluate=EvaluateConfig(type="llm_structured"),
+            on_yes="done",
+            on_no="done",
+        )
+        action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        with patch("little_loops.fsm.evaluators.evaluate_llm_structured") as mock_llm:
+            executor._evaluate(state, action_result, ctx)
+
+        assert mock_llm.call_args.kwargs["model"] == "claude-haiku-4-5-20251001"
+
+
 class TestEvaluateSource:
     """Tests for EvaluateConfig.source field redirecting evaluation input."""
 

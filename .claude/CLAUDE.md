@@ -158,6 +158,7 @@ taxonomy, and the canonical shape live in
 | MR-11 | WARN | user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` pasted raw into a `shell` body outside a safe position (single-quoted string, quoted heredoc, `:shell` suffix); shell metacharacters (`"`, `$`, `` ` ``, `\`, `!`) break bash tokenizing or inject commands | `unsafe_context_interpolation_ok` |
 | policy-table | WARN | `context.policy_rules` predicate references a dimension never scored (`rubric_dimensions` / `rubric-dim-<name>.txt`) — silently inert | `policy_dims_scored_ok` |
 | static `loop:` ref | ERROR | a state's static (non-`${...}`) `loop:` name resolves to no `.yaml`; blocks load. Use the full relative path (`loop: oracles/foo`) | — |
+| haiku-gen | WARN | a state's `model:` names a haiku variant but the state is a generator (not an evaluator/verdict state) — no MR-1 non-LLM-evaluator backstop for the cheaper model's output | `haiku_generator_ok` |
 
 The `loop-specialist` agent (`agents/loop-specialist.md`) diagnoses violations
 post-hoc as `self-evaluation bias` / `feature-stubbing`; these gates shift the
