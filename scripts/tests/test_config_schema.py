@@ -742,6 +742,23 @@ class TestConfigSchema:
         assert "claude-code" in host_cli["enum"]
         assert "codex" in host_cli["enum"]
 
+    def test_orchestration_request_path_batch_in_schema(self) -> None:
+        """orchestration.request_path enum must include 'batch' (FEAT-2710).
+
+        Follows the test_orchestration_host_cli_in_schema pattern: structural
+        JSON-key assertions only, no jsonschema runtime validation.
+        """
+        data = json.loads(_load_schema_text())
+        orch = data["properties"]["orchestration"]
+        assert "request_path" in orch["properties"], (
+            "orchestration.request_path is not declared in config-schema.json"
+        )
+        request_path = orch["properties"]["request_path"]
+        assert request_path["type"] == "string"
+        assert "cli" in request_path["enum"]
+        assert "sdk" in request_path["enum"]
+        assert "batch" in request_path["enum"]
+
     def test_orchestration_cluster_in_schema(self) -> None:
         """orchestration.cluster must be declared with its three properties in config-schema.json.
 

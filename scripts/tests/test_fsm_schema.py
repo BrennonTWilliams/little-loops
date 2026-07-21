@@ -2440,6 +2440,58 @@ class TestModelStateConfig:
         assert restored.model == "claude-haiku-4-5-20251001"
 
 
+class TestRequestPathStateConfig:
+    """Tests for request_path: FSM state field (FEAT-2710)."""
+
+    def test_state_config_request_path_defaults_to_none(self) -> None:
+        """StateConfig.request_path defaults to None."""
+        state = StateConfig(action="echo hi", next="done")
+        assert state.request_path is None
+
+    def test_state_config_accepts_request_path(self) -> None:
+        """StateConfig accepts request_path field."""
+        state = StateConfig(
+            action="/ll:test", action_type="prompt", request_path="batch", next="done"
+        )
+        assert state.request_path == "batch"
+
+    def test_to_dict_includes_request_path_when_set(self) -> None:
+        """to_dict includes request_path when set."""
+        state = StateConfig(action="/ll:test", request_path="batch", next="done")
+        d = state.to_dict()
+        assert d["request_path"] == "batch"
+
+    def test_to_dict_excludes_request_path_when_none(self) -> None:
+        """to_dict omits request_path when not set."""
+        state = StateConfig(action="echo hi", next="done")
+        d = state.to_dict()
+        assert "request_path" not in d
+
+    def test_from_dict_with_request_path(self) -> None:
+        """from_dict deserializes request_path field."""
+        data = {"action": "/ll:test", "request_path": "batch", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.request_path == "batch"
+
+    def test_from_dict_without_request_path_defaults_none(self) -> None:
+        """from_dict defaults request_path to None when absent."""
+        data = {"action": "echo hi", "next": "done"}
+        state = StateConfig.from_dict(data)
+        assert state.request_path is None
+
+    def test_round_trip_request_path(self) -> None:
+        """StateConfig with request_path round-trips through to_dict/from_dict."""
+        original = StateConfig(
+            action="/ll:test",
+            action_type="prompt",
+            request_path="batch",
+            next="done",
+        )
+        d = original.to_dict()
+        restored = StateConfig.from_dict(d)
+        assert restored.request_path == "batch"
+
+
 class TestParameterSpec:
     """Tests for the ParameterSpec dataclass."""
 

@@ -3151,6 +3151,14 @@ class TestOrchestrationConfig:
         assert isinstance(config, ClusterConfig)
         assert config.max_batch_size == 5
 
+    def test_from_dict_request_path_defaults_cli(self) -> None:
+        config = OrchestrationConfig.from_dict({})
+        assert config.request_path == "cli"
+
+    def test_from_dict_request_path_batch(self) -> None:
+        config = OrchestrationConfig.from_dict({"request_path": "batch"})
+        assert config.request_path == "batch"
+
 
 class TestBRConfigOrchestration:
     """Extend TestBRConfig with orchestration property coverage."""

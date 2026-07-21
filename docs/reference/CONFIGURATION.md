@@ -1492,8 +1492,9 @@ benchmark; while `true` the heuristic is bypassed. Default `false` runs it.
 
 Top-level block (FEAT-2672, EPIC-2456 F1) governing per-tool `defer_loading` and
 the matching server-side search-tool injection. Only consulted when
-`orchestration.request_path == "sdk"` — the CLI shell path never serializes a
-tool-definition catalog at all, so this block has no effect there.
+`orchestration.request_path` is `"sdk"` or `"batch"` (FEAT-2710) — the CLI shell
+path never serializes a tool-definition catalog at all, so this block has no
+effect there.
 
 `threshold` sets the catalog index at or past which
 `tool_catalog.to_anthropic_tools()` flags each tool `defer_loading: True`,

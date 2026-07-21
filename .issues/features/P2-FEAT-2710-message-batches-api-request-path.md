@@ -3,7 +3,7 @@ id: FEAT-2710
 type: FEAT
 title: Message Batches API request path (50% discount on batchable automation)
 priority: P2
-status: open
+status: in_progress
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -20,13 +20,13 @@ relates_to:
 - ENH-2687
 learning_tests_required:
 - anthropic
-confidence_score: 80
-outcome_confidence: 68
+confidence_score: 88
+outcome_confidence: 75
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 15
+score_ambiguity: 22
 score_change_surface: 18
-decision_needed: true
+decision_needed: false
 ---
 
 # FEAT-2710: Message Batches API request path (50% discount on batchable automation)
@@ -81,9 +81,19 @@ _Added by `/ll:refine-issue` — corrections and additional findings from re-ver
 - **`RateLimitCircuit` is a structural precedent only, not a behavioral one**: it's a 429 coordination record (single monotonically-merged recovery-window estimate), not a literal submit→poll-job pattern — no existing code polls an external job ID on an interval with backoff. Mirror its file-locking mechanics (`fcntl.flock` + `tempfile.mkstemp`/`os.replace` atomic write, `_write_atomic` at lines 121-134), not its data shape. Its test file `scripts/tests/test_rate_limit_circuit.py` has directly reusable test shapes: `test_atomic_write_crash_safety` (crash-safety with concurrent reader/writer threads), `test_concurrent_access` (thread-safety), `test_stale_detection` (staleness cutoff).
 - **`TestModelStateConfig` (`test_fsm_schema.py:2391-2440`) is the literal template to copy for a new `TestRequestPathStateConfig`** — 6 test methods: `test_state_config_model_defaults_to_none`, `test_state_config_accepts_model`, `test_to_dict_includes_model_when_set`, `test_to_dict_excludes_model_when_none`, `test_from_dict_with_model`, `test_from_dict_without_model_defaults_none`, plus `test_round_trip_model`.
 
+### Codebase Research Findings (refine-issue re-run, 2026-07-20 later pass)
+
+_Added by `/ll:refine-issue` — additional findings from a fresh research pass; all prior line numbers re-confirmed exact (no further drift)._
+
+- **Two additional atomic-persistence primitives exist beyond `RateLimitCircuit`, not previously cited**: `scripts/little_loops/file_utils.py` provides `atomic_write_json(path, data)` (tempfile + `os.replace()`, no locking) and `acquire_lock(path, timeout=10.0)` — a `fcntl.flock`-based context manager with a fixed 0.05s poll loop (lines 60-96), usable as an off-the-shelf substitute for hand-rolling `RateLimitCircuit`-style locking. If a single process owns the batch-poll loop (no concurrent writers), `atomic_write_json()` alone is simpler than mirroring `RateLimitCircuit`'s full locking scheme. `scripts/little_loops/state.py`'s `StateManager` class (lines 84-237) is a fuller dataclass+manager+`EventBus`-emission shape (`save()`/`load()`/`_emit()`) but has no `fcntl.flock` locking — useful only if the batch tracker wants lifecycle event emission, not concurrent-write safety.
+- **Precise `StateConfig.model` `to_dict()`/`from_dict()` anchors** (previously only approximated as "line 574+"): `to_dict()`'s conditional inclusion is at `fsm/schema.py:704-705` (`if self.model is not None: result["model"] = self.model`); `from_dict()`'s read is at line 800 (`model=data.get("model")`). Use these exact lines, not `574+`, when adding the mirrored `request_path` field.
+- **`orchestration.host_cli` is a second live precedent for the enum-field pattern** (`config-schema.json:1565`, `enum: ["claude-code", "codex", "opencode", "pi"]`) — confirms the `test_orchestration_host_cli_in_schema` structural-assertion style (`test_config_schema.py:724-743`) already cited is the right template, not a one-off.
+- **`config-schema.json` has no repo-root copy** — it exists only at `scripts/little_loops/config-schema.json` (package data). All prior line citations already point to the correct package-data path; no action needed, just a confirmation to avoid editing a nonexistent root file.
+
 ## Open Questions
 
-1. **`request_path` precedence.** Does the per-state `StateConfig.request_path`
+1. **`request_path` precedence.** ✅ **RESOLVED** (2026-07-20 via `/ll:decide-issue`)
+   Does the per-state `StateConfig.request_path`
    (new field, `fsm/schema.py`) override the global `orchestration.request_path`
    config key (`config/orchestration.py:81`) when both are set, or is it a
    logically distinct setting that happens to share a name?
@@ -92,7 +102,20 @@ _Added by `/ll:refine-issue` — corrections and additional findings from re-ver
      their loop/config-level equivalent.
    - (b) Distinct settings — the per-state field is independent of the global
      orchestration mode and does not shadow it.
-2. **Batch pricing mechanism.** How should the 50% batch discount be
+
+   > **Selected: (a) State overrides global.** `fsm/executor.py:1600` already
+   > resolves `model` this exact way (`state.model or self.run_model` —
+   > per-state value shadows the loop default, empty falls through). Giving
+   > `StateConfig.request_path` the same field name as `orchestration.request_path`
+   > but different (non-shadowing) semantics would mean two config keys with
+   > identical names and different meanings — a footgun with no offsetting
+   > benefit. `orchestration.request_path` has zero consumers today (confirmed
+   > via grep across `scripts/little_loops/`), so there's no existing behavior
+   > to preserve; wire it as `state.request_path or self.orchestration_config.request_path`,
+   > mirroring the `model` resolution exactly.
+
+2. **Batch pricing mechanism.** ✅ **RESOLVED** (2026-07-20 via `/ll:decide-issue`)
+   How should the 50% batch discount be
    represented in `pricing.py`, which has no existing multiplier precedent
    (all current discounts are baked into flat per-token-type rates)?
    - (a) Parallel `batch` rate table — doubles `MODEL_PRICING` (lines 10-55),
@@ -101,6 +124,17 @@ _Added by `/ll:refine-issue` — corrections and additional findings from re-ver
      58-78) — single function, new discount-ratio arg appended (positionally
      safe, per the wiring note on `cost_graph.py`/`session_store.py` callers)
      to the signature.
+
+   > **Selected: (b) Multiplier parameter, appended at the end of the
+   > signature** (e.g. `is_batch: bool = False`). Both existing call sites
+   > (`fsm/cost_graph.py:234`, `session_store.py:2678`) call
+   > `estimate_cost_usd()` positionally with 5 args, so an appended
+   > default-valued param is a strict superset — zero risk to callers. The
+   > alternative (a parallel `batch` table) duplicates 7 models × 4 rate
+   > fields that must be hand-kept in sync with `MODEL_PRICING` forever;
+   > a missed second edit on a future price update silently mis-prices batch
+   > requests with no test to catch the drift. A multiplier derives from the
+   > existing table by construction and has no such failure mode.
 
 ## Implementation Steps
 
@@ -151,6 +185,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_config_schema.py:724-743` (`test_orchestration_host_cli_in_schema`) — the exact structural-assertion pattern to mirror for a new `test_orchestration_request_path_batch_in_schema` test (checks `"batch" in orch["properties"]["request_path"]["enum"]`)
 - `scripts/tests/test_fsm_schema.py:2391-2440` (`TestModelStateConfig`) — the 7-test shape (`defaults-to-None` / `accepts-value` / `to_dict`-includes-when-set / excludes-when-none / `from_dict`-with-value / without-value / round-trip) to duplicate for `State.request_path`
 
+_Added by `/ll:refine-issue` (later pass, 2026-07-20) — additional reusable primitives found:_
+- `scripts/little_loops/file_utils.py` (`atomic_write_json()`, `acquire_lock()` lines 60-96) — simpler single-process alternative to `RateLimitCircuit`'s locking if the batch-poll loop has no concurrent writers
+- `scripts/little_loops/state.py` (`StateManager`, lines 84-237) — fuller dataclass+manager+`EventBus`-emission shape; lacks `fcntl.flock` locking, so only a fit if lifecycle-event emission matters more than concurrent-write safety
+
 ### Tests
 - `scripts/tests/test_cache_control.py` (`TestBuildAnthropicRequest`, `TestDefaultBehaviorUnchanged` lines 291-305) — existing coverage of `build_anthropic_request()` and the `request_path` two-value enum pattern (`"cli"`/`"sdk"`) to extend with `"batch"`; extend or add sibling `test_host_runner.py` batch tests without SDK client mocking
 - `scripts/tests/test_pricing.py`, `scripts/tests/test_fsm_cost_graph.py`, `scripts/tests/test_fsm_schema.py`, `scripts/tests/test_fsm_persistence.py` — existing coverage for the components this issue extends
@@ -175,10 +213,31 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `orchestration.request_path: batch` submits via the Batches API and returns results through the existing parse path.
-- [ ] Batch requests are priced at 0.5× in the F6 cost table and F5 telemetry.
-- [ ] Interrupted runs resume polling from persisted batch IDs (no double-submit).
-- [ ] Default behavior unchanged; batch is opt-in per config/loop/state.
+- [ ] `orchestration.request_path: batch` submits via the Batches API and returns results through the existing parse path. **Not met** — `build_batch_request()` builds submission kwargs (host_runner.py); no code calls `anthropic.Anthropic().messages.batches.create(**kwargs)` or routes executor state execution through it. Matches the exact gap the Confidence Check flagged: FEAT-2673's "sdk" path never got a live dispatch call either, so there is no existing synchronous SDK call site to fork a batch variant from — building one is a separate, larger, higher-risk change to `fsm/executor.py`'s core dispatch path.
+- [x] Batch requests are priced at 0.5× in the F6 cost table and F5 telemetry. `estimate_cost_usd(..., is_batch=True)` applies `BATCH_DISCOUNT` (0.5). Not yet *called* with `is_batch=True` anywhere, since no code path produces batch usage events yet (depends on the AC above) — the pricing primitive itself is complete and tested.
+- [ ] Interrupted runs resume polling from persisted batch IDs (no double-submit). **Not met** — `fsm/batch_tracker.py`'s `BatchTracker` provides the atomic-file bookkeeping primitive (mirrors `RateLimitCircuit`), but nothing calls `record_submitted()`/`get_batch_id()` yet since there is no poll loop to resume (depends on the first AC).
+- [x] Default behavior unchanged; batch is opt-in per config/loop/state. `orchestration.request_path` still defaults to `"cli"`; `StateConfig.request_path` defaults to `None` (falls through to config default), following the exact `model` field precedent.
+
+### Partial Implementation Notes (2026-07-21)
+
+Delivered the full **infrastructure layer** at the same maturity level FEAT-2673
+established for the "sdk" path (request-shape building only, no live network
+call): pricing multiplier, config/schema enum + per-state override, transport
+request-builder, and file-backed batch-ID bookkeeping — all tested (30 new
+tests, `ruff`/`mypy` clean, zero regressions in the full suite; the 192
+pre-existing failures on `main` are unrelated xdist worker-isolation flakiness,
+confirmed via `git stash` bisection).
+
+**Deliberately not attempted in this pass**: wiring a live
+`messages.batches.create()`/poll/retrieve call into `fsm/executor.py`'s state
+dispatch and `cli/loop/lifecycle.py`'s run lifecycle. That requires first
+building the "sdk" path's live dispatch call (FEAT-2673 never added one — the
+Confidence Check's Concern #1, re-verified true), which is a materially
+larger and riskier change to the core loop-execution path than this issue's
+"transport-only, no prompt-assembly changes" framing suggested. Recommend a
+follow-up issue scoped explicitly to "wire live SDK/batch dispatch into
+`fsm/executor.py`" that covers both request paths together, rather than
+retrofitting it piecemeal under this issue's title.
 
 ## Impact
 
@@ -188,17 +247,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-20_
+_Added by `/ll:confidence-check` on 2026-07-20 (re-run)_
 
-**Readiness Score**: 80/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 68/100 → MODERATE
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+Both open questions (`request_path` precedence, batch pricing mechanism) were
+resolved via `/ll:decide-issue` since the prior run, raising ambiguity
+(15→22) and overall readiness (80→88) and outcome confidence (68→75). The
+core dependency gap below is unchanged and re-verified against current code.
 
 ### Concerns
-- FEAT-2673 is marked `done`, but this issue's own research finding notes `build_anthropic_request()` (`host_runner.py:1282-1361`) never calls `anthropic.Anthropic().messages.create(**kwargs)` — there is no working "sdk" dispatch path today to fork into a "batch" variant. Either the sdk dispatch call needs to land first, or both dispatch paths need to be built together in this issue.
-- The pricing discount mechanism (parallel `batch` rate table vs. a multiplier parameter threaded through `estimate_cost_usd()`) is explicitly flagged in the issue's own research as needing "an explicit decision before implementation," with no existing precedent for either approach.
-- `learning_tests_required: [anthropic]` is `proven`, but its recorded assertions (`.ll/learning-tests/anthropic.md`) cover general SDK shape (client construction, cache_control on tools) — none exercise the `messages.batches` namespace specifically. The batch submit→poll→retrieve round-trip is still unverified against the real SDK surface.
+- Re-verified via fresh grep (`messages.create\|messages.batches` across
+  `scripts/little_loops/host_runner.py`): still only one hit — the docstring
+  mention at line 1357. FEAT-2673 is marked `done`, but no code anywhere in
+  the codebase actually calls `anthropic.Anthropic().messages.create(**kwargs)`
+  or `.messages.batches.create(...)`. Both the "sdk" and "batch" dispatch
+  paths must be built together in this issue — larger scope than the issue's
+  "transport-only change, no prompt-assembly changes" framing suggests.
+- `learning_tests_required: [anthropic]` is `proven` (7/0/2), but its recorded
+  assertions (`.ll/learning-tests/anthropic.md`) cover general SDK shape
+  (client construction, `cache_control` on tools) — none exercise the
+  `messages.batches` namespace specifically. The batch submit→poll→retrieve
+  round-trip is still unverified against the real SDK surface.
 
 ## Session Log
+- `/ll:manage-issue` (partial implementation — infra layer only, see Partial Implementation Notes) - 2026-07-21T03:40:13Z - `4ea8aa10-aefa-44df-b782-f67007fcc175.jsonl`
+- `/ll:refine-issue` - 2026-07-21T03:23:28 - `46a0022c-3c8d-4a4a-8dd4-91d37d76136b.jsonl`
+- `/ll:confidence-check` - 2026-07-20T00:00:00 - `97856e1e-43f1-4a41-b60e-e38c58d369df.jsonl`
+- `/ll:decide-issue` - 2026-07-21T03:13:23 - `c292b3d1-1d24-45ed-9b15-dc634c923e2c.jsonl`
 - `/ll:decide-issue` - 2026-07-21T03:08:30 - `c28737b4-7f98-48e2-afdf-cc4632e3a0b1.jsonl`
 - `/ll:decide-issue` - 2026-07-21T03:04:33 - `a391cada-c2da-4b7f-9fe6-5b3f92da46b4.jsonl`
 - `/ll:refine-issue` - 2026-07-21T02:48:16 - `4a047046-4ab7-4af2-ad21-51957f2960cf.jsonl`

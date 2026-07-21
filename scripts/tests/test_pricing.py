@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from little_loops.pricing import MODEL_PRICING, estimate_cost_usd
+from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, estimate_cost_usd
 
 
 class TestModelPricing:
@@ -59,3 +59,25 @@ class TestEstimateCostUsd:
         assert cost_all is not None
         assert cost_input_only is not None
         assert cost_all > cost_input_only
+
+
+class TestBatchDiscount:
+    def test_is_batch_false_by_default(self) -> None:
+        cost_default = estimate_cost_usd("claude-sonnet-4-6", 1000, 200)
+        cost_explicit_false = estimate_cost_usd("claude-sonnet-4-6", 1000, 200, 0, 0, False)
+        assert cost_default == cost_explicit_false
+
+    def test_is_batch_halves_cost(self) -> None:
+        cost_sync = estimate_cost_usd("claude-sonnet-4-6", 1000, 200, 50, 50)
+        cost_batch = estimate_cost_usd(
+            "claude-sonnet-4-6", 1000, 200, 50, 50, is_batch=True
+        )
+        assert cost_sync is not None
+        assert cost_batch is not None
+        assert cost_batch == cost_sync * BATCH_DISCOUNT
+
+    def test_is_batch_unknown_model_returns_none(self) -> None:
+        assert estimate_cost_usd("unknown-model-xyz", 1000, 200, is_batch=True) is None
+
+    def test_is_batch_zero_tokens_returns_zero(self) -> None:
+        assert estimate_cost_usd("claude-sonnet-4-6", 0, 0, 0, 0, is_batch=True) == 0.0

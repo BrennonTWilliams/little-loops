@@ -627,6 +627,7 @@ class StateConfig:
     agent: str | None = None
     tools: list[str] | None = None
     model: str | None = None
+    request_path: str | None = None
     extra_routes: dict[str, str] = field(default_factory=dict)
     type: str | None = None
     throttle: ThrottleConfig | None = None
@@ -703,6 +704,8 @@ class StateConfig:
             result["tools"] = self.tools
         if self.model is not None:
             result["model"] = self.model
+        if self.request_path is not None:
+            result["request_path"] = self.request_path
         for verdict, target in self.extra_routes.items():
             result[f"on_{verdict}"] = target
         if self.type is not None:
@@ -798,6 +801,7 @@ class StateConfig:
             agent=data.get("agent"),
             tools=data.get("tools"),
             model=data.get("model"),
+            request_path=data.get("request_path"),
             extra_routes=extra_routes,
             type=data.get("type"),
             throttle=throttle,

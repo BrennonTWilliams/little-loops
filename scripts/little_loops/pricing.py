@@ -55,24 +55,41 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 }
 
 
+BATCH_DISCOUNT = 0.5
+"""Flat discount applied to both input and output tokens under the Anthropic
+Message Batches API (FEAT-2710, EPIC-2456). Stacks with prompt caching —
+applied uniformly across all four token types since Anthropic's batch
+discount is a flat 50% off the synchronous per-token rate, cache-adjusted
+rates included."""
+
+
 def estimate_cost_usd(
     model: str,
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
+    is_batch: bool = False,
 ) -> float | None:
     """Estimate cost in USD for a token usage event.
 
     Returns None if the model is not in MODEL_PRICING.
+
+    ``is_batch`` applies the flat 50% Message Batches API discount
+    (:data:`BATCH_DISCOUNT`) to the computed total. Appended at the end of
+    the signature (not inserted) so existing positional callers
+    (``fsm/cost_graph.py``, ``session_store.py``) are unaffected.
     """
     pricing = MODEL_PRICING.get(model)
     if pricing is None:
         return None
     per_m = 1_000_000.0
-    return (
+    cost = (
         input_tokens * pricing["input"] / per_m
         + output_tokens * pricing["output"] / per_m
         + cache_read_tokens * pricing["cache_read"] / per_m
         + cache_creation_tokens * pricing["cache_creation"] / per_m
     )
+    if is_batch:
+        cost *= BATCH_DISCOUNT
+    return cost

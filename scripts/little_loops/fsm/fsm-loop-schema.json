@@ -557,6 +557,11 @@
           "type": "string",
           "description": "Model override to pass as --model to the Claude CLI subprocess for this state only. Only used for prompt-mode states (action_type: prompt or slash_command). Ignored for shell/mcp_tool/contract states — a validation WARNING is emitted if set on those types. Absent = inherits the global --model flag or host default."
         },
+        "request_path": {
+          "type": "string",
+          "enum": ["cli", "sdk", "batch"],
+          "description": "FEAT-2710 (EPIC-2456): per-state override of orchestration.request_path — shadows the global config value the same way 'model' shadows the loop default (state wins over config default, absent falls through). 'batch' opts this state into the Anthropic Message Batches API (flat 50% discount, asynchronous submit+poll). Only used for prompt-mode states; ignored for shell/mcp_tool/contract states."
+        },
         "type": {
           "type": "string",
           "description": "Optional state type marker. Set to 'learning' (FEAT-1283) to dispatch to the learning-state handler: queries the learning-tests registry for each target, invokes /ll:explore-api on miss/stale, routes to on_yes when all proven and on_blocked/on_no on refuted/retries-exhausted. Learning states are also exempt from throttle hard_max enforcement."

@@ -624,7 +624,7 @@
     },
     "cache": {
       "type": "object",
-      "description": "Cache-marking oracle configuration (FEAT-2673, EPIC-2456 F1). Only consulted when orchestration.request_path == 'sdk'; the CLI shell path never carries a cache_control parameter regardless of this config.",
+      "description": "Cache-marking oracle configuration (FEAT-2673, EPIC-2456 F1). Only consulted when orchestration.request_path is 'sdk' or 'batch' (FEAT-2710); the CLI shell path never carries a cache_control parameter regardless of this config.",
       "properties": {
         "require_repeat": {
           "type": "boolean",
@@ -636,7 +636,7 @@
     },
     "deferred_tools": {
       "type": "object",
-      "description": "Deferred tool-loading configuration (FEAT-2672, EPIC-2456 F1). Only consulted when orchestration.request_path == 'sdk'; the CLI shell path never serializes a tool-definition catalog at all.",
+      "description": "Deferred tool-loading configuration (FEAT-2672, EPIC-2456 F1). Only consulted when orchestration.request_path is 'sdk' or 'batch' (FEAT-2710); the CLI shell path never serializes a tool-definition catalog at all.",
       "properties": {
         "threshold": {
           "type": ["integer", "null"],
@@ -1567,9 +1567,9 @@
         },
         "request_path": {
           "type": "string",
-          "enum": ["cli", "sdk"],
+          "enum": ["cli", "sdk", "batch"],
           "default": "cli",
-          "description": "FEAT-2673 (EPIC-2456 F1): 'cli' (default) uses the existing CLI shell-subprocess path, unchanged. 'sdk' opts into the Anthropic SDK request path (build_anthropic_request()), the only path that can carry a cache_control parameter and unlock the 0.1x-read / 1.25x-write prompt-caching discount."
+          "description": "FEAT-2673/FEAT-2710 (EPIC-2456 F1): 'cli' (default) uses the existing CLI shell-subprocess path, unchanged. 'sdk' opts into the Anthropic SDK request path (build_anthropic_request()), the only path that can carry a cache_control parameter and unlock the 0.1x-read / 1.25x-write prompt-caching discount. 'batch' opts into the Anthropic Message Batches API (build_batch_request()) for a flat 50% discount on both input and output tokens (stacks with prompt caching); results are asynchronous (submit + poll), so only latency-insensitive states/loops should opt in."
         },
         "composer": {
           "type": "object",

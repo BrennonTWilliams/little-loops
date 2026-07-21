@@ -69,12 +69,17 @@ class OrchestrationConfig:
     runs. The env var takes precedence if already set.
 
     ``request_path`` (FEAT-2673, EPIC-2456 F1) selects between the existing
-    CLI shell-subprocess path (``"cli"``, default — unchanged behavior) and
-    the opt-in Anthropic SDK path (``"sdk"``) that calls
-    :func:`~little_loops.host_runner.build_anthropic_request`. The 0.1x-read
+    CLI shell-subprocess path (``"cli"``, default — unchanged behavior), the
+    opt-in Anthropic SDK path (``"sdk"``) that calls
+    :func:`~little_loops.host_runner.build_anthropic_request`, and the
+    opt-in Message Batches API path (``"batch"``, FEAT-2710, EPIC-2456)
+    that submits via :func:`~little_loops.host_runner.build_batch_request`
+    for a flat 50% discount on both input and output tokens. The 0.1x-read
     / 1.25x-write cache discount only exists when the request body carries a
     ``cache_control`` parameter, which is unreachable over the CLI shell
-    path, so ``"sdk"`` must be explicitly opted into.
+    path, so ``"sdk"``/``"batch"`` must be explicitly opted into. ``"batch"``
+    trades latency for cost — results arrive asynchronously via polling —
+    so it is only suitable for latency-insensitive states/loops.
     """
 
     host_cli: str | None = None

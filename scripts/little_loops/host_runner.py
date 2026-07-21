@@ -1418,3 +1418,49 @@ def build_anthropic_request(
         request["tools"] = tool_dicts
 
     return request
+
+
+def build_batch_request(
+    *,
+    custom_id: str,
+    skill_body: str,
+    system_prompt: str | None,
+    tools: list[ToolDefinition] | None,
+    messages: list[dict[str, Any]],
+    model: str,
+    fragment_store: FragmentStore,
+    require_repeat: bool = True,
+    defer_loading_threshold: int | None = None,
+    search_tool_variant: str = "bm25",
+) -> dict[str, Any]:
+    """Build Message Batches API submission kwargs for one request.
+
+    FEAT-2710 (EPIC-2456) — the ``orchestration.request_path == "batch"``
+    counterpart to :func:`build_anthropic_request`. Reuses it verbatim to
+    build the per-request Messages API params (so batch requests get the
+    same F1 cache-marking treatment and stack the batch discount with
+    prompt caching), then wraps the result in the single-entry
+    ``requests`` list shape ``anthropic.resources.messages.batches.Batches.create()``
+    expects: ``{"requests": [{"custom_id": ..., "params": {...}}]}``.
+    Only builds submission kwargs suitable for
+    ``anthropic.Anthropic().messages.batches.create(**kwargs)``; does not
+    perform the network call or poll for completion — that lifecycle is
+    the caller's responsibility (see ``fsm/batch_tracker.py``).
+
+    Args:
+        custom_id: Developer-provided ID for matching this request's result
+            once the batch completes; must be unique within the batch.
+        (remaining args mirror :func:`build_anthropic_request` exactly.)
+    """
+    params = build_anthropic_request(
+        skill_body=skill_body,
+        system_prompt=system_prompt,
+        tools=tools,
+        messages=messages,
+        model=model,
+        fragment_store=fragment_store,
+        require_repeat=require_repeat,
+        defer_loading_threshold=defer_loading_threshold,
+        search_tool_variant=search_tool_variant,
+    )
+    return {"requests": [{"custom_id": custom_id, "params": params}]}
