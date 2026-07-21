@@ -57,3 +57,7 @@ Interpolate concrete failure context into the diagnose prompt:
       session to analyze only that run
 - [ ] A refine kill with exit 143 produces a diagnosis that cites exit 143 (add or
       extend a test/fixture asserting the interpolated prompt content)
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-07-21T23:08:29 - `9fc8185c-278a-4573-8071-af3d44765f41.jsonl`

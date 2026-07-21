@@ -56,3 +56,7 @@ verdict/exit code.
       distinct from `refine_failed`
 - [ ] The `done` summary surfaces infra-skipped issues separately (re-runnable)
 - [ ] `ll-loop validate autodev` passes; existing routing tests updated
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-07-21T23:08:30 - `9fc8185c-278a-4573-8071-af3d44765f41.jsonl`

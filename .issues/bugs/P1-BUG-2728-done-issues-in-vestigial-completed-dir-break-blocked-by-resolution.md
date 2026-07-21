@@ -68,3 +68,7 @@ Two component defects:
 - [ ] The closure write path no longer creates files under `.issues/completed/`
 - [ ] Regression test: a `done` blocker in a legacy/unscanned directory does not
       leave dependents permanently skipped
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-07-21T23:08:29 - `9fc8185c-278a-4573-8071-af3d44765f41.jsonl`
