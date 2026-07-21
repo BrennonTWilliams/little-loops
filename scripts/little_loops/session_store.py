@@ -1789,6 +1789,58 @@ def record_loop_run_summary(
     return inserted
 
 
+# ---------------------------------------------------------------------------
+# Live usage_events writer (ENH-2724)
+# ---------------------------------------------------------------------------
+
+
+def record_usage_event(
+    db_path: Path | str,
+    *,
+    run_id: str,
+    ts: str,
+    state: str | None,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_creation_tokens: int,
+) -> None:
+    """Write one live per-invocation row to ``usage_events`` (ENH-2724).
+
+    Unlike :func:`_backfill_usage_events` (post-hoc, ``state`` always ``NULL``),
+    this is called at loop-run finish with the FSM state each invocation ran in
+    already known. ``usage_events`` has no uniqueness constraint — plain
+    ``INSERT``, one row per :class:`~little_loops.subprocess_utils.TokenUsage`.
+    """
+    from little_loops.pricing import estimate_cost_usd
+
+    cost_usd = estimate_cost_usd(
+        model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+    )
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                model,
+                state,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                cost_usd,
+                run_id,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_path: str) -> bool:
     """Link a ``loop-specialist``-written diagnostics artifact to its ``loop_runs`` row.
 

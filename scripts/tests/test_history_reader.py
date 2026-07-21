@@ -180,6 +180,25 @@ class TestCostAttribution:
         with pytest.raises(ValueError):
             cost_attribution(group_by="'; DROP TABLE usage_events; --", db=db)
 
+    def test_group_by_run_id(self, tmp_path: Path) -> None:
+        """ENH-2724: run_id is a valid group_by column once the live writer lands."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("2026-07-21T19:00:00Z", "claude", "check", 100, 20, 5, 7, 0.01, "run-1-loop"),
+        )
+        conn.commit()
+        conn.close()
+
+        rows = cost_attribution(group_by="run_id", db=db)
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-1-loop"
+        assert rows[0]["gen_ai.usage.input_tokens"] == 100
+
 
 class TestStaleRowFiltering:
     """Stale rows (>30 days) are excluded by default, included with include_stale=True."""

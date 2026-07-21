@@ -848,6 +848,7 @@ _COST_ATTR_GROUP_COLUMNS: dict[str, str] = {
     "session_id": "session_id",
     "model": "model",
     "state": "state",
+    "run_id": "run_id",
 }
 
 

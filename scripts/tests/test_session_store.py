@@ -5080,6 +5080,113 @@ class TestSchemaV29:
         assert "run_id" in cols
 
 
+class TestRecordUsageEvent:
+    """ENH-2724: live per-invocation usage_events writer."""
+
+    def test_inserts_row_with_run_id_and_state(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_usage_event
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_usage_event(
+            db,
+            run_id="20260721190000-test-loop",
+            ts="2026-07-21T19:00:00Z",
+            state="check",
+            model="claude-sonnet-4-6",
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+        )
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT run_id, state, model, input_tokens, output_tokens, "
+                "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
+                "FROM usage_events WHERE run_id = ?",
+                ("20260721190000-test-loop",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[0] == "20260721190000-test-loop"
+        assert row[1] == "check"
+        assert row[2] == "claude-sonnet-4-6"
+        assert row[3] == 100
+        assert row[4] == 50
+        assert row[5] == 10
+        assert row[6] == 5
+        assert row[7] is not None  # cost_usd computed
+
+    def test_state_none_is_stored_as_null(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_usage_event
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_usage_event(
+            db,
+            run_id="20260721190000-test-loop",
+            ts="2026-07-21T19:00:00Z",
+            state=None,
+            model="claude-sonnet-5",
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT state FROM usage_events WHERE run_id = ?",
+                ("20260721190000-test-loop",),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[0] is None
+
+    def test_concurrent_writers_do_not_cross_attribute_or_lose_rows(self, tmp_path: Path) -> None:
+        """Regression coverage carried over from the ENH-2712 spike: concurrent
+        ll-parallel/ll-sprint writers must not cross-attribute run_id or drop rows."""
+        import threading
+
+        from little_loops.session_store import record_usage_event
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+
+        run_ids = [f"run-{i}" for i in range(8)]
+
+        def _write(run_id: str) -> None:
+            record_usage_event(
+                db,
+                run_id=run_id,
+                ts="2026-07-21T19:00:00Z",
+                state="check",
+                model="claude-sonnet-4-6",
+                input_tokens=1,
+                output_tokens=1,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+            )
+
+        threads = [threading.Thread(target=_write, args=(rid,)) for rid in run_ids]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT run_id FROM usage_events WHERE run_id LIKE 'run-%'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert sorted(r[0] for r in rows) == sorted(run_ids)
+
+
 class TestRecordSessionLifecycleEvent:
     """ENH-2495: record_session_lifecycle_event() DB write round-trip."""
 

@@ -60,8 +60,11 @@ vendor enum). `observability.tracing.vendor_for_runner(name)` maps a
   (`fsm/cost_graph.py`, `_print_usage_summary`) ignore the extra keys.
 - **`usage_events` table** (`history.db`, schema v21) — carries `invocation_id`
   (→ `gen_ai.invocation.id`) and `provider_vendor` (→ `gen_ai.provider.vendor`)
-  columns. Both are forward-compat `NULL` on parser-written rows (like `state`),
-  reserved for a future live per-invocation writer. Column names stay
+  columns; still `NULL` on parser-written rows (like `state`) since the
+  backfill path has no invocation/vendor signal to attach. Schema v29 adds a
+  `run_id` join key, populated by the live per-invocation writer at loop-run
+  finish (`FSMExecutor._finish()` via `record_usage_event()`, ENH-2724) — that
+  writer also populates `state`, unlike parser-written rows. Column names stay
   underscore/internal; the dotted OTel spelling is derived on read.
 
 ## Cost attribution query
@@ -70,8 +73,8 @@ vendor enum). `observability.tracing.vendor_for_runner(name)` maps a
 per-`group_by` token/cost rollup over `usage_events`, keyed by the canonical
 dotted OTel names. `group_by` accepts `gen_ai.invocation.id`,
 `gen_ai.provider.vendor`, or a raw column (`session_id` / `model` / `state` /
-`invocation_id` / `provider_vendor`); any other value raises `ValueError` (the
-`GROUP BY` clause is whitelisted, never interpolated raw).
+`invocation_id` / `provider_vendor` / `run_id`); any other value raises
+`ValueError` (the `GROUP BY` clause is whitelisted, never interpolated raw).
 
 ## Phoenix ingest
 

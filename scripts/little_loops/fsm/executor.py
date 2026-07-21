@@ -61,6 +61,7 @@ from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import get_current_session_jsonl
 from little_loops.subprocess_utils import (
+    TokenUsage,
     UsageCallback,
     _kill_process_group,
     run_claude_command,
@@ -227,6 +228,9 @@ class FSMExecutor:
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
         self.start_time_ms = 0
+        # ENH-2724: per-invocation TokenUsage collected during this run, written to
+        # usage_events (run_id-stamped) at _finish(). (state_name, TokenUsage) pairs.
+        self._usage_events_collected: list[tuple[str | None, TokenUsage]] = []
         self.elapsed_offset_ms = (
             0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
         )
@@ -1643,6 +1647,9 @@ class FSMExecutor:
             # event's is_batch flag the same way `model` is taken above.
             if result.usage_events[-1].is_batch:
                 payload["is_batch"] = True
+        # ENH-2724: collect for the live usage_events write at _finish().
+        for usage in result.usage_events:
+            self._usage_events_collected.append((self.current_state, usage))
         self._emit("action_complete", payload)
 
         # ENH-2453: cumulative subprocess RSS budget accounting. Modeled on the
@@ -2127,6 +2134,12 @@ class FSMExecutor:
             harness_result: ActionResult = harness_future.result()
             baseline_result: ActionResult = baseline_future.result()
 
+        # ENH-2724: the harness arm's usage is already collected inside
+        # _run_action(); the baseline arm bypasses _run_action() entirely, so its
+        # usage must be collected here instead.
+        for usage in baseline_result.usage_events:
+            self._usage_events_collected.append((self.current_state, usage))
+
         harness_total_tokens = sum(t[0] + t[1] for t in harness_tokens)
         baseline_total_tokens = sum(t[0] + t[1] for t in baseline_tokens)
 
@@ -2199,17 +2212,27 @@ class FSMExecutor:
         """
         start = _now_ms()
         timeout = state.timeout or self.fsm.default_timeout or 3600
+        # ENH-2724: the baseline arm calls run_claude_command() directly (not
+        # through an ActionRunner), so it never got usage_events attached to its
+        # ActionResult like the harness arm does — collect it here.
+        collected_usage: list[TokenUsage] = []
+
+        def _collect_usage(usage: TokenUsage) -> None:
+            collected_usage.append(usage)
+
         try:
             completed = run_claude_command(
                 command=skill_command,
                 timeout=timeout,
                 on_usage=on_usage,
+                on_usage_detailed=_collect_usage,
             )
             return ActionResult(
                 output=completed.stdout,
                 stderr=completed.stderr,
                 exit_code=completed.returncode,
                 duration_ms=_now_ms() - start,
+                usage_events=collected_usage,
             )
         except subprocess.TimeoutExpired:
             return ActionResult(
@@ -2611,6 +2634,36 @@ class FSMExecutor:
             )
         except Exception:
             pass  # Non-fatal: loop still completes (ENH-2463)
+
+        # ENH-2724: live-write one usage_events row per collected TokenUsage,
+        # run_id-stamped with the same derivation as the loop_runs row above.
+        # Best-effort — a write failure must never fail the loop run, matching
+        # the record_loop_run_summary precedent above.
+        if self._usage_events_collected:
+            try:
+                from little_loops.config import BRConfig
+                from little_loops.session_store import record_usage_event, resolve_history_db
+
+                if BRConfig(Path.cwd()).analytics_capture.usage_events:
+                    run_id = (
+                        self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+                    )
+                    ts = _iso_now()
+                    db_path = resolve_history_db()
+                    for state_name, usage in self._usage_events_collected:
+                        record_usage_event(
+                            db_path,
+                            run_id=f"{run_id}-{self.fsm.name}",
+                            ts=ts,
+                            state=state_name,
+                            model=usage.model,
+                            input_tokens=usage.input_tokens,
+                            output_tokens=usage.output_tokens,
+                            cache_read_tokens=usage.cache_read_tokens,
+                            cache_creation_tokens=usage.cache_creation_tokens,
+                        )
+            except Exception:
+                pass  # Non-fatal: loop still completes (ENH-2724, mirrors ENH-2463)
 
         # FEAT-1822: Write ab.json if baseline comparison results exist
         if self._ab_results:

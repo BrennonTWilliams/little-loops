@@ -183,12 +183,14 @@ def _aggregate_mcp_health(db_path: Path) -> list[dict[str, Any]] | None:
 def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     """Aggregate real LLM token usage from ``usage_events``, by model (ENH-2461).
 
-    Reads the per-call ``usage_events`` rows (populated by
-    ``session_store._backfill_usage_events``) and rolls them up into overall
-    totals plus a per-model breakdown. Grain is per-call, not per-state:
-    ``usage_events`` carries no FSM ``state`` (the transcript stream has no
-    state boundary — ENH-2461 Addendum 2), so the breakdown is keyed by
-    ``model``, not by loop state. Returns a dict shaped like::
+    Reads the per-call ``usage_events`` rows — populated by
+    ``session_store._backfill_usage_events`` (historical, transcript-derived,
+    ``state`` always ``NULL``) and by the live per-invocation writer at
+    loop-run finish (``state`` populated with the FSM state each invocation
+    ran in, ENH-2724) — and rolls them up into overall totals plus a
+    per-model breakdown. The breakdown is keyed by ``model``, not by loop
+    state, since backfilled rows still carry no state boundary. Returns a
+    dict shaped like::
 
         {
             "totals": {

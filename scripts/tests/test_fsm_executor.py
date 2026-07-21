@@ -28,6 +28,7 @@ from little_loops.fsm.schema import (
     StateConfig,
 )
 from little_loops.fsm.validation import load_and_validate
+from little_loops.subprocess_utils import TokenUsage
 
 
 @dataclass
@@ -83,6 +84,7 @@ class MockActionRunner:
                 stderr=result_data.get("stderr", ""),
                 exit_code=result_data.get("exit_code", 0),
                 duration_ms=result_data.get("duration_ms", 100),
+                usage_events=result_data.get("usage_events", []),
             )
 
         # Check for specific result by pattern
@@ -93,6 +95,7 @@ class MockActionRunner:
                     stderr=result_data.get("stderr", ""),
                     exit_code=result_data.get("exit_code", 0),
                     duration_ms=result_data.get("duration_ms", 100),
+                    usage_events=result_data.get("usage_events", []),
                 )
 
         return ActionResult(
@@ -100,6 +103,7 @@ class MockActionRunner:
             stderr=self.default_result.get("stderr", ""),
             exit_code=self.default_result.get("exit_code", 0),
             duration_ms=self.default_result.get("duration_ms", 100),
+            usage_events=self.default_result.get("usage_events", []),
         )
 
     def set_result(self, action: str, **kwargs: Any) -> None:
@@ -2603,6 +2607,154 @@ class TestErrorHandling:
             result = executor.run()
 
         assert result.terminated_by == "terminal"
+
+
+class TestUsageEventsLiveWriter:
+    """Tests for ENH-2724: live per-invocation usage_events writer."""
+
+    def _make_fsm(self) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_run_action_collects_usage_events(self) -> None:
+        """_run_action() appends (state_name, TokenUsage) for every ActionResult.usage_events entry."""
+        fsm = self._make_fsm()
+        mock_runner = MockActionRunner()
+        usage = TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            model="claude-sonnet-5",
+        )
+        mock_runner.always_return(exit_code=0, usage_events=[usage])
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        ctx = executor._build_context()
+        executor._run_action("test.sh", fsm.states["check"], ctx)
+
+        assert executor._usage_events_collected == [("check", usage)]
+
+    def test_finish_writes_usage_events(self) -> None:
+        """_finish() writes one record_usage_event() call per collected TokenUsage."""
+        fsm = self._make_fsm()
+        mock_runner = MockActionRunner()
+        usage = TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            model="claude-sonnet-5",
+        )
+        mock_runner.always_return(exit_code=0, usage_events=[usage])
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        with (
+            patch("little_loops.session_store.record_loop_run_summary"),
+            patch("little_loops.session_store.record_usage_event") as mock_record,
+        ):
+            executor.run()
+
+        mock_record.assert_called_once()
+        _, kwargs = mock_record.call_args
+        expected_run_id = (
+            executor.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+            + "-test-loop"
+        )
+        assert kwargs["run_id"] == expected_run_id
+        assert kwargs["state"] == "check"
+        assert kwargs["model"] == "claude-sonnet-5"
+        assert kwargs["input_tokens"] == 100
+        assert kwargs["output_tokens"] == 50
+        assert kwargs["cache_read_tokens"] == 10
+        assert kwargs["cache_creation_tokens"] == 5
+
+    def test_finish_survives_record_usage_event_failure(self) -> None:
+        """A sink failure in record_usage_event must not fail the loop run (mirrors ENH-2463)."""
+        fsm = self._make_fsm()
+        mock_runner = MockActionRunner()
+        usage = TokenUsage(
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            model="claude-sonnet-5",
+        )
+        mock_runner.always_return(exit_code=0, usage_events=[usage])
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        with (
+            patch("little_loops.session_store.record_loop_run_summary"),
+            patch(
+                "little_loops.session_store.record_usage_event",
+                side_effect=RuntimeError("db unavailable"),
+            ),
+        ):
+            result = executor.run()
+
+        assert result.terminated_by == "terminal"
+
+    def test_finish_skips_usage_events_when_capture_disabled(self) -> None:
+        """No record_usage_event() call when analytics.capture.usage_events is False."""
+        fsm = self._make_fsm()
+        mock_runner = MockActionRunner()
+        usage = TokenUsage(
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            model="claude-sonnet-5",
+        )
+        mock_runner.always_return(exit_code=0, usage_events=[usage])
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        mock_cfg = MagicMock()
+        mock_cfg.analytics_capture.usage_events = False
+        with (
+            patch("little_loops.session_store.record_loop_run_summary"),
+            patch("little_loops.session_store.record_usage_event") as mock_record,
+            patch("little_loops.config.BRConfig", return_value=mock_cfg),
+        ):
+            executor.run()
+
+        mock_record.assert_not_called()
+
+    def test_run_baseline_arm_attaches_usage_events(self) -> None:
+        """_run_baseline_arm() attaches collected TokenUsage to its ActionResult."""
+        fsm = self._make_fsm()
+        mock_runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        usage = TokenUsage(
+            input_tokens=20,
+            output_tokens=10,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            model="claude-sonnet-5",
+        )
+
+        def _fake_run_claude_command(**kwargs: Any) -> MagicMock:
+            on_usage_detailed = kwargs.get("on_usage_detailed")
+            if on_usage_detailed is not None:
+                on_usage_detailed(usage)
+            completed = MagicMock()
+            completed.stdout = "ok"
+            completed.stderr = ""
+            completed.returncode = 0
+            return completed
+
+        with patch(
+            "little_loops.fsm.executor.run_claude_command",
+            side_effect=_fake_run_claude_command,
+        ):
+            result = executor._run_baseline_arm("/ll:some-skill", fsm.states["check"])
+
+        assert result.usage_events == [usage]
 
 
 class TestTimeoutHandling:
