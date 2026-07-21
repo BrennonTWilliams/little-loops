@@ -31,6 +31,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 size: Very Large
+completed_at: '2026-07-21T18:28:29Z'
 ---
 
 # ENH-2721: `usage_events` `run_id` column + live per-invocation writer (split from ENH-2712)
@@ -203,3 +204,13 @@ _Added by `/ll:confidence-check` on 2026-07-21_
 - `/ll:confidence-check` - 2026-07-21T18:25:00 - `11300915-65eb-4c62-9307-85e985e74f0b.jsonl`
 - `/ll:decide-issue` - 2026-07-21T18:22:34 - `1f613a63-3b97-4b14-8dba-2ec0bebd378a.jsonl`
 - `/ll:refine-issue` - 2026-07-21T18:19:26 - `94aa4f31-9ec4-466a-ab83-7e6c12ad77c8.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-21
+- **Decomposed into**: ENH-2723, ENH-2724, ENH-2725
+
+Work for ENH-2721 is now carried by its child issues; this parent was closed by rn-decompose.

@@ -20,6 +20,9 @@ relates_to:
 - FEAT-2478
 - ENH-2712
 - ENH-2720
+- ENH-2723
+- ENH-2724
+- ENH-2725
 ---
 
 # ENH-2719: EPIC-2456 realized-savings verification and closure gate

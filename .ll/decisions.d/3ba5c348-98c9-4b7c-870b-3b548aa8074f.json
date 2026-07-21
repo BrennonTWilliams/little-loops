@@ -1,0 +1,12 @@
+{
+  "id": "cd39f8a2-0dbd-4554-b5fc-588869d0d8d2",
+  "type": "decision",
+  "timestamp": "2026-07-21T18:22:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses already-built DetailedUsageCallback/TokenUsage pipeline, matches v21's forward-compat intent, spike-proven under concurrency; Option B's BETWEEN join is unscoped (loop_runs has no session_id) and misattributes tokens under ll-parallel/ll-sprint concurrency",
+  "rule": "Option A - richer on_usage_detailed callback wired at _run_action/_run_baseline_arm for a true per-invocation live writer",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: time-range/BETWEEN UPDATE at _finish() scoped by [started_at, ended_at] window",
+  "issue": "ENH-2721"
+}
