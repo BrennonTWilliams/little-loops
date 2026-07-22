@@ -3543,6 +3543,12 @@ class TestAutodevLoop:
             "run_spike",
             "rerun_confidence_after_spike",
             "implement_current",
+            # BUG-2734: guard-2 "ready but atomic" earn-the-pass/honest-deferral chain.
+            "check_guard2_verdict",
+            "check_readiness_for_atomic_remediation",
+            "remediate_oversized_atomic",
+            "rerun_confidence_after_atomic_remediation",
+            "regate_after_atomic_remediation",
             "done",
         }
         actual = set(data["states"].keys())
@@ -3823,6 +3829,90 @@ class TestAutodevLoop:
         assert "--by automation" in action
         assert "--reason low_readiness" in action
 
+    def test_recheck_after_size_review_honors_outcome_gate_waived(self, data: dict) -> None:
+        """BUG-2734: recheck_after_size_review must bypass the outcome half of the gate
+        when the issue's frontmatter carries outcome_gate_waived: true."""
+        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
+        assert "outcome_gate_waived" in action
+
+    def test_regate_after_atomic_remediation_defers_oversized_atomic_via_set_status(
+        self, data: dict
+    ) -> None:
+        """BUG-2734: a still-failing outcome gate after the earn-the-pass remediation
+        attempt defers with the oversized_atomic reason code, never low_readiness —
+        readiness already passed to reach this state."""
+        action = data["states"].get("regate_after_atomic_remediation", {}).get("action", "")
+        assert "ll-issues set-status" in action and "deferred" in action
+        assert "--by automation" in action
+        assert "--reason oversized_atomic" in action
+        assert "low_readiness" not in action
+
+    def test_regate_after_atomic_remediation_honors_outcome_gate_waived(self, data: dict) -> None:
+        """BUG-2734: the remediation re-gate must also honor outcome_gate_waived."""
+        action = data["states"].get("regate_after_atomic_remediation", {}).get("action", "")
+        assert "outcome_gate_waived" in action
+
+    def test_check_guard2_verdict_detects_guard2_marker_not_guard1(self, data: dict) -> None:
+        """BUG-2734: check_guard2_verdict's pattern must match guard-2's
+        '[ID] skipped: score X (ambiguous)' verdict (X >= 8) but not guard-1's
+        qualitative-skip line, which uses different wording ('structural score N
+        ... qualitative')."""
+        import re
+
+        state = data["states"].get("check_guard2_verdict", {})
+        evaluate = state.get("evaluate", {})
+        pattern = evaluate.get("pattern", "")
+        assert evaluate.get("source") == "${captured.size_review_output.output}"
+        assert re.search(pattern, "[BUG-2731] skipped: score 11 (ambiguous)")
+        assert re.search(pattern, "[BUG-2731] skipped: score 8 (ambiguous)")
+        assert not re.search(pattern, "[BUG-2731] skipped: score 6 (ambiguous)")
+        assert not re.search(
+            pattern,
+            "[BUG-2731] skipped: structural score 12 but outcome_confidence low is "
+            "qualitative (ambiguity: 18, complexity: 20) — suggest /ll:refine-issue",
+        )
+
+    def test_check_guard2_verdict_routes_to_remediation_chain(self, data: dict) -> None:
+        """BUG-2734: guard-2 verdict routes to the readiness gate before remediation;
+        no-match falls through unchanged to recheck_after_size_review."""
+        state = data["states"].get("check_guard2_verdict", {})
+        assert state.get("on_yes") == "check_readiness_for_atomic_remediation"
+        assert state.get("on_no") == "recheck_after_size_review"
+        assert state.get("on_error") == "recheck_after_size_review"
+
+        readiness_state = data["states"].get("check_readiness_for_atomic_remediation", {})
+        assert readiness_state.get("on_yes") == "remediate_oversized_atomic"
+        assert readiness_state.get("on_no") == "recheck_after_size_review"
+
+        remediate_state = data["states"].get("remediate_oversized_atomic", {})
+        assert remediate_state.get("next") == "rerun_confidence_after_atomic_remediation"
+        assert "/ll:wire-issue" in remediate_state.get("action", "")
+
+        rerun_state = data["states"].get("rerun_confidence_after_atomic_remediation", {})
+        assert rerun_state.get("next") == "regate_after_atomic_remediation"
+        assert "/ll:confidence-check" in rerun_state.get("action", "")
+
+        regate_state = data["states"].get("regate_after_atomic_remediation", {})
+        assert regate_state.get("on_yes") == "decide_current"
+        assert regate_state.get("on_no") == "dequeue_next"
+
+    def test_check_reconcile_needed_routes_through_guard2_verdict(self, data: dict) -> None:
+        """BUG-2734: check_reconcile_needed's on_no must now route through
+        check_guard2_verdict instead of straight to recheck_after_size_review, so
+        the guard-2 shape gets a chance at remediation before the low_readiness skip."""
+        state = data["states"].get("check_reconcile_needed", {})
+        assert state.get("on_no") == "check_guard2_verdict"
+
+    def test_run_size_review_captures_output(self, data: dict) -> None:
+        """BUG-2734: run_size_review must capture its status-line output so
+        check_guard2_verdict can detect the guard-2 verdict without re-running
+        size-review."""
+        state = data["states"].get("run_size_review", {})
+        assert state.get("capture") == "size_review_output"
+        assert state.get("action_type") == "slash_command"
+        assert "/ll:issue-size-review" in state.get("action", "")
+        assert "--auto" in state.get("action", "")
+
     def test_implement_current_threads_skip_learning_gate(self, data: dict) -> None:
         """implement_current must append --skip-learning-gate when the skip context is set,
         for parity with `ll-auto --skip-learning-gate`."""
@@ -4076,9 +4166,15 @@ class TestAutodevLoop:
             "recheck_after_size_review) before the BUG-1230 leaf-skip"
         )
         reconcile_gate = data["states"].get("check_reconcile_needed", {})
-        assert reconcile_gate.get("on_no") == "recheck_after_size_review", (
-            "check_reconcile_needed must preserve the BUG-1230 leaf-skip by "
-            "falling through to recheck_after_size_review on no plateau"
+        assert reconcile_gate.get("on_no") == "check_guard2_verdict", (
+            "BUG-2734: check_reconcile_needed's no-plateau edge now routes through "
+            "check_guard2_verdict (which itself falls through to "
+            "recheck_after_size_review on no guard-2 match) before the BUG-1230 leaf-skip"
+        )
+        guard2_gate = data["states"].get("check_guard2_verdict", {})
+        assert guard2_gate.get("on_no") == "recheck_after_size_review", (
+            "check_guard2_verdict must preserve the BUG-1230 leaf-skip by "
+            "falling through to recheck_after_size_review on no guard-2 match"
         )
 
     def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
@@ -4392,11 +4488,13 @@ class TestAutodevLoop:
         )
 
     def test_check_reconcile_needed_routing(self, data: dict) -> None:
-        """on_yes → reconcile_current; on_no/on_error → recheck_after_size_review
-        (non-plateau issues fall through unchanged, AC 4)."""
+        """on_yes → reconcile_current; on_no → check_guard2_verdict (BUG-2734,
+        itself falling through to recheck_after_size_review); on_error →
+        recheck_after_size_review directly (non-plateau issues fall through
+        unchanged, AC 4)."""
         state = data["states"].get("check_reconcile_needed", {})
         assert state.get("on_yes") == "reconcile_current"
-        assert state.get("on_no") == "recheck_after_size_review"
+        assert state.get("on_no") == "check_guard2_verdict"
         assert state.get("on_error") == "recheck_after_size_review"
 
     def test_reconcile_current_invokes_reconcile_skill(self, data: dict) -> None:
@@ -10428,6 +10526,19 @@ class TestValidatorWarningBudget:
         ("integrate-sdk", "capture-ordering"): {
             # Bucket A: targets injected by oracles/enumerate-and-prove sub-loop on success path
             "states.scaffold_integration.action",
+        },
+        ("autodev", "capture-ordering"): {
+            # Bucket A (BUG-2734): check_guard2_verdict is reachable via
+            # check_broke_down's shortcut branch (sub-loop already decomposed via
+            # breakdown_issue), which bypasses run_size_review's capture. That
+            # shortcut only fires when children were actually found
+            # (autodev-new-children.txt non-empty), so enqueue_or_skip always takes
+            # its on_yes (children-found) branch on that path and never reaches
+            # check_guard2_verdict at runtime — a runtime invariant the static
+            # validator can't see. On genuinely uncaptured runs, evaluate.source
+            # falls back to raw_output (empty), which simply fails to match and
+            # falls through to recheck_after_size_review — a safe no-op.
+            "states.check_guard2_verdict.action",
         },
     }
 

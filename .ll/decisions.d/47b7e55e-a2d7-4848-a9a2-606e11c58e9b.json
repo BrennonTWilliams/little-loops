@@ -1,0 +1,12 @@
+{
+  "id": "0f1e09cd-2902-44fb-9f92-bce483f62b0e",
+  "type": "decision",
+  "timestamp": "2026-07-22T02:55:31Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Phase 4.8 runs after Phase 3 sums the score and only patches a risk phrase post-hoc without correcting Criterion D; extending Pattern B detection at Phase 2 (this issue's Step 1) fixes the score at the source, making the flag redundant. Wiring the flag into scoring instead would keep two independent classification passes that could disagree.",
+  "rule": "Retire mechanical_fanout_suppressed; fold Phase 4.8 detection into extended Pattern B classification",
+  "scope": "issue",
+  "alternatives_rejected": "Wire mechanical_fanout_suppressed into Criterion D scoring as a post-hoc override",
+  "issue": "BUG-2734"
+}

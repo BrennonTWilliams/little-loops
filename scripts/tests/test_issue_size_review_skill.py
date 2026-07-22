@@ -132,6 +132,30 @@ class TestIssueSizeReviewQualitativeGuard:
         )
 
 
+class TestIssueSizeReviewGuard2AmbiguousSkipMarker:
+    """BUG-2734: the normal auto-mode 'declined to decompose' verdict for a Very
+    Large (score >= 8) issue must emit a machine-detectable status line so
+    autodev can distinguish it from a genuine decomposition failure."""
+
+    def _phase5_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        phase5_start = content.index("### Phase 5: User Approval")
+        next_heading = content.find("\n### Phase 6", phase5_start)
+        return content[phase5_start:next_heading]
+
+    def test_guard2_skip_message_format(self) -> None:
+        """Guard-2 must emit the canonical '[ID] skipped: score X (ambiguous)' line."""
+        assert "skipped: score X (ambiguous)" in self._phase5_text()
+
+    def test_guard2_very_large_threshold_documented(self) -> None:
+        """The Very Large threshold (score >= 8) must be documented alongside the marker."""
+        assert "score ≥ 8" in self._phase5_text()
+
+    def test_guard2_decomposed_status_line_documented(self) -> None:
+        """The success counterpart '[ID] decomposed: N child issues' must also be documented."""
+        assert "decomposed: N child issues" in self._phase5_text()
+
+
 class TestIssueSizeReviewWiringTddGuard:
     """Verify Phase 4 TDD-aware wiring-split rule is present and correct (ENH-1320)."""
 

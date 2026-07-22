@@ -69,6 +69,9 @@ class DeferReason(Enum):
     LOW_READINESS = "low_readiness"  # autodev: below readiness/outcome threshold
     GATE_BLOCKED = "gate_blocked"  # autodev: unproven external-API deps
     DECISION_UNRESOLVED = "decision_unresolved"  # autodev: decide-issue produced no decision
+    # BUG-2734: readiness passed but a Very Large, deliberately-atomic issue's
+    # outcome-confidence still fails after Pattern-B rescoring remediation.
+    OVERSIZED_ATOMIC = "oversized_atomic"
 
 
 # =============================================================================

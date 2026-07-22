@@ -284,6 +284,13 @@ class TestCriterionDDualPattern:
     def test_original_count_table_retained_for_pattern_a(self) -> None:
         assert "0-2 callers" in self._criterion_d_text()
 
+    def test_pattern_b_covers_code_call_site_sweeps(self) -> None:
+        """BUG-2734: Pattern B detection must not be restricted to markdown/config/template files."""
+        text = self._criterion_d_text()
+        assert "source-code call sites" in text or "source code" in text, (
+            "Criterion D must document that Pattern B can apply to uniform code call-site sweeps"
+        )
+
 
 class TestCriterionABreadthDepthSplit:
     """Criterion A must be split into Breadth (0-12) and Depth (0-13) sub-scores summing to 25."""
@@ -391,28 +398,16 @@ class TestSpikeNeededFlagWriteBack:
         )
 
 
-class TestPhase48LargeFileSurfaceSuppression:
-    """Phase 4.8 must exist and mirror the Phase 4.6/4.7 boilerplate."""
+class TestPhase48Retired:
+    """BUG-2734: Phase 4.8 (mechanical_fanout_suppressed) is retired — its
+    detection folded into Criterion D's Pattern B classification instead of a
+    post-hoc, write-only frontmatter flag."""
 
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.8:")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
+    def test_phase_4_8_heading_absent(self) -> None:
+        assert "Phase 4.8:" not in SKILL_FILE.read_text()
 
-    def test_phase_4_8_heading_exists(self) -> None:
-        assert "Phase 4.8:" in SKILL_FILE.read_text()
-
-    def test_check_mode_guard_present(self) -> None:
-        assert "CHECK_MODE" in self._phase_text()
-
-    def test_no_ask_user_question(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text()
-
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "large file surface" in text or "Signal phrases" in text
+    def test_mechanical_fanout_suppressed_absent(self) -> None:
+        assert "mechanical_fanout_suppressed" not in SKILL_FILE.read_text()
 
 
 class TestConfidenceCheckHistoryContextInjection:

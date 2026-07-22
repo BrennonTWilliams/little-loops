@@ -858,9 +858,15 @@ states:
     # enqueue them. on_rate_limit_exhausted skips this issue and moves to the
     # next queued one rather than masquerading as a clean "no decomposition"
     # outcome (which enqueue_or_skip would otherwise report).
+    # BUG-2734: capture the skill's status-line output so check_guard2_verdict
+    # can later detect the guard-2 "declined to decompose, Very Large, ready"
+    # verdict without re-running size-review. The captured text is only ever
+    # matched via evaluate.source (Python-side regex, see check_guard2_verdict)
+    # — never interpolated into a shell action string (BUG-2594).
     fragment: with_rate_limit_handling
     action: "/ll:issue-size-review ${captured.input.output} --auto"
     action_type: slash_command
+    capture: size_review_output
     next: enqueue_or_skip
     on_error: enqueue_or_skip
     on_rate_limit_exhausted: dequeue_next
@@ -1011,8 +1017,115 @@ states:
       sys.exit(0 if plateau else 1)"
     fragment: shell_exit
     on_yes: reconcile_current
+    on_no: check_guard2_verdict
+    on_error: recheck_after_size_review
+
+  check_guard2_verdict:
+    # BUG-2734: run_size_review's guard-2 status line — "[ID] skipped: score X
+    # (ambiguous)" with X in 8-11 (Very Large, decomposition deliberately
+    # declined) — is a distinct, machine-detectable verdict from guard-1's
+    # qualitative-skip line ("skipped: structural score N but outcome_confidence
+    # low is qualitative ...", see check_parent_resolved_post_size_review's
+    # sibling states) and from a genuine no-verdict decomposition failure
+    # (BUG-1183 shape). Only the guard-2 shape means "ready to implement as one
+    # issue" per the skill's own recommendation; only route THAT case to the
+    # earn-the-pass remediation attempt. Evaluated via evaluate.source against
+    # the captured size-review output (Python-side regex match) rather than
+    # interpolating that text into a shell action, per BUG-2594.
+    evaluate:
+      type: output_contains
+      source: "${captured.size_review_output.output}"
+      pattern: "skipped: score (8|9|10|11) \\(ambiguous\\)"
+    on_yes: check_readiness_for_atomic_remediation
     on_no: recheck_after_size_review
     on_error: recheck_after_size_review
+
+  check_readiness_for_atomic_remediation:
+    # BUG-2734: the guard-2 verdict alone isn't sufficient — only attempt the
+    # earn-the-pass remediation when Readiness (not Outcome) already passes.
+    # `ll-issues check-readiness` hard-ANDs both halves against config
+    # thresholds (ignoring CLI overrides when config sets them), so read
+    # confidence_score directly from frontmatter instead, mirroring
+    # check_spike_needed's inline-Python idiom.
+    action: |
+      ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      sys.exit(0 if int(d.get('confidence_score') or 0) >= ${context.readiness_threshold} else 1)"
+    fragment: shell_exit
+    on_yes: remediate_oversized_atomic
+    on_no: recheck_after_size_review
+    on_error: recheck_after_size_review
+
+  remediate_oversized_atomic:
+    # BUG-2734 Step 1 (earn the pass, not bypass the gate): a Very Large,
+    # deliberately-atomic, ready issue's outcome_confidence commonly fails only
+    # because Criterion D scored it under Pattern A (blast radius) instead of
+    # Pattern B (enumerated mechanical fanout) — see the confidence-check
+    # SKILL.md/rubric.md Criterion D changes in this same fix. /ll:wire-issue
+    # is the existing repair pass for missing integration points / wiring,
+    # which is exactly the enumerated call-site list + wiring test Pattern B
+    # needs; mirrors run_wire's shape.
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${captured.input.output} --auto"
+    action_type: slash_command
+    next: rerun_confidence_after_atomic_remediation
+    on_error: rerun_confidence_after_atomic_remediation
+    on_rate_limit_exhausted: done
+
+  rerun_confidence_after_atomic_remediation:
+    # BUG-2734: re-run confidence-check once so remediate_oversized_atomic's
+    # wiring pass gets a fresh Outcome Confidence score before the one-shot
+    # re-gate below. Mirrors rerun_confidence_after_wire.
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${captured.input.output}"
+    action_type: slash_command
+    next: regate_after_atomic_remediation
+    on_error: regate_after_atomic_remediation
+    on_rate_limit_exhausted: done
+
+  regate_after_atomic_remediation:
+    # BUG-2734 Step 2 (honest deferral): one-shot re-check of the full
+    # readiness+outcome gate after remediation — this state is reached at most
+    # once per issue per run (no loop back to check_guard2_verdict), so there
+    # is no rescore loop. A pass routes to decide_current exactly like
+    # recheck_after_size_review's on_yes. A still-failing outcome defers with
+    # the oversized_atomic reason code (never low_readiness — readiness itself
+    # already passed to get here) so deferred-triage surfaces it distinctly and
+    # a human can review/waive via outcome_gate_waived. `outcome_gate_waived`
+    # is honored here too in case a prior run already stamped a waiver.
+    action: |
+      ID="${captured.input.output}"
+      GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      conf = int(d.get('confidence_score') or 0)
+      outc = int(d.get('outcome_confidence') or 0)
+      waived = str(d.get('outcome_gate_waived')).lower() == 'true'
+      readiness_ok = conf >= ${context.readiness_threshold}
+      outcome_ok = waived or (outc >= ${context.outcome_threshold})
+      print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
+      " 2>/dev/null || echo "FAIL")
+      if [ "$GATE" = "PASS" ]; then
+        echo "$ID" >> ${context.run_dir}/autodev-passed.txt
+      else
+        STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+          | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+          2>/dev/null || echo "")
+        if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+          echo "$ID  resolved_by_subloop" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          exit 1
+        fi
+        echo "$ID  oversized_atomic" >> ${context.run_dir}/autodev-skipped.txt
+        rm -f ${context.run_dir}/autodev-inflight
+        ll-issues set-status "$ID" deferred --by automation --reason oversized_atomic 2>/dev/null || true
+        exit 1
+      fi
+    fragment: shell_exit
+    on_yes: decide_current
+    on_no: dequeue_next
+    on_error: dequeue_next
 
   reconcile_current:
     # ENH-2689: targeted, in-place rewrite of the issue's Implementation Steps /
@@ -1051,11 +1164,25 @@ states:
     # ENH-2666: the skip path also defers the issue (mirrors rn-implement's
     # mark_deferred), so it leaves active selection and re-surfaces via
     # FEAT-2665's triage surface rather than being retried every run.
+    # BUG-2734: honor a per-issue `outcome_gate_waived: true` frontmatter flag
+    # (stamped manually or by /ll:go-no-go after an explicit risk review) by
+    # bypassing only the outcome half of the gate — readiness is still
+    # enforced. `ll-issues check-readiness` hard-ANDs both halves against
+    # config thresholds regardless of CLI overrides, so the waiver check reads
+    # frontmatter directly instead (mirrors regate_after_atomic_remediation).
     action: |
       ID="${captured.input.output}"
-      if ll-issues check-readiness "$ID" \
-          --readiness ${context.readiness_threshold} \
-          --outcome ${context.outcome_threshold}; then
+      GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      conf = int(d.get('confidence_score') or 0)
+      outc = int(d.get('outcome_confidence') or 0)
+      waived = str(d.get('outcome_gate_waived')).lower() == 'true'
+      readiness_ok = conf >= ${context.readiness_threshold}
+      outcome_ok = waived or (outc >= ${context.outcome_threshold})
+      print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
+      " 2>/dev/null || echo "FAIL")
+      if [ "$GATE" = "PASS" ]; then
         echo "$ID" >> ${context.run_dir}/autodev-passed.txt
       else
         # BUG-2729 postmortem: never flip an already-resolved issue to

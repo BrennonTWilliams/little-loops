@@ -6169,6 +6169,57 @@ class TestIssuesCLIDeferredTriage:
         captured = capsys.readouterr()
         assert captured.out.index("BUG-301") < captured.out.index("BUG-302")
 
+    def test_oversized_atomic_ranked_between_decision_unresolved_and_low_readiness(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-2734: oversized_atomic rows rank above low_readiness (a more
+        actionable, explicit needs-human-decision signal) but below
+        decision_unresolved."""
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (issues_base / "completed").mkdir(parents=True)
+        (issues_base / "deferred").mkdir(parents=True)
+
+        (bugs_dir / "P2-BUG-401-decision.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: decision_unresolved\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-401: Decision unresolved\n"
+        )
+        (bugs_dir / "P2-BUG-402-oversized.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: oversized_atomic\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-402: Oversized atomic\n"
+        )
+        (bugs_dir / "P2-BUG-403-low-readiness.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: low_readiness\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-403: Low readiness\n"
+        )
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert (
+            captured.out.index("BUG-401")
+            < captured.out.index("BUG-402")
+            < captured.out.index("BUG-403")
+        )
+
     def test_shows_age_since_deferred(
         self,
         temp_project_dir: Path,

@@ -305,7 +305,7 @@ Apply the table matching the detected pattern.
 | 6-10 callers/dependents — broad surface | 10 |
 | 11+ callers/dependents — very wide blast radius | 0 |
 
-**Pattern B — Enumerated Mechanical Fanout** (uniform substitutions across an enumerated file list):
+**Pattern B — Enumerated Mechanical Fanout** (uniform substitutions across an enumerated file list, whether markdown/config/template or source-code call sites):
 | Finding | Score |
 |---------|-------|
 | Sites enumerated + verification grep + automated test asserting completeness | 25 |
@@ -461,6 +461,11 @@ The following examples illustrate how Criterion D distinguishes code blast radiu
 | Criterion | Score | Rationale |
 |-----------|-------|-----------|
 | Change Surface / Fanout Verifiability | 10/25 | Sites enumerated but no verification command — completeness unproven |
+
+**Pattern B — uniform code call-site sweep** (9 source files; identical `logger.warn(...)` call sites migrated to `logger.warning(...)`; enumerated call-site list, verification grep, and an automated wiring test all present):
+| Criterion | Score | Rationale |
+|-----------|-------|-----------|
+| Change Surface / Fanout Verifiability | 25/25 | All 9 call sites enumerated and receive an identical mechanical substitution; verification grep + wiring test complete the chain — qualifies as Pattern B despite being source code, not Pattern A's per-site-behavior blast radius |
 
 ### Criterion A Breadth × Depth
 

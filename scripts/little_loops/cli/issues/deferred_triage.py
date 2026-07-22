@@ -17,9 +17,13 @@ _REASON_RANK = {
     "blocked_by_unmet": 1,
     "gate_blocked": 2,
     "decision_unresolved": 3,
-    "low_readiness": 4,
+    # BUG-2734: readiness passed but a Very Large, atomic issue's outcome risk
+    # still failed after Pattern-B rescoring — a more actionable, explicit
+    # needs-human-decision signal than generic low_readiness.
+    "oversized_atomic": 4,
+    "low_readiness": 5,
 }
-_DEFAULT_REASON_RANK = 5
+_DEFAULT_REASON_RANK = 6
 
 
 def add_deferred_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

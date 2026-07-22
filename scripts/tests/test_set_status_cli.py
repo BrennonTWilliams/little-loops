@@ -299,7 +299,7 @@ class TestIssuesCLISetStatus:
 
     @pytest.mark.parametrize(
         "reason_code",
-        ["low_readiness", "gate_blocked", "decision_unresolved"],
+        ["low_readiness", "gate_blocked", "decision_unresolved", "oversized_atomic"],
     )
     def test_set_status_deferred_stamps_autodev_reason_codes(
         self,

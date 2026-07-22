@@ -394,6 +394,8 @@ _Added by `/ll:go-no-go` on [YYYY-MM-DD]_ — **[GO | NO-GO]**
 [RATIONALE from judge]
 ```
 
+**`outcome_gate_waived` escalation (BUG-2734)**: if the issue was deferred by autodev with `deferred_reason: oversized_atomic` (readiness passed, but a Very Large, deliberately-atomic issue's outcome risk still failed after the earn-the-pass remediation pass) and the verdict here is **GO**, stamp `outcome_gate_waived: true` into the issue frontmatter alongside the `## Go/No-Go Findings` write-back. This is the human-authorized escalation valve: on autodev's next pass, a waived issue bypasses the outcome half of the readiness+outcome gate (readiness is still enforced) and proceeds straight to implementation. A **NO-GO** verdict must never stamp the waiver.
+
 After writing findings (or skipping), stage the updated issue file:
 
 ```bash

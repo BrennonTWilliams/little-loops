@@ -1,0 +1,12 @@
+{
+  "id": "c0a122ec-95d1-4436-9a51-8a7f8bcd39af",
+  "type": "decision",
+  "timestamp": "2026-07-22T02:37:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "issue-size-review judges decomposability (structure); outcome_confidence judges autonomous-implementation risk. An unconditional reroute to implement_current on a keep-as-one verdict would delete the outcome gate for the highest-risk class of issue. The two-step policy earns the gate pass via correct Pattern-B scoring or defers honestly with a per-issue outcome_gate_waived escalation valve.",
+  "rule": "Two-step earn-the-pass / honest-deferral policy (already adopted; no unconditional reroute or run-scoped bypass flag)",
+  "scope": "issue",
+  "alternatives_rejected": "Unconditional reroute of the guard-2 keep-as-one verdict straight to implement_current, gated by a run-scoped --context skip_keep_as_one_reroute escape flag",
+  "issue": "BUG-2734"
+}

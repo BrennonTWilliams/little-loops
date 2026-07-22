@@ -520,9 +520,14 @@ class TestReconcilePlateauStructural:
     def test_reconcile_gate_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["check_reconcile_needed"]
         assert state.get("on_yes") == "reconcile_current", "plateau must reach reconcile (AC 1)"
-        # Non-plateau / error must preserve the leaf-skip (AC 4).
-        assert state.get("on_no") == "recheck_after_size_review"
+        # BUG-2734: non-plateau now routes through check_guard2_verdict (which
+        # itself falls through to recheck_after_size_review on no guard-2 match) —
+        # this still preserves the BUG-1230 leaf-skip terminus, just one hop later.
+        assert state.get("on_no") == "check_guard2_verdict"
         assert state.get("on_error") == "recheck_after_size_review"
+        guard2_state = data["states"]["check_guard2_verdict"]
+        assert guard2_state.get("on_no") == "recheck_after_size_review"
+        assert guard2_state.get("on_error") == "recheck_after_size_review"
 
     def test_reconcile_current_invokes_skill(self, data: dict[str, Any]) -> None:
         state = data["states"]["reconcile_current"]

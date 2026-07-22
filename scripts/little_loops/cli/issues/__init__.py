@@ -778,6 +778,7 @@ Examples:
                 "low_readiness",
                 "gate_blocked",
                 "decision_unresolved",
+                "oversized_atomic",
             ],
             default=None,
             dest="reason",
