@@ -6969,6 +6969,9 @@ from little_loops.history_reader import (
     recent_hook_events,      # ENH-2506
     hook_failure_rate,       # ENH-2506
     hook_latency_p95,        # ENH-2506
+    HarnessEvent,            # ENH-2741
+    recent_harness_events,   # ENH-2741
+    harness_eval_pass_rate,  # ENH-2741
 )
 ```
 
@@ -7529,6 +7532,51 @@ Joins the `issue_sessions` VIEW to `summary_nodes` filtering for `kind='condense
 **Integration:** Called by `ll-history-context <issue_id>` when `history.compaction.enabled` is `true` to inject a `## Prior Work (condensed)` section. Output is byte-identical when compaction is disabled or no level-0 nodes exist for the issue's sessions. See ENH-2231 and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` for the DAG architecture.
 
 **FEAT-2598 note:** for sessions that cross the 7,500-token soft threshold, `session_store._maybe_soft_threshold_summary()` may rewrite this same row's `content` into the 6-section cookbook schema (User Intent / Completed Work / Errors & Corrections / Active Work / Pending Tasks / Key References) — the row's `kind`/`level`/identity are unchanged, so this function's query and truncation behavior are unaffected.
+
+### HarnessEvent / recent_harness_events / harness_eval_pass_rate
+
+```python
+@dataclass
+class HarnessEvent:
+    ts: str
+    runner: str | None
+    target: str | None
+    exit_code: int | None
+    semantic_verdict: str | None
+    semantic_passed: int | None
+    timed_out: int | None
+    duration_ms: int | None
+    head_sha: str | None
+    branch: str | None
+    parent_id: int | None
+    semantic_prompt: str | None
+    semantic_confidence: float | None
+    semantic_reason: str | None
+    semantic_evidence: str | None
+    semantic_model: str | None
+```
+
+```python
+def recent_harness_events(
+    *,
+    runner: str | None = None,
+    target: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[HarnessEvent]
+
+def harness_eval_pass_rate(
+    target: str,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> float | None
+```
+
+Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_harness_event()`) — one row per `ll-harness` / eval run outcome. `recent_harness_events()` returns rows newest first, optionally filtered by exact `runner`/`target` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `harness_eval_pass_rate()` rolls up the `semantic_passed` tri-state column (the `check_semantic` verdict path, distinct from the plain `exit_code`) into a pass fraction for *target*, ignoring `semantic_passed IS NULL` rows; returns `None` when there are zero semantic-scored rows. Named `harness_eval_pass_rate` (not `harness_pass_rate`) to avoid colliding with the unrelated `ab_writer.ABResults.harness_pass_rate` (an in-memory A/B-comparator field).
+
+**CLI:** `ll-session recent --kind harness` and `ll-session search --fts "<target>" --kind harness` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch (ENH-2739) — no CLI code change was needed for this read API.
 
 ## little_loops.compaction
 

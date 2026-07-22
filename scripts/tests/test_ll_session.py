@@ -119,6 +119,18 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "hook_event"
 
+    def test_recent_subcommand_harness_accepted(self) -> None:
+        """ENH-2741: --kind harness must be a valid choice for recent."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "harness"]):
+            args = _parse_args()
+        assert args.kind == "harness"
+
+    def test_search_subcommand_harness_accepted(self) -> None:
+        """ENH-2741: --kind harness must be a valid choice for search."""
+        with patch("sys.argv", ["ll-session", "search", "--fts", "my-target", "--kind", "harness"]):
+            args = _parse_args()
+        assert args.kind == "harness"
+
     def test_recent_subcommand_orchestration_run_accepted(self) -> None:
         """ENH-2492: orchestration_run is valid for recent and search."""
         from little_loops.session_store import VALID_KINDS
@@ -1203,6 +1215,37 @@ class TestSkillStatsAndNewKinds:
             assert main_session() == 0
         out = capsys.readouterr().out
         assert "PostToolUse" in out
+
+    def test_recent_kind_harness_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db, ts="2026-07-01T12:00:00Z", runner="cli", target="my-target", exit_code=0
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "harness"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "my-target" in out
+
+    def test_search_kind_harness_matches_indexed_rows(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db, ts="2026-07-01T12:00:00Z", runner="cli", target="my-target", exit_code=0
+        )
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "search", "--fts", "my-target", "--kind", "harness"],
+        ):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "my-target" in out
 
     def test_record_hook_event_subcommand_writes_row(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

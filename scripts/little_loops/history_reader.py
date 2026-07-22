@@ -62,6 +62,9 @@ Public API:
     recent_hook_events(event_name, exit_code, since, ...) -> list[HookEvent]
     hook_failure_rate(event_name, since, ...) -> float | None
     hook_latency_p95(event_name, since, ...) -> float | None
+    HarnessEvent:     dataclass for harness_events rows (ENH-2741)
+    recent_harness_events(runner, target, since, ...) -> list[HarnessEvent]
+    harness_eval_pass_rate(target, since, ...) -> float | None
 """
 
 from __future__ import annotations
@@ -2466,3 +2469,112 @@ def hook_latency_p95(
     durations = [row["duration_ms"] for row in rows]
     idx = max(0, int(len(durations) * 0.95) - 1)
     return float(durations[min(idx, len(durations) - 1)])
+
+
+# ---------------------------------------------------------------------------
+# ll-harness / eval outcome telemetry (ENH-2741)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class HarnessEvent:
+    """A ``harness_events`` row — one ll-harness / eval run outcome (ENH-2741)."""
+
+    ts: str
+    runner: str | None
+    target: str | None
+    exit_code: int | None
+    semantic_verdict: str | None
+    semantic_passed: int | None
+    timed_out: int | None
+    duration_ms: int | None
+    head_sha: str | None
+    branch: str | None
+    parent_id: int | None
+    semantic_prompt: str | None
+    semantic_confidence: float | None
+    semantic_reason: str | None
+    semantic_evidence: str | None
+    semantic_model: str | None
+
+
+_HARNESS_EVENT_COLUMNS = (
+    "ts, runner, target, exit_code, semantic_verdict, semantic_passed, timed_out, "
+    "duration_ms, head_sha, branch, parent_id, semantic_prompt, semantic_confidence, "
+    "semantic_reason, semantic_evidence, semantic_model"
+)
+
+
+def recent_harness_events(
+    *,
+    runner: str | None = None,
+    target: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[HarnessEvent]:
+    """Return recent ll-harness / eval outcomes, newest first, optionally filtered (ENH-2741)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = f"SELECT {_HARNESS_EVENT_COLUMNS} FROM harness_events "
+        clauses: list[str] = []
+        params: list[Any] = []
+        if runner is not None:
+            clauses.append("runner = ?")
+            params.append(runner)
+        if target is not None:
+            clauses.append("target = ?")
+            params.append(target)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_harness_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, HarnessEvent) for row in rows]
+
+
+def harness_eval_pass_rate(
+    target: str,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> float | None:
+    """Return the semantic-verdict pass fraction for *target*, or None if no scored rows (ENH-2741).
+
+    Only rows with a non-NULL ``semantic_passed`` (the ``check_semantic`` verdict path,
+    not the plain ``exit_code``) count toward the rollup.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        sql = (
+            "SELECT SUM(CASE WHEN semantic_passed = 1 THEN 1 ELSE 0 END) AS successes, "
+            "COUNT(semantic_passed) AS scored "
+            "FROM harness_events WHERE target = ?"
+        )
+        params: list[Any] = [target]
+        if since is not None:
+            sql += " AND ts >= ?"
+            params.append(since)
+        row = conn.execute(sql, params).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: harness_eval_pass_rate query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or not row["scored"]:
+        return None
+    return row["successes"] / row["scored"]
