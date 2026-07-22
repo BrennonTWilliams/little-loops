@@ -506,6 +506,13 @@ class TestRunEventVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class HarnessEventVariant(DESVariant):
+    """``record_harness_event`` writes to ``harness_events`` (ll-harness, ENH-2739)."""
+
+    type: Literal["harness_event"] = "harness_event"
+
+
+@dataclass(frozen=True)
 class SubagentRunVariant(DESVariant):
     """``record_subagent_run_start``/``record_subagent_run_stop`` write to
     ``subagent_runs`` (SubagentStart/SubagentStop hooks + backfill, ENH-2505)."""
@@ -632,6 +639,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     IssueSnapshotVariant,
     CommitEventVariant,
     TestRunEventVariant,
+    HarnessEventVariant,
     SubagentRunVariant,
     CliEventVariant,
     LoopEventBackfillVariant,

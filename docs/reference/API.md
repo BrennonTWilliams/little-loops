@@ -7807,6 +7807,7 @@ from little_loops.session_store import (
     record_subagent_run_stop, # UPDATE ended_at/status/agent_transcript_path from SubagentStop (ENH-2505)
     record_hook_event,     # write a hook_events row (ENH-2506)
     hook_event_context,    # ctx manager: measures duration, records exit_code/stderr_preview on exit (ENH-2506)
+    record_harness_event,  # write a harness_events row (ENH-2739)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -7901,6 +7902,33 @@ def record_hook_event(
 ```
 
 Write one `hook_events` row and index it in `search_index` with `kind="hook_event"` (ENH-2506). `stderr_preview` is truncated to 512 bytes. Best-effort: a missing/locked database logs and returns rather than raising. Live-write-only — no `_backfill_hook_events` exists, since the Claude Code host does not emit hook execution results into the transcript JSONL.
+
+### record_harness_event
+
+```python
+def record_harness_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    runner: str | None = None,
+    target: str | None = None,
+    exit_code: int | None = None,
+    semantic_verdict: str | None = None,
+    semantic_passed: bool | None = None,
+    timed_out: bool | None = None,
+    duration_ms: int | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    parent_id: int | None = None,
+    semantic_prompt: str | None = None,
+    semantic_confidence: float | None = None,
+    semantic_reason: str | None = None,
+    semantic_evidence: str | None = None,
+    semantic_model: str | None = None,
+) -> None
+```
+
+Write one `harness_events` row and index it in `search_index` with `kind="harness"` (ENH-2739). `parent_id` links DSL per-task rows to their parent harness run (ENH-2740). Mirrors `record_test_run_event()`'s contract, not `record_hook_event()`'s: raises on failure — callers are responsible for `contextlib.suppress(Exception)` if a failed write should not abort the run. Live-write-only — nothing calls this yet (ENH-2740 wires the `ll-harness` producer); no `_backfill_harness_events` exists.
 
 ### record_commit_event
 

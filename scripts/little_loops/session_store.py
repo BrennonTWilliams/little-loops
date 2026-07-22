@@ -41,6 +41,7 @@ Public API:
     record_learning_test_event(db,...): UPSERT one Learning Test Registry record mirror (ENH-2466)
     record_hook_event(db,...):   write one row to ``hook_events`` + search_index (ENH-2506)
     hook_event_context(db,...):  hook-fire analogue of skill_event_context (ENH-2506)
+    record_harness_event(db,...): write one row to ``harness_events`` + search_index (ENH-2739)
 """
 
 from __future__ import annotations
@@ -105,6 +106,7 @@ __all__ = [
     "record_hook_event",
     "hook_event_context",
     "HookEventCompletion",
+    "record_harness_event",
 ]
 
 logger = logging.getLogger(__name__)
@@ -219,7 +221,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -240,6 +242,7 @@ VALID_KINDS: tuple[str, ...] = (
     "session_lifecycle",
     "subagent_run",
     "hook_event",
+    "harness",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -260,6 +263,7 @@ _KIND_TABLE = {
     "session_lifecycle": "session_lifecycle_events",
     "subagent_run": "subagent_runs",
     "hook_event": "hook_events",
+    "harness": "harness_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -941,6 +945,36 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_hook_event_name ON hook_events(event_name);
     CREATE INDEX IF NOT EXISTS idx_hook_session ON hook_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_hook_exit ON hook_events(exit_code);
+    """,
+    # v31 (ENH-2739): ll-harness / eval outcome telemetry. Live-write-only,
+    # like hook_events (v30) — no raw_events source to parse, so excluded from
+    # _REBUILD_TABLES. parent_id links DSL per-task rows to their parent
+    # harness run (ENH-2740); the semantic_* columns capture check_semantic
+    # verdict detail alongside the pass/fail exit_code path.
+    """
+    CREATE TABLE IF NOT EXISTS harness_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        runner TEXT,
+        target TEXT,
+        exit_code INTEGER,
+        semantic_verdict TEXT,
+        semantic_passed INTEGER,
+        timed_out INTEGER,
+        duration_ms INTEGER,
+        head_sha TEXT,
+        branch TEXT,
+        parent_id INTEGER,
+        semantic_prompt TEXT,
+        semantic_confidence REAL,
+        semantic_reason TEXT,
+        semantic_evidence TEXT,
+        semantic_model TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_runner ON harness_events(runner);
+    CREATE INDEX IF NOT EXISTS idx_harness_target ON harness_events(target);
+    CREATE INDEX IF NOT EXISTS idx_harness_exit ON harness_events(exit_code);
+    CREATE INDEX IF NOT EXISTS idx_harness_parent ON harness_events(parent_id);
     """,
 ]
 
@@ -1780,6 +1814,75 @@ def record_test_run_event(
             conn,
             content=summary.strip()[:512],
             kind="test_run",
+            ref=head_sha or "",
+            anchor=branch or "",
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_harness_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    runner: str | None = None,
+    target: str | None = None,
+    exit_code: int | None = None,
+    semantic_verdict: str | None = None,
+    semantic_passed: bool | None = None,
+    timed_out: bool | None = None,
+    duration_ms: int | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    parent_id: int | None = None,
+    semantic_prompt: str | None = None,
+    semantic_confidence: float | None = None,
+    semantic_reason: str | None = None,
+    semantic_evidence: str | None = None,
+    semantic_model: str | None = None,
+) -> None:
+    """Write one row to ``harness_events`` and index it in ``search_index``.
+
+    Mirrors :func:`record_test_run_event`'s shape: raises on failure — callers
+    (the ``ll-harness`` producer, ENH-2740) are responsible for wrapping calls
+    in ``contextlib.suppress(Exception)`` if a failed write should not abort
+    the run.
+    """
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO harness_events("
+            "ts, runner, target, exit_code, semantic_verdict, semantic_passed, "
+            "timed_out, duration_ms, head_sha, branch, parent_id, "
+            "semantic_prompt, semantic_confidence, semantic_reason, "
+            "semantic_evidence, semantic_model"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                runner,
+                target,
+                exit_code,
+                semantic_verdict,
+                None if semantic_passed is None else int(semantic_passed),
+                None if timed_out is None else int(timed_out),
+                duration_ms,
+                head_sha,
+                branch,
+                parent_id,
+                semantic_prompt,
+                semantic_confidence,
+                semantic_reason,
+                semantic_evidence,
+                semantic_model,
+            ),
+        )
+        summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
+        _index(
+            conn,
+            content=summary[:512],
+            kind="harness",
             ref=head_sha or "",
             anchor=branch or "",
             ts=ts,
@@ -3918,11 +4021,12 @@ def recompress_raw_events(
 
 # Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
 # cli_events/file_events/test_run_events/issue_events/loop_events/commit_events/
-# issue_snapshots/hook_events — those have no raw_events-backed _backfill_*
-# path (they're either live-write-only or sourced from .issues/.loops/git log,
-# out of this issue's scope; see ENH-2581 management plan). Wiping them here
-# with no re-derivation path would be unrecoverable data loss. hook_events in
-# particular has no transcript-JSONL source at all (ENH-2506).
+# issue_snapshots/hook_events/harness_events — those have no raw_events-backed
+# _backfill_* path (they're either live-write-only or sourced from
+# .issues/.loops/git log, out of this issue's scope; see ENH-2581 management
+# plan). Wiping them here with no re-derivation path would be unrecoverable
+# data loss. hook_events and harness_events in particular have no
+# transcript-JSONL source at all (ENH-2506, ENH-2739).
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -4431,6 +4535,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "orchestration_run": ("orchestration_runs", "ended_at"),
     "loop_run": ("loop_runs", "ended_at"),
     "session_lifecycle_event": ("session_lifecycle_events", "ts"),
+    "harness_event": ("harness_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -4446,6 +4551,7 @@ _EXPORT_DEFAULT_TABLES = [
     "usage_event",
     "orchestration_run",
     "session_lifecycle_event",
+    "harness_event",
 ]
 
 

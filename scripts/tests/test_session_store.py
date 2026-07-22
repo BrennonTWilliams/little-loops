@@ -1379,7 +1379,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
 
 
 class TestBackfillIncremental:
@@ -1824,8 +1824,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1994,8 +1994,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2046,8 +2046,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2125,7 +2125,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 30
+        assert int(version[0]) == 31
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2142,8 +2142,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3859,8 +3859,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3900,8 +3900,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 30
-        assert int(row[0]) == 30
+        assert SCHEMA_VERSION == 31
+        assert int(row[0]) == 31
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3955,7 +3955,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 30
+        assert int(version[0]) == 31
         assert "issue_snapshots" in names
 
 
@@ -4648,7 +4648,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4794,7 +4794,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -5015,7 +5015,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -5120,7 +5120,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -5160,7 +5160,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -5204,7 +5204,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -5411,7 +5411,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 30
+        assert SCHEMA_VERSION == 31
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -5602,3 +5602,170 @@ class TestHookEventContext:
         with hook_event_context(tmp_path, session_id=None, event_name="PostToolUse"):
             ran = True
         assert ran
+
+
+class TestSchemaV31HarnessEvents:
+    """v31 migration adds the harness_events table (ENH-2739)."""
+
+    def test_harness_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(harness_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "runner",
+            "target",
+            "exit_code",
+            "semantic_verdict",
+            "semantic_passed",
+            "timed_out",
+            "duration_ms",
+            "head_sha",
+            "branch",
+            "parent_id",
+            "semantic_prompt",
+            "semantic_confidence",
+            "semantic_reason",
+            "semantic_evidence",
+            "semantic_model",
+        }
+
+    def test_harness_events_indexes_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+        finally:
+            conn.close()
+        assert {
+            "idx_harness_runner",
+            "idx_harness_target",
+            "idx_harness_exit",
+            "idx_harness_parent",
+        } <= names
+
+    def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 31
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 30)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "harness_events" in names
+
+    def test_harness_is_kinded(self) -> None:
+        assert "harness" in VALID_KINDS
+        assert _KIND_TABLE["harness"] == "harness_events"
+
+    def test_harness_events_excluded_from_rebuild_tables(self) -> None:
+        from little_loops.session_store import _REBUILD_TABLES
+
+        assert "harness_events" not in _REBUILD_TABLES
+
+
+class TestRecordHarnessEvent:
+    """ENH-2739: record_harness_event() single-row INSERT."""
+
+    def test_inserts_row_with_all_columns(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-07-22T00:00:00Z",
+            runner="cmd",
+            target="scripts/tests/test_foo.py",
+            exit_code=0,
+            semantic_verdict="pass",
+            semantic_passed=True,
+            timed_out=False,
+            duration_ms=1234,
+            head_sha="abc123",
+            branch="main",
+            parent_id=None,
+            semantic_prompt="does the output match?",
+            semantic_confidence=0.92,
+            semantic_reason="output matched expected format",
+            semantic_evidence="line 3: OK",
+            semantic_model="claude-sonnet-5",
+        )
+        rows = recent(db, kind="harness")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["runner"] == "cmd"
+        assert row["target"] == "scripts/tests/test_foo.py"
+        assert row["exit_code"] == 0
+        assert row["semantic_verdict"] == "pass"
+        assert row["semantic_passed"] == 1
+        assert row["timed_out"] == 0
+        assert row["duration_ms"] == 1234
+        assert row["head_sha"] == "abc123"
+        assert row["branch"] == "main"
+        assert row["semantic_prompt"] == "does the output match?"
+        assert row["semantic_confidence"] == 0.92
+        assert row["semantic_reason"] == "output matched expected format"
+        assert row["semantic_evidence"] == "line 3: OK"
+        assert row["semantic_model"] == "claude-sonnet-5"
+
+    def test_parent_id_round_trips_for_dsl_subtasks(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(db, ts="2026-07-22T00:00:00Z", runner="dsl", target="parent-run")
+        conn = connect(db)
+        try:
+            parent_id = conn.execute("SELECT id FROM harness_events").fetchone()[0]
+        finally:
+            conn.close()
+        record_harness_event(
+            db,
+            ts="2026-07-22T00:00:01Z",
+            runner="dsl",
+            target="task-1",
+            parent_id=parent_id,
+        )
+        rows = recent(db, kind="harness", limit=10)
+        child = next(r for r in rows if r["target"] == "task-1")
+        assert child["parent_id"] == parent_id
+
+    def test_kwarg_only_signature(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(TypeError):
+            record_harness_event(db, "2026-07-22T00:00:00Z", "cmd")  # type: ignore[misc]
+
+    def test_raises_on_unopenable_db(self, tmp_path: Path) -> None:
+        """Unlike record_hook_event, this recorder raises on failure (per issue contract)."""
+        from little_loops.session_store import record_harness_event
+
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        with pytest.raises(sqlite3.Error):
+            record_harness_event(tmp_path, ts="2026-07-22T00:00:00Z", runner="cmd")
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-07-22T00:00:00Z",
+            runner="mcp",
+            target="unique-search-target-xyz",
+            exit_code=1,
+        )
+        results = search(db, query="unique-search-target-xyz")
+        assert any(r["kind"] == "harness" for r in results)
