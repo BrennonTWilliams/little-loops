@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.149.0] - 2026-07-22
+
+### Added
+
+- FEAT-2672: F1-prereq (b) — Deferred tool loading
+- FEAT-2673: F1 — cache_control: ephemeral integration + cache-marking cost oracle
+- FEAT-2674: F10 — Speculative cache warming hook (+ max_tokens=0 alt)
+- FEAT-2703: init/introspect.py: manifest-declared commands + src_dir detection with provenance
+- FEAT-2705: Rewrite /ll:init skill as plan → inspect → apply agentic flow
+- FEAT-2710: Message Batches API request path (50% discount on batchable automation)
+- FEAT-2716: Wire live Anthropic SDK/Batches API dispatch into fsm/executor.py
+- EPIC-2670: Generic `ll-queue` — heterogeneous work-item queue on a shared runner abstraction
+
+### Fixed
+
+- BUG-2685: refine-to-ready-issue phantom-convergence on max_steps exhaustion
+- BUG-2688: audit-docs crashes with context_length/concurrent-agent errors on full-scope unscoped file discovery
+- BUG-2706: cli_event_context crashes every ll-* CLI when history.db is locked
+- BUG-2718: run_claude_command's fixed 30s post-stream-close kill fires while legitimate synchronous parallel subagent work is still in flight
+- BUG-2728: done issues still land in vestigial .issues/completed/, making blocked_by resolution report them as unknown and permanently blocking dependents
+- BUG-2729: headless automation sessions that end their turn while awaiting subagents are torn down by claude -p shutdown (SIGTERM/exit 143), discarding in-flight work
+- BUG-2730: headless automation prompt path carries no "stay in turn" contract, and parallel-agent skills invite the end-turn-and-wait pattern that triggers exit 143
+- BUG-2732: finalize_decomposed_parent() moves closed parents into legacy .issues/completed/, reintroducing the directory BUG-2403 tried to retire
+- BUG-2733: blocked_by resolution treats a done blocker parked in .issues/completed/ as unknown, permanently blocking dependents
+- BUG-2734: autodev defers a ready, deliberately-non-decomposable Very Large issue as low_readiness instead of implementing it
+- BUG-2735: evaluation-quality.yaml's sample state reads confidence_score/outcome_confidence/formatted fields that ll-issues list --json never returns
+- fix(fsm): kwarg-gate automation_profile in action_runner.run() (72477db)
+
+### Changed
+
+- ENH-2466: Mirror Learning Test Registry records into history.db / search_index
+- ENH-2495: Record session-lifecycle / handoff events into history.db
+- ENH-2505: Link subagent session-tree (parent→child) into history.db
+- ENH-2509: Capture worktree lifecycle events into session_lifecycle_events
+- ENH-2686: recheck_set should retry an abandoned autodev-queue residual, not just newly-detected descendants
+- ENH-2689: autodev: add reconcile step for stale issue-body sections after spike/refine plateau
+- ENH-2690: rn-refine preflight_check heading match flags legitimate decompose rewrites as data loss
+- ENH-2691: rn-refine synth_dispatch computes worker fail flag but never gates on it
+- ENH-2692: rn-refine final_score rubric verdict has no effect on control flow
+- ENH-2701: Call detect_documents() from _run_yes (headless/TUI parity)
+- ENH-2702: Score template detection by match count instead of first-alphabetical
+- ENH-2704: Enrich --plan with provenance + ambiguities; divergence warnings on re-init
+- ENH-2707: rn-refine — soft-deadline drain: reserve wall-clock for synthesis so a timeout still yields a written-back partial plan
+- ENH-2708: plan-node-refine sub-loop outcome durability
+- ENH-2709: rn-refine run-dir observability (summary.json + writeback.json)
+- ENH-2713: Per-state model pinning in loop YAML (haiku for verdict states)
+- ENH-2714: Automation-context static-prefix pruning for FSM invocations
+- ENH-2715: decide-issue --auto should reformat found-but-unstructured open decisions
+- ENH-2717: autodev run_decide → run_size_review path wastes a full size-review call when decide-issue is killed mid-turn
+- ENH-2721: usage_events run_id column + live per-invocation writer (split from ENH-2712)
+- ENH-2723: usage_events run_id column — schema migration (v29)
+- ENH-2724: usage_events live per-invocation run_id writer (on_usage_detailed)
+- ENH-2725: usage_events run_id backfill on historical rows
+
+### Other
+
+- docs: document SDK/Batches dispatch path (orchestration.request_path) (200799d)
+- style: apply ruff format line-wrapping to executor and spike test (2aff155)
+
 ## [1.148.0] - 2026-07-19
 
 ### Added
@@ -67,6 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.149.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.148.0...v1.149.0
 [1.148.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.147.0...v1.148.0
 
 ## [1.147.0] - 2026-07-15
