@@ -15,6 +15,7 @@
 - [Walkthrough: Creating and Running a Loop](#walkthrough-creating-and-running-a-loop)
 - [Built-in Loops](#built-in-loops)
 - [Beyond the Basics](#beyond-the-basics)
+  - [Automation-Context Pruning](#automation-context-pruning)
 - [Background Mode](#background-mode)
 - [Stop, Resume, and Exit Reasons](#stop-resume-and-exit-reasons)
 - [Harness Loops](#harness-loops)
@@ -584,6 +585,50 @@ These fields apply to `action_type: prompt` states only:
 | `agent:` | Passes `--agent <name>` to the Claude subprocess — loads `.claude/agents/<name>.md` with its system prompt and tool set. |
 | `tools:` | Passes `--tools <csv>` — scopes available tools without a full agent file (e.g. `["Read", "Bash"]`). |
 | `model:` | Passes `--model <id>` for this state only — use a cheap model for routing states, an expensive one for evaluation states. |
+
+**Pinning haiku on verdict states**: `model:` is most valuable on `check_semantic`/`llm_structured` verdict states — they emit a small, structured judgment (pass/fail, a routing label) rather than open-ended generation, so a cheaper model rarely changes the outcome but does cut cost:
+
+```yaml
+states:
+  check_tests_pass:
+    action: "Did the test output above show all tests passing? Answer yes or no."
+    action_type: check_semantic
+    model: claude-haiku-4-5-20251001
+    on_yes: done
+    on_no: fix
+```
+
+Don't pin haiku on *generator* states (states that produce the actual content — code, prose, a plan) — the MR-lint `haiku-gen` rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a `model:` names a haiku variant on a non-evaluator state, since generator output has no MR-1 non-LLM-evaluator backstop to catch quality regressions from the cheaper model.
+
+### Automation-Context Pruning
+
+Every fresh state invocation re-sends a static prefix by default: the full skill/command catalog, the SessionStart hook's config + `project_context` digest, and (on hosts that support it) CLAUDE.md. For a tight, controlled state whose prompt fully specifies the task, declare a `pruning_profile:` to cut that prefix — opt-in, default off:
+
+```yaml
+name: mechanical-verdict-loop
+pruning_profile:            # loop-level default for all states
+  enabled: true
+  suppress_catalog: true
+  suppress_claude_md: true
+states:
+  verify:
+    action: /ll:verify-issue-loop ${captured.issue.output}
+    action_type: prompt
+    pruning_profile:        # state-level override
+      enabled: true
+      name: verdict-only
+      suppress_catalog: true
+    next: done
+```
+
+| Field | Description |
+|-------|-------------|
+| `enabled:` | Master switch — when `false`, the profile is inert even if other fields are set. |
+| `name:` | Profile name propagated as `LL_AUTOMATION_PROFILE`; informational today. |
+| `suppress_catalog:` | Narrow the skill/command catalog via the state/loop `tools:` allowlist, mapped to the host's narrowing flags — only on hosts where `ll-doctor` confirms `tool_allowlist`. |
+| `suppress_claude_md:` | Suppress CLAUDE.md loading for this invocation — only on hosts where `ll-doctor` confirms `claude_md_suppression`. |
+
+A `pruning_profile:` at the loop level sets the default for every state; a state-level `pruning_profile:` overrides it. Declaring the profile sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process environment, which automation-aware hooks (`session_start.py`, `history_context.py`) check to suppress their own static-prefix output — this part applies on every host regardless of `ll-doctor` capability confirmation. Unconfirmed hosts no-op cleanly on `suppress_catalog`/`suppress_claude_md` rather than erroring. Run `ll-doctor` to check which capabilities your configured host supports before relying on the narrowing flags.
 
 ### Handoff Behavior
 
