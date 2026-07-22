@@ -3,25 +3,84 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import subprocess
 import sys
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
-from little_loops.fsm.evaluators import evaluate_llm_structured
+from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
 from little_loops.logger import Logger
 from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    cli_event_context,
+    connect,
+    record_harness_event,
+)
 
 __all__ = [
     "RunnerResult",
     "DslTask",
     "main_harness",
 ]
+
+
+def _now_iso() -> str:
+    """Return the current UTC time as a Z-suffixed ISO 8601 string."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _git_output(*args: str) -> str | None:
+    """Return stripped stdout of a git command, or None on any failure."""
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def _record_harness_event(
+    *,
+    runner: str,
+    target: str,
+    exit_code: int | None,
+    semantic_verdict: str | None,
+    semantic_passed: bool | None,
+    timed_out: bool,
+    duration_ms: int,
+    parent_id: int | None = None,
+) -> None:
+    """Best-effort write to ``harness_events`` — never affects the harness exit code."""
+    with contextlib.suppress(Exception):
+        record_harness_event(
+            DEFAULT_DB_PATH,
+            ts=_now_iso(),
+            runner=runner,
+            target=target,
+            exit_code=exit_code,
+            semantic_verdict=semantic_verdict,
+            semantic_passed=semantic_passed,
+            timed_out=timed_out,
+            duration_ms=duration_ms,
+            head_sha=_git_output("rev-parse", "HEAD"),
+            branch=_git_output("rev-parse", "--abbrev-ref", "HEAD"),
+            parent_id=parent_id,
+        )
 
 
 @dataclass
@@ -180,22 +239,32 @@ def _parse_harness_args(argv: list[str] | None) -> argparse.Namespace:
     return _build_harness_parser().parse_args(argv)
 
 
+@dataclass
+class HarnessEvalOutcome:
+    """Evaluation outcome carried alongside `_evaluate_and_report()`'s exit code."""
+
+    passed: bool
+    verdict: str | None
+    eval_result: EvaluationResult | None
+
+
 def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
     args: argparse.Namespace,
-) -> int:
-    """Evaluate result against criteria and print the report. Returns exit code."""
+) -> tuple[int, HarnessEvalOutcome]:
+    """Evaluate result against criteria and print the report. Returns (exit_code, outcome)."""
     if result.timed_out:
         _report(runner_label, result, args, error_msg="timeout")
-        return 2
+        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
     if result.error is not None:
         _report(runner_label, result, args, error_msg=result.error)
-        return 2
+        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
 
     passed = True
     exit_code_display = str(result.exit_code)
     semantic_display = "[not checked]"
+    eval_result: EvaluationResult | None = None
 
     if args.exit_code is not None:
         if result.exit_code != args.exit_code:
@@ -240,7 +309,12 @@ def _evaluate_and_report(
             if not result.stdout.endswith("\n"):
                 print()
 
-    return 0 if passed else 1
+    outcome = HarnessEvalOutcome(
+        passed=passed,
+        verdict=eval_result.verdict if eval_result is not None else None,
+        eval_result=eval_result,
+    )
+    return (0 if passed else 1), outcome
 
 
 def _report(
@@ -276,8 +350,20 @@ def cmd_skill(args: argparse.Namespace) -> int:
         args={"runner_args": runner_args},
         timeout=args.timeout,
     )
+    start = time.monotonic()
     result = run_action(spec)
-    return _evaluate_and_report(runner_label, result, args)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    _record_harness_event(
+        runner="skill",
+        target=args.target,
+        exit_code=result.exit_code,
+        semantic_verdict=outcome.verdict,
+        semantic_passed=outcome.passed,
+        timed_out=result.timed_out,
+        duration_ms=duration_ms,
+    )
+    return rc
 
 
 def cmd_cmd(args: argparse.Namespace) -> int:
@@ -289,8 +375,20 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         target=args.target,
         timeout=args.timeout,
     )
+    start = time.monotonic()
     result = run_action(spec)
-    return _evaluate_and_report(runner_label, result, args)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    _record_harness_event(
+        runner="cmd",
+        target=args.target,
+        exit_code=result.exit_code,
+        semantic_verdict=outcome.verdict,
+        semantic_passed=outcome.passed,
+        timed_out=result.timed_out,
+        duration_ms=duration_ms,
+    )
+    return rc
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
@@ -317,8 +415,20 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         args={"mcp_params": params},
         timeout=args.timeout,
     )
+    start = time.monotonic()
     result = run_action(spec)
-    return _evaluate_and_report(runner_label, result, args)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    _record_harness_event(
+        runner="mcp",
+        target=args.target,
+        exit_code=result.exit_code,
+        semantic_verdict=outcome.verdict,
+        semantic_passed=outcome.passed,
+        timed_out=result.timed_out,
+        duration_ms=duration_ms,
+    )
+    return rc
 
 
 def cmd_prompt(args: argparse.Namespace) -> int:
@@ -332,8 +442,20 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         args={"model": args.model},
         timeout=args.timeout,
     )
+    start = time.monotonic()
     result = run_action(spec)
-    return _evaluate_and_report(runner_label, result, args)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    rc, outcome = _evaluate_and_report(runner_label, result, args)
+    _record_harness_event(
+        runner="prompt",
+        target=args.target,
+        exit_code=result.exit_code,
+        semantic_verdict=outcome.verdict,
+        semantic_passed=outcome.passed,
+        timed_out=result.timed_out,
+        duration_ms=duration_ms,
+    )
+    return rc
 
 
 def cmd_dsl(args: argparse.Namespace) -> int:
@@ -356,6 +478,17 @@ def cmd_dsl(args: argparse.Namespace) -> int:
     pass_count = 0
     total = 0
 
+    aggregate_ts = _now_iso()
+    aggregate_id: int | None = None
+    with contextlib.suppress(Exception):
+        record_harness_event(DEFAULT_DB_PATH, ts=aggregate_ts, runner="dsl", target=str(path))
+        conn = connect(DEFAULT_DB_PATH)
+        try:
+            row = conn.execute("SELECT id FROM harness_events ORDER BY id DESC LIMIT 1").fetchone()
+            aggregate_id = row[0] if row is not None else None
+        finally:
+            conn.close()
+
     for task_file in task_files:
         with open(task_file) as f:
             data = yaml.safe_load(f)
@@ -374,10 +507,23 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             verbose=args.verbose,
             model=args.model,
         )
+        start = time.monotonic()
         rc = cmd_prompt(task_args)
+        duration_ms = int((time.monotonic() - start) * 1000)
         total += 1
         if rc == 0:
             pass_count += 1
+
+        _record_harness_event(
+            runner="dsl-task",
+            target=task_file.name,
+            exit_code=rc,
+            semantic_verdict=None,
+            semantic_passed=rc == 0,
+            timed_out=False,
+            duration_ms=duration_ms,
+            parent_id=aggregate_id,
+        )
 
     lo, hi = wilson_ci(pass_count, total)
     print(f"\nDSL pass-rate: {pass_count}/{total}  [{lo:.2f}, {hi:.2f}] (95% CI)")

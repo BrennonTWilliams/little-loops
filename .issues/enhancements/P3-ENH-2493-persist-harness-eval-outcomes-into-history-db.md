@@ -3,16 +3,25 @@ id: ENH-2493
 title: Persist ll-harness / eval outcomes into history.db
 type: ENH
 priority: P3
-status: open
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - eval
-  - captured
+- enhancement
+- history-db
+- eval
+- captured
+learning_tests_required:
+- sqlite3
+confidence_score: 100
+outcome_confidence: 43
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 0
+size: Very Large
+status: done
 ---
 
 # ENH-2493: Persist ll-harness / eval outcomes into history.db
@@ -211,6 +220,22 @@ _Added by `/ll:refine-issue` — corrects stale anchors verified against current
 - **Test class anchors (verified)**: `TestRecordTestRunEvent` at `scripts/tests/test_session_store.py:4362`; `_bootstrap_schema_at(db, version)` helper at `scripts/tests/test_session_store.py:3891`; `TestNewEventReaders` at `scripts/tests/test_history_reader.py:1395`; `test_recent_test_runs_and_pass_rate` at `scripts/tests/test_history_reader.py:1459`; `TestSkillStatsAndNewKinds` at `scripts/tests/test_ll_session.py:1040`; `TestHarnessEventPersistence` does not exist yet (create new in `test_cli_harness.py` after `TestCmdDsl` ends ~line 940+). Shared helpers in `test_cli_harness.py:25-75` (`FakeRunner`, `_make_completed`, `_make_namespace`, `_llm_verdict`) are reusable for new tests.
 - **`LlLoop` row pattern mirrors `record_test_run_event` exactly**: `connect(db_path)` → `INSERT` → `_index(conn, kind="harness", ref=target or "", anchor=runner or "", content=<summary>[:512], ts=ts)` → `conn.commit()` → `finally: conn.close()`. The recorder raises; the caller wraps in `contextlib.suppress(Exception)`. This matches the AC's "best-effort, DB absent/locked does not change exit code" guarantee.
 
+### Codebase Research Findings — Anchor Refresh (2026-07-22)
+
+_Added by `/ll:refine-issue` — corrects further anchor drift verified against current `main`; the 2026-07-16 pass is now itself stale on line numbers (schema grew by 10 versions and several symbols moved files/lines in the intervening week). Grep confirms `harness_events`/`record_harness_event` still have zero references anywhere — the issue remains unimplemented._
+
+- **`SCHEMA_VERSION` is now 30, not 20/21.** Verified at `session_store.py:222`. The landing slot at implementation time will be whatever is open then — continue to read the live constant rather than trusting any literal in this issue (per the existing "Scope Boundary" note below, which remains correct in spirit).
+- **`VALID_KINDS` has grown to 18 entries** (`session_store.py:224-243`): `tool, file, issue, loop, correction, message, skill, cli, snapshot, commit, test_run, usage, orchestration_run, loop_run, learning_test, session_lifecycle, subagent_run, hook_event`. Still a plain tuple (confirms the 2026-07-16 correction); `_KIND_TABLE` dict starts at line 244 (was 209-236 → 223-236 in earlier passes).
+- **`record_test_run_event()` moved again — now at `session_store.py:1727`** (was 1352-1414, was 1171-1233 before that). The file keeps growing; re-check the live line before placing `record_harness_event()` — do not trust any specific line number from prior refine passes, place it directly after whatever `record_test_run_event()`'s current end is.
+- **`_EXPORT_TABLE_MAP` / `_EXPORT_DEFAULT_TABLES` are now at `session_store.py:4419` / `:4436`** (was 3304-3329). Same append pattern still applies (`"harness_event": ("harness_events", "ts")`).
+- **`_REBUILD_TABLES` is now at `session_store.py:3926-3937`**, not 2818-2823 — and its current contents are `tool_events, message_events, assistant_messages, skill_events, sessions, user_corrections, summary_nodes, summary_spans, usage_events`. Note `test_run_events` and `commit_events` are **not** in this tuple either (they're direct-write like `harness_events` will be) — the "extend the comment" wiring step (Wiring Phase #10) should target this literal list, and `harness_events` does not need to be added to it (only mentioned in the explanatory comment, if one exists nearby — none currently does inline).
+- **`TestRunEventVariant` is at `observability/schema.py:502`; `DES_VARIANTS` tuple starts at `:571` and includes `TestRunEventVariant` at `:634`** (was 501-507 / ~626 in the prior pass — moved but not drastically). Add `HarnessEventVariant` near `TestRunEventVariant` and register it adjacent to it in the tuple.
+- **`RunEvent` dataclass is at `history_reader.py:163`** (was 138-161/138-162 — close). **`summarize_skills()` is at `:608`** (was 472-521/497-546). **`recent_test_runs()` is at `:1350`** (was 562-598/689-725). Re-verify exact line at implementation time; the module continues to grow ~100+ lines per week across sibling EPIC-2457 issues landing in parallel.
+- **`RunnerResult`/`RunnerType` now live in `scripts/little_loops/runner_spec.py`** (`RunnerType` at `:43`, `RunnerResult` at `:55` — a frozen dataclass with `stdout`, `stderr`, `exit_code`, `timed_out`, `error`), imported into `cli/harness.py:17`. This corrects the prior pass's claim that `RunnerResult` is "local to `harness.py:25-33`" — it is now a shared module-level type, not local. `DslTask` (harness-specific, not shared) is still local at `cli/harness.py:28`. This doesn't change the wiring approach (both `(a)` return-dataclass and `(b)` mutable-namespace threading strategies from the 2026-07-16 pass remain valid), but implementers should import any new `EvalReport`-style dataclass alongside `RunnerResult`/`ActionSpec` in `runner_spec.py` if it's meant to be reused outside `harness.py`, or keep it harness-local if not.
+- **`_evaluate_and_report()` is now at `cli/harness.py:183-240`** (function body re-verified: `passed`/`exit_code_display`/`semantic_display` are still locals; `eval_result.verdict` at `:206`; still returns only `int`). **`cmd_dsl()` is now at `:339-383`**, and per-task dispatch is `rc = cmd_prompt(task_args)` at `:376` (was `:440` in the earlier pass) — this is the loop iteration site where a per-task `record_harness_event(..., runner="dsl-task", parent_id=<aggregate id>)` call would go. **`main_harness()` is now at `:387-407`**, with the `cli_event_context(...)` wrap at `:389` (was `:450`/`:452`).
+- **`TestRecordTestRunEvent` is now at `scripts/tests/test_session_store.py:4566`; `_bootstrap_schema_at()` is at `:4095`** (was 4362 / 3891 in the prior pass).
+- **Net effect**: no structural finding from the 2026-07-16 pass is invalidated (the threading strategy, `contextlib.suppress(Exception)` requirement, `parent_id` DSL design, and semantic-column additions all still apply as designed) — only line-number anchors moved. Re-verify every anchor against live `main` immediately before implementing rather than trusting any specific line number cited anywhere in this issue, including this refresh.
+
 ## Implementation Steps
 
 1. Schema migration for `harness_events`; bump `SCHEMA_VERSION`.
@@ -348,7 +373,28 @@ _Wiring pass added by `/ll:wire-issue` — additional documentation coupling:_
 
 ## Status
 
-**Open** | Created: 2026-07-05 | Priority: P3
+**Decomposed** | Created: 2026-07-05 | Priority: P3
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-07-22
+- **Reason**: Very Large (score 11/11) — file count, section complexity,
+  multiple concerns, dependency mentions, and word count all triggered.
+  Qualitative-skip guard did not apply (`score_complexity=0`, guard requires
+  both ambiguity and complexity ≥18). Split along clear module boundaries:
+  foundational schema/recorder, the risky producer signature-refactor, and
+  the read/CLI surface.
+
+### Decomposed Into
+- ENH-2739: harness_events schema, kind registration, and
+  record_harness_event() recorder
+- ENH-2740: Wire ll-harness producer to write harness_events (signature
+  refactor + DSL per-task rows) — blocked_by: ENH-2739
+- ENH-2741: harness_events read API, ll-session CLI wiring, and docs —
+  blocked_by: ENH-2739
 
 ---
 
@@ -361,6 +407,16 @@ _These risks surfaced during the wiring analysis and should be addressed before 
 2. **`cli_event_context` does NOT swallow `sqlite3.Error`.** Verified at `session_store.py:1054-1091` — the existing wrap commits without `try/except`, so a missing/locked DB raises into the harness CLI body. The newer `skill_event_context` (`session_store.py:1108-1195`) wraps in `try/except sqlite3.Error` per EPIC-1707. **The harness call site MUST wrap `record_harness_event(...)` in `contextlib.suppress(Exception)`** (mirroring `pytest_history_plugin.py:118-121`). This is a hard requirement — `cli_event_context` cannot be relied on for graceful degradation. Add a `TestHarnessEventPersistence.test_main_harness_succeeds_when_db_unopenable` test that pins this contract. `[Agent 1 + Agent 2]`
 
 3. **DES audit Phase 1 regex does NOT match direct DB inserts.** `observability/audit.py:55-67` scans for `self._emit(...)` / `event_bus.emit(...)` calls; `record_harness_event(...)` is a direct DB insert, not an event-bus emit. The DES audit gate will NOT flag the new producer unless the `HarnessEventVariant` is explicitly registered in `observability/schema.py` `DES_VARIANTS`. Skipping step 11 of the Wiring Phase lets the new producer ship undetected by the audit gate. `[Agent 2]`
+
+4. **`RunnerResult` re-export identity contract must not be disturbed.** `scripts/tests/test_runner_spec.py:49-54` (`TestRunnerResultReexport.test_runner_result_importable_from_harness`) pins `HarnessRunnerResult is RunnerResult` via `from little_loops.cli.harness import RunnerResult as HarnessRunnerResult`; `docs/reference/API.md:8521-8523` documents this as an unchanged-shape guarantee. The issue's own "Recommended: (a)" threading strategy proposes adding a new `EvalReport`-shaped dataclass "near `RunnerResult`... in `runner_spec.py`" — that's fine, but implementers must NOT fold new fields into `RunnerResult` itself or touch its re-export at `cli/harness.py:17`/`:20-24` (`__all__`) while doing so. Re-run `test_runner_spec.py::TestRunnerResultReexport` after implementation as a cheap regression check. Separately confirmed unaffected: `cli/action.py:68,90-98,127-136` and `cli/queue.py:46,58-77,230-243` call `run_action()`/`ActionSpec` directly (bypassing `harness.py`'s `_evaluate_and_report()`), consuming only `RunnerResult`'s existing fields — no coupling to add there. `[Wiring pass 2026-07-22]`
+
+5. **18 `test_cli_harness.py` assertion sites break if `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` change return signature (int → tuple/dataclass) under Option (a).** Every listed test asserts `result == <int>` directly against these functions' return values and must change to `result.rc == <int>` (or equivalent unpacking) in lockstep with the signature change — NOT enumerated by the issue's original Implementation Steps:
+   - `TestCmdSkill`: `test_skill_pass_no_criteria:199`, `test_skill_exit_code_pass:233`, `test_skill_exit_code_fail:245`, `test_skill_timeout_returns_2:261`, `test_skill_binary_not_found_returns_2:273`
+   - `TestCmdCmd`: `test_cmd_captures_stdout:333`, `test_cmd_exit_code_pass:345`, `test_cmd_exit_code_fail:355`, `test_cmd_no_criteria_always_pass:367`, `test_cmd_timeout_returns_2:382`, `test_cmd_json_output:393`, `test_semantic_...pass:607`, `test_semantic_non_yes_fails:633` (parametrized 3x), `test_both_criteria_must_pass:657`
+   - `TestCmdMcp`: `test_mcp_calls_tool:420`, `test_mcp_tool_error_exit_code:461`, `test_mcp_exit_code_criterion_fail:473`
+   - `TestCmdPrompt`: `test_prompt_sends_request:502`
+   - `cmd_dsl`'s internal call site (`harness.py:376`, `rc = cmd_prompt(task_args)`) also needs an unpacking update if `cmd_prompt`'s signature changes, since `cmd_dsl` consumes it directly; its own aggregate test assertions at `test_cli_harness.py:863,879,898` need the same treatment.
+   - **Confirmed safe**: all PASS/FAIL `capsys.readouterr().out` substring assertions (e.g. `:200-201`, `:246-247`, `:334`, `:356-357`, `:608-609`, `:634-635`) check printed output, not the return value — unaffected by the signature change. `main_harness()`'s own tests (`test_main_harness_cmd_pass:682` etc., JSON-shape assertions at `:749-751`) are also unaffected since `main_harness()` itself is not changing shape. `[Wiring pass 2026-07-22]`
 
 ---
 
@@ -408,7 +464,22 @@ disambiguate. **The implementer should rename this issue's reader to
 ambiguity at the source rather than relying on the import path to
 distinguish.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-22_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 43/100 → LOW
+
+### Outcome Risk Factors
+- Deep per-site complexity: Option (a) (recommended) changes `_evaluate_and_report()`'s return signature from `int` to a small dataclass — a genuine contract change that cascades to all 4 production callers (`cmd_skill`, `cmd_cmd`, `cmd_mcp`, `cmd_prompt`) plus `cmd_dsl`'s internal call to `cmd_prompt`, and breaks 18 existing test assertions across 4 test classes in `test_cli_harness.py` (enumerated in "Notable Risks" #5). Mitigation: the issue already enumerates every break site by file:line — budget time for the mechanical test-assertion updates rather than treating them as a surprise.
+- Broad enumeration across N sites: the change touches 6+ distinct modules (`session_store.py`, `cli/harness.py`, `history_reader.py`, `cli/session.py`, `observability/schema.py`, plus 3 docs files and 5 test files) each with multiple precise edit points. Thoroughly documented, but the sheer site count raises the chance of a missed touchpoint on first pass — re-run the full gate (`python -m pytest scripts/tests/test_session_store.py scripts/tests/test_history_reader.py scripts/tests/test_ll_session.py scripts/tests/test_cli_harness.py scripts/tests/test_des_schema.py scripts/tests/test_verify_kinds.py -v`) rather than a narrow subset.
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-07-22T00:00:00Z - `5a7a2fd0-cba1-488a-89c7-36283dba4691.jsonl`
+- `/ll:confidence-check` - 2026-07-22T00:00:00Z - `39bf2b90-4817-45f9-93b1-056dd83e238d.jsonl`
+- `/ll:wire-issue` - 2026-07-22T19:52:31 - `51f70f6c-67d7-417d-af1b-2df06f09cee6.jsonl`
+- `/ll:refine-issue` - 2026-07-22T19:48:04 - `2c7778a3-67ca-4e33-bfd3-e2dc60d47737.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T18:48:07 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T13:57:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-16T21:46:25 - `4035a88c-b8a6-4625-98d9-33f0bbb7d51e.jsonl`

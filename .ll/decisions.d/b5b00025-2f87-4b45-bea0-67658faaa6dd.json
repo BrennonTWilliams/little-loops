@@ -1,0 +1,12 @@
+{
+  "id": "6b83b71c-3071-47db-8342-995fc1ad7bfd",
+  "type": "decision",
+  "timestamp": "2026-07-22T19:38:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "One-line mechanical change following the existing kwarg-passthrough convention (action_runner/loops_dir/circuit/working_dir already propagate this way); closes a silent gap where nested sub-loops would stay on cli after the default flip, undercutting EPIC-2456's savings goal; Option B's no-config gap has no documented intent and is actively risky for ll-loop simulate since _dispatch_live() bypasses the SimulationActionRunner stub.",
+  "rule": "Option A: propagate orchestration_config into nested loop: child executor and ll-loop simulate's executor construction",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: leave the no-config else: cli branch as-is and document it as an intentional gap",
+  "issue": "ENH-2738"
+}

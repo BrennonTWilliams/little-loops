@@ -949,3 +949,105 @@ class TestCmdDsl:
 
         out = capsys.readouterr().out
         assert "95% CI" in out
+
+
+# ---------------------------------------------------------------------------
+# TestHarnessEventPersistence
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessEventPersistence:
+    """ENH-2740: ll-harness call sites write harness_events rows."""
+
+    def _make_task_yaml(self, tmp_path: Path, name: str = "task.yaml") -> Path:
+        p = tmp_path / name
+        p.write_text(
+            "prompt: Complete this FSM transition.\n"
+            "blanks:\n  - on_yes\n"
+            "expected:\n  on_yes: done\n"
+            "source_dsl: loop\n"
+            "task_type: fill-in-the-blank\n"
+        )
+        return p
+
+    def test_pass_run_writes_row(self) -> None:
+        from little_loops.session_store import recent
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="ok")),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        rows = recent(kind="harness", limit=10)
+        assert len(rows) == 1
+        assert rows[0]["runner"] == "skill"
+        assert rows[0]["target"] == "check-code"
+        assert rows[0]["exit_code"] == 0
+        assert rows[0]["semantic_passed"] == 1
+
+    def test_fail_run_writes_row(self) -> None:
+        from little_loops.session_store import recent
+
+        args = _make_namespace(runner="cmd", target="false", exit_code=0)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=1)),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 1
+        rows = recent(kind="harness", limit=10)
+        assert rows[0]["semantic_passed"] == 0
+
+    def test_timeout_records_timed_out(self) -> None:
+        from little_loops.session_store import recent
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
+            ),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 2
+        rows = recent(kind="harness", limit=10)
+        assert rows[0]["timed_out"] == 1
+
+    def test_dsl_batch_writes_aggregate_and_per_task_rows(self, tmp_path: Path) -> None:
+        from little_loops.session_store import recent
+
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            cmd_dsl(args)
+
+        rows = recent(kind="harness", limit=20)
+        aggregate = next(r for r in rows if r["runner"] == "dsl")
+        task_row = next(r for r in rows if r["runner"] == "dsl-task")
+        assert task_row["target"] == task_file.name
+        assert task_row["parent_id"] == aggregate["id"]
+
+    def test_main_harness_succeeds_when_db_unopenable(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A DB write failure (unopenable path) must not change the harness exit code."""
+        # A directory is not default-shaped, so LL_HISTORY_DB routes there verbatim
+        # and sqlite fails to open it as a database file.
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0)),
+        ):
+            result = main_harness(["cmd", "true"])
+
+        assert result == 0
