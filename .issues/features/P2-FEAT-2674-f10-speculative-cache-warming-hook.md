@@ -3,7 +3,7 @@ id: FEAT-2674
 title: "F10 \u2014 Speculative cache warming hook (+ max_tokens=0 alt)"
 type: FEAT
 priority: P2
-status: done
+status: open
 captured_at: '2026-07-18T15:15:21Z'
 discovered_date: 2026-07-18
 discovered_by: capture-issue
