@@ -8659,7 +8659,7 @@ registered provider (registration order) whose `status()` reports `available`.
 
 | Class | Provider key | Status |
 |-------|--------------|--------|
-| `CodegraphProvider` | `"codegraph"` | Implemented (ENH-2613) — read-only reader over a `.codegraph/codegraph.db` SQLite index; `exact` confidence, staleness-checked against `git HEAD` and the working tree per `code_query.staleness` |
+| `CodegraphProvider` | `"codegraph"` | Implemented (ENH-2613) — read-only reader over a `.codegraph/codegraph.db` SQLite index; `exact` confidence, staleness-checked against `git HEAD` and the working tree per `code_query.staleness`. The working-tree dirty-file check is scoped to `scan.focus_dirs`/`exclude_patterns` (ENH-2736) — untracked/modified files outside the scan scope (e.g. `.ll/`, `.issues/`, `thoughts/`) don't flip freshness to `stale` |
 | `FallbackProvider` | `"fallback"` | Implemented (FEAT-2576) — grep/AST over the working tree; always available, always `freshness: fresh` |
 
 To add a provider: create `codequery/<provider>.py` implementing `CodeQueryProvider`, then

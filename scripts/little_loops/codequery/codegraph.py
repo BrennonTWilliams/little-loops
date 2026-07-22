@@ -95,6 +95,40 @@ def _short_symbol(symbol: str) -> str:
     return tail.rsplit(".", 1)[-1]
 
 
+def _porcelain_paths(dirty_raw: str) -> list[str]:
+    """Extract file paths from ``git status --porcelain`` output.
+
+    Handles the ``XY path`` and rename ``XY old -> new`` formats (mirrors the
+    parsing convention in ``parallel/merge_coordinator.py``).
+    """
+    paths = []
+    for line in dirty_raw.splitlines():
+        if not line:
+            continue
+        path = line[3:].split(" -> ")[-1].strip()
+        if path.startswith('"') and path.endswith('"'):
+            path = path[1:-1]
+        if path:
+            paths.append(path)
+    return paths
+
+
+def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[str]) -> bool:
+    """Return True if *path* falls under the codegraph provider's scan scope.
+
+    A path is relevant only if it's under one of ``focus_dirs`` (empty
+    ``focus_dirs`` is treated as "no scope restriction", preserving prior
+    repo-wide behavior) and doesn't match any ``exclude_patterns`` entry.
+    """
+    from little_loops.git_operations import _file_matches_pattern
+
+    if any(_file_matches_pattern(path, pattern) for pattern in exclude_patterns):
+        return False
+    if not focus_dirs:
+        return True
+    return any(path == d.rstrip("/") or path.startswith(d.rstrip("/") + "/") for d in focus_dirs)
+
+
 def _module_to_file_guess(module: str) -> str:
     """Best-effort conversion of a dotted module or file path to a repo-relative path."""
     if module.endswith(".py"):
@@ -155,7 +189,19 @@ class CodegraphProvider:
         head_moved_raw = _git(root, "log", f"--since={indexed_at}", "--oneline")
         head_moved = len(head_moved_raw.splitlines()) if head_moved_raw else 0
         dirty_raw = _git(root, "status", "--porcelain")
-        dirty_files = len(dirty_raw.splitlines()) if dirty_raw else 0
+
+        from little_loops.config import BRConfig
+
+        scan = BRConfig(root).scan
+        dirty_files = (
+            sum(
+                1
+                for path in _porcelain_paths(dirty_raw)
+                if _is_scan_relevant(path, scan.focus_dirs, scan.exclude_patterns)
+            )
+            if dirty_raw
+            else 0
+        )
 
         is_fresh = head_moved == 0 and dirty_files == 0
         raw_freshness: Freshness = "fresh" if is_fresh else "stale"

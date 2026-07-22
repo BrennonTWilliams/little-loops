@@ -332,12 +332,31 @@ class TestStalenessMatrix:
         expect_available: bool,
     ) -> None:
         repo = self._repo_with_fresh_index(tmp_path, policy)
-        (repo / "README.md").write_text("dirty change\n")
+        # Dirty a file under the default scan scope (ScanConfig.focus_dirs
+        # defaults to ["src/", "tests/"]) so it counts toward staleness.
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "main.py").write_text("dirty change\n")
         monkeypatch.chdir(repo)
 
         status = CodegraphProvider().status()
         assert status.available is expect_available
         assert status.freshness == ("fresh" if policy == "off" else "stale")
+
+    def test_dirty_file_outside_scan_scope_stays_fresh(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-2736: a dirty file outside scan.focus_dirs (e.g. a decisions.d
+        fragment) must not flip freshness to stale."""
+        repo = self._repo_with_fresh_index(tmp_path, "strict")
+        decisions_dir = repo / ".ll" / "decisions.d"
+        decisions_dir.mkdir(parents=True, exist_ok=True)
+        (decisions_dir / "foo.json").write_text("{}\n")
+        monkeypatch.chdir(repo)
+
+        status = CodegraphProvider().status()
+        assert status.available is True
+        assert status.freshness == "fresh"
 
 
 class TestQueries:
