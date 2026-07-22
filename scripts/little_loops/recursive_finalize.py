@@ -112,7 +112,7 @@ def finalize_decomposed_parent(
     child_ids: list[str],
     issues_dir: Path,
     *,
-    move_to_completed: bool = True,
+    move_to_completed: bool = False,
 ) -> dict[str, Any]:
     """Close a decomposed parent and re-link its children into the parent's EPIC.
 
@@ -120,8 +120,10 @@ def finalize_decomposed_parent(
 
     Steps:
       1. **Close the parent.** Set ``status: done`` + ``completed_at``, append a
-         "Decomposed into <child-ids>" body note, and (when ``move_to_completed``)
-         move the file into ``<issues_dir>/completed/``.
+         "Decomposed into <child-ids>" body note, and close it in place at its
+         existing type-based path (ENH-1418 convention). Only when
+         ``move_to_completed`` is explicitly set does it move the file into the
+         legacy ``<issues_dir>/completed/`` directory instead.
       2. **Re-link children to the parent's EPIC, if any.** When the parent carries
          ``parent: EPIC-NNN``: repoint each child to ``parent: EPIC-NNN``, record
          lineage via ``relates_to: [<parent-id>]``, append the children to the
@@ -133,7 +135,8 @@ def finalize_decomposed_parent(
         parent_id: Bare issue ID of the decomposed parent (e.g. ``ENH-123``).
         child_ids: Child issue IDs created from the parent.
         issues_dir: Root of the issues tree (e.g. ``Path(".issues")``).
-        move_to_completed: Move the closed parent into ``completed/`` when true.
+        move_to_completed: Move the closed parent into legacy ``completed/`` when
+            true (default false — closes in place per ENH-1418).
 
     Returns:
         Summary dict: ``{"parent", "epic", "children", "moved", "warnings"}``.

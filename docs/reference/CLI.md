@@ -1340,7 +1340,7 @@ ll-issues sk ENH-123 -p P3 --reason "blocked on upstream change"
 
 #### `ll-issues finalize-decomposition <parent> [children...]` / `ll-issues fd`
 
-Close a decomposed parent issue and re-link its children to the parent's EPIC. Sets the parent's status to `done`, optionally moves it to its type directory, and updates the EPIC's child references.
+Close a decomposed parent issue and re-link its children to the parent's EPIC. Sets the parent's status to `done` in place at its existing type-based path (ENH-1418 convention) and updates the EPIC's child references.
 
 | Argument/Flag | Description |
 |---------------|-------------|
@@ -1348,14 +1348,14 @@ Close a decomposed parent issue and re-link its children to the parent's EPIC. S
 | `children` | (Optional) Child issue IDs as positional arguments |
 | `--children-file PATH` | File with one child ID per line (e.g., the `children_<id>.txt` artifact from `rn-decompose`) |
 | `--issues-dir DIR` | Issues base directory (default: `.issues`) |
-| `--no-move` | Do not move the closed parent into the completed directory; update status only |
+| `--move` | Move the closed parent into the legacy `completed/` directory instead of closing it in place (deprecated) |
 | `--config` | Path to project root |
 
 **Examples:**
 ```bash
-ll-issues finalize-decomposition ENH-123 ENH-124 ENH-125     # Close ENH-123; re-link children
+ll-issues finalize-decomposition ENH-123 ENH-124 ENH-125     # Close ENH-123 in place; re-link children
 ll-issues fd ENH-123 --children-file run_dir/children_ENH-123.txt  # Load children from file
-ll-issues fd ENH-123 --no-move                                # Status-only close; no file move
+ll-issues fd ENH-123 --move                                    # Legacy: move into .issues/completed/
 ```
 
 ---

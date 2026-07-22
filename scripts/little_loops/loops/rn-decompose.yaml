@@ -216,8 +216,9 @@ states:
     on_error: emit_size_review_failed
 
   finalize_parent:
-    # ENH-1977 Fix 4: close the decomposed parent (status=done, body note, move to
-    # completed/) and re-link its children into the parent's EPIC when it had one.
+    # ENH-1977 Fix 4: close the decomposed parent in place (status=done, body note;
+    # BUG-2732: no completed/ move by default) and re-link its children into the
+    # parent's EPIC when it had one.
     # Also writes the DECOMPOSED outcome token for the parent's classify_decomposition.
     # Best-effort: a finalize error must not undo the already-enqueued children.
     action_type: shell

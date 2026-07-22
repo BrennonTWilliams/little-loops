@@ -611,9 +611,10 @@ states:
     # (depth-first), so children are refined AND implemented before the next
     # sibling in the original list. Records the parent as skipped (it was
     # decomposed, not refined to ready) and closes it via `ll-issues
-    # finalize-decomposition` (ENH-2615), which owns the status-done close +
-    # completed/ move AND repoints the children's parent: to the EPIC when the
-    # parent had one — so epic-scoped re-resolution recognizes the children.
+    # finalize-decomposition` (ENH-2615), which owns the status-done close
+    # in place (BUG-2732: no completed/ move by default) AND repoints the
+    # children's parent: to the EPIC when the parent had one — so
+    # epic-scoped re-resolution recognizes the children.
     # Mirrors rn-decompose finalize_parent's WARN-not-fail shape.
     # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success
     # outcome, distinct from a refinement/readiness failure.
@@ -868,7 +869,7 @@ states:
     # After explicit size-review: diff IDs against the pre-size-review
     # baseline. If children found: prepend to queue depth-first; mark parent
     # as skipped; close the parent via ll-issues finalize-decomposition
-    # (ENH-2615 — owns the completed/ move and repoints children to the EPIC).
+    # (ENH-2615 — closes in place, BUG-2732, and repoints children to the EPIC).
     # If none: route to recheck_after_size_review so a score check can decide
     # whether to implement or skip (BUG-1230).
     # ENH-2404: two-space-delimited "ID  REASON" — decomposed is a success

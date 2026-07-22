@@ -22,7 +22,7 @@ def cmd_finalize_decomposition(config: BRConfig, args: argparse.Namespace) -> in
     Args:
         config: Project configuration (provides the project root).
         args: Parsed args with ``.parent``, ``.children``, ``.children_file``,
-            ``.issues_dir``, ``.no_move``.
+            ``.issues_dir``, ``.move``.
 
     Returns:
         Exit code (0 on success, 1 if the parent could not be found).
@@ -44,7 +44,7 @@ def cmd_finalize_decomposition(config: BRConfig, args: argparse.Namespace) -> in
         args.parent,
         child_ids,
         issues_dir,
-        move_to_completed=not args.no_move,
+        move_to_completed=args.move,
     )
 
     if result["warnings"] and "parent file not found" in result["warnings"][0]:
@@ -88,9 +88,12 @@ def add_finalize_decomposition_parser(subs: argparse._SubParsersAction) -> None:
         help="Issues base directory (default: .issues)",
     )
     fd.add_argument(
-        "--no-move",
+        "--move",
         action="store_true",
-        dest="no_move",
-        help="Do not move the closed parent into completed/ (status-only close)",
+        dest="move",
+        help=(
+            "Move the closed parent into legacy completed/ instead of closing it "
+            "in place (deprecated; ENH-1418 in-place convention is the default)"
+        ),
     )
     add_config_arg(fd)

@@ -37,22 +37,40 @@ def _make_tree(tmp_path: Path, *, epic: bool) -> Path:
     return issues
 
 
-def test_parent_closed_and_moved(tmp_path: Path) -> None:
-    """Parent is set done and moved to completed/ (no EPIC path)."""
+def test_parent_closed_in_place(tmp_path: Path) -> None:
+    """Parent is set done in place at its type-based path (no EPIC path).
+
+    ENH-1418 convention: closure no longer moves the file into completed/.
+    """
     issues = _make_tree(tmp_path, epic=False)
     result = finalize_decomposed_parent("ENH-200", ["ENH-201", "ENH-202"], issues)
 
     assert result["epic"] is None
+    assert result["moved"] is False
+    closed = issues / "enhancements" / "P2-ENH-200-parent.md"
+    assert closed.exists()
+    assert not (issues / "completed").exists()
+    fm = parse_frontmatter(closed.read_text())
+    assert fm["status"] == "done"
+    assert "completed_at" in fm
+    assert "Decomposed into**: ENH-201, ENH-202" in closed.read_text()
+    # Without an EPIC, children keep their original parent linkage.
+    child = issues / "enhancements" / "P2-ENH-201-child-a.md"
+    assert parse_frontmatter(child.read_text())["parent"] == "ENH-200"
+
+
+def test_parent_moved_when_explicitly_requested(tmp_path: Path) -> None:
+    """Legacy move-to-completed/ behavior is preserved as an opt-in."""
+    issues = _make_tree(tmp_path, epic=False)
+    result = finalize_decomposed_parent(
+        "ENH-200", ["ENH-201", "ENH-202"], issues, move_to_completed=True
+    )
+
     assert result["moved"] is True
     moved = issues / "completed" / "P2-ENH-200-parent.md"
     assert moved.exists()
     fm = parse_frontmatter(moved.read_text())
     assert fm["status"] == "done"
-    assert "completed_at" in fm
-    assert "Decomposed into**: ENH-201, ENH-202" in moved.read_text()
-    # Without an EPIC, children keep their original parent linkage.
-    child = issues / "enhancements" / "P2-ENH-201-child-a.md"
-    assert parse_frontmatter(child.read_text())["parent"] == "ENH-200"
 
 
 def test_epic_relink(tmp_path: Path) -> None:
@@ -79,11 +97,11 @@ def test_idempotent(tmp_path: Path) -> None:
     """A second call does not duplicate notes or relates_to entries."""
     issues = _make_tree(tmp_path, epic=True)
     finalize_decomposed_parent("ENH-200", ["ENH-201", "ENH-202"], issues)
-    # Second call: parent already in completed/, EPIC already linked.
+    # Second call: parent already closed in place, EPIC already linked.
     finalize_decomposed_parent("ENH-200", ["ENH-201", "ENH-202"], issues)
 
-    moved = issues / "completed" / "P2-ENH-200-parent.md"
-    assert moved.read_text().count("Decomposed into") == 1
+    closed = issues / "enhancements" / "P2-ENH-200-parent.md"
+    assert closed.read_text().count("Decomposed into") == 1
     epic = next(issues.rglob("*-EPIC-100-*.md"))
     relates = parse_frontmatter(epic.read_text())["relates_to"]
     assert relates.count("ENH-201") == 1
@@ -116,7 +134,7 @@ def test_cli_children_file_path(tmp_path: Path, capsys: object) -> None:
         children=[],
         children_file=str(children_file),
         issues_dir=str(issues),
-        no_move=False,
+        move=False,
         config=tmp_path,
     )
     rc = cmd_finalize_decomposition(None, args)  # type: ignore[arg-type]  # config unused
@@ -124,7 +142,40 @@ def test_cli_children_file_path(tmp_path: Path, capsys: object) -> None:
     assert rc == 0
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "children=2" in out
-    assert (issues / "completed" / "P2-ENH-200-parent.md").exists()
+    assert (issues / "enhancements" / "P2-ENH-200-parent.md").exists()
+    assert not (issues / "completed").exists()
     for cid in ("ENH-201", "ENH-202"):
         child = next(issues.rglob(f"*-{cid}-*.md"))
         assert parse_frontmatter(child.read_text())["parent"] == "EPIC-100"
+
+
+def test_cli_move_flag_uses_legacy_completed_dir(tmp_path: Path, capsys: object) -> None:
+    """--move opts into the legacy completed/ move for callers that still want it."""
+    import argparse
+
+    from little_loops.cli.issues.finalize_decomposition import cmd_finalize_decomposition
+
+    issues = _make_tree(tmp_path, epic=False)
+
+    args = argparse.Namespace(
+        parent="ENH-200",
+        children=["ENH-201", "ENH-202"],
+        children_file=None,
+        issues_dir=str(issues),
+        move=True,
+        config=tmp_path,
+    )
+    rc = cmd_finalize_decomposition(None, args)  # type: ignore[arg-type]  # config unused
+
+    assert rc == 0
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "moved=True" in out
+    assert (issues / "completed" / "P2-ENH-200-parent.md").exists()
+
+
+def test_no_new_files_under_completed_after_decomposition_closure(tmp_path: Path) -> None:
+    """Guard (BUG-2732 AC): a decomposition-driven closure never creates completed/."""
+    issues = _make_tree(tmp_path, epic=True)
+    finalize_decomposed_parent("ENH-200", ["ENH-201", "ENH-202"], issues)
+
+    assert list(issues.glob("completed/*.md")) == []
