@@ -1,0 +1,12 @@
+{
+  "id": "2dbed4d5-3a2f-4ca1-bb3f-cdac7d04dab3",
+  "type": "decision",
+  "timestamp": "2026-07-22T17:53:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Lower risk \u2014 zero changes to existing bash bodies; matches the existing two-command shape already used under PostToolUse for context-monitor.sh + session-capture.sh.",
+  "rule": "Option A (bash shim: second command per hooks.json entry)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (modify each bash script to call the shim inline / via trap)",
+  "issue": "ENH-2506"
+}

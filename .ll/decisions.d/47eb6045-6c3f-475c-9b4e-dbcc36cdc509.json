@@ -1,0 +1,12 @@
+{
+  "id": "14224f7b-5f10-4a69-94cd-9c678ceee9ac",
+  "type": "decision",
+  "timestamp": "2026-07-22T17:28:44Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses already-loaded BRConfig at the exact call site and existing glob/prefix filter helpers; Option B has zero existing call sites and a structural gap missing unindexed new files.",
+  "rule": "Option A (scan.focus_dirs/exclude_patterns filter)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (cross-reference dirty paths against files table in codegraph DB)",
+  "issue": "ENH-2736"
+}
