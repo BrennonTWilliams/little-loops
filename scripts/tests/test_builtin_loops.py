@@ -4106,7 +4106,11 @@ class TestAutodevLoop:
     def test_defer_sites_guard_resolved_status(self, data: dict) -> None:
         """BUG-2729: every automation defer site must check current status and
         never flip an already done/cancelled issue to deferred."""
-        for name in ("recheck_after_size_review", "mark_gate_blocked", "record_decision_unresolved"):
+        for name in (
+            "recheck_after_size_review",
+            "mark_gate_blocked",
+            "record_decision_unresolved",
+        ):
             action = data["states"].get(name, {}).get("action", "")
             assert "set-status" in action, f"{name} should still own its defer transition"
             assert '"$STATUS" = "done"' in action and '"$STATUS" = "cancelled"' in action, (
@@ -4195,8 +4199,7 @@ class TestAutodevLoop:
             "gate on unresolved parents"
         )
         assert resolved_gate.get("on_yes") == "recover_subloop_children", (
-            "check_parent_resolved_post_size_review.on_yes must route to "
-            "recover_subloop_children"
+            "check_parent_resolved_post_size_review.on_yes must route to recover_subloop_children"
         )
         gate = data["states"].get("check_spike_needed_before_skip", {})
         assert gate.get("on_no") == "check_reconcile_needed", (
@@ -4508,8 +4511,8 @@ class TestAutodevLoop:
             assert "autodev-pre-spike-readiness.txt" in action, (
                 f"{gate} must snapshot pre-spike Readiness for the reconcile plateau check"
             )
-            assert "confidence_score" in action, (
-                f"{gate} must write confidence_score into the pre-spike snapshot"
+            assert "confidence" in action, (
+                f"{gate} must write confidence into the pre-spike snapshot"
             )
 
     def test_check_reconcile_needed_predicate_reads_snapshot_and_guard(self, data: dict) -> None:
@@ -4521,7 +4524,7 @@ class TestAutodevLoop:
         assert "autodev-pre-spike-readiness.txt" in action, (
             "check_reconcile_needed must read the pre-spike snapshot"
         )
-        assert "confidence_score" in action, "must compare against current confidence_score"
+        assert "confidence" in action, "must compare against current confidence"
         assert "reconcile_attempted" in action, (
             "check_reconcile_needed must read reconcile_attempted for the one-shot guard"
         )

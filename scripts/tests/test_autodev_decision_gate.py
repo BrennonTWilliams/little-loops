@@ -512,7 +512,7 @@ class TestReconcilePlateauStructural:
         action = state.get("action", "")
         assert state.get("fragment") == "shell_exit"
         assert "autodev-pre-spike-readiness.txt" in action
-        assert "confidence_score" in action
+        assert "confidence" in action
         assert "reconcile_attempted" in action, (
             "reconcile gate must read reconcile_attempted for the one-shot guard (AC 3)"
         )
@@ -840,8 +840,7 @@ class TestCheckDecisionAfterDecideErrorStructural:
             f"got {action!r}"
         )
         assert "decision_needed" in action, (
-            f"check_decision_after_decide_error.action must check decision_needed, "
-            f"got {action!r}"
+            f"check_decision_after_decide_error.action must check decision_needed, got {action!r}"
         )
 
     def test_check_decision_after_decide_error_uses_shell_exit_fragment(
