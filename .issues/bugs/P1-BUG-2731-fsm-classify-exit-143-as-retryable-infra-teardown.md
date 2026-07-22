@@ -271,6 +271,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   two-way choice (new `skip_inflight_infra` state vs. single state with an
   interpolated reason) — the coordination note above remains accurate, no
   decision has landed on the sibling side yet.
+- **Second freshness re-check (2026-07-22, `/ll:refine-issue`)**: re-verified
+  all five core anchors again given continued edit volume on `executor.py`.
+  No drift — `classify_failure()` (line 93, still falls through to
+  `FailureType.REAL` at line 238), `_execute_state()`'s `classify_failure()`
+  call site (line 1418) and elif chain (1419-1449), `ActionResult`
+  (`fsm/types.py:69`, still no `result_seen` field), `run_claude_command()`'s
+  unreturned local `result_seen` (`subprocess_utils.py:402/496/514/520`), and
+  `_handle_api_error()`/constants (`executor.py:115,117,322,2576`) are all
+  confirmed unchanged. A repo-wide grep for literal `143` in `executor.py`
+  and `issue_lifecycle.py` still returns zero matches — the gap this issue
+  targets remains exactly as described.
 
 ### Tests
 
@@ -385,6 +396,13 @@ distinct state (e.g. `skip_inflight_infra`) that ledgers a different reason
 code (`infra_error` or `refine_killed`), mirroring the ENH-2005
 artifact-channel guidance that infra crashes be attributed separately.
 
+> **Reason-code string decided (2026-07-22, `/ll:refine-issue`):**
+> `refine_failed_infra` — neither `infra_error` nor `refine_killed`. See the
+> "reason-code string resolved" research addendum below: it is the one
+> precedent-aligned choice (stem-suffix on the existing `refine_failed`
+> token, matching `record_gate_error`'s `GATE_FAILED_INFRA` convention,
+> case-matched to `skip_inflight`'s lowercase format).
+
 **Option B**: Keep the single `skip_inflight` state but interpolate a reason
 string derived from the sub-loop verdict/exit code (e.g. `infra_retry` vs
 `refine_failed`), avoiding a new state while still producing a distinct
@@ -438,6 +456,40 @@ conditional branch while preserving a test that pins the literal echo output
 - Option B: only a cross-loop analog (`mark_deferred`); `skip_inflight` has
   no existing conditional structure to extend; reuse score 2/3.
 
+### Codebase Research Findings (refine pass, 2026-07-22 continued) — reason-code string resolved
+
+_Added by `/ll:refine-issue` — resolves the "still names two candidate
+reason-code strings without picking one" open item from Confidence Check
+Notes below._
+
+Surveyed the literal token written by every existing infra-vs-logic split
+`record_*` state in `loops/*.yaml`: `record_sub_loop_crash` writes
+`SUB_LOOP_CRASH` (`rn-implement.yaml:1269`), `record_scores_missing` writes
+`SCORES_MISSING` (`rn-implement.yaml:1281`), `record_node_crash` writes
+`CRASH` (`rn-refine.yaml:373`), `record_crash` writes `crashed`
+(`sprint-refine-and-implement.yaml`), and `record_gate_error` writes
+`GATE_FAILED_INFRA` (`rn-remediate.yaml:590-591`). All four
+non-`sprint-refine-and-implement` precedents use UPPERCASE tokens — a
+different casing convention than `skip_inflight`'s own existing
+`"${ID}  refine_failed"` (lowercase snake_case, `autodev.yaml:160`), so the
+`record_*` precedents govern *shape* (a distinct state, per the Decision
+Rationale above) but not casing.
+
+`record_gate_error`'s `GATE_FAILED_INFRA` is the one precedent that derives
+its infra token by suffixing `_INFRA` onto its sibling logic-failure state's
+own token stem (`GATE_FAILED` → `GATE_FAILED_INFRA`) rather than inventing an
+unrelated word — this is the closer structural analog to BUG-2731's
+situation, where the sibling logic-failure token (`refine_failed`) already
+exists and needs an infra counterpart. Applying the same stem-suffix
+convention, case-matched to `skip_inflight`'s existing lowercase format,
+yields **`refine_failed_infra`** — neither of the two originally-drafted
+candidates (`infra_error`, `refine_killed`), and not adopted from ENH-2727
+verbatim. Recommend `refine_failed_infra` as the literal string
+`skip_inflight_infra` ledgers, over the two candidates named in Proposed
+Solution above, on precedent-alignment grounds. This does not change the
+already-decided Option A state-split shape — it only resolves the specific
+string literal.
+
 ## Impact
 
 - **Priority**: P1 — every headless FSM action that spawns subagents
@@ -479,17 +531,19 @@ _Updated by `/ll:confidence-check` on 2026-07-21 (supersedes the 2026-07-21 note
   (`executor.py`, `issue_manager.py`, `cli/logs.py`) and 7 `ActionResult`
   construction sites all need consistent updates, or the fix silently degrades
   on some paths.
-- Minor open detail: the reason-code branching design itself is now resolved
-  (`/ll:decide-issue` selected Option A — new `skip_inflight_infra` state, see
-  Decision Rationale above), but the Proposed Fix text still names two
-  candidate reason-code strings (`infra_error` or `refine_killed`) without
-  picking one — resolve during implementation.
+- Reason-code branching is now fully resolved: `/ll:decide-issue` selected
+  Option A (new `skip_inflight_infra` state, see Decision Rationale above),
+  and the specific literal string is decided as `refine_failed_infra` (see
+  the "reason-code string resolved" addendum under Proposed Solution) — no
+  remaining open detail on this axis.
 - Partial test coverage: `issue_manager.py`'s `classify_failure()` call site
   has zero existing tests today, and `cli/logs.py`'s FailureType
   exhaustiveness check has no regression coverage against `ll-logs
   scan-failures --capture`.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-22T02:53:11 - `7f3d9a33-9486-4122-8fd1-85fd59741abd.jsonl`
+- `/ll:refine-issue` - 2026-07-22T02:29:50 - `7f3d9a33-9486-4122-8fd1-85fd59741abd.jsonl`
 - `/ll:format-issue` - 2026-07-22T02:22:40 - `7ea1a881-92d6-422c-9c30-8553cb4e5bac.jsonl`
 - `/ll:confidence-check` - 2026-07-21T23:20:00Z - `15ba6c8e-64eb-4e39-8901-5c5beaed525a.jsonl`
 - `/ll:decide-issue` - 2026-07-22T01:32:33 - `eb732e0f-1fa2-4a36-bfd1-0fe9dff17cf1.jsonl`

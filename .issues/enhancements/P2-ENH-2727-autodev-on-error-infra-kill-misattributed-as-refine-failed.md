@@ -50,6 +50,15 @@ ENH-2005 artifact-channel guidance that infra crashes be attributed separately.
 Alternatively keep one state but interpolate a reason derived from the sub-loop
 verdict/exit code.
 
+> **Decided (2026-07-22, coordinated with [[BUG-2731]]'s `/ll:refine-issue`
+> pass):** new-state shape (Option A above) selected via `/ll:decide-issue`
+> on BUG-2731 (10/12 vs 7/12 — see BUG-2731's Decision Rationale). Reason-code
+> literal: `refine_failed_infra`, not `infra_error`/`refine_killed` — derived
+> from `record_gate_error`'s `GATE_FAILED_INFRA` precedent (stem-suffix on the
+> existing failure token), case-matched to `skip_inflight`'s lowercase
+> convention. See BUG-2731's Proposed Solution for the full reasoning; both
+> issues should land on this same literal string.
+
 ## Acceptance Criteria
 
 - [ ] `on_error` from `refine_current` produces a ledger entry with a reason code
@@ -59,4 +68,5 @@ verdict/exit code.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-22T02:53:11 - `7f3d9a33-9486-4122-8fd1-85fd59741abd.jsonl`
 - `/ll:verify-issues` - 2026-07-21T23:08:30 - `9fc8185c-278a-4573-8071-af3d44765f41.jsonl`
