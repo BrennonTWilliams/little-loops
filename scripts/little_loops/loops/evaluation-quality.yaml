@@ -18,7 +18,7 @@ states:
   sample:
     action_type: shell
     action: |
-      ll-issues list --json | python3 -c "
+      ll-issues refine-status --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
       total = len(issues)

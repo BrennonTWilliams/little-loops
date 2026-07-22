@@ -756,6 +756,45 @@ class TestEvaluationQualityLoop:
         assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
 
+    def test_sample_state_sources_refine_status_not_list(self, data: dict) -> None:
+        """sample must pipe `refine-status --json` (BUG-2735), not `list --json`.
+
+        `ll-issues list --json` never returns confidence_score/outcome_confidence/
+        formatted, so the downstream Python permanently computed worst-case metrics.
+        `refine-status --json` emits those keys verbatim per active issue.
+        """
+        action = data["states"].get("sample", {}).get("action", "")
+        assert "ll-issues refine-status --json" in action
+        assert "ll-issues list --json" not in action
+
+    def test_sample_state_metrics_reflect_real_scores(self, data: dict) -> None:
+        """The sample state's embedded Python must compute non-worst-case metrics
+        when fed real confidence_score/outcome_confidence/formatted data, the
+        shape `ll-issues refine-status --json` actually emits (BUG-2735)."""
+        action = data["states"]["sample"]["action"]
+        # Extract the python3 -c "..." heredoc-style script embedded in the shell action.
+        match = re.search(r'python3 -c "(.*?)"\s*\n\s*ll-history', action, re.DOTALL)
+        assert match, "Could not extract embedded python3 snippet from sample action"
+        script = match.group(1)
+
+        fixture_records = [
+            {"confidence_score": 90, "outcome_confidence": 80, "formatted": True},
+            {"confidence_score": 40, "outcome_confidence": 30, "formatted": False},
+        ]
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            input=json.dumps(fixture_records),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output = result.stdout
+        assert "scored: 2" in output
+        assert "unscored: 0" in output
+        assert "unformatted: 1" in output
+        assert "avg_confidence_score: 65.0" in output
+        assert "below_threshold: 1" in output
+
 
 class TestCuaAgentDesktopLoop:
     """Regression tests for cua-agent-desktop FSM loop.
