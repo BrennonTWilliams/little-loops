@@ -118,6 +118,7 @@ with a workflow file:
 - Use dataclasses for data structures
 - Docstrings for classes and public methods
 - Conventional commits: `type(scope): description`
+- **Minimize third-party dependencies**: Prefer stdlib or an existing dependency in `scripts/pyproject.toml` over adding a new one. If a new dependency is genuinely needed, justify it with a comment next to the pin (see the `anthropic` pin for the pattern) explaining why it's necessary and any bounds on its version.
 
 ## Development Preferences
 
