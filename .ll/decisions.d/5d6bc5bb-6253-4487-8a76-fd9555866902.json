@@ -1,0 +1,12 @@
+{
+  "id": "a9288b5a-566a-497a-abde-6deb0c1245bc",
+  "type": "decision",
+  "timestamp": "2026-07-22T00:27:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ready-issue's Dependency Status gate resolves blocker status through show.py:_resolve_issue_id and search.py:_load_issues_with_status exclusively, never through gather_all_issue_ids()/DependencyGraph; widening gather_all_issue_ids() alone (Option A) does not change the BLOCKED verdict since a done blocker is already excluded from the graph by status regardless of directory.",
+  "rule": "Legacy-dir-aware ll-issues path/show/list resolvers (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: widen gather_all_issue_ids() to scan completed/deferred dirs \u2014 has stronger precedent but does not touch the code path that produces the reported BLOCKED verdict; remains additive value for other gather_all_issue_ids() consumers but not required for this issue's acceptance criteria.",
+  "issue": "BUG-2733"
+}

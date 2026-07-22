@@ -137,6 +137,34 @@ class TestResolveIssueId:
         result = _resolve_issue_id(config, "not-an-issue-id")
         assert result is None
 
+    def test_resolves_done_issue_parked_in_legacy_completed_dir(self, tmp_path: Path) -> None:
+        """A done issue parked in .issues/completed/ still resolves (BUG-2733)."""
+        categories = {
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
+        }
+        config = _make_config(tmp_path, categories)
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        issue_file = completed_dir / "P3-ENH-2001-test-issue.md"
+        issue_file.write_text("---\nstatus: done\n---\n# ENH-2001: Test issue\n")
+
+        result = _resolve_issue_id(config, "ENH-2001")
+        assert result == issue_file
+
+    def test_resolves_done_issue_parked_in_legacy_deferred_dir(self, tmp_path: Path) -> None:
+        """A done issue parked in .issues/deferred/ still resolves (BUG-2733)."""
+        categories = {
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
+        }
+        config = _make_config(tmp_path, categories)
+        deferred_dir = tmp_path / ".issues" / "deferred"
+        deferred_dir.mkdir(parents=True)
+        issue_file = deferred_dir / "P3-ENH-2001-test-issue.md"
+        issue_file.write_text("---\nstatus: deferred\n---\n# ENH-2001: Test issue\n")
+
+        result = _resolve_issue_id(config, "ENH-2001")
+        assert result == issue_file
+
 
 # =============================================================================
 # _parse_card_fields

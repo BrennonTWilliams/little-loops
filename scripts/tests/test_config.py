@@ -736,6 +736,32 @@ class TestBRConfig:
         unknown_dir = config.get_issue_dir("unknown")
         assert unknown_dir.resolve() == (temp_project_dir / ".issues" / "unknown").resolve()
 
+    def test_legacy_issue_dirs_empty_when_absent(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """legacy_issue_dirs() returns [] when neither completed/ nor deferred/ exist (BUG-2733)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.legacy_issue_dirs() == []
+
+    def test_legacy_issue_dirs_includes_existing_completed_and_deferred(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """legacy_issue_dirs() returns completed/ and deferred/ only when they exist on disk (BUG-2733)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True)
+
+        config = BRConfig(temp_project_dir)
+
+        dirs = [d.resolve() for d in config.legacy_issue_dirs()]
+        assert (temp_project_dir / ".issues" / "completed").resolve() in dirs
+        assert (temp_project_dir / ".issues" / "deferred").resolve() in dirs
+
     def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_prefix returns correct prefix."""
         config_path = temp_project_dir / ".ll" / "ll-config.json"

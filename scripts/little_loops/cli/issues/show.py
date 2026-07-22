@@ -44,8 +44,11 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     - Type + ID: "FEAT-518"
     - Priority + Type + ID: "P3-FEAT-518"
 
-    Searches the type-scoped category directories. Status (open/done/deferred)
-    lives in frontmatter, so active and inactive issues alike resolve here.
+    Searches the type-scoped category directories, plus any existing legacy
+    `completed_dir`/`deferred_dir` (BUG-2733) — a `done`/`cancelled` issue
+    parked there by a stale migration or manual placement would otherwise
+    resolve as "not found". Status (open/done/deferred) lives in frontmatter,
+    so active and inactive issues alike resolve here.
 
     Issue numbers are globally unique across types (see ``get_next_issue_number``),
     so a numeric match is unambiguous. The type prefix and priority are therefore
@@ -88,10 +91,11 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     if numeric_id is None:
         return None
 
-    # Build search directories: type-scoped dirs only
+    # Build search directories: type-scoped dirs, plus existing legacy dirs
     search_dirs: list[Path] = []
     for category in config.issue_categories:
         search_dirs.append(config.get_issue_dir(category))
+    search_dirs.extend(config.legacy_issue_dirs())
 
     # Collect every file matching the numeric ID. Because numbers are globally
     # unique, this is normally a single candidate; the prefix/priority hints only

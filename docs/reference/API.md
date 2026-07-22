@@ -242,6 +242,22 @@ bugs_dir = config.get_issue_dir("bugs")
 # Returns: Path(".issues/bugs")
 ```
 
+##### legacy_issue_dirs
+
+```python
+def legacy_issue_dirs(self) -> list[Path]
+```
+
+Return existing legacy `completed_dir`/`deferred_dir` paths, if any. These
+directories are deprecated (status now lives in frontmatter) but a file can
+still land there via a stale migration or manual placement; resolvers that
+scan `issue_categories` only would otherwise treat it as nonexistent
+(BUG-2733). `ll-issues path`/`show` (`show.py:_resolve_issue_id`) and
+`ll-issues list --status done --json` (`search.py:_load_issues_with_status`)
+both append this to their scan directories.
+
+**Returns:** Existing legacy directories, in `completed_dir`, `deferred_dir` order.
+
 ##### get_issue_prefix
 
 ```python

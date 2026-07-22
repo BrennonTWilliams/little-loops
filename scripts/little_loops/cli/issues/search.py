@@ -126,7 +126,8 @@ def _load_issues_with_status(
 ) -> list[tuple[IssueInfo, str]]:
     """Load issues from type directories, tagged with their frontmatter status.
 
-    Scans only type-scoped directories (bugs/, features/, etc.) and reads
+    Scans type-scoped directories (bugs/, features/, etc.) plus any existing
+    legacy `completed_dir`/`deferred_dir` (BUG-2733), and reads
     ``IssueInfo.status`` from frontmatter instead of inferring status from the
     directory name.
 
@@ -139,8 +140,10 @@ def _load_issues_with_status(
     parser = IssueParser(config)
     results: list[tuple[IssueInfo, str]] = []
 
-    for category in config.issue_categories:
-        issue_dir = config.get_issue_dir(category)
+    issue_dirs = [config.get_issue_dir(category) for category in config.issue_categories]
+    issue_dirs.extend(config.legacy_issue_dirs())
+
+    for issue_dir in issue_dirs:
         if not issue_dir.exists():
             continue
         for f in sorted(issue_dir.glob("*.md")):

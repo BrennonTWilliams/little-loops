@@ -418,6 +418,7 @@ class TestIssueListNoColor:
                 "issue_categories": ["bugs"],
                 "issue_priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
                 "get_issue_dir": lambda self, cat: tmp_path / ".issues" / cat,
+                "legacy_issue_dirs": lambda self: [],
             },
         )()  # type: ignore[misc]
         args = argparse.Namespace(type=None, priority=None, flat=False, group_by="type")

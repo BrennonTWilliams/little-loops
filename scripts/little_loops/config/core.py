@@ -414,6 +414,23 @@ class BRConfig:
             dir_name = category
         return self.project_root / self._issues.base_dir / dir_name
 
+    def legacy_issue_dirs(self) -> list[Path]:
+        """Return existing legacy `completed_dir`/`deferred_dir` paths, if any.
+
+        These directories are deprecated (status now lives in frontmatter) but
+        may still hold files from a stale migration or manual placement.
+        Resolvers that scan `issue_categories` only would otherwise treat a
+        file parked there as nonexistent (BUG-2733).
+
+        Returns:
+            Existing legacy directories, in `completed_dir`, `deferred_dir` order.
+        """
+        candidates = [
+            self.project_root / self._issues.base_dir / self._issues.completed_dir,
+            self.project_root / self._issues.base_dir / self._issues.deferred_dir,
+        ]
+        return [d for d in candidates if d.exists()]
+
     def get_issue_prefix(self, category: str) -> str:
         """Get the issue ID prefix for a category.
 

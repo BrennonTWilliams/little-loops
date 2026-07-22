@@ -526,6 +526,39 @@ class TestIssuesCLIList:
         captured = capsys.readouterr()
         assert "No active issues" in captured.out
 
+    def test_list_status_done_json_finds_issue_in_legacy_completed_dir(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --status done --json resolves a done issue parked only in
+        .issues/completed/ (BUG-2733) instead of reporting it as not found."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P2-ENH-050-legacy-done.md").write_text(
+            "---\nstatus: done\n---\n# ENH-050: Legacy done issue\n\n"
+            "## Summary\nParked directly in completed/.\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "list", "--status", "done", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        ids = [entry["id"] for entry in data]
+        assert "ENH-050" in ids
+
     def test_list_json_no_color_codes(
         self,
         temp_project_dir: Path,
