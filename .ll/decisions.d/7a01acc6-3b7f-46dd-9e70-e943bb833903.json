@@ -1,0 +1,12 @@
+{
+  "id": "c58c9e59-7971-47fd-bc5a-56719f9f370e",
+  "type": "decision",
+  "timestamp": "2026-07-22T13:16:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses an existing bulk command that already emits confidence_score/outcome_confidence/formatted under the exact key names sample's Python reads, with zero code changes, no new CLI surface, and no subprocess fan-out. Scored 12/12 vs Option A's 10/12 (bulk CLI flag) and Option B's 3/12 (per-issue subprocess loop).",
+  "rule": "Option C \u2014 switch sample state to ll-issues refine-status --json",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (add --include-scores flag to list --json): well-precedented but adds unnecessary CLI surface area and duplicated frontmatter-read logic. Option B (per-issue show --json loop): no existing perf-gate precedent, incomplete (show --json has no formatted field), would need ~2N subprocess calls.",
+  "issue": "BUG-2735"
+}
