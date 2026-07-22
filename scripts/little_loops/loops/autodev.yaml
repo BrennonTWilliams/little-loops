@@ -805,7 +805,7 @@ states:
       d = json.load(sys.stdin)
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
           with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
-              fh.write(str(d.get('confidence_score') or ''))
+              fh.write(str(d.get('confidence') or ''))
           sys.exit(0)
       sys.exit(1)"
     fragment: shell_exit
@@ -979,7 +979,7 @@ states:
       d = json.load(sys.stdin)
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
           with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
-              fh.write(str(d.get('confidence_score') or ''))
+              fh.write(str(d.get('confidence') or ''))
           sys.exit(0)
       sys.exit(1)"
     fragment: shell_exit
@@ -1006,7 +1006,7 @@ states:
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
-      cur = str(d.get('confidence_score') or '')
+      cur = str(d.get('confidence') or '')
       attempted = d.get('reconcile_attempted') == 'true'
       snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
       pre = ''
@@ -1021,21 +1021,30 @@ states:
     on_error: recheck_after_size_review
 
   check_guard2_verdict:
-    # BUG-2734: run_size_review's guard-2 status line — "[ID] skipped: score X
-    # (ambiguous)" with X in 8-11 (Very Large, decomposition deliberately
-    # declined) — is a distinct, machine-detectable verdict from guard-1's
-    # qualitative-skip line ("skipped: structural score N but outcome_confidence
-    # low is qualitative ...", see check_parent_resolved_post_size_review's
-    # sibling states) and from a genuine no-verdict decomposition failure
-    # (BUG-1183 shape). Only the guard-2 shape means "ready to implement as one
-    # issue" per the skill's own recommendation; only route THAT case to the
-    # earn-the-pass remediation attempt. Evaluated via evaluate.source against
-    # the captured size-review output (Python-side regex match) rather than
-    # interpolating that text into a shell action, per BUG-2594.
+    # BUG-2734 (bug found in first live run against BUG-2731, fixed same day):
+    # run_size_review's guard-2 status line is "[ID] skipped: score X (...)"
+    # with X in 8-11 (Very Large, decomposition deliberately declined) — a
+    # distinct, machine-detectable verdict from guard-1's qualitative-skip line
+    # ("skipped: structural score N but outcome_confidence low is qualitative
+    # ...", see check_parent_resolved_post_size_review's sibling states) and
+    # from a genuine no-verdict decomposition failure (BUG-1183 shape). The
+    # trailing parenthetical is freeform prose for guard-2 (SKILL.md only
+    # fixes the literal "(ambiguous)" wording for guard-1's 5-7 range, per
+    # skills/issue-size-review/SKILL.md:242) — e.g. observed real output
+    # "skipped: score 11 (Very Large) — strictly sequential, ...". Matching a
+    # required "(ambiguous)" suffix therefore never matched guard-2 output in
+    # practice, silently defeating this whole routing branch. "skipped: score"
+    # (vs guard-1's "skipped: structural score") plus the 8-11 range alone is
+    # sufficient to disambiguate — no need to also match the parenthetical.
+    # Only the guard-2 shape means "ready to implement as one issue" per the
+    # skill's own recommendation; only route THAT case to the earn-the-pass
+    # remediation attempt. Evaluated via evaluate.source against the captured
+    # size-review output (Python-side regex match) rather than interpolating
+    # that text into a shell action, per BUG-2594.
     evaluate:
       type: output_contains
       source: "${captured.size_review_output.output}"
-      pattern: "skipped: score (8|9|10|11) \\(ambiguous\\)"
+      pattern: "skipped: score (8|9|10|11) "
     on_yes: check_readiness_for_atomic_remediation
     on_no: recheck_after_size_review
     on_error: recheck_after_size_review
@@ -1051,7 +1060,7 @@ states:
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
-      sys.exit(0 if int(d.get('confidence_score') or 0) >= ${context.readiness_threshold} else 1)"
+      sys.exit(0 if int(d.get('confidence') or 0) >= ${context.readiness_threshold} else 1)"
     fragment: shell_exit
     on_yes: remediate_oversized_atomic
     on_no: recheck_after_size_review
@@ -1099,8 +1108,8 @@ states:
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
-      conf = int(d.get('confidence_score') or 0)
-      outc = int(d.get('outcome_confidence') or 0)
+      conf = int(d.get('confidence') or 0)
+      outc = int(d.get('outcome') or 0)
       waived = str(d.get('outcome_gate_waived')).lower() == 'true'
       readiness_ok = conf >= ${context.readiness_threshold}
       outcome_ok = waived or (outc >= ${context.outcome_threshold})
@@ -1175,8 +1184,8 @@ states:
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
-      conf = int(d.get('confidence_score') or 0)
-      outc = int(d.get('outcome_confidence') or 0)
+      conf = int(d.get('confidence') or 0)
+      outc = int(d.get('outcome') or 0)
       waived = str(d.get('outcome_gate_waived')).lower() == 'true'
       readiness_ok = conf >= ${context.readiness_threshold}
       outcome_ok = waived or (outc >= ${context.outcome_threshold})

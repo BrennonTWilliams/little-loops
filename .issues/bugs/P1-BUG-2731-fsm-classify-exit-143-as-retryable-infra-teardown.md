@@ -3,7 +3,7 @@ id: BUG-2731
 title: FSM treats exit-143-after-result as a terminal action failure instead of retryable
   infra teardown, discarding in-flight subagent work
 type: BUG
-status: open
+status: deferred
 priority: P1
 captured_at: '2026-07-21T22:40:00Z'
 discovered_date: '2026-07-21'
@@ -25,6 +25,9 @@ score_ambiguity: 18
 score_change_surface: 10
 decision_needed: false
 size: Very Large
+deferred_by: automation
+deferred_date: '2026-07-22T04:36:42Z'
+deferred_reason: low_readiness
 ---
 
 # BUG-2731: FSM treats exit-143-after-result as a terminal action failure instead of retryable infra teardown
@@ -178,12 +181,65 @@ follow-on enhancement if still wanted after this lands.
   > accident) or the new field silently reads as unset for non-slash-command
   > paths. `scripts/little_loops/cli/loop/testing.py:76` (`ll-loop test`) is a
   > seventh, CLI-only construction site with the same decision to make.
+
+  > _Wiring pass added by `/ll:wire-issue`:_ beyond the seven production
+  > construction sites and `test_fsm_executor.py::MockActionRunner`'s three,
+  > seven **other test files** construct `ActionResult(...)` without a
+  > `result_seen` kwarg and would need updating (or rely on a default) once
+  > the field exists: `scripts/tests/test_fsm_runners.py` (`TestDefaultActionRunnerSlashPath`,
+  > ~373-507, e.g. `test_slash_result_maps_to_action_result` ~396 — the
+  > natural place to add a `result_seen`-threading regression test),
+  > `scripts/tests/test_ll_loop_execution.py` (13 sites, e.g. lines 998, 1029,
+  > 1057, 1096, 1136, 1170, 1206, 1250, 1294, 1337, 1986, 2018, 2041),
+  > `scripts/tests/test_fsm_persistence.py` (8 sites: 792, 2202, 2205, 2272,
+  > 2369, 2433, 2590, 2649), `scripts/tests/test_host_guard.py` (line 66),
+  > `scripts/tests/test_autodev_decision_gate.py` (lines 62, 68),
+  > `scripts/tests/test_usage_journal.py` (5 sites: 52, 87, 173, 176, 200),
+  > `scripts/tests/test_learning_state.py` (lines 81, 350). None of these
+  > break if `result_seen` gets a default (`= False`); all of them break if it
+  > doesn't — reinforcing that a defaulted field is the lower-risk choice.
+
+  > _Third wiring pass added by `/ll:wire-issue`:_ all ~40 `ActionResult(...)`
+  > construction sites (production + test) use keyword arguments exclusively —
+  > confirmed via full-repo grep. Appending `result_seen: bool = False` as a new
+  > dataclass field is additive-safe everywhere; no positional-arg breakage risk.
 - `scripts/little_loops/loops/autodev.yaml` — `skip_inflight` state (lines
   151–165) hardcodes the literal string `refine_failed` on both `on_failure`
   and `on_error` (`echo "${captured.input.output} refine_failed" >> ...`).
   This is the exact site that needs to branch (or interpolate) a distinct
   reason when the new 143 classification fires — coordinates with
   [[ENH-2727]], which already proposes extending this same site.
+
+  > _Wiring pass added by `/ll:wire-issue`:_ `subprocess_utils.py`'s
+  > `run_claude_command()` returns a bare `subprocess.CompletedProcess`
+  > (constructed at lines 372 and 543) — a stdlib type with a fixed field set
+  > (`args`/`returncode`/`stdout`/`stderr`, no extension point). Surfacing
+  > `result_seen` to callers is therefore not just "add a return value" as the
+  > issue currently frames it — it requires either changing the function's
+  > return type away from `subprocess.CompletedProcess` (a signature change
+  > every caller/test asserting the stdlib shape would need to tolerate) or a
+  > side-channel (e.g. a callback param, or monkey-patching an extra attribute
+  > onto the returned object). This return-type decision should be resolved
+  > before implementation, not left implicit.
+
+  > _Third wiring pass added by `/ll:wire-issue`:_ the actual join point that
+  > constructs `ActionResult` from `run_claude_command()`'s output is
+  > `fsm/runners.py:164-199` — it already smuggles `usage_events`/`peak_rss_mb`
+  > out via a mutable-closure callback (`peak_rss: list[float | None] = [None]`
+  > populated by an `_on_proc_end` callback), not via the `CompletedProcess`
+  > return value itself. This is the precedent to follow for `result_seen` too
+  > (a callback param `run_claude_command` doesn't currently accept), rather
+  > than changing the function's return type. Additionally, two thin wrappers
+  > re-export `run_claude_command` under the name `_run_claude_base` and would
+  > need their own stale type annotations/docstrings updated if the return
+  > shape changes: `scripts/little_loops/issue_manager.py:59,110-172` and
+  > `scripts/little_loops/parallel/worker_pool.py:36,821-864`. Six further call
+  > sites just consume whatever `run_claude_command()` returns and would need
+  > to tolerate the new shape: `scripts/little_loops/runner_spec.py:111`,
+  > `scripts/little_loops/fsm/executor.py:2224` (a second direct call site,
+  > separate from `runners.py`'s), `scripts/little_loops/issue_manager.py:277,455,627,683,844`
+  > (`run_with_continuation` loop), `scripts/little_loops/workflow_sequence/__init__.py:285`,
+  > `scripts/little_loops/cli/generate_skill_descriptions.py:119`.
 
 ### Dependent Files (Callers/Importers)
 
@@ -282,6 +338,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   confirmed unchanged. A repo-wide grep for literal `143` in `executor.py`
   and `issue_lifecycle.py` still returns zero matches — the gap this issue
   targets remains exactly as described.
+- **Third freshness re-check (`/ll:refine-issue --auto`)**: re-verified the
+  same anchors directly against current source (given `scripts/little_loops`
+  is in this week's most-edited-files list). Only cosmetic line-number drift
+  (`classify_failure()` now at line 96, terminal `FailureType.REAL` return at
+  line 241 — a +3 shift, not a structural change); `FailureType` enum still 3
+  members; `ActionResult` (`fsm/types.py:82-87`) still has no `result_seen`
+  field; `run_claude_command()`'s local `result_seen` (`subprocess_utils.py:
+  402/496/514/520`) is still unreturned; `_execute_state` (line 1227) and its
+  `classify_failure()` call site (line 1418) are unchanged; `autodev.yaml`'s
+  `skip_inflight` state (lines 151-165) still hardcodes the literal
+  `"${captured.input.output}  refine_failed"` echo on both `on_failure` and
+  `on_error`. No new knowledge gaps found — the issue's Integration Map, Root
+  Cause, Proposed Solution, and Decision Rationale all remain accurate as
+  written.
 
 ### Tests
 
@@ -351,6 +421,56 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   > (`skip_inflight_infra` new state). Whichever approach lands here should
   > stay consistent with ENH-2727's choice.
 
+  > _Third wiring pass added by `/ll:wire-issue`:_ `TestRetryableExitCodes`
+  > (`test_fsm_executor.py:4968-5079+`) exercises exit codes `1`, `2`, `99` only
+  > — never `143`, and never sets `result_seen`. `test_fsm_schema.py:500-516`
+  > only tests `retryable_exit_codes` roundtrip serialization and its `None`
+  > default. Neither test constrains or currently covers the interaction of a
+  > state that has both `retryable_exit_codes` set *and* a 143/`result_seen`
+  > action — worth a new test once the 143 branch lands, so the two mechanisms'
+  > precedence is pinned rather than left to accidental ordering.
+  > `test_issue_lifecycle.py::TestClassifyFailure`'s existing rows
+  > (`test_classify_failure_empty_output` ~790-795,
+  > `test_classify_failure_unknown_error` ~797-802) call `classify_failure(...,
+  > 1)`, not `143` — confirmed these will not flip when the new branch lands,
+  > they're additive-safe as-is.
+
+  > _Second wiring pass added by `/ll:wire-issue`:_
+  > `test_skip_inflight_routes_to_dequeue_next` (`test_builtin_loops.py:3718-3725`)
+  > was missing from this section — it pins `skip_inflight.on_error ==
+  > "dequeue_next"` and `skip_inflight.next == "dequeue_next"`. It confirms
+  > (and should stay green through) a correctly-scoped Option A implementation
+  > that adds a new sibling `skip_inflight_infra` state rather than modifying
+  > `skip_inflight` itself — if this test breaks during implementation it's a
+  > signal the change accidentally repurposed `skip_inflight`'s own routing
+  > instead of adding the new state.
+
+  > _Third wiring pass added by `/ll:wire-issue`:_ `autodev.yaml` itself has no
+  > `finalize` state — the `skipped_breakdown` JSON aggregation that buckets
+  > skip-ledger lines by reason token lives one level up, in the delegating
+  > `scripts/little_loops/loops/auto-refine-and-implement.yaml`'s `finalize`
+  > state. It's confirmed reason-string-agnostic (buckets whatever token
+  > follows the ledger's two-space delimiter), so no code change is needed
+  > there — but `test_finalize_skipped_breakdown_aggregates_by_reason`
+  > (`test_builtin_loops.py:2890-2906`) and
+  > `test_finalize_skipped_breakdown_back_compat_bare_id_lines` (~2908-2919)
+  > are the exact pattern a new sibling test (mirroring the same shape with a
+  > `refine_failed_infra` reason) should follow, to prove the new reason code
+  > round-trips through the aggregator correctly.
+
+  > _Third wiring pass added by `/ll:wire-issue`:_ checked and confirmed **not
+  > applicable** — `scripts/little_loops/cli/issues/deferred_triage.py`'s
+  > `_REASON_RANK` dict (lines ~15-25) ranks `deferred_reason` values stamped
+  > via `ll-issues set-status <ID> deferred --reason ...`. `skip_inflight`
+  > (and by inference the planned `skip_inflight_infra`) only appends to
+  > `autodev-skipped.txt` — it never calls `set-status deferred`. So
+  > `refine_failed_infra` lives in the skip-ledger namespace, not
+  > `_REASON_RANK`'s deferred-frontmatter namespace; this file is correctly
+  > out of scope, not a missed coupling point. Also confirmed
+  > `scripts/little_loops/config-schema.json` has no `FailureType`/reason-code
+  > enum — skip/deferral reasons are freeform strings there, not
+  > schema-validated, so no schema update is needed.
+
 ### Documentation
 
 - `docs/reference/EVENT-SCHEMA.md` (~line 363, `rate_limit_exhausted` section)
@@ -373,6 +493,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `usage_events`/`peak_rss_mb` that exist in current source). A new
   `result_seen` field is a further drift point on this snippet; update it
   alongside the dataclass change rather than letting it drift further.
+
+- `docs/guides/LOOPS_REFERENCE.md` (line ~991) — _Third wiring pass added by
+  `/ll:wire-issue`:_ the autodev ASCII FSM-flow diagram (`refine_current ...
+  on_failure/on_error → skip_inflight → dequeue_next`) needs a parallel
+  `skip_inflight_infra` branch once that state exists. (Note: the ~835/~861-862
+  lines already cited above are a *different* loop's — `sprint-build-and-validate.yaml`'s
+  — `refine_failed` terminal state, not autodev's `skip_inflight`; both
+  references are needed, not duplicates.)
+- `skills/audit-loop-run/SKILL.md` (line ~290, Step 6a / ENH-2404 "parked-issue
+  visibility" paragraph) — _Third wiring pass added by `/ll:wire-issue`:_
+  documents the literal `skipped_breakdown` shape (e.g. `{"decomposed": 1,
+  "refine_failed": 0, "low_readiness": 4, "oversized_atomic": 1}`) and
+  human-facing guidance that a rate dominated by `refine_failed`/`low_readiness`
+  is a genuine quality signal worth flagging. This prose should call out
+  `refine_failed_infra` as a distinct, non-quality-signal bucket (infra
+  teardown, not implementation failure) — otherwise the audit skill will
+  misclassify infra-heavy runs as quality problems.
 
 ## Proposed Solution
 
@@ -517,8 +654,16 @@ string literal.
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-07-21 (supersedes the 2026-07-21 note below the
-`decide-issue` pass; re-verified all core anchors against current source, no drift found)_
+_Updated by `/ll:confidence-check` on 2026-07-22 (re-run; supersedes the prior
+note on this same date. Re-verified all five core anchors directly against
+current source — `classify_failure()` (line 96), terminal `FailureType.REAL`
+return (line 241), `FailureType` enum (still 3 members), `_execute_state()`
+(line 1227) and its `classify_failure()` call site (line 1418), and
+`ActionResult` (`fsm/types.py`, still no `result_seen` field) — no drift.
+The unrelated in-flight `autodev.yaml` diff on this branch (BUG-2735's
+`confidence_score`→`confidence` / `outcome_confidence`→`outcome` JSON-field
+rename) does not touch `skip_inflight` or any anchor this issue depends on.
+Scores unchanged.)_
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
@@ -541,7 +686,23 @@ _Updated by `/ll:confidence-check` on 2026-07-21 (supersedes the 2026-07-21 note
   exhaustiveness check has no regression coverage against `ll-logs
   scan-failures --capture`.
 
+> **Status note**: this issue's frontmatter currently carries
+> `status: deferred` / `deferred_reason: low_readiness` (stamped
+> 2026-07-22T04:36:42Z), but readiness (95/100) clears the configured
+> `readiness_threshold` (85) by a wide margin and the only previously-open
+> item (the reason-code string) was resolved the same day
+> (commit `e101c071`, 2026-07-21T23:06:56-05:00 — before the defer stamp).
+> The `deferred`/`low_readiness` state appears stale relative to current
+> readiness; confidence-check does not itself transition status, so this is
+> flagged for a human/automation decision to re-open rather than acted on
+> here.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-22T05:04:20Z - `2ca05f3b-d14f-47fd-af07-56495da2d1d0.jsonl`
+- `/ll:wire-issue` - 2026-07-22T05:01:58 - `948966a4-774e-414e-889b-4b0c853ed3b0.jsonl`
+- `/ll:confidence-check` - 2026-07-22T05:00:00Z - `1d4cd589-a51c-4424-af3a-10d6aee6c8a9.jsonl`
+- `/ll:wire-issue` - 2026-07-22T04:48:10 - `5c8ce98d-6c0f-482b-9d87-d8cf6032faab.jsonl`
+- `/ll:refine-issue` - 2026-07-22T04:42:20 - `ae7d6f26-e473-4317-93fd-eea2029f560b.jsonl`
 - `/ll:refine-issue` - 2026-07-22T02:53:11 - `7f3d9a33-9486-4122-8fd1-85fd59741abd.jsonl`
 - `/ll:refine-issue` - 2026-07-22T02:29:50 - `7f3d9a33-9486-4122-8fd1-85fd59741abd.jsonl`
 - `/ll:format-issue` - 2026-07-22T02:22:40 - `7ea1a881-92d6-422c-9c30-8553cb4e5bac.jsonl`
