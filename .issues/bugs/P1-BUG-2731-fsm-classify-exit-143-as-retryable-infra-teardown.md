@@ -26,8 +26,8 @@ score_change_surface: 10
 decision_needed: false
 size: Very Large
 deferred_by: automation
-deferred_date: '2026-07-22T04:36:42Z'
-deferred_reason: low_readiness
+deferred_date: '2026-07-22T05:04:47Z'
+deferred_reason: oversized_atomic
 ---
 
 # BUG-2731: FSM treats exit-143-after-result as a terminal action failure instead of retryable infra teardown
