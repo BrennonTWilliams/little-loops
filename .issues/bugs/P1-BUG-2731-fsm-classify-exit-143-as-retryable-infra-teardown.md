@@ -1,7 +1,7 @@
 ---
 id: BUG-2731
-title: FSM treats exit-143-after-result as a terminal action failure instead of
-  retryable infra teardown, discarding in-flight subagent work
+title: FSM treats exit-143-after-result as a terminal action failure instead of retryable
+  infra teardown, discarding in-flight subagent work
 type: BUG
 status: open
 priority: P1
@@ -17,6 +17,14 @@ relates_to:
 - BUG-2729
 - BUG-2726
 - ENH-2727
+confidence_score: 95
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
+decision_needed: false
+size: Very Large
 ---
 
 # BUG-2731: FSM treats exit-143-after-result as a terminal action failure instead of retryable infra teardown
@@ -59,19 +67,47 @@ the confidence-check's explicit recommendation). `scripts/little_loops/host_runn
 session-ID-aware resume plumbing is out of scope here and should be filed as a
 follow-on enhancement if still wanted after this lands.
 
+## Root Cause
+
+- **File**: `scripts/little_loops/issue_lifecycle.py`
+- **Anchor**: `classify_failure()`, line 93 (signature `def
+  classify_failure(error_output: str, returncode: int) -> tuple[FailureType,
+  str]:`)
+- **Cause**: `classify_failure()` accepts `returncode` as a parameter but its
+  docstring (line 101) literally reads "available for future use" — the
+  function body (lines 106-238) never branches on it. Every classification is
+  driven exclusively by regex/substring matching against
+  `error_output.lower()`. No pattern anywhere in the function references
+  "143", SIGTERM, or process-group teardown, so a 143-after-result kill (which
+  leaves no distinguishing stderr text — it's a clean SIGTERM, not a crash)
+  falls through every branch to the final `return (FailureType.REAL,
+  "Implementation error")` at line 238. That `REAL` classification then
+  reaches `fsm/executor.py`'s dispatch chain (`_execute_state`, elif chain at
+  lines 1416-1449) and matches none of the `TRANSIENT`-only retry branches
+  (`_handle_rate_limit`, `_handle_api_error`), so it falls to the `else` at
+  lines 1444-1449 and is treated as an ordinary non-infra failure — the queue
+  advances and the in-flight subagent work is discarded rather than retried.
+
 ## Integration Map
 
 ### Files to Modify
 
 - `scripts/little_loops/fsm/executor.py` — the retry classification chain
-  lives in `_route_next_state` (the `elif action_result.exit_code != 0 and
-  _failure_type == ...` block at lines ~1412–1449). It already special-cases
-  429/rate-limit (`_handle_rate_limit`, line ~2325) and `"api server error"`
-  text (`_handle_api_error`, line ~2576, `_DEFAULT_API_ERROR_RETRIES` /
-  `_DEFAULT_API_ERROR_BACKOFF` constants at lines 114–117). A new
-  `exit_code == 143` branch is a further `elif` in this same chain, modeled
-  structurally on `_handle_api_error` (flat per-state retry counter dict, same
-  shape as `self._api_error_retries`).
+  lives inline in `_execute_state()` (the method starts at line 1227; there is
+  **no separate `_route_next_state` function** — that name in earlier drafts
+  of this issue was descriptive, not literal). The `elif action_result.exit_code
+  != 0 and _failure_type == ...` chain runs at lines ~1416–1449, keyed off
+  `classify_failure(_combined, action_result.exit_code)` at line 1418. It
+  already special-cases 429/rate-limit (`_handle_rate_limit`, line 2325) and
+  `"api server error"` text (`_handle_api_error`, line 2576,
+  `_DEFAULT_API_ERROR_RETRIES` / `_DEFAULT_API_ERROR_BACKOFF` constants at
+  lines 114–117). A new `exit_code == 143` branch is a further `elif` in this
+  same chain, modeled structurally on `_handle_api_error` (flat per-state
+  retry counter dict, same shape as `self._api_error_retries` at line 322).
+
+  > ⚠ Anchor correction: prior text named `_route_next_state` as the
+  > containing function; verified against source — no such function exists.
+  > The chain is inline in `_execute_state`.
 - `scripts/little_loops/issue_lifecycle.py` — `classify_failure()` (line ~93)
   is purely text-pattern-based; it accepts a `returncode` parameter but its
   docstring says "available for future use" (line ~101) and the body never
@@ -92,6 +128,17 @@ follow-on enhancement if still wanted after this lands.
   `fsm/types.py:69`) has no `result_seen` field today. Add one following the
   `self._last_action_exit_code` idiom (`executor.py:247-251`, ENH-2522 — "remember
   a signal to make a downstream classification decision").
+
+  > _Wiring pass added by `/ll:wire-issue`:_ `runners.py` has **six**
+  > `ActionResult(...)` construction sites total (lines ~179, ~186, ~192, ~272,
+  > ~281, ~361), not just the one at ~192. Lines 272/281 are the shell-command
+  > branch (never goes through `run_claude_command()`, so `result_seen` is
+  > inherently `False`/undefined there); line 361 is `SimulationActionRunner.run()`
+  > (simulation-only path, also never touches `run_claude_command()`). All six
+  > must get an explicit `result_seen=` value (not left to dataclass default by
+  > accident) or the new field silently reads as unset for non-slash-command
+  > paths. `scripts/little_loops/cli/loop/testing.py:76` (`ll-loop test`) is a
+  > seventh, CLI-only construction site with the same decision to make.
 - `scripts/little_loops/loops/autodev.yaml` — `skip_inflight` state (lines
   151–165) hardcodes the literal string `refine_failed` on both `on_failure`
   and `on_error` (`echo "${captured.input.output} refine_failed" >> ...`).
@@ -127,11 +174,64 @@ follow-on enhancement if still wanted after this lands.
   routing on exhaustion. This is the closest structural analog for the new
   143-classification handler (vs. `_handle_rate_limit`'s heavier short-burst +
   long-wait ladder).
-- `StateConfig.retryable_exit_codes` (`executor.py:1457-1471`) — an existing
-  **opt-in per-state** exit-code allowlist primitive. This does not by itself
-  solve AC 3's "classifies as retryable infra teardown" requirement (it's
-  opt-in/per-loop-author, not automatically populated with infra-signal
-  codes) — the fix needs global default behavior, not per-loop opt-in.
+- `StateConfig.retryable_exit_codes` (`executor.py:1457-1471`, field defined
+  `fsm/schema.py:614`) — an existing **opt-in per-state** exit-code allowlist
+  primitive. This does not by itself solve AC 3's "classifies as retryable
+  infra teardown" requirement (it's opt-in/per-loop-author, not automatically
+  populated with infra-signal codes) — the fix needs global default behavior,
+  not per-loop opt-in.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `ActionResult.exit_code` (`fsm/types.py:69-87`) is already threaded
+  end-to-end from every runner (`DefaultActionRunner`, `SimulationActionRunner`,
+  `MockActionRunner`). Classifying exit 143 does **not** require a new
+  `ActionResult` field to *read* the exit code — `_handle_api_error`'s call
+  site already keys off `action_result.exit_code` the same way. A new field is
+  only needed for the separate `result_seen` signal (see Integration Map
+  above), not for the exit code itself.
+- `self._last_action_exit_code` (ENH-2522, `executor.py:249`, set at lines
+  1270 and 1323, consumed ~413-415) is a precedent for tracking a runner
+  outcome as instance state and consuming it later in an unrelated helper —
+  relevant if `result_seen` ends up threaded the same way rather than through
+  `ActionResult`. Negative/signal exit codes already get special handling at
+  line 1276 (`if result.exit_code is not None and result.exit_code < 0:`).
+- `peak_rss_mb` (`fsm/types.py`, ENH-2453) is the closest precedent for the
+  "add an optional field with a default, populate it from the runner, consume
+  it in the executor" shape needed for `ActionResult.result_seen` — set at
+  `executor.py:1785`/`1794`, read at `1661-1668`.
+- New DES event variants (e.g. `InfraRetryVariant`) must be added to the
+  `DES_VARIANTS` registration tuple at `observability/schema.py:571` onward
+  (existing four entries at lines 611-614) in addition to defining the
+  `@dataclass(frozen=True)` class — `_extract_type_defaults()` (line 646)
+  walks `DES_VARIANTS`, so a defined-but-unregistered variant is silently
+  invisible.
+- `StateConfig` also has a generic `on_retry_exhausted` field (`fsm/schema.py`)
+  alongside `retryable_exit_codes` — an existing per-state exhaustion-target
+  pattern (tested around `test_retryable_exit_codes_none_has_no_effect`,
+  `test_fsm_executor.py:5061`) worth checking for reuse before adding a new
+  bespoke exhaustion field for the 143 case.
+- `TestAPIErrorRetries` (`test_fsm_executor.py:7292-7439`) is the direct test
+  class template — `_make_fsm()`/`_server_error_result()` helpers,
+  `patch("little_loops.fsm.executor._DEFAULT_API_ERROR_BACKOFF", 0)` to avoid
+  wall-clock waits, and `MockActionRunner.always_return()` /
+  `.set_result(action, exit_code=N)` for exhaustion vs. retry-then-succeed
+  sequences.
+- **Freshness re-check (2026-07-22)**: re-verified all four core anchors
+  against current source given `executor.py`'s heavy recent edit volume — no
+  drift. `classify_failure()` (line 93, `FailureType` enum unchanged at 3
+  members: `TRANSIENT`/`NON_RECOVERABLE`/`REAL`, still ends at line 238 with
+  `return (FailureType.REAL, "Implementation error")`), `_execute_state()`
+  (line 1227, `classify_failure(...)` call now precisely at line 1418, the
+  `NON_RECOVERABLE` branch at line 1437), `ActionResult` (`fsm/types.py:69`,
+  still no `result_seen` field), and `run_claude_command()`'s unreturned local
+  `result_seen` (`subprocess_utils.py:402/496/514/520`) are all confirmed
+  as described above. [[ENH-2727]] is still `open` with the same unresolved
+  two-way choice (new `skip_inflight_infra` state vs. single state with an
+  interpolated reason) — the coordination note above remains accurate, no
+  decision has landed on the sibling side yet.
 
 ### Tests
 
@@ -159,12 +259,47 @@ follow-on enhancement if still wanted after this lands.
 - `scripts/tests/test_issue_manager.py` — new/updated test covering
   `issue_manager.py:958`'s `classify_failure()` call once the new
   `FailureType` member is added to its transient/non-recoverable tuple check.
+
+  > _Wiring pass added by `/ll:wire-issue`:_ confirmed via search — this
+  > call site currently has **zero** direct tests (no `classify_failure`/
+  > `FailureType` reference anywhere in `test_issue_manager.py` today), so this
+  > is a genuinely new test, not an update to an existing one.
+- `scripts/tests/test_ll_logs.py::TestScanFailures` (~2376+) — _Wiring pass
+  added by `/ll:wire-issue`:_ the test file covering `cli/logs.py:1127-1130`'s
+  `FailureType` exhaustiveness tuple (the third `classify_failure()` consumer
+  named in "Dependent Files" above) was missing from this section entirely.
+  `test_scan_failures_suppresses_transient_errors` (~2722) and
+  `test_scan_failures_suppresses_non_recoverable_auth_errors` (~2751) are the
+  existing behavioral tests (via CLI stdout assertions, not direct
+  `FailureType` construction) to extend with a sibling case once the new
+  member exists — otherwise `ll-logs scan-failures --capture` silently keeps
+  clustering/filing bugs for 143-kill signatures with no regression coverage.
+- `scripts/tests/test_fsm_executor.py::MockActionRunner` (~lines 35-115) —
+  _Wiring pass added by `/ll:wire-issue`:_ the mock's three `ActionResult(...)`
+  construction sites (indexed-order match ~82-88, pattern match ~93-99,
+  default fallback ~101-107) don't currently accept or pass through a
+  `result_seen` value. This must be wired (e.g. `result_data.get("result_seen",
+  ...)`) before any new 143-classification test can script
+  `result_seen=True, exit_code=143` via `MockActionRunner.set_result(...)` —
+  otherwise the AC 2 regression test has no way to set up its own precondition.
 - `scripts/tests/test_builtin_loops.py` — literal `"refine_failed"` string
   assertions that may need updating if `skip_inflight` branches to a distinct
   reason code for the 143 case: `test_skipped_breakdown_...` (~2893-2904,
   breakdown dict counts), a ledger-line format assertion at ~4752 (`"ENH-0001
   refine_failed" in skipped`, note two-space separator matching the `echo`
   action's literal format).
+
+  > _Wiring pass added by `/ll:wire-issue`:_ three additional tests in this
+  > file assert the `refine_failed` *state name* itself (not the ledger
+  > string): `test_refine_failed_is_terminal` (~5502-5505),
+  > `test_refine_issues_on_failure_routes_to_refine_failed` (~5525-5530),
+  > `test_refine_issues_on_error_routes_to_refine_failed` (~5533-5537). These
+  > are unaffected if the fix adds a parallel `infra_retry` reason but would
+  > break if it renames/replaces the `refine_failed` state itself — relevant
+  > because [[ENH-2727]] (the coordinating sibling for this same
+  > `skip_inflight` site) proposes exactly that alternative
+  > (`skip_inflight_infra` new state). Whichever approach lands here should
+  > stay consistent with ENH-2727's choice.
 
 ### Documentation
 
@@ -182,6 +317,12 @@ follow-on enhancement if still wanted after this lands.
   state table) — documents `refine_failed` as `skip_inflight`'s only outcome;
   needs updating if `skip_inflight` branches to a distinct reason code for the
   143 case.
+- `docs/reference/API.md` (~lines 5375-5384, `#### ActionResult` heading) —
+  _Wiring pass added by `/ll:wire-issue`:_ a hand-maintained verbatim
+  reproduction of the `ActionResult` dataclass, already stale today (missing
+  `usage_events`/`peak_rss_mb` that exist in current source). A new
+  `result_seen` field is a further drift point on this snippet; update it
+  alongside the dataclass change rather than letting it drift further.
 
 ## Proposed Fix
 
@@ -190,6 +331,74 @@ rather than a terminal action failure: **re-run the action** (not
 session-ID-resume — see Scope Note above), and ledger a distinct reason code
 (coordinates with [[ENH-2727]]).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+The `skip_inflight` reason-code branching design (coordinating with
+[[ENH-2727]]) has two viable resolutions, per ENH-2727's own Proposed Fix:
+
+> **Selected:** Option A — new `skip_inflight_infra` state, per `/ll:decide-issue`
+> evidence-based scoring (10/12 vs. 7/12; see Decision Rationale below).
+
+**Option A**: Route `on_error` (and the new 143-classification path) to a
+distinct state (e.g. `skip_inflight_infra`) that ledgers a different reason
+code (`infra_error` or `refine_killed`), mirroring the ENH-2005
+artifact-channel guidance that infra crashes be attributed separately.
+
+**Option B**: Keep the single `skip_inflight` state but interpolate a reason
+string derived from the sub-loop verdict/exit code (e.g. `infra_retry` vs
+`refine_failed`), avoiding a new state while still producing a distinct
+ledger reason.
+
+> ⚠ Correction (`/ll:decide-issue`, evidence-based): the "Recommended: Option
+> B" note originally drafted here was based on a mistaken belief that the
+> `refine_failed`-state-name tests (`test_refine_failed_is_terminal`,
+> `test_refine_issues_on_failure_routes_to_refine_failed`,
+> `test_refine_issues_on_error_routes_to_refine_failed`) belong to
+> `skip_inflight`. Codebase evidence confirms those three tests exercise an
+> unrelated `refine_failed` state in a different sub-loop
+> (`refine-to-ready-issue.yaml`), not `autodev.yaml`'s `skip_inflight` — so
+> Option A does not actually touch them. See Decision Rationale below for the
+> corrected, scored comparison.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-22.
+
+**Selected**: Option A — new `skip_inflight_infra` state
+
+**Reasoning**: The codebase has four repeated, explicitly-tested precedents
+for exactly this shape — `record_sub_loop_crash` (ENH-2005,
+`rn-implement.yaml`), `record_crash` (`sprint-refine-and-implement.yaml`),
+`record_node_crash` (`rn-refine.yaml`), and `record_gate_error`
+(`rn-remediate.yaml`, FEAT-2552) — all splitting an infra/crash outcome into
+a dedicated state distinct from its logic-failure sibling, converging on the
+same downstream routing target, with a ready-made parametrized test template
+(`test_diagnostic_record_states_tag_and_continue`). No comparable precedent
+exists in `loops/*.yaml` for Option B's single-state-with-interpolated-reason
+shape; the closest analog (`mark_deferred` in `rn-implement.yaml`) is a
+different loop and would require `skip_inflight` to gain its first-ever
+conditional branch while preserving a test that pins the literal echo output
+(`test_skip_inflight_shell_action_writes_skipped_and_clears_inflight`,
+`test_builtin_loops.py:4794-4820`) verbatim as its default case.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — new `skip_inflight_infra` state | 3/3 | 2/3 | 3/3 | 2/3 | 10/12 |
+| B — interpolated reason string | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+- Option A: 4 direct precedents (`record_sub_loop_crash`, `record_crash`,
+  `record_node_crash`, `record_gate_error`) all use the new-state shape for
+  infra-vs-logic splits; reuse score 3/3. Touches ~10 `skip_inflight`-name
+  test routing expectations, but none of the `refine_failed`-state-name
+  tests (those belong to a different, unrelated state).
+- Option B: only a cross-loop analog (`mark_deferred`); `skip_inflight` has
+  no existing conditional structure to extend; reuse score 2/3.
+
 ## Acceptance Criteria
 
 - [ ] FSM classifies exit-143-after-result as retryable infra teardown with a
@@ -197,6 +406,39 @@ session-ID-resume — see Scope Note above), and ledger a distinct reason code
 - [ ] Regression coverage: a simulated 143-after-result action routes to
       retry, not `on_error` terminal failure
 
+## Confidence Check Notes
+
+_Updated by `/ll:confidence-check` on 2026-07-21 (supersedes the 2026-07-21 note below the
+`decide-issue` pass; re-verified all core anchors against current source, no drift found)_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
+
+### Outcome Risk Factors
+- Moderate depth: threading `result_seen` across 7 `ActionResult` construction
+  sites (cross-module shared state) plus new returncode-driven branching in
+  `classify_failure()`, a currently text-only function taking on new territory.
+- Broad change surface: 3 independent `classify_failure()` consumers
+  (`executor.py`, `issue_manager.py`, `cli/logs.py`) and 7 `ActionResult`
+  construction sites all need consistent updates, or the fix silently degrades
+  on some paths.
+- Minor open detail: the reason-code branching design itself is now resolved
+  (`/ll:decide-issue` selected Option A — new `skip_inflight_infra` state, see
+  Decision Rationale above), but the Proposed Fix text still names two
+  candidate reason-code strings (`infra_error` or `refine_killed`) without
+  picking one — resolve during implementation.
+- Partial test coverage: `issue_manager.py`'s `classify_failure()` call site
+  has zero existing tests today, and `cli/logs.py`'s FailureType
+  exhaustiveness check has no regression coverage against `ll-logs
+  scan-failures --capture`.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-21T23:20:00Z - `15ba6c8e-64eb-4e39-8901-5c5beaed525a.jsonl`
+- `/ll:decide-issue` - 2026-07-22T01:32:33 - `eb732e0f-1fa2-4a36-bfd1-0fe9dff17cf1.jsonl`
+- `/ll:refine-issue` - 2026-07-22T01:28:07 - `eb732e0f-1fa2-4a36-bfd1-0fe9dff17cf1.jsonl`
+- `/ll:refine-issue` - 2026-07-22T01:25:57 - `f517734b-992e-472a-a422-6cb494d8620d.jsonl`
+- `/ll:confidence-check` - 2026-07-21T22:50:00Z - `7ff26f6b-a531-4e0e-a679-67ace91583a3.jsonl`
+- `/ll:wire-issue` - 2026-07-22T01:18:47 - `857114c3-c203-4236-8314-9735ece15812.jsonl`
+- `/ll:refine-issue` - 2026-07-22T01:12:25 - `a884d839-8182-429a-886b-8ab0b07b3e64.jsonl`
 - `/ll:verify-issues` - 2026-07-21T23:08:29 - `9fc8185c-278a-4573-8071-af3d44765f41.jsonl`
 - `/ll:issue-size-review` - 2026-07-21T23:15:00Z - `5d306492-7288-421c-83db-83a5420b5516.jsonl`

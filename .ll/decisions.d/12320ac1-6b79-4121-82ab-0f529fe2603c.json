@@ -1,0 +1,12 @@
+{
+  "id": "01ae23eb-fff9-49a4-9ba0-a6227bc82d69",
+  "type": "decision",
+  "timestamp": "2026-07-22T01:32:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Four repeated codebase precedents (record_sub_loop_crash ENH-2005, record_crash, record_node_crash, record_gate_error) all split infra/crash outcomes into a dedicated new state distinct from the logic-failure sibling; no precedent exists for Option B's single-state-interpolated-reason shape. Scored 10/12 vs 7/12.",
+  "rule": "Option A \u2014 new skip_inflight_infra state",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: interpolate a reason string into the existing skip_inflight state instead of adding a new state",
+  "issue": "BUG-2731"
+}
