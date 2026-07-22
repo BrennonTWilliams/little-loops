@@ -116,7 +116,7 @@ Use Task tool with:
     Write results to the output file using the exact schema defined in your instructions.
 ```
 
-**Wait for agent to complete.**
+**Wait for the agent's result synchronously in this same turn before proceeding.**
 
 **Verify success:**
 1. Check that `.ll/workflow-analysis/step1-patterns.yaml` exists

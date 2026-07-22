@@ -135,7 +135,7 @@ Seed Phase 4 candidates (callers, importers, impacted files) from `ll-code --jso
 
 ## Phase 4: Run Wiring Research (3 Parallel Agents)
 
-Spawn all 3 agents in a **single message** with multiple Agent tool calls.
+Spawn all 3 agents in a **single message** with multiple Agent tool calls, and wait for their results in this same turn before proceeding.
 
 ### Agent 1: Caller and Importer Tracer (codebase-locator)
 
@@ -238,7 +238,7 @@ Track which files and search patterns you have already queried.
 Do NOT re-query the same file path or the same grep pattern a second time.
 ```
 
-#### Wait for ALL 3 agents to complete before proceeding.
+#### Wait for ALL 3 agents' results synchronously in this same turn before proceeding.
 
 ---
 

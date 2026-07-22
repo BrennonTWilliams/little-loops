@@ -122,7 +122,7 @@ If `$HIST` is non-empty, include the output as a `## Historical Context` section
 
 Spawn parallel sub-agents to gather comprehensive context about the issue's subject matter.
 
-**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding.
 
 #### Agent 1: codebase-locator
 
@@ -187,7 +187,7 @@ Search for:
 Return examples with file path and anchor references (e.g., function names, class names).
 ```
 
-#### Wait for ALL agents to complete before proceeding.
+#### Wait for ALL agents' results synchronously in this same turn before proceeding.
 
 ### 4. Identify Knowledge Gaps
 

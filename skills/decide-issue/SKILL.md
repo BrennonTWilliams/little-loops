@@ -314,12 +314,12 @@ Classify each match as:
 
 ## Phase 4: Gather Codebase Evidence (Parallel Agents)
 
-Spawn one `ll:codebase-pattern-finder` Agent **per option** in a **single message** with multiple Agent tool calls (parallel spawn). Use `run_in_background: false` and wait for all to complete before proceeding.
+Spawn one `ll:codebase-pattern-finder` Agent **per option** in a **single message** with multiple Agent tool calls (parallel spawn). Use `run_in_background: false` and wait for all results synchronously in this same turn before proceeding.
 
 See [reference.md](reference.md) for the full per-option agent prompt template (what to find,
 what to return: evidence for/against, reuse score, fit summary).
 
-**Wait for ALL agents to complete before proceeding to Phase 5.**
+**Wait for ALL agents' results synchronously in this same turn before proceeding to Phase 5.**
 
 ---
 

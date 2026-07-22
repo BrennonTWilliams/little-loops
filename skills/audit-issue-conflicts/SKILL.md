@@ -175,7 +175,7 @@ rubric, recommendation glossary) lives in the companion file
 [conflict-detection-prompt.md](conflict-detection-prompt.md); use it verbatim as
 the batch prompt.
 
-Wait for **all batch agents** to complete before proceeding.
+Wait for **all batch agents'** results synchronously in this same turn before proceeding.
 
 Handle agent failures: if a batch agent fails, retry once. If retry fails, log a warning for those issues and continue.
 

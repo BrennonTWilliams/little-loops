@@ -1,0 +1,12 @@
+{
+  "id": "bb595bfa-04a6-4cab-8c47-bf725a2bb0ac",
+  "type": "decision",
+  "timestamp": "2026-07-22T00:54:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Fix is mechanically identical one-line reword across all 7 files; narrower 4-file scope already dropped manage-issue/SKILL.md once in this same audit lineage before a later wire-issue pass caught it.",
+  "rule": "Expand Acceptance Criteria to cover all 7 files with end-turn-and-wait phrasing (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: keep scope to original 4 files, defer 3 newly-found files to a follow-up issue",
+  "issue": "BUG-2730"
+}

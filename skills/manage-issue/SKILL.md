@@ -107,7 +107,7 @@ Spawn these agents in parallel using the Task tool:
 
 Also fetch effort context: `EFFORT=$(ll-history-context --for-skill manage-issue --effort {{issue_id}} 2>/dev/null || true)`. If non-empty, include session count and cycle time in the plan preamble under "## Historical Effort".
 
-**CRITICAL**: Wait for ALL sub-agent tasks to complete before proceeding to planning.
+**CRITICAL**: Wait for ALL sub-agent tasks' results synchronously in this same turn before proceeding to planning.
 
 See [templates.md](templates.md) for detailed agent prompts and research findings template.
 

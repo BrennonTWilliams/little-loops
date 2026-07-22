@@ -47,6 +47,17 @@ _LOCAL_OVERRIDE_FILE = Path(".ll/ll.local.md")
 _PRIOR_SESSION_STATE = Path(".ll/ll-context-state.json")
 _LARGE_CONFIG_THRESHOLD = 5000
 
+# BUG-2730: injected in place of the pruned config-JSON/project_context digest
+# when the ENH-2714 automation-pruning gate fires. Headless `claude -p` runs
+# have no <task-notification> resume contract — ending the turn ends the
+# session and SIGTERMs any still-running subagent children (exit 143, per
+# BUG-2729). This is the one instruction that must survive pruning.
+_STAY_IN_TURN_INSTRUCTION = (
+    "You are running headlessly. Ending your turn ends the session. Never end "
+    "your turn while spawned agents/tasks are still running — wait for them "
+    "synchronously within the turn."
+)
+
 
 def _parse_frontmatter(content: str) -> dict[str, Any]:
     """Extract YAML frontmatter (arbitrary nested shapes) from a markdown doc.
@@ -109,7 +120,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _early_raw.get("history", {})
             ).automation_pruning.enabled
         if _pruning_gate_enabled:
-            return LLHookResult(exit_code=0, feedback=None, stdout=None)
+            return LLHookResult(exit_code=0, feedback=None, stdout=_STAY_IN_TURN_INSTRUCTION)
 
     # 2. Resolve base config.
     config_path = resolve_config_path(cwd)

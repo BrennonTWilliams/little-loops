@@ -523,3 +523,53 @@ class TestSessionStartProjectDigest:
 
         result = handle(_event())
         assert result.exit_code == 0
+
+
+class TestAutomationPruningStayInTurn:
+    """BUG-2730: pruning gate must inject a stay-in-turn contract, not stdout=None."""
+
+    def test_pruning_gate_injects_stay_in_turn_instruction(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"automation_pruning": {"enabled": True}}})
+        )
+        monkeypatch.setenv("LL_AUTOMATION", "1")
+
+        result = handle(_event())
+
+        assert result.exit_code == 0
+        assert result.feedback is None
+        assert result.stdout is not None
+        assert "headlessly" in result.stdout
+        assert "Never end your turn" in result.stdout
+        # Pruning still suppresses the normal digest/config-JSON payload.
+        assert "<project_context>" not in result.stdout
+
+    def test_pruning_gate_disabled_falls_through_to_normal_payload(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"automation_pruning": {"enabled": False}}})
+        )
+        monkeypatch.setenv("LL_AUTOMATION", "1")
+
+        result = handle(_event())
+
+        assert result.exit_code == 0
+        assert result.stdout is not None
+        assert "headlessly" not in result.stdout
+
+    def test_no_automation_env_no_stay_in_turn_instruction(self, in_tmp: Path) -> None:
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"automation_pruning": {"enabled": True}}})
+        )
+
+        result = handle(_event())
+
+        assert result.exit_code == 0
+        assert result.stdout is not None
+        assert "headlessly" not in result.stdout

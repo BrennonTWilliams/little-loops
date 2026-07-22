@@ -78,7 +78,7 @@ If any issue file cannot be parsed (missing content, unreadable), log a warning 
 
 Batch issues into waves of 3-5 issues each. For each wave, launch a subagent using the Task tool:
 
-**IMPORTANT**: Spawn all subagents for a wave in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: Spawn all subagents for a wave in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding.
 
 Each subagent receives a batch of issue summaries and evaluates them. Use the following prompt template for each subagent:
 
@@ -158,7 +158,7 @@ For each issue:
 
 **Subagent failure handling**: If a subagent fails or times out, retry once. If the retry also fails, skip those issues with a "could not evaluate" warning and continue with remaining waves.
 
-Wait for all subagents in a wave to complete before launching the next wave.
+Wait for all subagents' results synchronously in this same turn before launching the next wave.
 
 ### Phase 3: Aggregation & Recommendation
 
