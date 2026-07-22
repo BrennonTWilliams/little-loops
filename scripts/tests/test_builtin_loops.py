@@ -1301,15 +1301,98 @@ class TestRefineToReadyIssueSubLoop:
             f"breakdown_issue.on_error should be 'diagnose', got {state.get('on_error')!r}"
         )
 
-    def test_diagnose_routes_to_failed(self, data: dict) -> None:
-        """diagnose state must route to failed."""
+    def test_diagnose_routes_to_classify_terminal(self, data: dict) -> None:
+        """diagnose state must route to classify_terminal (ENH-2727), which emits the
+        termination-class sentinel before reaching the `failed` terminal."""
         state = data["states"].get("diagnose", {})
-        assert state.get("next") == "failed"
+        assert state.get("next") == "classify_terminal"
 
     def test_diagnose_is_not_terminal(self, data: dict) -> None:
         """diagnose state must not be a terminal state."""
         state = data["states"].get("diagnose", {})
         assert not state.get("terminal", False)
+
+    # ------------------------------------------------------------------
+    # ENH-2727: classify_terminal emits an infra-vs-quality sentinel that
+    # autodev's skip path consumes to distinguish re-runnable infra kills
+    # (SIGTERM/OOM/timeout) from genuine refine-quality failures.
+    # ------------------------------------------------------------------
+
+    def test_classify_terminal_state_exists(self, data: dict) -> None:
+        """ENH-2727: classify_terminal must exist between diagnose and failed."""
+        assert "classify_terminal" in data["states"], (
+            "classify_terminal state not found in refine-to-ready-issue.yaml (ENH-2727)"
+        )
+
+    def test_classify_terminal_routes_to_failed(self, data: dict) -> None:
+        """ENH-2727: classify_terminal must reach the failed terminal on next and
+        on_error, preserving the child's failed-terminal outcome for the parent."""
+        state = data["states"].get("classify_terminal", {})
+        assert state.get("next") == "failed"
+        assert state.get("on_error") == "failed"
+
+    def test_classify_terminal_is_shell_action(self, data: dict) -> None:
+        """ENH-2727: classify_terminal must be a non-LLM shell state (deterministic
+        exit-code classification, no self-evaluation)."""
+        state = data["states"].get("classify_terminal", {})
+        assert state.get("action_type") == "shell"
+
+    def test_classify_terminal_writes_sentinel(self, data: dict) -> None:
+        """ENH-2727: classify_terminal must write refine-terminal-class under the
+        shared run_dir so autodev's skip_inflight can consume it."""
+        state = data["states"].get("classify_terminal", {})
+        action = state.get("action", "")
+        assert "refine-terminal-class" in action
+        assert "${context.run_dir}" in action
+
+    @pytest.mark.parametrize(
+        "exit_codes,expected",
+        [
+            ("143 0 0", "infra"),   # SIGTERM in refine_issue
+            ("0 137 0", "infra"),   # SIGKILL/OOM in refine_followup
+            ("0 0 124", "infra"),   # timeout(1) kill
+            ("2 0 0", "quality"),   # ll-issues tooling error (exit 2) — a real defect
+            ("1 0 0", "quality"),   # ordinary non-zero
+            ("", "quality"),        # no captures populated → default quality
+        ],
+    )
+    def test_classify_terminal_classifies_by_exit_code(
+        self, data: dict, tmp_path: Path, exit_codes: str, expected: str
+    ) -> None:
+        """ENH-2727: exit 143/137/124 (external kill) → infra; everything else →
+        quality. Substitutes the first three captured exit-code refs with the given
+        codes and the rest with '' (un-run states)."""
+        state = data["states"].get("classify_terminal", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        codes = exit_codes.split()
+        refs = [
+            "${captured.refine_issue.exit_code?}",
+            "${captured.refine_followup.exit_code?}",
+            "${captured.breakdown_issue.exit_code?}",
+        ]
+        script = action
+        for i, ref in enumerate(refs):
+            script = script.replace(ref, codes[i] if i < len(codes) else "")
+        # Remaining capture refs resolve to '' for un-run states.
+        for ref in (
+            "${captured.check_outcome.exit_code?}",
+            "${captured.check_refine_limit.exit_code?}",
+            "${captured.check_scores_from_file.exit_code?}",
+            "${captured.issue_id.exit_code?}",
+            "${captured.check_lifetime_limit.exit_code?}",
+        ):
+            script = script.replace(ref, "")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"classify_terminal failed: {result.stderr}"
+        sentinel = (run_dir / "refine-terminal-class").read_text().strip()
+        assert sentinel == expected, (
+            f"exit codes {exit_codes!r} should classify as {expected!r}, got {sentinel!r}"
+        )
 
     # ------------------------------------------------------------------
     # BUG-2726: diagnose must carry concrete failure evidence into its prompt
@@ -3096,6 +3179,30 @@ class TestAutoRefineAndImplementLoop:
             f"expected per-reason counts, got {breakdown}"
         )
 
+    def test_finalize_skipped_breakdown_buckets_refine_failed_infra(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2727: the infra-class reason token refine_failed_infra must bucket
+        distinctly in skipped_breakdown, separate from the quality refine_failed
+        bucket — proving an infra kill is surfaced as re-runnable, not a quality
+        defect."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=(),
+            skipped_reasons=(
+                "refine_failed",
+                "refine_failed_infra",
+                "refine_failed_infra",
+            ),
+        )
+        breakdown = summary["skipped_breakdown"]
+        assert breakdown == {"refine_failed": 1, "refine_failed_infra": 2}, (
+            f"refine_failed_infra must bucket distinctly from refine_failed, got {breakdown}"
+        )
+
     def test_finalize_skipped_breakdown_back_compat_bare_id_lines(
         self, data: dict, tmp_path: Path
     ) -> None:
@@ -3841,12 +3948,18 @@ class TestAutodevLoop:
             f"refine_current.on_failure should be 'skip_inflight', got {state.get('on_failure')!r}"
         )
 
-    def test_refine_current_error_routes_to_skip_inflight(self, data: dict) -> None:
-        """refine_current.on_error must route to skip_inflight (ENH-1679).
-        A signal or executor crash during refinement should skip the issue."""
+    def test_refine_current_error_routes_to_skip_inflight_infra(self, data: dict) -> None:
+        """refine_current.on_error must route to skip_inflight_infra (ENH-2727).
+        on_error fires only when the sub-loop raised a runtime exception / was
+        signalled — a crash that produced no refine verdict — which is an infra-class,
+        re-runnable failure, not a refine-quality defect. It must therefore be ledgered
+        as refine_failed_infra, not laundered as refine_failed (ENH-1679's
+        on_error == on_no collapse). The evidenced exit-143 case, by contrast, reaches
+        the sub-loop's `failed` terminal and is handled via on_failure's
+        sentinel-driven skip_inflight path."""
         state = data["states"].get("refine_current", {})
-        assert state.get("on_error") == "skip_inflight", (
-            f"refine_current.on_error should be 'skip_inflight', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "skip_inflight_infra", (
+            f"refine_current.on_error should be 'skip_inflight_infra', got {state.get('on_error')!r}"
         )
 
     def test_refine_current_has_no_explicit_on_no(self, data: dict) -> None:
@@ -3907,14 +4020,154 @@ class TestAutodevLoop:
         )
 
     def test_skip_inflight_routes_to_dequeue_next(self, data: dict) -> None:
-        """skip_inflight must route to dequeue_next on success and on_error (ENH-1679)."""
+        """skip_inflight (a quality/infra classifier since ENH-2727) must route the
+        quality path (exit 0 → on_yes) and error path to dequeue_next, and the
+        infra path (exit 1 → on_no) to skip_inflight_infra. It uses the shell_exit
+        fragment, so routing is on_yes/on_no, not `next` (ENH-1679, ENH-2727)."""
         state = data["states"].get("skip_inflight", {})
-        assert state.get("next") == "dequeue_next", (
-            f"skip_inflight.next should be 'dequeue_next', got {state.get('next')!r}"
+        assert state.get("fragment") == "shell_exit", (
+            f"skip_inflight should use the shell_exit fragment to classify by exit "
+            f"code (ENH-2727), got fragment={state.get('fragment')!r}"
+        )
+        assert state.get("on_yes") == "dequeue_next", (
+            f"skip_inflight.on_yes (quality path, already ledgered) should be "
+            f"'dequeue_next', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "skip_inflight_infra", (
+            f"skip_inflight.on_no (infra path) should be 'skip_inflight_infra' so the "
+            f"infra kill is ledgered distinctly (ENH-2727), got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "dequeue_next", (
             f"skip_inflight.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
         )
+
+    # ------------------------------------------------------------------
+    # ENH-2727: infra-vs-quality termination-class ledgering
+    # ------------------------------------------------------------------
+
+    def test_skip_inflight_infra_state_exists(self, data: dict) -> None:
+        """ENH-2727: skip_inflight_infra sibling of skip_inflight must exist as the
+        on_no (infra) target, so an external SIGTERM/OOM/timeout kill is ledgered
+        distinctly rather than collapsed into refine_failed (the on_error == on_no
+        laundering ENH-1679 left un-fixed)."""
+        assert "skip_inflight_infra" in data["states"], (
+            "skip_inflight_infra state not found — add it as skip_inflight's on_no "
+            "(infra) target (ENH-2727)"
+        )
+
+    def test_skip_inflight_infra_is_shell_action(self, data: dict) -> None:
+        """ENH-2727: skip_inflight_infra must use action_type: shell."""
+        state = data["states"].get("skip_inflight_infra", {})
+        assert state.get("action_type") == "shell", (
+            f"skip_inflight_infra.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+
+    def test_skip_inflight_infra_writes_infra_reason(self, data: dict) -> None:
+        """ENH-2727: skip_inflight_infra must ledger the distinct refine_failed_infra
+        reason token (not refine_failed) to autodev-skipped.txt."""
+        state = data["states"].get("skip_inflight_infra", {})
+        action = state.get("action", "")
+        assert "refine_failed_infra" in action, (
+            "skip_inflight_infra must write the 'refine_failed_infra' reason token"
+        )
+        assert "autodev-skipped.txt" in action, (
+            "skip_inflight_infra must record the skipped issue ID in autodev-skipped.txt"
+        )
+
+    def test_skip_inflight_infra_clears_autodev_inflight(self, data: dict) -> None:
+        """ENH-2727: skip_inflight_infra must clear autodev-inflight like skip_inflight
+        so BUG-1226's done-state stale-inflight warning is not triggered."""
+        state = data["states"].get("skip_inflight_infra", {})
+        action = state.get("action", "")
+        assert "autodev-inflight" in action, (
+            "skip_inflight_infra must clear autodev-inflight (BUG-1226)"
+        )
+
+    def test_skip_inflight_infra_routes_to_dequeue_next(self, data: dict) -> None:
+        """ENH-2727: skip_inflight_infra must route to dequeue_next on next and on_error."""
+        state = data["states"].get("skip_inflight_infra", {})
+        assert state.get("next") == "dequeue_next", (
+            f"skip_inflight_infra.next should be 'dequeue_next', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "dequeue_next", (
+            f"skip_inflight_infra.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
+        )
+
+    def test_skip_inflight_quality_path_writes_refine_failed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2727: with no termination-class sentinel (or class=quality), skip_inflight
+        writes refine_failed, clears autodev-inflight, and exits 0 (→ on_yes: dequeue_next)."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0007")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        script = action.replace("${captured.input.output}", "ENH-0007")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, (
+            f"quality path must exit 0 (on_yes), got {result.returncode}: {result.stderr}"
+        )
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
+        assert "ENH-0007  refine_failed" in skipped
+        assert "refine_failed_infra" not in skipped, (
+            "quality path must NOT write the infra reason token"
+        )
+        assert not (run_dir / "autodev-inflight").exists()
+
+    def test_skip_inflight_infra_sentinel_routes_to_on_no(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2727: when refine-terminal-class == 'infra', skip_inflight exits 1
+        (→ on_no: skip_inflight_infra) WITHOUT writing refine_failed itself — the
+        infra ledger write is deferred to skip_inflight_infra."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0008")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        (run_dir / "refine-terminal-class").write_text("infra")
+        script = action.replace("${captured.input.output}", "ENH-0008")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 1, (
+            f"infra path must exit 1 (on_no → skip_inflight_infra), got {result.returncode}"
+        )
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
+        assert skipped.strip() == "", (
+            f"infra path must defer the ledger write to skip_inflight_infra, got {skipped!r}"
+        )
+
+    def test_skip_inflight_infra_shell_action_writes_infra_reason(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2727: skip_inflight_infra shell action appends 'ID  refine_failed_infra'
+        to autodev-skipped.txt and removes autodev-inflight. Modelled on
+        test_skip_inflight_shell_action_writes_skipped_and_clears_inflight."""
+        state = data["states"].get("skip_inflight_infra", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0009")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        script = action.replace("${captured.input.output}", "ENH-0009")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"skip_inflight_infra action failed: {result.stderr}"
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
+        assert "ENH-0009  refine_failed_infra" in skipped, (
+            f"skip_inflight_infra must write 'ID  refine_failed_infra', got {skipped!r}"
+        )
+        assert not (run_dir / "autodev-inflight").exists()
 
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
         """implement_current must use shell_exit fragment for exit-code-aware routing."""

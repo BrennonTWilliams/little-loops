@@ -433,7 +433,39 @@ states:
 
       Write a one-paragraph diagnostic summary, quoting the exit code and any
       stderr verbatim, that the operator can act on to re-run or inspect the issue.
+    next: classify_terminal
+
+  classify_terminal:
+    # ENH-2727: emit a machine-readable termination-class sentinel for autodev's
+    # skip path to consume. Reached only from diagnose — the sole route to the
+    # `failed` terminal — so it always runs on the failed path and never on the
+    # done path. Classifies THIS run's failure as `infra` when the failing state
+    # was killed externally (exit 143/137/124 = SIGTERM/OOM/timeout, or a
+    # negative signal code) — a re-runnable transient — else `quality` (a genuine
+    # refine defect that needs human attention).
+    #
+    # The failing state's exit code survives in its OWN capture (BUG-2726 already
+    # captures refine_issue/refine_followup/check_*), so this reads those rather
+    # than ${prev.exit_code} — by now `prev` is diagnose itself (a prompt state
+    # whose own exit code is 0). Reaching diagnose means the FIRST error/kill
+    # routed here (each source state routes on_error → diagnose immediately), so a
+    # 143/137/124 in any populated capture unambiguously marks the terminating
+    # failure. The `?` nullable suffix leaves un-run states as '' (word-split away).
+    #
+    # Written to the shared run_dir (context_passthrough); autodev's skip_inflight
+    # reads refine-terminal-class and routes infra kills to skip_inflight_infra.
+    action: |
+      CLASS=quality
+      for c in ${captured.refine_issue.exit_code?} ${captured.refine_followup.exit_code?} ${captured.breakdown_issue.exit_code?} ${captured.check_outcome.exit_code?} ${captured.check_refine_limit.exit_code?} ${captured.check_scores_from_file.exit_code?} ${captured.issue_id.exit_code?} ${captured.check_lifetime_limit.exit_code?}; do
+        case "$c" in
+          143|137|124) CLASS=infra ;;
+          -*) CLASS=infra ;;
+        esac
+      done
+      printf '%s' "$CLASS" > ${context.run_dir}/refine-terminal-class
+    action_type: shell
     next: failed
+    on_error: failed
 
   failed:
     terminal: true

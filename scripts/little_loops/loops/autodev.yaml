@@ -145,7 +145,18 @@ states:
     context_passthrough: true
     on_success: copy_broke_down
     on_failure: skip_inflight
-    on_error: skip_inflight
+    # ENH-2727: on_error fires when the sub-loop raised a runtime exception / was
+    # signalled (a crash — no refine verdict was produced), which is an infra-class,
+    # re-runnable failure by the issue's own definition ("host CLI SIGTERM'd, OOM,
+    # crash"). Route it straight to skip_inflight_infra (refine_failed_infra) so it is
+    # NOT laundered as a quality failure. This is complementary to — not a substitute
+    # for — the sentinel path on on_failure: the *evidenced* exit-143 case reaches the
+    # sub-loop's `failed` terminal (on_no → on_failure → skip_inflight), where the
+    # termination-class sentinel written by classify_terminal selects the reason. Do
+    # NOT add on_no here (BUG-2611): compiled on_no must keep falling back to
+    # on_failure (skip_inflight), the sentinel-driven path that catches the evidenced
+    # kill.
+    on_error: skip_inflight_infra
     on_rate_limit_exhausted: dequeue_next
 
   skip_inflight:
@@ -156,8 +167,45 @@ states:
     # in auto-refine-and-implement.yaml.
     # ENH-2404: two-space-delimited "ID  REASON" (matches rn-implement.yaml
     # mark_deferred), so finalize can distinguish failure reasons.
+    #
+    # ENH-2727: consult the sub-loop's termination-class sentinel
+    # (${context.run_dir}/refine-terminal-class, written by refine-to-ready-issue's
+    # classify_terminal). An infra-class kill (SIGTERM/OOM/timeout — exit
+    # 143/137/124, re-runnable) routes to skip_inflight_infra (reason
+    # refine_failed_infra); a genuine quality failure is ledgered HERE as
+    # refine_failed. The classification lives INSIDE the skip path so
+    # refine_current.on_failure/on_error stay `skip_inflight` and its compiled
+    # on_no fallback is preserved (BUG-2611) — no refine_current route is diverted.
+    # exit 0 (quality, already ledgered) → on_yes: dequeue_next; exit 1 (infra) →
+    # on_no: skip_inflight_infra.
     action: |
+      CLASS=quality
+      if [ -f ${context.run_dir}/refine-terminal-class ]; then
+        CLASS=$(cat ${context.run_dir}/refine-terminal-class 2>/dev/null || printf 'quality')
+      fi
+      if [ "$CLASS" = infra ]; then
+        exit 1
+      fi
       echo "${captured.input.output}  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
+    fragment: shell_exit
+    action_type: shell
+    on_yes: dequeue_next
+    on_no: skip_inflight_infra
+    on_error: dequeue_next
+
+  skip_inflight_infra:
+    # ENH-2727: infra-class sibling of skip_inflight. Reached when the refine
+    # sub-loop's termination-class sentinel reports `infra` — an external
+    # SIGTERM/OOM/timeout kill (exit 143/137/124) that is re-runnable rather than a
+    # genuine refine-quality defect. Ledgers `refine_failed_infra` (GATE_FAILED_INFRA
+    # stem-suffix precedent, rn-remediate.yaml) so the `done` summary and downstream
+    # triage (skipped_breakdown, deferred-triage) surface it as a separate,
+    # re-runnable bucket instead of misattributing it as a quality failure (the
+    # on_error == on_no laundering ENH-1679 left un-fixed). Clears autodev-inflight
+    # like skip_inflight so BUG-1226's done-state warning is not triggered.
+    action: |
+      echo "${captured.input.output}  refine_failed_infra" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
     fragment: queue_track
     action_type: shell
@@ -1225,8 +1273,12 @@ states:
     action: |
       PASSED_IDS=$(cat ${context.run_dir}/autodev-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      # ENH-2727: exclude infra-class skips from the generic Skipped bucket so
+      # they are surfaced separately (re-runnable) below and not double-counted.
       SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
-        | grep -v '^[[:space:]]*$' | sort -u || true)
+        | grep -v '^[[:space:]]*$' | grep -v 'refine_failed_infra' | sort -u || true)
+      INFRA_SKIPPED_IDS=$(grep 'refine_failed_infra' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
+        | awk '{print $1}' | grep -v '^[[:space:]]*$' | sort -u || true)
       GATE_BLOCKED_IDS=$(cat ${context.run_dir}/autodev-gate-blocked.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
@@ -1234,11 +1286,13 @@ states:
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      INFRA_SKIPPED_COUNT=$(echo "$INFRA_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
       GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || echo 0)
       DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || echo 0)
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      INFRA_SKIPPED_LIST=$(echo "$INFRA_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
 
@@ -1247,6 +1301,9 @@ states:
       printf '\n=== Autodev Summary ===\n\n'
       printf 'Passed       (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
       printf 'Skipped      (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
+      if [ "$INFRA_SKIPPED_COUNT" -gt 0 ]; then
+        printf 'Infra-skipped (%d): %s  (transient kill — just re-run)\n' "$INFRA_SKIPPED_COUNT" "$INFRA_SKIPPED_LIST"
+      fi
       if [ "$GATE_BLOCKED_COUNT" -gt 0 ]; then
         printf 'Gate-blocked (%d): %s  (prove deps with /ll:explore-api, then re-run)\n' "$GATE_BLOCKED_COUNT" "$GATE_BLOCKED_LIST"
       fi
