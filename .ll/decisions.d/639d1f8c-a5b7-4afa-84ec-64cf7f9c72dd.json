@@ -1,0 +1,12 @@
+{
+  "id": "cc637d1b-7171-42e1-9a35-624041c011d5",
+  "type": "decision",
+  "timestamp": "2026-07-22T14:49:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A (LLM prompt parses events.jsonl to find the last action_complete event for prev.state) reproduces this bug's own confabulation risk: action_complete events carry no state key and retries emit multiple entries per state in an append-only log, so *no* existing loop YAML asks a prompt to do this correlation. Option B's capture mechanism is deterministic and already unit-tested. Scores: A=3/12, B=6/12.",
+  "rule": "Option B: add capture: to the 8 diagnose on_error source states, reference ${captured.<name>.stderr} in the diagnose prompt",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: single-state change reading ${context.run_dir}/events.jsonl for stderr_preview; scored 3/12 due to no non-LLM evaluator and ambiguous last-event-for-state correlation under retries",
+  "issue": "BUG-2726"
+}

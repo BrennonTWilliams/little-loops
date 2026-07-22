@@ -1,0 +1,11 @@
+{
+  "id": "2a2ec097-350b-40b7-ae26-ea848cfe4a82",
+  "type": "decision",
+  "timestamp": "2026-07-22T17:06:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-code status reports stale even when the index is current, because dirty_files counts every git status --porcelain line repo-wide with no path filtering; unrelated files like .ll/decisions.d/*.json trip a false-positive staleness signal.",
+  "rule": "Captured: Scope codegraph staleness dirty-file check to source-relevant paths",
+  "scope": "issue",
+  "issue": "ENH-2736"
+}

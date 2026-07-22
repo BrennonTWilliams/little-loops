@@ -1,0 +1,12 @@
+{
+  "id": "3513db8f-9d69-494d-a6d9-d7395a966466",
+  "type": "decision",
+  "timestamp": "2026-07-22T15:51:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only approach that catches the evidenced exit-143 case (reaches autodev as a failed terminal, not a signal termination). Reuses the refine-broke-down/autodev-broke-down file handshake and the GATE_FAILED_INFRA reason-token convention. Scored 10/12 vs Option B 2/12.",
+  "rule": "Option A \u2014 sub-loop emits a termination-class sentinel (self-contained in loop layer)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (executor exposes signal/timeout as a distinct on_signal/on_infra route key) \u2014 larger blast radius (6+ files) and does not fix the evidenced case on its own since the SIGTERM is absorbed by the child's diagnose state before reaching the _execute_sub_loop else branch.",
+  "issue": "ENH-2727"
+}
