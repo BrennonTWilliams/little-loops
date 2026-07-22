@@ -46,6 +46,45 @@ same decomposition) covers preventing the pattern in the first place via a
 prompt contract; this issue covers the FSM-side safety net for when it still
 happens.
 
+## Current Behavior
+
+When a headless `claude -p` session ends its turn while subagents are still
+running, the CLI SIGTERMs its still-running subagent children and exits 143.
+`classify_failure()` (`issue_lifecycle.py:93`) is purely text-pattern-based
+against `error_output.lower()` and has no branch for exit code 143 (a clean
+SIGTERM leaves no distinguishing stderr text to match). Every 143-after-result
+kill falls through to the final `return (FailureType.REAL, "Implementation
+error")` at line 238. `fsm/executor.py`'s dispatch chain in `_execute_state()`
+then treats that `REAL` classification like an ordinary non-infra failure —
+none of the `TRANSIENT`-only retry branches (`_handle_rate_limit`,
+`_handle_api_error`) match, so it falls to the `else` at lines 1444-1449, the
+queue advances, and the in-flight subagent work is discarded.
+
+## Expected Behavior
+
+The FSM should recognize the exit-143-after-`result`-event teardown signature
+(SIGTERM following a captured stream-json `result` event, i.e. the subagent
+had already produced output when it was reaped) and classify it as retryable
+infra teardown rather than a terminal action failure: re-run the action
+(plain re-run, not session-ID-resume — see Scope Note below) and ledger a
+distinct reason code instead of `refine_failed`, so the in-flight work is
+retried rather than silently discarded.
+
+## Steps to Reproduce
+
+1. Run an FSM loop state that dispatches a headless `claude -p` action which
+   spawns subagents (e.g. `autodev.yaml`'s `refine_issue` state via
+   `ll-parallel`/`ll-auto`).
+2. Have the top-level session end its turn (emit a `result` stream-json
+   event) while one or more subagents are still executing — the CLI SIGTERMs
+   the process group and the action's subprocess exits with code 143.
+3. Observe: `classify_failure(error_output, 143)` returns
+   `(FailureType.REAL, "Implementation error")` (no branch matches exit code
+   143), and `_execute_state()`'s dispatch chain routes this to the ordinary
+   failure path — the queue advances past the issue and the in-flight
+   subagent work (e.g. a partially-completed refine pass) is discarded rather
+   than retried.
+
 ## Parent Issue
 
 Decomposed from [[BUG-2729]]: headless session end-turn-while-awaiting-subagents
@@ -324,7 +363,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `result_seen` field is a further drift point on this snippet; update it
   alongside the dataclass change rather than letting it drift further.
 
-## Proposed Fix
+## Proposed Solution
 
 Treat `exit_code == 143` + `result_seen` (usage captured) as `infra_retry`
 rather than a terminal action failure: **re-run the action** (not
@@ -399,6 +438,24 @@ conditional branch while preserving a test that pins the literal echo output
 - Option B: only a cross-loop analog (`mark_deferred`); `skip_inflight` has
   no existing conditional structure to extend; reuse score 2/3.
 
+## Impact
+
+- **Priority**: P1 — every headless FSM action that spawns subagents
+  (`autodev.yaml`'s `refine_issue`, and any other loop state dispatching
+  `claude -p` with subagent fan-out) is exposed; a misattributed `REAL`
+  failure silently discards in-flight work and misleads downstream failure
+  analysis ([[BUG-2726]], [[ENH-2727]]) rather than merely delaying it.
+- **Effort**: Large — threading `result_seen` across 7 `ActionResult`
+  construction sites, new returncode-driven branching in a previously
+  text-only `classify_failure()`, and consistent updates across 3 independent
+  consumers (`fsm/executor.py`, `issue_manager.py`, `cli/logs.py`); see
+  Integration Map above.
+- **Risk**: Moderate — broad change surface with partial existing test
+  coverage (two of the three `classify_failure()` consumers have zero direct
+  tests today), but the fix is additive (new classification branch + new
+  state) rather than a rewrite of existing retry logic, per `outcome_confidence: 56`
+  in Confidence Check Notes below.
+
 ## Acceptance Criteria
 
 - [ ] FSM classifies exit-143-after-result as retryable infra teardown with a
@@ -433,6 +490,7 @@ _Updated by `/ll:confidence-check` on 2026-07-21 (supersedes the 2026-07-21 note
   scan-failures --capture`.
 
 ## Session Log
+- `/ll:format-issue` - 2026-07-22T02:22:40 - `7ea1a881-92d6-422c-9c30-8553cb4e5bac.jsonl`
 - `/ll:confidence-check` - 2026-07-21T23:20:00Z - `15ba6c8e-64eb-4e39-8901-5c5beaed525a.jsonl`
 - `/ll:decide-issue` - 2026-07-22T01:32:33 - `eb732e0f-1fa2-4a36-bfd1-0fe9dff17cf1.jsonl`
 - `/ll:refine-issue` - 2026-07-22T01:28:07 - `eb732e0f-1fa2-4a36-bfd1-0fe9dff17cf1.jsonl`
