@@ -43,8 +43,7 @@ class TestUsageEventsRunIdWriter:
 
         loop_names = ["rn-refine", "rn-implement", "autodev", "spike-gate"]
         args = [
-            (db_path, name, f"2026-07-21T12:0{i}:00.000Z", 25)
-            for i, name in enumerate(loop_names)
+            (db_path, name, f"2026-07-21T12:0{i}:00.000Z", 25) for i, name in enumerate(loop_names)
         ]
         with multiprocessing.Pool(processes=len(args)) as pool:
             run_ids = pool.starmap(simulate_run, args)
@@ -100,9 +99,9 @@ class TestUsageEventsRunIdWriter:
             else:
                 continue
             for name in names:
-                assert not any(
-                    name.startswith(prefix) for prefix in forbidden_prefixes
-                ), f"writer.py must not import production module {name!r}"
+                assert not any(name.startswith(prefix) for prefix in forbidden_prefixes), (
+                    f"writer.py must not import production module {name!r}"
+                )
 
 
 if __name__ == "__main__":

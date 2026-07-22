@@ -2645,9 +2645,7 @@ class FSMExecutor:
                 from little_loops.session_store import record_usage_event, resolve_history_db
 
                 if BRConfig(Path.cwd()).analytics_capture.usage_events:
-                    run_id = (
-                        self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
-                    )
+                    run_id = self.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
                     ts = _iso_now()
                     db_path = resolve_history_db()
                     for state_name, usage in self._usage_events_collected:
