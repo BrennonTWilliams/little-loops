@@ -104,6 +104,7 @@ class TestEnsureDb:
             "cli_events",
             "issue_snapshots",
             "learning_test_events",
+            "hook_events",
         ):
             assert table in names
 
@@ -1378,7 +1379,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
 
 
 class TestBackfillIncremental:
@@ -1823,8 +1824,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1993,8 +1994,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2045,8 +2046,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2124,7 +2125,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 29
+        assert int(version[0]) == 30
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2141,8 +2142,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3858,8 +3859,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3899,8 +3900,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 29
-        assert int(row[0]) == 29
+        assert SCHEMA_VERSION == 30
+        assert int(row[0]) == 30
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3954,7 +3955,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 29
+        assert int(version[0]) == 30
         assert "issue_snapshots" in names
 
 
@@ -4647,7 +4648,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4793,7 +4794,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -5014,7 +5015,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -5119,7 +5120,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -5159,7 +5160,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -5203,7 +5204,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 29
+        assert SCHEMA_VERSION == 30
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -5370,3 +5371,234 @@ class TestRecordSessionLifecycleEvent:
         assert not session_store.record_session_lifecycle_event(
             db, session_id="s1", event="handoff_needed"
         )
+
+
+class TestSchemaV30HookEvents:
+    """v30 migration adds the hook_events table (ENH-2506)."""
+
+    def test_hook_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(hook_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "session_id",
+            "event_name",
+            "matcher",
+            "script",
+            "exit_code",
+            "duration_ms",
+            "stderr_preview",
+            "head_sha",
+            "branch",
+        }
+
+    def test_hook_events_indexes_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+        finally:
+            conn.close()
+        assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
+
+    def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 30
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 29)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "hook_events" in names
+
+    def test_hook_event_is_kinded(self) -> None:
+        assert "hook_event" in VALID_KINDS
+        assert _KIND_TABLE["hook_event"] == "hook_events"
+
+    def test_hook_events_excluded_from_rebuild_tables(self) -> None:
+        from little_loops.session_store import _REBUILD_TABLES
+
+        assert "hook_events" not in _REBUILD_TABLES
+
+
+class TestRecordHookEvent:
+    """ENH-2506: record_hook_event() single-row INSERT."""
+
+    def test_inserts_row_with_all_columns(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        record_hook_event(
+            db,
+            session_id="sess-1",
+            event_name="PostToolUse",
+            matcher="Write|Edit",
+            script="little_loops.hooks.post_tool_use",
+            exit_code=0,
+            duration_ms=12,
+            stderr_preview="warn: x",
+            head_sha="abc123",
+            branch="main",
+        )
+        rows = recent(db, kind="hook_event")
+        assert len(rows) == 1
+        assert rows[0]["event_name"] == "PostToolUse"
+        assert rows[0]["matcher"] == "Write|Edit"
+        assert rows[0]["script"] == "little_loops.hooks.post_tool_use"
+        assert rows[0]["exit_code"] == 0
+        assert rows[0]["duration_ms"] == 12
+        assert rows[0]["stderr_preview"] == "warn: x"
+
+    def test_multi_row_ordering(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        for i in range(3):
+            record_hook_event(
+                db,
+                session_id="sess-1",
+                event_name="PostToolUse",
+                matcher=None,
+                script=None,
+                exit_code=0,
+                duration_ms=i,
+            )
+        rows = recent(db, kind="hook_event", limit=10)
+        assert [r["duration_ms"] for r in rows] == [2, 1, 0]
+
+    def test_kwarg_only_signature(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(TypeError):
+            record_hook_event(db, "sess-1", "PostToolUse", None, None, 0, 1)  # type: ignore[misc]
+
+    def test_stderr_preview_truncated_to_512(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        record_hook_event(
+            db,
+            session_id=None,
+            event_name="PostToolUse",
+            matcher=None,
+            script=None,
+            exit_code=1,
+            duration_ms=1,
+            stderr_preview="x" * 1000,
+        )
+        rows = recent(db, kind="hook_event")
+        assert len(rows[0]["stderr_preview"]) == 512
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        record_hook_event(
+            db,
+            session_id="sess-1",
+            event_name="PreCompact",
+            matcher=None,
+            script=None,
+            exit_code=0,
+            duration_ms=1,
+        )
+        results = search(db, query="PreCompact")
+        assert any(r["kind"] == "hook_event" for r in results)
+
+    def test_best_effort_on_unopenable_db(self, tmp_path: Path) -> None:
+        """A db path that cannot be opened must not raise."""
+        from little_loops.session_store import record_hook_event
+
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        record_hook_event(
+            tmp_path,
+            session_id=None,
+            event_name="PostToolUse",
+            matcher=None,
+            script=None,
+            exit_code=0,
+            duration_ms=1,
+        )
+
+
+class TestHookEventContext:
+    """ENH-2506: hook_event_context() insert-on-exit round-trip."""
+
+    def test_success_path_records_exit_code_zero(self, tmp_path: Path) -> None:
+        from little_loops.session_store import hook_event_context
+
+        db = tmp_path / "history.db"
+        with hook_event_context(db, session_id="s1", event_name="PostToolUse", matcher="Write"):
+            pass
+        rows = recent(db, kind="hook_event")
+        assert len(rows) == 1
+        assert rows[0]["exit_code"] == 0
+        assert rows[0]["duration_ms"] is not None
+        assert rows[0]["duration_ms"] >= 0
+
+    def test_raise_path_records_exit_code_one_and_propagates(self, tmp_path: Path) -> None:
+        from little_loops.session_store import hook_event_context
+
+        db = tmp_path / "history.db"
+        with pytest.raises(ValueError):
+            with hook_event_context(db, session_id="s1", event_name="PreCompact"):
+                raise ValueError("boom")
+        rows = recent(db, kind="hook_event")
+        assert rows[0]["exit_code"] == 1
+
+    def test_host_provided_exit_code_wins(self, tmp_path: Path) -> None:
+        from little_loops.session_store import hook_event_context
+
+        db = tmp_path / "history.db"
+        with hook_event_context(db, session_id="s1", event_name="Stop") as completion:
+            completion.exit_code = 7
+        rows = recent(db, kind="hook_event")
+        assert rows[0]["exit_code"] == 7
+
+    def test_custom_matcher_script_propagation(self, tmp_path: Path) -> None:
+        from little_loops.session_store import hook_event_context
+
+        db = tmp_path / "history.db"
+        with hook_event_context(
+            db,
+            session_id="s1",
+            event_name="PostToolUse",
+            matcher="Edit|Write|MultiEdit",
+            script="little_loops.hooks.edit_batch_nudge",
+        ):
+            pass
+        rows = recent(db, kind="hook_event")
+        assert rows[0]["matcher"] == "Edit|Write|MultiEdit"
+        assert rows[0]["script"] == "little_loops.hooks.edit_batch_nudge"
+
+    def test_completion_stderr_preview_propagation(self, tmp_path: Path) -> None:
+        from little_loops.session_store import hook_event_context
+
+        db = tmp_path / "history.db"
+        with hook_event_context(db, session_id="s1", event_name="PostToolUse") as completion:
+            completion.stderr_preview = "some warning"
+        rows = recent(db, kind="hook_event")
+        assert rows[0]["stderr_preview"] == "some warning"
+
+    def test_best_effort_on_unopenable_db(self, tmp_path: Path) -> None:
+        """A db path that cannot be opened must not prevent the body from running."""
+        from little_loops.session_store import hook_event_context
+
+        ran = False
+        with hook_event_context(tmp_path, session_id=None, event_name="PostToolUse"):
+            ran = True
+        assert ran

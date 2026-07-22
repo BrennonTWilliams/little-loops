@@ -14,7 +14,14 @@ SCHEMA_URL = (
     "main/scripts/little_loops/config-schema.json"
 )
 
-_ANALYTICS_CAPTURE_KEYS = ("skills", "cli_commands", "corrections", "file_events", "usage_events")
+_ANALYTICS_CAPTURE_KEYS = (
+    "skills",
+    "cli_commands",
+    "corrections",
+    "file_events",
+    "usage_events",
+    "hooks",
+)
 
 
 @lru_cache(maxsize=1)

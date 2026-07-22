@@ -537,6 +537,7 @@ Per-category gating for analytics writes (ENH-1840). All categories default to e
 | `analytics.capture.corrections` | `bool` | `true` | Record user correction events into `user_corrections`. |
 | `analytics.capture.file_events` | `bool` | `true` | Record file-read/write events into `file_events`. When `false`, `ll-ctx-stats` will not have per-file byte data. |
 | `analytics.capture.usage_events` | `bool` | `true` | Capture real LLM token-usage events (input/output/cache tokens + derived cost) into `usage_events` (ENH-2461). Populated by both the `raw_events` backfill parser (`_backfill_usage_events`, historical rows, `state` always `NULL`) and the live per-invocation writer at loop-run finish (`state` populated, ENH-2724); disabling this flag skips the live writer's INSERTs. |
+| `analytics.capture.hooks` | `bool` | `true` | Capture per-fire hook telemetry (exit code, duration, stderr preview) into `hook_events` (ENH-2506). Absent-key configs still capture (forward-compat: read via `AnalyticsCaptureConfig`, not a raw dict lookup) — only an explicit `false` disables it. |
 | `analytics.capture.correction_patterns` | `list[str]` | `[]` | Additional regex patterns appended to the built-in correction detector. Built-ins always remain active; absent config leaves behavior unchanged. Patterns are raw regex strings. |
 
 **Example** — disable file-event recording:

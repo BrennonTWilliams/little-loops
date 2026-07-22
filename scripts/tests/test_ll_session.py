@@ -105,6 +105,20 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "usage"
 
+    def test_recent_subcommand_hook_event_accepted(self) -> None:
+        """ENH-2506: --kind hook_event must be a valid choice for recent."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "hook_event"]):
+            args = _parse_args()
+        assert args.kind == "hook_event"
+
+    def test_search_subcommand_hook_event_accepted(self) -> None:
+        """ENH-2506: --kind hook_event must be a valid choice for search."""
+        with patch(
+            "sys.argv", ["ll-session", "search", "--fts", "PostToolUse", "--kind", "hook_event"]
+        ):
+            args = _parse_args()
+        assert args.kind == "hook_event"
+
     def test_recent_subcommand_orchestration_run_accepted(self) -> None:
         """ENH-2492: orchestration_run is valid for recent and search."""
         from little_loops.session_store import VALID_KINDS
@@ -1169,6 +1183,52 @@ class TestSkillStatsAndNewKinds:
         out = capsys.readouterr().out
         assert "total=5" in out
         assert "env_label=local" in out
+
+    def test_recent_kind_hook_event_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_hook_event
+
+        db = tmp_path / "history.db"
+        record_hook_event(
+            db,
+            session_id="s1",
+            event_name="PostToolUse",
+            matcher="Write|Edit",
+            script="little_loops.hooks.post_tool_use",
+            exit_code=0,
+            duration_ms=12,
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "hook_event"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "PostToolUse" in out
+
+    def test_record_hook_event_subcommand_writes_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        with patch(
+            "sys.argv",
+            [
+                "ll-session",
+                "--db",
+                str(db),
+                "record-hook-event",
+                "--event-name",
+                "Stop",
+                "--exit-code",
+                "0",
+                "--duration-ms",
+                "5",
+            ],
+        ):
+            assert main_session() == 0
+        rows = recent(db, kind="hook_event")
+        assert len(rows) == 1
+        assert rows[0]["event_name"] == "Stop"
 
     def test_recent_kind_usage_outputs_row(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

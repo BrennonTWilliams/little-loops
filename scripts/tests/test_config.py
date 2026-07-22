@@ -1542,6 +1542,18 @@ class TestAnalyticsCaptureConfig:
         cfg = AnalyticsCaptureConfig.from_dict({"file_events": False})
         assert cfg.file_events is False
 
+    def test_hooks_true_default(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({})
+        assert cfg.hooks is True
+
+    def test_hooks_false_overrides(self) -> None:
+        from little_loops.config.features import AnalyticsCaptureConfig
+
+        cfg = AnalyticsCaptureConfig.from_dict({"hooks": False})
+        assert cfg.hooks is False
+
     def test_correction_patterns_default(self) -> None:
         from little_loops.config.features import AnalyticsCaptureConfig
 

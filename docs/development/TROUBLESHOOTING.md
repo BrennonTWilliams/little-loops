@@ -954,6 +954,31 @@ in release notes.
    which jq || apt install jq   # Linux
    ```
 
+### "Did this hook even fire?"
+
+**Symptom**: Suspect a hook silently failed, timed out, or never fired — no
+direct evidence either way.
+
+**Cause**: Every host-agnostic hook handler swallows exceptions internally
+(`with contextlib.suppress(Exception):` / bare `try/except Exception: pass`)
+so a failed hook still exits 0 and looks like success from the outside.
+
+**Solution**: query `hook_events` (ENH-2506) — one row per fire with
+`event_name`, `matcher`, `script`, `exit_code`, `duration_ms`, and a truncated
+`stderr_preview`:
+```bash
+ll-session recent --kind hook_event --limit 20
+ll-session recent --kind hook_event --json | jq 'map(select(.exit_code != 0))'
+```
+Requires `analytics.enabled: true` and `analytics.capture.hooks` not set to
+`false` (`.ll/ll-config.json`; the flag defaults to `true` when absent). No
+rows at all with a config confirmed correct usually means the dispatcher-level
+wrap in `hooks/__init__.py:main_hooks()` isn't seeing a resolvable config for
+the invoking cwd — check `resolve_config_path()` for that intent's `cwd`.
+`Stop`/`SessionEnd` are bash-only (never routed through `main_hooks()`) and
+are instead recorded by the `hooks/scripts/record-hook-event.sh` shim
+registered as a second `hooks.json` command.
+
 ### Hook timeout errors
 
 **Symptom**: "Hook exceeded timeout" or hook execution aborted

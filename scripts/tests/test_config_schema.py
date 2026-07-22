@@ -580,6 +580,10 @@ class TestConfigSchema:
         assert capture_props["file_events"]["type"] == "boolean"
         assert capture_props["file_events"]["default"] is True
 
+        assert "hooks" in capture_props
+        assert capture_props["hooks"]["type"] == "boolean"
+        assert capture_props["hooks"]["default"] is True
+
         assert "correction_patterns" in capture_props
         assert capture_props["correction_patterns"]["type"] == "array"
         assert capture_props["correction_patterns"]["items"]["type"] == "string"

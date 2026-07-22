@@ -7,7 +7,8 @@ scattered JSON/markdown sources the analyze-* skills read.
 Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
     recent   most recent rows for an event kind (tool, file, issue, loop, correction,
-             message, skill, cli, snapshot, commit, test_run, usage, orchestration_run)
+             message, skill, cli, snapshot, commit, test_run, usage, orchestration_run,
+             hook_event)
     skill-stats per-skill invocation/success-rate rollup (ENH-2460)
     backfill ingest on-disk sources into raw_events + issue/loop/commit tables (ENH-2581)
     rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
@@ -20,6 +21,7 @@ Subcommands:
     prune    delete compacted raw_events rows older than configured max-age and VACUUM (ENH-1906)
     recompress rewrite legacy uncompressed raw_events payloads as zlib BLOBs and VACUUM
     export   dump selected tables as JSONL for visualization or external tooling
+    record-hook-event  record one hook fire into hook_events; invoked by the bash shim (ENH-2506)
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ from little_loops.session_store import (
     rebuild,
     recent,
     recompress_raw_events,
+    record_hook_event,
     search,
 )
 from little_loops.user_messages import get_project_folder
@@ -336,6 +339,18 @@ Examples:
         help="Rows to rewrite per transaction (default: 2000)",
     )
     add_json_arg(recompress_parser)
+
+    record_hook_event_parser = subparsers.add_parser(
+        "record-hook-event",
+        help="Record one hook fire into hook_events (ENH-2506); invoked by the bash shim",
+    )
+    record_hook_event_parser.add_argument("--session-id", default=None, metavar="ID")
+    record_hook_event_parser.add_argument("--event-name", required=True, metavar="NAME")
+    record_hook_event_parser.add_argument("--matcher", default=None, metavar="PATTERN")
+    record_hook_event_parser.add_argument("--script", default=None, metavar="PATH")
+    record_hook_event_parser.add_argument("--exit-code", type=int, required=True, metavar="N")
+    record_hook_event_parser.add_argument("--duration-ms", type=int, default=None, metavar="N")
+    record_hook_event_parser.add_argument("--stderr-preview", default=None, metavar="TEXT")
 
     return parser
 
@@ -800,6 +815,26 @@ def main_session() -> int:
                     out.close()
             if out_path:
                 logger.success(f"Exported {count:,} records to {out_path}")
+            return 0
+
+        if args.command == "record-hook-event":
+            # Best-effort by design (ENH-2506): the bash shim must not fail the
+            # preceding hook's exit code just because telemetry couldn't be
+            # written. record_hook_event() already swallows DB errors; this
+            # branch additionally swallows any argument-shape surprise.
+            try:
+                record_hook_event(
+                    args.db,
+                    session_id=args.session_id,
+                    event_name=args.event_name,
+                    matcher=args.matcher,
+                    script=args.script,
+                    exit_code=args.exit_code,
+                    duration_ms=args.duration_ms,
+                    stderr_preview=args.stderr_preview,
+                )
+            except Exception:
+                logger.warning("record-hook-event: failed to write hook_events row")
             return 0
 
         return 1

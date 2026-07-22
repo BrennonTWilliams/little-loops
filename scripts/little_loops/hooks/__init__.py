@@ -35,6 +35,11 @@ exits with the handler's exit code. Today it routes:
 Future intent handlers will be wired by adding entries to the dispatch table
 in :func:`main_hooks`.
 
+Every dispatched call is wrapped in :func:`little_loops.session_store.hook_event_context`
+(ENH-2506), recording one ``hook_events`` row per fire (exit code, duration,
+stderr preview) gated on ``analytics.capture.hooks``. The wrap is best-effort
+and never alters the handler's exit code or exception propagation.
+
 Public exports:
     LLHookEvent: host-agnostic hook event payload
     LLHookResult: host-agnostic hook handler response
@@ -47,11 +52,58 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 __all__ = ["LLHookEvent", "LLHookResult", "main_hooks"]
+
+# Host event name each intent fires under, per hooks/hooks.json (ENH-2506).
+# Several intents share a host event (e.g. session_end fires as a secondary
+# SessionStart entry, not its own SessionEnd) — this maps the CLI intent
+# argument to the event_name recorded in hook_events for aggregate queries.
+_INTENT_EVENT_NAME = {
+    "pre_compact": "PreCompact",
+    "pre_compact_handoff": "PreCompact",
+    "session_start": "SessionStart",
+    "session_end": "SessionStart",
+    "user_prompt_submit": "UserPromptSubmit",
+    "post_tool_use": "PostToolUse",
+    "pre_tool_use": "PreToolUse",
+    "edit_batch_nudge": "PostToolUse",
+    "subagent_start": "SubagentStart",
+    "subagent_stop": "SubagentStop",
+}
+
+
+def _hooks_telemetry_enabled(cwd: Path) -> bool:
+    """True when ``analytics.enabled`` and ``analytics.capture.hooks`` both hold.
+
+    ``analytics.capture.hooks`` defaults to True when absent (forward-compat
+    for configs written before ENH-2506), so this reads it via
+    :class:`AnalyticsCaptureConfig` rather than a raw dict lookup. Best-effort:
+    any config-read failure disables telemetry rather than raising (EPIC-1707
+    graceful-degradation contract) — telemetry must never be the reason a
+    hook fails.
+    """
+    try:
+        from little_loops.config.core import resolve_config_path
+        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
+
+        config_path = resolve_config_path(cwd)
+        if config_path is None:
+            return False
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return False
+        if not feature_enabled(data, "analytics.enabled"):
+            return False
+        capture = AnalyticsCaptureConfig.from_dict(data.get("analytics", {}).get("capture", {}))
+        return capture.hooks
+    except Exception:
+        return False
+
 
 _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
@@ -144,7 +196,23 @@ def main_hooks() -> int:
         cwd=os.getcwd(),
         session_id=payload.get("session_id"),
     )
-    result = handler(event)
+    cwd = Path(event.cwd) if event.cwd else Path.cwd()
+    if _hooks_telemetry_enabled(cwd):
+        from little_loops.session_store import hook_event_context
+
+        with hook_event_context(
+            cwd / ".ll" / "history.db",
+            session_id=event.session_id,
+            event_name=_INTENT_EVENT_NAME.get(intent, intent),
+            matcher=str(payload.get("tool_name")) if payload.get("tool_name") else None,
+            script=f"little_loops.hooks.{intent}",
+        ) as completion:
+            result = handler(event)
+            completion.exit_code = result.exit_code
+            if result.feedback:
+                completion.stderr_preview = result.feedback
+    else:
+        result = handler(event)
     if result.stdout is not None:
         sys.stdout.write(result.stdout)
     if result.feedback:

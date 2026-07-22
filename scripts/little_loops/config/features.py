@@ -620,6 +620,7 @@ class AnalyticsCaptureConfig:
     corrections: bool = True
     file_events: bool = True
     usage_events: bool = True
+    hooks: bool = True
     correction_patterns: list[str] = field(default_factory=list)
 
     @classmethod
@@ -635,6 +636,7 @@ class AnalyticsCaptureConfig:
             corrections=data.get("corrections", True),
             file_events=data.get("file_events", True),
             usage_events=data.get("usage_events", True),
+            hooks=data.get("hooks", True),
             correction_patterns=correction_patterns,
         )
 

@@ -662,6 +662,67 @@ class TestHooksMainModule:
         assert rc == 0
         assert captured[0].session_id is None
 
+    def test_record_hook_event_in_dispatch(self, monkeypatch, tmp_path) -> None:
+        """ENH-2506: main_hooks() records one hook_events row when telemetry is enabled."""
+        import io
+        import json as _json
+
+        from little_loops import hooks as hooks_pkg
+        from little_loops.history_reader import recent_hook_events
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True)
+        (ll_dir / "ll-config.json").write_text(
+            _json.dumps({"analytics": {"enabled": True, "capture": {"hooks": True}}}),
+            encoding="utf-8",
+        )
+
+        def stub_handler(event) -> LLHookResult:
+            return LLHookResult(exit_code=0)
+
+        monkeypatch.setattr(hooks_pkg, "_dispatch_table", lambda: {"session_start": stub_handler})
+        monkeypatch.setattr(sys, "argv", ["little_loops.hooks", "session_start"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO(_json.dumps({"session_id": "sess-1"})))
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        rc = hooks_pkg.main_hooks()
+        assert rc == 0
+        rows = recent_hook_events(db=tmp_path / ".ll" / "history.db")
+        assert len(rows) == 1
+        assert rows[0].event_name == "SessionStart"
+        assert rows[0].exit_code == 0
+
+    def test_record_hook_event_skipped_when_capture_hooks_disabled(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """ENH-2506: an explicit analytics.capture.hooks: false disables telemetry."""
+        import io
+        import json as _json
+
+        from little_loops import hooks as hooks_pkg
+        from little_loops.history_reader import recent_hook_events
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True)
+        (ll_dir / "ll-config.json").write_text(
+            _json.dumps({"analytics": {"enabled": True, "capture": {"hooks": False}}}),
+            encoding="utf-8",
+        )
+
+        def stub_handler(event) -> LLHookResult:
+            return LLHookResult(exit_code=0)
+
+        monkeypatch.setattr(hooks_pkg, "_dispatch_table", lambda: {"session_start": stub_handler})
+        monkeypatch.setattr(sys, "argv", ["little_loops.hooks", "session_start"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO(_json.dumps({"session_id": "sess-1"})))
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        rc = hooks_pkg.main_hooks()
+        assert rc == 0
+        assert recent_hook_events(db=tmp_path / ".ll" / "history.db") == []
+
     def test_dispatch_table_merges_hook_intent_registry(self, monkeypatch) -> None:
         """_dispatch_table() merges _HOOK_INTENT_REGISTRY with built-ins; built-ins win on collision.
 

@@ -6965,6 +6965,10 @@ from little_loops.history_reader import (
     subagent_tree,           # ENH-2505
     subagent_retries,        # ENH-2505
     subagent_budget,         # ENH-2505
+    HookEvent,               # ENH-2506
+    recent_hook_events,      # ENH-2506
+    hook_failure_rate,       # ENH-2506
+    hook_latency_p95,        # ENH-2506
 )
 ```
 
@@ -7785,7 +7789,7 @@ Unified SQLite session store for `.ll/history.db`. Current schema version: **29*
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 29
+    SCHEMA_VERSION,        # 30
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -7801,6 +7805,8 @@ from little_loops.session_store import (
     record_session_lifecycle_event, # write a session_lifecycle_events row (ENH-2495)
     record_subagent_run_start, # write a running subagent_runs row from SubagentStart (ENH-2505)
     record_subagent_run_stop, # UPDATE ended_at/status/agent_transcript_path from SubagentStop (ENH-2505)
+    record_hook_event,     # write a hook_events row (ENH-2506)
+    hook_event_context,    # ctx manager: measures duration, records exit_code/stderr_preview on exit (ENH-2506)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -7858,6 +7864,43 @@ def skill_event_context(
 ```
 
 Skill-host analogue of `cli_event_context()` (ENH-2460): inserts a `skill_events` row on enter and updates `exit_code`, `success`, and `duration_ms` on exit. Yields a mutable `SkillEventCompletion` handle — hosts that observe a concrete process exit code (e.g. `ll-action invoke`) set `completion.exit_code` before the block exits; otherwise a clean exit records `exit_code=0, success=1` and a raise records `exit_code=1, success=0`. Best-effort per the EPIC-1707 contract: a missing/locked database never blocks the wrapped skill body.
+
+### hook_event_context
+
+```python
+@contextmanager
+def hook_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    session_id: str | None = None,
+    event_name: str = "",
+    matcher: str | None = None,
+    script: str | None = None,
+    config: dict | None = None,
+) -> Generator[HookEventCompletion, None, None]
+```
+
+Hook-fire analogue of `skill_event_context()` (ENH-2506): measures elapsed time with `time.monotonic()` and writes one `hook_events` row on exit via `record_hook_event()` — `exit_code`, `duration_ms`, `stderr_preview`. Yields a mutable `HookEventCompletion` handle; a clean exit records `exit_code=0`, a raise records `exit_code=1` (and re-raises — this wrap never alters the wrapped hook's exit code or exception propagation), and a caller that observes the paired handler's own `LLHookResult.exit_code` (e.g. `main_hooks()`) sets `completion.exit_code` explicitly before the block exits. Best-effort per the EPIC-1707 contract. `main_hooks()` (`hooks/__init__.py`) wraps every Python-dispatched intent with this single context manager around the `handler(event)` call, gated on `analytics.enabled` + `analytics.capture.hooks`; `Stop`/`SessionEnd` (bash-only, never routed through `main_hooks()`) are instead covered by the `hooks/scripts/record-hook-event.sh` shim, which calls `ll-session record-hook-event` directly.
+
+### record_hook_event
+
+```python
+def record_hook_event(
+    db_path: Path | str,
+    *,
+    ts: str | None = None,
+    session_id: str | None,
+    event_name: str,
+    matcher: str | None,
+    script: str | None,
+    exit_code: int | None,
+    duration_ms: int | None,
+    stderr_preview: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None
+```
+
+Write one `hook_events` row and index it in `search_index` with `kind="hook_event"` (ENH-2506). `stderr_preview` is truncated to 512 bytes. Best-effort: a missing/locked database logs and returns rather than raising. Live-write-only — no `_backfill_hook_events` exists, since the Claude Code host does not emit hook execution results into the transcript JSONL.
 
 ### record_commit_event
 

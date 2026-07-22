@@ -685,6 +685,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v27 | `session_lifecycle_events` | Session-lifecycle/handoff transitions: `(ts, session_id, event, detail JSON, head_sha, branch)`, no CHECK constraint on `event` so ENH-2509's `worktree_*` discriminators can share the table. Written best-effort by `record_session_lifecycle_event()` from three producers — `context-monitor.sh`'s first 80%-threshold crossing per pressure episode (`handoff_needed`, bash shell-out with `\|\| true`), `pre_compact.handle()` after state persistence (`compaction`), and `sweep_stale_refs.handle()` once per invocation including zero findings (`stale_ref_sweep`). First-write-only — no historical backfill. Enables `ll-session recent --kind session_lifecycle`, FTS, export, and `history_reader.recent_lifecycle_events()`/`handoff_frequency()` (ENH-2495). |
 | v28 | `subagent_runs` | Subagent (Task/Agent) spawn tree: `(ts, parent_session_id, agent_id, agent_type, agent_transcript_path, started_at, ended_at, status, head_sha, branch)`, `UNIQUE(parent_session_id, agent_id)` — `agent_id` is spawn-local (scoped to its parent session per the `SubagentStart`/`SubagentStop` documented payload), not a `sessions.session_id`, so a subagent's transcript is a *nested* file (`<parent-transcript-dir>/subagents/agent-<id>.jsonl`), never a joinable top-level session row. Written by the new `SubagentStart`/`SubagentStop` lifecycle hooks (`subagent_start.handle()`/`subagent_stop.handle()`) via `record_subagent_run_start()`/`record_subagent_run_stop()` — start is `INSERT OR IGNORE` (idempotent replay), stop is an `UPDATE` matching on the composite key. `_backfill_subagent_runs()` seeds historical rows from nested `subagents/*.jsonl` transcripts (all backfilled rows land as `status="completed"` — a persisted transcript implies the spawn finished; backfill cannot reconstruct `running`/`failed`/`timeout` after the fact). Enables `ll-session recent --kind subagent_run`, FTS, export, and `history_reader.subagent_tree()`/`subagent_retries()`/`subagent_budget()` (ENH-2505). |
 | v29 | `usage_events.run_id`, `idx_usage_events_run_id` | Nullable `TEXT` join key on `usage_events`, added via plain `ALTER TABLE` (no FK — `usage_events` stays an independent table joined at the application/query level per ARCHITECTURE-145). Schema-only slice decomposed from ENH-2721 (ENH-2723); populated on new rows by the live per-invocation writer at loop-run finish (`record_usage_event()`, ENH-2724). Historical rows stay `NULL` until backfilled (ENH-2725). |
+| v30 | `hook_events` | Per-fire hook execution telemetry: `(ts, session_id, event_name, matcher, script, exit_code, duration_ms, stderr_preview, head_sha, branch)`. Live-write-only — the Claude Code host does not emit hook execution results into the transcript JSONL, so there is no `raw_events` source and no `_backfill_hook_events`; excluded from `rebuild()`'s `_REBUILD_TABLES` (a wipe would be unrecoverable). Written by `hook_event_context()`, wrapped once around the `handler(event)` call inside `main_hooks()` (`hooks/__init__.py`) so every Python-dispatched intent is covered without per-handler edits; `Stop`/`SessionEnd` (bash-only, never reaching the Python dispatcher) are covered by the `hooks/scripts/record-hook-event.sh` shim instead. Gated on `analytics.enabled` + `analytics.capture.hooks` (default `true`). Enables `ll-session recent --kind hook_event` and `history_reader.recent_hook_events()`/`hook_failure_rate()`/`hook_latency_p95()` (ENH-2506). |
 
 Schema migration runs automatically; no manual `ll-session backfill` is needed for new tables. The `issue_sessions` VIEW requires `captured_at` populated on `issue_events` rows, which `ll-session backfill` seeds from on-disk sources for pre-v4 databases. As of ENH-1830, `session_start` automatically triggers an incremental backfill in a background thread, so new interactive session data is indexed without manual intervention.
 
@@ -729,7 +730,7 @@ sequenceDiagram
     participant ST as SQLiteTransport
     participant DB as history.db
 
-    SS->>DB: ensure_db() — bootstrap schema (v1–v26)
+    SS->>DB: ensure_db() — bootstrap schema (v1–v30)
     SS-->>DB: backfill_incremental() ingests JSONL into raw_events (background thread; --rebuild only when SCHEMA_VERSION > last_rebuild_version)
     PTU->>DB: tool_events / file_events (direct write, analytics.enabled)
     UPS->>DB: user_corrections / skill_events via record_correction() / record_skill_event()
@@ -754,7 +755,7 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v29 migrations) at session start |
+| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v30 migrations) at session start |
 | `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
 | `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. Once the session's message total crosses the 7,500-token soft threshold, `_maybe_soft_threshold_summary()` fires a background thread that bounds its input via `compaction.instant.evict_sink_and_window()` (always-on, structural, no LLM cost) and produces a 6-section (`compaction.instant.summarize_6_section()`) summary, updating the existing per-session condensed node in place — no schema change (FEAT-2598). |
 | `compaction.instant` / `compaction.result` | `compaction/instant.py`, `compaction/result.py` | StreamingLLM-style sink+window eviction, Letta-style sliding-window selection, and the `CompactResult` dataclass wrapper over `summary_nodes` rows. Manually triggerable via `ll-compact-session` (FEAT-2598). |
@@ -824,7 +825,7 @@ Any match across the three sets records the message as a correction. A fourth me
 - All hook writers wrap DB calls in `contextlib.suppress(Exception)` so a write failure never aborts a tool call
 - `SQLiteTransport.send()` is a no-op when `self._conn is None`
 
-> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v26) and CLI transport-wiring table.
+> **See also:** [Extension Architecture & Event Flow](#extension-architecture--event-flow) for the full schema-version table (v1–v30) and CLI transport-wiring table.
 
 ---
 

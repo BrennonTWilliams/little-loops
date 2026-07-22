@@ -39,6 +39,8 @@ Public API:
     record_loop_run_summary(db,...): write one row to ``loop_runs`` + search_index (ENH-2463)
     update_loop_run_diagnostics(db,...): link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_learning_test_event(db,...): UPSERT one Learning Test Registry record mirror (ENH-2466)
+    record_hook_event(db,...):   write one row to ``hook_events`` + search_index (ENH-2506)
+    hook_event_context(db,...):  hook-fire analogue of skill_event_context (ENH-2506)
 """
 
 from __future__ import annotations
@@ -100,6 +102,9 @@ __all__ = [
     "list_retirements",
     "record_learning_test_event",
     "record_session_lifecycle_event",
+    "record_hook_event",
+    "hook_event_context",
+    "HookEventCompletion",
 ]
 
 logger = logging.getLogger(__name__)
@@ -214,7 +219,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -234,6 +239,7 @@ VALID_KINDS: tuple[str, ...] = (
     "learning_test",
     "session_lifecycle",
     "subagent_run",
+    "hook_event",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -253,6 +259,7 @@ _KIND_TABLE = {
     "learning_test": "learning_test_events",
     "session_lifecycle": "session_lifecycle_events",
     "subagent_run": "subagent_runs",
+    "hook_event": "hook_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -911,6 +918,30 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE usage_events ADD COLUMN run_id TEXT;
     CREATE INDEX IF NOT EXISTS idx_usage_events_run_id ON usage_events(run_id);
     """,
+    # v30 (ENH-2506): hook execution telemetry. Live-write-only (see the
+    # Architectural Note in ENH-2506) — the Claude Code host does not emit hook
+    # execution results (exit code, duration, stderr) into the transcript
+    # JSONL, so there is no raw_events source to parse and no
+    # _backfill_hook_events. Excluded from _REBUILD_TABLES for the same
+    # reason a wipe would be unrecoverable.
+    """
+    CREATE TABLE IF NOT EXISTS hook_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        event_name TEXT NOT NULL,
+        matcher TEXT,
+        script TEXT,
+        exit_code INTEGER,
+        duration_ms INTEGER,
+        stderr_preview TEXT,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hook_event_name ON hook_events(event_name);
+    CREATE INDEX IF NOT EXISTS idx_hook_session ON hook_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_hook_exit ON hook_events(exit_code);
+    """,
 ]
 
 
@@ -1389,6 +1420,140 @@ def skill_event_context(
                 )
             finally:
                 conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Hook execution telemetry (ENH-2506)
+# ---------------------------------------------------------------------------
+
+_STDERR_PREVIEW_MAX = 512
+
+
+def record_hook_event(
+    db_path: Path | str,
+    *,
+    ts: str | None = None,
+    session_id: str | None,
+    event_name: str,
+    matcher: str | None,
+    script: str | None,
+    exit_code: int | None,
+    duration_ms: int | None,
+    stderr_preview: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None:
+    """Write one row to ``hook_events`` and index it in ``search_index``.
+
+    Live-write-only (ENH-2506): the Claude Code host does not emit hook
+    execution results into the transcript JSONL, so there is no backfill
+    source and no ``_backfill_hook_events``. Best-effort per the EPIC-1707
+    graceful-degradation contract — a missing or locked database is logged
+    and swallowed, never raised, mirroring :func:`skill_event_context`.
+    """
+    if stderr_preview is not None:
+        stderr_preview = stderr_preview[:_STDERR_PREVIEW_MAX]
+    ts = ts or _now()
+    effective_path = resolve_history_db(db_path)
+    try:
+        conn = connect(effective_path)
+    except sqlite3.Error:
+        logger.warning("record_hook_event: connect failed for %r", event_name, exc_info=True)
+        return
+    try:
+        conn.execute(
+            "INSERT INTO hook_events(ts, session_id, event_name, matcher, script, exit_code, "
+            "duration_ms, stderr_preview, head_sha, branch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                event_name,
+                matcher,
+                script,
+                exit_code,
+                duration_ms,
+                stderr_preview,
+                head_sha,
+                branch,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{event_name} {matcher or ''}".strip(),
+            kind="hook_event",
+            ref=session_id or "",
+            anchor=event_name,
+            ts=ts,
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning("record_hook_event: insert failed for %r", event_name, exc_info=True)
+    finally:
+        conn.close()
+
+
+@dataclass
+class HookEventCompletion:
+    """Mutable completion handle yielded by :func:`hook_event_context` (ENH-2506).
+
+    Callers that observe a concrete exit code (e.g. a bash shim capturing
+    ``$?``) set ``exit_code`` before the ``with`` block exits. Left untouched,
+    a clean exit records ``exit_code=0`` and a raised exception records
+    ``exit_code=1`` — mirroring :class:`SkillEventCompletion`.
+    """
+
+    exit_code: int | None = None
+    stderr_preview: str | None = None
+
+
+@contextmanager
+def hook_event_context(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    session_id: str | None = None,
+    event_name: str = "",
+    matcher: str | None = None,
+    script: str | None = None,
+    config: dict | None = None,
+) -> Generator[HookEventCompletion, None, None]:
+    """Measure and record one hook fire: ``exit_code``, ``duration_ms``, ``stderr_preview``.
+
+    Best-effort per the EPIC-1707 graceful-degradation contract (matching
+    :func:`skill_event_context`): a missing or locked database never blocks
+    the wrapped hook body, and this wrap must never alter the wrapped body's
+    exit code or swallow behavior — it only observes and records. Uses
+    ``time.monotonic()`` for duration (unlike ``cli_event_context``'s
+    ``time.time()``), since this measures elapsed wall-clock duration of a
+    single fire, not a timestamp.
+
+    The ``config`` parameter is a forward-compatibility gate for
+    ``analytics.capture.hooks``; the caller is expected to check the flag
+    before entering (mirroring the ``skill_event_context`` stub pattern) —
+    this function does not read config itself.
+    """
+    completion = HookEventCompletion()
+    start = time.monotonic()
+    ts = _now()
+    try:
+        yield completion
+        if completion.exit_code is None:
+            completion.exit_code = 0
+    except BaseException:
+        if completion.exit_code is None or completion.exit_code == 0:
+            completion.exit_code = 1
+        raise
+    finally:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        record_hook_event(
+            db_path,
+            ts=ts,
+            session_id=session_id,
+            event_name=event_name,
+            matcher=matcher,
+            script=script,
+            exit_code=completion.exit_code,
+            duration_ms=duration_ms,
+            stderr_preview=completion.stderr_preview,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -3753,10 +3918,11 @@ def recompress_raw_events(
 
 # Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
 # cli_events/file_events/test_run_events/issue_events/loop_events/commit_events/
-# issue_snapshots — those have no raw_events-backed _backfill_* path (they're
-# either live-write-only or sourced from .issues/.loops/git log, out of this
-# issue's scope; see ENH-2581 management plan). Wiping them here with no
-# re-derivation path would be unrecoverable data loss.
+# issue_snapshots/hook_events — those have no raw_events-backed _backfill_*
+# path (they're either live-write-only or sourced from .issues/.loops/git log,
+# out of this issue's scope; see ENH-2581 management plan). Wiping them here
+# with no re-derivation path would be unrecoverable data loss. hook_events in
+# particular has no transcript-JSONL source at all (ENH-2506).
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",

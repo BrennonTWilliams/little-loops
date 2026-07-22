@@ -1751,6 +1751,11 @@
               "default": true,
               "description": "Whether to capture real LLM token-usage events (input/output/cache tokens + derived cost) into usage_events (ENH-2461). Populated by both the raw_events backfill parser (historical rows, state always NULL) and the live per-invocation writer at loop-run finish (state populated, ENH-2724); disabling this flag skips the live writer's INSERTs."
             },
+            "hooks": {
+              "type": "boolean",
+              "default": true,
+              "description": "Capture per-fire hook telemetry into history.db (ENH-2506)."
+            },
             "correction_patterns": {
               "type": "array",
               "items": { "type": "string" },

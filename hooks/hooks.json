@@ -194,6 +194,16 @@
             "statusMessage": "Cleaning up session..."
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/record-hook-event.sh Stop hooks/scripts/session-cleanup.sh",
+            "timeout": 5,
+            "statusMessage": "Recording hook telemetry..."
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -204,6 +214,16 @@
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/scratch-cleanup.sh",
             "timeout": 5,
             "statusMessage": "Cleaning up scratch pad..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/record-hook-event.sh SessionEnd hooks/scripts/scratch-cleanup.sh",
+            "timeout": 5,
+            "statusMessage": "Recording hook telemetry..."
           }
         ]
       }

@@ -44,6 +44,7 @@ Use this when you want to query what happened in past sessions, inject historica
 | How often context handoff triggers / recent compaction events | `ll-session recent --kind session_lifecycle` |
 | Which subagents a session spawned, or which agent type oscillates | `ll-session recent --kind subagent_run` |
 | Which skills succeed vs. fail | `ll-session skill-stats` |
+| Whether a hook fired, its exit code, or how long it took | `ll-session recent --kind hook_event` |
 
 ---
 
@@ -51,7 +52,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 28, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 30, defined in `scripts/little_loops/session_store.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -84,8 +85,9 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v27 | ENH-2495 | `session_lifecycle_events` table (handoff/compaction/sweep transitions) |
 | v28 | ENH-2505 | `subagent_runs` table (subagent Task/Agent spawn tree) |
 | v29 | ENH-2723 | `run_id` column on `usage_events` |
+| v30 | ENH-2506 | `hook_events` table (per-fire hook execution telemetry) |
 
-v15–v18 and v20–v29 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v30 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -114,12 +116,14 @@ v15–v18 and v20–v29 are EPIC-2457 coverage expansions and related observabil
 | `learning_test_events` | Mirror of the Learning Test Registry (`.ll/learning-tests/*.md`): `record_id` (slugified target, unique), `target`, `status`, `assertions_json`, `date`, `raw_output_path`. Written best-effort by `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` (UPSERT — re-proves overwrite in place); reconciled from disk for out-of-band edits by `ll-session backfill`. Queryable via `ll-session recent --kind learning_test`, FTS search, and `history_reader.recent_learning_tests()`/`find_learning_test()` (ENH-2466, v26). |
 | `session_lifecycle_events` | Session-lifecycle/handoff transitions: `session_id`, `event` (`handoff_needed`/`compaction`/`stale_ref_sweep`, open TEXT — no CHECK constraint), `detail` (JSON), `head_sha`, `branch`. Written best-effort by `record_session_lifecycle_event()` from `context-monitor.sh` (80%-threshold crossing), `pre_compact.handle()` (after state persistence), and `sweep_stale_refs.handle()` (once per invocation, including zero findings). First-write-only — no historical backfill. Queryable via `ll-session recent --kind session_lifecycle`, FTS search, and `history_reader.recent_lifecycle_events()`/`handoff_frequency()` (ENH-2495, v27). |
 | `subagent_runs` | Subagent (Task/Agent) spawn tree: `parent_session_id`, `agent_id` (spawn-local — scoped to its parent, not a `sessions.session_id`), `agent_type`, `agent_transcript_path` (nested `<parent-transcript-dir>/subagents/agent-<id>.jsonl`), `started_at`, `ended_at`, `status` (`running`/`completed`/`failed`/`timeout`). Written by the `SubagentStart`/`SubagentStop` lifecycle hooks (`record_subagent_run_start()` INSERT OR IGNORE, `record_subagent_run_stop()` UPDATE, matching on the composite `(parent_session_id, agent_id)` key). Reconciled from disk for out-of-band spawns by `ll-session backfill` (all backfilled rows land as `status="completed"`). Queryable via `ll-session recent --kind subagent_run`, FTS search, and `history_reader.subagent_tree()`/`subagent_retries()`/`subagent_budget()` (ENH-2505, v28). |
+| `hook_events` | Per-fire hook execution telemetry: `event_name`, `matcher`, `script`, `exit_code`, `duration_ms`, `stderr_preview` (truncated to 512 bytes), `session_id`, `head_sha`, `branch`. Live-write-only — no `raw_events` source exists (the host doesn't emit hook execution results into the transcript), so there is no backfill and the table is excluded from `rebuild()`. Written by `hook_event_context()`, wrapped once around every Python-dispatched intent inside `main_hooks()`; `Stop`/`SessionEnd` (bash-only) go through the `hooks/scripts/record-hook-event.sh` shim instead. Queryable via `ll-session recent --kind hook_event`, FTS search, and `history_reader.recent_hook_events()`/`hook_failure_rate()`/`hook_latency_p95()` (ENH-2506, v30). |
 
 Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
 - `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording
 - `analytics.capture.corrections` (bool, default `true`) — gate `user_corrections` recording
 - `analytics.capture.skills` (array of glob patterns, default `["*"]`) — which skill names get recorded to `skill_events`; e.g. `["create-sprint", "manage-issue"]` records only those skills
 - `analytics.capture.cli_commands` (array of glob patterns, default `["*"]`) — which `ll-*` CLI command names get recorded to `cli_events`
+- `analytics.capture.hooks` (bool, default `true`) — gate `hook_events` recording (ENH-2506)
 - `analytics.capture.correction_patterns` (array of regex strings, default `[]`) — additional patterns appended to the built-in correction detector (built-ins always remain active; see [What Gets Recorded](#what-gets-recorded) for the full built-in list)
 
 ---
@@ -184,7 +188,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run` (the full list is sourced from `VALID_KINDS`).
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event` (the full list is sourced from `VALID_KINDS`).
 
 ### Most recent events
 

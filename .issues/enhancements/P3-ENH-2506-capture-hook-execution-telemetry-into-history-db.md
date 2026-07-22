@@ -3,17 +3,25 @@ id: ENH-2506
 title: Capture hook execution telemetry into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-22T18:37:58Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - hooks
-  - telemetry
-  - captured
+- enhancement
+- history-db
+- hooks
+- telemetry
+- captured
+decision_needed: false
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 15
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # ENH-2506: Capture hook execution telemetry into history.db
@@ -106,6 +114,21 @@ ends that.
 - `ll-session recent --kind hook_event` returns rows; aggregate
   queries (failure rate by event_name, p95 duration) become
   straightforward.
+
+## Impact
+
+- **Priority**: P3 - Fills a debugging dark area (no data on hook fires today)
+  but doesn't block any in-flight feature work; correctly deprioritized behind
+  active EPIC-2457 siblings.
+- **Effort**: Large - one schema migration, ~12 handler wraps (Python + bash
+  shim), 3 new read-API functions, a new CLI subcommand, and a wide test/doc
+  surface (see Integration Map); mostly mechanical, reusing the
+  `skill_event_context` best-effort pattern.
+- **Risk**: Low - the outer `hook_event_context` wrap is additive and
+  best-effort; it must not alter existing hook exit-code/swallow behavior
+  (see Acceptance Criteria) and `hook_events` is excluded from `rebuild()`'s
+  `_REBUILD_TABLES` so it can't be wiped by unrelated rebuild operations.
+- **Breaking Change**: No.
 
 ## Proposed Solution
 
@@ -825,6 +848,10 @@ commands (visual noise); bash hooks that exit early (e.g. on missing
 config) still emit a row, so the "fires / failures" rollup includes
 early-exit hooks.
 
+> **Selected:** Option A — per the stated recommendation (lower risk,
+> matches the existing two-command shape already used under
+> PostToolUse for `context-monitor.sh` + `session-capture.sh`).
+
 **Option B** — modify each bash script to call the shim inline at the
 end (or via a trap). Pros: only fires that actually reached the shim
 get recorded (cleaner signal); one edit per script. Cons: every bash
@@ -878,7 +905,7 @@ the end.
 
 ## Status
 
-**Open** | Created: 2026-07-06 | Priority: P3
+**Completed** | Created: 2026-07-06 | Completed: 2026-07-22 | Priority: P3
 
 ---
 
@@ -959,7 +986,123 @@ should run `ll-verify-des-audit` post-implementation and resolve any
 uncovered event types it surfaces (ENH-2475 adoption gate). Sibling
 ENH-2504 carries the same contract for `VerdictEventVariant`.
 
+---
+
+## Scope Boundary — Staleness Update (added by `/ll:refine-issue`, 2026-07-22)
+
+**Note**: Verified against current code (`scripts/little_loops/session_store.py`).
+The earlier Scope Boundary note above pinned `SCHEMA_VERSION` at **20** with an
+implied next slot of **v21**. That has since moved on — `SCHEMA_VERSION` is now
+**29**. Nine more migrations have landed on top of v20, none of them this
+issue's:
+
+- v21 (FEAT-2478) — OTel `gen_ai.*` addenda on `usage_events`
+- v22 (ENH-2492) — `orchestration_runs`
+- v23 (ENH-2463) — `loop_runs`
+- v24 (ENH-2497) — `agent_type` on `tool_events`
+- v25 (ENH-2511) — MCP fields on `tool_events`
+- v26 (ENH-2466) — `learning_test_events`
+- v27 (ENH-2495/ENH-2509) — `session_lifecycle_events`
+- v28 (ENH-2505) — `subagent_runs`
+- v29 (ENH-2723) — `run_id` on `usage_events`
+
+The **next available slot is v30, not v21**. Every hardcoded `21` / `assert
+SCHEMA_VERSION == 20` reference throughout this issue's Integration Map,
+Implementation Steps, and Wiring Phase sections is illustrative only — read
+the live constant at implementation time, per this issue's own existing
+instruction ("At implementation time, read the live `SCHEMA_VERSION` constant
+...").
+
+**ENH-2505 has landed** (this issue's own Scope Boundary above only
+anticipated it). `hooks/subagent_start.py` and `hooks/subagent_stop.py` now
+exist, each already wrapping its body in a blanket `try/except Exception:
+pass` and calling `record_subagent_run_start` / `record_subagent_run_stop`
+into `subagent_runs` (v28). This issue's dispatcher-level `hook_event_context`
+wrap must cover these two handlers for generic fire/exit_code/duration
+telemetry **without** touching or duplicating their existing `subagent_runs`
+writes — the two tables are orthogonal (`hook_events` = did the hook fire and
+how long did it take; `subagent_runs` = subagent lifecycle state), matching
+the coexistence contract this issue's ENH-2505 Scope Boundary note already
+committed to.
+
+**`main_hooks()` has no outer try/except today** — confirmed by direct read of
+`scripts/little_loops/hooks/__init__.py`: `handler(event)` is called with no
+surrounding `try` in `main_hooks()` itself; a raised (unswallowed) exception
+would propagate to process exit, not to a silent `exit_code=0`. The "outer
+try/except...swallows" behavior described in this issue's Summary lives
+**inside** individual handler files (e.g. `subagent_stop.py`'s
+`try/except Exception: pass`, `post_tool_use.py`'s two
+`contextlib.suppress(Exception)` blocks), not in the dispatcher. This matters
+for placement: the correct insertion point for a dispatcher-level
+`hook_event_context` wrap is around the `handler(event)` call inside
+`main_hooks()` (currently ~line 147 in `hooks/__init__.py`) — this is the one
+point every Python-dispatched intent funnels through uniformly, regardless of
+each handler's own internal suppress style. Confirmed separately: the `Stop`
+hook intent is **not** routed through `main_hooks()`/`_dispatch_table()` at
+all — `hooks/hooks.json` binds it directly to two raw bash scripts
+(`context-handoff-sentinel.sh`, `session-cleanup.sh`). This matches (and
+confirms) this issue's existing plan to cover `Stop`/`SessionEnd` only via the
+bash shim, not the Python dispatcher wrap.
+
+**Freshest `DES_VARIANTS` precedent**: `SubagentRunVariant`
+(`observability/schema.py`, ~line 508) is a fresher Channel-A direct-writer
+example than `SkillEventVariant` for modeling the new `HookEventVariant` —
+same shape (`@dataclass(frozen=True)` subclassing `DESVariant` with a
+`Literal` `type` field), grouped under the `# --- Channel A: Direct writers
+---` comment inside the `DES_VARIANTS` tuple (~line 627). No separate registry
+call needed; `DES_VARIANT_TYPES` auto-derives from each variant's `type`
+default.
+
+**Current `AnalyticsCaptureConfig` field list** (`config/features.py`,
+confirmed present today): `skills`, `cli_commands`, `corrections`,
+`file_events`, `usage_events`, `correction_patterns` — no `hooks` field yet,
+confirming the gap this issue proposes to fill is still open.
+
+**Freshest schema-migration test shape**: `TestSchemaV28`
+(`test_session_store.py`, ~line 5136) is the canonical 3-test pattern every
+recent schema version follows — `test_<table>_columns` (PRAGMA table_info
+column-set assertion), `test_v<N-1>_db_upgrades_gains_<table>` (bootstrap at
+prior version, `ensure_db`, assert table exists), `test_<kind>_is_kinded`
+(`VALID_KINDS`/`_KIND_TABLE` assertions). Model the new hook_events schema
+test class on this shape. Separately, `test_enh_2505_subagent_runs.py` (341
+lines) shows a standalone-test-file organization (one file per feature,
+covering lifecycle + hook-handler + backfill classes) as an alternative to
+spreading all new tests across `test_session_store.py` — worth considering
+given how large this issue's already-planned test surface is.
+
+---
+
+## Resolution
+
+Added `hook_events` table (v30 migration, `session_store.py`) plus
+`record_hook_event()`/`hook_event_context()` (best-effort, modeled on
+`skill_event_context`). Rather than wrapping 12+ individual handler files,
+wrapped the single `handler(event)` call site inside `main_hooks()`
+(`hooks/__init__.py`) — per this issue's own Staleness Update finding that
+this is the one point every Python-dispatched intent funnels through, gated
+on `analytics.enabled` + new `analytics.capture.hooks` (default `true`,
+plumbed through `AnalyticsCaptureConfig`/`init/core.py`/`config-schema.json`).
+`Stop`/`SessionEnd` are bash-only and never reach `main_hooks()`, so added
+`hooks/scripts/record-hook-event.sh` as a second `hooks.json` command
+(Option A) calling the new `ll-session record-hook-event` subcommand — fixed
+a jq gotcha along the way (`false // true` evaluates `true` in jq; switched
+to explicit `== true`/`== false` comparisons). Added read API
+(`recent_hook_events`, `hook_failure_rate`, `hook_latency_p95` in
+`history_reader.py`) and `ll-session recent --kind hook_event` (works for
+free via the existing `VALID_KINDS`-driven `--kind` choices). Confirmed no
+`HookEventVariant` DES registration was needed — `ll-verify-des-audit` passed
+clean, matching this issue's own Scope Boundary note that direct-DB writers
+outside `event_bus.emit()` aren't covered by the Phase 1 regex. Skipped the
+optional `hook-health` CLI rollup subcommand (explicitly called out as a
+follow-on in the issue). Full test suite: 15,836 passed, 38 skipped;
+`ruff check`, `ruff format --check` (this issue's files), `mypy`,
+`ll-verify-kinds`, and `ll-verify-des-audit` all clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-22T18:36:31Z - `8c7602a2-c2de-4699-ab9c-c9bd1d332cdd.jsonl`
+- `/ll:ready-issue` - 2026-07-22T17:57:14 - `3d09890c-6c55-4647-b3d3-5416dc9bef98.jsonl`
+- `/ll:decide-issue` - 2026-07-22T17:53:21 - `4dbf04e5-8049-4292-9d13-7edefc42830c.jsonl`
+- `/ll:refine-issue` - 2026-07-22T17:51:18 - `07d392c0-4fca-4549-b6ff-9aec46809803.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T18:49:45 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T18:48:50 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T14:03:02 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
