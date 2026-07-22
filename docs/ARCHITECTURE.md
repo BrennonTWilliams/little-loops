@@ -890,7 +890,10 @@ calls, normalizing responses into the same `ActionResult` shape the
 CLI-subprocess path returns. `FSMExecutor` selects between the two
 mechanisms per state via `state.request_path or
 orchestration_config.request_path` (`"cli"` default, `"sdk"`, or `"batch"`);
-see [API.md § little_loops.host_runner](reference/API.md#little_loopshost_runner)
+a configured `"sdk"`/`"batch"` value automatically downgrades to `"cli"` if
+`anthropic` is not importable or `ANTHROPIC_API_KEY` is unset (ENH-2737), so
+a run never hard-fails on a host that only has the CLI available; see
+[API.md § little_loops.host_runner](reference/API.md#little_loopshost_runner)
 for the dispatch function reference.
 for the per-host orchestration matrix and
 [API Reference — little_loops.host_runner](reference/API.md#little_loopshost_runner)

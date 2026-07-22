@@ -8465,7 +8465,10 @@ def poll_batch_result(*, batch_id, custom_id, poll_interval_seconds=5.0,
   (`fsm/executor.py`) are the sole production call sites, gated on
   `state.request_path or orchestration_config.request_path` resolving to
   `"sdk"`/`"batch"` for `action_mode == "prompt"` states. Default (`"cli"`)
-  behavior is unaffected.
+  behavior is unaffected. `_resolve_request_path()` additionally probes
+  `anthropic` importability and `ANTHROPIC_API_KEY` presence before returning
+  `"sdk"`/`"batch"`; if either probe fails it downgrades the resolved value
+  to `"cli"` so a missing package/key never hard-fails the run (ENH-2737).
 
 ### HostNotConfigured
 

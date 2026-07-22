@@ -1153,6 +1153,11 @@ Settings for the host CLI used by orchestration scripts (`ll-auto`, `ll-parallel
 | `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, or `"pi"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
 | `request_path` | `"cli"` | Dispatch mechanism for prompt-mode FSM states: `"cli"` (default, unchanged — CLI shell subprocess via `resolve_host()`), `"sdk"` (opt-in, calls the `anthropic` SDK's `messages.create()` directly — required for the F1 prompt-caching discount, since `cache_control` is unreachable over the CLI path), or `"batch"` (opt-in, submits via the Message Batches API for a flat 50% discount on input+output tokens, FEAT-2710). Per-state `StateConfig.request_path` overrides this default the same way `State.model` overrides `run_model`. |
 
+A configured `"sdk"`/`"batch"` value silently downgrades to `"cli"` at
+runtime if the `anthropic` package is not importable or `ANTHROPIC_API_KEY`
+is unset (ENH-2737), so those config blocks can go inert without a config
+change — the run still completes normally rather than hard-failing.
+
 `"batch"` trades latency for cost — results arrive asynchronously via
 submit → poll (exponential backoff, capped interval) → retrieve — so it's
 only suitable for latency-insensitive states/loops (e.g. `ll-auto` backlog

@@ -11,6 +11,7 @@ This module provides the execution engine that runs FSM loops:
 from __future__ import annotations
 
 import json
+import os
 import random
 import selectors
 import subprocess
@@ -2011,12 +2012,28 @@ class FSMExecutor:
         ``self.orchestration_config.request_path`` when unset. No
         ``orchestration_config`` (the default for executors not threaded with
         one) resolves to ``"cli"``, matching pre-FEAT-2716 behavior.
+
+        Before returning ``"sdk"``/``"batch"``, probes that the ``anthropic``
+        package is importable and ``ANTHROPIC_API_KEY`` is set; if either
+        probe fails, downgrades to ``"cli"`` so a missing package/key never
+        hard-fails the run (ENH-2737).
         """
         if state.request_path:
-            return state.request_path
-        if self.orchestration_config is not None:
-            return self.orchestration_config.request_path
-        return "cli"
+            resolved = state.request_path
+        elif self.orchestration_config is not None:
+            resolved = self.orchestration_config.request_path
+        else:
+            resolved = "cli"
+
+        if resolved in ("sdk", "batch"):
+            try:
+                import anthropic  # noqa: F401
+            except ImportError:
+                return "cli"
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                return "cli"
+
+        return resolved
 
     def _dispatch_live(
         self, state: StateConfig, action: str, ctx: InterpolationContext

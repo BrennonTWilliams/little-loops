@@ -9373,10 +9373,13 @@ class TestRequestPathDispatchWiring:
             },
         )
 
-    def test_request_path_sdk_calls_dispatch_not_cli(self) -> None:
+    def test_request_path_sdk_calls_dispatch_not_cli(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """request_path='sdk' at the orchestration level bypasses action_runner.run()."""
         from little_loops.config.orchestration import OrchestrationConfig
 
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         fsm = self._sdk_fsm()
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0, output="should not be used")
@@ -9405,10 +9408,13 @@ class TestRequestPathDispatchWiring:
         assert executor.prev_result is not None
         assert executor.prev_result["output"] == "hi from sdk"
 
-    def test_state_level_request_path_overrides_orchestration_default(self) -> None:
+    def test_state_level_request_path_overrides_orchestration_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """StateConfig.request_path='sdk' wins even when orchestration default is 'cli'."""
         from little_loops.config.orchestration import OrchestrationConfig
 
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         fsm = FSMLoop(
             name="test",
             initial="ask",
@@ -9467,10 +9473,13 @@ class TestRequestPathDispatchWiring:
         assert executor.prev_result is not None
         assert executor.prev_result["output"] == "cli output"
 
-    def test_request_path_batch_submits_polls_and_clears_tracker(self, tmp_path: Path) -> None:
+    def test_request_path_batch_submits_polls_and_clears_tracker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """request_path='batch' submits, polls to completion, and clears the tracker."""
         from little_loops.config.orchestration import OrchestrationConfig
 
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         fsm = self._sdk_fsm()
@@ -9505,11 +9514,14 @@ class TestRequestPathDispatchWiring:
         assert mock_runner.calls == []
         assert not (run_dir / "batch_id.json").exists()
 
-    def test_request_path_batch_resumes_without_double_submit(self, tmp_path: Path) -> None:
+    def test_request_path_batch_resumes_without_double_submit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """An existing batch_id.json is reused instead of submitting again."""
         from little_loops.config.orchestration import OrchestrationConfig
         from little_loops.fsm.batch_tracker import BatchTracker
 
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         tracker = BatchTracker(run_dir / "batch_id.json")
@@ -9541,11 +9553,14 @@ class TestRequestPathDispatchWiring:
         assert not mock_submit.called
         mock_poll.assert_called_once_with(batch_id="msgbatch_existing", custom_id="custom-existing")
 
-    def test_request_path_batch_timeout_leaves_tracker_for_resume(self, tmp_path: Path) -> None:
+    def test_request_path_batch_timeout_leaves_tracker_for_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A poll timeout returns a failed ActionResult and does not clear the tracker."""
         from little_loops import host_runner
         from little_loops.config.orchestration import OrchestrationConfig
 
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         fsm = self._sdk_fsm()
@@ -9576,3 +9591,71 @@ class TestRequestPathDispatchWiring:
         assert (run_dir / "batch_id.json").exists()
         assert executor.prev_result is not None
         assert executor.prev_result["exit_code"] == 1
+
+    def test_request_path_sdk_falls_back_to_cli_when_anthropic_not_importable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-2737: missing `anthropic` package downgrades sdk -> cli, run completes."""
+        import builtins
+
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "anthropic":
+                raise ImportError("No module named 'anthropic'")
+            return original_import(name, *args, **kwargs)
+
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch("builtins.__import__", side_effect=mock_import),
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            result = executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls == ["Say hi"]
+        assert result.terminated_by != "error"
+
+    def test_request_path_sdk_falls_back_to_cli_when_api_key_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-2737: missing ANTHROPIC_API_KEY downgrades sdk -> cli, run completes."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            result = executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls == ["Say hi"]
+        assert result.terminated_by != "error"

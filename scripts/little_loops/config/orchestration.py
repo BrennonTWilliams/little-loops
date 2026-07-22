@@ -80,6 +80,11 @@ class OrchestrationConfig:
     path, so ``"sdk"``/``"batch"`` must be explicitly opted into. ``"batch"``
     trades latency for cost — results arrive asynchronously via polling —
     so it is only suitable for latency-insensitive states/loops.
+
+    A configured ``"sdk"``/``"batch"`` value automatically downgrades to
+    ``"cli"`` at dispatch time (ENH-2737) if the ``anthropic`` package is not
+    importable or ``ANTHROPIC_API_KEY`` is unset, so a run never hard-fails
+    on a host that only has the CLI available.
     """
 
     host_cli: str | None = None
