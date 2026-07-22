@@ -99,6 +99,9 @@ states:
         echo 0
       fi
     action_type: shell
+    # BUG-2726: capture so ${captured.check_lifetime_limit.stderr} carries the
+    # real failure (e.g. a broken ll-issues refine-status) into the diagnose prompt.
+    capture: check_lifetime_limit
     # 0 = under lifetime cap → proceed; 1 = cap reached → invoke issue-size-review
     # Cap is commands.max_refine_count in ll-config.json (default: ${context.max_refine_count})
     evaluate:
@@ -119,6 +122,9 @@ states:
     # of re-bulldozing the first pass's improvements.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
+    # BUG-2726: capture so a killed refine (e.g. exit 143 SIGTERM) surfaces its
+    # exit code / output tail via ${captured.refine_issue.*} in the diagnose prompt.
+    capture: refine_issue
     next: check_decision_mid_refine
     on_error: diagnose
 
@@ -129,6 +135,8 @@ states:
     # additive-only (never removes content) and does not consume max_refine_count.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
+    # BUG-2726: capture the retry refine's failure context for the diagnose prompt.
+    capture: refine_followup
     next: check_decision_mid_refine
     on_error: diagnose
 
@@ -184,6 +192,12 @@ states:
     loop: oracles/verify-confidence-scores
     with:
       issue_id: "${captured.issue_id.output}"
+    # BUG-2726: capture the child event stream so the diagnose prompt has
+    # evidence for a confidence_check failure. A `loop:` capture is shaped
+    # {"output": <event-jsonl>, "exit_code": None} with NO `stderr` key
+    # (executor._execute_sub_loop), so the diagnose prompt falls back to
+    # ${captured.confidence_check.output} rather than a nonexistent `.stderr`.
+    capture: confidence_check
     on_success: check_readiness
     on_failure: diagnose
     on_error: diagnose
@@ -242,10 +256,24 @@ states:
           ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
           capture_output=True, text=True
       )
-      d = json.loads(r.stdout)
+      # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
+      # wrapper's own status) and exit 2 → verdict 'error' → on_error: diagnose.
+      # A bare json.loads traceback would exit 1 → verdict 'no' →
+      # check_decision_needed, misclassifying an infra failure as a low score.
+      if r.returncode != 0:
+          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
+          sys.exit(2)
+      try:
+          d = json.loads(r.stdout)
+      except (json.JSONDecodeError, ValueError):
+          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
+          sys.exit(2)
       sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
     action_type: shell
+    # BUG-2726: capture so ${captured.check_outcome.stderr} carries the inner
+    # ll-issues failure into the diagnose prompt.
+    capture: check_outcome
     evaluate:
       type: exit_code
     on_yes: done
@@ -282,6 +310,9 @@ states:
       printf '%s' "$N" > "$FILE"
       echo "$N"
     action_type: shell
+    # BUG-2726: capture so a counter-file failure surfaces via
+    # ${captured.check_refine_limit.stderr} in the diagnose prompt.
+    capture: check_refine_limit
     # target: 2 → allows 1 loopback per run (2 total refines: 1 initial + 1 retry)
     # Increase target to allow more retries (e.g. target: 3 = 3 total refines per run)
     # Budget exhaustion routes to breakdown_issue; lifetime cap enforced by check_lifetime_limit
@@ -317,11 +348,24 @@ states:
           ['ll-issues', 'show', '${captured.issue_id.output}', '--json'],
           capture_output=True, text=True
       )
-      d = json.loads(r.stdout)
+      # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
+      # wrapper's status) and exit 2 → verdict 'error' → on_error: diagnose,
+      # so ${captured.check_scores_from_file.stderr} carries it forward.
+      if r.returncode != 0:
+          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
+          sys.exit(2)
+      try:
+          d = json.loads(r.stdout)
+      except (json.JSONDecodeError, ValueError):
+          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
+          sys.exit(2)
       sys.exit(0 if int(d.get('confidence') or 0) >= readiness
                  and int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
     fragment: shell_exit
+    # BUG-2726: capture so ${captured.check_scores_from_file.stderr} carries the
+    # inner ll-issues failure into the diagnose prompt.
+    capture: check_scores_from_file
     on_yes: done
     on_no: breakdown_issue
     on_error: diagnose
@@ -329,6 +373,9 @@ states:
   breakdown_issue:
     action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
     action_type: slash_command
+    # BUG-2726: capture so a size-review failure surfaces via
+    # ${captured.breakdown_issue.*} in the diagnose prompt.
+    capture: breakdown_issue
     next: write_broke_down
     on_error: diagnose
 
@@ -342,17 +389,50 @@ states:
     terminal: true
 
   diagnose:
+    # BUG-2726: this prompt is reached via on_error/on_failure from 8+ states and
+    # from circuit.repeated_failure. It MUST diagnose from this run's concrete
+    # evidence — the failing state name, its exit code, its stderr/output — not
+    # confabulate from an unrelated earlier run. Every ${captured.*} ref uses the
+    # `?` nullable suffix because only the failing state's capture is populated on
+    # any given run; the rest resolve to '' instead of raising InterpolationError.
     action_type: prompt
     action: |
-      The refine-to-ready-issue loop has terminated with an unrecoverable failure.
+      The refine-to-ready-issue loop terminated with an unrecoverable failure.
+      Diagnose it using ONLY the concrete evidence from THIS run, captured below.
+      Do NOT infer from, open, or analyze any earlier run under .loops/.history/ —
+      confine your analysis to this run's run_dir.
 
-      Diagnose what happened:
-      - Report the issue ID being refined: ${captured.issue_id.output}
-      - Identify which state failed (resolve_issue, check_lifetime_limit, check_readiness, etc.).
-      - If the issue file exists, read its current status and last session log entry.
-      - Identify the most likely failure cause (e.g., issue not found, lifetime limit exceeded, size-review decomposed it).
+      This run's evidence:
+      - Issue being refined: ${captured.issue_id.output?}
+      - This run's directory: ${context.run_dir}
+      - Failing state: ${prev.state}
+      - Failing state exit code: ${prev.exit_code}
+      - Failing state output tail:
+      ${prev.output?}
 
-      Write a one-paragraph diagnostic summary the operator can use to re-run or inspect the issue.
+      Captured stderr by failure-source state (only the block for the failing
+      state above is populated; the others are intentionally blank):
+      - resolve_issue:          ${captured.issue_id.stderr?}
+      - check_lifetime_limit:   ${captured.check_lifetime_limit.stderr?}
+      - refine_issue:           ${captured.refine_issue.stderr?}
+      - refine_followup:        ${captured.refine_followup.stderr?}
+      - check_outcome:          ${captured.check_outcome.stderr?}
+      - check_refine_limit:     ${captured.check_refine_limit.stderr?}
+      - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
+      - breakdown_issue:        ${captured.breakdown_issue.stderr?}
+      - confidence_check (sub-loop — no stderr channel; event stream instead):
+      ${captured.confidence_check.output?}
+
+      Using the exit code and the stderr/output block for the failing state:
+      - A positive exit code such as 143 (128+15, SIGTERM) or 137 (128+9,
+        SIGKILL/OOM) means the action was KILLED EXTERNALLY — it does NOT mean
+        the state was never reached. Say so explicitly and quote the code.
+      - If the issue file exists, read its current status and last session-log entry.
+      - Name the most likely cause grounded in the evidence above (e.g. external
+        timeout kill, issue not found, lifetime cap reached, size-review decomposition).
+
+      Write a one-paragraph diagnostic summary, quoting the exit code and any
+      stderr verbatim, that the operator can act on to re-run or inspect the issue.
     next: failed
 
   failed:

@@ -156,23 +156,28 @@ _QUOTED_HEREDOC_START_RE = re.compile(r"<<-?\s*['\"](\w+)['\"]")
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 
 # Full-reference form, capturing the var name and the remainder up to the closing
-# brace so we can detect a `:default=` guard. A reference written as
-# `${captured.x.output:default=...}` is provably safe even on paths that bypass
-# the capturing state — the interpolation engine (interpolation.py) substitutes
-# the default when the path is missing — so it must NOT be flagged by the
-# capture-reachability check. _CAPTURED_REF_RE alone can't see the guard.
+# brace so we can detect a `:default=` or `?` guard. A reference written as
+# `${captured.x.output:default=...}` OR `${captured.x.output?}` is provably safe
+# even on paths that bypass the capturing state — the interpolation engine
+# (interpolation.py) substitutes the default (or "" for the `?` nullable suffix)
+# when the path is missing — so it must NOT be flagged by the capture-reachability
+# check. _CAPTURED_REF_RE alone can't see the guard.
 _CAPTURED_REF_FULL_RE = re.compile(r"\$\{captured\.(\w+)([^}]*)\}")
 
 
 def _unguarded_captured_refs(text: str) -> set[str]:
     """Return captured var names that have at least one reference WITHOUT a
-    `:default=` guard. Vars referenced only via `${captured.x...:default=...}`
-    are omitted: the default makes a missing value safe, so they should not
-    trigger missing-capture or bypass-path diagnostics.
+    `:default=` or `?` guard. Vars referenced only via
+    `${captured.x...:default=...}` or `${captured.x...?}` (nullable) are omitted:
+    both make a missing value safe (default substituted, or resolved to ""), so
+    they should not trigger missing-capture or bypass-path diagnostics. This is
+    the shared idiom for a state like refine-to-ready-issue's `diagnose` that is
+    reachable from many failure sources, only one of whose captures is populated
+    on any given run (BUG-2726).
     """
     refs: set[str] = set()
     for var_name, remainder in _CAPTURED_REF_FULL_RE.findall(text):
-        if ":default=" not in remainder:
+        if ":default=" not in remainder and not remainder.endswith("?"):
             refs.add(var_name)
     return refs
 

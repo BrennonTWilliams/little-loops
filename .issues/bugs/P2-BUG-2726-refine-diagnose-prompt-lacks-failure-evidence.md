@@ -3,9 +3,10 @@ id: BUG-2726
 title: refine-to-ready-issue diagnose prompt carries no failure evidence, producing
   confabulated wrong-run diagnoses
 type: BUG
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-21T22:10:00Z'
+completed_at: '2026-07-22T15:38:03Z'
 discovered_date: '2026-07-21'
 discovered_by: audit-loop-run
 labels:
@@ -233,8 +234,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   `${captured.confidence_check.output}` is populated, so the fallback logic in the
   rewritten `diagnose` prompt is exercised against the real shape rather than an
   assumption [Agent 3 finding].
-- `scripts/tests/test_general_task_loop.py` `test_diagnose_error_prompt_uses_run_dir`
-  (~lines 1977-1991) — a closer precedent than `test_continue_work_handles_oom_exit_code`
+- `scripts/tests/test_builtin_loops.py` `test_diagnose_error_prompt_uses_run_dir`
+  (line 1977) — a closer precedent than `test_continue_work_handles_oom_exit_code`
   for the new diagnose-prompt-content test: it asserts a specific `${context.run_dir}`
   substring is present (and a stale hardcoded path is absent) in a prompt state's
   `action` field — model the new `${prev.state}`/`${prev.exit_code}`/`${context.run_dir}`
@@ -262,8 +263,8 @@ _Wiring pass added by `/ll:wire-issue`:_
    raw-string-containment test asserting the new `diagnose.action` references
    `prev.exit_code`, `prev.state`, and `context.run_dir`, and that the 7 failure-source
    states carry `capture:` blocks (follows the pattern at
-   `scripts/tests/test_general_task_loop.py:test_diagnose_error_prompt_uses_run_dir`,
-   ~lines 1977-1991).
+   `scripts/tests/test_builtin_loops.py:test_diagnose_error_prompt_uses_run_dir`,
+   line 1977).
 6. Add a `test_fsm_executor.py` test confirming `_execute_sub_loop`'s captured-dict
    shape (`executor.py:967-974`) has no `stderr` key, so the `confidence_check`
    `${prev.output}` fallback added in step 2 is exercised against the real shape
@@ -274,22 +275,59 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] All 8 states that route to `diagnose` via `on_error` (`resolve_issue`,
+- [x] All 8 states that route to `diagnose` via `on_error` (`resolve_issue`,
       `check_lifetime_limit`, `refine_issue`, `confidence_check`, `check_outcome`,
       `check_refine_limit`, `check_scores_from_file`, `breakdown_issue`) have a
       `capture:` block, so `${captured.<name>.stderr}` resolves for each
-- [ ] `diagnose` prompt includes the failing state name (`${prev.state}`), exit code
+- [x] `diagnose` prompt includes the failing state name (`${prev.state}`), exit code
       (`${prev.exit_code}`), and stderr via `${captured.<name>.stderr}` (falling back to
       `${prev.output}` for `confidence_check`, which has no `.stderr` key)
-- [ ] `diagnose` prompt includes the current run ID / `run_dir` and instructs the
+- [x] `diagnose` prompt includes the current run ID / `run_dir` and instructs the
       session to analyze only that run
-- [ ] `check_outcome`/`check_scores_from_file`'s captured stderr reflects the real
+- [x] `check_outcome`/`check_scores_from_file`'s captured stderr reflects the real
       inner `ll-issues show` failure, not just the heredoc wrapper's exit status
-- [ ] A refine kill with exit 143 produces a diagnosis that cites exit 143 (add or
+- [x] A refine kill with exit 143 produces a diagnosis that cites exit 143 (add or
       extend a test/fixture asserting the interpolated prompt content)
 
 
+## Resolution
+
+Implemented Option B (2026-07-22). `scripts/little_loops/loops/refine-to-ready-issue.yaml`:
+
+- Added `capture:` to the 7 failure-source states that lacked one
+  (`check_lifetime_limit`, `refine_issue`, `refine_followup`, `confidence_check`,
+  `check_outcome`, `check_refine_limit`, `check_scores_from_file`,
+  `breakdown_issue`); `resolve_issue` already captured as `issue_id`. Note
+  `refine_followup` (a 9th on_error→diagnose source the issue's AC omitted) was
+  captured too for completeness.
+- Rewrote the `diagnose` prompt to interpolate `${prev.state}`, `${prev.exit_code}`,
+  `${prev.output?}`, `${context.run_dir}`, and a per-source `${captured.<name>.stderr?}`
+  block (confidence_check falls back to `${captured.confidence_check.output?}`, as its
+  sub-loop capture has no `.stderr` key). Every `${captured.*}` ref uses the `?`
+  nullable suffix because only the failing state's capture is populated per run.
+  The prompt now names `.loops/.history/` explicitly to confine analysis to the
+  current run and instructs that a positive exit code (143 SIGTERM / 137 SIGKILL)
+  means an external kill, not an unreached state.
+- Made `check_outcome` / `check_scores_from_file` heredocs forward the inner
+  `ll-issues show` stderr to `sys.stderr` and `sys.exit(2)` on real failure (verdict
+  `error` → `on_error: diagnose`), instead of a bare `json.loads` traceback exiting 1
+  (verdict `no` → misroute to `check_decision_needed`).
+
+Supporting change: `scripts/little_loops/fsm/validation.py` `_unguarded_captured_refs`
+now treats the `?` nullable suffix as a guard (like `:default=`), since a `?` ref
+provably cannot raise `InterpolationError` — this keeps the capture-reachability
+ratchet clean for the intentional multi-source `diagnose` state.
+
+Tests: `test_builtin_loops.py::TestRefineToReadyIssueSubLoop` (8 new: capture
+presence, prompt interpolation, nullable-ref invariant, run confinement, heredoc
+stderr surfacing, and an AC5 interpolation test rendering the real prompt with a
+143-SIGTERM context); `test_fsm_executor.py` (sub-loop capture shape has no
+`stderr` key); `test_fsm_validation.py` (`?`-nullable guard recognized). Full suite:
+15776 passed, 38 skipped.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-22T15:37:18 - `67b88634-4225-48a0-a702-ea88d0295b2d.jsonl`
+- `/ll:ready-issue` - 2026-07-22T15:21:41 - `56b39b50-3bd6-4abc-8bfb-a17468fdba18.jsonl`
 - `/ll:confidence-check` - 2026-07-22T15:04:56 - `2653913a-f368-4bcb-bc32-f13d389b9078.jsonl`
 - `/ll:wire-issue` - 2026-07-22T15:00:04 - `875f5fb8-22d9-406e-a187-4f979d7da6b3.jsonl`
 - `/ll:reconcile-issue` - 2026-07-22T14:53:30 - `df2bd37b-4e5c-47b0-b145-19160c6c691e.jsonl`

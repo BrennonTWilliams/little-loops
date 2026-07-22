@@ -2808,6 +2808,25 @@ class TestCaptureReachabilityValidation:
         errors = _validate_capture_reachability(fsm)
         assert errors == [], f"Guarded missing-capture should not error, got: {errors}"
 
+    def test_missing_capture_with_nullable_guard_no_error(self) -> None:
+        """BUG-2726: a never-captured var referenced only with the `?` nullable
+        suffix is not an error. The interpolation engine resolves a missing `?`
+        ref to "", so it is provably safe on bypass paths exactly like `:default=`.
+        This is the idiom a shared multi-source diagnose state relies on."""
+        fsm = FSMLoop(
+            name="test-nullable-missing",
+            initial="work",
+            states={
+                "work": make_state(
+                    action="echo ${captured.nonexistent.stderr?}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Nullable missing-capture should not error, got: {errors}"
+
     def test_mixed_guarded_and_unguarded_still_warns(self) -> None:
         """If ANY reference to a var is unguarded, the bypass WARNING still fires."""
         fsm = self._fsm_with_capture_and_ref(

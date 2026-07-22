@@ -5662,6 +5662,47 @@ class TestSubLoopExecution:
             f"Expected plain string 'ENH-999', got: {received_output!r}"
         )
 
+    def test_sub_loop_capture_shape_has_no_stderr_key(self, tmp_path: Path) -> None:
+        """BUG-2726: a `capture:`-bearing `loop:` state stores the child event
+        stream as {"output": <json-lines>, "exit_code": None} — it has NO
+        `stderr` key (executor `_execute_sub_loop`). This underpins the
+        refine-to-ready-issue `diagnose` prompt's confidence_check fallback:
+        ${captured.confidence_check.stderr} does not exist, so the prompt must
+        fall back to ${captured.confidence_check.output}."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "tiny-child.yaml").write_text(
+            "name: tiny-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo hi'\n"
+            "    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="tiny-child",
+                    capture="run_child",
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        cap = executor.captured.get("run_child", {})
+        assert "output" in cap, "sub-loop capture must carry the child event stream as output"
+        assert cap.get("exit_code") is None, "sub-loop capture exit_code is always None"
+        assert "stderr" not in cap, (
+            "sub-loop capture must NOT have a stderr key (BUG-2726 — the diagnose "
+            "prompt relies on this to justify the confidence_check .output fallback)"
+        )
+
     def test_sub_loop_missing_loop_with_on_error(self, tmp_path: Path) -> None:
         """Missing child loop routes to on_error when set."""
         loops_dir = tmp_path / ".loops"

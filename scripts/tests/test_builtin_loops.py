@@ -1311,6 +1311,158 @@ class TestRefineToReadyIssueSubLoop:
         state = data["states"].get("diagnose", {})
         assert not state.get("terminal", False)
 
+    # ------------------------------------------------------------------
+    # BUG-2726: diagnose must carry concrete failure evidence into its prompt
+    # instead of confabulating from an unrelated earlier run.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _diagnose_source_states(data: dict) -> dict:
+        """States that route into `diagnose` on failure (on_error / on_failure)."""
+        return {
+            name: st
+            for name, st in data["states"].items()
+            if st.get("on_error") == "diagnose" or st.get("on_failure") == "diagnose"
+        }
+
+    def test_diagnose_sources_all_carry_capture(self, data: dict) -> None:
+        """BUG-2726 AC1: every state that routes to `diagnose` on failure must
+        declare a `capture:` block so ${captured.<name>.stderr}/.output resolves
+        for the failing state (a diagnose prompt with no failure evidence
+        confabulates a diagnosis of an unrelated earlier run)."""
+        sources = self._diagnose_source_states(data)
+        # Sanity: the known failure-source set must be present so this test does
+        # not silently pass on an empty set if the routing is refactored away.
+        expected = {
+            "resolve_issue",
+            "check_lifetime_limit",
+            "refine_issue",
+            "confidence_check",
+            "check_outcome",
+            "check_refine_limit",
+            "check_scores_from_file",
+            "breakdown_issue",
+        }
+        assert expected <= set(sources), (
+            f"diagnose-source states changed; expected at least {expected}, got {set(sources)}"
+        )
+        missing = [name for name, st in sources.items() if not st.get("capture")]
+        assert not missing, (
+            f"States routing to diagnose without a capture: block: {missing} "
+            "(BUG-2726 — diagnose cannot surface their stderr/output without one)"
+        )
+
+    def test_diagnose_prompt_interpolates_failure_context(self, data: dict) -> None:
+        """BUG-2726 AC2/AC3: the diagnose prompt must interpolate the failing
+        state name, its exit code, and the current run dir — not just the issue
+        ID (models test_diagnose_error_prompt_uses_run_dir)."""
+        action = data["states"].get("diagnose", {}).get("action", "")
+        assert isinstance(action, str)
+        for ref in ("${prev.state", "${prev.exit_code", "${context.run_dir}"):
+            assert ref in action, (
+                f"diagnose prompt must interpolate {ref} so the diagnosis cites the "
+                "failing state / exit code / run dir instead of guessing (BUG-2726)"
+            )
+
+    def test_diagnose_prompt_surfaces_captured_stderr(self, data: dict) -> None:
+        """BUG-2726 AC2: the diagnose prompt must surface the captured stderr of
+        the failure-source states, with confidence_check (a sub-loop with no
+        .stderr key) falling back to its .output event stream."""
+        action = data["states"].get("diagnose", {}).get("action", "")
+        # resolve_issue captures under the `issue_id` key, not `resolve_issue`.
+        for cap in ("issue_id", "refine_issue", "check_outcome", "check_scores_from_file"):
+            assert f"${{captured.{cap}.stderr" in action, (
+                f"diagnose prompt must reference ${{captured.{cap}.stderr}} (BUG-2726)"
+            )
+        # confidence_check sub-loop has no stderr channel — fall back to output.
+        assert "${captured.confidence_check.output" in action, (
+            "diagnose prompt must fall back to ${captured.confidence_check.output} for "
+            "the confidence_check sub-loop, which has no .stderr key (BUG-2726)"
+        )
+
+    def test_diagnose_captured_refs_are_nullable(self, data: dict) -> None:
+        """BUG-2726: because `diagnose` is shared across 8+ failure sources, only
+        one capture is populated per run; every ${captured.<name>.*} ref in the
+        prompt must use the `?` nullable suffix (or :default=) so an unpopulated
+        capture resolves to '' instead of raising InterpolationError."""
+        action = data["states"].get("diagnose", {}).get("action", "")
+        refs = re.findall(r"\$\{captured\.[^}]*\}", action)
+        offenders = [
+            m for m in refs if not (m.rstrip("}").endswith("?") or ":default=" in m)
+        ]
+        assert not offenders, (
+            f"diagnose ${{captured.*}} refs must be nullable (?/:default=): {offenders} "
+            "(BUG-2726 — a bare ref to an unpopulated capture raises InterpolationError)"
+        )
+
+    def test_diagnose_prompt_confines_to_current_run(self, data: dict) -> None:
+        """BUG-2726: the diagnose prompt must explicitly confine analysis to the
+        current run (the reported bug analyzed an unrelated .loops/.history run)."""
+        action = data["states"].get("diagnose", {}).get("action", "").lower()
+        assert ".loops/.history" in action or "this run" in action, (
+            "diagnose prompt must instruct the session to analyze only the current "
+            "run (e.g. name .loops/.history to exclude, or say 'this run') — BUG-2726"
+        )
+
+    def test_check_outcome_surfaces_inner_stderr(self, data: dict) -> None:
+        """BUG-2726 AC4: check_outcome wraps `ll-issues show` in a heredoc; on a
+        real inner failure it must write the inner stderr to sys.stderr and exit
+        with an error code (>=2 → verdict 'error' → on_error: diagnose), not let
+        a bare json.loads traceback exit 1 (verdict 'no' → check_decision_needed,
+        misclassifying an infra failure as a low outcome score)."""
+        action = data["states"].get("check_outcome", {}).get("action", "")
+        assert "r.stderr" in action and "sys.stderr" in action, (
+            "check_outcome heredoc must forward the inner ll-issues stderr to "
+            "sys.stderr so ${captured.check_outcome.stderr} carries the real "
+            "failure (BUG-2726)"
+        )
+        assert "sys.exit(2" in action, (
+            "check_outcome must sys.exit(2+) on inner failure so it routes to "
+            "on_error: diagnose, not on_no (BUG-2726)"
+        )
+
+    def test_check_scores_from_file_surfaces_inner_stderr(self, data: dict) -> None:
+        """BUG-2726 AC4: same inner-stderr surfacing requirement as check_outcome."""
+        action = data["states"].get("check_scores_from_file", {}).get("action", "")
+        assert "r.stderr" in action and "sys.stderr" in action, (
+            "check_scores_from_file heredoc must forward the inner ll-issues "
+            "stderr to sys.stderr (BUG-2726)"
+        )
+        assert "sys.exit(2" in action, (
+            "check_scores_from_file must sys.exit(2+) on inner failure so it "
+            "routes to on_error: diagnose (BUG-2726)"
+        )
+
+    def test_diagnose_prompt_renders_sigterm_exit_code(self, data: dict) -> None:
+        """BUG-2726 AC5: a refine kill with exit 143 must produce a diagnose
+        prompt that cites exit 143 and the failing state — and the unpopulated
+        captures of the OTHER failure sources must resolve to '' (not raise),
+        proving the nullable-suffix design holds at interpolation time."""
+        from little_loops.fsm.interpolation import InterpolationContext, interpolate
+
+        action = data["states"]["diagnose"]["action"]
+        ctx = InterpolationContext(
+            context={"run_dir": ".loops/.runs/2026-07-21T214941-autodev"},
+            # Only refine_issue ran; every other failure-source capture is absent.
+            captured={
+                "issue_id": {"output": "ENH-2722", "stderr": "", "exit_code": 0},
+                "refine_issue": {
+                    "output": "…researching ENH-2722…",
+                    "stderr": "Terminated",
+                    "exit_code": 143,
+                },
+            },
+            prev={"state": "refine_issue", "exit_code": 143, "output": "…researching ENH-2722…"},
+        )
+        # Must not raise despite the 6+ unpopulated ${captured.*.stderr?} refs.
+        rendered = interpolate(action, ctx)
+        assert "143" in rendered, "diagnose prompt must cite the SIGTERM exit code 143 (BUG-2726)"
+        assert "refine_issue" in rendered, "diagnose prompt must name the failing state (BUG-2726)"
+        assert "2026-07-21T214941-autodev" in rendered, (
+            "diagnose prompt must cite the current run's run_dir (BUG-2726)"
+        )
+        assert "ENH-2722" in rendered
+
     def test_check_wire_done_state_exists(self, data: dict) -> None:
         """check_wire_done state must exist to gate wire_issue to once per run."""
         assert "check_wire_done" in data["states"], (
