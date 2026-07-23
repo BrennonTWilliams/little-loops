@@ -1273,7 +1273,15 @@ def find_issues(
         # slice is still correctly recognized as blocking or resolved.
         non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES
         all_active = find_issues(config, status_filter=set(non_terminal))
-        graph = DependencyGraph.from_issues(all_active)
+        all_known_ids: set[str] | None = None
+        try:
+            from little_loops.dependency_mapper import gather_all_issue_ids
+
+            issues_dir = config.project_root / config.issues.base_dir
+            all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+        except Exception:
+            pass
+        graph = DependencyGraph.from_issues(all_active, all_known_ids=all_known_ids)
         ready_ids = {info.issue_id for info in graph.get_ready_issues()}
         issues = [info for info in issues if info.issue_id in ready_ids]
 

@@ -680,6 +680,7 @@ class TestNextIssuesBlockedFilter:
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """A `status: done` blocker is filtered by find_issues default and unblocks the dependent."""
         _write_config(temp_project_dir, sample_config)
@@ -696,17 +697,69 @@ class TestNextIssuesBlockedFilter:
             blocked_by=["BUG-240"],
         )
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "next-issues", "--config", str(temp_project_dir)]
-        ):
-            from little_loops.cli import main_issues
+        with caplog.at_level("WARNING"):
+            with patch.object(
+                sys, "argv", ["ll-issues", "next-issues", "--config", str(temp_project_dir)]
+            ):
+                from little_loops.cli import main_issues
 
-            result = main_issues()
+                result = main_issues()
 
         out_lines = capsys.readouterr().out.strip().splitlines()
         assert result == 0
         # Done blocker → FEAT-140 is unblocked and listed.
         assert out_lines == ["FEAT-140"]
+        # BUG-2750: a done blocker resolves silently — no "unknown issue" noise.
+        assert "unknown issue" not in caplog.text
+
+    def test_include_blocked_done_blocker_no_unknown_warning(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """BUG-2750: `--include-blocked` must not warn on a `done`/`deferred`/`cancelled` blocker."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+        bugs_dir = self._setup_bugs_dir(temp_project_dir)
+
+        _make_issue(bugs_dir, "P0-BUG-241-done.md", "BUG-241: Done blocker", status="done")
+        _make_issue(
+            bugs_dir, "P0-BUG-242-deferred.md", "BUG-242: Deferred blocker", status="deferred"
+        )
+        _make_issue(
+            bugs_dir, "P0-BUG-243-cancelled.md", "BUG-243: Cancelled blocker", status="cancelled"
+        )
+        _make_issue(
+            features_dir,
+            "P2-FEAT-141-ready.md",
+            "FEAT-141: Blocked by terminal BUGs",
+            outcome_confidence=80,
+            confidence_score=80,
+            blocked_by=["BUG-241", "BUG-242", "BUG-243"],
+        )
+
+        with caplog.at_level("WARNING"):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-issues",
+                    "next-issues",
+                    "--include-blocked",
+                    "--config",
+                    str(temp_project_dir),
+                ],
+            ):
+                from little_loops.cli import main_issues
+
+                result = main_issues()
+
+        out_lines = capsys.readouterr().out.strip().splitlines()
+        assert result == 0
+        assert out_lines == ["FEAT-141"]
+        assert "unknown issue" not in caplog.text
 
 
 class TestNextIssuesBlockedFilterContract:

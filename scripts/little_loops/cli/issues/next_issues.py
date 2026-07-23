@@ -45,7 +45,15 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
         if not all_issues:
             return 1
 
-        graph = DependencyGraph.from_issues(find_issues(config))
+        all_known_ids: set[str] | None = None
+        try:
+            from little_loops.dependency_mapper import gather_all_issue_ids
+
+            issues_dir = config.project_root / config.issues.base_dir
+            all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+        except Exception:
+            pass
+        graph = DependencyGraph.from_issues(find_issues(config), all_known_ids=all_known_ids)
         blocked_by_map: dict[str, list[str]] = {
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in all_issues)

@@ -4,8 +4,9 @@ title: next-issue/next-issues log spurious "unknown issue" warnings for done/def
   blockers
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-23T21:34:34Z'
+completed_at: '2026-07-23T22:23:11Z'
 discovered_date: '2026-07-23'
 discovered_by: capture-issue
 relates_to:
@@ -204,6 +205,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 5. Verify: `python -m pytest scripts/tests/test_next_issue.py
    scripts/tests/test_next_issues.py scripts/tests/test_dependency_graph.py -v`.
 
+## Resolution
+
+Wired `all_known_ids` (via `gather_all_issue_ids()`, `try/except Exception`
+fallback to `None`, matching `issue_manager.py`'s canonical pattern) into the
+three bare `DependencyGraph.from_issues()` call sites:
+
+- `cli/issues/next_issue.py` (`--include-blocked` branch)
+- `cli/issues/next_issues.py` (`--include-blocked` branch)
+- `issue_parser.py` (`find_issues()`'s `skip_blocked=True` branch)
+
+Added regression tests asserting no `"unknown issue"` warning is logged for
+`done`/`deferred`/`cancelled` blockers, in both default and
+`--include-blocked` modes, for both `next-issue` and `next-issues`.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -213,6 +228,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `dependency-graph`, `captured`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T22:22:32Z - `7b6c2e62-4725-4fb4-87f3-dc132897cb9b.jsonl`
+- `/ll:ready-issue` - 2026-07-23T22:17:21 - `c9171cdd-195b-4402-a9ea-048da938ffd8.jsonl`
 - `/ll:refine-issue` - 2026-07-23T21:40:52 - `942918e6-b4f1-42b1-be48-5fcea493fffd.jsonl`
 - `/ll:confidence-check` - 2026-07-23T22:15:00 - `f0bf3f77-75c8-42f8-9e8e-95bc79a1f6f9.jsonl`
 - `/ll:capture-issue` - 2026-07-23T21:34:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b69a734-b6b5-46c0-956e-d8f616b1aa18.jsonl`
