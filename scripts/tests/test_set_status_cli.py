@@ -379,6 +379,73 @@ class TestIssuesCLISetStatus:
         assert "deferred_reason" not in fm
         assert "deferred_date" not in fm
 
+    # ── Closed-reason tests (ENH-2749) ─────────────────────────────
+
+    @pytest.mark.parametrize("target_status", ["done", "cancelled"])
+    def test_set_status_done_stamps_closed_reason(
+        self,
+        target_status: str,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """A done/cancelled transition with --reason already_fixed writes closed_reason."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                target_status,
+                "--reason",
+                "already_fixed",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("closed_reason") == "already_fixed"
+
+    def test_set_status_cancelled_without_reason_omits_closed_reason(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """A cancelled transition with no --reason writes nothing extra."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "set-status", "BUG-001", "cancelled", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert "closed_reason" not in fm
+
     def test_set_status_invalid_by_rejected(
         self,
         temp_project_dir: Path,
@@ -440,6 +507,78 @@ class TestIssuesCLISetStatus:
                 main_issues()
 
         assert exc_info.value.code == 2
+
+    def test_set_status_deferral_reason_rejected_on_done(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A deferral reason code passed with a done/cancelled status is rejected."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "done",
+                "--reason",
+                "blocked_by_unmet",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "deferral reason code" in captured.err.lower()
+
+    def test_set_status_closed_reason_rejected_on_deferred(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A closure reason code passed with a deferred status is rejected."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "deferred",
+                "--reason",
+                "already_fixed",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "closure reason code" in captured.err.lower()
 
     # ── Cascade tests ──────────────────────────────────────────────
 

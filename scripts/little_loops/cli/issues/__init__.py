@@ -779,10 +779,15 @@ Examples:
                 "gate_blocked",
                 "decision_unresolved",
                 "oversized_atomic",
+                "already_fixed",
             ],
             default=None,
             dest="reason",
-            help="Machine-readable reason code for an automation deferral",
+            help=(
+                "Machine-readable reason code: a deferral code for 'deferred' "
+                "transitions, or a closure code (e.g. already_fixed) for "
+                "'done'/'cancelled' transitions"
+            ),
         )
         add_config_arg(sst)
 

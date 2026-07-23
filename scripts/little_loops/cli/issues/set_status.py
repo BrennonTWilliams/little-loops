@@ -9,6 +9,18 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
+_DEFERRAL_REASON_CODES = frozenset(
+    {
+        "blocked_by_unmet",
+        "remediation_stalled",
+        "low_readiness",
+        "gate_blocked",
+        "decision_unresolved",
+        "oversized_atomic",
+    }
+)
+_CLOSED_REASON_CODES = frozenset({"already_fixed"})
+
 
 def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
     """Write a new status value into an issue's YAML frontmatter.
@@ -50,10 +62,23 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
         keys ENH-2535 already introduced for closure-context display; under
         ``deferred_by: automation`` the value is a machine enum code instead of
         free-text prose.
+
+        Writes ``closed_reason`` when moving to ``done``/``cancelled`` and a
+        ``--reason`` closure code was given, mirroring the deferral stamping
+        above so automation can record *why* an issue closed (e.g.
+        ``already_fixed``) the same way it records why one was deferred
+        (ENH-2749).
         """
         updates = {"status": status}
         if status == "done":
             updates["completed_at"] = _completed_at_now()
+            reason = getattr(args, "reason", None)
+            if reason:
+                updates["closed_reason"] = reason
+        elif status == "cancelled":
+            reason = getattr(args, "reason", None)
+            if reason:
+                updates["closed_reason"] = reason
         elif status == "deferred":
             updates["deferred_by"] = getattr(args, "by", None) or "human"
             updates["deferred_date"] = _completed_at_now()
@@ -73,6 +98,25 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
             print(
                 f"Error: --cascade is only valid when target status is done or "
                 f"cancelled, got '{args.status}'.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Validate --reason against the target status: deferral codes only apply to
+    # a `deferred` transition, closure codes only apply to `done`/`cancelled`.
+    reason = getattr(args, "reason", None)
+    if reason:
+        if reason in _DEFERRAL_REASON_CODES and args.status != "deferred":
+            print(
+                f"Error: --reason '{reason}' is a deferral reason code and only "
+                f"valid when target status is deferred, got '{args.status}'.",
+                file=sys.stderr,
+            )
+            return 1
+        if reason in _CLOSED_REASON_CODES and args.status not in ("done", "cancelled"):
+            print(
+                f"Error: --reason '{reason}' is a closure reason code and only "
+                f"valid when target status is done or cancelled, got '{args.status}'.",
                 file=sys.stderr,
             )
             return 1

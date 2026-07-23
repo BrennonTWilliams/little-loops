@@ -325,6 +325,21 @@ class TestParseCardFields:
         assert fields["closed_by"] == "implement"
         assert fields["closed_at"] == "2026-07-01T12:00:00Z"
 
+    def test_closed_reason_surfaces_via_closure_text(self, tmp_path: Path) -> None:
+        """closed_reason (ENH-2749) renders through the closure_text fallback chain
+        the same way closing_note/cancelled_reason/deferred_reason already do."""
+        path, config = self._write_issue(
+            tmp_path,
+            (
+                "---\nstatus: done\n"
+                "closed_reason: already_fixed\n"
+                "---\n# ENH-5108: T\n"
+            ),
+            "P3-ENH-5108-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["closure_text"] == "already_fixed"
+
     def test_relationships_fields_extracted(self, tmp_path: Path) -> None:
         """parent / relates_to / depends_on / blocked_by / blocks are surfaced."""
         path, config = self._write_issue(

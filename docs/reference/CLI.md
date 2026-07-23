@@ -1659,7 +1659,7 @@ Transition an issue to a new status value. Validates the target status against t
 | `--cascade` | Propagate status to issues with `parent: <EPIC-ID>` (EPIC closure only; only valid with `done`/`cancelled`). Only follows `parent:` edges — `relates_to:`, `blocked_by:`, and other relationship types are not traversed. |
 | `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
 | `--by <human\|automation>` | Who initiated a `deferred` transition (default: `human`). Stamped into `deferred_by`; no-op for other target statuses. |
-| `--reason <blocked_by_unmet\|remediation_stalled\|low_readiness\|gate_blocked\|decision_unresolved\|oversized_atomic>` | Machine-readable reason code for an automation `deferred` transition (ENH-2664; the last four codes are autodev's not-ready exits, added by ENH-2666/BUG-2734). Stamped into `deferred_reason`, reusing the same key ENH-2535 uses for closure-context prose. |
+| `--reason <code>` | Machine-readable reason code. Deferral codes (`blocked_by_unmet`, `remediation_stalled`, `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic`; ENH-2664, the last four added by ENH-2666/BUG-2734) are valid only with a `deferred` transition and stamp `deferred_reason`. Closure codes (`already_fixed`; ENH-2749) are valid only with a `done`/`cancelled` transition and stamp `closed_reason`, reusing the same key ENH-2535 introduced for closure-context prose. Passing a code with a mismatched target status is rejected (exit 1). |
 
 **Examples:**
 ```bash
@@ -1669,6 +1669,7 @@ ll-issues set-status FEAT-100 blocked
 ll-issues set-status EPIC-042 cancelled --cascade              # Close EPIC + defer children
 ll-issues set-status EPIC-042 done --cascade --cascade-to done # Close EPIC + all children
 ll-issues set-status ENH-999 deferred --by automation --reason blocked_by_unmet
+ll-issues set-status BUG-731 done --reason already_fixed        # Closed elsewhere; record why
 ```
 
 ---

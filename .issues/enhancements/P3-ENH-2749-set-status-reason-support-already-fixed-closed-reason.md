@@ -1,8 +1,9 @@
 ---
 id: ENH-2749
-status: open
+status: done
 captured_at: '2026-07-23T18:23:57Z'
 discovered_date: 2026-07-23
+completed_at: '2026-07-23T19:01:07Z'
 discovered_by: capture-issue
 decision_needed: false
 confidence_score: 95
@@ -188,11 +189,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
 |----------|-----------|
 | .claude/CLAUDE.md | Issue File Format § status values / closed_reason discriminator conventions |
 
+## Resolution
+
+Widened `--reason`'s argparse `choices=` to include `already_fixed` alongside the
+existing deferral codes, and added a `frozenset`-based split
+(`_DEFERRAL_REASON_CODES` / `_CLOSED_REASON_CODES`) in `set_status.py` to
+validate the code against the target status post-parse (Option B: `return 1` +
+stderr, matching the file's existing `--cascade` guard shape). `_status_updates()`
+now stamps `closed_reason` on `done`/`cancelled` transitions when `--reason` is
+given, mirroring the existing `deferred_reason` stamping. `show.py`'s
+`closure_text` fallback chain already read `closed_reason`, so no reader-side
+change was needed — verified with a new test.
+
+### Files Changed
+  - `scripts/little_loops/cli/issues/set_status.py`
+  - `scripts/little_loops/cli/issues/__init__.py`
+  - `scripts/tests/test_set_status_cli.py`
+  - `scripts/tests/test_show.py`
+  - `docs/reference/CLI.md`
+
 ## Status
 
-- [ ] Not started
+- [x] Complete
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T19:15:00 - see current session
+- `/ll:ready-issue` - 2026-07-23T18:54:25 - `894ce646-75f8-45b5-ab68-fdb35baf10dc.jsonl`
 - `/ll:confidence-check` - 2026-07-23T19:05:00 - `284c5279-747e-4286-b2dd-946e8a72270c.jsonl`
 - `/ll:wire-issue` - 2026-07-23T18:47:39 - `fa646d15-753f-442f-9158-3363453b45ac.jsonl`
 - `/ll:decide-issue` - 2026-07-23T18:40:25 - `ea4b683d-1cd4-4dbb-97f7-c533ec19a4b5.jsonl`
