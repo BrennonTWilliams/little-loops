@@ -46,6 +46,13 @@ UsageCallback = Callable[[int, int], None]
 # type — same mutable-closure precedent as peak_rss_mb (fsm/runners.py).
 ResultSeenCallback = Callable[[bool], None]
 
+# Session-ID detection callback: (session_id: str) -> None (FEAT-2711). The
+# `system`/`init` stream-json event carries `session_id` alongside `model`;
+# this was previously parsed and discarded. Same mutable-closure precedent as
+# on_model_detected — lets FSM callers key continuity-chain compaction to the
+# session that just ran without widening the CompletedProcess return type.
+SessionIdCallback = Callable[[str], None]
+
 
 @dataclass
 class TokenUsage:
@@ -307,6 +314,7 @@ def run_claude_command(
     automation_profile: str | None = None,
     post_stream_close_grace_seconds: int = 300,
     on_result_seen: ResultSeenCallback | None = None,
+    on_session_id_detected: SessionIdCallback | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -344,6 +352,9 @@ def run_claude_command(
             Lets callers distinguish an exit-143-after-result infra teardown
             (re-runnable) from a genuine mid-turn crash, without widening this
             function's CompletedProcess return type.
+        on_session_id_detected: Optional callback invoked with the host CLI's
+            `session_id` from the stream-json system/init event (FEAT-2711).
+            Called at most once per invocation, alongside on_model_detected.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -458,6 +469,8 @@ def run_claude_command(
                                     detected_model = event["model"]
                                     if on_model_detected:
                                         on_model_detected(event["model"])
+                                if event.get("session_id") and on_session_id_detected:
+                                    on_session_id_detected(str(event["session_id"]))
                                 continue  # don't add to stdout_lines
                             elif etype == "assistant":
                                 msg = event.get("message", {})

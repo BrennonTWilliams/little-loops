@@ -490,6 +490,32 @@ class TestDefaultActionRunnerSlashPath:
 
         assert captured_kwargs.get("model") == "claude-haiku-4-5-20251001"
 
+    def test_session_id_captured_on_action_result(self) -> None:
+        """A session_id surfaced via on_session_id_detected lands on ActionResult (FEAT-2711)."""
+        runner = DefaultActionRunner()
+        completed = self._make_completed_process()
+
+        def fake_run(**kwargs: object) -> subprocess.CompletedProcess[str]:
+            on_session_id_detected = kwargs.get("on_session_id_detected")
+            if on_session_id_detected:
+                on_session_id_detected("session-xyz")  # type: ignore[operator]
+            return completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=fake_run):
+            result = runner.run("/ll:skill", 60, True)
+
+        assert result.session_id == "session-xyz"
+
+    def test_session_id_none_when_undetected(self) -> None:
+        """ActionResult.session_id defaults to None when no init event fires the callback."""
+        runner = DefaultActionRunner()
+        completed = self._make_completed_process()
+
+        with patch("little_loops.fsm.runners.run_claude_command", return_value=completed):
+            result = runner.run("/ll:skill", 60, True)
+
+        assert result.session_id is None
+
     def test_working_dir_kwarg_forwarded(self, tmp_path: Path) -> None:
         """working_dir threads through to run_claude_command (ENH-2609)."""
         runner = DefaultActionRunner()

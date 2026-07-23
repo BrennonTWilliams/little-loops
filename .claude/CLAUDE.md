@@ -161,6 +161,7 @@ taxonomy, and the canonical shape live in
 | static `loop:` ref | ERROR | a state's static (non-`${...}`) `loop:` name resolves to no `.yaml`; blocks load. Use the full relative path (`loop: oracles/foo`) | — |
 | haiku-gen | WARN | a state's `model:` names a haiku variant but the state is a generator (not an evaluator/verdict state) — no MR-1 non-LLM-evaluator backstop for the cheaper model's output | `haiku_generator_ok` |
 | capture-reachability | WARN/ERROR | a `${captured.*}` reference whose capturing state doesn't dominate it (may run on a path that bypasses the capture), or references a never-captured var | `capture_reachability_ok` |
+| session-mode-eval | WARN | a `check_semantic`/`llm_structured` (or default-LLM-judged) state resolves to `session_mode: continue` (state override or loop default), breaking independent evaluator judgment (FEAT-2711) | `session_mode_ok` |
 
 The `loop-specialist` agent (`agents/loop-specialist.md`) diagnoses violations
 post-hoc as `self-evaluation bias` / `feature-stubbing`; these gates shift the

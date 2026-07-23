@@ -635,6 +635,11 @@ class StateConfig:
     learning: LearningConfig | None = None
     cost_ceiling: CostCeilingConfig | None = None
     pruning_profile: PruningProfileConfig | None = None
+    # FEAT-2711 continuity-chain marker: "fresh" (default) or "continue". State
+    # override of the loop-level default (FSMLoop.session_mode). "continue"
+    # injects the prior chained state's compact-summary into this state's
+    # prompt (fsm/executor.py); never crosses a handoff/spawn boundary.
+    session_mode: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -720,6 +725,8 @@ class StateConfig:
             result["cost_ceiling"] = self.cost_ceiling.to_dict()
         if self.pruning_profile is not None:
             result["pruning_profile"] = self.pruning_profile.to_dict()
+        if self.session_mode is not None:
+            result["session_mode"] = self.session_mode
 
         return result
 
@@ -809,6 +816,7 @@ class StateConfig:
             learning=learning,
             cost_ceiling=cost_ceiling,
             pruning_profile=pruning_profile,
+            session_mode=data.get("session_mode"),
             fragment_name=data.get("fragment_name"),
             fragment_bindings=data.get("fragment_bindings", {}),
             fragment_parameters={
@@ -1204,6 +1212,12 @@ class FSMLoop:
     # Loop-level default automation-context pruning profile (ENH-2714); state-level
     # StateConfig.pruning_profile overrides it. None (default) = full unpruned behavior.
     pruning_profile: PruningProfileConfig | None = None
+    # Loop-level default continuity-chain marker (FEAT-2711); state-level
+    # StateConfig.session_mode overrides it. None/"fresh" (default) preserves
+    # current fresh-session-per-state behavior exactly.
+    session_mode: str | None = None
+    # FEAT-2711 suppression flag: silences the evaluator-inherits-continuity warning.
+    session_mode_ok: bool = False
     meta_self_eval_ok: bool = False
     shared_state_ok: bool = False
     partial_route_ok: bool = False
@@ -1304,6 +1318,11 @@ class FSMLoop:
 
         if self.pruning_profile is not None:
             result["pruning_profile"] = self.pruning_profile.to_dict()
+
+        if self.session_mode is not None:
+            result["session_mode"] = self.session_mode
+        if self.session_mode_ok:
+            result["session_mode_ok"] = self.session_mode_ok
 
         if self.meta_self_eval_ok:
             result["meta_self_eval_ok"] = self.meta_self_eval_ok
@@ -1420,6 +1439,8 @@ class FSMLoop:
             host_guard=host_guard,
             prompt_size_guard=prompt_size_guard,
             pruning_profile=pruning_profile,
+            session_mode=data.get("session_mode"),
+            session_mode_ok=data.get("session_mode_ok", False),
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),
             shared_state_ok=data.get("shared_state_ok", False),
             partial_route_ok=data.get("partial_route_ok", False),

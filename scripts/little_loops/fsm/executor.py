@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.fsm.continuity import summarize_completed_state
 from little_loops.fsm.evaluators import (
     EvaluationResult,
     evaluate,
@@ -58,6 +59,7 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
+from little_loops.fsm.validation import _effective_session_mode
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import get_current_session_jsonl
@@ -270,6 +272,14 @@ class FSMExecutor:
 
         # Pending error payload from FATAL_ERROR signal (set by _run_action, checked by main loop)
         self._pending_error: str | None = None
+
+        # FEAT-2711: pending continuity-chain summary, produced by the last
+        # completed `session_mode: continue` state and consumed by the next
+        # chained state's prompt. None (default) = no injection, byte-identical
+        # to pre-FEAT-2711 behavior. Reset on chain break (a state resolving to
+        # session_mode: fresh), handoff, and rate-limit retry exhaustion — never
+        # crosses those boundaries.
+        self._continuity_summary: str | None = None
 
         # Per-state retry tracking for max_retries support.
         # _retry_counts[state_name] = number of consecutive re-entries into that state.
@@ -1528,6 +1538,24 @@ class FSMExecutor:
         action = interpolate(action_template, ctx)
         action_mode = self._action_mode(state)
 
+        # FEAT-2711: inject the prior chained state's continuity summary into
+        # this state's prompt when it resolves to session_mode: continue. Only
+        # prompt-mode states participate in the chain — a shell/mcp state
+        # sitting between two `continue` prompt states (e.g. a timeout-guard
+        # gate) is transparent to continuity and must not consume or clear the
+        # pending summary. A prompt-mode state resolving to `fresh` breaks the
+        # chain and discards it; `continue` consumes it (cleared here — this
+        # state produces its own replacement summary after it completes, see
+        # the post-execution block below).
+        _session_mode = _effective_session_mode(self.fsm, state)
+        if action_mode == "prompt":
+            if _session_mode == "continue" and self._continuity_summary:
+                action = (
+                    "## Continuity summary from the prior chained state\n\n"
+                    f"{self._continuity_summary}\n\n---\n\n{action}"
+                )
+            self._continuity_summary = None
+
         # FEAT-2671: record-only fragment-stability signal. Measured on the
         # pre-interpolation template (the closest analogue to a stable "skill
         # body") plus state.agent/state.tools, so per-call variable
@@ -1727,7 +1755,41 @@ class FSMExecutor:
                 elif signal.signal_type == "stop":
                     self.request_shutdown()
 
+        # FEAT-2711: produce this state's continuity summary for the next
+        # chained state to consume. Never crosses a handoff boundary — a
+        # handoff-triggering state's summary is discarded since the FSM either
+        # pauses or spawns a fresh continuation session from here.
+        if (
+            action_mode == "prompt"
+            and _session_mode == "continue"
+            and result.exit_code == 0
+            and result.session_id
+            and self._pending_handoff is None
+        ):
+            self._continuity_summary = self._compact_continuity_summary(result.session_id)
+
         return result
+
+    def _compact_continuity_summary(self, session_id: str) -> str | None:
+        """Synchronously backfill+compact a just-finished continuity-chain session.
+
+        Failures (missing transcript on disk, compaction error) are swallowed
+        to None — a continuity hop is a token-cost optimization, not a
+        correctness requirement; the next chained state simply runs without an
+        injected summary, same as ``session_mode: fresh``.
+        """
+        try:
+            from little_loops.config import BRConfig
+
+            raw_config = BRConfig(self.working_dir or Path.cwd())._raw_config
+            compacted = summarize_completed_state(
+                session_id,
+                working_dir=self.working_dir,
+                config=raw_config,
+            )
+        except Exception:
+            return None
+        return compacted.summary_text if compacted is not None else None
 
     def _run_subprocess(
         self,
@@ -2597,6 +2659,10 @@ class FSMExecutor:
         return the routed target. Pops the per-state record and is called only
         once the wall-clock budget is spent.
         """
+        # FEAT-2711: retry-exhaustion resets continuity — the exhausted state's
+        # session may be incomplete/errored, so its would-be summary must not
+        # carry into whatever state is routed to next.
+        self._continuity_summary = None
         self._rate_limit_retries.pop(state_name, None)
         target = state.on_rate_limit_exhausted or state.on_error
         self._emit(
@@ -2637,6 +2703,9 @@ class FSMExecutor:
         if record["retries"] >= _DEFAULT_API_ERROR_RETRIES:
             self._api_error_retries.pop(state_name, None)
             self._emit("api_error_exhausted", {"state": state_name, "retries": record["retries"]})
+            # FEAT-2711: hard-error exhaustion resets continuity, same rationale
+            # as _exhaust_rate_limit.
+            self._continuity_summary = None
             return False, None
         record["retries"] += 1
         slept = self._interruptible_sleep(_DEFAULT_API_ERROR_BACKOFF)
@@ -2797,6 +2866,10 @@ class FSMExecutor:
                 "continuation": signal.payload,
             },
         )
+
+        # FEAT-2711: continuity never crosses a handoff boundary — the
+        # continuation always starts a fresh host session.
+        self._continuity_summary = None
 
         # Invoke handler if configured
         if self.handoff_handler:

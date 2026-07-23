@@ -268,6 +268,12 @@ states:
   tech_research:
     action_type: prompt
     timeout: 600
+    # FEAT-2711: continues into design_artifacts (across the check_research_written
+    # shell gate, which is transparent to continuity — see fsm/executor.py). This
+    # is the step-0 gate's named chain: design_artifacts otherwise re-reads the
+    # spec + research.md from scratch to rebuild the same understanding this state
+    # already derived.
+    session_mode: continue
     action: |
       Analyze the project spec and research technology decisions. Write `docs/research.md`
       containing:
@@ -318,6 +324,10 @@ states:
   design_artifacts:
     action_type: prompt
     timeout: 600
+    # FEAT-2711: consumes tech_research's continuity summary (injected ahead of
+    # this prompt), then breaks the chain — commit_design doesn't need
+    # design_artifacts's own reasoning re-derived, just its file output.
+    session_mode: continue
     action: |
       Using the spec and technology research, create the following design artifacts:
       1. `docs/data-model.md` — key entities with fields, types, relationships, constraints

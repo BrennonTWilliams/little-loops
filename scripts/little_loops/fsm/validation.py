@@ -240,6 +240,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "unsafe_context_interpolation_ok",
         "pruning_profile",
         "pruning_profile_ok",
+        "session_mode",
+        "session_mode_ok",
         "haiku_generator_ok",
         "capture_reachability_ok",
         "import",
@@ -1320,6 +1322,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_llm_evidence_contract(fsm))
     errors.extend(_validate_haiku_pinned_generator(fsm))
+    errors.extend(_validate_session_mode_evaluator_inheritance(fsm))
 
     return errors
 
@@ -2212,6 +2215,66 @@ def _validate_haiku_pinned_generator(fsm: FSMLoop) -> list[ValidationError]:
                     "(ENH-2713)"
                 ),
                 path=f"states.{state_name}.model",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
+
+
+def _effective_session_mode(fsm: FSMLoop, state: StateConfig) -> str:
+    """Resolve the effective session_mode for a state: state override, then loop default.
+
+    Mirrors ``_effective_pruning_profile``'s two-level resolution. Defaults to
+    "fresh" when neither the state nor the loop sets it (FEAT-2711).
+    """
+    if state.session_mode is not None:
+        return state.session_mode
+    return fsm.session_mode or "fresh"
+
+
+def _validate_session_mode_evaluator_inheritance(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule (FEAT-2711): an evaluator state must not inherit session continuity.
+
+    A ``check_semantic``/``llm_structured`` evaluator state that resolves to
+    ``session_mode: continue`` (via its own override or the loop-level
+    default) sees the prior chained state's compact-summary injected into its
+    prompt. This breaks MR-1-style evaluator independence — the FSM's design
+    point is that evaluator verdicts are judged fresh, not primed by a prior
+    state's reasoning. Evaluator states must default to `fresh` regardless of
+    the loop's continuity-chain default.
+
+    Requires an *explicit* ``evaluate: {type: check_semantic|llm_structured}``
+    block (same guard as MR-8's ``_validate_llm_evidence_contract``) rather
+    than the broader ``_is_llm_judged`` heuristic — a bare prompt-mode
+    generator state with unconditional ``next:`` routing and no ``evaluate:``
+    block (e.g. a plain "write this file" step) is not itself graded by any
+    judge and is exactly the kind of state a continuity chain targets, so it
+    must not be flagged here.
+
+    Suppressed by ``session_mode_ok: true`` at the loop top-level.
+    """
+    if fsm.session_mode_ok:
+        return []
+    errors: list[ValidationError] = []
+    for state_name, state in fsm.states.items():
+        if state.evaluate is None or state.evaluate.type not in (
+            "llm_structured",
+            "check_semantic",
+        ):
+            continue
+        if _effective_session_mode(fsm, state) != "continue":
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] check_semantic/llm_structured evaluator "
+                    "inherits session_mode: continue — the prior chained state's "
+                    "compact-summary would be injected into this evaluator's prompt, "
+                    "breaking MR-1-style independent judgment. Set `session_mode: "
+                    "fresh` on this state, or `session_mode_ok: true` at the loop "
+                    "top-level to suppress. (FEAT-2711)"
+                ),
+                path=f"states.{state_name}.session_mode",
                 severity=ValidationSeverity.WARNING,
             )
         )

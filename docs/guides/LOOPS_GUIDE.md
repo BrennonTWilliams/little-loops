@@ -630,6 +630,32 @@ states:
 
 A `pruning_profile:` at the loop level sets the default for every state; a state-level `pruning_profile:` overrides it. Declaring the profile sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process environment, which automation-aware hooks (`session_start.py`, `history_context.py`) check to suppress their own static-prefix output — this part applies on every host regardless of `ll-doctor` capability confirmation. Unconfirmed hosts no-op cleanly on `suppress_catalog`/`suppress_claude_md` rather than erroring. Run `ll-doctor` to check which capabilities your configured host supports before relying on the narrowing flags.
 
+### Continuity Chains
+
+Every state runs as an independent, fresh host session by default — a genuine sequential reasoning chain (plan → implement on the same issue) re-derives the same understanding at each hop. `session_mode: continue` carries that understanding forward as a compact, assistant-inclusive summary of the prior chained state, injected into the next state's prompt — opt-in, default `fresh`:
+
+```yaml
+name: design-then-build
+session_mode: fresh          # loop-level default (explicit here; fresh is already the default)
+states:
+  tech_research:
+    action: /ll:research-approach
+    action_type: prompt
+    session_mode: continue   # state-level override — this state's summary carries forward
+    next: design_artifacts
+  design_artifacts:
+    action: /ll:write-design ${captured.tech_research.output}
+    action_type: prompt
+    session_mode: continue   # consumes tech_research's summary, produces its own
+    next: done
+  done:
+    terminal: true
+```
+
+A state resolving to `continue` has the *prior* chained state's summary prepended to its prompt (silently, no action needed beyond setting `session_mode:`), then produces its own summary for whichever state runs next. The chain breaks the moment a state resolves to `fresh` (explicitly, or by omission when there's no loop-level default) — nothing carries past it. Continuity never crosses a [handoff](#handoff-behavior) boundary (the continuation always starts a fresh session) and resets whenever rate-limit or API-error retries are exhausted.
+
+Because summary injection primes the model with the prior state's own conclusions, an evaluator state (`check_semantic`/`llm_structured`, or any default-LLM-judged prompt state) that inherits `continue` loses independent judgment — the FSM's `validate` step warns on this (suppress with `session_mode_ok: true` at the loop top-level for the rare intentional case).
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**. Set `on_handoff` at the loop level (not per state):

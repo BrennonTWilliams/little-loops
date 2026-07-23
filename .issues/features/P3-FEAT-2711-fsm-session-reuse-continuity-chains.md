@@ -3,7 +3,7 @@ id: FEAT-2711
 type: FEAT
 title: FSM session reuse for continuity-of-reasoning state chains
 priority: P3
-status: open
+status: in_progress
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -418,26 +418,28 @@ Codebase Research Findings above for exact current line numbers.
 
 ## Acceptance Criteria
 
-- [ ] Gate (step 0) documented in this issue: named chain + estimated
+- [x] Gate (step 0) documented in this issue: named chain + estimated
       re-derivation saving — satisfied (`rn-build.yaml`:
       `tech_research` → `design_artifacts`).
-- [ ] `run_claude_command()`'s stream-json parser exposes the `system`/`init`
+- [x] `run_claude_command()`'s stream-json parser exposes the `system`/`init`
       event's `session_id` (previously discarded) to FSM callers.
-- [ ] The FEAT-2747 compaction function (joining `message_events` +
+- [x] The FEAT-2747 compaction function (joining `message_events` +
       `assistant_messages`) is wired in to produce a continuity summary per
       completed state — not a bare unmodified call to `compact_session()`/
       `compact_result_for_session()`, which the spike proved summarizes only
       the already-known prompt, not the state's reasoning.
-- [ ] The continuity summary is interpolated into the next chained state's
+- [x] The continuity summary is interpolated into the next chained state's
       prompt in `fsm/executor.py`; default behavior (no injection) unchanged
       when continuity is not configured on a state.
-- [ ] Continuity never crosses a handoff/spawn boundary and resets on hard
+- [x] Continuity never crosses a handoff/spawn boundary and resets on hard
       error/retry exhaustion.
-- [ ] Validation warns when an evaluator (`check_semantic`/`llm_structured`)
+- [x] Validation warns when an evaluator (`check_semantic`/`llm_structured`)
       state inherits continuity.
 - [ ] Measured total-token (not just prefix) delta on the locked
       `rn-build.yaml` chain trace, including the added summarization-call
-      cost, recorded before close.
+      cost, recorded before close. **Deferred**: requires a live paid
+      `ll-loop run rn-build` comparison (real host-CLI invocations); not run
+      autonomously in this session pending user go-ahead (see Session Log).
 
 ## Impact
 
@@ -485,6 +487,33 @@ _Added by `/ll:spike` on 2026-07-21_
 **Promotion**: move `session_id_capture.py` (as an addition to `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new `fsm`-side helper) to `scripts/little_loops/spike/fsm_continuity_compaction/` in a separate PR, alongside a rewritten Integration Map that adds the assistant-inclusive summarization path this spike shows is actually needed.
 
 ## Session Log
+- `/ll:manage-issue` (implement) - 2026-07-23 - Implemented Option B end-to-end:
+  `SessionIdCallback`/`on_session_id_detected` in `subprocess_utils.py`;
+  `ActionResult.session_id` threaded through `fsm/runners.py`; new
+  `fsm/continuity.py` (`summarize_completed_state`, promoted from the spike,
+  calling FEAT-2747's `compact_result_for_session_with_reasoning`);
+  `StateConfig.session_mode`/`FSMLoop.session_mode`+`session_mode_ok` schema
+  fields; `fsm/executor.py` injects/produces/resets the continuity summary in
+  `_run_action` (gated to prompt-mode states only — shell/mcp gates between
+  chained states are transparent, not chain-breaking) and resets on handoff/
+  rate-limit/API-error exhaustion; new MR-rule
+  `_validate_session_mode_evaluator_inheritance` (WARN, explicit
+  check_semantic/llm_structured `evaluate:` block only — deliberately
+  narrower than the generic `_is_llm_judged` heuristic, which would have
+  false-positived on bare-prompt generator states using unconditional
+  `next:` routing, e.g. `rn-build.yaml`'s own `tech_research`/
+  `design_artifacts`). Wired `session_mode: continue` onto
+  `rn-build.yaml`'s `tech_research` → `design_artifacts` chain (step-0's
+  named target). 43 new/updated tests added across
+  `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_schema.py`,
+  `test_fsm_validation.py`, `test_fsm_executor.py`, and new
+  `test_fsm_continuity.py`; full suite green (16000 passed), ruff clean,
+  mypy clean. The last AC (measured total-token delta on a locked
+  `rn-build.yaml` live run) was intentionally not executed autonomously —
+  it requires a real paid `ll-loop run rn-build` invocation, which is a
+  cost-incurring action outside this session's default-autonomy scope;
+  left unchecked pending user go-ahead.
+- `/ll:ready-issue` - 2026-07-23T19:20:55 - `b99ff872-b4e9-4b4a-8349-00e6fbb64ce3.jsonl`
 - `/ll:confidence-check` - 2026-07-23T00:00:00 - `4dc0a2fe-4eb3-4bb1-bd46-52e6dff150df.jsonl`
 - `/ll:refine-issue` - 2026-07-23T19:10:40 - `63aa945b-bb08-4db3-bd9d-643b3e5e1fcb.jsonl`
 - Decomposed 2026-07-22: assistant-inclusive compaction function carved out

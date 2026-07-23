@@ -4003,3 +4003,76 @@ class TestFSMLoopMaxStepsAndIterations:
             on_max_iterations="iter_summary",
         )
         assert "iter_summary" in fsm.get_all_referenced_states()
+
+
+class TestSessionMode:
+    """FEAT-2711: session_mode (continuity-chain marker) field round-trip serialization.
+
+    Mirrors TestPartialRouteOk/TestSingleton's default-omitted, restore-via-get()
+    pattern, but session_mode is a state-overridable str | None (not a bare bool),
+    so it needs both a StateConfig-level and FSMLoop-level test set.
+    """
+
+    def test_state_session_mode_round_trips(self) -> None:
+        state = StateConfig(action="run.sh", session_mode="continue")
+        d = state.to_dict()
+        assert d.get("session_mode") == "continue"
+        restored = StateConfig.from_dict(d)
+        assert restored.session_mode == "continue"
+
+    def test_state_session_mode_none_omitted_from_dict(self) -> None:
+        state = StateConfig(action="run.sh")
+        d = state.to_dict()
+        assert "session_mode" not in d
+
+    def test_state_session_mode_defaults_none(self) -> None:
+        state = StateConfig.from_dict({"action": "run.sh"})
+        assert state.session_mode is None
+
+    def test_fsmloop_session_mode_round_trips(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            session_mode="continue",
+        )
+        d = fsm.to_dict()
+        assert d.get("session_mode") == "continue"
+        restored = FSMLoop.from_dict(d)
+        assert restored.session_mode == "continue"
+
+    def test_fsmloop_default_omits_session_mode_key(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "session_mode" not in d
+
+    def test_fsmloop_session_mode_ok_round_trips(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            session_mode_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("session_mode_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.session_mode_ok is True
+
+    def test_fsmloop_session_mode_ok_false_omitted_from_dict(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "session_mode_ok" not in d
+
+    def test_fsmloop_session_mode_ok_defaults_false(self) -> None:
+        fsm = FSMLoop.from_dict(
+            {"name": "test", "initial": "s", "states": {"s": {"terminal": True}}}
+        )
+        assert fsm.session_mode_ok is False

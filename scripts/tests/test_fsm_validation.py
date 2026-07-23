@@ -43,6 +43,7 @@ from little_loops.fsm.validation import (
     _validate_partial_route_dead_end,
     _validate_policy_dimensions_scored,
     _validate_progress_paths_isolation,
+    _validate_session_mode_evaluator_inheritance,
     _validate_state_action,
     _validate_unsafe_context_interpolation,
     _validate_zero_retry_counter,
@@ -4402,3 +4403,167 @@ class TestPolicyDimensionsScored:
         )
         errors = _validate_policy_dimensions_scored(fsm)
         assert errors == []
+
+
+class TestSessionModeEvaluatorInheritance:
+    """FEAT-2711: an evaluator state must not inherit session_mode: continue.
+
+    Mirrors TestHaikuPinnedGenerator's _fsm()/suppression-flag pattern.
+    """
+
+    def _fsm(
+        self,
+        work_state: StateConfig,
+        *,
+        loop_session_mode: str | None = None,
+        session_mode_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": work_state,
+                "done": make_state(terminal=True),
+            },
+            session_mode=loop_session_mode,
+            session_mode_ok=session_mode_ok,
+        )
+
+    def test_fires_for_evaluator_state_with_own_continue_override(self) -> None:
+        """An llm_structured evaluator state overriding session_mode: continue is flagged."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                session_mode="continue",
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.session_mode"
+        assert "(FEAT-2711)" in errors[0].message
+
+    def test_fires_for_evaluator_state_inheriting_loop_default(self) -> None:
+        """An evaluator state with no override inherits a loop-level continue default."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="check_semantic"),
+                on_yes="done",
+                on_no="work",
+            ),
+            loop_session_mode="continue",
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert len(errors) == 1
+
+    def test_does_not_fire_for_evaluator_state_forced_fresh(self) -> None:
+        """An evaluator state that overrides session_mode: fresh is not flagged,
+        even when the loop-level default is continue."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                session_mode="fresh",
+                on_yes="done",
+                on_no="work",
+            ),
+            loop_session_mode="continue",
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert errors == []
+
+    def test_does_not_fire_for_non_evaluator_state(self) -> None:
+        """A non-evaluator (exit_code-graded) state inheriting continue is not flagged."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            ),
+            loop_session_mode="continue",
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert errors == []
+
+    def test_does_not_fire_when_default_fresh(self) -> None:
+        """Default fresh (no session_mode set anywhere) never fires."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert errors == []
+
+    def test_suppressed_by_session_mode_ok(self) -> None:
+        """session_mode_ok: true suppresses the rule."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                session_mode="continue",
+                on_yes="done",
+                on_no="work",
+            ),
+            session_mode_ok=True,
+        )
+        errors = _validate_session_mode_evaluator_inheritance(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the FEAT-2711 WARNING for evaluator inheritance."""
+        fsm = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                session_mode="continue",
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        all_errors = validate_fsm(fsm)
+        matches = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "(FEAT-2711)" in e.message
+        ]
+        assert len(matches) == 1
+
+    def test_session_mode_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level session_mode/session_mode_ok produces no
+        Unknown-top-level-key warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Continuity-chain smoke test\n"
+            "initial: work\n"
+            "session_mode: continue\n"
+            "session_mode_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "    on_no: work\n"
+            "  done:\n"
+            "    terminal: true\n",
+            encoding="utf-8",
+        )
+        fsm, errors = load_and_validate(loop_yaml)
+        assert fsm is not None
+        unknown_key_errors = [e for e in errors if "Unknown top-level" in e.message]
+        assert unknown_key_errors == []

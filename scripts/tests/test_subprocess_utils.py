@@ -1472,6 +1472,45 @@ class TestRunClaudeCommandModelDetection:
 
         assert detected == ["claude-sonnet-4-6"]
 
+    def test_on_session_id_detected_called_with_session_id(self) -> None:
+        """on_session_id_detected callback fired with session_id from system/init event (FEAT-2711)."""
+        init_event = (
+            '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6", '
+            '"session_id": "abc-123"}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        detected: list[str] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_session_id_detected=lambda s: detected.append(s))
+
+        assert detected == ["abc-123"]
+
+    def test_on_session_id_detected_not_called_without_session_id_field(self) -> None:
+        """on_session_id_detected is not invoked when the init event omits session_id."""
+        init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(init_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        detected: list[str] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command("test", on_session_id_detected=lambda s: detected.append(s))
+
+        assert detected == []
+
     def test_init_event_not_added_to_stdout(self) -> None:
         """Init event line must not appear in result.stdout."""
         init_event = '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}\n'

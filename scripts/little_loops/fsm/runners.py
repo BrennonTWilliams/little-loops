@@ -164,6 +164,11 @@ class DefaultActionRunner:
                 if on_usage_detailed:
                     on_usage_detailed(u)
 
+            detected_session_id: list[str | None] = [None]
+
+            def _on_session_id(sid: str) -> None:
+                detected_session_id[0] = sid
+
             try:
                 completed = run_claude_command(
                     command=action,
@@ -179,6 +184,7 @@ class DefaultActionRunner:
                     working_dir=working_dir,
                     automation_profile=automation_profile,
                     on_result_seen=_on_result_seen,
+                    on_session_id_detected=_on_session_id,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -187,6 +193,7 @@ class DefaultActionRunner:
                     exit_code=124,
                     duration_ms=timeout * 1000,
                     result_seen=result_seen[0],
+                    session_id=detected_session_id[0],
                 )
             except Exception as exc:
                 return ActionResult(
@@ -195,6 +202,7 @@ class DefaultActionRunner:
                     exit_code=1,
                     duration_ms=_now_ms() - start,
                     result_seen=result_seen[0],
+                    session_id=detected_session_id[0],
                 )
             return ActionResult(
                 output=completed.stdout,
@@ -204,6 +212,7 @@ class DefaultActionRunner:
                 usage_events=collected_usage,
                 peak_rss_mb=peak_rss[0],
                 result_seen=result_seen[0],
+                session_id=detected_session_id[0],
             )
 
         # Shell command — selector-based I/O with wall-clock timeout enforcement.

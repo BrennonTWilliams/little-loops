@@ -9810,3 +9810,236 @@ class TestRequestPathDispatchWiring:
         assert not mock_dispatch.called
         assert mock_runner.calls == ["Say hi"]
         assert result.terminated_by != "error"
+
+
+class TestSessionModeContinuity:
+    """FEAT-2711: session_mode: continue injects a compact-summary into the
+    next chained state's prompt; default (fresh) behavior is unchanged."""
+
+    class _ContinuityRunner:
+        """Runner double returning a fixed session_id per call, in order."""
+
+        def __init__(self, session_ids: list[str | None]) -> None:
+            self.session_ids = session_ids
+            self.call_index = 0
+            self.actions_seen: list[str] = []
+
+        def run(
+            self,
+            action: str,
+            timeout: int,
+            is_slash_command: bool,
+            on_output_line: Any = None,
+            agent: str | None = None,
+            tools: list[str] | None = None,
+            on_usage: Any = None,
+            on_usage_detailed: Any = None,
+            model: str | None = None,
+            working_dir: Any = None,
+            automation_profile: str | None = None,
+        ) -> ActionResult:
+            del (
+                timeout,
+                is_slash_command,
+                on_output_line,
+                agent,
+                tools,
+                on_usage,
+                on_usage_detailed,
+                model,
+                working_dir,
+                automation_profile,
+            )
+            self.actions_seen.append(action)
+            session_id = self.session_ids[self.call_index]
+            self.call_index += 1
+            return ActionResult(
+                output="ok", stderr="", exit_code=0, duration_ms=10, session_id=session_id
+            )
+
+    def test_injects_prior_summary_into_next_chained_state(self) -> None:
+        """A `continue` state's compact-summary is prepended to the next chained state's prompt."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(
+                    action="/ll:step-a",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="b",
+                ),
+                "b": StateConfig(
+                    action="/ll:step-b",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = self._ContinuityRunner(["sess-a", "sess-b"])
+
+        class _Summary:
+            summary_text = "SUMMARY_A"
+
+        with patch("little_loops.fsm.executor.summarize_completed_state", return_value=_Summary()):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert runner.actions_seen[0] == "/ll:step-a"
+        assert "SUMMARY_A" in runner.actions_seen[1]
+        assert "/ll:step-b" in runner.actions_seen[1]
+
+    def test_no_injection_by_default_fresh(self) -> None:
+        """Default session_mode (fresh, unset) never injects a summary — unchanged behavior."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(action="/ll:step-a", action_type="prompt", next="b"),
+                "b": StateConfig(action="/ll:step-b", action_type="prompt", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = self._ContinuityRunner(["sess-a", "sess-b"])
+
+        with patch("little_loops.fsm.executor.summarize_completed_state") as mock_summarize:
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert not mock_summarize.called
+        assert runner.actions_seen == ["/ll:step-a", "/ll:step-b"]
+
+    def test_chain_break_on_fresh_state_clears_pending_summary(self) -> None:
+        """A `continue` state followed by a `fresh` state does not leak the summary further."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(
+                    action="/ll:step-a",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="b",
+                ),
+                "b": StateConfig(
+                    action="/ll:step-b",
+                    action_type="prompt",
+                    session_mode="fresh",
+                    next="c",
+                ),
+                "c": StateConfig(
+                    action="/ll:step-c",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = self._ContinuityRunner(["sess-a", "sess-b", "sess-c"])
+
+        class _Summary:
+            summary_text = "SUMMARY_A"
+
+        with patch("little_loops.fsm.executor.summarize_completed_state", return_value=_Summary()):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert "SUMMARY_A" not in runner.actions_seen[1]  # state b: chain already broken
+        assert "SUMMARY_A" not in runner.actions_seen[2]  # state c: b was fresh, no carry-over
+
+    def test_shell_gate_between_continue_states_is_transparent(self) -> None:
+        """A shell state (e.g. a timeout-guard gate, rn-build.yaml's
+        check_research_written) sitting between two `continue` prompt states
+        must not consume the pending summary — only prompt-mode states
+        participate in the continuity chain."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(
+                    action="/ll:step-a",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="gate",
+                ),
+                "gate": StateConfig(action="echo ok", action_type="shell", next="b"),
+                "b": StateConfig(
+                    action="/ll:step-b",
+                    action_type="prompt",
+                    session_mode="continue",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        class _Summary:
+            summary_text = "SUMMARY_A"
+
+        class _MixedRunner:
+            def __init__(self) -> None:
+                self.actions_seen: list[str] = []
+
+            def run(
+                self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any
+            ) -> ActionResult:
+                del timeout, kwargs
+                self.actions_seen.append(action)
+                session_id = (
+                    "sess-a"
+                    if is_slash_command and len(self.actions_seen) == 1
+                    else ("sess-b" if is_slash_command else None)
+                )
+                return ActionResult(
+                    output="ok", stderr="", exit_code=0, duration_ms=10, session_id=session_id
+                )
+
+        runner = _MixedRunner()
+        with patch("little_loops.fsm.executor.summarize_completed_state", return_value=_Summary()):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert runner.actions_seen[0] == "/ll:step-a"
+        assert runner.actions_seen[1] == "echo ok"
+        assert "SUMMARY_A" in runner.actions_seen[2]
+        assert "/ll:step-b" in runner.actions_seen[2]
+
+    def test_handoff_clears_pending_continuity_summary(self) -> None:
+        """A handoff-triggering state's summary is discarded — continuity never crosses it."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+        executor._continuity_summary = "STALE_SUMMARY"
+
+        from little_loops.fsm.signal_detector import DetectedSignal
+
+        executor._handle_handoff(
+            DetectedSignal(
+                signal_type="handoff", payload="continue this", raw_match="CONTEXT_HANDOFF"
+            )
+        )
+
+        assert executor._continuity_summary is None
+
+    def test_rate_limit_exhaustion_clears_pending_continuity_summary(self) -> None:
+        """Rate-limit retry exhaustion resets continuity (FEAT-2711)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={"a": StateConfig(terminal=True)},
+        )
+        executor = FSMExecutor(fsm)
+        executor._continuity_summary = "STALE_SUMMARY"
+
+        state = StateConfig(action="/ll:step", on_error="a")
+        executor._exhaust_rate_limit(state, "a", {"short_retries": 1, "long_retries": 0})
+
+        assert executor._continuity_summary is None

@@ -80,6 +80,8 @@ class ActionResult:
         result_seen: Whether a stream-json "result" event was observed before
             the subprocess exited (BUG-2731); False for non-host-CLI actions
             (shell, simulation) where no stream-json protocol applies
+        session_id: Host CLI session ID from the stream-json system/init event
+            (FEAT-2711); None for non-host-CLI actions or when undetected.
     """
 
     output: str
@@ -89,6 +91,7 @@ class ActionResult:
     usage_events: list[TokenUsage] = field(default_factory=list)
     peak_rss_mb: float | None = None
     result_seen: bool = False
+    session_id: str | None = None
 
 
 # Type for event callback
