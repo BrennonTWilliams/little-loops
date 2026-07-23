@@ -1,0 +1,12 @@
+{
+  "id": "a70d5bcd-4397-4e43-a537-704c6b6392d3",
+  "type": "decision",
+  "timestamp": "2026-07-23T01:55:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2719/ENH-2737 are dependency-graph-closed but the realized-savings-verification report still shows F1 PASS-on-negligible-sample and F10 structurally dormant, with zero request_path opt-in traffic in any loop YAML; flipping the default now would risk silent degradation across every Anthropic-host invocation on unverified parity",
+  "rule": "Blocking Gate: Option B \u2014 treat criterion 1 (N>=10 real sdk run set, >=2 loops) as still unmet; do not flip default yet",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: treat ENH-2719 closure as satisfying the gate and flip now",
+  "issue": "ENH-2738"
+}
