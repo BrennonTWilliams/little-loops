@@ -3,7 +3,7 @@ id: FEAT-2711
 type: FEAT
 title: FSM session reuse for continuity-of-reasoning state chains
 priority: P3
-status: in_progress
+status: done
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -34,6 +34,7 @@ size: Very Large
 deferred_by: automation
 deferred_date: '2026-07-21T06:29:54Z'
 deferred_reason: low_readiness
+completed_at: '2026-07-23T19:59:02Z'
 ---
 
 # FEAT-2711: FSM session reuse for continuity-of-reasoning state chains
@@ -487,6 +488,7 @@ _Added by `/ll:spike` on 2026-07-21_
 **Promotion**: move `session_id_capture.py` (as an addition to `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new `fsm`-side helper) to `scripts/little_loops/spike/fsm_continuity_compaction/` in a separate PR, alongside a rewritten Integration Map that adds the assistant-inclusive summarization path this spike shows is actually needed.
 
 ## Session Log
+- `ll-auto` - 2026-07-23T19:59:02 - `37ea78b6-71ef-44b9-8f8c-7d8f7538d2b2.jsonl`
 - `/ll:manage-issue` (implement) - 2026-07-23 - Implemented Option B end-to-end:
   `SessionIdCallback`/`on_session_id_detected` in `subprocess_utils.py`;
   `ActionResult.session_id` threaded through `fsm/runners.py`; new
@@ -539,3 +541,23 @@ _Added by `/ll:spike` on 2026-07-21_
 ## Status
 
 **Open** | Created: 2026-07-21 | Priority: P3
+
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-07-23
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
