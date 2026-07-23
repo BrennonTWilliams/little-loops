@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `waste_attribution()` (ENH-2722, per-loop tokens-wasted rollup joined on `run_id`), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -4220,13 +4220,13 @@ Entry point for `ll-learning-tests` command. Query and manage the learning test 
 def main_ctx_stats() -> int
 ```
 
-Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also aggregates skill-health signals (per-skill invocation frequency and correction rate) via `_aggregate_skill_stats()` from the same `.ll/history.db` (ENH-1921); when skill events are present a "Skill health" section is appended to the human-readable report and a `skill_health` array is included in `--json` output. Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent.
+Entry point for `ll-ctx-stats` command. Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also aggregates skill-health signals (per-skill invocation frequency and correction rate) via `_aggregate_skill_stats()` from the same `.ll/history.db` (ENH-1921); when skill events are present a "Skill health" section is appended to the human-readable report and a `skill_health` array is included in `--json` output. When `usage_events` rows join to `loop_runs` on `run_id`, also renders a "Waste" section via `_aggregate_waste()` → `history_reader.waste_attribution()` (ENH-2722). Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent. When `--db` is not passed, the DB path resolves via `resolve_history_db()` (env `LL_HISTORY_DB` → `history.db_path` config → default), not a bare local constant (ENH-2722 fixed a prior bypass).
 
 **Returns:** 0 when a report was rendered (data present or fallback used), 1 when no data found in either the SQLite store or the fallback file.
 
 **Flags:**
-- `--db PATH` — Use a non-default session database (default `.ll/history.db`)
-- `--json` — Emit the report as JSON instead of the human-readable summary; includes `skill_health: [{skill, invocations, corrections, correction_rate}]` or `null`
+- `--db PATH` — Use a non-default session database (default `.ll/history.db`; resolves `LL_HISTORY_DB` / `history.db_path` config when omitted)
+- `--json` — Emit the report as JSON instead of the human-readable summary; includes `skill_health: [{skill, invocations, corrections, correction_rate}]` or `null`, and `waste: [{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}]` or `null`
 
 Enable per-tool byte tracking by setting `"analytics": {"enabled": true}` in `.ll/ll-config.json`. The `post_tool_use` hook reads this gate and no-ops when disabled or absent. Use `analytics.capture` for per-category control (e.g. `analytics.capture.file_events: false` disables file-event recording while keeping tool-event metrics active). See [CONFIGURATION.md § analytics.capture](CONFIGURATION.md#analyticscapture) for the full key reference.
 
@@ -7275,6 +7275,32 @@ dict carries the group key plus the summed token counts under the canonical dott
 OTel names (`gen_ai.usage.input_tokens`, `gen_ai.usage.cache_read.input_tokens`, …),
 `cost_usd`, and `invocations`, so a `GROUP BY gen_ai.invocation.id` rollup matches raw
 `result`-event `usage` totals row-for-row.
+
+### waste_attribution
+
+```python
+def waste_attribution(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Per-`loop_name` rollup of token spend vs. spend wasted on runs that produced no
+accepted artifact (ENH-2722). Joins `usage_events.run_id = loop_runs.run_id`
+(an exact equi-join, no time-range join — depends on ENH-2721/2723/2724's
+`run_id` column and live writer). A run is "wasted" when `terminated_by` is an
+infra/step-cap exit (`error` / `max_steps` / `max_iterations_reached` /
+`timeout` / `system_signal` / `interrupted`), or a normal FSM completion
+(`terminated_by == "terminal"`) whose `final_state` is anything other than
+`"done"` — a `"terminal"` finish alone does not imply success. Operator-initiated
+exits (`user_stopped` / `handoff`) are not counted as waste, and per-iteration
+`diff_stall` / `score_stall` discard tracking is out of scope (an explicit
+follow-on). Each returned dict carries `loop_name`, `tokens_total`,
+`tokens_wasted`, `waste_pct` (`tokens_wasted / tokens_total`, or `None` when
+`tokens_total` is 0), `runs_total`, and `runs_wasted`. `usage_events` rows with
+no matching `loop_runs` row are excluded by the inner join. Returns `[]` on a
+missing/unreadable DB.
 
 ### recent_commit_events
 

@@ -273,9 +273,11 @@ Show context-window analytics for the current project (FEAT-1160). Reads per-too
 
 When `learning_tests.enabled` is `true`, the report also includes a **Learning Test Coverage** section (ENH-2218) showing total record count, breakdown by status (proven / stale / refuted), and the number of orphaned records (targets with no matching import in the project). Use this section to spot stale coverage before a release.
 
+When `usage_events` rows join to a `loop_runs` row on `run_id` (ENH-2721's schema/writer, live since schema v29), the report also includes a **Waste** section (ENH-2722): per-loop token totals split into `tokens_wasted` — tokens spent on runs whose terminal outcome produced no accepted artifact — and a `waste_pct`. "Wasted" is terminal-status only: any infra/step-cap exit (`error`/`max_steps`/`max_iterations_reached`/`timeout`/`system_signal`/`interrupted`), or a normal FSM completion (`terminated_by == "terminal"`) whose `final_state` is anything other than `"done"`. Operator-initiated exits (`user_stopped`/`handoff`) are not counted as waste, and per-iteration `diff_stall`/`score_stall` discards are out of scope (a follow-on). `usage_events` rows with no matching `loop_runs` row (unbackfilled historical rows) are excluded rather than misattributed.
+
 **Flags:**
-- `--db PATH` — Use a non-default session database (default `.ll/history.db`).
-- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`.
+- `--db PATH` — Use a non-default session database (default `.ll/history.db`; also resolves `LL_HISTORY_DB` / `history.db_path` config when omitted, ENH-2623).
+- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent).
 
 **Exit codes:** `0` = report rendered (data present or fallback used), `1` = no data found in either the SQLite store or the fallback file.
 

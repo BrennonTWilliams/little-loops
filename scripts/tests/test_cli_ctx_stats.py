@@ -13,6 +13,7 @@ import pytest
 from little_loops.cli.ctx_stats import (
     _aggregate_tool_events,
     _aggregate_usage_events,
+    _aggregate_waste,
     _build_parser,
     _compute_cache_rate_from_jsonl,
     _parse_args,
@@ -21,7 +22,7 @@ from little_loops.cli.ctx_stats import (
     main_ctx_stats,
 )
 from little_loops.learning_tests import LearnTestRecord, write_record
-from little_loops.session_store import connect, ensure_db
+from little_loops.session_store import connect, ensure_db, record_loop_run_summary
 
 
 def _populate_skill_events(
@@ -50,6 +51,48 @@ def _insert_correction(db_path: Path, ts: str, session_id: str, content: str) ->
         conn.execute(
             "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?, ?, ?, 'test')",
             (ts, session_id, content),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _populate_waste_run(
+    db_path: Path,
+    *,
+    run_id: str,
+    loop_name: str,
+    terminated_by: str,
+    final_state: str | None,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Seed one loop_runs row plus its matching usage_events row (ENH-2722)."""
+    ensure_db(db_path)
+    record_loop_run_summary(
+        db_path,
+        run_id=run_id,
+        loop_name=loop_name,
+        terminated_by=terminated_by,
+        final_state=final_state,
+    )
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "2026-07-21T19:00:00Z",
+                "claude",
+                "check",
+                input_tokens,
+                output_tokens,
+                0,
+                0,
+                0.0,
+                run_id,
+            ),
         )
         conn.commit()
     finally:
@@ -395,6 +438,143 @@ class TestMainCtxStats:
         assert result == 0
         rendered = "".join(str(call.args[0]) for call in printed.call_args_list if call.args)
         assert "sqlite" in rendered
+
+    def test_env_var_overrides_default_db_location(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """LL_HISTORY_DB (ENH-2623) must be honored via resolve_history_db(), not bypassed.
+
+        Regression test for the ctx_stats.py bug this issue fixes: db_path was
+        built from a local DEFAULT_DB_RELPATH constant instead of routing
+        through resolve_history_db(), so LL_HISTORY_DB/config overrides were
+        silently ignored when --db was not passed explicitly.
+        """
+        monkeypatch.chdir(tmp_path)
+        elsewhere = tmp_path / "elsewhere" / "history.db"
+        elsewhere.parent.mkdir()
+        _populate_tool_events(elsewhere, [("Read", 1, 99, 0)])
+        monkeypatch.setenv("LL_HISTORY_DB", str(elsewhere))
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print") as printed,
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        rendered = "".join(str(call.args[0]) for call in printed.call_args_list if call.args)
+        assert "sqlite" in rendered
+        assert "bytes_processed" in rendered
+
+
+class TestAggregateWaste:
+    """_aggregate_waste() (ENH-2722) — thin delegation to waste_attribution()."""
+
+    def test_missing_db_returns_none(self, tmp_path: Path) -> None:
+        assert _aggregate_waste(tmp_path / "nope.db") is None
+
+    def test_present_rows_returned(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _populate_waste_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-implement",
+            terminated_by="max_steps",
+            final_state=None,
+            input_tokens=100,
+            output_tokens=20,
+        )
+        rows = _aggregate_waste(db)
+        assert rows == [
+            {
+                "loop_name": "rn-implement",
+                "tokens_total": 120,
+                "tokens_wasted": 120,
+                "waste_pct": 1.0,
+                "runs_total": 1,
+                "runs_wasted": 1,
+            }
+        ]
+
+    def test_empty_db_returns_empty_list(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert _aggregate_waste(db) == []
+
+
+class TestMainCtxStatsWasteSection:
+    """End-to-end waste section rendering in ll-ctx-stats output."""
+
+    def test_json_mode_waste_present(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 100, 900, 0)])
+        _populate_waste_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-implement",
+            terminated_by="max_steps",
+            final_state=None,
+            input_tokens=100,
+            output_tokens=20,
+        )
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        data = json.loads("\n".join(lines))
+        assert data.get("waste") == [
+            {
+                "loop_name": "rn-implement",
+                "tokens_total": 120,
+                "tokens_wasted": 120,
+                "waste_pct": 1.0,
+                "runs_total": 1,
+                "runs_wasted": 1,
+            }
+        ]
+
+    def test_json_mode_waste_none_when_no_rows(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 100, 900, 0)])
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats", "--json"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        data = json.loads("\n".join(lines))
+        assert data.get("waste") == []
+
+    def test_human_readable_section_present(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+        _populate_waste_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-implement",
+            terminated_by="max_steps",
+            final_state=None,
+            input_tokens=100,
+            output_tokens=20,
+        )
+        lines, side_effect = _capture_print()
+        with (
+            patch("sys.argv", ["ll-ctx-stats"]),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            result = main_ctx_stats()
+        assert result == 0
+        output = "\n".join(lines)
+        assert "waste" in output.lower()
+        assert "rn-implement" in output
 
 
 class TestToolEventsRoundtrip:

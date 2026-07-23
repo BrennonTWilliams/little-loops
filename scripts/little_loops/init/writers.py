@@ -89,7 +89,7 @@ _CLAUDE_MD_COMMANDS_BLOCK = """\
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
 - `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
 - `ll-doctor` - Check host CLI capability support for little-loops features
-- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)
+- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals; waste view over token spend on no-artifact runs)
 - `ll-adapt` - Generate host-specific artefacts for a given host (``--host codex``, etc.)
 - `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands (alias for ll-adapt --host codex)
 - `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` (alias for ll-adapt --host codex)

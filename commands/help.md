@@ -297,7 +297,7 @@ ll-doctor         Check host CLI capability support for little-loops features
 ll-learning-tests Query and manage the learning test registry (check/list/mark-stale/orphans/prove)
 ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry; dead-skills for never/rarely-invoked skill detection; scan-failures for mining failed ll-* calls into bug candidates)
 ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
-ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals)
+ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals; waste view over token spend on no-artifact runs)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
 ll-config         Resolve and print a single dot-path config value (ll-config get <key>)
 ll-queue          Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)

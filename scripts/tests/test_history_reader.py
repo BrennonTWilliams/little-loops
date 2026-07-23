@@ -200,6 +200,175 @@ class TestCostAttribution:
         assert rows[0]["gen_ai.usage.input_tokens"] == 100
 
 
+class TestWasteAttribution:
+    """waste_attribution() per-loop tokens-wasted rollup, joined on run_id (ENH-2722)."""
+
+    @staticmethod
+    def _seed_run(
+        db: Path,
+        *,
+        run_id: str,
+        loop_name: str,
+        terminated_by: str,
+        final_state: str | None,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> None:
+        from little_loops.session_store import record_loop_run_summary
+
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id=run_id,
+            loop_name=loop_name,
+            terminated_by=terminated_by,
+            final_state=final_state,
+        )
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "2026-07-21T19:00:00Z",
+                "claude",
+                "check",
+                input_tokens,
+                output_tokens,
+                0,
+                0,
+                0.0,
+                run_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_missing_db_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import waste_attribution
+
+        assert waste_attribution(db=tmp_path / "nope.db") == []
+
+    def test_empty_tables_returns_empty(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert waste_attribution(db=db) == []
+
+    def test_success_and_wasted_runs_split_by_loop(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        # Successful run: terminated_by="terminal", final_state="done" -> not wasted.
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            final_state="done",
+            input_tokens=100,
+            output_tokens=20,
+        )
+        # Infra-exit run: terminated_by="max_steps" -> wasted regardless of final_state.
+        self._seed_run(
+            db,
+            run_id="run-2",
+            loop_name="rn-implement",
+            terminated_by="max_steps",
+            final_state=None,
+            input_tokens=50,
+            output_tokens=10,
+        )
+        # Normal completion into a non-"done" final state -> wasted.
+        self._seed_run(
+            db,
+            run_id="run-3",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            final_state="failed",
+            input_tokens=30,
+            output_tokens=5,
+        )
+
+        rows = waste_attribution(db=db)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["loop_name"] == "rn-implement"
+        assert row["tokens_total"] == 215  # 120 + 60 + 35
+        assert row["tokens_wasted"] == 95  # 60 + 35
+        assert row["waste_pct"] == 95 / 215
+        assert row["runs_total"] == 3
+        assert row["runs_wasted"] == 2
+
+    def test_waste_pct_none_when_no_tokens(self, tmp_path: Path) -> None:
+        """Divide-by-zero guard: a loop with zero-token rows reports waste_pct=None."""
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-implement",
+            terminated_by="terminal",
+            final_state="done",
+            input_tokens=0,
+            output_tokens=0,
+        )
+
+        rows = waste_attribution(db=db)
+        assert len(rows) == 1
+        assert rows[0]["tokens_total"] == 0
+        assert rows[0]["waste_pct"] is None
+
+    def test_ambiguous_terminations_not_counted_as_wasted(self, tmp_path: Path) -> None:
+        """user_stopped/handoff are operator-initiated, not counted as waste."""
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-refine",
+            terminated_by="user_stopped",
+            final_state=None,
+            input_tokens=10,
+            output_tokens=5,
+        )
+        self._seed_run(
+            db,
+            run_id="run-2",
+            loop_name="rn-refine",
+            terminated_by="handoff",
+            final_state=None,
+            input_tokens=10,
+            output_tokens=5,
+        )
+
+        rows = waste_attribution(db=db)
+        assert len(rows) == 1
+        assert rows[0]["tokens_wasted"] == 0
+        assert rows[0]["runs_wasted"] == 0
+
+    def test_unjoined_usage_events_excluded(self, tmp_path: Path) -> None:
+        """usage_events rows with no matching loop_runs.run_id are excluded (inner join)."""
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            ("2026-07-21T19:00:00Z", "claude", "check", 100, 20, 0, 0, 0.0, "orphan-run"),
+        )
+        conn.commit()
+        conn.close()
+
+        assert waste_attribution(db=db) == []
+
+
 class TestStaleRowFiltering:
     """Stale rows (>30 days) are excluded by default, included with include_stale=True."""
 

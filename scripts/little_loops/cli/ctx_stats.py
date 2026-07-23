@@ -30,7 +30,7 @@ from little_loops.learning_tests import list_records
 from little_loops.learning_tests.gate import is_record_stale
 from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
 from little_loops.user_messages import get_project_folder
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
@@ -178,6 +178,20 @@ def _aggregate_mcp_health(db_path: Path) -> list[dict[str, Any]] | None:
     from little_loops.history_reader import mcp_server_usage
 
     return mcp_server_usage(db=db_path)
+
+
+def _aggregate_waste(db_path: Path) -> list[dict[str, Any]] | None:
+    """Per-loop tokens-wasted rollup (ENH-2722).
+
+    Returns ``None`` when the database file is missing (mirrors
+    ``_aggregate_mcp_health``'s absent-DB contract); an empty list when the
+    DB exists but has no joinable ``usage_events``/``loop_runs`` rows yet.
+    """
+    if not db_path.exists():
+        return None
+    from little_loops.history_reader import waste_attribution
+
+    return waste_attribution(db=db_path)
 
 
 def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
@@ -366,6 +380,7 @@ def _render(
     cache_rate: dict[str, Any] | None = None,
     lt_stats: dict[str, Any] | None = None,
     mcp_health: list[dict[str, Any]] | None = None,
+    waste: list[dict[str, Any]] | None = None,
 ) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
@@ -447,6 +462,16 @@ def _render(
                 f"success_rate={success_rate} avg_latency={avg_latency}"
             )
 
+    if waste:
+        print()
+        print("Waste (runs ending without an accepted artifact):")
+        for row in waste:
+            pct = f"{row['waste_pct']:.0%}" if row["waste_pct"] is not None else "n/a"
+            print(
+                f"  {row['loop_name']:<22} {row['runs_wasted']:>3}/{row['runs_total']:<3} runs wasted   "
+                f"waste={pct} ({row['tokens_wasted']:,}/{row['tokens_total']:,} tokens)"
+            )
+
     if lt_stats is not None:
         _render_learning_tests_section(lt_stats)
 
@@ -479,6 +504,7 @@ def _print_json(
     lt_stats: dict[str, Any] | None = None,
     usage_events: dict[str, Any] | None = None,
     mcp_health: list[dict[str, Any]] | None = None,
+    waste: list[dict[str, Any]] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -519,6 +545,7 @@ def _print_json(
             "learning_tests": lt_stats,
             "usage_by_model": usage_events,
             "mcp_health": mcp_health,
+            "waste": waste,
         }
     elif state is not None:
         payload = {
@@ -625,7 +652,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         logger = Logger(use_color=use_color_enabled())
 
         cwd = Path.cwd()
-        db_path = args.db if args.db is not None else cwd / DEFAULT_DB_RELPATH
+        db_path = args.db if args.db is not None else resolve_history_db(cwd / DEFAULT_DB_RELPATH)
         state_path = cwd / DEFAULT_STATE_RELPATH
 
         summary = _aggregate_tool_events(db_path)
@@ -636,10 +663,18 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         lt_stats = _compute_learning_tests_stats(cwd, lt_config)
         usage_events = _aggregate_usage_events(db_path)
         mcp_health = _aggregate_mcp_health(db_path)
+        waste = _aggregate_waste(db_path)
 
         if args.json_mode:
             _print_json(
-                summary, fallback, skill_stats, cache_rate, lt_stats, usage_events, mcp_health
+                summary,
+                fallback,
+                skill_stats,
+                cache_rate,
+                lt_stats,
+                usage_events,
+                mcp_health,
+                waste,
             )
             return 0 if (summary is not None or fallback is not None) else 1
 
@@ -653,7 +688,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger, skill_stats, cache_rate, lt_stats, mcp_health)
+                _render(summary, logger, skill_stats, cache_rate, lt_stats, mcp_health, waste)
                 return 0
 
         if fallback is not None:

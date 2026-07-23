@@ -28,6 +28,7 @@ Public API:
     recent_skill_events(skill_name, ...) -> list[SkillEvent]
     summarize_skills(since, ...) -> list[dict]
     cost_attribution(group_by, ...) -> list[dict]
+    waste_attribution(since, ...) -> list[dict] (ENH-2722)
     recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
     recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
     recent_orchestration_runs(driver, issue_id, ...) -> list[OrchestrationRun]
@@ -930,6 +931,77 @@ def cost_attribution(
                 GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS: (row["cache_creation_input_tokens"] or 0),
                 "cost_usd": row["cost_usd"] or 0.0,
                 "invocations": row["invocations"],
+            }
+        )
+    return result
+
+
+# ENH-2722 — a run is "wasted" when its terminal outcome produced no accepted
+# artifact: any infra/step-cap exit, or a normal FSM completion (terminated_by
+# == "terminal") whose final_state is anything other than "done" (a "terminal"
+# finish alone does not imply success — see fsm/executor.py's own success
+# check pairing terminated_by=="terminal" with final_state=="done"). Excludes
+# "user_stopped"/"handoff" (operator-initiated, not necessarily wasted) and
+# per-iteration diff_stall/score_stall discards (an explicit follow-on).
+_WASTED_RUN_PREDICATE = (
+    "(lr.terminated_by IN ('error', 'max_steps', 'max_iterations_reached', "
+    "'timeout', 'system_signal', 'interrupted') "
+    "OR (lr.terminated_by = 'terminal' AND lr.final_state != 'done'))"
+)
+
+
+def waste_attribution(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-loop token spend vs. spend wasted on no-artifact runs (ENH-2722).
+
+    Joins ``usage_events.run_id = loop_runs.run_id`` (an equi-join, exact
+    since ENH-2723/2724 — no time-range join). ``usage_events`` rows with no
+    matching ``loop_runs`` row (unbackfilled historical rows, or rows whose
+    backfill timestamp matched zero/multiple overlapping run windows) are
+    excluded by the inner join rather than misattributed. See
+    ``_WASTED_RUN_PREDICATE`` for the "wasted" definition.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT lr.loop_name AS loop_name, "
+            "SUM(COALESCE(ue.input_tokens, 0) + COALESCE(ue.output_tokens, 0)) AS tokens_total, "
+            f"SUM(CASE WHEN {_WASTED_RUN_PREDICATE} THEN "
+            "COALESCE(ue.input_tokens, 0) + COALESCE(ue.output_tokens, 0) ELSE 0 END) "
+            "AS tokens_wasted, "
+            "COUNT(DISTINCT lr.run_id) AS runs_total, "
+            f"COUNT(DISTINCT CASE WHEN {_WASTED_RUN_PREDICATE} THEN lr.run_id END) AS runs_wasted "
+            "FROM usage_events ue JOIN loop_runs lr ON ue.run_id = lr.run_id "
+        )
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ue.ts >= ? "
+            params.append(since)
+        sql += "GROUP BY lr.loop_name ORDER BY tokens_wasted DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: waste_attribution query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        tokens_total = row["tokens_total"] or 0
+        tokens_wasted = row["tokens_wasted"] or 0
+        result.append(
+            {
+                "loop_name": row["loop_name"],
+                "tokens_total": tokens_total,
+                "tokens_wasted": tokens_wasted,
+                "waste_pct": (tokens_wasted / tokens_total) if tokens_total else None,
+                "runs_total": row["runs_total"] or 0,
+                "runs_wasted": row["runs_wasted"] or 0,
             }
         )
     return result
