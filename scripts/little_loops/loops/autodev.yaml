@@ -92,6 +92,7 @@ states:
       rm -f ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-decide-ran
       rm -f ${context.run_dir}/autodev-decide-options-deposited
+      rm -f ${context.run_dir}/autodev-size-review-skipped-this-pass
       (ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -707,9 +708,18 @@ states:
     # the outer loop gets its own chance to decompose. This preserves the
     # BUG-1079 "no double size-review" invariant because flag=1 AND children
     # exist still shortcuts past run_size_review.
+    # BUG-2744: this on_no branch reaches check_guard2_verdict downstream
+    # without run_size_review ever running for the current issue, so
+    # `captured.size_review_output` (a run-scoped dict, not per-issue — see
+    # executor.py:227) could still hold a PRIOR issue's captured text. Mark
+    # this pass as "size-review skipped" so check_size_review_ran_this_pass
+    # can bypass check_guard2_verdict later. dequeue_next clears the marker
+    # at the start of every iteration, so it never leaks past the issue that
+    # set it.
     action: |
       FLAG=$(cat ${context.run_dir}/autodev-broke-down 2>/dev/null || echo 0)
       if [ "$FLAG" = "1" ] && [ -s ${context.run_dir}/autodev-new-children.txt ]; then
+        touch ${context.run_dir}/autodev-size-review-skipped-this-pass
         echo 1
       else
         echo 0
@@ -1065,8 +1075,32 @@ states:
       sys.exit(0 if plateau else 1)"
     fragment: shell_exit
     on_yes: reconcile_current
-    on_no: check_guard2_verdict
+    on_no: check_size_review_ran_this_pass
     on_error: recheck_after_size_review
+
+  check_size_review_ran_this_pass:
+    # BUG-2744: guard-2 semantics (check_guard2_verdict) only make sense when
+    # run_size_review actually executed for the CURRENT issue this pass.
+    # check_broke_down's on_no shortcut (~line 712) reaches this chain
+    # without run_size_review ever running, which would otherwise let
+    # check_guard2_verdict evaluate a PRIOR issue's stale
+    # `captured.size_review_output` (self.captured is run-scoped, not
+    # per-issue — executor.py:227). The marker is written only on that
+    # shortcut branch and cleared both here (consumed once) and at
+    # dequeue_next (defense-in-depth for provenances, e.g.
+    # check_decision_before_size_review.on_no → run_size_review, that reach
+    # run_size_review without ever visiting check_broke_down).
+    action: |
+      MARKER=${context.run_dir}/autodev-size-review-skipped-this-pass
+      if [ -f "$MARKER" ]; then
+        rm -f "$MARKER"
+        exit 1
+      fi
+      exit 0
+    fragment: shell_exit
+    on_yes: check_guard2_verdict
+    on_no: recheck_after_size_review
+    on_error: check_guard2_verdict
 
   check_guard2_verdict:
     # BUG-2734 (bug found in first live run against BUG-2731, fixed same day):

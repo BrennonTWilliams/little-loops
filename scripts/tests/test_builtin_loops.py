@@ -4387,11 +4387,19 @@ class TestAutodevLoop:
         assert regate_state.get("on_no") == "dequeue_next"
 
     def test_check_reconcile_needed_routes_through_guard2_verdict(self, data: dict) -> None:
-        """BUG-2734: check_reconcile_needed's on_no must now route through
+        """BUG-2734: check_reconcile_needed's on_no must now route towards
         check_guard2_verdict instead of straight to recheck_after_size_review, so
-        the guard-2 shape gets a chance at remediation before the low_readiness skip."""
+        the guard-2 shape gets a chance at remediation before the low_readiness
+        skip. BUG-2744 interposed check_size_review_ran_this_pass, a runtime
+        marker gate that bypasses check_guard2_verdict when run_size_review
+        didn't execute for the current issue this pass — assert the full chain."""
         state = data["states"].get("check_reconcile_needed", {})
-        assert state.get("on_no") == "check_guard2_verdict"
+        assert state.get("on_no") == "check_size_review_ran_this_pass"
+
+        gate_state = data["states"].get("check_size_review_ran_this_pass", {})
+        assert gate_state.get("on_yes") == "check_guard2_verdict"
+        assert gate_state.get("on_no") == "recheck_after_size_review"
+        assert gate_state.get("on_error") == "check_guard2_verdict"
 
     def test_run_size_review_captures_output(self, data: dict) -> None:
         """BUG-2734: run_size_review must capture its status-line output so
@@ -4659,10 +4667,21 @@ class TestAutodevLoop:
             "recheck_after_size_review) before the BUG-1230 leaf-skip"
         )
         reconcile_gate = data["states"].get("check_reconcile_needed", {})
-        assert reconcile_gate.get("on_no") == "check_guard2_verdict", (
+        assert reconcile_gate.get("on_no") == "check_size_review_ran_this_pass", (
             "BUG-2734: check_reconcile_needed's no-plateau edge now routes through "
             "check_guard2_verdict (which itself falls through to "
-            "recheck_after_size_review on no guard-2 match) before the BUG-1230 leaf-skip"
+            "recheck_after_size_review on no guard-2 match) before the BUG-1230 leaf-skip. "
+            "BUG-2744: check_size_review_ran_this_pass is now interposed to bypass "
+            "check_guard2_verdict when run_size_review didn't run this pass"
+        )
+        marker_gate = data["states"].get("check_size_review_ran_this_pass", {})
+        assert marker_gate.get("on_yes") == "check_guard2_verdict", (
+            "check_size_review_ran_this_pass.on_yes (no shortcut marker) must still "
+            "reach check_guard2_verdict"
+        )
+        assert marker_gate.get("on_no") == "recheck_after_size_review", (
+            "check_size_review_ran_this_pass.on_no (shortcut marker present) must "
+            "bypass check_guard2_verdict straight to recheck_after_size_review"
         )
         guard2_gate = data["states"].get("check_guard2_verdict", {})
         assert guard2_gate.get("on_no") == "recheck_after_size_review", (
@@ -4981,13 +5000,13 @@ class TestAutodevLoop:
         )
 
     def test_check_reconcile_needed_routing(self, data: dict) -> None:
-        """on_yes → reconcile_current; on_no → check_guard2_verdict (BUG-2734,
-        itself falling through to recheck_after_size_review); on_error →
-        recheck_after_size_review directly (non-plateau issues fall through
-        unchanged, AC 4)."""
+        """on_yes → reconcile_current; on_no → check_size_review_ran_this_pass
+        (BUG-2744, gating check_guard2_verdict, BUG-2734, itself falling through
+        to recheck_after_size_review); on_error → recheck_after_size_review
+        directly (non-plateau issues fall through unchanged, AC 4)."""
         state = data["states"].get("check_reconcile_needed", {})
         assert state.get("on_yes") == "reconcile_current"
-        assert state.get("on_no") == "check_guard2_verdict"
+        assert state.get("on_no") == "check_size_review_ran_this_pass"
         assert state.get("on_error") == "recheck_after_size_review"
 
     def test_reconcile_current_invokes_reconcile_skill(self, data: dict) -> None:
@@ -11021,16 +11040,21 @@ class TestValidatorWarningBudget:
             "states.scaffold_integration.action",
         },
         ("autodev", "capture-ordering"): {
-            # Bucket A (BUG-2734): check_guard2_verdict is reachable via
-            # check_broke_down's shortcut branch (sub-loop already decomposed via
-            # breakdown_issue), which bypasses run_size_review's capture. That
-            # shortcut only fires when children were actually found
-            # (autodev-new-children.txt non-empty), so enqueue_or_skip always takes
-            # its on_yes (children-found) branch on that path and never reaches
-            # check_guard2_verdict at runtime — a runtime invariant the static
-            # validator can't see. On genuinely uncaptured runs, evaluate.source
-            # falls back to raw_output (empty), which simply fails to match and
-            # falls through to recheck_after_size_review — a safe no-op.
+            # Bucket A (BUG-2734, narrowed by BUG-2744): check_guard2_verdict is
+            # still statically reachable via check_broke_down's on_no shortcut
+            # (sub-loop already decomposed via breakdown_issue), which bypasses
+            # run_size_review's capture. BUG-2744 closed the correctness gap this
+            # used to have — a stale prior-issue capture could otherwise match —
+            # by adding check_size_review_ran_this_pass, a runtime marker gate
+            # (autodev-size-review-skipped-this-pass, written only on the
+            # check_broke_down shortcut and cleared per-issue at dequeue_next)
+            # interposed between check_reconcile_needed and check_guard2_verdict.
+            # It routes the shortcut path straight to recheck_after_size_review,
+            # so check_guard2_verdict never evaluates captured.size_review_output
+            # on a pass where run_size_review didn't run — a runtime invariant the
+            # static validator can't see (it can't reason about a marker file's
+            # contents). This entry stays open because the state is still
+            # statically reachable on that path; only its *safety* changed.
             "states.check_guard2_verdict.action",
         },
     }

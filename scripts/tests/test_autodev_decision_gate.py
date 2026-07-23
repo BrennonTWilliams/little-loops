@@ -523,8 +523,17 @@ class TestReconcilePlateauStructural:
         # BUG-2734: non-plateau now routes through check_guard2_verdict (which
         # itself falls through to recheck_after_size_review on no guard-2 match) —
         # this still preserves the BUG-1230 leaf-skip terminus, just one hop later.
-        assert state.get("on_no") == "check_guard2_verdict"
+        # BUG-2744: interposed check_size_review_ran_this_pass, a runtime marker
+        # gate that bypasses check_guard2_verdict when run_size_review didn't
+        # execute for the current issue this pass (stale cross-issue captured
+        # state otherwise readable by check_guard2_verdict — see
+        # TestGuard2VerdictBypass below).
+        assert state.get("on_no") == "check_size_review_ran_this_pass"
         assert state.get("on_error") == "recheck_after_size_review"
+        gate_state = data["states"]["check_size_review_ran_this_pass"]
+        assert gate_state.get("on_yes") == "check_guard2_verdict"
+        assert gate_state.get("on_no") == "recheck_after_size_review"
+        assert gate_state.get("on_error") == "check_guard2_verdict"
         guard2_state = data["states"]["check_guard2_verdict"]
         assert guard2_state.get("on_no") == "recheck_after_size_review"
         assert guard2_state.get("on_error") == "recheck_after_size_review"
@@ -621,6 +630,87 @@ class TestReconcilePlateauRouting:
         _result, visited = _run_decision_chain(reconcile_chain_fsm, runner)
         assert "recheck_after_size_review" in visited, f"visited={visited!r}"
         assert "reconcile_current" not in visited, f"visited={visited!r}"
+
+
+class TestGuard2VerdictBypass:
+    """BUG-2744: FSMExecutor-driven assertions that check_size_review_ran_this_pass
+    bypasses check_guard2_verdict when run_size_review did not execute for the
+    current issue this pass (the check_broke_down shortcut), preventing a stale
+    prior-issue ``captured.size_review_output`` from being evaluated.
+
+    Mirrors TestReconcilePlateauRouting's mini-FSM shape, standing in for the
+    real check_reconcile_needed → check_size_review_ran_this_pass →
+    check_guard2_verdict chain.
+    """
+
+    @pytest.fixture
+    def guard2_bypass_fsm(self) -> Any:
+        return _loop(
+            name="autodev-guard2-bypass-mini",
+            initial="check_reconcile_needed",
+            states={
+                "check_reconcile_needed": _state(
+                    action="false",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="reconcile_current",
+                    on_no="check_size_review_ran_this_pass",
+                    on_error="recheck_after_size_review",
+                ),
+                "check_size_review_ran_this_pass": _state(
+                    action="marker-check",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="check_guard2_verdict",
+                    on_no="recheck_after_size_review",
+                    on_error="check_guard2_verdict",
+                ),
+                "reconcile_current": _state(action="true", action_type="shell", next="done"),
+                "check_guard2_verdict": _state(action="true", action_type="shell", next="done"),
+                "recheck_after_size_review": _state(
+                    action="true", action_type="shell", next="done"
+                ),
+                "done": _state(terminal=True),
+            },
+        )
+
+    def test_shortcut_this_pass_bypasses_guard2(self, guard2_bypass_fsm: Any) -> None:
+        """Marker present (run_size_review skipped this pass, exit 1) →
+        recheck_after_size_review directly; check_guard2_verdict never visited,
+        so it can never evaluate a prior issue's stale captured output."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("marker-check", {"exit_code": 1}),
+            ]
+        )
+        _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
+        assert "recheck_after_size_review" in visited, f"visited={visited!r}"
+        assert "check_guard2_verdict" not in visited, f"visited={visited!r}"
+
+    def test_normal_pass_reaches_guard2(self, guard2_bypass_fsm: Any) -> None:
+        """No marker (run_size_review ran this pass, exit 0) →
+        check_guard2_verdict fires as before."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("marker-check", {"exit_code": 0}),
+            ]
+        )
+        _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
+        assert "check_guard2_verdict" in visited, f"visited={visited!r}"
+
+    def test_marker_check_error_fails_open_to_guard2(self, guard2_bypass_fsm: Any) -> None:
+        """Marker-check error preserves pre-BUG-2744 behaviour (always reach
+        check_guard2_verdict) rather than silently skipping the guard-2 remedy."""
+        runner = _StubRunner(
+            results=[
+                ("false", {"exit_code": 1}),
+                ("marker-check", {"exit_code": 2, "stderr": "boom"}),
+            ]
+        )
+        _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
+        assert "check_guard2_verdict" in visited, f"visited={visited!r}"
 
 
 class TestCheckDecisionBeforeSizeReviewRouting:
