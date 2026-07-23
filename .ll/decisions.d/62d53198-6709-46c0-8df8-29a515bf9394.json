@@ -1,0 +1,12 @@
+{
+  "id": "5f4d4d3b-17d7-433c-8697-77671d81b32e",
+  "type": "decision",
+  "timestamp": "2026-07-23T18:40:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "set_status.py already applies this exact shape 3x in cmd_set_status (not-found check, --cascade guard, cascade-failure); Option A (parser.error) is foreign to this file, requires threading parser into the function signature, and would introduce a mismatched exit code (2 vs this function's existing 1).",
+  "rule": "Option B \u2014 validate --reason-on-done/cancelled in the handler body with return 1 + stderr, no SystemExit",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: parser.error(...) SystemExit(2) \u2014 real pattern elsewhere in the codebase but structurally foreign to set_status.py's cmd_set_status, which doesn't receive the parser object",
+  "issue": "ENH-2749"
+}

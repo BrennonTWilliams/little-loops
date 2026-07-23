@@ -1,0 +1,12 @@
+{
+  "id": "7326cc5f-8b07-4715-9036-b792e331896c",
+  "type": "decision",
+  "timestamp": "2026-07-23T21:10:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "cmd_invoke() already dispatches commands/*.md targets identically to skills (6 of 9 ENH-2504 _VERIFIER_SKILLS entries are command-backed and pass tests); extract_tagged_json and record_verdict_event are directly reusable templates. Option B's new module repeats the central-helper shape ENH-2504 explicitly rejected.",
+  "rule": "Option A: extend cmd_invoke() with a _REVIEWER_SKILLS frozenset and _record_review() helper (ENH-2504 dispatcher precedent), not a new review_events.py module",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: per-skill markdown directives + new scripts/little_loops/review_events.py module",
+  "issue": "ENH-2512"
+}

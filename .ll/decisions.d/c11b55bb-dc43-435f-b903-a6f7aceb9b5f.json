@@ -1,0 +1,11 @@
+{
+  "id": "946d788b-567a-40a5-934b-334600bb1bbf",
+  "type": "decision",
+  "timestamp": "2026-07-23T18:24:44Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "--reason choices are deferral-only; already_fixed lives in closed_reason frontmatter with no set-status writer",
+  "rule": "Captured: set-status --reason support already_fixed closed_reason",
+  "scope": "issue",
+  "issue": "ENH-2749"
+}
