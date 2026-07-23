@@ -5,13 +5,19 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-05
-captured_at: "2026-07-05T00:00:00Z"
+captured_at: '2026-07-05T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - captured
+- enhancement
+- history-db
+- captured
+confidence_score: 100
+outcome_confidence: 81
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2498: Capture prompt-optimization outcomes into history.db
@@ -387,6 +393,74 @@ _Added by `/ll:refine-issue` — current-code reconciliation from the 2026-07-16
   and an unparseable/auto-apply response to prove that best-effort enrichment does not
   fabricate acceptance.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — anchor re-verification pass, 2026-07-23 (current commit
+`1ec3125a`). All prior line-number citations in this Integration Map predate several
+intervening schema migrations and are now stale; the shape of the proposed change is
+unaffected._
+
+- **`SCHEMA_VERSION` is now 31, not 20/21.** The next available slot is **v32** — do
+  not hardcode "21" anywhere; read the live constant at implementation time (the
+  existing "Scope Boundary" note below already warns against trusting a stale literal,
+  and this confirms the drift has continued). The most recent migration (v31,
+  `harness_events`, ENH-2739) is at `session_store.py:949-978`; append the new
+  `prompt_opt_events` DDL after it, before the closing `]` of `_MIGRATIONS`
+  (list spans lines 364-979).
+- **Current anchors (session_store.py)**: `SCHEMA_VERSION` line 224; `VALID_KINDS`
+  (public tuple — **not** `_VALID_KINDS`; there is no leading-underscore/frozenset
+  variant) lines 226-246; `_KIND_TABLE` lines 247-267; `_KINDLESS_TABLES` lines
+  275-286; `record_commit_event()` ~1631-1680; `record_test_run_event()` ~1761-1800;
+  `recent()` lines 2506-2528; `_backfill_skill_events()` ~3195-3234; `backfill()`
+  ~4130-4142; `backfill_incremental()` ~4202-4241; `rebuild()` lines 4044-4104;
+  `_REBUILD_TABLES`/`_REBUILD_SEARCH_KINDS` lines 4030-4041; `_EXPORT_TABLE_MAP` lines
+  4523-4539; `__all__` lines 71-110 (still does **not** export `record_commit_event`/
+  `record_test_run_event`, confirming the earlier wiring-pass note — but the newest
+  recorder, `record_harness_event`, **is** exported at line 109, so current precedent
+  now favors exporting the new recorder rather than following the two older
+  unexported siblings).
+- **`hooks/user_prompt_submit.py` anchors are unchanged.** `handle()` still spans
+  lines 61-135 with the same return points (73/97/103/111/113/115/117/119/123/128/135),
+  the analytics gate still at line 78, `record_correction`/`record_skill_event` still
+  at 84/92. This file has not drifted; only `session_store.py`'s internals have.
+- **A newer, closer precedent exists: `harness_events` (v31, ENH-2739).** Its
+  migration comment block explicitly documents *why* a table is excluded from
+  `_REBUILD_TABLES`/`_REBUILD_SEARCH_KINDS` (no `raw_events` JSONL source) — model any
+  inclusion/exclusion rationale for `prompt_opt_events` on that comment style (this
+  issue's design does need a backfill/rebuild entry, unlike `harness_events`, so the
+  comment should explain inclusion instead). `record_harness_event()`
+  (`session_store.py:1826-1890`) also demonstrates a **raises-on-failure** writer
+  contract as an alternative to the graceful `bool`-return contract used by
+  `record_session_lifecycle_event()` (`session_store.py:2276-2322`) — this issue's AC
+  ("writes are best-effort... DB absent/locked never changes hook stdout/exit")
+  requires the graceful/never-raises contract, matching `record_correction`/
+  `record_skill_event`, not the raises-on-failure one.
+- **No partial implementation exists.** A full-repo search for `prompt_opt_events`,
+  `record_prompt_opt_event`, and `PromptOptEvent` found zero matches outside this
+  issue file and its epic/sibling references — safe to implement from a clean slate.
+- **`history_reader.py` sibling pair moved.** `CommitEvent` is now at lines 153-163,
+  immediately followed by `RunEvent` (`test_run_events`'s dataclass) at lines 166-189
+  — model `PromptOptEvent` on this adjacent pair. `recent_commit_events()` is now at
+  lines 1112-1147; `summarize_skills()` at line 612.
+- **`cli/session.py` argparse anchors moved** to ~lines 105-106 (`search`) and
+  ~117-118 (`recent`); both still `choices=list(VALID_KINDS)` — confirms no CLI-side
+  edit is needed beyond registering the new kind in `session_store`.
+- **Newer test-class models are available.** `TestSchemaV31HarnessEvents`
+  (`test_session_store.py:5607-5676`) and `TestRecordHarnessEvent`
+  (`test_session_store.py:5679-5771`) are more current models for the new
+  `TestPromptOptSchema`/`TestRecordPromptOptEvent` classes than the previously-cited
+  line numbers (which have shifted). `TestRecordSessionLifecycleEvent`
+  (`test_session_store.py:5326-5373`) is the best current model for the
+  graceful-degradation test (`monkeypatch.setattr(session_store, "connect", boom)`
+  pattern, asserting a `False` return rather than a raised exception).
+- **Wiring Phase step 10's specific literals are now stale.** "Bump `SCHEMA_VERSION`
+  literals from 20 to 21" no longer matches reality (current value is 31, next slot is
+  32), and the test-assertion line numbers it names have almost certainly shifted.
+  The *instruction* remains correct (bump every hardcoded `SCHEMA_VERSION == N`
+  literal and its paired meta-row assertion in lockstep) — re-derive the actual
+  old/new numbers and locations at implementation time via
+  `grep -rn "SCHEMA_VERSION ==" scripts/tests/`.
+
 ## Proposed Solution
 
 ### Split the capture: offer (live) vs. outcome (backfill)
@@ -682,6 +756,8 @@ UserPromptSubmit invocation may intentionally produce **one row in each
 table**; this is by design, not duplication.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-23T00:00:00Z - `ebe99418-742d-4bce-bc37-095176771ae1.jsonl`
+- `/ll:refine-issue` - 2026-07-23T13:38:10 - `4051b40b-38f5-4778-9a2c-322aeb045b18.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T14:01:04 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:08:22 - `1a6a415c-07aa-41f7-87c2-f7aafafb29ad.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:47:11 - `fd81b1d4-3269-4fb1-aa37-7a65417fe3e0.jsonl`
