@@ -4,7 +4,7 @@ type: ENH
 title: Flip orchestration.request_path default to sdk once ENH-2719 gate passes; apply
   per-loop batch tranche
 priority: P2
-status: deferred
+status: open
 captured_at: '2026-07-22T00:00:00Z'
 discovered_date: '2026-07-22'
 discovered_by: issue-size-review

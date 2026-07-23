@@ -17,17 +17,21 @@ relates_to:
 - FEAT-2598
 - ENH-2486
 - ENH-2714
+- FEAT-2747
+blocked_by:
+- FEAT-2747
 decision_needed: false
-confidence_score: 35
-outcome_confidence: 46
-score_complexity: 10
+confidence_score: 86
+outcome_confidence: 64
+score_complexity: 12
 score_test_coverage: 18
-score_ambiguity: 0
-score_change_surface: 18
+score_ambiguity: 18
+score_change_surface: 16
 missing_artifacts: true
 spike_needed: true
 spike_attempted: true
 spike_completed: true
+reconcile_attempted: true
 size: Very Large
 deferred_by: automation
 deferred_date: '2026-07-21T06:29:54Z'
@@ -199,33 +203,53 @@ prior reviewer feedback skeptical of a resume-based approach.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/schema.py` — add a `session_mode`/
-  `SessionModeConfig` field on `StateConfig` (~line 637, alongside
-  `pruning_profile`) and `FSMLoop` (~line 1206), following the
-  `PruningProfileConfig` to_dict/from_dict/suppression-flag pattern
-  (`pruning_profile_ok` at line 1221) as the direct template.
-- `scripts/little_loops/fsm/runners.py` — `ActionRunner.run()` Protocol
-  (line 39) and `DefaultActionRunner.run()` (line 95) currently have no
-  `resume`/`session_mode` parameter; add one and forward to
-  `run_claude_command(resume_session=...)` (call site line 164).
+_Rewritten `/ll:reconcile-issue`: the Decision Rationale selected Option B
+(compact-summary injection), and the Spike Results proved
+`compact_session()`/`compact_result_for_session()` can't be reused unmodified
+(they summarize only `message_events`/user turns, never `assistant_messages`
+— the reasoning FEAT-2711 actually wants to carry forward). The list below
+replaces the Option-A `resume=True` wiring with the assistant-inclusive
+compaction path the spike showed is required._
+
 - `scripts/little_loops/subprocess_utils.py::run_claude_command()` (line 286)
-  — `resume_session: bool = False` (line 299) already exists and forwards to
-  `resolve_host().build_streaming(resume=resume_session, ...)`
-  (lines 337–346); no changes needed here, just a new caller.
+  — extend the existing stream-json parser to capture and return the
+  `session_id` already present in the `system`/`init` event, currently parsed
+  and discarded (spike: `TestSessionIdCapture::test_parses_session_id_from_init_event`).
+- Assistant-inclusive compaction function — **carved out to FEAT-2747**
+  (blocking dependency; the spike proved `compact_session()`/
+  `compact_result_for_session()` can't be reused unmodified, since they only
+  summarize the prompt already sent, never the state's derived reasoning —
+  spike: `TestSummaryOmitsAssistantContent::test_compact_summary_omits_assistant_derived_content`).
+  FEAT-2711 wires the FSM-side call to whatever function FEAT-2747 lands,
+  rather than building the join itself.
 - `scripts/little_loops/fsm/executor.py::FSMExecutor._run_action()`
-  (lines 1589–1614) — resolve effective `session_mode` (state override →
-  loop default, mirroring `_effective_pruning_profile()` in validation.py)
-  and pass through to `self.action_runner.run(...)`. Needs a reset hook in
-  `_handle_rate_limit`/`_exhaust_rate_limit` (line 2302/2522) to force fresh
-  on retry exhaustion, and must NOT thread `resume` across `_handle_handoff`
-  (line 2646) / `HandoffHandler._spawn_continuation()`
-  (`fsm/handoff_handler.py:97`), which always spawns a new host session via
-  `build_detached` (no `resume` param in that Protocol method at all).
+  (lines 1589–1614) — after a chained state completes, synchronously
+  backfill + run the new compaction (proven no-race by spike:
+  `TestBackfillThenCompact::test_backfill_then_compact_same_process_no_race`)
+  and interpolate the resulting summary into the next chained state's
+  prompt. Must NOT cross `_handle_handoff` (line 2646) /
+  `HandoffHandler._spawn_continuation()` (`fsm/handoff_handler.py:97`), which
+  always starts a fresh host session; reset on `_handle_rate_limit`/
+  `_exhaust_rate_limit` (line 2302/2522) retry exhaustion too.
+- `scripts/little_loops/fsm/schema.py` — add a `session_mode`/
+  `SessionModeConfig`-equivalent field on `StateConfig` (~line 637) and
+  `FSMLoop` (~line 1206) marking which states participate in a continuity
+  chain, following the `PruningProfileConfig` to_dict/from_dict/
+  suppression-flag pattern (`pruning_profile_ok` at line 1221). The schema
+  shape is unchanged from the original Option A design; only what the flag
+  drives at runtime changes (summary injection, not host `resume`).
 - `scripts/little_loops/fsm/validation.py` — new MR-rule warning when a
-  `check_semantic`/`llm_structured` evaluator state inherits `continue`,
+  `check_semantic`/`llm_structured` evaluator state inherits continuity,
   following the `_validate_parse_swallow()` (MR-10, lines 2011–2057)
   template; register in `validate_fsm()`; add suppression-flag key to the
-  allowed top-level keys set (line 233).
+  allowed top-level keys set (line 233). Unchanged by the Option A→B switch.
+- Promote the spike's modules out of
+  `scripts/tests/spike/fsm_continuity_compaction/`, per Spike Results
+  "Promotion": `session_id_capture.py` logic folds directly into
+  `scripts/little_loops/subprocess_utils.py`'s existing stream-json parser
+  (no new file); `continuity_pipeline.py` becomes
+  `scripts/little_loops/fsm/continuity.py` (new file, consistent with
+  sibling FSM-side helpers like `fsm/handoff_handler.py`, `fsm/validation.py`).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel/worker_pool.py:869,1107` and
@@ -292,53 +316,81 @@ prior reviewer feedback skeptical of a resume-based approach.
    `check_substrate` → `scope_project` (line 374), where `design_artifacts`
    re-reads `${captured.tech_research.output}` via prompt interpolation on a
    fresh host session each time.
-1. Schema: `session_mode` in `fsm/schema.py` + evaluator-inheritance warning.
-2. Wiring in `fsm/runners.py` / `fsm/executor.py`; reset on handoff, error, and
-   retry paths.
-3. ENH-2486 guard integration (size threshold → fresh/compact).
-4. Tests: state-sequence resume flag assertions; reset-on-retry regression;
-   before/after total-token measurement on the locked chain trace.
+1. Schema: continuity-chain marker (`session_mode`-equivalent) in
+   `fsm/schema.py` + evaluator-inheritance warning. Shape unchanged from the
+   original Option A design (see Similar Patterns); only what it drives at
+   runtime changes below.
+2. Session-ID capture: extend `run_claude_command()`'s stream-json parser
+   (`subprocess_utils.py`) to capture the `system`/`init` event's
+   `session_id`, currently parsed and discarded (spike:
+   `TestSessionIdCapture`, proven low-risk).
+3. Assistant-inclusive compaction: consume the function **FEAT-2747**
+   provides (a query joining `message_events` and `assistant_messages` — the
+   spike proved unmodified `compact_session()`/`compact_result_for_session()`
+   only summarize user turns, not the reasoning FEAT-2711 needs, spike:
+   `TestSummaryOmitsAssistantContent`). Wire a synchronous backfill-then-compact
+   call (no race, per spike `TestBackfillThenCompact`) into
+   `fsm/executor.py::_run_action()` to inject the prior state's summary into
+   the next chained state's prompt.
+4. Isolation: never cross `_handle_handoff`/`HandoffHandler._spawn_continuation`;
+   reset on hard-error/retry-exhaustion paths.
+5. Promote spike modules per Spike Results "Promotion": fold
+   `session_id_capture.py` into `subprocess_utils.py`'s parser;
+   `continuity_pipeline.py` becomes a new FSM-side helper.
+6. Tests: state-sequence summary-injection assertions; reset-on-handoff/retry
+   regression; before/after total-token measurement (including the added
+   summarization-call cost) on the locked `rn-build.yaml` chain trace from
+   step 0.
 
 ## Acceptance Criteria
 
 - [ ] Gate (step 0) documented in this issue: named chain + estimated
-      re-derivation saving, or issue closed as superseded.
-- [ ] `session_mode: continue` threads `resume=True` from state 2 onward on the
-      Claude host; default behavior unchanged.
-- [ ] Session resets on handoff/spawn, on hard errors, and per-state
-      `session_mode: fresh` override.
-- [ ] Validation warns when an evaluator state runs in continued mode.
-- [ ] Measured total-token (not just prefix) delta on the locked chain trace
-      recorded before close.
+      re-derivation saving — satisfied (`rn-build.yaml`:
+      `tech_research` → `design_artifacts`).
+- [ ] `run_claude_command()`'s stream-json parser exposes the `system`/`init`
+      event's `session_id` (previously discarded) to FSM callers.
+- [ ] The FEAT-2747 compaction function (joining `message_events` +
+      `assistant_messages`) is wired in to produce a continuity summary per
+      completed state — not a bare unmodified call to `compact_session()`/
+      `compact_result_for_session()`, which the spike proved summarizes only
+      the already-known prompt, not the state's reasoning.
+- [ ] The continuity summary is interpolated into the next chained state's
+      prompt in `fsm/executor.py`; default behavior (no injection) unchanged
+      when continuity is not configured on a state.
+- [ ] Continuity never crosses a handoff/spawn boundary and resets on hard
+      error/retry exhaustion.
+- [ ] Validation warns when an evaluator (`check_semantic`/`llm_structured`)
+      state inherits continuity.
+- [ ] Measured total-token (not just prefix) delta on the locked
+      `rn-build.yaml` chain trace, including the added summarization-call
+      cost, recorded before close.
 
 ## Impact
 
 - **Priority**: P3 — demoted from P2; ENH-2714 took the default savings lever.
   Value now contingent on the step-0 gate.
-- **Effort**: Small-Medium (~80–120 LOC + tests) after the gate.
+- **Effort**: Small (~50–80 LOC + tests) after the gate — the assistant-
+  inclusive compaction function itself is carved out to FEAT-2747; FEAT-2711
+  is now schema + FSM-side wiring only.
 - **Risk**: Medium — changes state-isolation semantics; mitigated by opt-in
   default, evaluator warnings, and the narrowed scope.
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-07-21 (re-run after `/ll:spike`)_
+_Updated by `/ll:confidence-check` on 2026-07-22 (re-run after `/ll:reconcile-issue`)_
 
-**Readiness Score**: 35/100 → STOP — NOT READY
-**Outcome Confidence**: 46/100 → Low
+**Readiness Score**: 86/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 64/100 → Low
 
 ### Concerns
-- Directive sections (Proposed Solution, Integration Map, Implementation Steps, Acceptance Criteria) still describe Option A end-to-end while the Decision Rationale selected Option B — this was flagged in the prior confidence-check pass and remains unresolved; `/ll:reconcile-issue` has not yet been run.
-- The Spike Results section now shows Option B's core assumption doesn't hold as decided: `compact_session()`/`compact_result_for_session()` only summarize the "user" JSONL turn (the already-known interpolated prompt), never `assistant_messages` — so, used unmodified, they'd summarize the prompt sent, not the reasoning FEAT-2711 wants to carry forward. A new assistant-inclusive summarization path is required; this is closer to "new mechanism" than the Decision Rationale's "reuse of a mature, tested primitive" framing.
-- The spike's promotion step (`session_id_capture.py`, `continuity_pipeline.py` moving from `scripts/tests/spike/fsm_continuity_compaction/` to `scripts/little_loops/`) and the new assistant-inclusive compaction function are not reflected anywhere in the Integration Map's "Files to Modify" list.
-
-### Gaps to Address
-- Reconcile Proposed Solution / Integration Map / Implementation Steps / Acceptance Criteria against the recorded Decision Rationale (Option B) — recommend `/ll:reconcile-issue`.
-- Rewrite the Integration Map to add: (a) promotion of the spike's `session_id_capture.py` (into `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new FSM-side helper), and (b) the new assistant-inclusive summarization function the spike shows is actually needed (a new query joining `message_events` and `assistant_messages`, not a bare new caller of `compact_session()`).
-- Re-baseline the Impact section's effort estimate ("Small-Medium, ~80–120 LOC") against the spike's finding that Option B needs a new mechanism, not just new wiring — the estimate predates the spike and likely understates real scope.
+- The new assistant-inclusive compaction function's module destination is still unpinned — the Integration Map's promotion bullet says destination is "TBD at implementation time" for the spike's `session_id_capture.py`/`continuity_pipeline.py` modules.
+- The Impact section's Effort estimate ("Small-Medium, ~80–120 LOC + tests") was not rebaselined after `/ll:reconcile-issue` — this was flagged as a gap in the prior confidence-check pass and still understates scope now that the spike proved a new cross-table compaction function is required, not just new wiring around an existing primitive.
+- This issue carries `size: Very Large` and was previously deferred by automation for `low_readiness`; readiness now clears the bar on the reconciled (Option B) scope, but the size classification itself hasn't been re-reviewed against that more accurately scoped Integration Map.
 
 ### Outcome Risk Factors
-- No existing test exercises the required assistant-inclusive compaction path at the state-transition layer — this is a novel mechanism the current (Option-A-shaped) Integration Map does not address.
-- The "reuse a mature, tested primitive" premise that justified Option B's low cost in the Decision Rationale's scoring (Simplicity 1/3, but assumed bounded) no longer holds per the spike — the real Depth is closer to moderate/deep (new cross-table query + summarization call) than the mechanical/local wiring the Integration Map describes.
+- Deep per-site complexity: the spike confirmed the new assistant-inclusive compaction function (joining `message_events` and `assistant_messages`) is a genuinely new mechanism, not the mechanical/local wiring the original Option A scoping assumed.
+- The stale effort estimate increases scope-creep risk during implementation, since it predates the spike's finding that Option B needs new logic rather than a bare new caller of `compact_session()`.
+- Broad enumeration across 5-6 sites (`schema.py`, `executor.py`, `subprocess_utils.py`, `validation.py`, plus promotion of two spike modules), each requiring bespoke logic rather than a uniform substitution.
 
 ## Spike Results
 
@@ -359,6 +411,10 @@ _Added by `/ll:spike` on 2026-07-21_
 **Promotion**: move `session_id_capture.py` (as an addition to `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new `fsm`-side helper) to `scripts/little_loops/spike/fsm_continuity_compaction/` in a separate PR, alongside a rewritten Integration Map that adds the assistant-inclusive summarization path this spike shows is actually needed.
 
 ## Session Log
+- Decomposed 2026-07-22: assistant-inclusive compaction function carved out
+  to FEAT-2747 to de-risk Complexity; FEAT-2711 now blocked_by: [FEAT-2747].
+- `/ll:confidence-check` - 2026-07-22T00:00:00 - `8c47ddca-332b-4c40-927d-c9fa25c37838.jsonl`
+- `/ll:reconcile-issue` - 2026-07-23T01:21:04 - `055d042e-137b-4246-ab63-b4d0b2962a74.jsonl`
 - `/ll:decide-issue` - 2026-07-23T01:16:55 - `4c513c9a-ad0e-4ba6-8bb2-b15c00f0558c.jsonl`
 - `/ll:confidence-check` - 2026-07-21T00:00:00 - `2c9bb61e-52c7-4382-bb2d-548f2ed16b2e.jsonl`
 - `/ll:spike` - 2026-07-21T06:26:29 - `b8baac76-19eb-4fb4-b95c-b038dac192d6.jsonl`

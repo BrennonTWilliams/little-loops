@@ -3,7 +3,7 @@ id: BUG-2731
 title: FSM treats exit-143-after-result as a terminal action failure instead of retryable
   infra teardown, discarding in-flight subagent work
 type: BUG
-status: deferred
+status: open
 priority: P1
 captured_at: '2026-07-21T22:40:00Z'
 discovered_date: '2026-07-21'
