@@ -10,6 +10,9 @@ class TestModelPricing:
         assert "claude-opus-4-7" in MODEL_PRICING
         assert "claude-sonnet-4-6" in MODEL_PRICING
         assert "claude-haiku-4-5-20251001" in MODEL_PRICING
+        assert "claude-sonnet-5" in MODEL_PRICING
+        assert "claude-opus-4-8" in MODEL_PRICING
+        assert "claude-fable-5" in MODEL_PRICING
 
     def test_pricing_fields_present(self) -> None:
         for model, prices in MODEL_PRICING.items():

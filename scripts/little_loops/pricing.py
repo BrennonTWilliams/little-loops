@@ -1,13 +1,34 @@
 """Model pricing constants for token cost estimation.
 
 Prices are in USD per million tokens ($/Mtok).
-Source: Anthropic pricing page (as of June 2026).
+Source: Anthropic pricing page (as of July 2026; ENH-2745 added
+claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's intro pricing
+($2/$10 through 2026-08-31) is not modeled here — standard rates are used.
 """
 
 from __future__ import annotations
 
 # Per-model pricing: {model_id: {token_type: usd_per_million}}
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Claude 5.x / current-generation
+    "claude-fable-5": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 1.0,
+        "cache_creation": 12.50,
+    },
+    "claude-opus-4-8": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.50,
+        "cache_creation": 6.25,
+    },
+    "claude-sonnet-5": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.30,
+        "cache_creation": 3.75,
+    },
     # Claude 4.x
     "claude-opus-4-7": {
         "input": 15.0,

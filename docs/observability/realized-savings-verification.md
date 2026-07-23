@@ -15,7 +15,7 @@ these numbers (ENH-2719 Scope Boundaries).
 
 | Gate | Feature | Method | Measured value | Verdict |
 |---|---|---|---|---|
-| Tier 0 before/after cost delta | FEAT-2470 | `CostReport.from_usage_jsonl` diffed against the ENH-2518 locked baseline (`scripts/tests/fixtures/tier0_traces/`) | **Not computable** — see below | **BLOCKED** |
+| Tier 0 before/after cost delta | FEAT-2470 | `CostReport.from_usage_jsonl` diffed against the ENH-2518 locked baseline (`scripts/tests/fixtures/tier0_traces/`) | **Not computable against the locked baseline** — see below (ENH-2745 fixed the pricing half of the block; a same-model relock is still needed) | **BLOCKED** |
 | F4 heuristic compressor 3–6× | FEAT-2675/2599 | Existing test: `test_heuristic_compression.py::TestReductionBand` | Every locked trace + the mean fall inside 3.0–6.0× (test asserts this on every run) | **PASS (test-enforced, cited)** |
 | F3 compaction shrink ratio 50–70% | FEAT-2598 | Ad-hoc script calling `evict_sink_and_window()` on 3 representative on-disk session transcripts, token count via the LCM `len//4` estimate | 89.6%, 73.8%, 61.3% (mean 74.9%) — see below | **FAIL (2 of 3 over-shrink)** |
 | F1 cache_read populated on >50% of FSM iterations | FEAT-2478/ENH-2724 | Ad-hoc read-only query (`_connect_readonly`-style) over `.ll/history.db` `usage_events` grouped by `state IS NOT NULL` | 6/6 rows with `state` populated also have `cache_read_input_tokens > 0` (100%) | **PASS on paper, sample negligible** — see below |
@@ -37,18 +37,25 @@ completion (2026-07-06) with that same model:
 - `.loops/runs/general-task-20260707T133447/usage.jsonl` (2026-07-07, the
   only post-ship `general-task` run) uses `MiniMax-M3[1m]` — not in
   `MODEL_PRICING`, `CostReport.from_usage_jsonl` returns `cost_usd: 0.0` /
-  `has_unknown_model: true` for every state.
+  `has_unknown_model: true` for every state (still true; `MiniMax-M3` is
+  unrelated to ENH-2745's fix and remains unpriced).
 - Every loop run from 2026-07-20 onward uses `claude-sonnet-5` or
-  `claude-opus-4-8[1m]` — neither is in `MODEL_PRICING` either (checked via
-  `grep -n "claude-sonnet-5\|claude-opus-4-8" scripts/little_loops/pricing.py`
-  — no match).
+  `claude-opus-4-8` — **ENH-2745 added both to `MODEL_PRICING`**
+  (`scripts/little_loops/pricing.py`), along with `claude-fable-5`, so these
+  traces now price successfully. (The `[1m]` suffix in the original grep
+  evidence above was inaccurate — live `usage_events.model` rows store the
+  bare `claude-opus-4-8` string; see ENH-2745's Codebase Research Findings.)
 
 The fleet's default model moved twice since the baseline was locked
 (`claude-sonnet-4-6` → `MiniMax-M3` → `claude-sonnet-5`/`claude-opus-4-8`).
-A same-model before/after diff against the ENH-2518 baseline is not possible
-with data currently on disk, and even a same-*regime* diff is blocked because
-`MODEL_PRICING` has no entries for either newer model. This is a genuine gap,
-not a missing-script problem — see Follow-ups.
+Pricing is no longer the blocker, but a **same-model** diff against the
+ENH-2518 baseline still requires either (a) a new `claude-sonnet-4-6` trace
+postdating FEAT-2470 (none exists), or (b) relocking a new Tier 0 baseline
+against `claude-sonnet-5`/`claude-opus-4-8` following the ENH-2518 precedent.
+ENH-2745 deliberately did not relock — it kept the ENH-2518 `claude-sonnet-4-6`
+set as the historical reference and left relocking as a follow-up, since a
+relock is a separate, larger effort (new trace capture + manifest/test-fixture
+updates) than the pricing-table fix this issue scoped. See Follow-ups.
 
 ## F3 — Compaction Shrink Ratio (FEAT-2598)
 
@@ -117,9 +124,10 @@ Both suites pass as of this report (see Full run above).
 
 ## Follow-ups Filed
 
-- Tier 0 before/after is blocked on model-pricing drift (`MODEL_PRICING` has
-  no `claude-sonnet-5`/`claude-opus-4-8` entries) — filed as a follow-up
-  parented to EPIC-2456.
+- Tier 0 before/after was blocked on model-pricing drift (`MODEL_PRICING` had
+  no `claude-sonnet-5`/`claude-opus-4-8` entries) — fixed by ENH-2745. The gate
+  remains BLOCKED pending a same-model relock (ENH-2518 precedent) against the
+  current default model; tracked as a follow-up parented to EPIC-2456.
 - F3's 61–90% spread (vs. the 50–70% gate) on structural eviction alone
   warrants either a combined-pass measurement (requires a live summarization
   call) or a gate-band reconciliation — filed as a follow-up parented to
