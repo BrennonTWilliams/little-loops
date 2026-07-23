@@ -225,7 +225,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -249,6 +249,7 @@ VALID_KINDS: tuple[str, ...] = (
     "harness",
     "prompt_opt",
     "verdict",
+    "context_pressure",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -272,6 +273,7 @@ _KIND_TABLE = {
     "harness": "harness_events",
     "prompt_opt": "prompt_opt_events",
     "verdict": "verdict_events",
+    "context_pressure": "context_pressure_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -1037,6 +1039,28 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
     CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
     CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
+    """,
+    # v34 (ENH-2507): context-window pressure measurements. context-monitor.sh
+    # already computes USAGE_PERCENT/token estimate on every PostToolUse but
+    # only writes it to stderr; this table gives that continuous signal a
+    # queryable home. Live-write-only (the shell monitor is the sole owner of
+    # the finalized measurement) — excluded from _REBUILD_TABLES/
+    # _REBUILD_SEARCH_KINDS like hook_events/harness_events/prompt_opt_events.
+    """
+    CREATE TABLE IF NOT EXISTS context_pressure_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        used_pct REAL,
+        used_tokens_est INTEGER,
+        threshold_crossed INTEGER,
+        crossed_level TEXT,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pressure_session ON context_pressure_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_pressure_ts ON context_pressure_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_pressure_crossed ON context_pressure_events(threshold_crossed);
     """,
 ]
 
@@ -2477,6 +2501,70 @@ def record_session_lifecycle_event(
     except sqlite3.Error:
         logger.warning(
             "record_session_lifecycle_event: insert failed for event=%r", event, exc_info=True
+        )
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return True
+
+
+def record_context_pressure_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    used_pct: float | None,
+    used_tokens_est: int | None,
+    threshold_crossed: bool = False,
+    crossed_level: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    ts: str | None = None,
+) -> bool:
+    """Write one row to ``context_pressure_events`` and index it in ``search_index``.
+
+    Records a single context-window-pressure measurement from
+    ``context-monitor.sh`` (ENH-2507): the running ``used_pct``/token estimate
+    plus whether this row crossed a new threshold level (``"50"``/``"75"``/
+    ``"80"``/``"90"``/``"100"``). Best-effort per the EPIC-1707
+    graceful-degradation contract: returns ``False`` (never raises) on any
+    ``sqlite3.Error`` so the PostToolUse hook's primary job is never blocked
+    by a missing/locked database.
+    """
+    ts = ts or _now()
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = connect(db_path)
+        conn.execute(
+            "INSERT INTO context_pressure_events"
+            "(ts, session_id, used_pct, used_tokens_est, threshold_crossed, crossed_level,"
+            " head_sha, branch)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                used_pct,
+                used_tokens_est,
+                int(threshold_crossed),
+                crossed_level,
+                head_sha,
+                branch,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{session_id or ''} {used_pct} {crossed_level or ''}"[:512],
+            kind="context_pressure",
+            ref=session_id or "",
+            anchor=crossed_level or "",
+            ts=ts,
+        )
+        conn.commit()
+    except sqlite3.Error:
+        logger.warning(
+            "record_context_pressure_event: insert failed for session_id=%r",
+            session_id,
+            exc_info=True,
         )
         return False
     finally:
@@ -4889,6 +4977,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "harness_event": ("harness_events", "ts"),
     "prompt_opt_event": ("prompt_opt_events", "ts"),
     "verdict_event": ("verdict_events", "ts"),
+    "context_pressure_event": ("context_pressure_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -4907,6 +4996,7 @@ _EXPORT_DEFAULT_TABLES = [
     "harness_event",
     "prompt_opt_event",
     "verdict_event",
+    "context_pressure_event",
 ]
 
 

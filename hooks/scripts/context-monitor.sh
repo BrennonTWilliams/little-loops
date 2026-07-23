@@ -65,6 +65,34 @@ record_session_lifecycle_event(
             "$USAGE_PERCENT" "$SENTINEL_THRESHOLD" "$NEW_TOKENS" "$CONTEXT_LIMIT")" \
         >/dev/null 2>&1 || true
 }
+
+# Best-effort context-pressure sample (ENH-2507). Persists the finalized
+# USAGE_PERCENT/NEW_TOKENS reading computed in main(), plus whether this row
+# crossed a new threshold level. Shells out with `|| true` so a DB write
+# failure can never flip this hook's exit code. head_sha/branch are gathered
+# best-effort and persisted NULL when the cwd isn't a git repo.
+record_context_pressure() {
+    local head_sha branch crossed
+    head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    crossed=0
+    [ -n "$PRESSURE_CROSSED_LEVEL" ] && crossed=1
+    python3 -c '
+import sys
+from little_loops.session_store import record_context_pressure_event, resolve_history_db
+record_context_pressure_event(
+    resolve_history_db(".ll/history.db"),
+    session_id=sys.argv[1] or None,
+    used_pct=float(sys.argv[2]),
+    used_tokens_est=int(sys.argv[3]),
+    threshold_crossed=sys.argv[4] == "1",
+    crossed_level=(sys.argv[5] or None),
+    head_sha=(sys.argv[6] or None),
+    branch=(sys.argv[7] or None),
+)
+' "$SESSION_ID" "$USAGE_PERCENT" "$NEW_TOKENS" "$crossed" "$PRESSURE_CROSSED_LEVEL" "$head_sha" "$branch" \
+        >/dev/null 2>&1 || true
+}
 # Note: TOOL_RESPONSE is no longer extracted here — estimate_tokens reads .tool_response
 # directly from $INPUT, avoiding a full serialization of the response into a shell variable.
 # Model detection is deferred to main() after state read, where the cached value is checked first.
@@ -225,7 +253,7 @@ check_compaction() {
     reset_state=$(echo "$state" | jq \
         --argjson tokens "$reset_tokens" \
         --arg compaction "$compacted_at" \
-        '.estimated_tokens = $tokens | .threshold_crossed_at = null | .handoff_complete = false | .last_compaction = $compaction | .breakdown = {}')
+        '.estimated_tokens = $tokens | .threshold_crossed_at = null | .handoff_complete = false | .last_compaction = $compaction | .breakdown = {} | .pressure_levels_emitted = [] | .last_pressure_write_epoch = 0')
 
     echo "$reset_state"
     return 0
@@ -266,6 +294,8 @@ main() {
         read -r TOOL_CURRENT
         read -r RESULT_TOKEN_COUNT
         read -r LAST_BASELINE_MTIME
+        read -r PRESSURE_LEVELS_EMITTED_JSON
+        read -r LAST_PRESSURE_EPOCH
     } <<< "$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '
         (.estimated_tokens // 0 | tostring),
         (.tool_calls // 0 | tostring),
@@ -277,7 +307,9 @@ main() {
         (.breakdown["claude_overhead"] // 0 | tostring),
         (.breakdown[$key] // 0 | tostring),
         (.result_token_count // 0 | tostring),
-        (.last_baseline_mtime // "0")
+        (.last_baseline_mtime // "0"),
+        (.pressure_levels_emitted // [] | @json),
+        (.last_pressure_write_epoch // 0 | tostring)
     ')"
 
     # Detect model — use cached value from state; only read transcript on first detection
@@ -300,6 +332,8 @@ main() {
         HANDOFF_COMPLETE="false"
         OVERHEAD_CURRENT=0
         TOOL_CURRENT=0
+        PRESSURE_LEVELS_EMITTED_JSON="[]"
+        LAST_PRESSURE_EPOCH=0
     fi
 
     # Get transcript baseline — re-read when JSONL mtime advances (new turn written).
@@ -372,6 +406,38 @@ main() {
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))
 
+    # Context-pressure crossing detection (ENH-2507). Independent of the
+    # auto-handoff THRESHOLD_CROSSED_AT bookkeeping above — tracks the full
+    # 50/75/80/90/100 crossing set for the persisted measurement row.
+    PRESSURE_CROSSED_LEVEL=""
+    NEW_PRESSURE_LEVELS_JSON="$PRESSURE_LEVELS_EMITTED_JSON"
+    for LEVEL in 50 75 80 90 100; do
+        if [ "$USAGE_PERCENT" -ge "$LEVEL" ]; then
+            ALREADY_EMITTED=$(echo "$NEW_PRESSURE_LEVELS_JSON" | jq --argjson l "$LEVEL" 'index($l) != null')
+            if [ "$ALREADY_EMITTED" != "true" ]; then
+                PRESSURE_CROSSED_LEVEL="$LEVEL"
+                NEW_PRESSURE_LEVELS_JSON=$(echo "$NEW_PRESSURE_LEVELS_JSON" | jq --argjson l "$LEVEL" '. + [$l]')
+            fi
+        fi
+    done
+
+    # Sampling cap: persist at most once per second, except a new threshold
+    # crossing always persists regardless of the cap (rare + high-value).
+    PRESSURE_NOW_EPOCH=$(date +%s)
+    PRESSURE_SHOULD_PERSIST=0
+    if [ -n "$PRESSURE_CROSSED_LEVEL" ]; then
+        PRESSURE_SHOULD_PERSIST=1
+    elif [ $((PRESSURE_NOW_EPOCH - ${LAST_PRESSURE_EPOCH:-0})) -ge 1 ]; then
+        PRESSURE_SHOULD_PERSIST=1
+    fi
+    PRESSURE_NEW_EPOCH="${LAST_PRESSURE_EPOCH:-0}"
+    [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && PRESSURE_NEW_EPOCH="$PRESSURE_NOW_EPOCH"
+
+    NEW_STATE=$(echo "$NEW_STATE" | jq \
+        --argjson pressure_levels "$NEW_PRESSURE_LEVELS_JSON" \
+        --argjson pressure_epoch "$PRESSURE_NEW_EPOCH" \
+        '.pressure_levels_emitted = $pressure_levels | .last_pressure_write_epoch = $pressure_epoch')
+
     # Check if threshold reached
     if [ "$USAGE_PERCENT" -ge "$THRESHOLD" ]; then
         CROSSED_NOW=0
@@ -391,6 +457,7 @@ main() {
             write_state "$NEW_STATE"
             release_lock "$STATE_LOCK"
             [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
+            [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
             exit 0
         fi
 
@@ -408,6 +475,7 @@ main() {
                 write_state "$NEW_STATE"
                 release_lock "$STATE_LOCK"
                 [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
+                [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
                 exit 0
             fi
         fi
@@ -419,6 +487,7 @@ main() {
             write_state "$NEW_STATE"
             release_lock "$STATE_LOCK"
             [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
+            [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
             exit 0
         fi
 
@@ -430,10 +499,12 @@ main() {
             # State write failed - release lock and exit
             release_lock "$STATE_LOCK"
             [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
+            [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
             exit 0
         fi
         release_lock "$STATE_LOCK"
         [ "$CROSSED_NOW" = "1" ] && record_handoff_needed || true
+        [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
         echo "[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated). Run /ll:handoff to preserve your work before context exhaustion." >&2
         exit 2
     fi
@@ -441,6 +512,7 @@ main() {
     # Write updated state (no output needed)
     write_state "$NEW_STATE"
     release_lock "$STATE_LOCK"
+    [ "$PRESSURE_SHOULD_PERSIST" = "1" ] && record_context_pressure || true
     exit 0
 }
 

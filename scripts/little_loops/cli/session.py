@@ -8,7 +8,7 @@ Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
     recent   most recent rows for an event kind (tool, file, issue, loop, correction,
              message, skill, cli, snapshot, commit, test_run, usage, orchestration_run,
-             hook_event, harness, prompt_opt, verdict)
+             hook_event, harness, prompt_opt, verdict, context_pressure)
     skill-stats per-skill invocation/success-rate rollup (ENH-2460)
     backfill ingest on-disk sources into raw_events + issue/loop/commit tables (ENH-2581)
     rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
@@ -74,6 +74,7 @@ Examples:
   %(prog)s search --fts "error" --kind loop       # FTS5 search filtered by kind
   %(prog)s recent --kind loop                     # Recent loop events
   %(prog)s recent --kind verdict                  # Recent verifier verdicts
+  %(prog)s recent --kind context_pressure         # Recent context-pressure samples
   %(prog)s related BUG-1759                       # Events for a specific issue
   %(prog)s backfill                               # Ingest on-disk sources (raw_events + issues/loops/commits)
   %(prog)s backfill --rebuild                     # Ingest, then materialize cache tables in one call
@@ -251,7 +252,7 @@ Examples:
             "Choices: session, issue_event, issue_snapshot, skill_event, "
             "loop_event, correction, summary_node, message_event, commit_event, "
             "test_run_event, usage_event, orchestration_run, session_lifecycle_event, "
-            "harness_event, prompt_opt_event, verdict_event"
+            "harness_event, prompt_opt_event, verdict_event, context_pressure_event"
         ),
     )
     export_parser.add_argument(

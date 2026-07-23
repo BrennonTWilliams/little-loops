@@ -371,6 +371,179 @@ class TestContextMonitor:
         )
         assert result.returncode == 2
 
+    def test_writes_pressure_row_every_call(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A typical (non-crossing) PostToolUse persists one context_pressure_events row (ENH-2507)."""
+        import os
+
+        from little_loops.history_reader import context_pressure_curve
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        db_path = tmp_path / ".ll" / "history.db"
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 500},
+            "session_id": "sess-pressure",
+        }
+        env = os.environ.copy()
+        env["LL_HISTORY_DB"] = str(db_path)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 0
+
+        rows = context_pressure_curve("sess-pressure", db=db_path)
+        assert len(rows) == 1
+        assert rows[0].used_pct is not None
+        assert rows[0].used_tokens_est is not None
+        assert not rows[0].threshold_crossed
+
+    def test_pressure_row_records_threshold_crossing(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Crossing 80% (the auto-handoff threshold) writes threshold_crossed=1 (ENH-2507)."""
+        import os
+
+        from little_loops.history_reader import pressure_crossings
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        db_path = tmp_path / ".ll" / "history.db"
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 500},
+            "session_id": "sess-crossing",
+        }
+        env = os.environ.copy()
+        # ~10900 estimated tokens (base cost + first-call overhead) / 20000 = 54%,
+        # crossing the 50% pressure level while also tripping LL_HANDOFF_THRESHOLD=1.
+        env["LL_CONTEXT_LIMIT"] = "20000"
+        env["LL_HANDOFF_THRESHOLD"] = "1"
+        env["LL_HISTORY_DB"] = str(db_path)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 2
+
+        rows = pressure_crossings("sess-crossing", db=db_path)
+        assert len(rows) >= 1
+        assert rows[0].crossed_level == "50"
+
+    def test_pressure_sampling_rate_limit(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A non-crossing call within 1s of the last persisted sample is suppressed (ENH-2507).
+
+        Subprocess spawn latency makes two real back-to-back calls an unreliable
+        way to exercise the 1-second cap (they can straddle a wall-clock second
+        boundary), so this drives the cap directly: after the first call
+        persists and records ``last_pressure_write_epoch``, the state file is
+        rewritten with that field far in the future, which the elapsed-time
+        check (``now - last >= 1``) must then treat as "too soon" and suppress.
+        """
+        import os
+
+        from little_loops.history_reader import context_pressure_curve
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        db_path = tmp_path / ".ll" / "history.db"
+        state_file = tmp_path / "ll-context-state.json"
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 10},
+            "session_id": "sess-sampled",
+        }
+        env = os.environ.copy()
+        env["LL_HISTORY_DB"] = str(db_path)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 0
+        rows = context_pressure_curve("sess-sampled", db=db_path)
+        assert len(rows) == 1
+
+        state = json.loads(state_file.read_text())
+        state["last_pressure_write_epoch"] = 9999999999
+        state_file.write_text(json.dumps(state))
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 0
+
+        rows = context_pressure_curve("sess-sampled", db=db_path)
+        assert len(rows) == 1
+
+    def test_pressure_write_survives_broken_history_db(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A broken LL_HISTORY_DB (directory, not a file) must not change the
+        hook's primary exit code for a non-crossing call (ENH-2507)."""
+        import os
+
+        monkeypatch.chdir(tmp_path)
+
+        config_link = tmp_path / ".ll" / "ll-config.json"
+        config_link.parent.mkdir(exist_ok=True)
+        config_link.write_text(test_config.read_text())
+
+        broken_db = tmp_path / "broken-db"
+        broken_db.mkdir()
+        input_data = {
+            "tool_name": "Read",
+            "tool_response": {"content": "x" * 10},
+        }
+        env = os.environ.copy()
+        env["LL_HISTORY_DB"] = str(broken_db)
+
+        result = subprocess.run(
+            [str(hook_script)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=6,
+            env=env,
+        )
+        assert result.returncode == 0
+
     def test_known_model_auto_detection(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

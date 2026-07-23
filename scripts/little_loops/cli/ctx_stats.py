@@ -287,6 +287,47 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     return {"totals": totals, "per_model": dict(per_model)}
 
 
+def _aggregate_context_pressure(db_path: Path) -> dict[str, Any] | None:
+    """Aggregate context-pressure samples across all sessions (ENH-2507).
+
+    Returns ``None`` when the database file is missing or the
+    ``context_pressure_events`` table is absent (legacy DB predating the v34
+    migration). Returns a zeroed summary when the table exists but has no rows.
+    """
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.Error:
+        return None
+    try:
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute(
+                "SELECT used_pct, threshold_crossed, crossed_level FROM context_pressure_events"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+    finally:
+        conn.close()
+
+    if not rows:
+        return {"samples": 0, "peak_pct": None, "avg_pct": None, "crossings": {}}
+
+    pct_values = [row["used_pct"] for row in rows if row["used_pct"] is not None]
+    crossings: dict[str, int] = defaultdict(int)
+    for row in rows:
+        if row["threshold_crossed"] and row["crossed_level"]:
+            crossings[str(row["crossed_level"])] += 1
+
+    return {
+        "samples": len(rows),
+        "peak_pct": max(pct_values) if pct_values else None,
+        "avg_pct": round(sum(pct_values) / len(pct_values), 1) if pct_values else None,
+        "crossings": dict(crossings),
+    }
+
+
 def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     """Return ``.ll/ll-context-state.json`` parsed, or ``None`` if absent/invalid."""
     if not path.exists():
@@ -381,6 +422,7 @@ def _render(
     lt_stats: dict[str, Any] | None = None,
     mcp_health: list[dict[str, Any]] | None = None,
     waste: list[dict[str, Any]] | None = None,
+    pressure: dict[str, Any] | None = None,
 ) -> None:
     """Print the savings report for an aggregated SQLite ``summary`` dict."""
     total_processed = int(summary["total_in"]) + int(summary["total_out"])
@@ -472,6 +514,20 @@ def _render(
                 f"waste={pct} ({row['tokens_wasted']:,}/{row['tokens_total']:,} tokens)"
             )
 
+    if pressure and pressure["samples"]:
+        print()
+        print("Context pressure curve:")
+        print(
+            f"  {pressure['samples']} samples   "
+            f"peak={pressure['peak_pct']:.0f}%   avg={pressure['avg_pct']:.0f}%"
+        )
+        if pressure["crossings"]:
+            crossing_str = ", ".join(
+                f"{level}%×{count}"
+                for level, count in sorted(pressure["crossings"].items(), key=lambda kv: int(kv[0]))
+            )
+            print(f"  Crossings: {crossing_str}")
+
     if lt_stats is not None:
         _render_learning_tests_section(lt_stats)
 
@@ -505,6 +561,7 @@ def _print_json(
     usage_events: dict[str, Any] | None = None,
     mcp_health: list[dict[str, Any]] | None = None,
     waste: list[dict[str, Any]] | None = None,
+    pressure: dict[str, Any] | None = None,
 ) -> None:
     """Emit a JSON document combining SQLite + fallback data."""
     if summary is not None:
@@ -546,6 +603,7 @@ def _print_json(
             "usage_by_model": usage_events,
             "mcp_health": mcp_health,
             "waste": waste,
+            "context_pressure": pressure,
         }
     elif state is not None:
         payload = {
@@ -554,6 +612,7 @@ def _print_json(
             "tool_calls": int(state.get("tool_calls") or 0),
             "breakdown": state.get("breakdown") or {},
             "learning_tests": lt_stats,
+            "context_pressure": pressure,
         }
     else:
         payload = {"source": "none"}
@@ -664,6 +723,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         usage_events = _aggregate_usage_events(db_path)
         mcp_health = _aggregate_mcp_health(db_path)
         waste = _aggregate_waste(db_path)
+        pressure = _aggregate_context_pressure(db_path)
 
         if args.json_mode:
             _print_json(
@@ -675,6 +735,7 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 usage_events,
                 mcp_health,
                 waste,
+                pressure,
             )
             return 0 if (summary is not None or fallback is not None) else 1
 
@@ -688,7 +749,9 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                 if fallback is None:
                     fallback = _load_fallback_state(state_path)
             else:
-                _render(summary, logger, skill_stats, cache_rate, lt_stats, mcp_health, waste)
+                _render(
+                    summary, logger, skill_stats, cache_rate, lt_stats, mcp_health, waste, pressure
+                )
                 return 0
 
         if fallback is not None:

@@ -7684,6 +7684,47 @@ Read-side API for `verdict_events` rows (ENH-2504's schema, written by `record_v
 
 **CLI:** `ll-session recent --kind verdict` and `ll-session search --fts "<target_id>" --kind verdict` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
 
+### ContextPressureEvent / context_pressure_curve / pressure_crossings / pressure_summary
+
+```python
+@dataclass
+class ContextPressureEvent:
+    ts: str
+    session_id: str | None
+    used_pct: float | None
+    used_tokens_est: int | None
+    threshold_crossed: int | None
+    crossed_level: str | None
+    head_sha: str | None
+    branch: str | None
+```
+
+```python
+def context_pressure_curve(
+    session_id: str,
+    *,
+    limit: int = 500,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ContextPressureEvent]
+
+def pressure_crossings(
+    session_id: str,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ContextPressureEvent]
+
+def pressure_summary(
+    session_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None
+```
+
+Read-side API for `context_pressure_events` rows (ENH-2507's schema, written by `record_context_pressure_event()`) — one row per sampled `PostToolUse` context-window pressure measurement. `context_pressure_curve()` returns a session's samples oldest first (for charting); `pressure_crossings()` filters to rows where `threshold_crossed=1`, optionally since a timestamp; `pressure_summary()` returns `{session_id, samples, peak_pct, avg_pct, peak_tokens_est}` or `None` when the session has no rows. All three return `[]`/`None` on a missing/unreadable database.
+
+**CLI:** `ll-session recent --kind context_pressure` and `ll-session search --fts "<session_id>" --kind context_pressure` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch. `ll-ctx-stats` additionally renders an aggregate "Context pressure curve" block (peak/avg pct and level-crossing counts across all sessions) via `cli/ctx_stats.py::_aggregate_context_pressure()`.
+
 ## little_loops.compaction
 
 Session-memory compaction: StreamingLLM eviction + 6-section schema (FEAT-2598). Extends the LCM compaction surface in `session_store` with two complementary passes: instant structural eviction (no LLM cost, always-on) and 6-section semantic summarization (gated on `history.compaction.enabled`, fires in a background thread at the soft token threshold).
@@ -7939,7 +7980,7 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **29**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **34**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
@@ -7964,6 +8005,7 @@ from little_loops.session_store import (
     record_harness_event,  # write a harness_events row (ENH-2739)
     record_prompt_opt_event, # write a prompt_opt_events row (ENH-2498)
     record_verdict_event,  # write a verdict_events row (ENH-2504)
+    record_context_pressure_event, # write a context_pressure_events row (ENH-2507)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -8124,6 +8166,25 @@ def record_verdict_event(
 ```
 
 Write one `verdict_events` row and index it in `search_index` with `kind="verdict"` (ENH-2504). Called from `cli/action.py::cmd_invoke()` for the nine skill-bridged verifiers, wrapped in `contextlib.suppress(Exception)` so a DB failure never changes a verifier's exit code. `severity_counts` is JSON-serialized on write (`json.dumps`), parsed back on read. Mirrors `record_harness_event()`'s contract: raises on failure — the call site, not the producer, enforces best-effort.
+
+### record_context_pressure_event
+
+```python
+def record_context_pressure_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    used_pct: float | None,
+    used_tokens_est: int | None,
+    threshold_crossed: bool = False,
+    crossed_level: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+    ts: str | None = None,
+) -> bool
+```
+
+Write one `context_pressure_events` row and index it in `search_index` with `kind="context_pressure"` (ENH-2507). Called from `context-monitor.sh`'s `record_context_pressure()` shell-out after every sampled `PostToolUse` (at most once per second per session, except a new 50/75/80/90/100 crossing always persists). Mirrors `record_session_lifecycle_event()`'s contract: catches `sqlite3.Error` internally and returns `False` (never raises) so the shell hook's `|| true` guard is a backstop, not the only safety net.
 
 
 

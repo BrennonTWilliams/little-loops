@@ -278,6 +278,8 @@ It also resets its estimate after a compaction event.
 
 The first threshold crossing per pressure episode also writes a best-effort `handoff_needed` row to `.ll/history.db`'s `session_lifecycle_events` table (threshold percent, token count, context limit) via a `python3 -c '...' || true` shell-out that never affects this hook's exit code (ENH-2495).
 
+Every sampled call (at most once per second per session — a new 50/75/80/90/100 pressure-level crossing always persists regardless of the cap) also writes a `used_pct`/`used_tokens_est` row to `.ll/history.db`'s `context_pressure_events` table via a parallel `python3 -c '...' || true` shell-out, giving the continuous pressure signal a queryable home alongside the `handoff_needed` crossing events (`ll-session recent --kind context_pressure`, `ll-ctx-stats`'s "Context pressure curve" section, ENH-2507). The emitted-levels set and last-write epoch live in `.ll/ll-context-state.json` and reset on compaction alongside `threshold_crossed_at`.
+
 - `context_monitor.enabled` (default **true**)
 - `context_monitor.auto_handoff_threshold` (default `80`, range 50–95)
 - `context_monitor.context_limit_estimate` (default `0` = auto-detect model limit; `[1m]`-suffixed model ids resolve to 1M by identifier, or the transcript baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback)

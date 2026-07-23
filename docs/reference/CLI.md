@@ -277,7 +277,9 @@ When `usage_events` rows join to a `loop_runs` row on `run_id` (ENH-2721's schem
 
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`; also resolves `LL_HISTORY_DB` / `history.db_path` config when omitted, ENH-2623).
-- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent).
+- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent). A `context_pressure` key holds `{samples, peak_pct, avg_pct, crossings}` aggregated across `context_pressure_events` (`crossings` maps level string → count; `null` when the DB is absent, ENH-2507).
+
+When `context_pressure_events` has rows (schema v34+, written by `context-monitor.sh` on every sampled `PostToolUse`), the report also includes a **Context pressure curve** section: sample count, peak/average `used_pct` across all sessions, and a per-level crossing tally (ENH-2507).
 
 **Exit codes:** `0` = report rendered (data present or fallback used), `1` = no data found in either the SQLite store or the fallback file.
 
@@ -2485,7 +2487,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict,context_pressure}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -2493,7 +2495,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466); `session_lifecycle` exposes session-lifecycle/handoff transitions — `handoff_needed`/`compaction`/`stale_ref_sweep` (ENH-2495); `subagent_run` exposes the subagent (Task/Agent) spawn tree recorded by the `SubagentStart`/`SubagentStop` lifecycle hooks (ENH-2505). |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict,context_pressure}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466); `session_lifecycle` exposes session-lifecycle/handoff transitions — `handoff_needed`/`compaction`/`stale_ref_sweep` (ENH-2495); `subagent_run` exposes the subagent (Task/Agent) spawn tree recorded by the `SubagentStart`/`SubagentStop` lifecycle hooks (ENH-2505). |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--mcp-server NAME` / `--mcp-tool NAME` / `--mcp-outcome {success,error,timeout}` | With `--kind tool`, filter to MCP tool-call rows by server/tool/outcome (`tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`, ENH-2511). Ignored for other `--kind` values. |
 | `--limit N` | Maximum rows (default: 20) |
@@ -2560,7 +2562,7 @@ idempotent and byte-lossless — running it twice is a no-op on the second pass.
 
 | Flag | Description |
 |------|-------------|
-| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `session_lifecycle_event`, `harness_event` |
+| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event` |
 | `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
 | `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
 | `-o / --output FILE` | Write output to FILE instead of stdout |
@@ -2579,6 +2581,7 @@ ll-session recent --kind subagent_run            # Recent subagent (Task/Agent) 
 ll-session recent --kind hook_event              # Recent hook fires: exit_code/duration_ms/stderr_preview (ENH-2506)
 ll-session recent --kind harness                 # Recent ll-harness / eval outcomes (ENH-2739)
 ll-session recent --kind verdict                 # Recent verifier verdicts (ENH-2504)
+ll-session recent --kind context_pressure        # Recent context-window pressure samples (ENH-2507)
 ll-session search --fts "streaming" --kind learning_test  # Registry records by claim/target (ENH-2466)
 ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)

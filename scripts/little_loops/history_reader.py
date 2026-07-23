@@ -319,6 +319,26 @@ class UsageEvent:
 
 
 @dataclass
+class ContextPressureEvent:
+    """A ``context_pressure_events`` row — one context-window pressure sample (ENH-2507).
+
+    Written by ``context-monitor.sh`` on every sampled ``PostToolUse``.
+    ``threshold_crossed``/``crossed_level`` are populated only on the row
+    where a new level (``"50"``/``"75"``/``"80"``/``"90"``/``"100"``) was
+    first reached; other rows carry ``0``/``None``.
+    """
+
+    ts: str
+    session_id: str | None
+    used_pct: float | None
+    used_tokens_est: int | None
+    threshold_crossed: int | None
+    crossed_level: str | None
+    head_sha: str | None
+    branch: str | None
+
+
+@dataclass
 class SessionRef:
     """A session that co-occurred with an issue's active period (ENH-1711)."""
 
@@ -1128,6 +1148,106 @@ def aggregate_usage(
         }
         for row in rows
     ]
+
+
+def context_pressure_curve(
+    session_id: str,
+    *,
+    limit: int = 500,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ContextPressureEvent]:
+    """Return a session's context-pressure samples, oldest first (ENH-2507).
+
+    Returns ``[]`` on any read failure or missing database (graceful degradation).
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT ts, session_id, used_pct, used_tokens_est, threshold_crossed, "
+            "crossed_level, head_sha, branch FROM context_pressure_events "
+            "WHERE session_id = ? ORDER BY id ASC LIMIT ?",
+            (session_id, limit),
+        ).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: context_pressure_curve query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, ContextPressureEvent) for row in rows]
+
+
+def pressure_crossings(
+    session_id: str,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ContextPressureEvent]:
+    """Return a session's threshold-crossing rows, oldest first (ENH-2507).
+
+    Returns ``[]`` on any read failure or missing database (graceful degradation).
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, used_pct, used_tokens_est, threshold_crossed, "
+            "crossed_level, head_sha, branch FROM context_pressure_events "
+            "WHERE session_id = ? AND threshold_crossed = 1"
+        )
+        params: list[Any] = [session_id]
+        if since is not None:
+            sql += " AND ts >= ?"
+            params.append(since)
+        sql += " ORDER BY id ASC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: pressure_crossings query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, ContextPressureEvent) for row in rows]
+
+
+def pressure_summary(
+    session_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None:
+    """Return peak/average pct and sample count for a session (ENH-2507).
+
+    Returns ``None`` when the session has no recorded pressure rows, the
+    database is missing, or the read fails (graceful degradation).
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS samples, MAX(used_pct) AS peak_pct, "
+            "AVG(used_pct) AS avg_pct, MAX(used_tokens_est) AS peak_tokens_est "
+            "FROM context_pressure_events WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: pressure_summary query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or not row["samples"]:
+        return None
+    return {
+        "session_id": session_id,
+        "samples": row["samples"],
+        "peak_pct": row["peak_pct"],
+        "avg_pct": row["avg_pct"],
+        "peak_tokens_est": row["peak_tokens_est"],
+    }
 
 
 def recent_commit_events(

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.ctx_stats import (
+    _aggregate_context_pressure,
     _aggregate_tool_events,
     _aggregate_usage_events,
     _aggregate_waste,
@@ -22,7 +23,12 @@ from little_loops.cli.ctx_stats import (
     main_ctx_stats,
 )
 from little_loops.learning_tests import LearnTestRecord, write_record
-from little_loops.session_store import connect, ensure_db, record_loop_run_summary
+from little_loops.session_store import (
+    connect,
+    ensure_db,
+    record_context_pressure_event,
+    record_loop_run_summary,
+)
 
 
 def _populate_skill_events(
@@ -255,6 +261,69 @@ class TestAggregateUsageEvents:
         assert result["per_model"]["m1"]["events"] == 2
         assert result["per_model"]["m1"]["input_tokens"] == 40
         assert result["per_model"]["m2"]["events"] == 1
+
+
+class TestAggregateContextPressure:
+    """ENH-2507: _aggregate_context_pressure reads context_pressure_events."""
+
+    def test_missing_db_returns_none(self, tmp_path: Path) -> None:
+        assert _aggregate_context_pressure(tmp_path / "nope.db") is None
+
+    def test_absent_table_returns_none(self, tmp_path: Path) -> None:
+        """A pre-v34 DB without context_pressure_events yields None, not a crash."""
+        db = tmp_path / "legacy.db"
+        conn = sqlite3.connect(str(db))
+        conn.close()  # empty file, no schema
+        assert _aggregate_context_pressure(db) is None
+
+    def test_empty_table_returns_zeroed_summary(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        result = _aggregate_context_pressure(db)
+        assert result == {"samples": 0, "peak_pct": None, "avg_pct": None, "crossings": {}}
+
+    def test_aggregates_peak_avg_and_crossings(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        record_context_pressure_event(db, session_id="a", used_pct=10.0, used_tokens_est=1000)
+        record_context_pressure_event(
+            db,
+            session_id="a",
+            used_pct=82.0,
+            used_tokens_est=8200,
+            threshold_crossed=True,
+            crossed_level="80",
+        )
+        result = _aggregate_context_pressure(db)
+        assert result["samples"] == 2
+        assert result["peak_pct"] == 82.0
+        assert result["avg_pct"] == pytest.approx(46.0)
+        assert result["crossings"] == {"80": 1}
+
+
+class TestContextPressureInOutput:
+    """ENH-2507: the pressure block appears in text and JSON rendering."""
+
+    def test_pressure_block_shown_in_render(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        db = tmp_path / ".ll" / "history.db"
+        record_context_pressure_event(db, session_id="a", used_pct=40.0, used_tokens_est=4000)
+        _populate_tool_events(db, [("Read", 100, 200, False)])
+
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-ctx-stats"]):
+            main_ctx_stats()
+        out = capsys.readouterr().out
+        assert "Context pressure curve:" in out
+
+    def test_json_includes_context_pressure(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        db = tmp_path / ".ll" / "history.db"
+        record_context_pressure_event(db, session_id="a", used_pct=40.0, used_tokens_est=4000)
+        _populate_tool_events(db, [("Read", 100, 200, False)])
+
+        monkeypatch.chdir(tmp_path)
+        with patch("sys.argv", ["ll-ctx-stats", "--json"]):
+            main_ctx_stats()
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["context_pressure"]["samples"] == 1
 
 
 class TestMainCtxStats:

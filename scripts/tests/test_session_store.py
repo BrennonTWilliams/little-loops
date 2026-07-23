@@ -1380,7 +1380,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
 
 
 class TestBackfillIncremental:
@@ -1825,8 +1825,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1995,8 +1995,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2047,8 +2047,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2126,7 +2126,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 33
+        assert int(version[0]) == 34
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2143,8 +2143,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3860,8 +3860,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3901,8 +3901,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 33
-        assert int(row[0]) == 33
+        assert SCHEMA_VERSION == 34
+        assert int(row[0]) == 34
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3956,7 +3956,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 33
+        assert int(version[0]) == 34
         assert "issue_snapshots" in names
 
 
@@ -4649,7 +4649,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4795,7 +4795,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -5016,7 +5016,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -5121,7 +5121,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -5161,7 +5161,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -5205,7 +5205,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -5412,7 +5412,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -5654,7 +5654,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -5809,7 +5809,7 @@ class TestSchemaV32PromptOptEvents:
         assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
 
     def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 31)
         ensure_db(db)
@@ -6076,7 +6076,7 @@ class TestSchemaV33VerdictEvents:
         assert {"idx_verdict_kind", "idx_verdict_target", "idx_verdict_session"} <= names
 
     def test_v32_db_upgrades_gains_verdict_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 33
+        assert SCHEMA_VERSION == 34
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 32)
         ensure_db(db)
@@ -6209,3 +6209,166 @@ class TestRecordVerdictEvent:
         )
         results = search(db, query=fts_phrase("BUG-2501"))
         assert any(r["kind"] == "verdict" for r in results)
+
+
+class TestSchemaV34ContextPressureEvents:
+    """v34 migration adds the context_pressure_events table (ENH-2507)."""
+
+    def test_context_pressure_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(context_pressure_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "session_id",
+            "used_pct",
+            "used_tokens_est",
+            "threshold_crossed",
+            "crossed_level",
+            "head_sha",
+            "branch",
+        }
+
+    def test_context_pressure_events_indexes_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+        finally:
+            conn.close()
+        assert {"idx_pressure_session", "idx_pressure_ts", "idx_pressure_crossed"} <= names
+
+    def test_v33_db_upgrade_gains_context_pressure_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 34
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 33)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "context_pressure_events" in names
+
+    def test_kind_registration(self) -> None:
+        assert "context_pressure" in VALID_KINDS
+        assert _KIND_TABLE["context_pressure"] == "context_pressure_events"
+
+    def test_excluded_from_rebuild(self) -> None:
+        from little_loops.session_store import _REBUILD_SEARCH_KINDS, _REBUILD_TABLES
+
+        assert "context_pressure_events" not in _REBUILD_TABLES
+        assert "context_pressure" not in _REBUILD_SEARCH_KINDS
+
+    def test_not_kindless(self) -> None:
+        from little_loops.session_store import _KINDLESS_TABLES
+
+        assert "context_pressure_events" not in _KINDLESS_TABLES
+
+
+class TestRecordContextPressureEvent:
+    """ENH-2507: record_context_pressure_event() DB write round-trip."""
+
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        assert record_context_pressure_event(
+            db,
+            session_id="s1",
+            used_pct=42.5,
+            used_tokens_est=85000,
+        )
+        rows = recent(db, kind="context_pressure")
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s1"
+        assert rows[0]["used_pct"] == 42.5
+        assert rows[0]["used_tokens_est"] == 85000
+        assert rows[0]["threshold_crossed"] == 0
+        assert rows[0]["crossed_level"] is None
+
+    def test_threshold_crossing_persists_level(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        record_context_pressure_event(
+            db,
+            session_id="s1",
+            used_pct=81.0,
+            used_tokens_est=162000,
+            threshold_crossed=True,
+            crossed_level="80",
+            head_sha="abc123",
+            branch="main",
+        )
+        rows = recent(db, kind="context_pressure")
+        assert rows[0]["threshold_crossed"] == 1
+        assert rows[0]["crossed_level"] == "80"
+        assert rows[0]["head_sha"] == "abc123"
+        assert rows[0]["branch"] == "main"
+
+    def test_multiple_invocations_are_distinct_rows(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        record_context_pressure_event(db, session_id="s1", used_pct=10.0, used_tokens_est=1000)
+        record_context_pressure_event(db, session_id="s1", used_pct=20.0, used_tokens_est=2000)
+        rows = recent(db, kind="context_pressure")
+        assert len(rows) == 2
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        record_context_pressure_event(
+            db,
+            session_id="sess-fts-pressure",
+            used_pct=55.0,
+            used_tokens_est=110000,
+        )
+        results = search(db, query=fts_phrase("sess-fts-pressure"))
+        assert any(r["kind"] == "context_pressure" for r in results)
+
+    def test_graceful_when_store_unwritable(self, tmp_path: Path, monkeypatch) -> None:
+        import little_loops.session_store as session_store
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+
+        db = tmp_path / "history.db"
+        assert not session_store.record_context_pressure_event(
+            db, session_id="s1", used_pct=10.0, used_tokens_est=1000
+        )
+
+
+class TestExportContextPressureEvent:
+    """ENH-2507 wiring: context_pressure_event participates in export_history()."""
+
+    def test_included_in_default_export(self, tmp_path: Path) -> None:
+        from little_loops.session_store import export_history, record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        record_context_pressure_event(db, session_id="s1", used_pct=10.0, used_tokens_est=1000)
+        types = {row["type"] for row in export_history(db)}
+        assert "context_pressure_event" in types
+
+    def test_explicit_table_selection(self, tmp_path: Path) -> None:
+        from little_loops.session_store import export_history, record_context_pressure_event
+
+        db = tmp_path / "history.db"
+        record_context_pressure_event(db, session_id="s1", used_pct=10.0, used_tokens_est=1000)
+        rows = list(export_history(db, tables=["context_pressure_event"]))
+        assert len(rows) == 1
+        assert rows[0]["session_id"] == "s1"

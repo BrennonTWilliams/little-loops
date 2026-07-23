@@ -65,6 +65,18 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "skill"
 
+    def test_recent_subcommand_context_pressure_accepted(self) -> None:
+        """ENH-2507: --kind context_pressure must be a valid choice for recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "context_pressure"]):
+            args = _parse_args()
+        assert args.kind == "context_pressure"
+
+        with patch(
+            "sys.argv", ["ll-session", "search", "--fts", "pressure", "--kind", "context_pressure"]
+        ):
+            args = _parse_args()
+        assert args.kind == "context_pressure"
+
     def test_recent_subcommand_cli_accepted(self) -> None:
         """ENH-1849: --kind cli must be a valid choice for both recent and search."""
         with patch("sys.argv", ["ll-session", "recent", "--kind", "cli"]):

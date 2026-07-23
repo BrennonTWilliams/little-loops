@@ -3,9 +3,10 @@ id: ENH-2507
 title: Persist context-window pressure measurements into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
 captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-23T20:59:16Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
@@ -54,6 +55,17 @@ used_tokens_est)` rows. Cheap — about one row per PostToolUse fire.
   from session start + tool counts.
 - **Cheap.** Roughly one row per PostToolUse fire; ~10/minute per
   active session. The producer is already running and already measuring.
+
+## Impact
+
+Without this table, context-pressure readings only exist transiently in
+stderr — there is no way to query "when did session X cross 80%?" or
+correlate pressure growth with the `bytes_in`/`bytes_out`/`cache_hit`
+columns already captured in `tool_events`. `ll-ctx-stats` and
+`ll-session` cannot render a pressure curve, and ENH-2495's
+`handoff_needed` events lack the continuous signal that led up to them.
+Low risk/low complexity addition (one best-effort row per PostToolUse,
+sampled at 1/sec) with a clear consumer (`ll-ctx-stats`) once landed.
 
 ## Current Behavior
 
@@ -332,7 +344,40 @@ each child lands its own migration at whatever version is open when it is
 implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
+## Resolution
+
+Implemented Option A (`context-monitor.sh` as the persistence producer):
+
+- `session_store.py`: v34 migration adds `context_pressure_events`
+  (`ts, session_id, used_pct, used_tokens_est, threshold_crossed,
+  crossed_level, head_sha, branch`); registered `context_pressure` in
+  `VALID_KINDS`/`_KIND_TABLE`; added `record_context_pressure_event()`
+  (never-raise, mirrors `record_session_lifecycle_event()`); wired into
+  `_EXPORT_TABLE_MAP`/`_EXPORT_DEFAULT_TABLES`. Excluded from `rebuild()`
+  (live-write-only, like `hook_events`/`harness_events`/`verdict_events`).
+- `hooks/scripts/context-monitor.sh`: after computing `USAGE_PERCENT`/
+  `NEW_TOKENS`, detects newly-crossed 50/75/80/90/100 pressure levels
+  (tracked in `.ll/ll-context-state.json`'s new `pressure_levels_emitted`/
+  `last_pressure_write_epoch` fields, reset on compaction) and calls a new
+  `record_context_pressure()` shell-out (mirrors `record_handoff_needed()`)
+  at every exit path. Sampled at most once/sec; a new crossing always
+  persists regardless of the cap.
+- `history_reader.py`: added `ContextPressureEvent` dataclass plus
+  `context_pressure_curve()`, `pressure_crossings()`, `pressure_summary()`.
+- `cli/ctx_stats.py`: `_aggregate_context_pressure()` plus a "Context
+  pressure curve" block in both text and `--json` output.
+- `cli/session.py`: static `--kind`/`--tables` help text updated.
+- Docs: `ARCHITECTURE.md` (v34 schema row + v1-v34 references),
+  `docs/reference/API.md`, `docs/reference/CLI.md`,
+  `docs/guides/BUILTIN_HOOKS_GUIDE.md`.
+
+Verification: `python -m pytest scripts/tests/` (16032 passed, 38 skipped),
+`ruff check scripts/` (clean), `python -m mypy scripts/little_loops/`
+(clean), `ll-verify-kinds` (exit 0).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T20:58:30 - `fb040966-160a-4847-8393-f7ac7c1d97d9.jsonl`
+- `/ll:ready-issue` - 2026-07-23T20:30:56 - `080025d2-b0f5-4884-9ed2-db57636a69ed.jsonl`
 - `/ll:refine-issue` - 2026-07-23T20:13:02 - `eb50d6c8-527e-49e3-b6ef-b845724a15e4.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:57:51 - `13d87a18-b4f4-4e8c-b34a-5f09c2a1ee33.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:45:16 - `8afbe178-3fe3-4585-9a55-ffd680f48820.jsonl`
