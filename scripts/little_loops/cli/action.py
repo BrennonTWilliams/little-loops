@@ -4,20 +4,97 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.host_runner import resolve_host
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, skill_event_context
+from little_loops.output_parsing import extract_tagged_json
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    cli_event_context,
+    record_verdict_event,
+    skill_event_context,
+)
 
 __all__ = ["main_action"]
+
+# Nine skill-bridged verifiers whose exit-code/output cmd_invoke() persists as
+# a verdict_events row (ENH-2504). Others (e.g. capture-issue) are not
+# verifiers and are intentionally excluded.
+_VERIFIER_SKILLS = frozenset(
+    {
+        "ready-issue",
+        "confidence-check",
+        "go-no-go",
+        "tradeoff-review-issues",
+        "refine-issue",
+        "format-issue",
+        "verify-issues",
+        "prioritize-issues",
+        "align-issues",
+    }
+)
+
+_TARGET_ID_RE = re.compile(r"\b(BUG|FEAT|ENH|EPIC)-\d+\b")
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _record_verdict(
+    *, skill: str, skill_args: list[str], exit_code: int, output_text: str, session_id: str | None
+) -> None:
+    """Best-effort verdict persistence for the 9 skill-bridged verifiers (ENH-2504).
+
+    No skill currently emits a structured verdict dict at this call site, so
+    the verdict defaults to a coarse exit-code read (0 -> "pass", else
+    "fail"). A ``VERDICT_JSON: {...}`` tagged line (the existing
+    :func:`extract_tagged_json` convention) overrides the coarse fields when
+    present, letting precision improve as skills adopt the tag without a
+    further schema change. Never raises — the caller wraps this best-effort.
+    """
+    if skill not in _VERIFIER_SKILLS:
+        return
+
+    verdict = "pass" if exit_code == 0 else "fail"
+    target_kind: str | None = None
+    target_id: str | None = None
+    severity_counts: dict | None = None
+    findings_count: int | None = None
+    confidence: int | None = None
+
+    match = _TARGET_ID_RE.search(" ".join(skill_args))
+    if match:
+        target_kind = "issue"
+        target_id = match.group(0)
+
+    tagged, _warning = extract_tagged_json(output_text, "VERDICT_JSON")
+    if isinstance(tagged, dict):
+        verdict = str(tagged.get("verdict", verdict))
+        severity_counts = tagged.get("severity_counts")
+        findings_count = tagged.get("findings_count")
+        confidence = tagged.get("confidence")
+        target_id = tagged.get("target_id", target_id)
+        target_kind = tagged.get("target_kind", target_kind)
+
+    record_verdict_event(
+        DEFAULT_DB_PATH,
+        ts=_now_iso(),
+        session_id=session_id,
+        verdict_kind=skill,
+        target_kind=target_kind,
+        target_id=target_id,
+        verdict=verdict,
+        severity_counts=severity_counts,
+        findings_count=findings_count,
+        confidence=confidence,
+    )
 
 
 def _emit(event: dict) -> None:
@@ -82,9 +159,11 @@ def cmd_invoke(args: argparse.Namespace) -> int:
             _emit({"event": "action_start", "ts": _now_iso(), "skill": skill, "args": skill_args})
 
             exit_code = 0
+            stream_output_lines: list[str] = []
 
             def _stream_cb(line: str, is_stderr: bool) -> None:
                 if not is_stderr:
+                    stream_output_lines.append(line)
                     _emit({"event": "action_output", "ts": _now_iso(), "line": line})
 
             spec = ActionSpec(
@@ -110,6 +189,14 @@ def cmd_invoke(args: argparse.Namespace) -> int:
                 }
             )
             completion.exit_code = exit_code
+            with suppress(Exception):
+                _record_verdict(
+                    skill=skill,
+                    skill_args=skill_args,
+                    exit_code=exit_code,
+                    output_text="\n".join(stream_output_lines),
+                    session_id=None,
+                )
             return exit_code
 
         else:  # --output json
@@ -148,6 +235,14 @@ def cmd_invoke(args: argparse.Namespace) -> int:
                 }
             )
             completion.exit_code = exit_code
+            with suppress(Exception):
+                _record_verdict(
+                    skill=skill,
+                    skill_args=skill_args,
+                    exit_code=exit_code,
+                    output_text="\n".join(output_lines),
+                    session_id=None,
+                )
             return exit_code
 
 

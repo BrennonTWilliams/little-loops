@@ -69,6 +69,9 @@ Public API:
     PromptOptEvent:   dataclass for prompt_opt_events rows (ENH-2498)
     recent_prompt_opt_events(mode, since, ...) -> list[PromptOptEvent]
     prompt_opt_offer_rate(since, ...) -> float | None
+    VerdictEvent:     dataclass for verdict_events rows (ENH-2504)
+    recent_verdict_events(verdict_kind, target_id, since, ...) -> list[VerdictEvent]
+    verdict_pass_rate(verdict_kind, target_id, since, ...) -> list[dict]
 """
 
 from __future__ import annotations
@@ -2735,3 +2738,123 @@ def harness_eval_pass_rate(
     if row is None or not row["scored"]:
         return None
     return row["successes"] / row["scored"]
+
+
+@dataclass
+class VerdictEvent:
+    """A ``verdict_events`` row — one verifier invocation's structured outcome (ENH-2504)."""
+
+    ts: str
+    session_id: str | None
+    verdict_kind: str
+    target_kind: str | None
+    target_id: str | None
+    verdict: str
+    severity_counts: str | None
+    findings_count: int | None
+    confidence: int | None
+    head_sha: str | None
+    branch: str | None
+
+
+_VERDICT_EVENT_COLUMNS = (
+    "ts, session_id, verdict_kind, target_kind, target_id, verdict, "
+    "severity_counts, findings_count, confidence, head_sha, branch"
+)
+
+
+def recent_verdict_events(
+    *,
+    verdict_kind: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[VerdictEvent]:
+    """Return recent verifier verdicts, newest first, optionally filtered (ENH-2504)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = f"SELECT {_VERDICT_EVENT_COLUMNS} FROM verdict_events "
+        clauses: list[str] = []
+        params: list[Any] = []
+        if verdict_kind is not None:
+            clauses.append("verdict_kind = ?")
+            params.append(verdict_kind)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_verdict_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, VerdictEvent) for row in rows]
+
+
+def verdict_pass_rate(
+    *,
+    verdict_kind: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Per-``verdict_kind`` pass-rate rollup, the readiness-trend query (ENH-2504).
+
+    ``pass`` counts rows whose ``verdict`` is ``pass`` or ``implement`` (the two
+    "proceed" outcomes across the nine verifiers). Sorted by invocation count,
+    descending.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT verdict_kind, COUNT(*) AS invocations, "
+            "SUM(CASE WHEN verdict IN ('pass', 'implement') THEN 1 ELSE 0 END) AS successes "
+            "FROM verdict_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if verdict_kind is not None:
+            clauses.append("verdict_kind = ?")
+            params.append(verdict_kind)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "GROUP BY verdict_kind ORDER BY invocations DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: verdict_pass_rate query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    result: list[dict] = []
+    for row in rows:
+        invocations = row["invocations"] or 0
+        successes = row["successes"] or 0
+        result.append(
+            {
+                "verdict_kind": row["verdict_kind"],
+                "invocations": invocations,
+                "successes": successes,
+                "success_rate": (successes / invocations) if invocations else None,
+            }
+        )
+    return result

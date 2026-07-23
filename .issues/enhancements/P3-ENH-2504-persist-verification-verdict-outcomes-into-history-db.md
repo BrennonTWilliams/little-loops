@@ -3,17 +3,24 @@ id: ENH-2504
 title: Persist verification / readiness-review verdict outcomes into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-23T18:08:32Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - verification
-  - audit
-  - captured
+- enhancement
+- history-db
+- verification
+- audit
+- captured
+confidence_score: 96
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 20
 ---
 
 # ENH-2504: Persist verification / readiness-review verdict outcomes into history.db
@@ -237,6 +244,67 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   verifiers uniformly. Skip the helper module unless the call site grows
   to need per-verifier customisation.
 
+### Codebase Research Findings — Anchor Refresh (2026-07-23)
+
+_Added by `/ll:refine-issue --auto` (gap-analysis mode). The anchors above were
+verified 2026-07-16 against `SCHEMA_VERSION = 20`. Two EPIC-2457 siblings
+(ENH-2493 `harness_events`, ENH-2498 `prompt_opt_events`) have since landed
+and the schema has moved to **`SCHEMA_VERSION = 32`** — every line number
+above is stale. Re-read the live file at implementation time; this addendum
+gives the current anchors as of 2026-07-23:_
+
+- `SCHEMA_VERSION = 32` — `session_store.py:226`. Next open slot is **v33**,
+  not v19/v21 as earlier passes assumed. Re-confirmed live (unchanged) on
+  2026-07-23 immediately before this edit — still `32`, still `226`.
+- `VALID_KINDS` — `session_store.py:228-249`. `"verdict"` is still **not**
+  present; the last two entries are `"harness"` (247) and `"prompt_opt"`
+  (248).
+- `_KIND_TABLE` — starts `session_store.py:250`.
+- `_MIGRATIONS: list[str] = [` — starts `session_store.py:368`; the list's
+  closing `]` is at **line 1011** — the new v33 block is inserted
+  immediately before that line, not "at the end around line 734" as the
+  stale Integration Map entry says.
+- **Better mirror than `record_test_run_event`**: `record_harness_event()`
+  (`session_store.py:1858-1924`, ENH-2493) is now the closest sibling —
+  same non-idempotent plain-`INSERT` + `_index()` + `conn.commit()` shape
+  AND it captures `head_sha`/`branch` (which the even-newer
+  `record_prompt_opt_event()`, `session_store.py:1927-1967`, ENH-2498, does
+  **not**). Prefer `record_harness_event` as the primary template for
+  `record_verdict_event()`; `record_test_run_event` (now at
+  `session_store.py:1793-1855`) remains a valid secondary reference.
+- `record_commit_event()` (idempotent mirror) — now `session_store.py:1663-1713`.
+- `_index()` — now `session_store.py:1167-1180`.
+- `cli_event_context()` — now `session_store.py:1332-1398` (confirmed still
+  swallows `sqlite3.Error` internally). `skill_event_context()` — starts
+  `session_store.py:1416` (same swallow contract; this is still the
+  correct wrap for `cli/action.py:cmd_invoke()`).
+- `fts_phrase()` — now `session_store.py:2541-2550`.
+- `_EXPORT_TABLE_MAP` — now `session_store.py:4680-4697` (already includes
+  `"harness_event"` / `"prompt_opt_event"` rows — add `"verdict_event"`
+  alongside them). `_EXPORT_DEFAULT_TABLES` — now `session_store.py:4699-4714`.
+- `_REBUILD_TABLES` — now `session_store.py:4183-4193`; `_REBUILD_SEARCH_KINDS`
+  — now `session_store.py:4194`. Neither includes `harness_events` /
+  `prompt_opt_events` / `hook_events` — confirms `verdict_events` should
+  join the same live-write-only exclusion set.
+- `__all__` — now `session_store.py:72-112` (already exports
+  `record_harness_event` at 110, `record_prompt_opt_event` at 111 — add
+  `record_verdict_event` alongside). Module docstring Public API list —
+  now `session_store.py:16-46` (lines 44-45 document the two newest
+  producers; add a `record_verdict_event` line there too).
+- `cli/action.py:cmd_invoke()` — now `lines 67-~152` (next function
+  `cmd_capabilities` starts at 154). Confirmed unchanged in shape: it
+  already opens a `with skill_event_context(DEFAULT_DB_PATH, None, skill,
+  " ".join(skill_args)) as completion:` block at **line 80** — the
+  `record_verdict_event(...)` call belongs inside that `with` body,
+  after the skill result is known and before the block exits.
+- `history_reader.py` — module docstring Public API list now
+  `lines 8-71` (66-68 document `HarnessEvent`/readers, 69-71 document
+  `PromptOptEvent`/readers — add the verdict equivalents there).
+  `CommitEvent` dataclass now `lines 155-166`; `RunEvent` dataclass now
+  `lines 184-201`. `recent_commit_events()` now at line `1130`;
+  `summarize_skills()` now at line `630`; `recent_test_runs()` now at
+  line `1510`.
+
 ## Acceptance Criteria
 
 - Schema migration lands; `verdict_events` exists; `SCHEMA_VERSION` bumped.
@@ -311,6 +379,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `db_path`, verify the producer returns without raising and without
   the verifier's exit code changing.
 
+## Impact
+
+- **Who/what is affected**: Every agent or human that invokes a readiness/
+  confidence/tradeoff-style verifier (`ll-ready-issue`, `ll-tradeoff-review`,
+  `ll-confidence-check`, `ll-go-no-go`, `ll-refine-issue`, `ll-format-issue`,
+  `ll-verify-issues`, `ll-prioritize-issues`, `ll-align-issues`, and
+  `/ll:verify-issue-loop`) loses the verdict the moment the terminal scrolls
+  — there is no queryable record of "why was this issue marked ready/blocked"
+  after the fact.
+- **Cost of not fixing**: Velocity and readiness trends
+  ("how many issues passed readiness this week?", "which verifier keeps
+  blocking BUG-2501?") are unreachable without re-running the verifier or
+  grepping raw session JSONL. Post-incident analyses (e.g.
+  `autodev-bug2501-kill-analysis.md`) are blocked outright when no
+  verifier-event trail exists to distinguish failure modes.
+- **Scope of fix**: One new `verdict_events` table (schema migration),
+  one producer function (`record_verdict_event`), one call site
+  (`cli/action.py::cmd_invoke()`), and read-side additions
+  (`ll-session recent --kind verdict`, `history_reader` helpers). No
+  behavior change to the verifiers themselves — the write is best-effort
+  and never affects exit codes.
+
 ## Sources
 
 - `autodev-bug2501-kill-analysis.md` (2026-07-07) — "the missing `events.jsonl`
@@ -338,8 +428,9 @@ _Added by `/ll:refine-issue` — verified against current `main`._
 
 ### Files to Modify
 
-- `scripts/little_loops/session_store.py:207` — bump `SCHEMA_VERSION = 20` → `21`
-  (read the live constant at implementation time per the Scope Boundary note).
+- `scripts/little_loops/session_store.py:226` — bump `SCHEMA_VERSION = 32` → `33`
+  (confirmed live 2026-07-23; read the live constant at implementation time
+  per the Scope Boundary note — the slot may have moved again by then).
 - `scripts/little_loops/session_store.py:209-222` — append `"verdict"` to
   `VALID_KINDS` (becomes 13th). Canonical name is `VALID_KINDS` (no underscore).
 - `scripts/little_loops/session_store.py:223-236` — append
@@ -631,6 +722,40 @@ _Wiring pass added by `/ll:wire-issue`:_
   `TestHistoryExportStdout` at test_cli_history.py:195-234 (different
   command but analogous pattern) [Agent 1, Agent 3 finding].
 
+#### Anchor Refresh (2026-07-23)
+
+_Added by `/ll:refine-issue --auto` (gap-analysis mode). All test line
+numbers above were captured 2026-07-16; six new `TestSchemaV<N>` classes
+have landed since (V27-V32), shifting every downstream anchor. Current
+locations:_
+
+- `TestRecordTestRunEvent` — now `test_session_store.py:4566-4637`.
+- `TestRecordCommitEvent` — now `test_session_store.py:4439-4488`.
+- `_bootstrap_schema_at()` — now `test_session_store.py:4095`.
+- `test_best_effort_on_unopenable_db` — now exists in **three** variants:
+  `test_session_store.py:4229`, `:5522`, `:5597`.
+- `TestValidKindsCentralization` — now `test_session_store.py:3613`;
+  `test_every_valid_kind_has_a_kind_table_entry` — now `:3616`.
+- `_MIGRATIONS[:N]` slice-index tests — now at `test_session_store.py:2019`
+  (`[:8]`), `:2113` (`[:9]`), `:2178` (`[:11]`), `:3938` (`[:13]`). A new
+  slice test for the v33 index must be added alongside these when the
+  migration lands.
+- **Freshest `TestSchemaV<N>` template**: `TestSchemaV32PromptOptEvents`
+  at `test_session_store.py:5774-5838` (mirrors `TestSchemaV31HarnessEvents`
+  at `:5607` and `TestSchemaV30HookEvents` at `:5376`) — use
+  `TestSchemaV32PromptOptEvents` as the direct template for
+  `TestSchemaV33VerdictEvents`, not the older `TestSchemaV14` reference.
+- `test_recent_test_runs_and_pass_rate` — now `test_history_reader.py:1822`.
+- `test_readers_return_empty_on_missing_db` — now `test_history_reader.py:2051`.
+- `test_recent_kind_commit_outputs_row` — now `test_ll_session.py:1183`;
+  `test_recent_kind_test_run_outputs_row` — now `:1196`.
+- `test_search_kind_commit_filters` — now `test_ll_session.py:1325`.
+- **Critical gap confirmed still open**: `scripts/tests/test_action.py`
+  has no test asserting `cmd_invoke()` writes a history.db row of any
+  kind (checked for harness/prompt_opt precedent too — neither exists
+  either). `TestCmdInvokeRecordsVerdictEvent` would be the first test of
+  its kind in this file, not just for `verdict_events` specifically.
+
 ### Configuration
 
 - `scripts/little_loops/config-schema.json:1577-1611` — `analytics.capture`
@@ -801,6 +926,14 @@ each child lands its own migration at whatever version is open when it is
 implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
+> **Refresh (2026-07-23, `/ll:refine-issue --auto`)**: `SCHEMA_VERSION` has
+> moved again — it is now **32** (`session_store.py:226`). Two more
+> EPIC-2457 siblings claimed and landed slots since the note above: v31 =
+> `harness_events` (ENH-2493) and v32 = `prompt_opt_events` (ENH-2498). The
+> underlying guidance is unchanged (read the live constant at
+> implementation time, don't trust any number written in this issue), but
+> the concrete "next slot" is now **v33**, not v20/v21.
+
 ---
 
 ## Scope Boundary
@@ -818,7 +951,43 @@ post-implementation and resolve any uncovered event types it surfaces
 (ENH-2475 adoption gate). Sibling ENH-2506 carries the same contract for
 `HookEventVariant`.
 
+## Resolution
+
+Implemented per the Integration Map, with one material deviation discovered
+during implementation: **no skill currently emits a structured verdict dict**
+at the `cmd_invoke()` call site (the issue's premise that a "structured dict
+already in hand" existed there did not hold). Rather than NLP-parsing nine
+different prose output shapes, `_record_verdict()` in `cli/action.py` uses a
+coarse, deterministic exit-code read (`pass`/`fail`) as the baseline, with a
+`VERDICT_JSON: {...}` tagged-line override (reusing the existing
+`output_parsing.extract_tagged_json()` convention) so precision can improve
+later if a skill adopts the tag, without another schema change.
+
+- Schema: `verdict_events` lands as migration v33 (`SCHEMA_VERSION` was live at
+  32 at implementation time, not v20/v21 as the issue's stale Integration Map
+  anchors implied — confirmed via the live constant per the Scope Boundary
+  note).
+- `record_verdict_event()` mirrors `record_harness_event()`'s shape
+  (non-idempotent INSERT + `_index()` + `conn.commit()`, raises on failure —
+  best-effort is enforced at the `cmd_invoke()` call site via
+  `contextlib.suppress(Exception)`).
+- `history_reader.recent_verdict_events()` / `verdict_pass_rate()` added,
+  mirroring `recent_harness_events()` and `summarize_skills()` respectively.
+- `ll-session recent --kind verdict` / `search --kind verdict` work via the
+  existing `VALID_KINDS` auto-extension — no CLI parser changes needed beyond
+  help text.
+- `VerdictEventVariant` DES registration was **not** added:
+  `record_verdict_event()` is a direct DB write, not an `event_bus.emit()`
+  call, so `ll-verify-des-audit`'s regex scan doesn't reach it — confirmed by
+  running the gate clean post-implementation, per the issue's own Scope
+  Boundary note.
+- Full test suite (15,961 tests), ruff, mypy, `ll-verify-kinds`, and
+  `ll-verify-des-audit` all pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T18:07:37 - `eb3c1784-0d8a-4f64-aa72-8a01d4ac11c9.jsonl`
+- `/ll:ready-issue` - 2026-07-23T17:36:29 - `934ecea8-0248-427b-88cf-d23e56a23045.jsonl`
+- `/ll:refine-issue` - 2026-07-23T17:31:01 - `4f30f2cd-cd6e-42e2-907b-129588ef3069.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T18:49:45 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:19:34 - `41ebf8b1-b91a-4101-976b-04777c36ced5.jsonl`
 - `/ll:refine-issue` - 2026-07-16T15:56:02 - `64744f61-c486-4d99-a2e6-3ec33ede907d.jsonl`

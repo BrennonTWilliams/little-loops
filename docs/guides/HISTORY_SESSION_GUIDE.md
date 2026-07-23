@@ -39,6 +39,7 @@ Use this when you want to query what happened in past sessions, inject historica
 | What the project summary looks like | `ll-history summary` |
 | What shipped recently (commits with issue linkage) | `ll-session recent --kind commit` |
 | Last pytest run on this branch | `ll-session recent --kind test_run --limit 1` |
+| Recent verifier verdicts (ready-issue, confidence-check, ...) | `ll-session recent --kind verdict` |
 | Recent LLM token usage / cost by model | `ll-session recent --kind usage` |
 | Per-issue outcomes from the latest automation batches | `ll-session recent --kind orchestration_run` |
 | How often context handoff triggers / recent compaction events | `ll-session recent --kind session_lifecycle` |
@@ -87,8 +88,9 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v29 | ENH-2723 | `run_id` column on `usage_events` |
 | v30 | ENH-2506 | `hook_events` table (per-fire hook execution telemetry) |
 | v32 | ENH-2498 | `prompt_opt_events` table (prompt-optimization offer/outcome telemetry) |
+| v33 | ENH-2504 | `verdict_events` table (verifier verdict outcome telemetry) |
 
-v15–v18 and v20–v32 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v33 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -113,6 +115,7 @@ v15–v18 and v20–v32 are EPIC-2457 coverage expansions and related observabil
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, and git context. Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `prompt_opt_events` | Prompt-optimization offer/outcome telemetry: `ts`, `session_id`, `mode`, `offered`, `bypass_reason`, `raw_len`, `optimized_len`, `optimized_text`, `accepted`. Live-written per prompt by `user_prompt_submit.py::handle()` (gated on `analytics.enabled`); `optimized_len`/`optimized_text`/`accepted` filled in later, in place, by `_backfill_prompt_opt()` when a parseable `ENHANCED:` block is found in the transcript. Queryable via `ll-session recent --kind prompt_opt` and `history_reader.recent_prompt_opt_events()`/`prompt_opt_offer_rate()` (ENH-2498, v32). |
+| `verdict_events` | Verifier verdict outcome telemetry: `ts`, `session_id`, `verdict_kind`, `target_kind`, `target_id`, `verdict`, `severity_counts` (JSON), `findings_count`, `confidence`, `head_sha`, `branch`. Written best-effort from `cli/action.py::cmd_invoke()` for the nine `ll-action`-bridged verifiers (`ready-issue`, `confidence-check`, `go-no-go`, `tradeoff-review-issues`, `refine-issue`, `format-issue`, `verify-issues`, `prioritize-issues`, `align-issues`). Queryable via `ll-session recent --kind verdict` and `history_reader.recent_verdict_events()`/`verdict_pass_rate()` (ENH-2504, v33). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 | `loop_runs` | One row per completed FSM loop run: `run_id` (archive-time identifier, unique), `loop_name`, `started_at`/`ended_at`, `final_state`, `iterations`, `terminated_by`, `error`, nullable `evaluator_score`/`diagnostics_path`, and git context. Written best-effort by `FSMExecutor._finish()`. Queryable via `ll-session recent --kind loop_run` and `history_reader.recent_loop_runs()`/`find_loop_run()`/`aggregate_loop_runs()` (ENH-2463, v23). |
 | `learning_test_events` | Mirror of the Learning Test Registry (`.ll/learning-tests/*.md`): `record_id` (slugified target, unique), `target`, `status`, `assertions_json`, `date`, `raw_output_path`. Written best-effort by `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` (UPSERT — re-proves overwrite in place); reconciled from disk for out-of-band edits by `ll-session backfill`. Queryable via `ll-session recent --kind learning_test`, FTS search, and `history_reader.recent_learning_tests()`/`find_learning_test()` (ENH-2466, v26). |
@@ -365,6 +368,14 @@ ll-session recent --kind test_run --limit 5
 ```
 
 Each row is a pytest invocation captured live during a session or by `ll-session backfill` from a recorded run: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Use this to spot a branch where tests started failing, or to find the commit that flipped a passing run red. (ENH-2459.)
+
+### Verifier verdicts
+
+```bash
+ll-session recent --kind verdict --limit 5
+```
+
+Each row is a `ready-issue`/`confidence-check`/`go-no-go`/etc. invocation with its `verdict_kind`, `target_id`, `verdict`, `severity_counts`, `findings_count`, and `confidence`. Use this to answer "how many issues passed readiness this week?" or "which verifier keeps blocking BUG-2501?" (ENH-2504.)
 
 ### Skill success signal
 

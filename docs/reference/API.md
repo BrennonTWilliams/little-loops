@@ -6978,6 +6978,9 @@ from little_loops.history_reader import (
     PromptOptEvent,          # ENH-2498
     recent_prompt_opt_events, # ENH-2498
     prompt_opt_offer_rate,   # ENH-2498
+    VerdictEvent,            # ENH-2504
+    recent_verdict_events,   # ENH-2504
+    verdict_pass_rate,       # ENH-2504
 )
 ```
 
@@ -7640,6 +7643,47 @@ Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_h
 
 **CLI:** `ll-session recent --kind harness` and `ll-session search --fts "<target>" --kind harness` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch (ENH-2739) — no CLI code change was needed for this read API.
 
+### VerdictEvent / recent_verdict_events / verdict_pass_rate
+
+```python
+@dataclass
+class VerdictEvent:
+    ts: str
+    session_id: str | None
+    verdict_kind: str
+    target_kind: str | None
+    target_id: str | None
+    verdict: str
+    severity_counts: str | None
+    findings_count: int | None
+    confidence: int | None
+    head_sha: str | None
+    branch: str | None
+```
+
+```python
+def recent_verdict_events(
+    *,
+    verdict_kind: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[VerdictEvent]
+
+def verdict_pass_rate(
+    *,
+    verdict_kind: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Read-side API for `verdict_events` rows (ENH-2504's schema, written by `record_verdict_event()`) — one row per invocation of the nine `ll-action`-bridged verifiers (`ready-issue`, `confidence-check`, `go-no-go`, `tradeoff-review-issues`, `refine-issue`, `format-issue`, `verify-issues`, `prioritize-issues`, `align-issues`). `recent_verdict_events()` returns rows newest first, optionally filtered by exact `verdict_kind`/`target_id` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `verdict_pass_rate()` groups by `verdict_kind` and returns `{verdict_kind, invocations, successes, success_rate}` dicts (mirroring `summarize_skills()`'s `success_rate` field shape) — `successes` counts `verdict IN ('pass', 'implement')`.
+
+**CLI:** `ll-session recent --kind verdict` and `ll-session search --fts "<target_id>" --kind verdict` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
+
 ## little_loops.compaction
 
 Session-memory compaction: StreamingLLM eviction + 6-section schema (FEAT-2598). Extends the LCM compaction surface in `session_store` with two complementary passes: instant structural eviction (no LLM cost, always-on) and 6-section semantic summarization (gated on `history.compaction.enabled`, fires in a background thread at the soft token threshold).
@@ -7919,6 +7963,7 @@ from little_loops.session_store import (
     hook_event_context,    # ctx manager: measures duration, records exit_code/stderr_preview on exit (ENH-2506)
     record_harness_event,  # write a harness_events row (ENH-2739)
     record_prompt_opt_event, # write a prompt_opt_events row (ENH-2498)
+    record_verdict_event,  # write a verdict_events row (ENH-2504)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -8057,6 +8102,28 @@ def record_prompt_opt_event(
 ```
 
 Write one `prompt_opt_events` row and index it in `search_index` with `kind="prompt_opt"` (ENH-2498). Called from `user_prompt_submit.py::handle()` at every return point once config is loaded (gated on `analytics.enabled`), one row per prompt: `offered=True` when the optimization template rendered, `offered=False` with the matching `bypass_reason` (`disabled`, `prefix`, `slash`, `hash`, `question`, `short`, `no_template`, `template_error`) otherwise. The empty-prompt and no-config early returns write no row — analytics can't be gated before config loads. Mirrors `record_correction()`'s contract: raises on failure; the caller wraps the call in `contextlib.suppress(Exception)` so a DB failure never changes the hook's stdout/exit. `optimized_len`/`optimized_text`/`accepted` start `NULL` and are filled in later, in place, by `_backfill_prompt_opt()`.
+
+### record_verdict_event
+
+```python
+def record_verdict_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    session_id: str | None,
+    verdict_kind: str,
+    target_kind: str | None = None,
+    target_id: str | None = None,
+    verdict: str,
+    severity_counts: dict | None = None,
+    findings_count: int | None = None,
+    confidence: int | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None
+```
+
+Write one `verdict_events` row and index it in `search_index` with `kind="verdict"` (ENH-2504). Called from `cli/action.py::cmd_invoke()` for the nine skill-bridged verifiers, wrapped in `contextlib.suppress(Exception)` so a DB failure never changes a verifier's exit code. `severity_counts` is JSON-serialized on write (`json.dumps`), parsed back on read. Mirrors `record_harness_event()`'s contract: raises on failure — the call site, not the producer, enforces best-effort.
 
 
 

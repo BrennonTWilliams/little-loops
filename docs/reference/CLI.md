@@ -2484,7 +2484,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | Flag | Description |
 |------|-------------|
 | `--fts QUERY` | FTS5 match query (required) |
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict}` | Filter results by event kind (optional; choices come from `VALID_KINDS`) |
 | `--limit N` | Maximum results (default: 20) |
 | `--json` / `-j` | Output results as a JSON array |
 
@@ -2492,7 +2492,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466); `session_lifecycle` exposes session-lifecycle/handoff transitions — `handoff_needed`/`compaction`/`stale_ref_sweep` (ENH-2495); `subagent_run` exposes the subagent (Task/Agent) spawn tree recorded by the `SubagentStart`/`SubagentStop` lifecycle hooks (ENH-2505). |
+| `--kind {tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle,subagent_run,hook_event,harness,prompt_opt,verdict}` | Event kind to list (required unless `--issue` is given). `skill` rows include `exit_code`/`success`/`duration_ms` when a completion-side host recorded them (ENH-2460). The full choice list is sourced from `VALID_KINDS`; `orchestration_run` exposes per-issue `ll-auto`/`ll-parallel`/`ll-sprint` outcomes (ENH-2492); `loop_run` exposes per-run FSM loop summaries (ENH-2463); `learning_test` exposes the Learning Test Registry mirror (ENH-2466); `session_lifecycle` exposes session-lifecycle/handoff transitions — `handoff_needed`/`compaction`/`stale_ref_sweep` (ENH-2495); `subagent_run` exposes the subagent (Task/Agent) spawn tree recorded by the `SubagentStart`/`SubagentStop` lifecycle hooks (ENH-2505). |
 | `--issue ID` | Filter to sessions that co-occurred with this issue (e.g. `ENH-1710`). Without `--kind`, lists sessions directly from the `issue_sessions` view. Issues processed after ENH-1839 populate `captured_at` immediately; a prior `backfill` pass is only needed for older issues. |
 | `--mcp-server NAME` / `--mcp-tool NAME` / `--mcp-outcome {success,error,timeout}` | With `--kind tool`, filter to MCP tool-call rows by server/tool/outcome (`tool_events.mcp_server`/`mcp_tool`/`mcp_outcome`, ENH-2511). Ignored for other `--kind` values. |
 | `--limit N` | Maximum rows (default: 20) |
@@ -2577,6 +2577,7 @@ ll-session recent --kind session_lifecycle       # Recent session-lifecycle/hand
 ll-session recent --kind subagent_run            # Recent subagent (Task/Agent) spawns (ENH-2505)
 ll-session recent --kind hook_event              # Recent hook fires: exit_code/duration_ms/stderr_preview (ENH-2506)
 ll-session recent --kind harness                 # Recent ll-harness / eval outcomes (ENH-2739)
+ll-session recent --kind verdict                 # Recent verifier verdicts (ENH-2504)
 ll-session search --fts "streaming" --kind learning_test  # Registry records by claim/target (ENH-2466)
 ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)

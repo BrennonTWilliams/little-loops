@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2723: usage_events run_id column — schema migration (v29)
 - ENH-2724: usage_events live per-invocation run_id writer (on_usage_detailed)
 - ENH-2725: usage_events run_id backfill on historical rows
+- ENH-2504: Persist verification / readiness-review verdict outcomes into history.db (verdict_events, v33)
 
 ### Other
 

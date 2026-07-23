@@ -1844,6 +1844,47 @@ class TestNewEventReaders:
         assert len(by_sha) == 1
         assert by_sha[0].branch == "main"
 
+    def test_recent_verdict_events_and_pass_rate(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_verdict_events, verdict_pass_rate
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_kind="issue",
+            target_id="BUG-2501",
+            verdict="pass",
+            severity_counts={"p0": 0, "p1": 2},
+            confidence=97,
+        )
+        record_verdict_event(
+            db,
+            ts="2026-07-23T11:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_kind="issue",
+            target_id="BUG-2501",
+            verdict="fail",
+        )
+
+        rows = recent_verdict_events(db=db)
+        assert len(rows) == 2
+        assert rows[0].ts > rows[1].ts
+        assert rows[0].verdict == "fail"
+
+        by_target = recent_verdict_events(target_id="BUG-2501", db=db)
+        assert len(by_target) == 2
+
+        rates = verdict_pass_rate(db=db)
+        assert len(rates) == 1
+        assert rates[0]["verdict_kind"] == "ready-issue"
+        assert rates[0]["invocations"] == 2
+        assert rates[0]["successes"] == 1
+        assert rates[0]["success_rate"] == 0.5
+
     def test_find_session_for_issue_transition(self, tmp_path: Path) -> None:
         from little_loops.history_reader import find_session_for_issue_transition
 
@@ -2060,7 +2101,9 @@ class TestNewEventReaders:
             recent_prompt_opt_events,
             recent_skill_events,
             recent_test_runs,
+            recent_verdict_events,
             summarize_skills,
+            verdict_pass_rate,
         )
 
         db = tmp_path / "nope" / "history.db"
@@ -2076,6 +2119,8 @@ class TestNewEventReaders:
         assert hook_latency_p95("PostToolUse", db=db) is None
         assert recent_prompt_opt_events(db=db) == []
         assert prompt_opt_offer_rate(db=db) is None
+        assert recent_verdict_events(db=db) == []
+        assert verdict_pass_rate(db=db) == []
 
 
 class TestHookEventReaders:

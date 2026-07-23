@@ -304,6 +304,112 @@ class TestCmdInvokeStreamJson:
 
 
 # =============================================================================
+# cmd_invoke — verdict_events recording (ENH-2504)
+# =============================================================================
+
+
+class TestCmdInvokeRecordsVerdictEvent:
+    def test_records_row_for_verifier_skill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(
+            skill="ready-issue", args=["BUG-2501"], timeout=300, output="stream-json"
+        )
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            result = cmd_invoke(args)
+
+        assert result == 0
+        rows = recent(db, kind="verdict")
+        assert len(rows) == 1
+        assert rows[0]["verdict_kind"] == "ready-issue"
+        assert rows[0]["target_id"] == "BUG-2501"
+        assert rows[0]["verdict"] == "pass"
+
+    def test_records_nothing_for_non_verifier_skill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(skill="capture-issue", args=[], timeout=300, output="stream-json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            cmd_invoke(args)
+
+        assert recent(db, kind="verdict") == []
+
+    def test_records_fail_verdict_on_nonzero_exit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(skill="go-no-go", args=["ENH-100"], timeout=300, output="json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(1)
+        ):
+            cmd_invoke(args)
+
+        rows = recent(db, kind="verdict")
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "fail"
+
+    def test_verdict_json_tag_overrides_coarse_verdict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        def fake_run(command, timeout, stream_callback, **kwargs):
+            stream_callback(
+                'VERDICT_JSON: {"verdict": "warn", "findings_count": 2, "confidence": 80}',
+                False,
+            )
+            return _make_completed(0)
+
+        args = _make_namespace(
+            skill="confidence-check", args=["ENH-2504"], timeout=300, output="stream-json"
+        )
+        with patch("little_loops.subprocess_utils.run_claude_command", side_effect=fake_run):
+            cmd_invoke(args)
+
+        rows = recent(db, kind="verdict")
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "warn"
+        assert rows[0]["findings_count"] == 2
+        assert rows[0]["confidence"] == 80
+
+    def test_best_effort_on_unopenable_db(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DB absent/unopenable must not change the verifier's exit code."""
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", tmp_path)
+
+        args = _make_namespace(skill="ready-issue", args=["BUG-1"], timeout=300, output="json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            result = cmd_invoke(args)
+
+        assert result == 0
+
+
+# =============================================================================
 # cmd_invoke — json mode
 # =============================================================================
 

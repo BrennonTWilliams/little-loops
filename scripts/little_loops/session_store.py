@@ -43,6 +43,7 @@ Public API:
     hook_event_context(db,...):  hook-fire analogue of skill_event_context (ENH-2506)
     record_harness_event(db,...): write one row to ``harness_events`` + search_index (ENH-2739)
     record_prompt_opt_event(db,...): write one row to ``prompt_opt_events`` + search_index (ENH-2498)
+    record_verdict_event(db,...): write one row to ``verdict_events`` + search_index (ENH-2504)
 """
 
 from __future__ import annotations
@@ -109,6 +110,7 @@ __all__ = [
     "HookEventCompletion",
     "record_harness_event",
     "record_prompt_opt_event",
+    "record_verdict_event",
 ]
 
 logger = logging.getLogger(__name__)
@@ -223,7 +225,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -246,6 +248,7 @@ VALID_KINDS: tuple[str, ...] = (
     "hook_event",
     "harness",
     "prompt_opt",
+    "verdict",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -268,6 +271,7 @@ _KIND_TABLE = {
     "hook_event": "hook_events",
     "harness": "harness_events",
     "prompt_opt": "prompt_opt_events",
+    "verdict": "verdict_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -1007,6 +1011,32 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_session ON prompt_opt_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_mode ON prompt_opt_events(mode);
+    """,
+    # v33 (ENH-2504): verifier verdict outcome telemetry (ll-ready-issue,
+    # ll-confidence-check, ll-go-no-go, ll-tradeoff-review-issues,
+    # ll-refine-issue, ll-format-issue, ll-verify-issues, ll-prioritize-issues,
+    # ll-align-issues). Live-write-only, like hook_events/harness_events —
+    # the verdict is a structured dict already in hand at cmd_invoke()'s
+    # Python boundary, never reconstructed from transcript text; excluded
+    # from _REBUILD_TABLES/_REBUILD_SEARCH_KINDS.
+    """
+    CREATE TABLE IF NOT EXISTS verdict_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        verdict_kind TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        verdict TEXT NOT NULL,
+        severity_counts TEXT,
+        findings_count INTEGER,
+        confidence INTEGER,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_verdict_kind ON verdict_events(verdict_kind);
+    CREATE INDEX IF NOT EXISTS idx_verdict_target ON verdict_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_verdict_session ON verdict_events(session_id);
     """,
 ]
 
@@ -1960,6 +1990,64 @@ def record_prompt_opt_event(
             kind="prompt_opt",
             ref=session_id or "",
             anchor=mode or "",
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_verdict_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    session_id: str | None,
+    verdict_kind: str,
+    target_kind: str | None = None,
+    target_id: str | None = None,
+    verdict: str,
+    severity_counts: dict | None = None,
+    findings_count: int | None = None,
+    confidence: int | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None:
+    """Write one row to ``verdict_events`` and index it in ``search_index``.
+
+    Mirrors :func:`record_harness_event`'s shape: raises on failure — the
+    ``cmd_invoke()`` call site (ENH-2504) wraps this in
+    ``contextlib.suppress(Exception)`` so a DB failure never changes a
+    verifier's exit code.
+    """
+    severity_json = json.dumps(severity_counts) if severity_counts is not None else None
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO verdict_events("
+            "ts, session_id, verdict_kind, target_kind, target_id, verdict, "
+            "severity_counts, findings_count, confidence, head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                verdict_kind,
+                target_kind,
+                target_id,
+                verdict,
+                severity_json,
+                findings_count,
+                confidence,
+                head_sha,
+                branch,
+            ),
+        )
+        summary = f"{target_id or ''} {verdict} {verdict_kind} {severity_json or ''}".strip()
+        _index(
+            conn,
+            content=summary[:512],
+            kind="verdict",
+            ref=head_sha or "",
+            anchor=branch or "",
             ts=ts,
         )
         conn.commit()
@@ -4694,6 +4782,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "session_lifecycle_event": ("session_lifecycle_events", "ts"),
     "harness_event": ("harness_events", "ts"),
     "prompt_opt_event": ("prompt_opt_events", "ts"),
+    "verdict_event": ("verdict_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -4711,6 +4800,7 @@ _EXPORT_DEFAULT_TABLES = [
     "session_lifecycle_event",
     "harness_event",
     "prompt_opt_event",
+    "verdict_event",
 ]
 
 
@@ -4733,7 +4823,8 @@ def export_history(
             Valid values: ``session``, ``issue_event``, ``issue_snapshot``,
             ``skill_event``, ``loop_event``, ``correction``, ``summary_node``,
             ``message_event``, ``commit_event``, ``test_run_event``,
-            ``usage_event``, ``orchestration_run``.
+            ``usage_event``, ``orchestration_run``, ``harness_event``,
+            ``prompt_opt_event``, ``verdict_event``.
         since: ISO 8601 datetime string; only rows at or after this timestamp are
             returned, filtered per-table using the relevant timestamp column.
         include_messages: When ``True`` and *tables* is not given, also include

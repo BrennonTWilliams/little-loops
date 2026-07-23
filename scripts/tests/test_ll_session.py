@@ -105,6 +105,16 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "test_run"
 
+    def test_recent_subcommand_verdict_accepted(self) -> None:
+        """ENH-2504: --kind verdict must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "verdict"]):
+            args = _parse_args()
+        assert args.kind == "verdict"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "BUG-2501", "--kind", "verdict"]):
+            args = _parse_args()
+        assert args.kind == "verdict"
+
     def test_recent_subcommand_usage_accepted(self) -> None:
         """ENH-2461: --kind usage must be a valid choice for both recent and search."""
         with patch("sys.argv", ["ll-session", "recent", "--kind", "usage"]):
@@ -1206,6 +1216,27 @@ class TestSkillStatsAndNewKinds:
         assert "total=5" in out
         assert "env_label=local" in out
 
+    def test_recent_kind_verdict_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T12:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-2501",
+            verdict="pass",
+            confidence=97,
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "verdict"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "BUG-2501" in out
+        assert "pass" in out
+
     def test_recent_kind_hook_event_outputs_row(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1335,6 +1366,36 @@ class TestSkillStatsAndNewKinds:
         ):
             assert main_session() == 0
         assert "teleporter" in capsys.readouterr().out
+
+    def test_search_kind_verdict_filters(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_verdict_event
+
+        db = tmp_path / "history.db"
+        record_verdict_event(
+            db,
+            ts="2026-07-23T12:00:00Z",
+            session_id=None,
+            verdict_kind="ready-issue",
+            target_id="BUG-2501",
+            verdict="pass",
+        )
+        with patch(
+            "sys.argv",
+            [
+                "ll-session",
+                "--db",
+                str(db),
+                "search",
+                "--fts",
+                '"BUG-2501"',
+                "--kind",
+                "verdict",
+            ],
+        ):
+            assert main_session() == 0
+        assert "BUG-2501" in capsys.readouterr().out
 
     def test_orchestration_run_recent_search_and_export(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
