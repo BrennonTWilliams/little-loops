@@ -1131,7 +1131,26 @@ states:
     evaluate:
       type: output_contains
       source: "${captured.size_review_output.output}"
-      pattern: "skipped: score (8|9|10|11) "
+      pattern: "skipped:.* score (8|9|10|11)\\b"
+    on_yes: check_readiness_for_atomic_remediation
+    on_no: check_guard2_score_fallback
+    on_error: recheck_after_size_review
+
+  check_guard2_score_fallback:
+    # BUG-2752: the guard-2 skip wording is freeform agent-generated prose
+    # (no fixed template in skills/issue-size-review/SKILL.md for the
+    # Very Large 8-11 case — only guard-1's "(ambiguous)" wording is
+    # fixed), so check_guard2_verdict's "skipped:...score N" pattern can
+    # still drift out of sync even after loosening it. This fallback
+    # probes the same captured output for a bare "score (8|9|10|11)"
+    # substring with no "skipped:" prefix requirement, via the same
+    # evaluate.source mechanism (Python-side interpolation against
+    # self.captured, never shell-interpolated) so untrusted captured
+    # text is never embedded in a shell action, per BUG-2594.
+    evaluate:
+      type: output_contains
+      source: "${captured.size_review_output.output}"
+      pattern: "score (8|9|10|11)\\b"
     on_yes: check_readiness_for_atomic_remediation
     on_no: recheck_after_size_review
     on_error: recheck_after_size_review

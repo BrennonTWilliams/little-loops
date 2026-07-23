@@ -3,8 +3,9 @@ id: BUG-2752
 title: 'autodev: check_guard2_verdict regex misses real issue-size-review skip line'
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-23T21:42:00Z'
+completed_at: '2026-07-23T22:10:52Z'
 discovered_date: '2026-07-23'
 discovered_by: capture-issue
 decision_needed: false
@@ -65,6 +66,54 @@ confidence 85, deliberately atomic) exists specifically to rescue.
    BUG-2594) — to catch any `score (8|9|10|11)` substring the regex still
    misses. On match → `check_readiness_for_atomic_remediation`; on no
    match → `recheck_after_size_review` (unchanged fall-through).
+
+## Impact
+
+The regex mismatch silently disables the BUG-2734 atomic-remediation rescue
+path for every `Very Large` (score 8-11), deliberately-atomic, ready issue
+processed by `autodev`. Affected issues fall straight through to
+`recheck_after_size_review` and get deferred as `low_readiness` after burning
+a full iteration budget (28m / 25 iterations in the observed `FEAT-021` run),
+even when readiness already passed and remediation could have earned the
+outcome-confidence pass.
+
+## Status
+
+Done — regex loosened and fallback probe added; see Resolution below.
+
+## Resolution
+
+- `check_guard2_verdict.pattern` loosened from `"skipped: score (8|9|10|11) "`
+  to `"skipped:.* score (8|9|10|11)\\b"`, matching the real freeform
+  `"skipped: score 11 (Very Large) — strictly sequential, ..."` shape.
+- Added `check_guard2_score_fallback`, reached via `check_guard2_verdict.on_no`,
+  which probes the same `${captured.size_review_output.output}` (via
+  `evaluate.source`, never shell-interpolated — BUG-2594) for a bare
+  `"score (8|9|10|11)"` substring with no `"skipped:"` prefix requirement.
+  On match it routes to `check_readiness_for_atomic_remediation`; otherwise
+  it falls through unchanged to `recheck_after_size_review`, preserving the
+  BUG-1230 leaf-skip terminus.
+- `scripts/tests/test_autodev_loop.py` (new) covers both patterns directly
+  against `evaluate_output_contains` plus the routing shape; three existing
+  structural tests in `test_builtin_loops.py` and
+  `test_autodev_decision_gate.py` were updated to expect the new
+  intermediate `check_guard2_score_fallback` hop.
+- `ll-loop validate autodev` passes with no MR-1/MR-3 violations; full
+  `pytest scripts/tests/` suite passes (16061 passed, 38 skipped).
+
+## Steps to Reproduce
+
+1. Run `autodev` against an issue that `/ll:issue-size-review --auto` scores
+   Very Large (8-11) and declines to decompose, emitting freeform prose like
+   `"[ID] skipped: score 11 (Very Large) — strictly sequential, ..."`.
+2. `check_guard2_verdict` evaluates `${captured.size_review_output.output}`
+   with pattern `"skipped: score (8|9|10|11) "`.
+3. Because the real output has extra words after `score N` rather than a
+   trailing space immediately following `N`, the pattern fails to match and
+   `on_no` routes to `recheck_after_size_review`, bypassing
+   `check_readiness_for_atomic_remediation`.
+   - Reference: `.loops/runs/autodev-20260723T160811/` (`FEAT-021`, captured
+     2026-07-23T16:08).
 
 ## Files to Modify
 
@@ -132,6 +181,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   interpolation of captured text)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T22:10:26 - `1677f3b6-1bcf-42aa-bc38-5f9193febdbc.jsonl`
+- `/ll:ready-issue` - 2026-07-23T22:02:44 - `2f0885a3-465d-4924-9e68-6f639e4e7ced.jsonl`
 - `/ll:refine-issue` - 2026-07-23T21:57:11 - `411e7b05-6695-47c9-8ae7-ebcadbdf2ef1.jsonl`
 
 - split from FEAT-2751 on 2026-07-23 — regex-fix half only, kept as a

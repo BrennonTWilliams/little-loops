@@ -535,8 +535,13 @@ class TestReconcilePlateauStructural:
         assert gate_state.get("on_no") == "recheck_after_size_review"
         assert gate_state.get("on_error") == "check_guard2_verdict"
         guard2_state = data["states"]["check_guard2_verdict"]
-        assert guard2_state.get("on_no") == "recheck_after_size_review"
+        # BUG-2752: no-match now routes through check_guard2_score_fallback (which
+        # itself falls through to recheck_after_size_review) before the terminus.
+        assert guard2_state.get("on_no") == "check_guard2_score_fallback"
         assert guard2_state.get("on_error") == "recheck_after_size_review"
+        fallback_state = data["states"]["check_guard2_score_fallback"]
+        assert fallback_state.get("on_no") == "recheck_after_size_review"
+        assert fallback_state.get("on_error") == "recheck_after_size_review"
 
     def test_reconcile_current_invokes_skill(self, data: dict[str, Any]) -> None:
         state = data["states"]["reconcile_current"]

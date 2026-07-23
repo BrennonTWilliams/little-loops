@@ -4408,11 +4408,17 @@ class TestAutodevLoop:
 
     def test_check_guard2_verdict_routes_to_remediation_chain(self, data: dict) -> None:
         """BUG-2734: guard-2 verdict routes to the readiness gate before remediation;
-        no-match falls through unchanged to recheck_after_size_review."""
+        no-match falls through to the BUG-2752 fallback probe, which itself falls
+        through unchanged to recheck_after_size_review."""
         state = data["states"].get("check_guard2_verdict", {})
         assert state.get("on_yes") == "check_readiness_for_atomic_remediation"
-        assert state.get("on_no") == "recheck_after_size_review"
+        assert state.get("on_no") == "check_guard2_score_fallback"
         assert state.get("on_error") == "recheck_after_size_review"
+
+        fallback_state = data["states"].get("check_guard2_score_fallback", {})
+        assert fallback_state.get("on_yes") == "check_readiness_for_atomic_remediation"
+        assert fallback_state.get("on_no") == "recheck_after_size_review"
+        assert fallback_state.get("on_error") == "recheck_after_size_review"
 
         readiness_state = data["states"].get("check_readiness_for_atomic_remediation", {})
         assert readiness_state.get("on_yes") == "remediate_oversized_atomic"
@@ -4728,9 +4734,14 @@ class TestAutodevLoop:
             "bypass check_guard2_verdict straight to recheck_after_size_review"
         )
         guard2_gate = data["states"].get("check_guard2_verdict", {})
-        assert guard2_gate.get("on_no") == "recheck_after_size_review", (
-            "check_guard2_verdict must preserve the BUG-1230 leaf-skip by "
-            "falling through to recheck_after_size_review on no guard-2 match"
+        assert guard2_gate.get("on_no") == "check_guard2_score_fallback", (
+            "BUG-2752: check_guard2_verdict's no-match edge now routes through the "
+            "score-only fallback probe before falling through to recheck_after_size_review"
+        )
+        fallback_gate = data["states"].get("check_guard2_score_fallback", {})
+        assert fallback_gate.get("on_no") == "recheck_after_size_review", (
+            "check_guard2_score_fallback must preserve the BUG-1230 leaf-skip by "
+            "falling through to recheck_after_size_review on no score match"
         )
 
     def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
