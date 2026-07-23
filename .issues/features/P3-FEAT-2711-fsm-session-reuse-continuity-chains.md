@@ -18,15 +18,13 @@ relates_to:
 - ENH-2486
 - ENH-2714
 - FEAT-2747
-blocked_by:
-- FEAT-2747
 decision_needed: false
-confidence_score: 86
-outcome_confidence: 64
-score_complexity: 12
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 16
+confidence_score: 98
+outcome_confidence: 81
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 18
 missing_artifacts: true
 spike_needed: true
 spike_attempted: true
@@ -276,6 +274,71 @@ compaction path the spike showed is required._
   + `captured_kwargs.get(...)` idiom to model a new
   `test_resume_kwarg_forwarded` test after.
 
+### Codebase Research Findings (2026-07-23 re-refine — FEAT-2747 landed)
+
+_Added by `/ll:refine-issue` — FEAT-2747 (the blocking dependency) shipped
+2026-07-23 with concrete functions this issue's Implementation Steps
+previously described only as "TBD"/"whatever function FEAT-2747 lands"._
+
+- **The compaction functions to consume now exist and are directly
+  callable**, no FSM-layer dependency:
+  - `compact_result_for_session_with_reasoning(session_id: str, db: Path |
+    str, *, config: dict | None = None) -> CompactResult | None`
+    (`scripts/little_loops/compaction/result.py:85-111`) — the entry point
+    step 3 should call. `config` is the raw project config dict (not a
+    `CompactionConfig`), from which `history.compaction` is resolved
+    internally.
+  - It wraps `compact_session_with_reasoning(session_id, db=DEFAULT_DB_PATH,
+    *, config: dict | None = None) -> tuple[str | None, list[int]]`
+    (`session_store.py:3889-3916`), which opens/closes its own
+    `connect(db)` — callers do not manage a connection.
+  - `CompactResult` (`compaction/result.py:15-31`) has `summary_text: str |
+    None` — **this is the field to interpolate into the next chained
+    state's prompt** (confirmed via docstring + the function's own
+    construction: `summary_message == summary_text` for this path).
+  - Returns `None` only when there are zero rows in both `message_events`
+    and `assistant_messages` for the session (nothing to summarize).
+  - **Design note carried over from FEAT-2747's Resolution**: neither
+    function persists to `summary_nodes`/`summary_spans` (a `UNIQUE
+    (session_id) WHERE kind='condensed'` index would collide with
+    `compact_session()`'s own condensed node under the same session_id).
+    The result is compute-and-return only — matches this issue's actual
+    need (a value for one FSM prompt-state hop, not a durable DAG node) with
+    no migration required.
+- **Session-ID capture is NOT yet done** — `run_claude_command()`
+  (`subprocess_utils.py:456-461`) parses the `system`/`init` stream-json
+  event but only extracts `event["model"]`; `session_id` is never read from
+  that event today (no `on_session_id_detected`-style callback exists
+  alongside the current `on_model_detected`/`on_usage`/`on_result_seen`
+  callbacks). Implementation Step 2 (session-ID capture) is still fully
+  required work, not already-landed groundwork — the issue's phrasing
+  "currently parsed and discarded" should be read as "present in the raw
+  JSON payload but never extracted," not as an existing partial capture.
+- **Stale anchor corrections** (heavy recent edit activity on
+  `fsm/executor.py`/`fsm/schema.py`/`fsm/validation.py` moved several cited
+  line numbers):
+  - `fsm/executor.py::_handle_handoff` — now **line 2781** (was 2646);
+    `HandoffHandler._spawn_continuation()` in `handoff_handler.py:97` is
+    still accurate.
+  - `fsm/executor.py::_handle_rate_limit` — now **line 2373** (was 2302);
+    `_exhaust_rate_limit` — now **line 2593** (was 2522).
+  - `fsm/schema.py`: `PruningProfileConfig` — now **line 411**; `StateConfig`
+    — now **line 529** (was ~637); `FSMLoop` — now **line 1144** (was
+    ~1206); `pruning_profile_ok` suppression flag — still **line 1221**,
+    unchanged.
+  - `fsm/validation.py::_validate_parse_swallow()` (MR-10) — now **line
+    2017** (was 2011–2057); the allowed top-level keys set is still
+    accurate around line 233.
+  - `loops/rn-build.yaml` step-0 gate chain (`tech_research`:268,
+    `design_artifacts`:318, `commit_design`:338, `scope_project`:374) — all
+    confirmed unchanged at cited lines; `design_artifacts` still
+    interpolates `${captured.tech_research.output}` at line 330.
+  - `fsm/executor.py::_run_action()` injection point — the cited 1589-1614
+    range now sits inside a broader action-dispatch block spanning
+    1510-1642; re-verify the exact post-completion injection point against
+    current code at implementation time rather than trusting the old line
+    range.
+
 ### Tests
 - `scripts/tests/test_fsm_schema.py::TestPromptSizeGuardConfig` (line 2805)
   and the `PruningProfileConfig` test class — template for a new
@@ -341,6 +404,17 @@ compaction path the spike showed is required._
    regression; before/after total-token measurement (including the added
    summarization-call cost) on the locked `rn-build.yaml` chain trace from
    step 0.
+
+### Codebase Research Findings — FEAT-2747 now unblocks steps 2-3
+
+_Added by `/ll:refine-issue`:_ FEAT-2747 shipped 2026-07-23; this issue's
+`blocked_by` dependency is resolved. Step 3 is now a direct call to
+`compact_result_for_session_with_reasoning(session_id, db, config=project_config)`
+(`scripts/little_loops/compaction/__init__.py` re-exports it) — no further
+compaction-side implementation is required, only the FSM-side call site and
+prompt interpolation of the returned `CompactResult.summary_text`. Step 2
+(session-ID capture) remains fully unimplemented — see the Integration Map's
+Codebase Research Findings above for exact current line numbers.
 
 ## Acceptance Criteria
 
@@ -411,6 +485,8 @@ _Added by `/ll:spike` on 2026-07-21_
 **Promotion**: move `session_id_capture.py` (as an addition to `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new `fsm`-side helper) to `scripts/little_loops/spike/fsm_continuity_compaction/` in a separate PR, alongside a rewritten Integration Map that adds the assistant-inclusive summarization path this spike shows is actually needed.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-23T00:00:00 - `4dc0a2fe-4eb3-4bb1-bd46-52e6dff150df.jsonl`
+- `/ll:refine-issue` - 2026-07-23T19:10:40 - `63aa945b-bb08-4db3-bd9d-643b3e5e1fcb.jsonl`
 - Decomposed 2026-07-22: assistant-inclusive compaction function carved out
   to FEAT-2747 to de-risk Complexity; FEAT-2711 now blocked_by: [FEAT-2747].
 - `/ll:confidence-check` - 2026-07-22T00:00:00 - `8c47ddca-332b-4c40-927d-c9fa25c37838.jsonl`
@@ -424,6 +500,10 @@ _Added by `/ll:spike` on 2026-07-21_
 - `/ll:capture-issue` - 2026-07-21T02:03:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/79ab3d38-0b67-42aa-9ad2-b6f2af55d225.jsonl`
 - Re-scoped 2026-07-20: narrowed to continuity-of-reasoning chains; prefix-cost
   justification moved to ENH-2714; added step-0 viability gate; demoted P2→P3.
+
+- Cleared stale `blocked_by: [FEAT-2747]` 2026-07-23: FEAT-2747 is `done`,
+  delivering `compact_result_for_session_with_reasoning()` — see the
+  Integration Map's "FEAT-2747 landed" findings for exact signatures.
 
 ---
 
