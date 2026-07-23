@@ -8,7 +8,7 @@ Subcommands:
     search   FTS5 full-text query with BM25-ranked results and optional --kind filter
     recent   most recent rows for an event kind (tool, file, issue, loop, correction,
              message, skill, cli, snapshot, commit, test_run, usage, orchestration_run,
-             hook_event, harness)
+             hook_event, harness, prompt_opt)
     skill-stats per-skill invocation/success-rate rollup (ENH-2460)
     backfill ingest on-disk sources into raw_events + issue/loop/commit tables (ENH-2581)
     rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)

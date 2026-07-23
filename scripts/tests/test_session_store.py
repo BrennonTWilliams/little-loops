@@ -1379,7 +1379,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
 
 
 class TestBackfillIncremental:
@@ -1824,8 +1824,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1994,8 +1994,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2046,8 +2046,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2125,7 +2125,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 31
+        assert int(version[0]) == 32
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2142,8 +2142,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3859,8 +3859,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3900,8 +3900,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 31
-        assert int(row[0]) == 31
+        assert SCHEMA_VERSION == 32
+        assert int(row[0]) == 32
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3955,7 +3955,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 31
+        assert int(version[0]) == 32
         assert "issue_snapshots" in names
 
 
@@ -4648,7 +4648,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4794,7 +4794,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -5015,7 +5015,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -5120,7 +5120,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -5160,7 +5160,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -5204,7 +5204,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -5411,7 +5411,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -5653,7 +5653,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 31
+        assert SCHEMA_VERSION == 32
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -5769,3 +5769,268 @@ class TestRecordHarnessEvent:
         )
         results = search(db, query="unique-search-target-xyz")
         assert any(r["kind"] == "harness" for r in results)
+
+
+class TestSchemaV32PromptOptEvents:
+    """v32 migration adds the prompt_opt_events table (ENH-2498)."""
+
+    def test_prompt_opt_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(prompt_opt_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "session_id",
+            "mode",
+            "offered",
+            "bypass_reason",
+            "raw_len",
+            "optimized_len",
+            "optimized_text",
+            "accepted",
+        }
+
+    def test_prompt_opt_events_indexes_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+        finally:
+            conn.close()
+        assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
+
+    def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 32
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 31)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "prompt_opt_events" in names
+
+    def test_prompt_opt_is_kinded(self) -> None:
+        assert "prompt_opt" in VALID_KINDS
+        assert _KIND_TABLE["prompt_opt"] == "prompt_opt_events"
+
+    def test_prompt_opt_events_excluded_from_rebuild_tables(self) -> None:
+        from little_loops.session_store import _REBUILD_SEARCH_KINDS, _REBUILD_TABLES
+
+        assert "prompt_opt_events" not in _REBUILD_TABLES
+        assert "prompt_opt" not in _REBUILD_SEARCH_KINDS
+
+    def test_prompt_opt_events_not_kindless(self) -> None:
+        from little_loops.session_store import _KINDLESS_TABLES
+
+        assert "prompt_opt_events" not in _KINDLESS_TABLES
+
+
+class TestRecordPromptOptEvent:
+    """ENH-2498: record_prompt_opt_event() single-row INSERT."""
+
+    def test_inserts_offered_row(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id="sess-1",
+            mode="thorough",
+            offered=True,
+            raw_len=42,
+        )
+        rows = recent(db, kind="prompt_opt")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["session_id"] == "sess-1"
+        assert row["mode"] == "thorough"
+        assert row["offered"] == 1
+        assert row["bypass_reason"] is None
+        assert row["raw_len"] == 42
+        assert row["optimized_text"] is None
+        assert row["accepted"] is None
+
+    def test_inserts_bypass_row(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id="sess-2",
+            mode="quick",
+            offered=False,
+            bypass_reason="short",
+            raw_len=5,
+        )
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["offered"] == 0
+        assert rows[0]["bypass_reason"] == "short"
+
+    def test_ts_defaults_to_now_when_omitted(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(db, session_id="sess-3", mode="quick", offered=True)
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["ts"]
+
+    def test_kwarg_only_signature(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(TypeError):
+            record_prompt_opt_event(db, "sess-4", True)  # type: ignore[misc]
+
+    def test_raises_on_unopenable_db(self, tmp_path: Path) -> None:
+        """Caller (user_prompt_submit.py) wraps this in contextlib.suppress(Exception)."""
+        from little_loops.session_store import record_prompt_opt_event
+
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        with pytest.raises(sqlite3.Error):
+            record_prompt_opt_event(tmp_path, session_id="sess-5", mode="quick", offered=True)
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id="unique-search-session-abc",
+            mode="thorough",
+            offered=True,
+            bypass_reason="unique-fts-marker-xyz",
+        )
+        results = search(db, query="unique-fts-marker-xyz")
+        assert any(r["kind"] == "prompt_opt" for r in results)
+
+
+class TestBackfillPromptOpt:
+    """ENH-2498: _backfill_prompt_opt() enriches offer rows with optimized text."""
+
+    def _assistant_record(self, session_id: str, ts: str, text: str) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": [{"type": "text", "text": text}]},
+                }
+            )
+            + "\n"
+        )
+
+    def test_enriches_offer_row_with_enhanced_text(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-enrich",
+            mode="quick",
+            offered=True,
+            raw_len=50,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-enrich",
+                "2026-07-23T10:00:05Z",
+                "ORIGINAL: fix the bug\nENHANCED: fix the null-pointer bug in foo.py:42",
+            ),
+            encoding="utf-8",
+        )
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["prompt_opt_events"] == 1
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["accepted"] == 1
+        assert rows[0]["optimized_text"] == "fix the null-pointer bug in foo.py:42"
+        assert rows[0]["optimized_len"] == len("fix the null-pointer bug in foo.py:42")
+
+    def test_unparseable_response_leaves_row_unenriched(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-auto-apply",
+            mode="quick",
+            offered=True,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-auto-apply",
+                "2026-07-23T10:00:05Z",
+                "[ll:autoprompt] Enhanced with: codebase context",
+            ),
+            encoding="utf-8",
+        )
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["prompt_opt_events"] == 0
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["accepted"] is None
+        assert rows[0]["optimized_text"] is None
+
+    def test_repeated_rebuild_is_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.session_store import rebuild, record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-idempotent",
+            mode="quick",
+            offered=True,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-idempotent",
+                "2026-07-23T10:00:05Z",
+                "ENHANCED: the fully rewritten prompt",
+            ),
+            encoding="utf-8",
+        )
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        first_pass = rebuild(db)
+        assert first_pass["prompt_opt_events"] == 0
+        rows = recent(db, kind="prompt_opt")
+        assert len(rows) == 1
+        results = search(db, query="fully rewritten prompt")
+        assert len([r for r in results if r["kind"] == "prompt_opt"]) == 1

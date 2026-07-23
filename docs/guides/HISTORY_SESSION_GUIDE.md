@@ -86,8 +86,9 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v28 | ENH-2505 | `subagent_runs` table (subagent Task/Agent spawn tree) |
 | v29 | ENH-2723 | `run_id` column on `usage_events` |
 | v30 | ENH-2506 | `hook_events` table (per-fire hook execution telemetry) |
+| v32 | ENH-2498 | `prompt_opt_events` table (prompt-optimization offer/outcome telemetry) |
 
-v15–v18 and v20–v30 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v32 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
 
 ---
 
@@ -111,6 +112,7 @@ v15–v18 and v20–v30 are EPIC-2457 coverage expansions and related observabil
 | `usage_events` | Real LLM token counts per invocation: `model`, `state` (NULL on backfilled rows, populated on live-written rows), `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd` (NULL for unpriced models), `run_id` (NULL until backfilled — v29). Populated two ways: post-hoc from `raw_events` by `_backfill_usage_events()` (parses `message.usage` on `type == "assistant"` records), and live at loop-run finish by `record_usage_event()` (`FSMExecutor._finish()`, one row per collected `TokenUsage`, ENH-2724). Queryable via `ll-session recent --kind usage` and `history_reader.recent_usage_events()`/`aggregate_usage()` (ENH-2461, v20; OTel attribution columns added in v21). |
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, and git context. Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
+| `prompt_opt_events` | Prompt-optimization offer/outcome telemetry: `ts`, `session_id`, `mode`, `offered`, `bypass_reason`, `raw_len`, `optimized_len`, `optimized_text`, `accepted`. Live-written per prompt by `user_prompt_submit.py::handle()` (gated on `analytics.enabled`); `optimized_len`/`optimized_text`/`accepted` filled in later, in place, by `_backfill_prompt_opt()` when a parseable `ENHANCED:` block is found in the transcript. Queryable via `ll-session recent --kind prompt_opt` and `history_reader.recent_prompt_opt_events()`/`prompt_opt_offer_rate()` (ENH-2498, v32). |
 | `correction_retirements` | Records corrections that have been "retired" by a matching decision rule (topic fingerprint → rule id). Lets `ll-history analyze` show how often a past correction is now auto-handled (v13). |
 | `loop_runs` | One row per completed FSM loop run: `run_id` (archive-time identifier, unique), `loop_name`, `started_at`/`ended_at`, `final_state`, `iterations`, `terminated_by`, `error`, nullable `evaluator_score`/`diagnostics_path`, and git context. Written best-effort by `FSMExecutor._finish()`. Queryable via `ll-session recent --kind loop_run` and `history_reader.recent_loop_runs()`/`find_loop_run()`/`aggregate_loop_runs()` (ENH-2463, v23). |
 | `learning_test_events` | Mirror of the Learning Test Registry (`.ll/learning-tests/*.md`): `record_id` (slugified target, unique), `target`, `status`, `assertions_json`, `date`, `raw_output_path`. Written best-effort by `ll-learning-tests prove`/`mark-stale`/`orphans --mark-stale` (UPSERT — re-proves overwrite in place); reconciled from disk for out-of-band edits by `ll-session backfill`. Queryable via `ll-session recent --kind learning_test`, FTS search, and `history_reader.recent_learning_tests()`/`find_learning_test()` (ENH-2466, v26). |
@@ -188,7 +190,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event` (the full list is sourced from `VALID_KINDS`).
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `prompt_opt` (the full list is sourced from `VALID_KINDS`).
 
 ### Most recent events
 

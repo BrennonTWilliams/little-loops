@@ -42,6 +42,7 @@ Public API:
     record_hook_event(db,...):   write one row to ``hook_events`` + search_index (ENH-2506)
     hook_event_context(db,...):  hook-fire analogue of skill_event_context (ENH-2506)
     record_harness_event(db,...): write one row to ``harness_events`` + search_index (ENH-2739)
+    record_prompt_opt_event(db,...): write one row to ``prompt_opt_events`` + search_index (ENH-2498)
 """
 
 from __future__ import annotations
@@ -107,6 +108,7 @@ __all__ = [
     "hook_event_context",
     "HookEventCompletion",
     "record_harness_event",
+    "record_prompt_opt_event",
 ]
 
 logger = logging.getLogger(__name__)
@@ -221,7 +223,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -243,6 +245,7 @@ VALID_KINDS: tuple[str, ...] = (
     "subagent_run",
     "hook_event",
     "harness",
+    "prompt_opt",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -264,6 +267,7 @@ _KIND_TABLE = {
     "subagent_run": "subagent_runs",
     "hook_event": "hook_events",
     "harness": "harness_events",
+    "prompt_opt": "prompt_opt_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -975,6 +979,34 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_harness_target ON harness_events(target);
     CREATE INDEX IF NOT EXISTS idx_harness_exit ON harness_events(exit_code);
     CREATE INDEX IF NOT EXISTS idx_harness_parent ON harness_events(parent_id);
+    """,
+    # v32 (ENH-2498): prompt-optimization offer/outcome telemetry.
+    # `user_prompt_submit.py::handle()` writes the offer row live (mode,
+    # offered, bypass_reason, raw_len) at hook-fire time — that decision can't
+    # be reconstructed retroactively with historical-config confidence, so
+    # (like hook_events/harness_events) this table is excluded from
+    # _REBUILD_TABLES/_REBUILD_SEARCH_KINDS: a rebuild() wipe-and-replay would
+    # destroy live rows with no raw_events-backed way to regenerate them.
+    # Unlike those two, this table DOES get a best-effort backfill pass —
+    # _backfill_prompt_opt() enriches existing offered=1 rows in place
+    # (UPDATE, never INSERT/DELETE) with optimized_len/optimized_text/accepted
+    # parsed from the transcript, so it's safe to run non-destructively from
+    # rebuild() without registering the table in the wipe lists.
+    """
+    CREATE TABLE IF NOT EXISTS prompt_opt_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        mode TEXT,
+        offered INTEGER,
+        bypass_reason TEXT,
+        raw_len INTEGER,
+        optimized_len INTEGER,
+        optimized_text TEXT,
+        accepted INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_session ON prompt_opt_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_prompt_opt_events_mode ON prompt_opt_events(mode);
     """,
 ]
 
@@ -1892,6 +1924,49 @@ def record_harness_event(
         conn.close()
 
 
+def record_prompt_opt_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    offered: bool,
+    mode: str | None = None,
+    bypass_reason: str | None = None,
+    raw_len: int | None = None,
+    ts: str | None = None,
+) -> None:
+    """Write one row to ``prompt_opt_events`` and index it in ``search_index``.
+
+    Best-effort, fire-and-forget contract like :func:`record_correction` /
+    :func:`record_skill_event` — the caller (``user_prompt_submit.py::handle()``)
+    wraps this in ``contextlib.suppress(Exception)`` so a DB failure never
+    changes the hook's stdout/exit (EPIC-2457 graceful-degradation contract).
+    See the v32 migration comment for why this table is excluded from
+    ``_REBUILD_TABLES`` and how :func:`_backfill_prompt_opt` enriches it
+    separately.
+    """
+    ts = ts or _now()
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO prompt_opt_events("
+            "ts, session_id, mode, offered, bypass_reason, raw_len"
+            ") VALUES(?, ?, ?, ?, ?, ?)",
+            (ts, session_id, mode, int(offered), bypass_reason, raw_len),
+        )
+        summary = f"mode={mode or ''} offered={int(offered)} reason={bypass_reason or ''}"
+        _index(
+            conn,
+            content=summary.strip()[:512],
+            kind="prompt_opt",
+            ref=session_id or "",
+            anchor=mode or "",
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Orchestration-run events (ENH-2492)
 # ---------------------------------------------------------------------------
@@ -2512,7 +2587,7 @@ def recent(
     """Return the most recent rows for *kind*.
 
     Kinds: tool, file, issue, loop, correction, message, skill, cli, commit,
-    test_run, usage, orchestration_run.
+    test_run, usage, orchestration_run, prompt_opt.
     """
     if kind not in VALID_KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {sorted(VALID_KINDS)}")
@@ -3190,6 +3265,80 @@ def _backfill_assistant_messages(
 
 _BACKFILL_SKILL_RE = re.compile(r"<command-name>/ll:(\S+)")
 _BACKFILL_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+_BACKFILL_ENHANCED_RE = re.compile(r"^ENHANCED:\s*(.+)", re.MULTILINE | re.DOTALL)
+
+
+def _backfill_prompt_opt(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+    """Best-effort enrich ``prompt_opt_events`` offer rows with the optimized text.
+
+    Matches each still-unenriched ``offered=1`` row (written live by
+    ``user_prompt_submit.py::handle()``) to the nearest-following assistant
+    turn in the same session whose text contains an ``ENHANCED:`` block —
+    the ``confirm=true`` path in ``optimize-prompt-hook.md`` (ENH-2498).
+    ``confirm=false`` sessions emit only a short summary with no recoverable
+    replacement prompt, so those offer rows are left unenriched
+    (``optimized_text``/``accepted`` stay NULL) — a documented evidence
+    limitation, not a bug. Only rows with ``optimized_text IS NULL`` are
+    candidates and the UPDATE is guarded the same way, so repeated calls
+    (e.g. from :func:`rebuild`) are idempotent and never re-index duplicate
+    FTS rows. *source* accepts either JSONL files or a ``raw_events``
+    cursor — see :func:`_iter_events`.
+    """
+    offers = conn.execute(
+        "SELECT id, ts, session_id FROM prompt_opt_events "
+        "WHERE offered = 1 AND optimized_text IS NULL AND session_id IS NOT NULL"
+    ).fetchall()
+    if not offers:
+        return 0
+    by_session: dict[str, list[tuple[int, str]]] = {}
+    for row_id, ts, session_id in offers:
+        by_session.setdefault(session_id, []).append((row_id, ts))
+
+    count = 0
+    for line, _source_label in _iter_events(source):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("type") != "assistant":
+            continue
+        session_id = record.get("sessionId")
+        candidates = by_session.get(session_id)
+        if not candidates:
+            continue
+        ts = str(record.get("timestamp") or "")
+        content = record.get("message", {}).get("content", [])
+        if not isinstance(content, list):
+            continue
+        text = "\n".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        m = _BACKFILL_ENHANCED_RE.search(text)
+        if not m:
+            continue
+        eligible = [(row_id, o_ts) for row_id, o_ts in candidates if o_ts <= ts]
+        if not eligible:
+            continue
+        row_id, _ = max(eligible, key=lambda c: c[1])
+        enhanced = m.group(1).strip()
+        cursor = conn.execute(
+            "UPDATE prompt_opt_events SET optimized_len = ?, optimized_text = ?, accepted = 1 "
+            "WHERE id = ? AND optimized_text IS NULL",
+            (len(enhanced), enhanced, row_id),
+        )
+        if cursor.rowcount:
+            _index(
+                conn,
+                content=enhanced[:512],
+                kind="prompt_opt",
+                ref=session_id or "",
+                anchor="",
+                ts=ts,
+            )
+            count += 1
+    return count
 
 
 def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
@@ -4021,12 +4170,16 @@ def recompress_raw_events(
 
 # Cache tables re-derived from raw_events by rebuild(). Deliberately excludes
 # cli_events/file_events/test_run_events/issue_events/loop_events/commit_events/
-# issue_snapshots/hook_events/harness_events — those have no raw_events-backed
-# _backfill_* path (they're either live-write-only or sourced from
-# .issues/.loops/git log, out of this issue's scope; see ENH-2581 management
-# plan). Wiping them here with no re-derivation path would be unrecoverable
-# data loss. hook_events and harness_events in particular have no
-# transcript-JSONL source at all (ENH-2506, ENH-2739).
+# issue_snapshots/hook_events/harness_events/prompt_opt_events — those have no
+# raw_events-backed _backfill_* path (they're either live-write-only or
+# sourced from .issues/.loops/git log, out of this issue's scope; see
+# ENH-2581 management plan). Wiping them here with no re-derivation path
+# would be unrecoverable data loss. hook_events and harness_events in
+# particular have no transcript-JSONL source at all (ENH-2506, ENH-2739).
+# prompt_opt_events does get JSONL-sourced enrichment (ENH-2498's
+# _backfill_prompt_opt), but as a non-destructive UPDATE-only pass called
+# separately below — it must NOT be added here or to _REBUILD_SEARCH_KINDS,
+# since a wipe would destroy the live offer rows it enriches.
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -4069,6 +4222,7 @@ def rebuild(
         "corrections": 0,
         "summaries": 0,
         "usage_events": 0,
+        "prompt_opt_events": 0,
     }
     try:
         for table in _REBUILD_TABLES:
@@ -4092,6 +4246,9 @@ def rebuild(
         counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor())
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)
+        # Non-destructive UPDATE-only enrichment — deliberately not part of
+        # the DELETE-then-replay loop above (see _REBUILD_TABLES comment).
+        counts["prompt_opt_events"] = _backfill_prompt_opt(conn, _raw_events_cursor())
 
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_rebuild_version', ?) "
@@ -4536,6 +4693,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "loop_run": ("loop_runs", "ended_at"),
     "session_lifecycle_event": ("session_lifecycle_events", "ts"),
     "harness_event": ("harness_events", "ts"),
+    "prompt_opt_event": ("prompt_opt_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -4552,6 +4710,7 @@ _EXPORT_DEFAULT_TABLES = [
     "orchestration_run",
     "session_lifecycle_event",
     "harness_event",
+    "prompt_opt_event",
 ]
 
 

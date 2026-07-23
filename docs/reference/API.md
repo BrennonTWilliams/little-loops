@@ -6975,8 +6975,41 @@ from little_loops.history_reader import (
     HarnessEvent,            # ENH-2741
     recent_harness_events,   # ENH-2741
     harness_eval_pass_rate,  # ENH-2741
+    PromptOptEvent,          # ENH-2498
+    recent_prompt_opt_events, # ENH-2498
+    prompt_opt_offer_rate,   # ENH-2498
 )
 ```
+
+### PromptOptEvent
+
+Dataclass for `prompt_opt_events` rows — one prompt-optimization offer/outcome (ENH-2498). `offered`/`bypass_reason`/`mode`/`raw_len` are written live at hook-fire time; `optimized_len`/`optimized_text`/`accepted` start `NULL` and are filled in by `_backfill_prompt_opt()` when the transcript's next assistant turn contains a parseable `ENHANCED:` block.
+
+```python
+@dataclass
+class PromptOptEvent:
+    ts: str
+    session_id: str | None
+    mode: str | None
+    offered: int | None
+    bypass_reason: str | None
+    raw_len: int | None
+    optimized_len: int | None
+    optimized_text: str | None
+    accepted: int | None
+```
+
+### recent_prompt_opt_events / prompt_opt_offer_rate
+
+```python
+def recent_prompt_opt_events(
+    *, mode: str | None = None, since: str | None = None, limit: int = 50, db: Path | str = DEFAULT_DB_PATH,
+) -> list[PromptOptEvent]
+
+def prompt_opt_offer_rate(*, since: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> float | None
+```
+
+`recent_prompt_opt_events()` returns rows newest first, optionally filtered by exact `mode` and/or a `since` lower bound on `ts`. `prompt_opt_offer_rate()` returns the fraction of rows with `offered = 1`, or `None` when there are zero rows.
 
 ### SubagentRun
 
@@ -7885,6 +7918,7 @@ from little_loops.session_store import (
     record_hook_event,     # write a hook_events row (ENH-2506)
     hook_event_context,    # ctx manager: measures duration, records exit_code/stderr_preview on exit (ENH-2506)
     record_harness_event,  # write a harness_events row (ENH-2739)
+    record_prompt_opt_event, # write a prompt_opt_events row (ENH-2498)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -8007,7 +8041,24 @@ def record_harness_event(
 
 Write one `harness_events` row and index it in `search_index` with `kind="harness"` (ENH-2739). `parent_id` links DSL per-task rows to their parent harness run (ENH-2740). Mirrors `record_test_run_event()`'s contract, not `record_hook_event()`'s: raises on failure — callers are responsible for `contextlib.suppress(Exception)` if a failed write should not abort the run. Live-write-only — nothing calls this yet (ENH-2740 wires the `ll-harness` producer); no `_backfill_harness_events` exists.
 
-### record_commit_event
+### record_prompt_opt_event
+
+```python
+def record_prompt_opt_event(
+    db_path: Path | str,
+    *,
+    session_id: str | None,
+    offered: bool,
+    mode: str | None = None,
+    bypass_reason: str | None = None,
+    raw_len: int | None = None,
+    ts: str | None = None,
+) -> None
+```
+
+Write one `prompt_opt_events` row and index it in `search_index` with `kind="prompt_opt"` (ENH-2498). Called from `user_prompt_submit.py::handle()` at every return point once config is loaded (gated on `analytics.enabled`), one row per prompt: `offered=True` when the optimization template rendered, `offered=False` with the matching `bypass_reason` (`disabled`, `prefix`, `slash`, `hash`, `question`, `short`, `no_template`, `template_error`) otherwise. The empty-prompt and no-config early returns write no row — analytics can't be gated before config loads. Mirrors `record_correction()`'s contract: raises on failure; the caller wraps the call in `contextlib.suppress(Exception)` so a DB failure never changes the hook's stdout/exit. `optimized_len`/`optimized_text`/`accepted` start `NULL` and are filled in later, in place, by `_backfill_prompt_opt()`.
+
+
 
 ```python
 def record_commit_event(

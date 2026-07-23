@@ -1737,6 +1737,53 @@ class TestNewEventReaders:
         assert len(by_branch) == 1
         assert by_branch[0].issue_id == "BUG-1"
 
+    def test_recent_prompt_opt_events_filters(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_prompt_opt_events
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="s1",
+            mode="quick",
+            offered=True,
+        )
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T11:00:00Z",
+            session_id="s2",
+            mode="thorough",
+            offered=False,
+            bypass_reason="short",
+        )
+
+        all_events = recent_prompt_opt_events(db=db)
+        assert [e.session_id for e in all_events] == ["s2", "s1"]
+
+        by_mode = recent_prompt_opt_events(mode="quick", db=db)
+        assert len(by_mode) == 1
+        assert by_mode[0].session_id == "s1"
+
+        since_events = recent_prompt_opt_events(since="2026-07-23T10:30:00Z", db=db)
+        assert len(since_events) == 1
+        assert since_events[0].session_id == "s2"
+
+    def test_prompt_opt_offer_rate(self, tmp_path: Path) -> None:
+        import pytest as _pytest
+
+        from little_loops.history_reader import prompt_opt_offer_rate
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        assert prompt_opt_offer_rate(db=db) is None
+
+        record_prompt_opt_event(db, ts="2026-07-23T10:00:00Z", session_id="s1", offered=True)
+        record_prompt_opt_event(db, ts="2026-07-23T10:01:00Z", session_id="s2", offered=False)
+        record_prompt_opt_event(db, ts="2026-07-23T10:02:00Z", session_id="s3", offered=False)
+
+        assert prompt_opt_offer_rate(db=db) == _pytest.approx(1 / 3)
+
     def test_recent_learning_tests_and_find(self, tmp_path: Path) -> None:
         from little_loops.history_reader import find_learning_test, recent_learning_tests
         from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
@@ -2006,9 +2053,11 @@ class TestNewEventReaders:
             find_session_for_issue_transition,
             hook_failure_rate,
             hook_latency_p95,
+            prompt_opt_offer_rate,
             recent_commit_events,
             recent_hook_events,
             recent_lifecycle_events,
+            recent_prompt_opt_events,
             recent_skill_events,
             recent_test_runs,
             summarize_skills,
@@ -2025,6 +2074,8 @@ class TestNewEventReaders:
         assert recent_hook_events(db=db) == []
         assert hook_failure_rate("PostToolUse", db=db) is None
         assert hook_latency_p95("PostToolUse", db=db) is None
+        assert recent_prompt_opt_events(db=db) == []
+        assert prompt_opt_offer_rate(db=db) is None
 
 
 class TestHookEventReaders:

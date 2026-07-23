@@ -421,3 +421,150 @@ class TestPromptOptimizationRender:
         short_result = handle(_event({"prompt": "short"}))
         assert short_result.exit_code == 0
         assert not short_result.stdout
+
+
+class TestPromptOptEventCapture:
+    """ENH-2498: prompt_opt_events offer/bypass capture (gated on analytics.enabled)."""
+
+    def _write_config(
+        self,
+        project_dir: Path,
+        *,
+        analytics_enabled: bool = True,
+        mode: str = "quick",
+        enabled: bool = True,
+        bypass_prefix: str = "*",
+    ) -> None:
+        ll_dir = project_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        config = {
+            "analytics": {"enabled": analytics_enabled},
+            "prompt_optimization": {
+                "enabled": enabled,
+                "mode": mode,
+                "confirm": "false",
+                "bypass_prefix": bypass_prefix,
+            },
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def _row(self, tmp_path: Path) -> tuple:
+        conn = sqlite3.connect(str(tmp_path / ".ll" / "history.db"))
+        try:
+            return conn.execute(
+                "SELECT mode, offered, bypass_reason, raw_len FROM prompt_opt_events"
+            ).fetchone()
+        finally:
+            conn.close()
+
+    def test_offered_quick_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, mode="quick")
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(_event({"prompt": "implement authentication flow", "session_id": "s1"}))
+        assert result.stdout
+        mode, offered, bypass_reason, raw_len = self._row(tmp_path)
+        assert mode == "quick"
+        assert offered == 1
+        assert bypass_reason is None
+        assert raw_len == len("implement authentication flow")
+
+    def test_offered_thorough_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, mode="thorough")
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "implement authentication flow", "session_id": "s2"}))
+        mode, offered, _bypass_reason, _raw_len = self._row(tmp_path)
+        assert mode == "thorough"
+        assert offered == 1
+
+    def test_bypass_disabled(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, enabled=False)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "implement authentication flow"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "disabled"
+
+    def test_bypass_prefix(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "*skip optimization on this one"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "prefix"
+
+    def test_bypass_slash(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "/ll:manage-issue ENH-2498"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "slash"
+
+    def test_bypass_hash(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "#just a comment about this task"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "hash"
+
+    def test_bypass_question(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "?what does this function do exactly"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "question"
+
+    def test_bypass_short(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "short"}))
+        _mode, offered, bypass_reason, _raw_len = self._row(tmp_path)
+        assert offered == 0
+        assert bypass_reason == "short"
+
+    def test_no_row_when_analytics_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, analytics_enabled=False)
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "implement authentication flow"}))
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+    def test_no_row_when_config_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Empty-prompt (:73) and no-config (:97) branches precede the analytics
+        gate and intentionally write no row (ENH-2498 design decision)."""
+        monkeypatch.chdir(tmp_path)
+
+        handle(_event({"prompt": "implement authentication flow"}))
+        assert not (tmp_path / ".ll" / "history.db").exists()
+
+    def test_graceful_when_store_unwritable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import sqlite3 as _sqlite3
+
+        from little_loops import session_store
+
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        def boom(*_a, **_kw):
+            raise _sqlite3.OperationalError("disk full")
+
+        monkeypatch.setattr(session_store, "connect", boom)
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert result.stdout, "template must still render when the DB write fails"

@@ -66,6 +66,9 @@ Public API:
     HarnessEvent:     dataclass for harness_events rows (ENH-2741)
     recent_harness_events(runner, target, since, ...) -> list[HarnessEvent]
     harness_eval_pass_rate(target, since, ...) -> float | None
+    PromptOptEvent:   dataclass for prompt_opt_events rows (ENH-2498)
+    recent_prompt_opt_events(mode, since, ...) -> list[PromptOptEvent]
+    prompt_opt_offer_rate(since, ...) -> float | None
 """
 
 from __future__ import annotations
@@ -161,6 +164,21 @@ class CommitEvent:
     branch: str | None
     issue_id: str | None
     files_json: str | None
+
+
+@dataclass
+class PromptOptEvent:
+    """A prompt_opt_events row (ENH-2498)."""
+
+    ts: str
+    session_id: str | None
+    mode: str | None
+    offered: int | None
+    bypass_reason: str | None
+    raw_len: int | None
+    optimized_len: int | None
+    optimized_text: str | None
+    accepted: int | None
 
 
 @dataclass
@@ -1145,6 +1163,73 @@ def recent_commit_events(
     finally:
         conn.close()
     return [_row_to_dataclass(row, CommitEvent) for row in rows]
+
+
+def recent_prompt_opt_events(
+    *,
+    mode: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[PromptOptEvent]:
+    """Return recent prompt-optimization offer/outcome rows, newest first (ENH-2498)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, mode, offered, bypass_reason, raw_len, "
+            "optimized_len, optimized_text, accepted FROM prompt_opt_events "
+        )
+        clauses: list[str] = []
+        params: list[Any] = []
+        if mode is not None:
+            clauses.append("mode = ?")
+            params.append(mode)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_prompt_opt_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, PromptOptEvent) for row in rows]
+
+
+def prompt_opt_offer_rate(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> float | None:
+    """Fraction of prompt_opt_events rows with ``offered = 1``, or None if empty (ENH-2498)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        sql = "SELECT COUNT(*) AS total, SUM(CASE WHEN offered = 1 THEN 1 ELSE 0 END) AS offered "
+        sql += "FROM prompt_opt_events "
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ?"
+            params.append(since)
+        row = conn.execute(sql, params).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: prompt_opt_offer_rate query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    total = row["total"] or 0
+    if not total:
+        return None
+    return (row["offered"] or 0) / total
 
 
 def recent_learning_tests(

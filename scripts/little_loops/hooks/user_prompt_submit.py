@@ -26,7 +26,12 @@ from typing import Any
 from little_loops.config.core import resolve_config_path
 from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled
 from little_loops.hooks.types import LLHookEvent, LLHookResult
-from little_loops.session_store import is_correction, record_correction, record_skill_event
+from little_loops.session_store import (
+    is_correction,
+    record_correction,
+    record_prompt_opt_event,
+    record_skill_event,
+)
 
 _NO_CONFIG_MSG = (
     "[little-loops] No config found. Run ll-init to set up little-loops for this project."
@@ -74,12 +79,33 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     cwd = Path.cwd()
     config = _load_config(cwd)
+    # analytics.enabled gates prompt_opt_events the same way it gates the two
+    # sibling writers below (ENH-2498). Rows can only be written once config
+    # is loaded, so the empty-prompt return above and the no-config branch
+    # just below intentionally produce no row — there is nothing to gate on.
+    analytics_active = config is not None and feature_enabled(config, "analytics.enabled")
+    session_id = event.payload.get("session_id") or event.session_id
 
-    if config is not None and feature_enabled(config, "analytics.enabled"):
+    def _capture_prompt_opt(
+        *, offered: bool, bypass_reason: str | None = None, mode: str | None = None
+    ) -> None:
+        if not analytics_active:
+            return
+        with contextlib.suppress(Exception):
+            record_prompt_opt_event(
+                cwd / ".ll" / "history.db",
+                session_id=session_id,
+                offered=offered,
+                mode=mode,
+                bypass_reason=bypass_reason,
+                raw_len=len(user_prompt),
+            )
+
+    if analytics_active:
+        assert config is not None  # analytics_active implies config is not None
         capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
         if is_correction(user_prompt, extra_patterns=capture.correction_patterns):
             if capture.corrections:
-                session_id = event.payload.get("session_id") or event.session_id
                 with contextlib.suppress(Exception):
                     record_correction(
                         cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit"
@@ -87,7 +113,6 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # TODO(ENH-1835): wire analytics.capture.cli_commands gate when ENH-1834 lands
         m = re.match(r"^/ll:([a-z][a-z0-9-]*)(.*)", user_prompt.strip(), re.DOTALL)
         if m:
-            session_id = event.payload.get("session_id") or event.session_id
             with contextlib.suppress(Exception):
                 record_skill_event(
                     cwd / ".ll" / "history.db", session_id, m.group(1), m.group(2).strip()[:200]
@@ -100,6 +125,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     prompt_opt: dict[str, Any] = raw_opt if isinstance(raw_opt, dict) else {}
 
     if not prompt_opt.get("enabled", True):
+        _capture_prompt_opt(offered=False, bypass_reason="disabled")
         return LLHookResult(exit_code=0)
 
     mode = str(prompt_opt.get("mode", "quick"))
@@ -108,23 +134,30 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     # Bypass guards (mirrors user-prompt-check.sh order)
     if bypass_prefix and user_prompt.startswith(bypass_prefix):
+        _capture_prompt_opt(offered=False, bypass_reason="prefix", mode=mode)
         return LLHookResult(exit_code=0)
     if user_prompt.startswith("/"):
+        _capture_prompt_opt(offered=False, bypass_reason="slash", mode=mode)
         return LLHookResult(exit_code=0)
     if user_prompt.startswith("#"):
+        _capture_prompt_opt(offered=False, bypass_reason="hash", mode=mode)
         return LLHookResult(exit_code=0)
     if user_prompt.startswith("?"):
+        _capture_prompt_opt(offered=False, bypass_reason="question", mode=mode)
         return LLHookResult(exit_code=0)
     if len(user_prompt) < _MIN_PROMPT_LENGTH:
+        _capture_prompt_opt(offered=False, bypass_reason="short", mode=mode)
         return LLHookResult(exit_code=0)
 
     prompt_file = _find_prompt_file()
     if not prompt_file.is_file():
+        _capture_prompt_opt(offered=False, bypass_reason="no_template", mode=mode)
         return LLHookResult(exit_code=0)
 
     try:
         template = prompt_file.read_text(encoding="utf-8")
     except OSError:
+        _capture_prompt_opt(offered=False, bypass_reason="template_error", mode=mode)
         return LLHookResult(exit_code=0)
 
     rendered = (
@@ -132,4 +165,5 @@ def handle(event: LLHookEvent) -> LLHookResult:
         .replace("{{MODE}}", mode)
         .replace("{{CONFIRM}}", confirm)
     )
+    _capture_prompt_opt(offered=True, mode=mode)
     return LLHookResult(exit_code=0, stdout=rendered)

@@ -3,9 +3,10 @@ id: ENH-2498
 title: Capture prompt-optimization outcomes into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-05
 captured_at: '2026-07-05T00:00:00Z'
+completed_at: '2026-07-23T17:15:30Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
@@ -755,7 +756,76 @@ only the generic execution telemetry — `exit_code`, `duration_ms`,
 UserPromptSubmit invocation may intentionally produce **one row in each
 table**; this is by design, not duplication.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-23
+- **Status**: Done
+
+### Changes Made
+
+- `scripts/little_loops/session_store.py`: v32 migration adds `prompt_opt_events`
+  (+ `idx_prompt_opt_events_session`/`idx_prompt_opt_events_mode`); `SCHEMA_VERSION`
+  bumped 31→32; `"prompt_opt"` registered in `VALID_KINDS`/`_KIND_TABLE`; new
+  `record_prompt_opt_event()` (live offer-row writer, raises-on-failure like
+  `record_correction`/`record_test_run_event`) and `_backfill_prompt_opt()`
+  (non-destructive `UPDATE`-only enrichment of `optimized_len`/`optimized_text`/
+  `accepted` from a parseable `ENHANCED:` transcript block, called from
+  `rebuild()` — deliberately **not** registered in `_REBUILD_TABLES`/
+  `_REBUILD_SEARCH_KINDS` since a wipe-and-replay would destroy live offer rows
+  with no `raw_events`-backed way to regenerate them; see the v32 migration
+  comment for the full rationale). `__all__`, module docstring, `recent()`
+  docstring, and `_EXPORT_TABLE_MAP`/`_EXPORT_DEFAULT_TABLES` updated.
+- `scripts/little_loops/hooks/user_prompt_submit.py`: `handle()` now writes a
+  best-effort `prompt_opt_events` row at every post-config-load return point
+  (all ten branches: `disabled`, `prefix`, `slash`, `hash`, `question`, `short`,
+  `no_template`, `template_error`, and the `offered=1` render path), gated on
+  `analytics.enabled` via a shared `analytics_active` flag and wrapped in
+  `contextlib.suppress(Exception)`. The empty-prompt and no-config early
+  returns intentionally write no row (analytics can't be gated before config
+  loads) — a documented design decision, not an omission.
+- `scripts/little_loops/history_reader.py`: new `PromptOptEvent` dataclass,
+  `recent_prompt_opt_events(mode=None, since=None, limit=50)`, and
+  `prompt_opt_offer_rate(since=None)`.
+- `scripts/little_loops/cli/session.py`: module docstring updated (choices are
+  data-driven from `VALID_KINDS`, so no argparse edit was needed).
+- Tests: `TestSchemaV32PromptOptEvents`, `TestRecordPromptOptEvent`,
+  `TestBackfillPromptOpt` (`test_session_store.py`); `TestPromptOptEventCapture`
+  covering the full bypass-reason matrix + analytics gating + graceful
+  degradation (`test_hook_user_prompt_submit.py`); reader tests
+  (`test_history_reader.py`); `--kind prompt_opt` CLI parser test
+  (`test_ll_session.py`); bumped all `SCHEMA_VERSION == 31` literals to `32`
+  across `test_session_store.py`/`test_assistant_messages.py`.
+- Docs: `docs/ARCHITECTURE.md` (v32 schema row, `v1–v32` refs),
+  `docs/reference/API.md` (session_store + history_reader import blocks,
+  `record_prompt_opt_event`/`PromptOptEvent`/reader sections),
+  `docs/reference/CLI.md` (`--kind` brace-lists), `docs/guides/
+  HISTORY_SESSION_GUIDE.md` (schema-version table, `*.db` tables table,
+  `--kind` examples).
+
+### Design Decisions
+
+- **Live-write-only, not `_REBUILD_TABLES`-registered.** The issue's original
+  "Proposed Solution" and its 2026-07-23 research-pass note both assumed
+  `prompt_opt_events` would join `_REBUILD_TABLES`, mirroring the wipe-and-replay
+  contract other JSONL-derived cache tables use. Tracing `rebuild()`'s actual
+  ENH-2581 mechanics showed that contract **deletes** every row in a
+  `_REBUILD_TABLES` table before re-deriving it purely from `raw_events` — which
+  would destroy the live offer rows with no way to regenerate `mode`/
+  `bypass_reason` from the transcript alone (that decision only exists at
+  hook-fire time). This mirrors why `hook_events`/`harness_events` are already
+  excluded. `prompt_opt_events` differs from those two only in that it gets a
+  genuine backfill pass — `_backfill_prompt_opt()` — implemented as a
+  non-destructive `UPDATE`-only enrichment called from `rebuild()`, not as a
+  member of the wipe list.
+- **No row for the empty-prompt/no-config branches.** Both precede the point
+  where `analytics.enabled` can even be evaluated, so writing a row there would
+  bypass the same gate every other producer respects. Documented at the call
+  site and tested explicitly (`test_no_row_when_config_absent`).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T17:14:42Z
+- `/ll:ready-issue` - 2026-07-23T16:45:44 - `9874668f-49ec-48d7-af10-12fb528ba296.jsonl`
 - `/ll:confidence-check` - 2026-07-23T00:00:00Z - `ebe99418-742d-4bce-bc37-095176771ae1.jsonl`
 - `/ll:refine-issue` - 2026-07-23T13:38:10 - `4051b40b-38f5-4778-9a2c-322aeb045b18.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-17T14:01:04 - `ff04da3c-210f-4c14-9967-762b390ae67c.jsonl`

@@ -85,6 +85,16 @@ class TestArgumentParsing:
             args = _parse_args()
         assert args.kind == "commit"
 
+    def test_recent_subcommand_prompt_opt_accepted(self) -> None:
+        """ENH-2498: --kind prompt_opt must be a valid choice for both recent and search."""
+        with patch("sys.argv", ["ll-session", "recent", "--kind", "prompt_opt"]):
+            args = _parse_args()
+        assert args.kind == "prompt_opt"
+
+        with patch("sys.argv", ["ll-session", "search", "--fts", "quick", "--kind", "prompt_opt"]):
+            args = _parse_args()
+        assert args.kind == "prompt_opt"
+
     def test_recent_subcommand_test_run_accepted(self) -> None:
         """ENH-2459: --kind test_run must be a valid choice for both recent and search."""
         with patch("sys.argv", ["ll-session", "recent", "--kind", "test_run"]):
