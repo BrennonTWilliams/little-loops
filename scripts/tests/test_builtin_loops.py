@@ -2957,8 +2957,12 @@ class TestAutoRefineAndImplementLoop:
     def test_finalize_surfaces_verify_returncode(self, data: dict, tmp_path: Path) -> None:
         """A verify failure must surface its exit code as a JSON number so a
         collection_error (exit 2) is triageable without a re-run (ENH-2631)."""
-        for verdict, code in (("failed", "1"), ("collection_error", "2")):
-            run_dir = tmp_path / f"run-{code}"
+        for verdict, code in (
+            ("failed", "1"),
+            ("collection_error", "2"),
+            ("config_error", "1"),
+        ):
+            run_dir = tmp_path / f"run-{verdict}"
             run_dir.mkdir()
             summary = self._run_finalize(
                 data,
@@ -3461,6 +3465,13 @@ class TestVerifyStateConfigReadShell:
         collection_error verdict class, not a plain 'failed'."""
         assert self._run(tmp_path, test_cmd="sh -c 'exit 2'") == "collection_error"
 
+    def test_config_error_when_stderr_reports_missing_script(self, tmp_path: Path) -> None:
+        """ENH-2742: a "missing script" stderr (e.g. npm test run from the wrong
+        directory) is a config/usage error, not a real test failure — it must
+        yield the distinct config_error verdict, not a plain 'failed'."""
+        cmd = 'sh -c \'echo "npm error Missing script: \\"test\\"" >&2; exit 1\''
+        assert self._run(tmp_path, test_cmd=cmd) == "config_error"
+
     def test_failure_persists_returncode_and_detail_artifacts(self, tmp_path: Path) -> None:
         """ENH-2631: a verify failure must persist the exit code and a detail
         snippet as flat-text artifacts in the run_dir for post-hoc triage."""
@@ -3499,6 +3510,41 @@ class TestVerifyStateConfigReadShell:
 
     def test_lint_cmd_optional(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, test_cmd="true", lint_cmd=None) == "passed"
+
+    def test_config_error_on_epic_branch_path(self, tmp_path: Path) -> None:
+        """ENH-2742: the epic-branch call site (verify_epic_branch_before_merge's
+        `message`, not raw stderr) must also classify a "missing script" failure
+        as config_error — this path had zero coverage of classify() before."""
+        epic_branch = "epic/epic-42-my-epic-title"
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        (tmp_path / "README.md").write_text("x\n")
+        subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "branch", epic_branch], cwd=tmp_path, check=True)
+
+        (tmp_path / ".ll").mkdir()
+        cmd = 'sh -c \'echo "npm error Missing script: \\"test\\"" >&2; exit 1\''
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"project": {"test_cmd": cmd}})
+        )
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "epic-branch-name.txt").write_text(epic_branch)
+
+        loop = yaml.safe_load((BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml").read_text())
+        action = (
+            loop["states"]["verify"]["action"]
+            .replace("${context.run_dir}", str(run_dir))
+            .replace("${context.scope}", "EPIC-42")
+        )
+        result = subprocess.run(
+            ["bash", "-c", action], cwd=tmp_path, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        assert (run_dir / "verify-verdict.txt").read_text().strip() == "config_error"
 
 
 class TestMergeEpicBranchConfigReadShell:

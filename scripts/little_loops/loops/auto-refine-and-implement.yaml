@@ -378,11 +378,17 @@ states:
       # a pytest collection/usage error (exit 2 — a harness/env problem like
       # BUG-2629) from a real test failure (exit 1, a code defect) without
       # re-running the suite. Everything non-zero-and-not-2 stays 'failed'.
-      def classify(returncode):
+      # ENH-2742: a missing/misconfigured npm script (e.g. test_cmd pointed at
+      # the wrong directory) also exits non-zero but is a config error, not a
+      # code defect — distinguish it via a stderr substring match before
+      # falling back to 'failed'.
+      def classify(returncode, stderr=""):
           if returncode == 0:
               return 'passed'
           if returncode == 2:
               return 'collection_error'
+          if 'missing script' in stderr.lower():
+              return 'config_error'
           return 'failed'
 
       # ENH-2631: persist the failing exit code + a detail snippet as flat text
@@ -427,7 +433,7 @@ states:
               )
               if result.returncode != 0:
                   detail = format_verify_detail(result.stdout, result.stderr)
-                  emit(classify(result.returncode), result.returncode, detail)
+                  emit(classify(result.returncode, result.stderr), result.returncode, detail)
           emit('passed', 0)
 
       from little_loops.config import BRConfig
@@ -471,7 +477,7 @@ states:
           print(f'verify: {message}', file=sys.stderr)
       # ENH-2631: returncode is None only for a worktree-setup failure (no
       # command ran) — fall back to 'failed' there rather than misclassifying.
-      verdict = classify(returncode) if returncode is not None else 'failed'
+      verdict = classify(returncode, message or '') if returncode is not None else 'failed'
       emit(verdict, returncode, message or '')
       PYEOF
       )
