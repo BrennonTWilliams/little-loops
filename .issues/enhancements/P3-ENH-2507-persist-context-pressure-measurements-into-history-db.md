@@ -5,15 +5,21 @@ type: ENH
 priority: P3
 status: open
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - context-monitor
-  - captured
+- enhancement
+- history-db
+- context-monitor
+- captured
+confidence_score: 98
+outcome_confidence: 85
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2507: Persist context-window pressure measurements into history.db
@@ -153,6 +159,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Compaction/context-limit discontinuities**: compaction resets the estimated token state, and a transcript-baseline upgrade can change `CONTEXT_LIMIT` mid-session. Persist `used_tokens_est` and, if possible, the resolved limit or a segment marker so a sharp percentage drop is interpretable rather than mistaken for lower usage.
 - **FTS and rebuild behavior**: `recent()` becomes available automatically after kind registration, while FTS requires calling the shared `_index()` helper with a sanitized content string containing session ID, percentage, token estimate, and crossing level. `context_pressure_events` should remain outside `rebuild()` because no raw-event source can re-derive these live measurements.
 - **Graceful degradation**: record helpers propagate SQLite errors; hook callers must suppress them. Match the existing `post_tool_use.py` / `pytest_history_plugin.py` `contextlib.suppress(Exception)` pattern, and retain the shell hook's `|| true`/exit-0 behavior for missing, locked, or read-only databases.
+
+### Codebase Research Findings — Update (2026-07-23)
+
+_Added by `/ll:refine-issue` re-run — corrects/strengthens the 2026-07-16 findings above based on code that landed since:_
+
+- **Stronger precedent now exists — ENH-2495 already wired an almost-identical producer inside `context-monitor.sh`.** `record_handoff_needed()` (`hooks/scripts/context-monitor.sh:51-67`) is called from every threshold-crossing exit path (lines 393, 410, 421, 432, 436) and does exactly what this issue's Option A needs: it shells out to `python3 -c '...'` importing from `little_loops.session_store`, passes `$SESSION_ID` as a positional `sys.argv` arg (not string-interpolated — avoids injection), builds a JSON `detail` blob with `printf` + `json.loads`, and ends in `>/dev/null 2>&1 || true`. This is a closer, more-recent, same-file precedent than `record-commit-post-commit` (still valid, but one level removed). **Implementation should model the new pressure-event shell-out directly on `record_handoff_needed()`'s structure**, not just the `record-commit-post-commit` module-entrypoint style.
+- **Correction — `SESSION_ID` extraction already exists.** The earlier research bullet "the shell monitor currently does not extract `session_id` from its input" is now stale. `context-monitor.sh:49` already extracts it: `IFS=$'\x1f' read -r TOOL_NAME TRANSCRIPT_PATH SESSION_ID <<< "$(echo "$INPUT" | jq -r '[(.tool_name // ""), (.transcript_path // ""), (.session_id // "")] | join("")' ...)"`. No new extraction code is needed — reuse the existing `$SESSION_ID` variable. `head_sha`/`branch` are still not computed anywhere in the script, so that part of the original finding stands.
+- **Correction — the sentinel state-file citation was imprecise.** `context-handoff-sentinel.sh:76-81` is a one-shot sentinel-file *write* (fires once when `USAGE_PERCENT >= SENTINEL_THRESHOLD`, no persisted "previously emitted levels" set), not a multi-level crossing-state tracker. There is currently no existing code anywhere that tracks which of 50/75/80/90/100 have already fired for a session — Implementation Step 3's "extend the existing context state to track emitted threshold levels" is new bookkeeping, not a port of existing logic.
+- **Stronger recorder-function precedent — `record_session_lifecycle_event()`** (`session_store.py:2439-2485`, added by ENH-2495) is a closer template than `record_test_run_event()`/`record_commit_event()`: it bakes the never-fail contract into the Python function itself (`except sqlite3.Error: ... return False`, never raises) in addition to the caller's `|| true`, and its FTS `_index()` call uses the same `kind="<name>"` / `ref=session_id` / `anchor=<discriminator>` shape a `record_context_pressure_event()` would need.
+- **Stronger test precedent** — `TestRecordSessionLifecycleEvent.test_graceful_when_store_unwritable` (`test_session_store.py:5327+`, monkeypatches `session_store.connect` to raise `sqlite3.OperationalError`) is the standard DB-layer never-raise test shape. At the shell-integration level, `TestContextMonitor.test_writes_lifecycle_row_on_threshold_crossing` and `test_python_failure_does_not_flip_exit_code` (`test_hooks_integration.py:300-372`) are exact structural precedents — same hook file, same threshold-crossing trigger, same "prove `|| true` holds end-to-end by pointing `LL_HISTORY_DB` at a directory" technique — for testing this issue's new pressure-event shell-out.
+- **`SCHEMA_VERSION` drift note**: live value is now 33 (was 20 when this issue was last refined/decided on 2026-07-16/17); 13 more EPIC-2457 sibling migrations have landed in the interim, confirming the Scope Boundary section's own guidance ("read the live constant at implementation time, do not trust this issue's implied slot") was the correct call — no action needed beyond what Implementation Step 1 already says.
 
 **Option A**: Persist from `context-monitor.sh` immediately after it computes the finalized percentage and token estimate, calling a small best-effort Python recorder and passing the extracted session ID plus optional Git metadata. This preserves the authoritative measurement and avoids a second computation, at the cost of one guarded Python call per sampled event.
 
@@ -316,6 +333,7 @@ implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-23T20:13:02 - `eb50d6c8-527e-49e3-b6ef-b845724a15e4.jsonl`
 - `/ll:wire-issue` - 2026-07-17T00:57:51 - `13d87a18-b4f4-4e8c-b34a-5f09c2a1ee33.jsonl`
 - `/ll:decide-issue` - 2026-07-16T19:45:16 - `8afbe178-3fe3-4585-9a55-ffd680f48820.jsonl`
 - `/ll:refine-issue` - 2026-07-16T16:28:14 - `84cbedd9-ee11-4708-8a40-0cc984c6fcac.jsonl`
