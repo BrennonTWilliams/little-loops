@@ -78,6 +78,7 @@ def cmd_test(
             stderr="",
             exit_code=sim_exit_code,
             duration_ms=0,
+            result_seen=False,
         )
     else:
         # Run the action

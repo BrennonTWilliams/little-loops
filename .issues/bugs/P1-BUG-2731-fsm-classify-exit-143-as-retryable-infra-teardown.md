@@ -3,7 +3,7 @@ id: BUG-2731
 title: FSM treats exit-143-after-result as a terminal action failure instead of retryable
   infra teardown, discarding in-flight subagent work
 type: BUG
-status: open
+status: done
 priority: P1
 captured_at: '2026-07-21T22:40:00Z'
 discovered_date: '2026-07-21'
@@ -28,6 +28,7 @@ size: Very Large
 deferred_by: automation
 deferred_date: '2026-07-22T05:04:47Z'
 deferred_reason: oversized_atomic
+completed_at: '2026-07-23T02:18:46Z'
 ---
 
 # BUG-2731: FSM treats exit-143-after-result as a terminal action failure instead of retryable infra teardown
@@ -647,10 +648,27 @@ string literal.
 
 ## Acceptance Criteria
 
-- [ ] FSM classifies exit-143-after-result as retryable infra teardown with a
+- [x] FSM classifies exit-143-after-result as retryable infra teardown with a
       distinct ledger reason (not `refine_failed`), with at least one retry
-- [ ] Regression coverage: a simulated 143-after-result action routes to
+- [x] Regression coverage: a simulated 143-after-result action routes to
       retry, not `on_error` terminal failure
+
+### Implementation Note (2026-07-22)
+
+Landed as 3 dependency-ordered slices: (1) `ActionResult.result_seen` threaded
+via a mutable-closure callback (`peak_rss_mb` precedent) from
+`run_claude_command()` through all `fsm/runners.py`/`fsm/executor.py`
+construction sites; (2) `FailureType.INFRA_RETRY` + a `returncode == 143 and
+result_seen` branch in `classify_failure()`, with characterization tests
+added first for the 2 previously-zero-coverage consumers
+(`issue_manager.py`, `cli/logs.py`); (3) `_handle_infra_retry()` (modeled on
+`_handle_api_error()`) wired into `_execute_state()`'s elif chain, plus
+`InfraRetryVariant`/`InfraRetryExhaustedVariant` DES events. `autodev.yaml`
+needed **no changes** — ENH-2727 had already landed the loop-level
+`skip_inflight_infra` ledgering (`refine_failed_infra`); this fix supplies
+the missing generic executor-level retry that runs *before* that ledgering
+would ever fire, so in-flight work is retried (up to 2 attempts) instead of
+being discarded outright.
 
 ## Confidence Check Notes
 

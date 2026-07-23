@@ -91,21 +91,40 @@ class FailureType(Enum):
         "non_recoverable"  # Auth/credential failure — retry won't help, not a code bug
     )
     REAL = "real"  # Actual bug/error, create issue
+    # BUG-2731: headless CLI SIGTERM-reaped a still-running subagent after the
+    # top-level turn already emitted a stream-json "result" event — retryable
+    # infra teardown, not an implementation defect.
+    INFRA_RETRY = "infra_retry"
 
 
-def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, str]:
-    """Classify a command failure as transient or real.
+def classify_failure(
+    error_output: str, returncode: int, result_seen: bool = False
+) -> tuple[FailureType, str]:
+    """Classify a command failure as transient, infra teardown, or real.
 
     Examines error output for patterns indicating transient failures
     (API quota, network errors, timeouts) vs real implementation failures.
 
     Args:
         error_output: stderr or stdout from failed command
-        returncode: Process exit code (available for future use)
+        returncode: Process exit code
+        result_seen: Whether a stream-json "result" event was observed before
+            the subprocess exited (BUG-2731) — set True only for host-CLI
+            actions (``ActionResult.result_seen``); always False otherwise
 
     Returns:
         Tuple of (failure_type, reason) where reason explains the classification
     """
+    # SIGTERM-after-result infra teardown (BUG-2731): the headless CLI reaps a
+    # still-running subagent process group when the top-level turn ends,
+    # producing a clean SIGTERM (exit 143) with no distinguishing error text —
+    # result_seen=True confirms the action had already produced output before
+    # being killed, so this is retryable infra teardown, not a real failure.
+    # Checked before any text pattern below since a clean kill leaves no
+    # reliable text signature to match against.
+    if returncode == 143 and result_seen:
+        return (FailureType.INFRA_RETRY, "Infra teardown: SIGTERM after result event")
+
     error_lower = error_output.lower()
 
     # API quota/rate limit patterns

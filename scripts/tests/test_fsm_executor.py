@@ -85,6 +85,7 @@ class MockActionRunner:
                 exit_code=result_data.get("exit_code", 0),
                 duration_ms=result_data.get("duration_ms", 100),
                 usage_events=result_data.get("usage_events", []),
+                result_seen=result_data.get("result_seen", False),
             )
 
         # Check for specific result by pattern
@@ -96,6 +97,7 @@ class MockActionRunner:
                     exit_code=result_data.get("exit_code", 0),
                     duration_ms=result_data.get("duration_ms", 100),
                     usage_events=result_data.get("usage_events", []),
+                    result_seen=result_data.get("result_seen", False),
                 )
 
         return ActionResult(
@@ -104,6 +106,7 @@ class MockActionRunner:
             exit_code=self.default_result.get("exit_code", 0),
             duration_ms=self.default_result.get("duration_ms", 100),
             usage_events=self.default_result.get("usage_events", []),
+            result_seen=self.default_result.get("result_seen", False),
         )
 
     def set_result(self, action: str, **kwargs: Any) -> None:
@@ -7487,6 +7490,156 @@ class TestAPIErrorRetries:
         assert runner.calls.count("work.sh") == 2
 
 
+class TestInfraRetry:
+    """Tests for BUG-2731: exit-143-after-result infra teardown retry via
+    _handle_infra_retry.
+
+    Tests patch ``_DEFAULT_INFRA_RETRY_BACKOFF`` to 0 so interruptible-sleep
+    returns immediately without wall-clock delay.
+    """
+
+    def _make_fsm(self, *, on_error: str | None = "done") -> FSMLoop:
+        return FSMLoop(
+            name="infra-retry-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_yes="done",
+                    on_no="done",
+                    on_error=on_error,
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _infra_kill_result(self) -> dict:
+        return {"output": "", "exit_code": 143, "result_seen": True}
+
+    def _ok_result(self) -> dict:
+        return {"output": "success", "exit_code": 0}
+
+    def test_infra_retry_retries_state_in_place(self) -> None:
+        """An exit-143-after-result kill retries the same state instead of discarding it."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._infra_kill_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("work.sh") == 2
+
+    def test_infra_retry_without_result_seen_does_not_retry(self) -> None:
+        """A plain exit-143 with no result event observed is not treated as infra
+        teardown by this signature alone — routes to on_error like any other
+        unclassified non-zero exit, instead of retrying."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(output="", exit_code=143, result_seen=False)
+
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert runner.calls.count("work.sh") == 1
+
+    def test_infra_retry_exhausted_falls_through_to_normal_routing(self) -> None:
+        """After max retries, executor falls through to normal verdict routing (not a hang)."""
+        from little_loops.fsm.executor import _DEFAULT_INFRA_RETRY_RETRIES
+
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(**self._infra_kill_result())
+
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+
+        # _DEFAULT_INFRA_RETRY_RETRIES attempts + 1 exhaustion attempt = retries+1 calls total
+        assert runner.calls.count("work.sh") == _DEFAULT_INFRA_RETRY_RETRIES + 1
+        # exit_code=143 → verdict "no" → on_no="done"
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+
+    def test_infra_retry_exhausted_event_emitted(self) -> None:
+        """infra_retry_exhausted event is emitted when retries are exhausted."""
+        from little_loops.fsm.executor import _DEFAULT_INFRA_RETRY_RETRIES
+
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(**self._infra_kill_result())
+
+        events: list[dict] = []
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        exhausted = [e for e in events if e.get("event") == "infra_retry_exhausted"]
+        assert len(exhausted) == 1
+        assert exhausted[0]["state"] == "execute"
+        assert exhausted[0]["retries"] == _DEFAULT_INFRA_RETRY_RETRIES
+
+    def test_infra_retry_event_emitted(self) -> None:
+        """infra_retry event is emitted on each in-place retry attempt."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._infra_kill_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        events: list[dict] = []
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+            executor.run()
+
+        retry_events = [e for e in events if e.get("event") == "infra_retry"]
+        assert len(retry_events) == 1
+        assert retry_events[0]["state"] == "execute"
+        assert retry_events[0]["attempt"] == 1
+
+    def test_infra_retry_counter_reset_on_success(self) -> None:
+        """Per-state infra_retry_retries record is cleared when state completes without error."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._infra_kill_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert "execute" not in executor._infra_retry_retries
+
+    def test_infra_retry_does_not_trigger_api_error_handler(self) -> None:
+        """Exit-143 infra teardown should not call _handle_api_error (different handler)."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.results = [
+            ("work.sh", self._infra_kill_result()),
+            ("work.sh", self._ok_result()),
+        ]
+        runner.use_indexed_order = True
+
+        with patch("little_loops.fsm.executor._DEFAULT_INFRA_RETRY_BACKOFF", 0):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            executor.run()
+
+        assert "execute" not in executor._api_error_retries
+
+
 # =============================================================================
 # Tests: Sub-loop remaining-budget forwarding (ENH-1293 Fix 2)
 # =============================================================================
@@ -9373,9 +9526,7 @@ class TestRequestPathDispatchWiring:
             },
         )
 
-    def test_request_path_sdk_calls_dispatch_not_cli(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_request_path_sdk_calls_dispatch_not_cli(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """request_path='sdk' at the orchestration level bypasses action_runner.run()."""
         from little_loops.config.orchestration import OrchestrationConfig
 

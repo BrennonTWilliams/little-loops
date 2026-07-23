@@ -358,6 +358,22 @@ class ApiErrorRetryVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class InfraRetryExhaustedVariant(DESVariant):
+    """FSMExecutor._emit('infra_retry_exhausted') — BUG-2731: exit-143-after-result
+    infra-teardown retries exhausted."""
+
+    type: Literal["infra_retry_exhausted"] = "infra_retry_exhausted"
+
+
+@dataclass(frozen=True)
+class InfraRetryVariant(DESVariant):
+    """FSMExecutor._emit('infra_retry') — BUG-2731: exit-143-after-result infra
+    teardown triggered a retry."""
+
+    type: Literal["infra_retry"] = "infra_retry"
+
+
+@dataclass(frozen=True)
 class AbSummaryVariant(DESVariant):
     """FSMExecutor._emit('ab_summary') — A/B comparison summary finalized."""
 
@@ -619,6 +635,8 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     RateLimitStormVariant,
     ApiErrorExhaustedVariant,
     ApiErrorRetryVariant,
+    InfraRetryExhaustedVariant,
+    InfraRetryVariant,
     AbSummaryVariant,
     HandoffDetectedVariant,
     HandoffSpawnedVariant,

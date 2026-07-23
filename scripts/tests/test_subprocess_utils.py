@@ -2393,6 +2393,54 @@ class TestRunClaudeCommandResultBreak:
         assert result.returncode == 0
         mock_process.wait.assert_called_once_with(timeout=300)
 
+    def test_on_result_seen_called_with_true_after_result_event(self) -> None:
+        """BUG-2731: on_result_seen fires with True once a result event is parsed."""
+        result_event = (
+            '{"type": "result", "subtype": "success", '
+            '"usage": {"input_tokens": 10, "output_tokens": 5}}\n'
+        )
+        fake_stdout = _NeverEOFStdout([result_event])
+        mock_process = Mock()
+        mock_process.stdout = fake_stdout
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        seen_calls: list[bool] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_never_eof_selector(mock_selector, mock_process)
+                run_claude_command(
+                    "test",
+                    timeout=5,
+                    on_result_seen=seen_calls.append,
+                )
+
+        assert seen_calls == [True]
+
+    def test_on_result_seen_called_with_false_without_result_event(self) -> None:
+        """BUG-2731: on_result_seen fires with False when no result event was parsed."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        seen_calls: list[bool] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                run_claude_command(
+                    "test",
+                    timeout=5,
+                    on_result_seen=seen_calls.append,
+                )
+
+        assert seen_calls == [False]
+
 
 # =============================================================================
 # TestProcessGroupKill

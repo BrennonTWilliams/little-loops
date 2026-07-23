@@ -396,6 +396,32 @@ Emitted when consecutive `rate_limit_exhausted` events across any states reach t
 
 ---
 
+### `infra_retry` / `infra_retry_exhausted`
+
+BUG-2731: emitted by `_handle_infra_retry` when a headless `claude -p` action
+exits 143 after already emitting a stream-json `result` event — the CLI
+SIGTERM-reaping a still-running subagent process group at end-of-turn, not a
+genuine implementation failure. `infra_retry` fires on each in-place retry
+attempt; `infra_retry_exhausted` fires once `_DEFAULT_INFRA_RETRY_RETRIES` (2)
+attempts are spent and the executor falls through to normal verdict routing.
+Flat backoff (`_DEFAULT_INFRA_RETRY_BACKOFF`, 5s), same shape as
+`api_error_retry`/`api_error_exhausted` but no long-wait tier — this is a
+re-run of an already-completed action, not a wait for an external service.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that hit (or exhausted) the infra-retry path |
+| `attempt` / `retries` | `int` | `infra_retry`: attempt number just made. `infra_retry_exhausted`: total retries attempted before exhaustion |
+| `backoff` | `int` | (`infra_retry` only) Flat backoff seconds before the retry |
+
+**Example:**
+```json
+{"event": "infra_retry", "ts": "...", "state": "refine_issue", "attempt": 1, "backoff": 5}
+{"event": "infra_retry_exhausted", "ts": "...", "state": "refine_issue", "retries": 2}
+```
+
+---
+
 ### `rate_limit_waiting`
 
 Emitted periodically (every `_RATE_LIMIT_HEARTBEAT_INTERVAL` ≈ 60s) by the FSM executor during long-wait tier sleeps between 429 retry attempts. The short-burst tier does not emit this event. Provides heartbeat visibility into in-progress waits so dashboards and analysis tooling can surface progress toward the wall-clock budget defined by `rate_limit_max_wait_seconds`.

@@ -77,6 +77,9 @@ class ActionResult:
         usage_events: Token usage events from host-CLI invocations (empty for shell actions)
         peak_rss_mb: Peak resident memory of the spawned subprocess in MB
             (ENH-2453); None when RSS sampling was disabled or unavailable
+        result_seen: Whether a stream-json "result" event was observed before
+            the subprocess exited (BUG-2731); False for non-host-CLI actions
+            (shell, simulation) where no stream-json protocol applies
     """
 
     output: str
@@ -85,6 +88,7 @@ class ActionResult:
     duration_ms: int
     usage_events: list[TokenUsage] = field(default_factory=list)
     peak_rss_mb: float | None = None
+    result_seen: bool = False
 
 
 # Type for event callback

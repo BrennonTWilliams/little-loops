@@ -813,6 +813,23 @@ More context after"""
         failure_type, _ = classify_failure(error_output, 1)
         assert failure_type == FailureType.TRANSIENT
 
+    def test_classify_failure_143_with_result_seen_is_infra_retry(self) -> None:
+        """BUG-2731: exit 143 after a stream-json result event is retryable infra
+        teardown, not a real implementation failure — even with empty error text
+        (a clean SIGTERM leaves no distinguishing stderr)."""
+
+        failure_type, reason = classify_failure("", 143, result_seen=True)
+        assert failure_type == FailureType.INFRA_RETRY
+        assert "sigterm" in reason.lower()
+
+    def test_classify_failure_143_without_result_seen_falls_through(self) -> None:
+        """A 143 exit with no result event observed is not infra teardown by this
+        signature alone — falls through to ordinary text-pattern classification."""
+
+        failure_type, reason = classify_failure("", 143, result_seen=False)
+        assert failure_type == FailureType.REAL
+        assert "implementation" in reason.lower()
+
 
 # =============================================================================
 # Tests: Close Issue Flow

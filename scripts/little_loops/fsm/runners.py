@@ -140,6 +140,7 @@ class DefaultActionRunner:
 
             samplers: list[RssSampler] = []
             peak_rss: list[float | None] = [None]
+            result_seen: list[bool] = [False]
 
             def _on_proc_start(p: subprocess.Popen[str]) -> None:
                 self._current_process = p
@@ -152,6 +153,9 @@ class DefaultActionRunner:
                 self._current_process = None
                 if samplers:
                     peak_rss[0] = samplers.pop().stop()
+
+            def _on_result_seen(seen: bool) -> None:
+                result_seen[0] = seen
 
             collected_usage: list[TokenUsage] = []
 
@@ -174,6 +178,7 @@ class DefaultActionRunner:
                     model=model,
                     working_dir=working_dir,
                     automation_profile=automation_profile,
+                    on_result_seen=_on_result_seen,
                 )
             except subprocess.TimeoutExpired:
                 return ActionResult(
@@ -181,6 +186,7 @@ class DefaultActionRunner:
                     stderr="Action timed out",
                     exit_code=124,
                     duration_ms=timeout * 1000,
+                    result_seen=result_seen[0],
                 )
             except Exception as exc:
                 return ActionResult(
@@ -188,6 +194,7 @@ class DefaultActionRunner:
                     stderr=f"Action failed: {exc}",
                     exit_code=1,
                     duration_ms=_now_ms() - start,
+                    result_seen=result_seen[0],
                 )
             return ActionResult(
                 output=completed.stdout,
@@ -196,6 +203,7 @@ class DefaultActionRunner:
                 duration_ms=_now_ms() - start,
                 usage_events=collected_usage,
                 peak_rss_mb=peak_rss[0],
+                result_seen=result_seen[0],
             )
 
         # Shell command — selector-based I/O with wall-clock timeout enforcement.
@@ -275,6 +283,7 @@ class DefaultActionRunner:
                 exit_code=124,
                 duration_ms=timeout * 1000,
                 peak_rss_mb=shell_peak_rss,
+                result_seen=False,
             )
 
         process.wait(timeout=5)
@@ -284,6 +293,7 @@ class DefaultActionRunner:
             exit_code=process.returncode,
             duration_ms=_now_ms() - start,
             peak_rss_mb=shell_peak_rss,
+            result_seen=False,
         )
 
 
@@ -363,6 +373,7 @@ class SimulationActionRunner:
             stderr="",
             exit_code=exit_code,
             duration_ms=0,
+            result_seen=False,
         )
 
     def _scenario_result(self) -> int:

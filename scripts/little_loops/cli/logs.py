@@ -1127,6 +1127,7 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
                                 if failure_type in (
                                     FailureType.TRANSIENT,
                                     FailureType.NON_RECOVERABLE,
+                                    FailureType.INFRA_RETRY,
                                 ):
                                     continue
 

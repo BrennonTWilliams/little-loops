@@ -116,6 +116,14 @@ LLM_ACTION_TYPES: frozenset[str] = frozenset({"slash_command", "prompt"})
 _DEFAULT_API_ERROR_RETRIES: int = 2
 # Flat backoff in seconds between API server error retries (no exponential ladder).
 _DEFAULT_API_ERROR_BACKOFF: int = 30
+# BUG-2731: maximum per-state exit-143-after-result infra-teardown retries before
+# falling through to normal routing (which already ledgers correctly via ENH-2727's
+# skip_inflight_infra for autodev; other loops fall through to on_error as usual).
+_DEFAULT_INFRA_RETRY_RETRIES: int = 2
+# Flat backoff in seconds between infra-teardown retries (no exponential ladder;
+# same shape as _DEFAULT_API_ERROR_BACKOFF, but short — this is a re-run of an
+# already-completed action, not a wait for an external service to recover).
+_DEFAULT_INFRA_RETRY_BACKOFF: int = 5
 
 
 def _iso_now() -> str:
@@ -321,6 +329,11 @@ class FSMExecutor:
         # _api_error_retries[state_name] = {"retries": int, "total_wait": float}
         # Reset when the state completes without a server error, or after exhaustion.
         self._api_error_retries: dict[str, dict[str, Any]] = {}
+
+        # Per-state exit-143-after-result infra-teardown retry tracking (BUG-2731),
+        # same shape as _api_error_retries. Reset when the state completes without
+        # an infra-teardown kill, or after exhaustion.
+        self._infra_retry_retries: dict[str, dict[str, Any]] = {}
 
         # Per-state tool-call throttle counter. Counts successive action executions within
         # a single continuous state visit. Reset on state exit; NOT serialized to LoopState
@@ -1416,7 +1429,9 @@ class FSMExecutor:
         # output incidentally contains "rate limit" text are never intercepted.
         if action_result is not None:
             _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
-            _failure_type, _reason = classify_failure(_combined, action_result.exit_code)
+            _failure_type, _reason = classify_failure(
+                _combined, action_result.exit_code, result_seen=action_result.result_seen
+            )
             if (
                 action_result.exit_code != 0
                 and _failure_type == FailureType.TRANSIENT
@@ -1435,6 +1450,13 @@ class FSMExecutor:
                 if _handled:
                     return _target
                 # exhausted — fall through to normal verdict routing
+            elif action_result.exit_code != 0 and _failure_type == FailureType.INFRA_RETRY:
+                # BUG-2731: exit-143-after-result infra teardown — re-run in place
+                # rather than discarding the in-flight work as a terminal failure.
+                _handled, _target = self._handle_infra_retry(state, route_ctx.state_name)
+                if _handled:
+                    return _target
+                # exhausted — fall through to normal verdict routing
             elif action_result.exit_code != 0 and _failure_type == FailureType.NON_RECOVERABLE:
                 # Auth/credential failure — abort immediately, do not retry.
                 # Route to on_error if defined, otherwise let normal verdict routing handle it.
@@ -1448,6 +1470,7 @@ class FSMExecutor:
                 self._rate_limit_retries.pop(route_ctx.state_name, None)
                 self._consecutive_rate_limit_exhaustions = 0
                 self._api_error_retries.pop(route_ctx.state_name, None)
+                self._infra_retry_retries.pop(route_ctx.state_name, None)
 
         # Stall-route override: if the detector elected to route to a recovery
         # state, honor it now (bypass interceptors and _route) so the
@@ -2237,12 +2260,18 @@ class FSMExecutor:
         def _collect_usage(usage: TokenUsage) -> None:
             collected_usage.append(usage)
 
+        result_seen: list[bool] = [False]
+
+        def _on_result_seen(seen: bool) -> None:
+            result_seen[0] = seen
+
         try:
             completed = run_claude_command(
                 command=skill_command,
                 timeout=timeout,
                 on_usage=on_usage,
                 on_usage_detailed=_collect_usage,
+                on_result_seen=_on_result_seen,
             )
             return ActionResult(
                 output=completed.stdout,
@@ -2250,6 +2279,7 @@ class FSMExecutor:
                 exit_code=completed.returncode,
                 duration_ms=_now_ms() - start,
                 usage_events=collected_usage,
+                result_seen=result_seen[0],
             )
         except subprocess.TimeoutExpired:
             return ActionResult(
@@ -2257,6 +2287,7 @@ class FSMExecutor:
                 stderr="Baseline action timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
+                result_seen=result_seen[0],
             )
 
     def _run_action_or_route(
@@ -2616,6 +2647,42 @@ class FSMExecutor:
                 "state": state_name,
                 "attempt": record["retries"],
                 "backoff": _DEFAULT_API_ERROR_BACKOFF,
+            },
+        )
+        return True, state_name
+
+    def _handle_infra_retry(self, state: StateConfig, state_name: str) -> tuple[bool, str | None]:
+        """Handle a detected exit-143-after-result infra teardown (BUG-2731).
+
+        The headless CLI SIGTERMs its still-running subagent process group when
+        the top-level turn ends, producing exit 143 after a stream-json "result"
+        event was already observed — a re-runnable infra kill, not a genuine
+        implementation failure. Modeled on ``_handle_api_error``: flat per-state
+        backoff, falls through to normal FSM routing after
+        ``_DEFAULT_INFRA_RETRY_RETRIES`` attempts so a persistently-killed action
+        doesn't loop forever (normal routing already ledgers correctly via
+        ENH-2727's ``skip_inflight_infra`` for autodev; other loops fall through
+        to ``on_error`` as usual).
+
+        Returns:
+            ``(True, state_name)`` to retry the state in place, or
+            ``(False, None)`` when the retry budget is exhausted (caller falls
+            through to normal verdict routing).
+        """
+        record = self._infra_retry_retries.setdefault(state_name, {"retries": 0, "total_wait": 0.0})
+        if record["retries"] >= _DEFAULT_INFRA_RETRY_RETRIES:
+            self._infra_retry_retries.pop(state_name, None)
+            self._emit("infra_retry_exhausted", {"state": state_name, "retries": record["retries"]})
+            return False, None
+        record["retries"] += 1
+        slept = self._interruptible_sleep(_DEFAULT_INFRA_RETRY_BACKOFF)
+        record["total_wait"] += slept
+        self._emit(
+            "infra_retry",
+            {
+                "state": state_name,
+                "attempt": record["retries"],
+                "backoff": _DEFAULT_INFRA_RETRY_BACKOFF,
             },
         )
         return True, state_name

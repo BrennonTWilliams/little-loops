@@ -957,10 +957,24 @@ def process_issue_inplace(
             error_output = result.stderr or result.stdout or "Unknown error"
             failure_type, failure_reason_text = classify_failure(error_output, result.returncode)
 
-            if failure_type in (FailureType.TRANSIENT, FailureType.NON_RECOVERABLE):
-                # Transient or non-recoverable failure — log but don't create bug issue.
-                # NON_RECOVERABLE (auth/credential) is not a code bug; retrying won't help.
-                label = "Transient" if failure_type == FailureType.TRANSIENT else "Non-recoverable"
+            if failure_type in (
+                FailureType.TRANSIENT,
+                FailureType.NON_RECOVERABLE,
+                FailureType.INFRA_RETRY,
+            ):
+                # Transient/non-recoverable/infra-retry failure — log but don't create
+                # bug issue. NON_RECOVERABLE (auth/credential) is not a code bug;
+                # retrying won't help. INFRA_RETRY (BUG-2731) is a SIGTERM-after-result
+                # teardown, not a code defect — this non-FSM path doesn't thread
+                # ActionResult.result_seen through, so classify_failure() never
+                # actually returns INFRA_RETRY here today; included for exhaustiveness.
+                label = (
+                    "Transient"
+                    if failure_type == FailureType.TRANSIENT
+                    else "Non-recoverable"
+                    if failure_type == FailureType.NON_RECOVERABLE
+                    else "Infra-retry"
+                )
                 logger.warning(f"{label} failure for {info.issue_id}: {failure_reason_text}")
                 logger.warning("Not creating bug issue - this is not a code defect")
                 logger.info("Error output (first 500 chars):")

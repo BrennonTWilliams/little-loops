@@ -55,6 +55,8 @@ walks the source tree to verify every emit site maps to a registered variant.
 | `RateLimitStormVariant` | `rate_limit_storm` |
 | `ApiErrorExhaustedVariant` | `api_error_exhausted` |
 | `ApiErrorRetryVariant` | `api_error_retry` |
+| `InfraRetryExhaustedVariant` | `infra_retry_exhausted` |
+| `InfraRetryVariant` | `infra_retry` |
 | `AbSummaryVariant` | `ab_summary` |
 | `HandoffDetectedVariant` | `handoff_detected` |
 | `HandoffSpawnedVariant` | `handoff_spawned` |

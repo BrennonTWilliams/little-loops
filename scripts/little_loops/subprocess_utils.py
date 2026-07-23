@@ -40,6 +40,12 @@ ModelCallback = Callable[[str], None]
 # Kept for back-compat with issue_manager.py and worker_pool.py callers.
 UsageCallback = Callable[[int, int], None]
 
+# Result-seen callback: (result_seen: bool) -> None (BUG-2731). Surfaces
+# whether a stream-json "result" event was observed before the subprocess
+# exited, without widening run_claude_command()'s CompletedProcess return
+# type — same mutable-closure precedent as peak_rss_mb (fsm/runners.py).
+ResultSeenCallback = Callable[[bool], None]
+
 
 @dataclass
 class TokenUsage:
@@ -300,6 +306,7 @@ def run_claude_command(
     model: str | None = None,
     automation_profile: str | None = None,
     post_stream_close_grace_seconds: int = 300,
+    on_result_seen: ResultSeenCallback | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -332,6 +339,11 @@ def run_claude_command(
             force-killing the process group. Must accommodate synchronous
             parallel Agent tool calls (`run_in_background: false`) that can
             still be running when the parent's own streams close (BUG-2718).
+        on_result_seen: Optional callback invoked once, right before return,
+            with whether a stream-json "result" event was observed (BUG-2731).
+            Lets callers distinguish an exit-143-after-result infra teardown
+            (re-runnable) from a genuine mid-turn crash, without widening this
+            function's CompletedProcess return type.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -539,6 +551,9 @@ def run_claude_command(
         finally:
             if on_process_end:
                 on_process_end(process)
+
+    if on_result_seen:
+        on_result_seen(result_seen)
 
     return subprocess.CompletedProcess(
         cmd_args,

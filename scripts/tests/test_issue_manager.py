@@ -2141,6 +2141,108 @@ READY
         assert any("Concern" in str(call) for call in mock_logger.warning.call_args_list)
 
 
+class TestClassifyFailureIntegration:
+    """Characterization tests for process_issue_inplace's classify_failure() call
+    site (BUG-2731 Integration Map: this consumer had zero direct coverage).
+    Pins current TRANSIENT/REAL branching behavior before the INFRA_RETRY member
+    is added to the exhaustiveness tuple check.
+    """
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        """Create a mock BRConfig."""
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.max_continuations = 3
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def sample_issue(self, temp_project_dir: Path) -> IssueInfo:
+        """Create a sample issue."""
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+    def _ready_verdict_result(self, sample_issue: IssueInfo) -> MagicMock:
+        output = f"""
+## VERDICT
+READY
+
+## VALIDATED_FILE
+{sample_issue.path}
+"""
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = output
+        return mock_result
+
+    def test_transient_phase2_failure_does_not_create_bug_issue(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """A rate-limit-flavored Phase 2 failure is logged, not filed as a bug."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        with (
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=self._ready_verdict_result(sample_issue),
+            ),
+            patch("little_loops.issue_manager.run_with_continuation") as mock_impl,
+            patch("little_loops.issue_manager.create_issue_from_failure") as mock_create,
+        ):
+            mock_impl.return_value = MagicMock(
+                returncode=1, stdout="", stderr="Error: rate limit exceeded"
+            )
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        assert not result.success
+        assert result.failure_reason.startswith("Transient:")
+        mock_create.assert_not_called()
+
+    def test_real_phase2_failure_creates_bug_issue(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """A genuine implementation failure files a bug issue as before."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        with (
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=self._ready_verdict_result(sample_issue),
+            ),
+            patch("little_loops.issue_manager.run_with_continuation") as mock_impl,
+            patch(
+                "little_loops.issue_manager.create_issue_from_failure",
+                return_value="BUG-999",
+            ) as mock_create,
+        ):
+            mock_impl.return_value = MagicMock(
+                returncode=1, stdout="", stderr="Traceback: NameError: boom"
+            )
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        assert not result.success
+        mock_create.assert_called_once()
+
+
 class TestCloseVerdictHandling:
     """Tests for CLOSE verdict handling in ready-issue phase (ENH-207)."""
 

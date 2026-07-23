@@ -5384,6 +5384,9 @@ class ActionResult:
     stderr: str       # stderr
     exit_code: int    # Exit code
     duration_ms: int  # Execution time
+    usage_events: list[TokenUsage] = field(default_factory=list)  # Host-CLI token usage (ENH-2453)
+    peak_rss_mb: float | None = None  # Peak subprocess RSS in MB (ENH-2453)
+    result_seen: bool = False  # Stream-json "result" event observed before exit (BUG-2731)
 ```
 
 #### ActionRunner Protocol
