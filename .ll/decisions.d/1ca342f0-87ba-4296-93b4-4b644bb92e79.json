@@ -1,0 +1,11 @@
+{
+  "id": "70ab4367-83d3-4813-899c-65175f73e03a",
+  "type": "decision",
+  "timestamp": "2026-07-23T02:34:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "MR-* rules have a top-level suppress-flag convention; the capture-reachability check (ENH-1961) has none, so reviewed false positives (e.g. autodev's BUG-2744 runtime-guard case) can only be silenced via a test-file allowlist that ll-loop run never consults.",
+  "rule": "Captured: Suppress flag for capture-reachability validator warning",
+  "scope": "issue",
+  "issue": "ENH-2748"
+}

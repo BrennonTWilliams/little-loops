@@ -18,6 +18,11 @@ initial: init
 max_steps: 500
 timeout: 28800
 on_handoff: spawn
+# ENH-2748: check_guard2_verdict is statically reachable via check_broke_down's
+# on_no shortcut, bypassing run_size_review's capture. BUG-2744 closed the
+# actual correctness gap with a runtime marker-file gate
+# (check_size_review_ran_this_pass) the static validator can't model.
+capture_reachability_ok: true
 scope:
   - "${context.run_dir}"
 # BUG-2526: serialize loop-name conflicts at the lock layer so two concurrent

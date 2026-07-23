@@ -1221,6 +1221,8 @@ class FSMLoop:
     pruning_profile_ok: bool = False
     # ENH-2713 suppression flag: silences the haiku-pinned-generator WARN rule.
     haiku_generator_ok: bool = False
+    # ENH-2748 suppression flag: silences the capture-reachability warning.
+    capture_reachability_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1331,6 +1333,8 @@ class FSMLoop:
             result["pruning_profile_ok"] = self.pruning_profile_ok
         if self.haiku_generator_ok:
             result["haiku_generator_ok"] = self.haiku_generator_ok
+        if self.capture_reachability_ok:
+            result["capture_reachability_ok"] = self.capture_reachability_ok
 
         return result
 
@@ -1430,6 +1434,7 @@ class FSMLoop:
             unsafe_context_interpolation_ok=data.get("unsafe_context_interpolation_ok", False),
             pruning_profile_ok=data.get("pruning_profile_ok", False),
             haiku_generator_ok=data.get("haiku_generator_ok", False),
+            capture_reachability_ok=data.get("capture_reachability_ok", False),
             imports=data.get("import", []),
         )
 

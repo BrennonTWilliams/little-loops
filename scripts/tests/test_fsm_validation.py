@@ -3312,6 +3312,75 @@ class TestCaptureReachabilityValidation:
         assert any("input" in e.message for e in warnings)
         assert any("branch_b" in e.message for e in warnings)
 
+    # --- ENH-2748: capture_reachability_ok suppress flag ---
+
+    def test_bypass_warning_fires_without_suppress_flag(self) -> None:
+        """Sanity: the bypass WARNING fires when capture_reachability_ok is unset."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(action="echo begin", on_yes="select", on_no="shortcut")
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert len(errors) >= 1
+
+    def test_bypass_warning_suppressed_by_capture_reachability_ok(self) -> None:
+        """capture_reachability_ok: true suppresses the bypass WARNING entirely."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(action="echo begin", on_yes="select", on_no="shortcut")
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+        fsm.capture_reachability_ok = True
+        errors = _validate_capture_reachability(fsm)
+        assert errors == []
+
+    def test_capture_reachability_ok_runs_via_validate_fsm(self) -> None:
+        """validate_fsm() wires in the capture_reachability_ok suppression (end-to-end)."""
+        fsm = self._fsm_with_capture_and_ref(
+            extra_states={
+                "shortcut": make_state(action="echo bypass", next="check"),
+            },
+        )
+        fsm.states["start"] = make_state(action="echo begin", on_yes="select", on_no="shortcut")
+        fsm.states["check"] = make_state(
+            action="echo ${captured.selected.output}",
+            on_yes="done",
+        )
+        fsm.capture_reachability_ok = True
+        errors = validate_fsm(fsm)
+        capture_warnings = [e for e in errors if "captured.selected" in e.message]
+        assert capture_warnings == []
+
+    def test_capture_reachability_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level capture_reachability_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop with a reviewed runtime-guarded capture bypass\n"
+            "initial: work\n"
+            "capture_reachability_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
 
 class TestGeneratorFixDiscipline:
     """MR-6 (ENH-2079): meta-loops should not hand-patch LLM-generator artifacts."""

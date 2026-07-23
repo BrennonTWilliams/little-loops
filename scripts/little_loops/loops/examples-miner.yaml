@@ -16,6 +16,9 @@ initial: harvest
 max_steps: 20
 timeout: 7200
 on_handoff: spawn
+# ENH-2748: synthesize references a run_optimizer capture injected by a
+# sub-loop's child namespace, which the static dominance analysis can't see.
+capture_reachability_ok: true
 context:
   examples_file: examples.json
   prompt_file: system.md

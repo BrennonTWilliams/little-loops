@@ -5,6 +5,10 @@ initial: scrape
 max_steps: 150
 timeout: 7200
 on_handoff: spawn
+# ENH-2748: build_playbook/build_playbook_partial reference an enumeration
+# capture injected by the oracles/enumerate-and-prove sub-loop's child
+# namespace, which the static dominance analysis can't see.
+capture_reachability_ok: true
 import:
   - lib/common.yaml
 

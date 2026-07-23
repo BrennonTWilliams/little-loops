@@ -1,0 +1,12 @@
+{
+  "id": "ac4c2cd9-965f-45b0-8138-d1433badd372",
+  "type": "decision",
+  "timestamp": "2026-07-23T03:11:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mechanical extension of the existing 13-deep MR-* suppress-flag convention with zero new infrastructure; Option B has no schema-level precedent (only a test-only allowlist) and would require new state/var matching logic.",
+  "rule": "Option A: top-level boolean flag capture_reachability_ok",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: per-state/per-var scoped suppress list/map",
+  "issue": "ENH-2748"
+}

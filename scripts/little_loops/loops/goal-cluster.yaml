@@ -16,6 +16,10 @@ initial: load_goals
 max_steps: 300
 timeout: 345600
 on_handoff: spawn
+# ENH-2748: reassess references a plan_display capture injected by the
+# parent loop via a fragment contract, which the static dominance analysis
+# can't see.
+capture_reachability_ok: true
 
 import:
   - lib/composer.yaml

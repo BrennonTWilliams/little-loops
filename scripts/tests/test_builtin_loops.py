@@ -11059,49 +11059,16 @@ class TestValidatorWarningBudget:
 
     # (loop stem, category) -> allowed warning paths.
     # partial-route: owned by the semantic MR-4 routing issue.
-    # capture-ordering: only Bucket A entries remain — sub-loop false positives
-    #   where the referenced capture is injected by a child loop's namespace, which
-    #   the static validator can't see. Bucket B entries (refs guarded by
-    #   `:default=`) were resolved by BUG-2112 Approach B: the validator now parses
-    #   the `:default=` suffix (see _unguarded_captured_refs in fsm/validation.py)
-    #   and no longer flags guarded references, so those entries were removed.
-    ALLOWLIST: dict[tuple[str, str], set[str]] = {
-        ("adopt-third-party-api", "capture-ordering"): {
-            # Bucket A: enumeration injected by oracles/enumerate-and-prove sub-loop
-            "states.build_playbook.action",
-            "states.build_playbook_partial.action",
-        },
-        ("examples-miner", "capture-ordering"): {
-            # Bucket A: run_optimizer injected by sub-loop
-            "states.synthesize.action",
-        },
-        ("goal-cluster", "capture-ordering"): {
-            # Bucket A: plan_display injected by parent loop via fragment contract
-            "states.reassess.action",
-        },
-        ("integrate-sdk", "capture-ordering"): {
-            # Bucket A: targets injected by oracles/enumerate-and-prove sub-loop on success path
-            "states.scaffold_integration.action",
-        },
-        ("autodev", "capture-ordering"): {
-            # Bucket A (BUG-2734, narrowed by BUG-2744): check_guard2_verdict is
-            # still statically reachable via check_broke_down's on_no shortcut
-            # (sub-loop already decomposed via breakdown_issue), which bypasses
-            # run_size_review's capture. BUG-2744 closed the correctness gap this
-            # used to have — a stale prior-issue capture could otherwise match —
-            # by adding check_size_review_ran_this_pass, a runtime marker gate
-            # (autodev-size-review-skipped-this-pass, written only on the
-            # check_broke_down shortcut and cleared per-issue at dequeue_next)
-            # interposed between check_reconcile_needed and check_guard2_verdict.
-            # It routes the shortcut path straight to recheck_after_size_review,
-            # so check_guard2_verdict never evaluates captured.size_review_output
-            # on a pass where run_size_review didn't run — a runtime invariant the
-            # static validator can't see (it can't reason about a marker file's
-            # contents). This entry stays open because the state is still
-            # statically reachable on that path; only its *safety* changed.
-            "states.check_guard2_verdict.action",
-        },
-    }
+    # capture-ordering: was carried here for sub-loop false positives (referenced
+    #   capture injected by a child loop's namespace, which the static validator
+    #   can't see) and one runtime-guarded bypass (autodev). ENH-2748 added the
+    #   in-YAML `capture_reachability_ok: true` suppress flag; all 5 entries were
+    #   migrated to that flag on their respective loop YAMLs and removed here.
+    #   Bucket B entries (refs guarded by `:default=`) were resolved earlier by
+    #   BUG-2112 Approach B: the validator now parses the `:default=` suffix (see
+    #   _unguarded_captured_refs in fsm/validation.py) and no longer flags guarded
+    #   references, so those entries were removed too.
+    ALLOWLIST: dict[tuple[str, str], set[str]] = {}
 
     @pytest.fixture
     def builtin_loops(self) -> list[Path]:

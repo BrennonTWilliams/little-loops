@@ -241,6 +241,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "pruning_profile",
         "pruning_profile_ok",
         "haiku_generator_ok",
+        "capture_reachability_ok",
         "import",
         "fragments",
         "from",
@@ -2774,7 +2775,13 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
       (the reference may crash at runtime on paths that bypass the capture).
     - ERROR when a referenced capture variable has no capturing state at all
       in this FSM (excluding sub-loop captures which live in child namespaces).
+
+    Suppressed by `capture_reachability_ok: true` at the loop top-level for
+    loops with a reviewed, runtime-guarded bypass the dominance analysis can't
+    model (e.g. a marker file checked by a shell action).
     """
+    if fsm.capture_reachability_ok:
+        return []
     errors: list[ValidationError] = []
 
     # Step 1: Build capture map (var_name → set of capturing state names).
