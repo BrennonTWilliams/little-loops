@@ -17,6 +17,7 @@ from little_loops.output_parsing import extract_tagged_json
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     cli_event_context,
+    record_review_event,
     record_verdict_event,
     skill_event_context,
 )
@@ -37,6 +38,23 @@ _VERIFIER_SKILLS = frozenset(
         "verify-issues",
         "prioritize-issues",
         "align-issues",
+    }
+)
+
+# Seven audit/review producers whose exit-code/output cmd_invoke() persists as
+# a review_events row (ENH-2512). The third read-side signal alongside
+# _VERIFIER_SKILLS (verdict_events) and the executor-side harness_events.
+# `code-review`/`simplify` are excluded — built-in Claude Code slash commands
+# with no local `scripts/little_loops/` entry point to dispatch through.
+_REVIEWER_SKILLS = frozenset(
+    {
+        "review-epic",
+        "review-loop",
+        "audit-architecture",
+        "audit-claude-config",
+        "audit-docs",
+        "audit-loop-run",
+        "review-sprint",
     }
 )
 
@@ -94,6 +112,58 @@ def _record_verdict(
         severity_counts=severity_counts,
         findings_count=findings_count,
         confidence=confidence,
+    )
+
+
+def _record_review(
+    *, skill: str, skill_args: list[str], exit_code: int, output_text: str, session_id: str | None
+) -> None:
+    """Best-effort review persistence for the 7 skill-bridged audits/reviews (ENH-2512).
+
+    No skill currently emits a structured review dict at this call site, so
+    the verdict defaults to a coarse exit-code read (0 -> "pass", else
+    "fail"). A ``REVIEW_JSON: {...}`` tagged line (the same
+    :func:`extract_tagged_json` convention ``VERDICT_JSON`` uses) overrides
+    the coarse fields when present, letting precision — including the
+    "refused" verdict a pre-flight gate can't express via exit code alone —
+    improve as skills adopt the tag without a further schema change. Never
+    raises — the caller wraps this best-effort.
+    """
+    if skill not in _REVIEWER_SKILLS:
+        return
+
+    verdict = "pass" if exit_code == 0 else "fail"
+    target_kind: str | None = None
+    target_id: str | None = None
+    severity_counts: dict | None = None
+    findings_count: int | None = None
+    findings_json_summary: dict | list | None = None
+
+    match = _TARGET_ID_RE.search(" ".join(skill_args))
+    if match:
+        target_kind = "epic" if match.group(1) == "EPIC" else "issue"
+        target_id = match.group(0)
+
+    tagged, _warning = extract_tagged_json(output_text, "REVIEW_JSON")
+    if isinstance(tagged, dict):
+        verdict = str(tagged.get("verdict", verdict))
+        severity_counts = tagged.get("severity_counts")
+        findings_count = tagged.get("findings_count")
+        findings_json_summary = tagged.get("findings_json_summary")
+        target_id = tagged.get("target_id", target_id)
+        target_kind = tagged.get("target_kind", target_kind)
+
+    record_review_event(
+        DEFAULT_DB_PATH,
+        ts=_now_iso(),
+        session_id=session_id,
+        reviewer_skill=skill,
+        target_kind=target_kind,
+        target_id=target_id,
+        verdict=verdict,
+        severity_counts=severity_counts,
+        findings_count=findings_count,
+        findings_json_summary=findings_json_summary,
     )
 
 
@@ -197,6 +267,14 @@ def cmd_invoke(args: argparse.Namespace) -> int:
                     output_text="\n".join(stream_output_lines),
                     session_id=None,
                 )
+            with suppress(Exception):
+                _record_review(
+                    skill=skill,
+                    skill_args=skill_args,
+                    exit_code=exit_code,
+                    output_text="\n".join(stream_output_lines),
+                    session_id=None,
+                )
             return exit_code
 
         else:  # --output json
@@ -237,6 +315,14 @@ def cmd_invoke(args: argparse.Namespace) -> int:
             completion.exit_code = exit_code
             with suppress(Exception):
                 _record_verdict(
+                    skill=skill,
+                    skill_args=skill_args,
+                    exit_code=exit_code,
+                    output_text="\n".join(output_lines),
+                    session_id=None,
+                )
+            with suppress(Exception):
+                _record_review(
                     skill=skill,
                     skill_args=skill_args,
                     exit_code=exit_code,

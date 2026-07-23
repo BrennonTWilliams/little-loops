@@ -1380,7 +1380,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
 
 
 class TestBackfillIncremental:
@@ -1825,8 +1825,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1995,8 +1995,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2047,8 +2047,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -2126,7 +2126,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 34
+        assert int(version[0]) == 35
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -2143,8 +2143,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3860,8 +3860,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3901,8 +3901,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 34
-        assert int(row[0]) == 34
+        assert SCHEMA_VERSION == 35
+        assert int(row[0]) == 35
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -3956,7 +3956,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 34
+        assert int(version[0]) == 35
         assert "issue_snapshots" in names
 
 
@@ -4649,7 +4649,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -4795,7 +4795,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -5016,7 +5016,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
@@ -5121,7 +5121,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -5161,7 +5161,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -5205,7 +5205,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -5412,7 +5412,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -5654,7 +5654,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -5809,7 +5809,7 @@ class TestSchemaV32PromptOptEvents:
         assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
 
     def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 31)
         ensure_db(db)
@@ -6076,7 +6076,7 @@ class TestSchemaV33VerdictEvents:
         assert {"idx_verdict_kind", "idx_verdict_target", "idx_verdict_session"} <= names
 
     def test_v32_db_upgrades_gains_verdict_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 32)
         ensure_db(db)
@@ -6247,7 +6247,7 @@ class TestSchemaV34ContextPressureEvents:
         assert {"idx_pressure_session", "idx_pressure_ts", "idx_pressure_crossed"} <= names
 
     def test_v33_db_upgrade_gains_context_pressure_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 34
+        assert SCHEMA_VERSION == 35
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 33)
         ensure_db(db)
@@ -6274,6 +6274,201 @@ class TestSchemaV34ContextPressureEvents:
         from little_loops.session_store import _KINDLESS_TABLES
 
         assert "context_pressure_events" not in _KINDLESS_TABLES
+
+
+class TestRecordReviewEvent:
+    """ENH-2512: record_review_event() single-row INSERT."""
+
+    def test_inserts_row_with_all_columns(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id="sess-1",
+            reviewer_skill="audit-architecture",
+            target_kind="repo",
+            target_id=None,
+            severity_counts={"p0": 1, "p1": 3, "p2": 7, "info": 12},
+            findings_count=23,
+            findings_json_summary={"top": [{"title": "God class", "file": "services.py"}]},
+            verdict="warn",
+            head_sha="abc123",
+            branch="main",
+        )
+        rows = recent(db, kind="review")
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["reviewer_skill"] == "audit-architecture"
+        assert row["target_kind"] == "repo"
+        assert row["target_id"] is None
+        assert json.loads(row["severity_counts"]) == {"p0": 1, "p1": 3, "p2": 7, "info": 12}
+        assert row["findings_count"] == 23
+        assert json.loads(row["findings_json_summary"]) == {
+            "top": [{"title": "God class", "file": "services.py"}]
+        }
+        assert row["verdict"] == "warn"
+        assert row["head_sha"] == "abc123"
+        assert row["branch"] == "main"
+
+    def test_severity_counts_none_round_trips_as_null(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            reviewer_skill="audit-loop-run",
+            verdict="refused",
+        )
+        rows = recent(db, kind="review")
+        assert rows[0]["severity_counts"] is None
+
+    def test_refused_verdict_with_zero_findings(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            reviewer_skill="audit-loop-run",
+            target_kind="loop",
+            target_id="rn-implement",
+            severity_counts={"p0": 0, "p1": 0, "p2": 0, "info": 0},
+            findings_count=0,
+            verdict="refused",
+        )
+        rows = recent(db, kind="review")
+        assert rows[0]["verdict"] == "refused"
+        assert rows[0]["findings_count"] == 0
+
+    def test_multiple_invocations_are_distinct_rows(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            reviewer_skill="review-epic",
+            verdict="pass",
+        )
+        record_review_event(
+            db,
+            ts="2026-07-23T00:05:00Z",
+            session_id=None,
+            reviewer_skill="review-epic",
+            verdict="warn",
+        )
+        rows = recent(db, kind="review")
+        assert len(rows) == 2
+        assert rows[0]["ts"] > rows[1]["ts"]
+
+    def test_kwarg_only_signature(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        with pytest.raises(TypeError):
+            record_review_event(db, "2026-07-23T00:00:00Z", "audit-architecture", "pass")  # type: ignore[misc]
+
+    def test_raises_on_unopenable_db(self, tmp_path: Path) -> None:
+        """Best-effort is enforced at the cmd_invoke() call site, not the producer."""
+        from little_loops.session_store import record_review_event
+
+        with pytest.raises(sqlite3.Error):
+            record_review_event(
+                tmp_path,
+                ts="2026-07-23T00:00:00Z",
+                session_id=None,
+                reviewer_skill="audit-architecture",
+                verdict="pass",
+            )
+
+    def test_fts_indexed(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T00:00:00Z",
+            session_id=None,
+            reviewer_skill="review-epic",
+            target_id="EPIC-2457",
+            verdict="pass",
+        )
+        results = search(db, query=fts_phrase("EPIC-2457"))
+        assert any(r["kind"] == "review" for r in results)
+
+
+class TestSchemaV35ReviewEvents:
+    """v35 migration adds the review_events table (ENH-2512)."""
+
+    def test_review_events_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(review_events)")}
+        finally:
+            conn.close()
+        assert cols == {
+            "id",
+            "ts",
+            "session_id",
+            "reviewer_skill",
+            "target_kind",
+            "target_id",
+            "severity_counts",
+            "findings_count",
+            "findings_json_summary",
+            "verdict",
+            "head_sha",
+            "branch",
+        }
+
+    def test_review_events_indexes_exist(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+        finally:
+            conn.close()
+        assert {"idx_review_skill", "idx_review_target", "idx_review_session"} <= names
+
+    def test_v34_db_upgrade_gains_review_events(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 35
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 34)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert "review_events" in names
+
+    def test_kind_registration(self) -> None:
+        assert "review" in VALID_KINDS
+        assert _KIND_TABLE["review"] == "review_events"
+
+    def test_excluded_from_rebuild(self) -> None:
+        from little_loops.session_store import _REBUILD_SEARCH_KINDS, _REBUILD_TABLES
+
+        assert "review_events" not in _REBUILD_TABLES
+        assert "review" not in _REBUILD_SEARCH_KINDS
+
+    def test_not_kindless(self) -> None:
+        from little_loops.session_store import _KINDLESS_TABLES
+
+        assert "review_events" not in _KINDLESS_TABLES
 
 
 class TestRecordContextPressureEvent:

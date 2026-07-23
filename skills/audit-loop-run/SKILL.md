@@ -99,7 +99,12 @@ fi
   and **stop**. Do **not** emit a verdict, state-transition trace, captured
   outputs, improvement proposals, or any other section. An audit of a run whose
   `events.jsonl`/`state.json` cannot be read is a fabrication, not an audit —
-  the only honest output is the refusal above.
+  the only honest output is the refusal above. Immediately after the refusal
+  line, emit `REVIEW_JSON: {"verdict": "refused", "target_kind": "loop",
+  "target_id": "<loop_name>", "severity_counts": {"p0": 0, "p1": 0, "p2": 0,
+  "info": 0}, "findings_count": 0}` (a single tagged line, per
+  `extract_tagged_json`'s convention) so a refused audit is still captured as
+  a `review_events` row instead of leaving no trace (ENH-2512).
 - Never reconstruct, infer, or assume a trace from the loop's FSM definition
   alone. Every concrete claim in the report (trace, exit codes, captured
   outputs, timings) MUST be backed by a line actually read from
@@ -429,6 +434,15 @@ Laundering check: <N sub-loop states checked, M flagged — or "no sub-loop stat
 Shallow-iteration check: `<warning | corroborated | clear | unknown>` (<N> tool calls, <M> auxiliary mutations — or "below threshold")
 Issues created: <N>
 ```
+
+Immediately after the report block, emit a `REVIEW_JSON: {...}` tagged line
+(ENH-2512, `extract_tagged_json` convention) so `cmd_invoke()` persists this
+run as a `review_events` row: `{"verdict": "<pass|warn|fail|degraded mapped
+from met->pass, partial->warn, phantom|honest-failure->fail,
+degraded->degraded>", "target_kind": "loop", "target_id": "<loop_name>",
+"severity_counts": {"p0": 0, "p1": <rubric-flagged + laundering-flagged
+count>, "p2": 0, "info": 0}, "findings_count": <rubric-flagged +
+laundering-flagged count>}`.
 
 ---
 

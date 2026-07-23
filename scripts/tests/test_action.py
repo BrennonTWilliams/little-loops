@@ -410,6 +410,120 @@ class TestCmdInvokeRecordsVerdictEvent:
 
 
 # =============================================================================
+# cmd_invoke — review_events recording (ENH-2512)
+# =============================================================================
+
+
+class TestCmdInvokeRecordsReviewEvent:
+    def test_records_row_for_reviewer_skill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(
+            skill="audit-architecture", args=[], timeout=300, output="stream-json"
+        )
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            result = cmd_invoke(args)
+
+        assert result == 0
+        rows = recent(db, kind="review")
+        assert len(rows) == 1
+        assert rows[0]["reviewer_skill"] == "audit-architecture"
+        assert rows[0]["verdict"] == "pass"
+
+    def test_records_nothing_for_non_reviewer_skill(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(skill="ready-issue", args=["BUG-1"], timeout=300, output="json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            cmd_invoke(args)
+
+        assert recent(db, kind="review") == []
+
+    def test_records_fail_verdict_on_nonzero_exit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        args = _make_namespace(skill="review-sprint", args=[], timeout=300, output="json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(1)
+        ):
+            cmd_invoke(args)
+
+        rows = recent(db, kind="review")
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "fail"
+
+    def test_review_json_tag_overrides_coarse_verdict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        def fake_run(command, timeout, stream_callback, **kwargs):
+            stream_callback(
+                'REVIEW_JSON: {"verdict": "refused", "target_kind": "loop", '
+                '"target_id": "rn-implement", "severity_counts": '
+                '{"p0": 0, "p1": 0, "p2": 0, "info": 0}, "findings_count": 0}',
+                False,
+            )
+            return _make_completed(0)
+
+        args = _make_namespace(
+            skill="audit-loop-run", args=["rn-implement"], timeout=300, output="stream-json"
+        )
+        with patch("little_loops.subprocess_utils.run_claude_command", side_effect=fake_run):
+            cmd_invoke(args)
+
+        rows = recent(db, kind="review")
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "refused"
+        assert rows[0]["target_kind"] == "loop"
+        assert rows[0]["target_id"] == "rn-implement"
+        assert rows[0]["findings_count"] == 0
+        assert json.loads(rows[0]["severity_counts"]) == {
+            "p0": 0,
+            "p1": 0,
+            "p2": 0,
+            "info": 0,
+        }
+
+    def test_best_effort_on_unopenable_db(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DB absent/unopenable must not change the reviewer's exit code."""
+        # tmp_path is a directory — sqlite cannot open it as a database file.
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", tmp_path)
+
+        args = _make_namespace(skill="audit-docs", args=[], timeout=300, output="json")
+        with patch(
+            "little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(0)
+        ):
+            result = cmd_invoke(args)
+
+        assert result == 0
+
+
+# =============================================================================
 # cmd_invoke — json mode
 # =============================================================================
 

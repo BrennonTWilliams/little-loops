@@ -1885,6 +1885,50 @@ class TestNewEventReaders:
         assert rates[0]["successes"] == 1
         assert rates[0]["success_rate"] == 0.5
 
+    def test_recent_review_events_and_velocity(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_review_events, review_velocity
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-06T10:00:00Z",
+            session_id=None,
+            reviewer_skill="audit-architecture",
+            target_kind="repo",
+            verdict="warn",
+            severity_counts={"p0": 1, "p1": 3, "p2": 7, "info": 12},
+            findings_count=23,
+        )
+        record_review_event(
+            db,
+            ts="2026-07-06T11:00:00Z",
+            session_id=None,
+            reviewer_skill="audit-loop-run",
+            target_kind="loop",
+            target_id="rn-implement",
+            verdict="refused",
+            severity_counts={"p0": 0, "p1": 0, "p2": 0, "info": 0},
+            findings_count=0,
+        )
+
+        rows = recent_review_events(db=db)
+        assert len(rows) == 2
+        assert rows[0].ts > rows[1].ts
+        assert rows[0].verdict == "refused"
+
+        by_skill = recent_review_events(reviewer_skill="audit-architecture", db=db)
+        assert len(by_skill) == 1
+        assert by_skill[0].reviewer_skill == "audit-architecture"
+
+        weeks = review_velocity(db=db)
+        assert len(weeks) == 1
+        assert weeks[0]["reviews"] == 2
+        assert weeks[0]["p0"] == 1
+        assert weeks[0]["p1"] == 3
+        assert weeks[0]["p2"] == 7
+        assert weeks[0]["info"] == 12
+
     def test_find_session_for_issue_transition(self, tmp_path: Path) -> None:
         from little_loops.history_reader import find_session_for_issue_transition
 
@@ -2099,9 +2143,11 @@ class TestNewEventReaders:
             recent_hook_events,
             recent_lifecycle_events,
             recent_prompt_opt_events,
+            recent_review_events,
             recent_skill_events,
             recent_test_runs,
             recent_verdict_events,
+            review_velocity,
             summarize_skills,
             verdict_pass_rate,
         )
@@ -2121,6 +2167,8 @@ class TestNewEventReaders:
         assert prompt_opt_offer_rate(db=db) is None
         assert recent_verdict_events(db=db) == []
         assert verdict_pass_rate(db=db) == []
+        assert recent_review_events(db=db) == []
+        assert review_velocity(db=db) == []
 
 
 class TestHookEventReaders:

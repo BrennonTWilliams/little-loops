@@ -2978,3 +2978,122 @@ def verdict_pass_rate(
             }
         )
     return result
+
+
+@dataclass
+class ReviewEvent:
+    """A ``review_events`` row — one audit/review invocation's structured outcome (ENH-2512)."""
+
+    ts: str
+    session_id: str | None
+    reviewer_skill: str
+    target_kind: str | None
+    target_id: str | None
+    severity_counts: str | None
+    findings_count: int | None
+    findings_json_summary: str | None
+    verdict: str | None
+    head_sha: str | None
+    branch: str | None
+
+
+_REVIEW_EVENT_COLUMNS = (
+    "ts, session_id, reviewer_skill, target_kind, target_id, "
+    "severity_counts, findings_count, findings_json_summary, verdict, head_sha, branch"
+)
+
+
+def recent_review_events(
+    *,
+    reviewer_skill: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ReviewEvent]:
+    """Return recent audit/review outcomes, newest first, optionally filtered (ENH-2512)."""
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = f"SELECT {_REVIEW_EVENT_COLUMNS} FROM review_events "
+        clauses: list[str] = []
+        params: list[Any] = []
+        if reviewer_skill is not None:
+            clauses.append("reviewer_skill = ?")
+            params.append(reviewer_skill)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        if clauses:
+            sql += "WHERE " + " AND ".join(clauses) + " "
+        sql += "ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: recent_review_events query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+    return [_row_to_dataclass(row, ReviewEvent) for row in rows]
+
+
+def review_velocity(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Weekly rollup of ``severity_counts`` totals across all reviews (ENH-2512).
+
+    Buckets rows by ISO week (``strftime('%Y-%W', ts)``) and sums each
+    severity bucket (``p0``/``p1``/``p2``/``info``) found in the JSON-encoded
+    ``severity_counts`` column. Rows with a null/unparseable
+    ``severity_counts`` contribute zero to every bucket but still count
+    toward ``reviews``. Sorted by week ascending.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = "SELECT ts, severity_counts FROM review_events "
+        params: list[Any] = []
+        if since is not None:
+            sql += "WHERE ts >= ? "
+            params.append(since)
+        sql += "ORDER BY ts ASC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning("history_reader: review_velocity query failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+    weeks: dict[str, dict[str, int]] = {}
+    for row in rows:
+        ts = row["ts"] or ""
+        try:
+            week = datetime.fromisoformat(ts.replace("Z", "+00:00")).strftime("%Y-W%W")
+        except ValueError:
+            continue
+        bucket = weeks.setdefault(week, {"reviews": 0, "p0": 0, "p1": 0, "p2": 0, "info": 0})
+        bucket["reviews"] += 1
+        raw = row["severity_counts"]
+        if not raw:
+            continue
+        try:
+            counts = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(counts, dict):
+            continue
+        for severity in ("p0", "p1", "p2", "info"):
+            value = counts.get(severity)
+            if isinstance(value, int):
+                bucket[severity] += value
+
+    return [{"week": week, **weeks[week]} for week in sorted(weeks)]

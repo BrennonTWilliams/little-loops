@@ -161,6 +161,16 @@ Circular: module_x <-> module_y
 7. Add type hints to legacy modules
 8. Document architecture in README
 9. Create architecture diagram
+
+After the Recommendations section, emit a `REVIEW_JSON: {...}` tagged line
+(ENH-2512, `extract_tagged_json` convention) so `cmd_invoke()` persists this
+run as a `review_events` row: `{"verdict": "pass" if no High-priority items
+else "warn", "target_kind": "repo", "severity_counts": {"p0": 0, "p1":
+<count of High Priority items>, "p2": <count of Medium Priority items>,
+"info": <count of Low Priority items>}, "findings_count": <total
+recommendations>}` — mapping this skill's High/Medium/Low priority buckets
+onto the shared p1/p2/info severity taxonomy (no Critical/p0 bucket
+produced by this skill).
 ```
 
 ### 4. Issue Management

@@ -2582,6 +2582,7 @@ ll-session recent --kind hook_event              # Recent hook fires: exit_code/
 ll-session recent --kind harness                 # Recent ll-harness / eval outcomes (ENH-2739)
 ll-session recent --kind verdict                 # Recent verifier verdicts (ENH-2504)
 ll-session recent --kind context_pressure        # Recent context-window pressure samples (ENH-2507)
+ll-session recent --kind review                  # Recent audit/review outcomes (ENH-2512)
 ll-session search --fts "streaming" --kind learning_test  # Registry records by claim/target (ENH-2466)
 ll-session recent --kind tool --mcp-server pencil --mcp-outcome error  # MCP failures for one server (ENH-2511)
 ll-session skill-stats --since 2026-06-01       # Per-skill success rates (ENH-2460)

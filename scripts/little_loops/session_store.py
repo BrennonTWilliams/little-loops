@@ -225,7 +225,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -250,6 +250,7 @@ VALID_KINDS: tuple[str, ...] = (
     "prompt_opt",
     "verdict",
     "context_pressure",
+    "review",
 )
 _KIND_TABLE = {
     "tool": "tool_events",
@@ -274,6 +275,7 @@ _KIND_TABLE = {
     "prompt_opt": "prompt_opt_events",
     "verdict": "verdict_events",
     "context_pressure": "context_pressure_events",
+    "review": "review_events",
 }
 
 # Cache tables that intentionally have no VALID_KINDS entry — support tables
@@ -1061,6 +1063,31 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_pressure_session ON context_pressure_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_pressure_ts ON context_pressure_events(ts);
     CREATE INDEX IF NOT EXISTS idx_pressure_crossed ON context_pressure_events(threshold_crossed);
+    """,
+    # v35 (ENH-2512): reviewer-side audit/review outcome telemetry
+    # (review-epic, review-loop, audit-architecture, audit-claude-config,
+    # audit-docs, audit-loop-run, review-sprint) — the third read-side signal
+    # alongside harness_events (executor, ENH-2493) and verdict_events
+    # (verifier, ENH-2504). Live-write-only, like verdict_events — excluded
+    # from _REBUILD_TABLES/_REBUILD_SEARCH_KINDS.
+    """
+    CREATE TABLE IF NOT EXISTS review_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        session_id TEXT,
+        reviewer_skill TEXT NOT NULL,
+        target_kind TEXT,
+        target_id TEXT,
+        severity_counts TEXT,
+        findings_count INTEGER,
+        findings_json_summary TEXT,
+        verdict TEXT,
+        head_sha TEXT,
+        branch TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_skill ON review_events(reviewer_skill);
+    CREATE INDEX IF NOT EXISTS idx_review_target ON review_events(target_id);
+    CREATE INDEX IF NOT EXISTS idx_review_session ON review_events(session_id);
     """,
 ]
 
@@ -2070,6 +2097,67 @@ def record_verdict_event(
             conn,
             content=summary[:512],
             kind="verdict",
+            ref=head_sha or "",
+            anchor=branch or "",
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_review_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    session_id: str | None,
+    reviewer_skill: str,
+    target_kind: str | None = None,
+    target_id: str | None = None,
+    severity_counts: dict | None = None,
+    findings_count: int | None = None,
+    findings_json_summary: dict | list | None = None,
+    verdict: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None:
+    """Write one row to ``review_events`` and index it in ``search_index`` (ENH-2512).
+
+    Mirrors :func:`record_verdict_event`'s shape: raises on failure — the
+    ``cmd_invoke()`` call site wraps this in ``contextlib.suppress(Exception)``
+    so a DB failure never changes an audit/review's exit code.
+    """
+    severity_json = json.dumps(severity_counts) if severity_counts is not None else None
+    findings_json = json.dumps(findings_json_summary) if findings_json_summary is not None else None
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO review_events("
+            "ts, session_id, reviewer_skill, target_kind, target_id, "
+            "severity_counts, findings_count, findings_json_summary, verdict, "
+            "head_sha, branch"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                session_id,
+                reviewer_skill,
+                target_kind,
+                target_id,
+                severity_json,
+                findings_count,
+                findings_json,
+                verdict,
+                head_sha,
+                branch,
+            ),
+        )
+        summary = (
+            f"{target_id or ''} {verdict or ''} {reviewer_skill} {severity_json or ''}".strip()
+        )
+        _index(
+            conn,
+            content=summary[:512],
+            kind="review",
             ref=head_sha or "",
             anchor=branch or "",
             ts=ts,
@@ -4978,6 +5066,7 @@ _EXPORT_TABLE_MAP: dict[str, tuple[str, str]] = {
     "prompt_opt_event": ("prompt_opt_events", "ts"),
     "verdict_event": ("verdict_events", "ts"),
     "context_pressure_event": ("context_pressure_events", "ts"),
+    "review_event": ("review_events", "ts"),
 }
 
 _EXPORT_DEFAULT_TABLES = [
@@ -4997,6 +5086,7 @@ _EXPORT_DEFAULT_TABLES = [
     "prompt_opt_event",
     "verdict_event",
     "context_pressure_event",
+    "review_event",
 ]
 
 

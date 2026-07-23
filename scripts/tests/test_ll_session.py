@@ -1249,6 +1249,27 @@ class TestSkillStatsAndNewKinds:
         assert "BUG-2501" in out
         assert "pass" in out
 
+    def test_recent_kind_review_outputs_row(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store import record_review_event
+
+        db = tmp_path / "history.db"
+        record_review_event(
+            db,
+            ts="2026-07-23T12:00:00Z",
+            session_id=None,
+            reviewer_skill="audit-architecture",
+            target_kind="repo",
+            verdict="warn",
+            findings_count=5,
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "review"]):
+            assert main_session() == 0
+        out = capsys.readouterr().out
+        assert "audit-architecture" in out
+        assert "warn" in out
+
     def test_recent_kind_hook_event_outputs_row(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

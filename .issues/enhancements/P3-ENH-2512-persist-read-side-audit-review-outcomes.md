@@ -3,17 +3,25 @@ id: ENH-2512
 title: Persist read-side audit / review outcomes into history.db
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
+completed_at: '2026-07-23T21:37:54Z'
 discovered_by: capture-issue
 parent: EPIC-2457
+decision_needed: false
 labels:
-  - enhancement
-  - history-db
-  - audit
-  - review
-  - captured
+- enhancement
+- history-db
+- audit
+- review
+- captured
+confidence_score: 95
+outcome_confidence: 87
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 24
 ---
 
 # ENH-2512: Persist read-side audit / review outcomes into history.db
@@ -87,6 +95,21 @@ Adjacent to ENH-2493 (which captures executors, not audits).
 - `ll-session recent --kind review_event` returns rows;
   `history_reader.review_velocity(since=None)` rolls up
   severity-count totals per week.
+
+## Impact
+
+- **Without this**: audit/review output (`review-epic`, `audit-architecture`,
+  `audit-claude-config`, `audit-docs`, `audit-loop-run`, `review-sprint`,
+  `review-loop`) only survives in stdout or a one-off diagnostics file;
+  velocity questions like "how many P0 review findings closed this week?"
+  are unanswerable, and refused audits (missing run data) leave no trace.
+- **With this**: a `review_events` row per invocation makes reviewer output
+  queryable alongside the existing executor (`ENH-2493`) and verifier
+  (`ENH-2504`) telemetry, completing the read-side signal set and enabling
+  `review_velocity()` / `open_findings()` rollups.
+- **Scope of change**: additive — one new table, one migration, one
+  producer-side write per audit/review skill (best-effort, never changes
+  exit code on DB failure). No existing schema or behavior changes.
 
 ## Proposed Solution
 
@@ -163,7 +186,141 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **ll-verify-kinds gate** — `scripts/little_loops/cli/verify_kinds.py:38-47` exits 1 if `review_events` is created in `_MIGRATIONS` but missing from `_KIND_TABLE`. Both registrations are mandatory, not optional.
 - **Sibling prior art**: ENH-2493 (`.issues/enhancements/P3-ENH-2493-persist-harness-eval-outcomes-into-history-db.md`) for `harness_events` (executor side); ENH-2504 (`.issues/enhancements/P3-ENH-2504-persist-verification-verdict-outcomes-into-history-db.md`) for `verdict_events` (verifier side). `review_events` is the reviewer-side third leg.
 
+### Codebase Research Findings (second pass, 2026-07-23)
+
+_Added by `/ll:refine-issue` — the anchors above are stale; both ENH-2493 and
+ENH-2504 have since landed (`status: done`) and shifted every downstream line
+number. Re-verified live against `scripts/little_loops/session_store.py`:_
+
+- **`SCHEMA_VERSION` is now 34** (`session_store.py:228`, not the 20 cited
+  above). ENH-2504 landed `verdict_events` as **v33**
+  (`session_store.py:1017-1042`) and ENH-2507 landed `context_pressure_events`
+  as **v34** (`session_store.py:1043-1064`) — the most recent `_MIGRATIONS`
+  entry. `review_events` would append as **v35**, bumping
+  `SCHEMA_VERSION` 34→35 at line 228. `_MIGRATIONS` now spans
+  `session_store.py:374-1065` (not 333-734). No `review_events` table,
+  `record_review_event()` function, or `"review"` kind exists yet anywhere
+  in the repo — this is a clean, unclaimed slot.
+- **`record_verdict_event()` (`session_store.py:2024-2079`, landed by
+  ENH-2504) is a closer template than `record_test_run_event`** — it already
+  has `target_kind`, `target_id`, `severity_counts` (JSON-encoded),
+  `findings_count`, `verdict`, `session_id`, `head_sha`, `branch`: nearly the
+  exact column set this issue proposes for `review_events`, minus
+  `findings_json_summary`. Its docstring confirms the contract this issue
+  also wants: the function itself raises on failure; the caller wraps it in
+  `contextlib.suppress(Exception)` so a DB write failure never changes exit
+  code. `record_test_run_event` (now `session_store.py:1847-1910`) and
+  `record_harness_event` (now `session_store.py:1912-1978`) share the same
+  `connect → INSERT → _index(..., kind=...) → commit → finally: close()`
+  skeleton and remain valid secondary references.
+- **`VALID_KINDS` now at `session_store.py:230-253`, `_KIND_TABLE` at
+  `session_store.py:254-277`** (22 entries each currently, ending with
+  `"context_pressure"` / `"context_pressure_events"`). `_EXPORT_TABLE_MAP`
+  is now at `session_store.py:4962-4981` and `_EXPORT_DEFAULT_TABLES` at
+  `session_store.py:4983-5000` (ending with `"verdict_event"`,
+  `"context_pressure_event"`). Add `"review"`/`"review_events"` and
+  `"review_event"` respectively, following the same two-list pattern.
+  `ll-verify-kinds` (`cli/verify_kinds.py:30-74`) still hard-gates on both
+  registrations existing together.
+- **Architecture correction — the Producer Wiring design below does not
+  match how the closest sibling (ENH-2504) actually shipped.** ENH-2504's
+  own refinement notes recorded an explicit decision: *"no central helper
+  module required."* No `verdict_events.py` module exists. Instead, all 9
+  of ENH-2504's skill-bridged verifiers are wired through a single
+  chokepoint: `scripts/little_loops/cli/action.py::cmd_invoke()`. A
+  `_VERIFIER_SKILLS` frozenset allowlist (`cli/action.py:~1-98`) gates a
+  `_record_verdict()` helper that reads a `VERDICT_JSON: {...}` tagged
+  stdout line via `little_loops.output_parsing.extract_tagged_json` (the
+  existing tagged-output convention) and calls `record_verdict_event(...)`
+  inside `with suppress(Exception):` (`cli/action.py:~144-200`). Skills
+  communicate structured findings by emitting a tagged JSON line in their
+  own output — they never call any CLI or Python helper directly.
+  **This issue's 7 producers are not uniformly bridged through one
+  dispatcher today** the way ENH-2504's 9 verifiers are (`review-epic` and
+  `audit-loop-run` are skills; `audit-architecture` and `review-sprint` are
+  `commands/*.md` with no confirmed common Python call site) — which is
+  presumably why the original design reached for per-skill markdown
+  directives instead. This is a real fork in the road; see the decision
+  block below.
+
+**Option A**: Follow the ENH-2504 precedent directly — extend
+`cmd_invoke()` with a parallel `_REVIEWER_SKILLS` frozenset and a
+`_record_review()` helper that reads a new `REVIEW_JSON: {...}` tagged
+stdout line (reusing `extract_tagged_json`) and calls
+`record_review_event(...)`. No `review_events.py` module. Requires
+confirming `ll-action`/`cmd_invoke()` can dispatch `commands/*.md` entries
+(`audit-architecture`, `review-sprint`), not just `skills/*/SKILL.md`
+entries, since two of the seven producers are commands.
+
+> **Selected:** Option A — codebase evidence confirms `cmd_invoke()` already
+> dispatches `commands/*.md` targets identically to `skills/*/SKILL.md` targets
+> (6 of the 9 existing `_VERIFIER_SKILLS` entries from ENH-2504 are
+> command-backed and pass their existing tests), making this the proven,
+> higher-reuse path.
+
+**Option B**: Keep this issue's original design — per-skill markdown
+directives at each producer's final-report section, plus a new
+`scripts/little_loops/review_events.py` centralizing module wrapping
+`record_review_event()` with the `contextlib.suppress(Exception)` +
+`_git_output()` best-effort guard. Diverges from the ENH-2504 precedent,
+but sidesteps the unconfirmed command-dispatch question in Option A.
+
+**Recommended**: Option A if implementation-time verification confirms
+`cmd_invoke()` can dispatch `commands/*.md` the same as skills — it reuses
+proven, already-gated infrastructure and avoids a bespoke module the
+codebase has now explicitly rejected once (ENH-2504's "no central helper
+module required" decision). Fall back to Option B only if
+`audit-architecture`/`review-sprint` genuinely cannot be routed through
+`cmd_invoke()`.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-07-23.
+
+**Selected**: Option A — extend `cmd_invoke()` with a `_REVIEWER_SKILLS`
+frozenset and `_record_review()` helper.
+
+**Reasoning**: Codebase research confirms `cmd_invoke()` already dispatches
+`commands/*.md` targets with zero special-casing — 6 of the 9 existing
+`_VERIFIER_SKILLS` entries (ENH-2504) are command-backed (`ready-issue`,
+`tradeoff-review-issues`, `refine-issue`, `verify-issues`,
+`prioritize-issues`, `align-issues`) and pass their existing tests
+(`test_action.py:311-410`), so the "unconfirmed command-dispatch question"
+blocking Option A is resolved. `extract_tagged_json` is tag-parameterized
+and needs no changes to accept `REVIEW_JSON`, and `record_verdict_event`'s
+column shape is a near-exact template for `record_review_event`. Option B's
+new `review_events.py` module directly repeats the "central helper module"
+shape ENH-2504 explicitly rejected for the same reviewer/verifier/executor
+telemetry family, and its markdown-driven wiring would only be verifiable
+via string-presence assertions, not actual call-site execution.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A (cmd_invoke() dispatcher) | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B (per-skill directives + module) | 1/3 | 1/3 | 1/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- Option A: `_run_skill()` (`runner_spec.py:80-134`) dispatches by opaque
+  `/ll:{name}` string regardless of skill vs. command; `test_action.py`'s
+  `TestCmdInvokeRecordsVerdictEvent` already exercises command-backed
+  targets (`ready-issue`) successfully.
+- Option B: only 2 skills (`improve-claude-md`, `format-issue`) call
+  `little_loops.*` helpers directly from markdown — a minority pattern —
+  and it repeats the exact "central module" shape ENH-2504 rejected.
+
 ## Implementation Steps
+
+> ⚠ **Anchor staleness note** (added by `/ll:refine-issue`, 2026-07-23): Steps
+> 1-3 below cite line numbers and a `v21`/`SCHEMA_VERSION 20→21` target that
+> predate ENH-2504 (v33, `verdict_events`) and ENH-2507 (v34,
+> `context_pressure_events`) landing on `main`. The correct current target is
+> **v35, `SCHEMA_VERSION` 34→35**, at the anchors given in the "Codebase
+> Research Findings (second pass, 2026-07-23)" addendum above. Step 3's
+> `review_events.py` centralizing-module design is also superseded by the
+> Option A/B decision in that addendum — resolve `decision_needed` before
+> implementing Step 3.
 
 1. **Schema migration** — Append a v21 entry to `_MIGRATIONS` in `scripts/little_loops/session_store.py:333-734` (model after `usage_events` v20 at lines 709-733). Bump `SCHEMA_VERSION = 20 → 21` (line 207). Add `"review"` to `VALID_KINDS` (lines 209-222) and `"review": "review_events"` to `_KIND_TABLE` (lines 223-236) so `ll-session recent --kind review` works and `ll-verify-kinds` (`cli/verify_kinds.py:38-47`) does not fail.
 2. **Producer helper** — Implement `record_review_event(db_path, *, ts, reviewer_skill, target_kind=None, target_id=None, severity_counts=None, findings_count=0, findings_json_summary=None, verdict=None, session_id=None, head_sha=None, branch=None, config=None) -> None` at `scripts/little_loops/session_store.py` (mirror `record_test_run_event` lines 1352-1414). Use plain `INSERT` (each review is a distinct row), JSON-encode `severity_counts` + `findings_json_summary`, write an FTS5 summary of `reviewer_skill + target_id + verdict`.
@@ -184,6 +341,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 9. **Documentation** — Append v21 row to `docs/ARCHITECTURE.md:670-678`. Add `ReviewEvent` + `record_review_event` to Public API list in `docs/reference/API.md:6847-6848, 7286-7287, 7346+`. Add `ll-session recent --kind review` example to `docs/reference/CLI.md:2507-2519`.
 
 ## Integration Map
+
+> ⚠ **Anchor staleness note** (added by `/ll:refine-issue`, 2026-07-23): the
+> `session_store.py` line ranges below predate ENH-2504/ENH-2507 landing;
+> use the current anchors in the "Codebase Research Findings (second pass,
+> 2026-07-23)" addendum under Proposed Solution instead (`SCHEMA_VERSION`
+> line 228, `_MIGRATIONS` 374-1065, `VALID_KINDS` 230-253, `_KIND_TABLE`
+> 254-277, `_EXPORT_TABLE_MAP` 4962-4981, `_EXPORT_DEFAULT_TABLES`
+> 4983-5000, `record_verdict_event` 2024-2079 as the closer template).
 
 ### Files to Modify
 - `scripts/little_loops/session_store.py` — append v21 migration block to `_MIGRATIONS` (lines 333-734), bump `SCHEMA_VERSION` 20→21 (line 207), register `"review"` in `VALID_KINDS` (lines 209-222) and `_KIND_TABLE` (lines 223-236), implement `record_review_event()` modeled after `record_test_run_event` (lines 1352-1414), update `_EXPORT_TABLE_MAP` and `_EXPORT_DEFAULT_TABLES` (lines 3303-3329)
@@ -289,7 +454,43 @@ each child lands its own migration at whatever version is open when it is
 implemented (no coordinated release; per EPIC-2457's own "no shared helper
 module is required" scope note).
 
+## Resolution
+
+Implemented via Option A (the decided path): a `review_events` table (v35
+migration, `SCHEMA_VERSION` 34→35) plus a `_REVIEWER_SKILLS` frozenset and
+`_record_review()` helper in `cli/action.py::cmd_invoke()`, mirroring the
+`_VERIFIER_SKILLS`/`_record_verdict()` pattern ENH-2504 established. No
+central `review_events.py` module and no per-skill Python call sites were
+added — the dispatcher-level wiring covers all 7 producers
+(`review-epic`, `review-loop`, `audit-architecture`, `audit-claude-config`,
+`audit-docs`, `audit-loop-run`, `review-sprint`) generically via
+`ll-action invoke <skill>`, with a coarse exit-code-based verdict
+(`pass`/`fail`) and an optional `REVIEW_JSON: {...}` tagged-line override
+(reusing `extract_tagged_json`) for producers that emit structured findings.
+
+- `record_review_event()` (`session_store.py`) — INSERT + FTS index, raises
+  on failure (best-effort enforced at the `cmd_invoke()` call site).
+- `history_reader.ReviewEvent` / `recent_review_events()` /
+  `review_velocity()` (weekly `p0`/`p1`/`p2`/`info` rollup) — the read API.
+- `skills/audit-loop-run/SKILL.md`'s pre-flight refusal gate and
+  `commands/audit-architecture.md`'s Recommendations section were given
+  `REVIEW_JSON` tagging directives so the `verdict="refused"` path (which a
+  bare exit code can't express) and severity-bucket mapping are captured,
+  satisfying the two AC rows that name those skills specifically. The
+  other 5 producers rely on the coarse exit-code fallback until they adopt
+  the tag themselves — precision improves incrementally, no further schema
+  change needed (same incremental-adoption shape as `VERDICT_JSON`).
+- `code-review`/`simplify` remain unwired — confirmed no local
+  `scripts/little_loops/` entry point exists for either.
+- Full test suite: 16052 passed, 38 skipped. `ruff check`/`ruff format`
+  clean; `mypy` clean on all 3 changed modules (pre-existing repo-wide
+  `ruamel` stub-typing warnings are unrelated). `ll-verify-kinds` exits 0.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T21:37:17Z - `9b69a734-b6b5-46c0-956e-d8f616b1aa18.jsonl`
+- `/ll:ready-issue` - 2026-07-23T21:15:12 - `f022701d-6156-48ba-8862-5ecddd4f053a.jsonl`
+- `/ll:decide-issue` - 2026-07-23T21:10:47 - `111ff90c-068b-4e08-8042-41d94917bc12.jsonl`
+- `/ll:refine-issue` - 2026-07-23T21:06:44 - `5af36657-eddc-4656-a44d-21c83a7bac92.jsonl`
 - `/ll:refine-issue` - 2026-07-16T17:24:12 - `87fa8022-e8fb-4ea8-b84d-6b3b28ffb434.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-16T02:57:56 - `7922438e-e1f4-488a-8722-8f3940ef4e97.jsonl`
 - `/ll:capture-issue` - 2026-07-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

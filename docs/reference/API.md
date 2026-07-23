@@ -6981,6 +6981,9 @@ from little_loops.history_reader import (
     VerdictEvent,            # ENH-2504
     recent_verdict_events,   # ENH-2504
     verdict_pass_rate,       # ENH-2504
+    ReviewEvent,             # ENH-2512
+    recent_review_events,    # ENH-2512
+    review_velocity,         # ENH-2512
 )
 ```
 
@@ -7684,6 +7687,45 @@ Read-side API for `verdict_events` rows (ENH-2504's schema, written by `record_v
 
 **CLI:** `ll-session recent --kind verdict` and `ll-session search --fts "<target_id>" --kind verdict` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
 
+### ReviewEvent / recent_review_events / review_velocity
+
+```python
+@dataclass
+class ReviewEvent:
+    ts: str
+    session_id: str | None
+    reviewer_skill: str
+    target_kind: str | None
+    target_id: str | None
+    severity_counts: str | None
+    findings_count: int | None
+    findings_json_summary: str | None
+    verdict: str | None
+    head_sha: str | None
+    branch: str | None
+```
+
+```python
+def recent_review_events(
+    *,
+    reviewer_skill: str | None = None,
+    target_id: str | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[ReviewEvent]
+
+def review_velocity(
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[dict]
+```
+
+Read-side API for `review_events` rows (ENH-2512's schema, written by `record_review_event()`) — one row per invocation of the seven `ll-action`-bridged audits/reviews (`review-epic`, `review-loop`, `audit-architecture`, `audit-claude-config`, `audit-docs`, `audit-loop-run`, `review-sprint`). `recent_review_events()` returns rows newest first, optionally filtered by exact `reviewer_skill`/`target_id` and/or a `since` lower bound on `ts`; returns `[]` on a missing/unreadable DB. `review_velocity()` buckets rows by ISO week and sums each `severity_counts` bucket (`p0`/`p1`/`p2`/`info`), returning `{week, reviews, p0, p1, p2, info}` dicts sorted by week ascending — the velocity-tracking rollup ("how many P0 findings this week").
+
+**CLI:** `ll-session recent --kind review` and `ll-session search --fts "<target_id>" --kind review` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch — no CLI code change was needed for this read API.
+
 ### ContextPressureEvent / context_pressure_curve / pressure_crossings / pressure_summary
 
 ```python
@@ -8006,6 +8048,7 @@ from little_loops.session_store import (
     record_prompt_opt_event, # write a prompt_opt_events row (ENH-2498)
     record_verdict_event,  # write a verdict_events row (ENH-2504)
     record_context_pressure_event, # write a context_pressure_events row (ENH-2507)
+    record_review_event,   # write a review_events row (ENH-2512)
     record_retirement,     # mark a correction cluster as addressed (ENH-2046)
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
@@ -8185,6 +8228,28 @@ def record_context_pressure_event(
 ```
 
 Write one `context_pressure_events` row and index it in `search_index` with `kind="context_pressure"` (ENH-2507). Called from `context-monitor.sh`'s `record_context_pressure()` shell-out after every sampled `PostToolUse` (at most once per second per session, except a new 50/75/80/90/100 crossing always persists). Mirrors `record_session_lifecycle_event()`'s contract: catches `sqlite3.Error` internally and returns `False` (never raises) so the shell hook's `|| true` guard is a backstop, not the only safety net.
+
+### record_review_event
+
+```python
+def record_review_event(
+    db_path: Path | str,
+    *,
+    ts: str,
+    session_id: str | None,
+    reviewer_skill: str,
+    target_kind: str | None = None,
+    target_id: str | None = None,
+    severity_counts: dict | None = None,
+    findings_count: int | None = None,
+    findings_json_summary: dict | list | None = None,
+    verdict: str | None = None,
+    head_sha: str | None = None,
+    branch: str | None = None,
+) -> None
+```
+
+Write one `review_events` row and index it in `search_index` with `kind="review"` (ENH-2512). Called from `cli/action.py::cmd_invoke()` for the seven skill-bridged audits/reviews via a `_REVIEWER_SKILLS` frozenset gate, wrapped in `contextlib.suppress(Exception)` so a DB failure never changes an audit's exit code. `severity_counts`/`findings_json_summary` are JSON-serialized on write (`json.dumps`), parsed back on read. Mirrors `record_verdict_event()`'s contract: raises on failure — the call site, not the producer, enforces best-effort.
 
 
 
