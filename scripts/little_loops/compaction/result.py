@@ -80,3 +80,32 @@ def compact_result_for_session(
         )
     finally:
         conn.close()
+
+
+def compact_result_for_session_with_reasoning(
+    session_id: str,
+    db: Path | str,
+    *,
+    config: dict | None = None,
+) -> CompactResult | None:
+    """Assistant-inclusive counterpart to ``compact_result_for_session`` (FEAT-2747).
+
+    Unlike ``compact_result_for_session``, which reads back an already-persisted
+    condensed ``summary_nodes`` row, this computes the summary directly via
+    ``session_store.compact_session_with_reasoning`` — the assistant-inclusive
+    function does not persist to ``summary_nodes``/``summary_spans`` (see its
+    docstring for why). Returns ``None`` if the session has no rows in either
+    ``message_events`` or ``assistant_messages``.
+    """
+    from little_loops.session_store import _estimate_tokens, compact_session_with_reasoning
+
+    summary_text, message_ids = compact_session_with_reasoning(session_id, db, config=config)
+    if summary_text is None:
+        return None
+
+    return CompactResult(
+        summary_message=summary_text,
+        compacted_messages=message_ids,
+        summary_text=summary_text,
+        context_token_estimate=_estimate_tokens(summary_text),
+    )

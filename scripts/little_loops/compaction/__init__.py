@@ -20,6 +20,8 @@ Public exports:
     # Result wrapper
     CompactResult: dataclass wrapper over existing summary_nodes/summary_spans rows
     compact_result_for_session: build a CompactResult for one session
+    compact_result_for_session_with_reasoning: assistant-inclusive counterpart
+        (joins message_events + assistant_messages, computed not persisted, FEAT-2747)
 """
 
 from __future__ import annotations
@@ -34,7 +36,11 @@ from little_loops.compaction.instant import (
     select_sliding_window,
     summarize_6_section,
 )
-from little_loops.compaction.result import CompactResult, compact_result_for_session
+from little_loops.compaction.result import (
+    CompactResult,
+    compact_result_for_session,
+    compact_result_for_session_with_reasoning,
+)
 
 __all__ = [
     "APPROX_TOKEN_SAFETY_MARGIN",
@@ -42,6 +48,7 @@ __all__ = [
     "SOFT_THRESHOLD_TOKENS",
     "CompactResult",
     "compact_result_for_session",
+    "compact_result_for_session_with_reasoning",
     "compute_goal_tokens",
     "evict_sink_and_window",
     "is_valid_cutoff",

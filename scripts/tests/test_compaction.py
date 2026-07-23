@@ -15,7 +15,11 @@ from little_loops.compaction.instant import (
     select_sliding_window,
     summarize_6_section,
 )
-from little_loops.compaction.result import CompactResult, compact_result_for_session
+from little_loops.compaction.result import (
+    CompactResult,
+    compact_result_for_session,
+    compact_result_for_session_with_reasoning,
+)
 from little_loops.session_store import compact_session, connect
 
 
@@ -176,6 +180,57 @@ class TestCompactResult:
         assert len(result.compacted_messages) >= 1
 
 
+class TestCompactResultWithReasoning:
+    """FEAT-2747: assistant-inclusive counterpart to TestCompactResult."""
+
+    def _seed_db(self, tmp_path: Path, session_id: str) -> Path:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return db
+
+    def test_none_when_no_messages_exist(self, tmp_path: Path) -> None:
+        session_id = "compact-with-reasoning-none"
+        db = self._seed_db(tmp_path, session_id)
+        assert compact_result_for_session_with_reasoning(session_id, db) is None
+
+    def test_wraps_summary_covering_both_tables(self, tmp_path: Path) -> None:
+        session_id = "compact-with-reasoning-wrap"
+        db = self._seed_db(tmp_path, session_id)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-01T00:00:00Z", session_id, "User asked a question."),
+            )
+            conn.execute(
+                "INSERT INTO assistant_messages(ts, session_id, content) VALUES(?, ?, ?)",
+                ("2026-01-01T00:00:05Z", session_id, "Assistant derived an answer."),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response("A short summary.")
+            )
+            result = compact_result_for_session_with_reasoning(session_id, db)
+
+        assert isinstance(result, CompactResult)
+        assert result.summary_message is not None
+        assert result.summary_text == result.summary_message
+        assert result.context_token_estimate >= 0
+        assert len(result.compacted_messages) >= 1
+
+
 class TestSoftThresholdSummary:
     """Soft-threshold (7,500 token) background 6-section summarizer wiring."""
 
@@ -318,3 +373,54 @@ class TestMessageEventsUnchangedRegression:
         finally:
             conn.close()
         assert count == 10
+
+
+class TestAssistantMessagesUnchangedRegression:
+    """FEAT-2747 Wiring Phase step 9: assistant-inclusive compaction must not
+
+    mutate either source table (mirrors TestMessageEventsUnchangedRegression).
+    """
+
+    def test_does_not_delete_message_events_or_assistant_messages(
+        self, tmp_path: Path
+    ) -> None:
+        session_id = "assistant-messages-unchanged"
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:00Z", session_id, f"User message {i}."),
+                )
+                conn.execute(
+                    "INSERT INTO assistant_messages(ts, session_id, content) VALUES(?, ?, ?)",
+                    (f"2026-01-01T00:{i:02d}:05Z", session_id, f"Assistant message {i}."),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response("Condensed.")
+            )
+            config = {"history": {"compaction": {"enabled": True, "budget_tokens": 5}}}
+            compact_result_for_session_with_reasoning(session_id, db, config=config)
+
+        conn = connect(db)
+        try:
+            me_count = conn.execute(
+                "SELECT COUNT(*) FROM message_events WHERE session_id=?", (session_id,)
+            ).fetchone()[0]
+            am_count = conn.execute(
+                "SELECT COUNT(*) FROM assistant_messages WHERE session_id=?", (session_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert me_count == 5
+        assert am_count == 5

@@ -3810,6 +3810,112 @@ def _compact_session_conn(
     return new_leaves
 
 
+def _compact_session_conn_with_reasoning(
+    conn: sqlite3.Connection,
+    session_id: str,
+    budget: int = 4096,
+    *,
+    model: str | None = None,
+    timeout: int = 60,
+) -> tuple[str | None, list[int]]:
+    """Compute an assistant-inclusive summary for one session (FEAT-2747).
+
+    Sibling of ``_compact_session_conn`` that joins ``message_events`` and
+    ``assistant_messages`` (role-tagged ``UNION ALL``, ordered by ts/id) instead
+    of reading ``message_events`` alone, so the assistant's derived reasoning is
+    part of what gets summarized. Reuses the same greedy token-budget block
+    grouping and ``_summarize_block`` escalation as ``_compact_session_conn``.
+
+    Unlike ``_compact_session_conn``, this does not write to ``summary_nodes``/
+    ``summary_spans`` — it returns the computed summary directly. Persisting
+    would collide with ``idx_summary_nodes_condensed_dedup``
+    (``UNIQUE(session_id) WHERE kind='condensed'`` — one condensed node per
+    session, no discriminator for which function produced it), corrupting
+    whichever of the two functions ran second for a given session. The caller
+    (a single FSM prompt-state invocation, FEAT-2711) needs a summary value to
+    carry forward, not a durable DAG node.
+
+    Returns ``(None, [])`` if the session has no rows in either table.
+    Returns ``(summary_text, message_event_ids)`` otherwise, where
+    ``message_event_ids`` covers only the ``message_events``-sourced rows
+    (matching ``CompactResult.compacted_messages``'s existing
+    ``message_events``-only semantics).
+    """
+    rows = conn.execute(
+        "SELECT id, ts, content, 'user' AS role FROM message_events WHERE session_id = ?"
+        " UNION ALL"
+        " SELECT id, ts, content, 'assistant' AS role FROM assistant_messages"
+        " WHERE session_id = ?"
+        " ORDER BY ts, id",
+        (session_id, session_id),
+    ).fetchall()
+
+    if not rows:
+        return None, []
+
+    # Greedy block accumulation (mirrors _compact_session_conn).
+    blocks: list[list[tuple[int, str, str, str]]] = []
+    current: list[tuple[int, str, str, str]] = []
+    current_tokens = 0
+
+    for row in rows:
+        msg_id, ts, content, role = row[0], row[1], row[2] or "", row[3]
+        tok = _estimate_tokens(content)
+        if current_tokens + tok > budget and current:
+            blocks.append(current)
+            current = [(msg_id, ts, content, role)]
+            current_tokens = tok
+        else:
+            current.append((msg_id, ts, content, role))
+            current_tokens += tok
+    if current:
+        blocks.append(current)
+
+    message_event_ids = [r[0] for r in rows if r[3] == "user"]
+
+    leaf_summaries = [
+        _summarize_block([r[2] for r in block], budget, model=model, timeout=timeout)
+        for block in blocks
+    ]
+
+    if len(leaf_summaries) >= 2:
+        summary_text = _summarize_block(leaf_summaries, budget, model=model, timeout=timeout)
+    else:
+        summary_text = leaf_summaries[0]
+
+    return summary_text, message_event_ids
+
+
+def compact_session_with_reasoning(
+    session_id: str,
+    db: Path | str = DEFAULT_DB_PATH,
+    *,
+    config: dict | None = None,
+) -> tuple[str | None, list[int]]:
+    """Public entry point for assistant-inclusive compaction (FEAT-2747).
+
+    Mirrors ``compact_session()``'s ``CompactionConfig`` resolution and
+    ``connect``/``try``/``finally`` lifecycle. Unlike ``compact_session()``,
+    this is a pure compute-and-return call — no rows are inserted, so there is
+    nothing to ``commit()``.
+    """
+    from little_loops.config.features import CompactionConfig
+
+    raw = config.get("history", {}).get("compaction", {}) if config else {}
+    compact_cfg = CompactionConfig.from_dict(raw)
+    conn = connect(db)
+    try:
+        return _compact_session_conn_with_reasoning(
+            conn,
+            session_id,
+            budget=compact_cfg.budget_tokens,
+            model=compact_cfg.model,
+            timeout=compact_cfg.timeout,
+        )
+    finally:
+        conn.close()
+
+
 def _maybe_soft_threshold_summary(
     conn: sqlite3.Connection,
     session_id: str,

@@ -162,6 +162,58 @@ class TestSummaryOmitsAssistantContent:
         assert ASSISTANT_TURN_1 not in combined_prompts
 
 
+class TestSummaryIncludesAssistantContent:
+    """FEAT-2747: the assistant-inclusive counterpart closes the gap above."""
+
+    def test_compact_with_reasoning_includes_assistant_derived_content(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.compaction.result import compact_result_for_session_with_reasoning
+        from little_loops.session_store import (
+            _backfill_assistant_messages,
+            _backfill_messages,
+            connect,
+        )
+
+        db = tmp_path / "history.db"
+        jsonl_path = _write_transcript(tmp_path)
+
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = json.dumps(
+                {"type": "result", "subtype": "success", "result": "Mocked summary."}
+            )
+            mock_run.return_value.stderr = ""
+
+            conn = connect(db)
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                    (SESSION_ID, str(jsonl_path)),
+                )
+                _backfill_messages(conn, [jsonl_path])
+                _backfill_assistant_messages(conn, [jsonl_path])
+                conn.commit()
+            finally:
+                conn.close()
+
+            result = compact_result_for_session_with_reasoning(SESSION_ID, db)
+
+            prompts_seen = [
+                call.args[0][call.args[0].index("-p") + 1]
+                for call in mock_run.call_args_list
+                if "-p" in call.args[0]
+            ]
+
+        assert result is not None
+        combined_prompts = "\n".join(prompts_seen)
+        assert USER_TURN_1 in combined_prompts
+        assert USER_TURN_2 in combined_prompts
+        # Inverted from TestSummaryOmitsAssistantContent above: the
+        # assistant-inclusive function must forward the assistant turn too.
+        assert ASSISTANT_TURN_1 in combined_prompts
+
+
 class TestSpikeIsolation:
     """Regression guard: the spike must not import FSM production modules."""
 
