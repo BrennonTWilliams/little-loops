@@ -408,9 +408,14 @@ class TestSpikeTriageStructural:
         assert "--auto" in state.get("action", "")
         assert state.get("action_type") == "slash_command"
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "rerun_confidence_after_spike"
-        assert state.get("on_error") == "rerun_confidence_after_spike"
+        # FEAT-2751: routes through the repair-cycle counter state before the
+        # confidence rerun.
+        assert state.get("next") == "count_repair_cycle_spike"
+        assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "done"
+        counter_state = data["states"]["count_repair_cycle_spike"]
+        assert counter_state.get("next") == "rerun_confidence_after_spike"
+        assert counter_state.get("on_error") == "rerun_confidence_after_spike"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["rerun_confidence_after_spike"]
@@ -547,9 +552,14 @@ class TestReconcilePlateauStructural:
         state = data["states"]["reconcile_current"]
         assert "/ll:reconcile-issue" in state.get("action", "")
         assert state.get("action_type") == "slash_command"
-        assert state.get("next") == "rerun_confidence_after_reconcile"
-        assert state.get("on_error") == "rerun_confidence_after_reconcile"
+        # FEAT-2751: routes through the repair-cycle counter state before the
+        # confidence rerun.
+        assert state.get("next") == "count_repair_cycle_reconcile"
+        assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "done"
+        counter_state = data["states"]["count_repair_cycle_reconcile"]
+        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
 
     def test_rerun_confidence_after_reconcile_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["rerun_confidence_after_reconcile"]

@@ -1177,7 +1177,7 @@ Rendering is scanning-first (ENH-2574): the title is bold, borders/field labels/
 
 The card also surfaces, when present in frontmatter (ENH-2535):
 
-- **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`). Under `deferred_by: automation` (ENH-2664), `deferred_reason` holds a machine enum code (`blocked_by_unmet`, `remediation_stalled`, or — ENH-2666, autodev's not-ready exits — `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic` (BUG-2734)) instead of free-text prose — rendered as-is.
+- **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`). Under `deferred_by: automation` (ENH-2664), `deferred_reason` holds a machine enum code (`blocked_by_unmet`, `remediation_stalled`, or — ENH-2666, autodev's not-ready exits — `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic` (BUG-2734), `readiness_stagnated` (FEAT-2751)) instead of free-text prose — rendered as-is.
 - **Relationships** — `parent` (with epic title when resolvable), `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `decomposed_into`, `affects`, `focus_area`.
 - **Discovery** — `discovered_date` (distinct from `captured_at`), `discovered_commit` (short-SHA, first 7 chars), `discovered_branch`, `discovered_source`, `discovered_external_repo`.
 - **Decision coupling** — when `decision_needed: true` is paired with `decision_ref` (e.g., `ARCHITECTURE-049`), the card renders `Decision needed → ARCHITECTURE-049`; explicit `Decision needed: no` for `decision_needed: false`.
@@ -1661,7 +1661,7 @@ Transition an issue to a new status value. Validates the target status against t
 | `--cascade` | Propagate status to issues with `parent: <EPIC-ID>` (EPIC closure only; only valid with `done`/`cancelled`). Only follows `parent:` edges — `relates_to:`, `blocked_by:`, and other relationship types are not traversed. |
 | `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
 | `--by <human\|automation>` | Who initiated a `deferred` transition (default: `human`). Stamped into `deferred_by`; no-op for other target statuses. |
-| `--reason <code>` | Machine-readable reason code. Deferral codes (`blocked_by_unmet`, `remediation_stalled`, `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic`; ENH-2664, the last four added by ENH-2666/BUG-2734) are valid only with a `deferred` transition and stamp `deferred_reason`. Closure codes (`already_fixed`; ENH-2749) are valid only with a `done`/`cancelled` transition and stamp `closed_reason`, reusing the same key ENH-2535 introduced for closure-context prose. Passing a code with a mismatched target status is rejected (exit 1). |
+| `--reason <code>` | Machine-readable reason code. Deferral codes (`blocked_by_unmet`, `remediation_stalled`, `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic`, `readiness_stagnated`; ENH-2664, the last five added by ENH-2666/BUG-2734/FEAT-2751) are valid only with a `deferred` transition and stamp `deferred_reason`. Closure codes (`already_fixed`; ENH-2749) are valid only with a `done`/`cancelled` transition and stamp `closed_reason`, reusing the same key ENH-2535 introduced for closure-context prose. Passing a code with a mismatched target status is rejected (exit 1). |
 
 **Examples:**
 ```bash
@@ -1724,8 +1724,8 @@ the automation circuit-breaker deferral path (FEAT-2665), covering both `rn-impl
 codes and `autodev.yaml`'s not-ready exits (ENH-2666) — not a general deferred-issue list.
 
 Rank order (highest first): `remediation_stalled`, `blocked_by_unmet`, `gate_blocked`,
-`decision_unresolved`, `oversized_atomic`, `low_readiness`, then any other (unranked) code;
-within each group, the oldest issue is listed first.
+`decision_unresolved`, `oversized_atomic`, `readiness_stagnated`, `low_readiness`, then any
+other (unranked) code; within each group, the oldest issue is listed first.
 
 | Argument/Flag | Short | Default | Description |
 |---------------|-------|---------|-------------|

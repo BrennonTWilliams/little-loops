@@ -72,6 +72,11 @@ class DeferReason(Enum):
     # BUG-2734: readiness passed but a Very Large, deliberately-atomic issue's
     # outcome-confidence still fails after Pattern-B rescoring remediation.
     OVERSIZED_ATOMIC = "oversized_atomic"
+    # FEAT-2751: all repair remedies (refine/wire/size-review/spike/reconcile)
+    # were attempted this run and Readiness never improved past its
+    # dequeue-time snapshot — distinct from low_readiness, which also covers
+    # issues that never got a repair attempt at all.
+    READINESS_STAGNATED = "readiness_stagnated"
 
 
 # =============================================================================

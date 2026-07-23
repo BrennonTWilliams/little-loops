@@ -3748,9 +3748,10 @@ handling to the same model) — showing `deferred_reason` and age-since-`deferre
 `deferred_by: human` (or absent) issues are excluded.
 `remediation_stalled` entries rank above `blocked_by_unmet`, above `gate_blocked`, above
 `decision_unresolved`, above `oversized_atomic` (BUG-2734: readiness passed but a Very Large,
-atomic issue's outcome risk failed even after Pattern-B rescoring), above `low_readiness`; ties
-break oldest-first. This closes the cross-run resurfacing gap FEAT-2665 targets:
-`re_enqueue_unblocked` only re-surfaces within a single run.
+atomic issue's outcome risk failed even after Pattern-B rescoring), above `readiness_stagnated`
+(FEAT-2751: every repair remedy including reconcile was attempted and Readiness never moved),
+above `low_readiness`; ties break oldest-first. This closes the cross-run resurfacing gap
+FEAT-2665 targets: `re_enqueue_unblocked` only re-surfaces within a single run.
 
 #### next-issue
 

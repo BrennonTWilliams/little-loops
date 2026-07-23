@@ -21,9 +21,13 @@ _REASON_RANK = {
     # still failed after Pattern-B rescoring — a more actionable, explicit
     # needs-human-decision signal than generic low_readiness.
     "oversized_atomic": 4,
-    "low_readiness": 5,
+    # FEAT-2751: all repair remedies (including reconcile) were attempted and
+    # Readiness never moved — a more actionable signal than generic
+    # low_readiness, which also covers issues that never got a repair attempt.
+    "readiness_stagnated": 5,
+    "low_readiness": 6,
 }
-_DEFAULT_REASON_RANK = 6
+_DEFAULT_REASON_RANK = 7
 
 
 def add_deferred_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

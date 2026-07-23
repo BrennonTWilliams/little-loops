@@ -17,6 +17,7 @@ _DEFERRAL_REASON_CODES = frozenset(
         "gate_blocked",
         "decision_unresolved",
         "oversized_atomic",
+        "readiness_stagnated",
     }
 )
 _CLOSED_REASON_CODES = frozenset({"already_fixed"})

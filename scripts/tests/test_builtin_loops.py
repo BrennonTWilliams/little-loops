@@ -4950,15 +4950,19 @@ class TestAutodevLoop:
         )
 
     def test_run_spike_action_and_routing(self, data: dict) -> None:
-        """ENH-2640: run_spike invokes /ll:spike --auto and routes to the confidence rerun."""
+        """ENH-2640: run_spike invokes /ll:spike --auto and routes to the confidence rerun
+        via the FEAT-2751 repair-cycle counter state."""
         state = data["states"].get("run_spike", {})
         assert "/ll:spike" in state.get("action", ""), "run_spike must invoke /ll:spike"
         assert "--auto" in state.get("action", ""), "run_spike must pass --auto"
         assert state.get("action_type") == "slash_command"
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "rerun_confidence_after_spike"
-        assert state.get("on_error") == "rerun_confidence_after_spike"
+        assert state.get("next") == "count_repair_cycle_spike"
+        assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "done"
+        counter_state = data["states"].get("count_repair_cycle_spike", {})
+        assert counter_state.get("next") == "rerun_confidence_after_spike"
+        assert counter_state.get("on_error") == "rerun_confidence_after_spike"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
         """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip
@@ -5065,14 +5069,18 @@ class TestAutodevLoop:
         assert state.get("on_error") == "recheck_after_size_review"
 
     def test_reconcile_current_invokes_reconcile_skill(self, data: dict) -> None:
-        """reconcile_current calls /ll:reconcile-issue and routes to the rerun."""
+        """reconcile_current calls /ll:reconcile-issue and routes to the rerun via the
+        FEAT-2751 repair-cycle counter state."""
         state = data["states"].get("reconcile_current", {})
         assert "/ll:reconcile-issue" in state.get("action", "")
         assert state.get("action_type") == "slash_command"
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "rerun_confidence_after_reconcile"
-        assert state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert state.get("next") == "count_repair_cycle_reconcile"
+        assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "done"
+        counter_state = data["states"].get("count_repair_cycle_reconcile", {})
+        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
 
     def test_rerun_confidence_after_reconcile_routing(self, data: dict) -> None:
         """After reconcile, re-score once, then fall to recheck_after_size_review."""

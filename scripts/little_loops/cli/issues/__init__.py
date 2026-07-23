@@ -779,6 +779,7 @@ Examples:
                 "gate_blocked",
                 "decision_unresolved",
                 "oversized_atomic",
+                "readiness_stagnated",
                 "already_fixed",
             ],
             default=None,

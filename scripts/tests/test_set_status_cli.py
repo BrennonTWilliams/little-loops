@@ -299,7 +299,13 @@ class TestIssuesCLISetStatus:
 
     @pytest.mark.parametrize(
         "reason_code",
-        ["low_readiness", "gate_blocked", "decision_unresolved", "oversized_atomic"],
+        [
+            "low_readiness",
+            "gate_blocked",
+            "decision_unresolved",
+            "oversized_atomic",
+            "readiness_stagnated",
+        ],
     )
     def test_set_status_deferred_stamps_autodev_reason_codes(
         self,
@@ -308,8 +314,11 @@ class TestIssuesCLISetStatus:
         sample_config: dict[str, Any],
         issues_dir: Path,
     ) -> None:
-        """ENH-2666: autodev's three not-ready reason codes are accepted and stamped
-        the same way rn-implement's circuit-breaker codes are."""
+        """ENH-2666: autodev's not-ready reason codes are accepted and stamped
+        the same way rn-implement's circuit-breaker codes are. FEAT-2751 adds
+        readiness_stagnated — the CLI's `choices=[...]` argparse validation
+        would silently 'fail' the shell state's `|| true` without this
+        registration, so this is a regression guard for that failure mode."""
         from little_loops.frontmatter import parse_frontmatter
 
         config_path = temp_project_dir / ".ll" / "ll-config.json"

@@ -98,6 +98,24 @@ states:
       rm -f ${context.run_dir}/autodev-decide-ran
       rm -f ${context.run_dir}/autodev-decide-options-deposited
       rm -f ${context.run_dir}/autodev-size-review-skipped-this-pass
+
+      # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
+      # check_reconcile_needed can detect a plateau even on the common
+      # non-spike path (autodev-pre-spike-readiness.txt is written only when
+      # check_spike_needed's on_yes branch fires). Reset the repair-cycle
+      # counter and clear any stale spike snapshot from a prior issue this run
+      # — both are run-dir-scoped and would otherwise leak across issues.
+      (ll-issues show "$CURRENT" --json | python3 -c "
+      import json, sys
+      try:
+          d = json.load(sys.stdin)
+          print(d.get('confidence') or '')
+      except Exception:
+          pass
+      " > ${context.run_dir}/autodev-pre-readiness.txt) || true
+      printf '0' > ${context.run_dir}/autodev-repair-cycle-count.txt
+      rm -f ${context.run_dir}/autodev-pre-spike-readiness.txt
+
       (ll-issues list --json | python3 -c "
       import json, sys
       try:
@@ -149,7 +167,7 @@ states:
     fragment: with_rate_limit_handling
     loop: refine-to-ready-issue
     context_passthrough: true
-    on_success: copy_broke_down
+    on_success: count_repair_cycle_refine
     on_failure: skip_inflight
     # ENH-2727: on_error fires when the sub-loop raised a runtime exception / was
     # signalled (a crash — no refine verdict was produced), which is an infra-class,
@@ -217,6 +235,20 @@ states:
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
+
+  count_repair_cycle_refine:
+    # FEAT-2751: refine_current is one of the five repair-class states whose
+    # success returns to the score-checking chain. Increment the per-issue
+    # repair-cycle counter (reset at dequeue_next) so
+    # recheck_after_size_review's stagnation backstop can distinguish "never
+    # got a real remedy attempt" from "genuinely tried and still stuck".
+    action: |
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+    action_type: shell
+    next: copy_broke_down
+    on_error: copy_broke_down
 
   copy_broke_down:
     # Handshake: refine-to-ready-issue writes ${context.run_dir}/refine-broke-down
@@ -487,9 +519,20 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${captured.input.output} --auto"
     action_type: slash_command
+    next: count_repair_cycle_wire
+    on_error: count_repair_cycle_wire
+    on_rate_limit_exhausted: done
+
+  count_repair_cycle_wire:
+    # FEAT-2751: run_wire is one of the five repair-class states counted
+    # toward the stagnation backstop threshold (see count_repair_cycle_refine).
+    action: |
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+    action_type: shell
     next: run_refine
     on_error: run_refine
-    on_rate_limit_exhausted: done
 
   run_refine:
     # Run /ll:refine-issue to fill in missing codebase context when wiring alone
@@ -888,9 +931,20 @@ states:
     action: "/ll:spike ${captured.input.output} --auto"
     action_type: slash_command
     rate_limit_max_wait_seconds: 14400
+    next: count_repair_cycle_spike
+    on_error: count_repair_cycle_spike
+    on_rate_limit_exhausted: done
+
+  count_repair_cycle_spike:
+    # FEAT-2751: run_spike is one of the five repair-class states counted
+    # toward the stagnation backstop threshold (see count_repair_cycle_refine).
+    action: |
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+    action_type: shell
     next: rerun_confidence_after_spike
     on_error: rerun_confidence_after_spike
-    on_rate_limit_exhausted: done
 
   rerun_confidence_after_spike:
     # ENH-2640: after run_spike proves (or attempts) the mechanism, frontmatter
@@ -930,9 +984,24 @@ states:
     action: "/ll:issue-size-review ${captured.input.output} --auto"
     action_type: slash_command
     capture: size_review_output
+    next: count_repair_cycle_size_review
+    on_error: count_repair_cycle_size_review
+    on_rate_limit_exhausted: dequeue_next
+
+  count_repair_cycle_size_review:
+    # FEAT-2751: run_size_review is one of the five repair-class states
+    # counted toward the stagnation backstop threshold (see
+    # count_repair_cycle_refine). Other paths into enqueue_or_skip
+    # (rerun_confidence_after_wire, check_broke_down.on_no) are confidence
+    # rechecks or normal continuations of an already-counted repair cycle, not
+    # new repair attempts, so they route to enqueue_or_skip directly.
+    action: |
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+    action_type: shell
     next: enqueue_or_skip
     on_error: enqueue_or_skip
-    on_rate_limit_exhausted: dequeue_next
 
   enqueue_or_skip:
     # After explicit size-review: diff IDs against the pre-size-review
@@ -1059,19 +1128,27 @@ states:
     # score bit-identical to the pre-spike snapshot, the findings accumulated but
     # the issue's own directive sections were never reconciled — /ll:refine-issue
     # only appends. Route to reconcile_current for one targeted rewrite pass.
-    # Predicate is a two-condition guard (pre-spike snapshot == current Readiness
-    # AND NOT reconcile_attempted), mirroring check_spike_needed's two-field
-    # inline-Python one-shot idiom. The reconcile_attempted guard (written by
-    # /ll:reconcile-issue) makes this fire at most once per issue per run. On no
-    # plateau, no snapshot, or any error, fall through unchanged to
-    # recheck_after_size_review — non-plateau issues behave exactly as before.
+    # Predicate is a two-condition guard (pre-repair snapshot == current
+    # Readiness AND NOT reconcile_attempted), mirroring check_spike_needed's
+    # two-field inline-Python one-shot idiom. The reconcile_attempted guard
+    # (written by /ll:reconcile-issue) makes this fire at most once per issue
+    # per run. On no plateau, no snapshot, or any error, fall through unchanged
+    # to recheck_after_size_review — non-plateau issues behave exactly as
+    # before.
+    # FEAT-2751: generalizes beyond the spike-armed path. Prefer
+    # autodev-pre-spike-readiness.txt when present (the fresher pre-repair
+    # baseline for a spike-triage issue); otherwise fall back to
+    # autodev-pre-readiness.txt, the dequeue-time snapshot written for every
+    # issue regardless of spike_needed.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
       cur = str(d.get('confidence') or '')
       attempted = d.get('reconcile_attempted') == 'true'
-      snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
+      spike_snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
+      fallback_snap = '${context.run_dir}/autodev-pre-readiness.txt'
+      snap = spike_snap if os.path.exists(spike_snap) else fallback_snap
       pre = ''
       if os.path.exists(snap):
           with open(snap) as fh:
@@ -1252,9 +1329,21 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:reconcile-issue ${captured.input.output}"
     action_type: slash_command
+    next: count_repair_cycle_reconcile
+    on_error: count_repair_cycle_reconcile
+    on_rate_limit_exhausted: done
+
+  count_repair_cycle_reconcile:
+    # FEAT-2751: reconcile_current is one of the five repair-class states
+    # counted toward the stagnation backstop threshold (see
+    # count_repair_cycle_refine).
+    action: |
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+    action_type: shell
     next: rerun_confidence_after_reconcile
     on_error: rerun_confidence_after_reconcile
-    on_rate_limit_exhausted: done
 
   rerun_confidence_after_reconcile:
     # ENH-2689: after reconcile_current rewrites the stale directive sections,
@@ -1285,6 +1374,13 @@ states:
     # enforced. `ll-issues check-readiness` hard-ANDs both halves against
     # config thresholds regardless of CLI overrides, so the waiver check reads
     # frontmatter directly instead (mirrors regate_after_atomic_remediation).
+    # FEAT-2751: stagnation backstop. When ≥ 2 repair-class attempts have run
+    # this cycle (autodev-repair-cycle-count.txt, incremented by each
+    # count_repair_cycle_* state) AND the current Readiness score is no better
+    # than the dequeue-time snapshot (autodev-pre-readiness.txt), defer with
+    # the distinct `readiness_stagnated` reason instead of `low_readiness` —
+    # this now truthfully means "all remedies including reconcile were
+    # attempted" rather than masking that no rewrite was ever tried.
     action: |
       ID="${captured.input.output}"
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
@@ -1310,6 +1406,18 @@ states:
           echo "$ID  resolved_by_subloop" >> ${context.run_dir}/autodev-skipped.txt
           rm -f ${context.run_dir}/autodev-inflight
           echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+          exit 1
+        fi
+        CYCLE_COUNT=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+        PRE_READINESS=$(cat ${context.run_dir}/autodev-pre-readiness.txt 2>/dev/null || echo "")
+        CUR_CONFIDENCE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print(int(d.get('confidence') or 0))" 2>/dev/null || echo 0)
+        if [ "$CYCLE_COUNT" -ge 2 ] 2>/dev/null && [ -n "$PRE_READINESS" ] && [ "$CUR_CONFIDENCE" -le "$PRE_READINESS" ] 2>/dev/null; then
+          echo "$ID  readiness_stagnated" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          ll-issues set-status "$ID" deferred --by automation --reason readiness_stagnated 2>/dev/null || true
           exit 1
         fi
         echo "$ID  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
