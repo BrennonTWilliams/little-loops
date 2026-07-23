@@ -103,5 +103,8 @@ is skipped when Phoenix is absent, so it gates only where Phoenix is installed.
   (`/ll:decide-issue`, 2026-07-11): no gate forces the wider surface, and
   `subprocess_utils.py` already isolates `on_usage` / `on_usage_detailed` into
   independent branches, so the three callers are untouched today.
+- **Verification**: EPIC-2456's F1 gate (`cache_read_input_tokens` populated on
+  >50% of FSM iterations) is measured against `usage_events.cache_read_input_tokens`
+  in `docs/observability/realized-savings-verification.md` (ENH-2719).
 - **Out**: in-process OTel SDK / external collector adapter (consumers read from
   `history.db`, not the wire).

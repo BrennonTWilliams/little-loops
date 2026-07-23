@@ -1516,7 +1516,9 @@ Top-level block (FEAT-2672, EPIC-2456 F1) governing per-tool `defer_loading` and
 the matching server-side search-tool injection. Only consulted when
 `orchestration.request_path` is `"sdk"` or `"batch"` (FEAT-2710) — the CLI shell
 path never serializes a tool-definition catalog at all, so this block has no
-effect there.
+effect there. This same opt-in condition gates EPIC-2456's F1/F10 gates, which
+`docs/observability/realized-savings-verification.md` (ENH-2719) found
+structurally dormant under the `"cli"` default.
 
 `threshold` sets the catalog index at or past which
 `tool_catalog.to_anthropic_tools()` flags each tool `defer_loading: True`,
