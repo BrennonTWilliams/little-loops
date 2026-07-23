@@ -30,6 +30,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-07-22T19:03:50Z'
 ---
 
 # ENH-2720: Default-flip tranche — orchestration.request_path cli → sdk/batch after parity verification
@@ -205,3 +206,13 @@ _Added by `/ll:confidence-check` on 2026-07-22_
 ### Decomposed Into
 - ENH-2737: orchestration.request_path — fall back to cli on missing anthropic package or API key
 - ENH-2738: Flip orchestration.request_path default to sdk once ENH-2719 gate passes; apply per-loop batch tranche
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-22
+- **Decomposed into**: ENH-2737, ENH-2738
+
+Work for ENH-2720 is now carried by its child issues; this parent was closed by rn-decompose.

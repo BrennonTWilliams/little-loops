@@ -1,0 +1,12 @@
+{
+  "id": "9e44eb08-0eef-4f5c-af46-7ebeb397bb97",
+  "type": "decision",
+  "timestamp": "2026-07-22T18:58:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing single-resolution-point idiom (apply_host_cli_from_config, resolve_host()) and has a direct precedent for import-probe-and-downgrade (format_analysis_yaml). Option B has no precedent for try/except-and-retry-with-a-different-dispatcher and adds duplicate-call/state-mutation risk via the batch tracker.",
+  "rule": "Option A \u2014 fallback check inside _resolve_request_path()",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 wrap _dispatch_live() call sites with pre-flight try/except",
+  "issue": "ENH-2720"
+}

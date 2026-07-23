@@ -1,0 +1,12 @@
+{
+  "id": "140a0f3a-ab27-4aa1-98c9-a8c330fc1816",
+  "type": "decision",
+  "timestamp": "2026-07-22T20:45:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches existing (rc, obj)-internal / int-external precedents in cli/verify_kinds.py::_run() and cli/verify_decisions.py::_run(); zero of the 19 existing test_cli_harness.py int-assertions change; no cmd_* function in the repo returns a dataclass externally today.",
+  "rule": "Option B \u2014 (rc, EvalReport) tuple return from _evaluate_and_report(), cmd_* stays -> int",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add rc:int field to a HarnessEvalOutcome dataclass returned externally by cmd_skill/cmd_cmd/cmd_mcp/cmd_prompt \u2014 breaks the codebase-wide cmd_* -> int convention, introduces a novel 'rc' field name (convention is exit_code), and forces 19 test rewrites plus 5 main_harness dispatch-line changes.",
+  "issue": "ENH-2740"
+}

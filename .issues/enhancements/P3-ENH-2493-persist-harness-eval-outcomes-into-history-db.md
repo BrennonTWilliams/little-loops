@@ -22,6 +22,7 @@ score_ambiguity: 18
 score_change_surface: 0
 size: Very Large
 status: done
+completed_at: '2026-07-22T20:00:14Z'
 ---
 
 # ENH-2493: Persist ll-harness / eval outcomes into history.db
@@ -489,3 +490,13 @@ _Added by `/ll:confidence-check` on 2026-07-22_
 - `/ll:refine-issue` - 2026-07-07T00:41:19 - `b56869a4-8510-44e9-9ae9-aea10bc8d02d.jsonl`
 - audit - 2026-07-06 - Corrected function reference: pass/fail logic lives in `_evaluate_and_report()` at `harness.py:192` (there is no `_evaluate()` at `:197`); `main_harness` is at `:450` with the `cli_event_context` wrap at `:452`.
 - `/ll:capture-issue` - 2026-07-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-22
+- **Decomposed into**: ENH-2739, ENH-2740, ENH-2741
+
+Work for ENH-2493 is now carried by its child issues; this parent was closed by rn-decompose.

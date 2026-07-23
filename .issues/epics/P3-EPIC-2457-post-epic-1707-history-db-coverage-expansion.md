@@ -5,13 +5,43 @@ type: EPIC
 priority: P3
 status: open
 discovered_date: 2026-07-02
-captured_at: "2026-07-02T00:00:00Z"
+captured_at: '2026-07-02T00:00:00Z'
 discovered_by: capture-issue
-relates_to: [ENH-2458, ENH-2459, ENH-2460, ENH-2461, ENH-2462, ENH-2463, ENH-2464, ENH-2465, ENH-2466, ENH-2492, ENH-2493, ENH-2494, ENH-2495, ENH-2496, ENH-2497, ENH-2498, ENH-2504, ENH-2505, ENH-2506, ENH-2507, ENH-2508, ENH-2509, ENH-2510, ENH-2511, ENH-2512, ENH-2580, ENH-2581, ENH-2582]
+relates_to:
+- ENH-2458
+- ENH-2459
+- ENH-2460
+- ENH-2461
+- ENH-2462
+- ENH-2463
+- ENH-2464
+- ENH-2465
+- ENH-2466
+- ENH-2492
+- ENH-2494
+- ENH-2495
+- ENH-2496
+- ENH-2497
+- ENH-2498
+- ENH-2504
+- ENH-2505
+- ENH-2506
+- ENH-2507
+- ENH-2508
+- ENH-2509
+- ENH-2510
+- ENH-2511
+- ENH-2512
+- ENH-2580
+- ENH-2581
+- ENH-2582
+- ENH-2739
+- ENH-2740
+- ENH-2741
 labels:
-  - epic
-  - history-db
-  - captured
+- epic
+- history-db
+- captured
 ---
 
 # EPIC-2457: Post-EPIC-1707 history.db coverage expansion
