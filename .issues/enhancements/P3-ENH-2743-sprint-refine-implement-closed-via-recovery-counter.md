@@ -4,8 +4,9 @@ title: Add closed_via_recovery counter to sprint-refine-and-implement summary.js
   for parked-then-closed issues
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-23T00:25:52Z'
+completed_at: '2026-07-23T01:22:14Z'
 discovered_date: 2026-07-23
 discovered_by: audit
 size: Small
@@ -91,8 +92,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **The skipped-ids file does not exist yet**: no `$RUN_DIR/$P-skipped-ids.txt`
   (bare-ID-only) file exists anywhere in the codebase today. Only the raw
   `autodev-skipped.txt` ledger (format: `ID  REASON`, written by
-  `autodev.yaml` at lines 189, 208, 675, 777, 780, 965, 1173, 1177, 1252,
-  1257) exists. It must be derived with the same idiom `autodev.yaml:1278-1280`
+  `autodev.yaml` at lines 190, 209, 676, 787, 790, 975, 1207, 1211, 1286,
+  1291) exists. It must be derived with the same idiom `autodev.yaml:1315`
   already uses for its own summary: `awk '{print $1}' autodev-skipped.txt |
   sort -u > "$RUN_DIR/$P-skipped-ids.txt"`. The natural insertion point is
   next to the existing `SKIPPED_BREAKDOWN` computation
@@ -177,8 +178,8 @@ the implementation:_
   `read_outcome` state `cat`s the child's `summary.json` verbatim; any new
   key propagates automatically.
 - `scripts/little_loops/loops/autodev.yaml` — writes `autodev-skipped.txt`
-  (`ID  REASON` ledger) at park sites: lines 189, 208, 675, 777, 780, 965,
-  1173, 1177, 1252, 1257.
+  (`ID  REASON` ledger) at park sites: lines 190, 209, 676, 787, 790, 975,
+  1207, 1211, 1286, 1291.
 - `skills/audit-loop-run/SKILL.md` — Step 6a checks for the ENH-2404 key set
   (`skipped_breakdown`, `gate_blocked`, `parked_rate`); may want an update to
   recognize `closed_via_recovery`.
@@ -186,7 +187,7 @@ the implementation:_
 ### Similar Patterns
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:733-765` — the
   BUG-2403/ENH-1418 done-now snapshot pattern (`comm -13` baseline vs. now).
-- `scripts/little_loops/loops/autodev.yaml:1278-1280` — existing
+- `scripts/little_loops/loops/autodev.yaml:1315` — existing
   `awk '{print $1}'` idiom for extracting bare IDs from the `ID  REASON`
   ledger.
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:707` — shared
@@ -255,12 +256,57 @@ _Wiring pass added by `/ll:wire-issue`:_
   there isn't one — this would be a net-new schema section, not an edit.
   [Agent 2 finding]
 
+## Scope Boundaries
+
+**In scope**:
+- Adding `closed_via_recovery` computation and field to `auto-refine-and-implement.yaml`'s `finalize` state
+- Writing the `$RUN_DIR/$P-skipped-ids.txt` derived-IDs snapshot
+- Test coverage for the new counter and its zero-input default
+- Documenting the field in `docs/guides/LOOPS_REFERENCE.md`
+
+**Out of scope**:
+- Changes to `sprint-refine-and-implement.yaml` (propagates the new key automatically via its existing `cat summary.json`)
+- Changes to `autodev.yaml`'s ledger-writing sites (already emit the needed data)
+- Any change to `parked_rate`'s existing computation or meaning
+
+## Impact
+
+- **Priority**: P3 - visibility/reporting improvement, not a correctness bug
+- **Effort**: Small - single counter added to an existing `finalize` state, following established snapshot/diff patterns
+- **Risk**: Low - additive field in `summary.json`; no existing test asserts on key order or exhaustive key set
+- **Breaking Change**: No
+
+## Resolution
+
+Implemented as specified. `auto-refine-and-implement.yaml`'s `finalize` state
+now derives `$RUN_DIR/auto-refine-and-implement-skipped-ids.txt` from
+`autodev-skipped.txt` (next to the existing `SKIPPED_BREAKDOWN` computation),
+intersects it against the existing `$P-done-now.txt` snapshot via `comm -12`
+into `CLOSED_VIA_RECOVERY`, and adds `closed_via_recovery` to both the
+`summary.json` printf and the human-readable finalize log line. Added the
+`skipped_recovered` kwarg to `_run_finalize` (seeds real-ID skip-ledger lines
+so the same ID can also be seeded via `done_in_place`) plus two new tests
+(`test_finalize_closed_via_recovery_counts_skipped_then_done`,
+`test_finalize_closed_via_recovery_zero_when_no_overlap`) and a key-presence
+smoke test (`test_finalize_summary_has_enh_2743_key`). Documented the field in
+`docs/guides/LOOPS_REFERENCE.md`'s "Closure accounting" paragraph and
+`skills/audit-loop-run/SKILL.md` Step 6a, with a matching doc-coupling test
+(`test_skill_step6a_reads_closed_via_recovery_key`). Full test suite passes
+(15875 passed, 38 skipped); ruff clean; `ll-loop validate` reports the loop
+valid (pre-existing unrelated warning only).
+
+## Status
+
+Open
+
 ## Sources
 
 - `audit-loop-run-sprint-refine-and-implement-2026-07-18T045753.md` —
   Proposal #3 (visibility)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-23T01:21:36Z - `4c513c9a-ad0e-4ba6-8bb2-b15c00f0558c.jsonl`
+- `/ll:ready-issue` - 2026-07-23T01:14:52 - `4947a177-2cdd-4fa8-9397-409b7a6a5e4b.jsonl`
 - `/ll:confidence-check` - 2026-07-23T01:10:47 - `13e4240e-f967-43a4-89f6-192093f578f8.jsonl`
 - `/ll:wire-issue` - 2026-07-23T01:07:46 - `a8ab3605-cd33-4d01-b372-adc21e63f213.jsonl`
 - `/ll:refine-issue` - 2026-07-23T01:01:49 - `8c0250f9-ef2b-4eb5-b183-6f897ea1b541.jsonl`

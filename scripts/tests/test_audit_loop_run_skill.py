@@ -154,6 +154,17 @@ class TestAssessLoopSkill:
         # → must call out that these keys are additive / absent on legacy summaries
         assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
 
+    def test_skill_step6a_reads_closed_via_recovery_key(self) -> None:
+        """ENH-2743: Step 6a must recognize the additive closed_via_recovery
+        summary.json key and note it doesn't fold into skipped/parked_rate."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_start = content.index("## Step 6:")
+        step7_start = content.index("## Step 7:")
+        step6_section = content[step6_start:step7_start]
+        assert "closed_via_recovery" in step6_section, "Step 6 must mention closed_via_recovery"
+        assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
+
     def test_skill_step6b_reads_enh_2533_keys(self) -> None:
         """ENH-2533: Step 6b must recognize the additive per_issue and learning_followups
         summary.json keys so per-issue verdicts can cite specific parked IDs (rather than

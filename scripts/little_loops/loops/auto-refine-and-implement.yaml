@@ -866,6 +866,20 @@ states:
       " "$RUN_DIR/autodev-skipped.txt" 2>/dev/null || echo '{}')
       [ -z "$SKIPPED_BREAKDOWN" ] && SKIPPED_BREAKDOWN='{}'
 
+      # ENH-2743: CLOSED_VIA_RECOVERY — a skipped/parked issue whose
+      # working-tree status nonetheless reached `done` by finalize time (e.g.
+      # ll-auto re-implemented it after the sprint queue released the lock).
+      # $P-skipped-ids.txt derives bare IDs from the same "ID  REASON" ledger
+      # SKIPPED_BREAKDOWN reads; comm -12 against $P-done-now.txt (the full
+      # current done-set, not just this run's new closures) intersects the
+      # two so a recovery is detected regardless of when it happened relative
+      # to the done_baseline snapshot.
+      awk '{print $1}' "$RUN_DIR/autodev-skipped.txt" 2>/dev/null \
+        | sort -u > "$RUN_DIR/$P-skipped-ids.txt"
+      comm -12 "$RUN_DIR/$P-skipped-ids.txt" "$RUN_DIR/$P-done-now.txt" \
+        2>/dev/null > "$RUN_DIR/$P-closed-via-recovery.txt" || true
+      CLOSED_VIA_RECOVERY=$(count $P-closed-via-recovery.txt)
+
       # ENH-2404: PARKED_RATE is a visibility signal, NOT a blocking gate —
       # with skipped_breakdown present, a high rate interprets itself (e.g.
       # "4 low_readiness" is actionable, "4 decomposed" is healthy).
@@ -937,14 +951,14 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"closed_via_recovery":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s"}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
       printf '%s\n' "$VERDICT" > "$RUN_DIR/subloop_outcome_auto-refine-and-implement.txt"
-      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s abandoned=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
-        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
+      printf '%s: verdict=%s closed=%s not_closed=%s skipped=%s errored=%s closed_via_recovery=%s gate_blocked=%s decision_unresolved=%s inflight_unresolved=%s abandoned=%s parked_rate=%s verify_verdict=%s epic_merge_verdict=%s\n' \
+        "$P" "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$EPIC_MERGE_VERDICT"
 
       # BUG-2636: route the FSM terminal on the REAL outcome, not just "reached the
       # end". `ll-loop` derives success purely from the terminal state's NAME —

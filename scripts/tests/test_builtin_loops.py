@@ -2655,6 +2655,7 @@ class TestAutoRefineAndImplementLoop:
         gate_blocked: int = 0,
         decision_unresolved: int = 0,
         skipped_reasons: tuple[str, ...] = (),
+        skipped_recovered: tuple[str, ...] = (),
         issue_set: tuple[str, ...] = (),
         verify_verdict: str | None = None,
         verify_returncode: str | None = None,
@@ -2680,6 +2681,12 @@ class TestAutoRefineAndImplementLoop:
         artifact the new verify state writes) so summary.json's verify_verdict
         key can be exercised; when omitted, the file is absent and finalize
         must default to "not_run".
+
+        ENH-2743: `skipped_recovered` writes "{id}  low_readiness" lines to
+        autodev-skipped.txt using REAL issue IDs (unlike `skipped_reasons`'
+        synthetic `ID-{i}` lines), so the same ID can also be seeded via
+        `done_in_place` — exercising closed_via_recovery (an issue skipped
+        this run that nonetheless reached status:done by finalize time).
         """
         p = "auto-refine-and-implement"
         if verify_verdict is not None:
@@ -2712,6 +2719,7 @@ class TestAutoRefineAndImplementLoop:
             )
         else:
             skipped_text = "".join(f"ID-{i}\n" for i in range(skipped))
+        skipped_text += "".join(f"{i}  low_readiness\n" for i in skipped_recovered)
         (run_dir / "autodev-skipped.txt").write_text(skipped_text)
         (run_dir / "autodev-gate-blocked.txt").write_text(
             "".join(f"GB-{i}\n" for i in range(gate_blocked))
@@ -2918,6 +2926,13 @@ class TestAutoRefineAndImplementLoop:
         summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
         for key in ("skipped_breakdown", "gate_blocked", "parked_rate"):
             assert key in summary, f"summary.json missing {key!r}: {summary}"
+
+    def test_finalize_summary_has_enh_2743_key(self, data: dict, tmp_path: Path) -> None:
+        """summary.json must additively report closed_via_recovery."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, closed=("FEAT-1",), passed=("FEAT-1",))
+        assert "closed_via_recovery" in summary, f"summary.json missing key: {summary}"
 
     # --- ENH-2601: verify_verdict additive key -------------------------------
 
@@ -3246,6 +3261,35 @@ class TestAutoRefineAndImplementLoop:
         run_dir.mkdir()
         summary = self._run_finalize(data, run_dir)
         assert summary["parked_rate"] == 0.0, f"got {summary}"
+
+    def test_finalize_closed_via_recovery_counts_skipped_then_done(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2743: an issue skipped this run but subsequently status:done by
+        finalize time (e.g. ll-auto re-implemented it after the sprint queue
+        released the lock) must be counted as closed_via_recovery, distinct
+        from a genuinely-parked skip."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(
+            data,
+            run_dir,
+            passed=(),
+            skipped_recovered=("ENH-9001",),
+            done_in_place=("ENH-9001",),
+        )
+        assert summary["closed_via_recovery"] == 1, f"got {summary}"
+        assert summary["skipped"] == 1, f"got {summary}"
+
+    def test_finalize_closed_via_recovery_zero_when_no_overlap(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """closed_via_recovery must default to 0 (not crash) when no skipped
+        issue overlaps the done-now snapshot — the common case."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        summary = self._run_finalize(data, run_dir, passed=(), skipped=2)
+        assert summary["closed_via_recovery"] == 0, f"got {summary}"
 
     def test_init_snapshots_completed_baseline(self, data: dict, tmp_path: Path) -> None:
         """ENH-2385: init must snapshot the completed/ set so finalize can compute a

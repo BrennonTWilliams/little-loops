@@ -3,7 +3,7 @@ id: FEAT-2711
 type: FEAT
 title: FSM session reuse for continuity-of-reasoning state chains
 priority: P3
-status: deferred
+status: open
 captured_at: '2026-07-21T02:03:13Z'
 discovered_date: '2026-07-21'
 discovered_by: capture-issue
@@ -17,7 +17,7 @@ relates_to:
 - FEAT-2598
 - ENH-2486
 - ENH-2714
-decision_needed: true
+decision_needed: false
 confidence_score: 35
 outcome_confidence: 46
 score_complexity: 10
@@ -359,6 +359,7 @@ _Added by `/ll:spike` on 2026-07-21_
 **Promotion**: move `session_id_capture.py` (as an addition to `run_claude_command()`'s stream-json parser) and `continuity_pipeline.py` (as a new `fsm`-side helper) to `scripts/little_loops/spike/fsm_continuity_compaction/` in a separate PR, alongside a rewritten Integration Map that adds the assistant-inclusive summarization path this spike shows is actually needed.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-23T01:16:55 - `4c513c9a-ad0e-4ba6-8bb2-b15c00f0558c.jsonl`
 - `/ll:confidence-check` - 2026-07-21T00:00:00 - `2c9bb61e-52c7-4382-bb2d-548f2ed16b2e.jsonl`
 - `/ll:spike` - 2026-07-21T06:26:29 - `b8baac76-19eb-4fb4-b95c-b038dac192d6.jsonl`
 - `/ll:confidence-check` - 2026-07-21T00:00:00 - `1b27a2d1-3395-4c44-b571-ca25f06f1c5c.jsonl`
