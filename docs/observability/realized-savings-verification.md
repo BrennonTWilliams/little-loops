@@ -17,7 +17,7 @@ these numbers (ENH-2719 Scope Boundaries).
 |---|---|---|---|---|
 | Tier 0 before/after cost delta | FEAT-2470 | `CostReport.from_usage_jsonl` diffed against the ENH-2518 locked baseline (`scripts/tests/fixtures/tier0_traces/`) | **Not computable against the locked baseline** — see below (ENH-2745 fixed the pricing half of the block; a same-model relock is still needed) | **BLOCKED** |
 | F4 heuristic compressor 3–6× | FEAT-2675/2599 | Existing test: `test_heuristic_compression.py::TestReductionBand` | Every locked trace + the mean fall inside 3.0–6.0× (test asserts this on every run) | **PASS (test-enforced, cited)** |
-| F3 compaction shrink ratio 50–70% | FEAT-2598 | Ad-hoc script calling `evict_sink_and_window()` on 3 representative on-disk session transcripts, token count via the LCM `len//4` estimate | 89.6%, 73.8%, 61.3% (mean 74.9%) — see below | **FAIL (2 of 3 over-shrink)** |
+| F3 compaction shrink ratio 50–70% | FEAT-2598 | Ad-hoc script calling the combined `evict_sink_and_window()` + `summarize_6_section()` pipeline (live model call) on the same 3 representative on-disk session transcripts, token count via the LCM `len//4` estimate | 99.3%, 98.9%, 98.7% (mean 99.0%) — see below | **FAIL (over-shrink, worse than the earlier structural-only proxy)** |
 | F1 cache_read populated on >50% of FSM iterations | FEAT-2478/ENH-2724 | Ad-hoc read-only query (`_connect_readonly`-style) over `.ll/history.db` `usage_events` grouped by `state IS NOT NULL` | 6/6 rows with `state` populated also have `cache_read_input_tokens > 0` (100%) | **PASS on paper, sample negligible** — see below |
 | F10 warmed cache-hit rate >80% | FEAT-2673/2710 | Same `usage_events` query, filtered to a repeated `run_id`/`state` pair | No data — see below | **BLOCKED (structurally dormant)** |
 | F5 DES accepts 100% of events | FEAT-2478 | Existing test: `test_otel_attributes.py` | Passing | **PASS (test-enforced, cited)** |
@@ -59,10 +59,35 @@ updates) than the pricing-table fix this issue scoped. See Follow-ups.
 
 ## F3 — Compaction Shrink Ratio (FEAT-2598)
 
-`evict_sink_and_window(messages, sink_n=4, window_n=20)` was run against
-three real on-disk session transcripts (message-count capped read, `role`
-+ `content` extracted, tokens estimated via the `len(text)//4` LCM
-convention `session_store._estimate_tokens` uses):
+**Resolved by ENH-2746 (2026-07-23).** FEAT-2598's own issue text ("eviction+
+summarization together", "combo") scopes the 50–70% gate to the *combined*
+pipeline, not structural eviction alone — so the original ENH-2719 pass
+below measured the wrong stage. The combined pipeline
+(`evict_sink_and_window(messages, sink_n=4, window_n=20)` bounding the input,
+then `summarize_6_section()` — a live model call — producing the final
+summary) was run against the same three real on-disk session transcripts
+(`role`+`content` extracted from every `user`/`assistant` JSONL record,
+tokens estimated via the `len(text)//4` LCM convention
+`session_store._estimate_tokens` uses):
+
+| Session (truncated id) | Messages before → after eviction | Tokens before → after summary | Shrink |
+|---|---|---|---|
+| `84cbedd9` | 136 → 24 | 91,917 → 676 | 99.3% |
+| `a2a457a7` | 55 → 24 | 47,253 → 543 | 98.9% |
+| `8c12fca6` | 58 → 24 | 62,093 → 794 | 98.7% |
+
+Mean 99.0%, range 98.7–99.3%. All three sessions land well outside the
+50–70% gate — the combined pipeline over-shrinks even more than the
+structural-eviction-only proxy did (89.6/73.8/61.3%, mean 74.9%), since the
+6-section LLM summary compresses the already-bounded eviction output by
+another ~13–19×. The gate band as written (50–70%) does not describe either
+stage's actual behavior on these sessions; see Follow-ups for the
+reconciliation options.
+
+### Prior (structural-eviction-only) measurement — ENH-2719, 2026-07-22
+
+`evict_sink_and_window(messages, sink_n=4, window_n=20)` alone, same 3
+sessions:
 
 | Session (truncated id) | Messages before → after | Tokens before → after | Shrink |
 |---|---|---|---|
@@ -70,15 +95,8 @@ convention `session_store._estimate_tokens` uses):
 | `a2a457a7` | 55 → 24 | 47,253 → 18,301 | 61.3% |
 | `8c12fca6` | 58 → 24 | 62,093 → 16,264 | 73.8% |
 
-Mean 74.9%, range 61.3–89.6%. One of three sessions lands inside the
-50–70% gate; two exceed it (over-shrink relative to the gate, in the
-direction of *more* reduction, not less). Caveat: this measures only the
-always-on structural eviction pass (`evict_sink_and_window`) at its default
-`sink_n=4`/`window_n=20`, not the combined effect with the soft-threshold-gated
-`summarize_6_section` LLM pass, since that pass requires a live model call and
-is out of scope for a read-only measurement. The gate is written against
-whichever pass(es) actually fire in production, so this is a lower-bound
-proxy, not the full picture — see Follow-ups.
+Mean 74.9%, range 61.3–89.6%. Kept here for reference now that ENH-2746 has
+measured the combined pipeline the gate was actually scoped to.
 
 ## F1 — Cache Read Populated on FSM Iterations (FEAT-2478/ENH-2724)
 
@@ -129,9 +147,14 @@ Both suites pass as of this report (see Full run above).
   remains BLOCKED pending a same-model relock (ENH-2518 precedent) against the
   current default model; tracked as a follow-up parented to EPIC-2456.
 - F3's 61–90% spread (vs. the 50–70% gate) on structural eviction alone
-  warrants either a combined-pass measurement (requires a live summarization
-  call) or a gate-band reconciliation — filed as a follow-up parented to
-  EPIC-2456.
+  warranted either a combined-pass measurement (requires a live summarization
+  call) or a gate-band reconciliation — filed as ENH-2746, parented to
+  EPIC-2456. **Resolved 2026-07-23**: the combined pipeline measures 98.7–99.3%
+  (mean 99.0%), still well outside 50–70% — the gate band itself now needs
+  reconciliation (EPIC-2456's F3 Success Metrics line to be either loosened
+  to match observed behavior or `sink_n`/`window_n`/summarization verbosity
+  tuned down), tracked as an open item rather than a further follow-up issue
+  given ENH-2746's own Impact assessment (P3, low risk).
 - F1/F10 remain dormant under the `cli` default; ENH-2738 already tracks the
   default flip and is blocked on this issue closing — no separate follow-up
   needed beyond noting F1's tiny sample size in ENH-2738's own gate.
@@ -156,3 +179,11 @@ mapping), [`docs/reference/CONFIGURATION.md`](../reference/CONFIGURATION.md#requ
   Behavior, EPIC-2456 closure is gated on this report's existence, not on
   100% gate pass — closure may proceed once follow-ups are filed for the
   BLOCKED/FAIL rows above.
+- 2026-07-23 — ENH-2746 resolved the F3 measurement-scope question: the
+  50–70% gate was written against the combined eviction+summarization
+  pipeline, not eviction alone. Re-measured on the same 3 sessions with a
+  live `summarize_6_section()` call: 99.3%/98.9%/98.7% (mean 99.0%) — still
+  FAIL, and worse than the structural-only proxy. EPIC-2456's F3 Success
+  Metrics line carries the new dated annotation; gate-band reconciliation
+  (loosen the band vs. tune `sink_n`/`window_n`/summary verbosity) remains
+  open.
