@@ -526,6 +526,7 @@ def _run_plan(
     project_root: Path,
     templates_dir: Path,
     feature_choices: dict[str, Any] | None = None,
+    upgrade: bool = False,
 ) -> int:
     """Emit a machine-readable JSON plan without writing anything."""
     from little_loops.init.core import build_config
@@ -567,6 +568,7 @@ def _run_plan(
             ),
         },
         "proposed_config": config,
+        "requested_upgrade": upgrade,
         "host_options": {
             "has_claude_code": bool(shutil.which("claude")),
             "has_codex": bool(shutil.which("codex")),
@@ -852,9 +854,14 @@ Exit codes:
             return 2
 
         if args.plan:
-            return _run_plan(project_root, templates_dir, feature_choices=feature_choices)
+            return _run_plan(
+                project_root,
+                templates_dir,
+                feature_choices=feature_choices,
+                upgrade=args.upgrade,
+            )
 
-        if args.yes or args.dry_run:
+        if args.yes or args.dry_run or args.upgrade:
             return _run_yes(
                 project_root=project_root,
                 templates_dir=templates_dir,

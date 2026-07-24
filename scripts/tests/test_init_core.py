@@ -1638,6 +1638,18 @@ class TestMainInit:
         assert "provenance" in plan
         assert "ambiguities" in plan
 
+    def test_plan_upgrade_surfaces_requested_upgrade(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """--plan --upgrade must not silently drop --upgrade (BUG-2755)."""
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--plan", "--upgrade", "--root", str(tmp_project)])
+        assert code == 0
+        plan = json.loads(capsys.readouterr().out)
+        assert plan["requested_upgrade"] is True
+
     def test_yes_enable_feature_flags_write_sections(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
@@ -2071,6 +2083,24 @@ class TestMainInit:
         # At least one call should be the pip upgrade
         upgrade_calls = [c for c in captured_runs if "--upgrade" in c and "little-loops" in c]
         assert upgrade_calls, f"Expected pip --upgrade little-loops call; got: {captured_runs}"
+
+    def test_bare_upgrade_implies_yes_never_launches_wizard(self, tmp_project: Path) -> None:
+        """`ll-init --upgrade` (no --yes) must act headlessly, not fall through to
+        the interactive wizard where the flag has no effect (BUG-2755)."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--upgrade", "--root", str(tmp_project)])
+        # run_tui() returns 1 in a non-TTY test runner; 0 here proves the
+        # headless _run_yes path executed instead.
+        assert code == 0
+        assert (tmp_project / ".ll" / "ll-config.json").exists()
 
     def test_yes_consumer_path_never_uses_editable_bare_name(self, tmp_project: Path) -> None:
         """pip install -e <bare-package-name> must never be constructed for PyPI installs."""
