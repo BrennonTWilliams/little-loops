@@ -62,6 +62,26 @@ check, diff-stall), the meta-loop MR-1 requirement is satisfied **by architectur
 convention** — and the generation trace is deterministic and debuggable rather than a single
 opaque "the workflow doesn't behave correctly" verdict.
 
+## Why not `loop-composer` / `loop-router` / `/ll:create-loop`
+
+Three existing mechanisms sit near this feature; none occupy its niche, and the distinction
+should be explicit so a future go/no-go or conflict audit doesn't re-open the FEAT-1806 debate
+(FEAT-1806 was closed as redundant *because* `loop-composer` already dynamically composes
+existing loops — a different thing from generating a new artifact):
+
+- **`/ll:create-loop`** — interactive, human-in-the-loop wizard that walks a user through
+  authoring FSM YAML. `workflow-generator` is the **autonomous, artifact-emitting** counterpart:
+  no wizard, driven by a prose brief, produces a validated file end-to-end.
+- **`loop-composer` / `loop-composer-adaptive`** — decompose a goal into a runtime DAG of
+  *existing* loops and execute it. The plan is **ephemeral orchestration**; nothing reusable is
+  left behind. `workflow-generator` emits a **persistent, reusable YAML artifact** that itself
+  becomes a new building block.
+- **`loop-router`** — selects one existing loop from the live `ll-loop list --json` catalog.
+  It *consumes* the catalog; `workflow-generator` *extends* it. Because both `loop-router` and
+  `loop-composer` read `ll-loop list --json` at runtime, a promoted `workflow-generator` artifact
+  auto-appears as a routing/composition candidate — this closes the self-extending loop and is
+  part of the feature's value story (see § Artifact Destination & Promotion).
+
 ## Current Behavior
 
 - Artifact-generator loops exist for visual/interactive outputs only:
@@ -101,23 +121,41 @@ TBD — requires investigation. Direction from the brainstorm (ranked shortlist)
   is a tractable sub-problem with a non-LLM discriminator, satisfying MR-1 structurally.
 - **Rank 2 — Scoped genetic graft (state-graph pass only).** At the single most-uncertain
   decision (the state-graph sketch), generate N candidate sketches in parallel and select the
-  best by `ll-loop validate` exit-code before continuing. Scope recombination to this one pass to
-  get global exploration where the design space is widest while keeping lowering deterministic
-  and auditable everywhere else.
+  best before continuing. **Selection metric (not bare exit-code):** a plain "best by
+  `ll-loop validate` exit-code" scorer has the same binary-signal problem as the shrink pass —
+  several sketches all pass validate and the choice becomes arbitrary. Score each candidate by
+  **`ll-loop validate --json` (violation count + warning count), ascending, with sketch
+  state-count as the tiebreaker** (fewer states wins, favoring minimum coupling). Wire the
+  scorer explicitly on the `apo-beam.yaml` pattern: `generate_variants → score_variants →
+  select_best → route_convergence`, where `score_variants` is the `shell` state that runs
+  `validate --json` per candidate and emits the numeric score, and `select_best` picks the
+  minimum. Scope recombination to this one pass to get global exploration where the design
+  space is widest while keeping lowering deterministic and auditable everywhere else.
 - **Rank 3 — Adversarial minimum-coupling shrink (final pass).** Operationalize "reusability is a
   property of minimum coupling, not completeness": remove a state, re-run the probe set, and keep
-  the removal if no outcome changed. External, repeatable, binary — a sound non-LLM evaluator.
+  the removal only if the full probe outcome tuple — `simulate` terminal state + `validate --json`
+  violation set + warning count — is unchanged (see Codebase Research Findings for why the probe
+  must be `simulate`, not bare `validate`). External, repeatable, and discriminating — a sound
+  non-LLM evaluator. **v1-optionality:** this is the only pass with no in-repo precedent and it
+  carries most of the outcome risk; ship the five preceding passes first and gate the shrink pass
+  behind an explicit `enable_shrink` context flag (default off) so v1 is releasable without it and
+  the shrink discriminator can be hardened against a seeded redundant-state fixture before it
+  becomes the default.
 
 These three address orthogonal failure modes (conflation, local convergence, over-specification)
 and compose into a single six-pass FSM without redundancy.
 
-**Open design questions:**
+**Open design questions:** _(all resolved — zero unresolved questions at the readiness gate.)_
 - ~~Output target: emit FSM-loop YAML, a Workflow JS script, or selectable?~~ **Resolved:**
   FSM-loop YAML for v1 (see Codebase Research Findings below); Workflow JS is a follow-on with
   its own validation + portability story (see § Portability & Lock-in Analysis).
-- Whether to support the "mine observed behavior" input mode (generate from `.ll/history.db` /
-  session traces) in v1 or defer to a follow-on.
-- How the shrink pass's "probe set" is defined for a non-executable-by-default workflow.
+- ~~Whether to support the "mine observed behavior" input mode (generate from `.ll/history.db` /
+  session traces) in v1 or defer.~~ **Resolved: defer to a follow-on.** v1 takes a prose brief
+  only; a mined-history input mode is a separate issue so this one has zero unresolved questions
+  at autodev's readiness gate.
+- ~~How the shrink pass's "probe set" is defined for a non-executable-by-default workflow.~~
+  **Resolved:** `simulate`-based probe tuple; see the shrink-pass bullet in § Codebase Research
+  Findings.
 
 ### Codebase Research Findings
 
@@ -137,11 +175,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `${context.run_dir}/`) rather than `artifact_versioning_ok: true` (which merely silences the
   warning for intentional overwrite). This keeps the per-iteration snapshots the brainstorm
   requires and aligns with the MR-5 acceptance criterion.
-- **Shrink-pass probe set.** Define probes as a fixture set of brief->expected-outcome pairs
-  written under `${context.run_dir}/probes/`; "outcome" for a YAML target is the deterministic
-  result of `ll-loop validate` on the emitted artifact (and, where applicable, a `simulate` of
-  the emitted loop). Removing a state and re-running `ll-loop validate` gives the external,
-  binary, repeatable signal the issue's Rank-3 shrink pass calls for — no LLM judge needed.
+- **Shrink-pass probe set — `simulate`-based, not `validate`-based (critical correction).**
+  `ll-loop validate` is a **structural lint**, not a behavioral check: most single-state
+  removals from a valid loop still validate (routes degrade to warnings at worst), so a
+  "remove state → validate still passes → keep removal" discriminator approves nearly every
+  removal and systematically over-shrinks. By the project's own Bernoulli-variance standard
+  (`ll-loop diagnose-evaluators`), a verdict that never varies is the toothless-evaluator
+  failure mode the MR rules exist to catch. **The probe must be `ll-loop simulate`**
+  (`scripts/little_loops/cli/loop/testing.py:cmd_simulate`, wired as the `simulate`
+  subcommand) — a behavioral dry-run that walks the emitted loop's state graph to a terminal
+  state. Define probes as a fixture set of brief→expected-terminal-state pairs written under
+  `${context.run_dir}/probes/`. An "outcome" is the tuple **(simulate's reached terminal
+  state, `ll-loop validate <path> --json` violation set, warning count)**. A state removal is
+  kept **only if all three are identical** to the pre-removal artifact across every probe;
+  any drift in reached terminal state, violation set, or warning count vetoes the removal.
+  This makes the shrink signal external, repeatable, and *discriminating* (it can distinguish
+  a load-bearing state from a redundant one) rather than binary-validate-passes.
 
 ## Portability & Lock-in Analysis (shim strategy)
 
@@ -199,7 +248,36 @@ unchanged (YAML first proves the lowering pipeline) but upgrades the JS target f
 2. `workflow-generator` JS output target — add a selectable `output: workflow-js` mode gated by
    the lint-grade validator + shim dry-run above.
 
+## Artifact Destination & Promotion
+
+The generate→evaluate cycle writes every intermediate (drafts, per-pass snapshots, probes) under
+`${context.run_dir}/` (MR-3). But a *reusable* workflow has to land somewhere `ll-loop
+list`/`run` can discover it — the **project loops dir** (`.ll/loops/` / the configured project
+loop directory scanned alongside the built-ins), not `run_dir`. Define the tail of the pipeline:
+
+- **Promotion step.** After the artifact passes `ll-loop validate` (and, if `enable_shrink`, the
+  shrink probes), a final **promotion** copies `${context.run_dir}/workflow.yaml` to the project
+  loops dir under its intent-derived name.
+- **Promotion is a HITL gate, not automatic.** Landing a runnable loop where `loop-router` /
+  `loop-composer` can auto-select it has real blast radius, so v1 promotion requires an explicit
+  confirmation (final approval state), consistent with `loop-composer`'s `auto: "false"` safe
+  default. An `auto_promote` context flag (default off) may bypass it for scripted use.
+- **Name-collision handling.** Before writing, resolve the target name against the built-in loop
+  set *and* existing project loops (both surfaced by `ll-loop list --json`). On collision, do not
+  overwrite: suffix (`-2`, …) or prompt for a new name. Never shadow a built-in name — the
+  filesystem scan would make resolution order ambiguous.
+- **Self-extending payoff.** Because `loop-router`/`loop-composer` read `ll-loop list --json` at
+  runtime, a promoted artifact immediately becomes a routing/composition candidate — no registry
+  edit needed (there is no registry; discovery is a filesystem scan).
+
 ## Integration Map
+
+> **Line-number caveat:** the `scripts/tests/test_builtin_loops.py` line numbers cited throughout
+> this section have drifted ~2,000–3,000 lines from continued file growth (e.g.
+> `TestHtmlWebsiteGeneratorLoop` cited ~3290 is nearer ~5431; `test_no_bare_loops_tmp_writes`
+> cited ~6484 is nearer ~8967). The **class/test names are stable — locate by name, not line**.
+> Treat every `~NNNN` here as an approximate anchor, and re-verify the doc-count / README figures
+> at implementation time with `ll-verify-docs` (they are drifted on `main`).
 
 ### Files to Modify
 - `scripts/little_loops/loops/workflow-generator.yaml` — new built-in loop (NEW).
@@ -217,12 +295,14 @@ unchanged (YAML first proves the lowering pipeline) but upgrades the JS target f
   YAML automatically — no packaging change needed.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `README.md` — **required**: line 79 reads `**96 FSM loops**`; adding a runnable loop bumps the
-  count to 97. `scripts/little_loops/doc_counts.py` (`verify_documentation()`) counts runnable
-  loops via `loops_dir.rglob("*.yaml")` filtered by `is_runnable_loop()` and compares it against
-  the count string in `DOC_FILES` (`README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`); only
-  `README.md` carries the loop count. `ll-verify-docs` exits non-zero on the mismatch
-  (`loops: documented=96, actual=97`). Run `ll-verify-docs --fix` or hand-edit the count. [Agent 2 finding]
+- `README.md` — **required**: the `**N FSM loops**` count (currently `82` at `README.md:179`;
+  the exact number and line drift on `main`, so **do not hardcode** — the count gate is already
+  red pre-existing, `documented=82, actual=98`). Adding a runnable loop bumps `actual` by one.
+  `scripts/little_loops/doc_counts.py` (`verify_documentation()`) counts runnable loops via
+  `loops_dir.rglob("*.yaml")` filtered by `is_runnable_loop()` and compares it against the count
+  string in `DOC_FILES` (`README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`); only `README.md`
+  carries the loop count. **Run `ll-verify-docs --fix` to reconcile all drifted counts** rather
+  than editing any single number by hand. [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_builtin_loops.py:TestBuiltinLoopFiles` — universal tests run over every
@@ -348,11 +428,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    (`ll-loop validate` exit-code, schema check, diff-stall) to satisfy MR-1 by architecture.
 4. Add per-run `${context.run_dir}/` artifact isolation (MR-3) and per-iteration snapshots
    (MR-5) for the generate→evaluate cycle.
-5. Resolve the remaining open design questions (probe-set definition for the shrink pass;
-   mined-input mode) and scope the genetic graft to the state-graph pass. (Output target is
-   resolved: FSM YAML for v1; Workflow JS deferred to the shim follow-on — see § Portability
-   & Lock-in Analysis.)
-6. Add `test_builtin_loops.py` coverage and verify with `ll-loop validate` (MR-1..MR-6) plus a
+5. Gate the shrink pass behind an `enable_shrink` context flag (default off) and scope the
+   genetic graft to the state-graph pass, scoring candidates by `validate --json`
+   violation+warning count with state-count tiebreak (§ Proposed Solution, Rank 2/3). All open
+   design questions are resolved: output target = FSM YAML for v1 (Workflow JS deferred to the
+   shim follow-on); mined-history input deferred; shrink probe = `simulate` tuple.
+6. Add the HITL-gated **promotion** tail (§ Artifact Destination & Promotion): copy the validated
+   artifact to the project loops dir under a collision-resolved, intent-derived name; confirm it
+   appears in `ll-loop list` and runs.
+7. Add `test_builtin_loops.py` coverage and verify with `ll-loop validate` (MR-1..MR-6) plus a
    `ll-loop diagnose-evaluators` discriminator-health check.
 
 ### Codebase Research Findings
@@ -386,8 +470,9 @@ _Added by `/ll:refine-issue` — concrete anchors for the steps above:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation
 (all doc/catalog edits are manual — no auto-generator exists for any of them):_
 
-7. **Bump the loop count in `README.md`** (line 79, `96 FSM loops` → `97`) — gated by
-   `ll-verify-docs` / `doc_counts.py`. Without this, the docs-count check fails CI.
+7. **Reconcile the loop count in `README.md`** by running **`ll-verify-docs --fix`** (do not
+   hardcode a number — the `**N FSM loops**` string and its line have drifted on `main`, and the
+   count gate is already red pre-existing). Gated by `ll-verify-docs` / `doc_counts.py`.
 8. **Update `docs/guides/LOOPS_REFERENCE.md`** — add a `workflow-generator` row to the
    `### Harness Examples` table, extend the GAN-style cross-reference sentence (iff delegating to
    `oracles/generator-evaluator`), and add a new full `### workflow-generator` detail section.
@@ -418,8 +503,14 @@ FSM/YAML by hand.
 - [ ] When the output target is FSM YAML, the emitted artifact itself passes `ll-loop validate`.
 - [ ] Every `check_semantic`/`llm_structured` state in the loop is paired with a non-LLM
       evaluator (verified by `ll-loop validate` MR-1 and an automated test).
-- [ ] The adversarial shrink pass reduces the emitted state count versus the pre-shrink draft
-      on at least one probe fixture, demonstrating minimum-coupling behavior.
+- [ ] The adversarial shrink pass (when `enable_shrink` is on) never breaks `ll-loop validate`
+      or `ll-loop simulate` on the emitted artifact, and removes at least one **deliberately
+      planted redundant state** in a seeded fixture — while leaving a deliberately load-bearing
+      state intact. (This replaces the gameable "reduces state count on at least one fixture"
+      form, which an over-generating emission pass could satisfy trivially.)
+- [ ] After the (HITL-gated) promotion step lands the artifact in the project loops dir, it
+      appears in `ll-loop list` and runs via `ll-loop run <name>`; name collisions with built-ins
+      or existing project loops are resolved without overwriting.
 - [ ] `test_builtin_loops.py` covers validation + meta-loop conformance (MR-1 paired evaluators,
       MR-3 run_dir isolation, MR-5 artifact versioning) and passes.
 
@@ -474,6 +565,16 @@ _Added by `/ll:confidence-check` on 2026-07-18_
   generator-loop addition.
 
 ## Session Log
+- issue-review (apply review recommendations) - 2026-07-23 - Applied `feat-2354-review.txt`:
+  (1) redefined the shrink-pass discriminator from bare `ll-loop validate` (structurally toothless)
+  to a `simulate`-based probe tuple (terminal state + `validate --json` violation set + warning
+  count), and gated the pass behind `enable_shrink` (v1-optional); (2) added a "Why not
+  loop-composer / loop-router / create-loop" section; (3) added § Artifact Destination & Promotion
+  (HITL promotion to project loops dir, collision handling) + a promotion AC; (4) specified the
+  Rank-2 beam scorer as `validate --json` violation+warning count with state-count tiebreak on the
+  apo-beam pattern; (5) de-hardcoded doc-count anchors (→ `ll-verify-docs --fix`), added a
+  test_builtin_loops.py line-drift caveat, and closed the mined-history + probe-set open questions.
+  Repaired the gameable shrink AC.
 - `/ll:confidence-check` - 2026-07-18T15:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29ebb98a-04bb-4f75-82fb-7e031504071a.jsonl`
 - issue-review (Cowork session) - 2026-07-18 - Resolved output-target question to FSM YAML v1 in Summary; added § Portability & Lock-in Analysis (shim strategy) with lint-grade validator sketch + shim dry-run gate for the Workflow-JS follow-on; suggested `ll-workflow-shim` and `output: workflow-js` follow-on issues.
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1811 (was unparented; assigned per /ll:create-epics-from-unparented sweep).
