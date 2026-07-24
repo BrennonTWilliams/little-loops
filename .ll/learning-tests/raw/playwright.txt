@@ -1,0 +1,15 @@
+CLAIM1 pageerror arg is Error instance: true
+CLAIM2 pageerror.message typeof: string
+CLAIM2b pageerror.message value: "plain error"
+CLAIM3 non-Error throw -> arg is Error instance: true
+CLAIM3b non-Error throw -> arg.message typeof: string
+CLAIM3c non-Error throw -> arg.message value: "Object"
+CLAIM3d non-Error throw -> full arg (String()): Object
+CLAIM4 console-error msg.text() typeof: string
+CLAIM4b console-error msg.text() value: "oops {a: 1} [1, 2, 3]"
+throw string -> isError: true message typeof: string message: "plain string" name:  stack head: 
+throw undefined -> isError: true message typeof: string message: "undefined" name:  stack head: 
+throw null -> isError: true message typeof: string message: "null" name:  stack head: 
+throw number -> isError: true message typeof: string message: "42" name:  stack head: 
+throw ErrorEvent-like DOMException -> isError: true message typeof: string message: "dom err" name: Error stack head: 
+unhandled promise rejection -> pageerror fired: true string
