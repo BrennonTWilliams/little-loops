@@ -141,7 +141,7 @@ Returns the full `CapabilityReport` for the configured host. Does not invoke Cla
     {"name": "permission_skip", "status": "full", "note": ""},
     {"name": "agent_select", "status": "full", "note": ""},
     {"name": "tool_allowlist", "status": "full", "note": ""},
-    {"name": "json_schema", "status": "unsupported", "note": "..."},
+    {"name": "json_schema", "status": "full", "note": "..."},
     {"name": "structured_output", "status": "full", "note": "..."}
   ],
   "hooks": [

@@ -9,7 +9,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.cli.doctor import main_doctor
-from little_loops.host_runner import CapabilityEntry, CapabilityReport, HookEntry
+from little_loops.host_runner import (
+    CapabilityEntry,
+    CapabilityReport,
+    ClaudeCodeRunner,
+    HookEntry,
+)
 
 
 @pytest.fixture
@@ -47,6 +52,24 @@ class TestMainDoctor:
             ],
         )
         runner = _make_runner(report)
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print"),
+        ):
+            result = main_doctor()
+
+        assert result == 0
+
+    def test_exit_zero_on_real_claude_code_report(self) -> None:
+        """BUG-2759: ll-doctor must exit 0 for a healthy claude-code host — a
+        hand-built fixture can't reproduce a stale-entry regression like the
+        json_schema/structured_output contradiction, so this exercises the
+        real ClaudeCodeRunner.describe_capabilities() output directly."""
+        runner = ClaudeCodeRunner()
 
         with (
             patch("sys.argv", ["ll-doctor"]),

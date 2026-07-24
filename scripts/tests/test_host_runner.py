@@ -1033,6 +1033,14 @@ class TestDescribeCapabilities:
         # ENH-2627: claude CLI honors an inline --json-schema flag (Anthropic backend).
         assert by_name["structured_output"].status == "full"
 
+    def test_claude_code_json_schema_matches_structured_output(self) -> None:
+        """BUG-2759: json_schema and structured_output describe the same inline
+        --json-schema flag and must not disagree, or ll-doctor's flat
+        any-unsupported exit-code scan poisons a fully-healthy host."""
+        report = ClaudeCodeRunner().describe_capabilities()
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["json_schema"].status == by_name["structured_output"].status
+
     def test_structured_output_capability_flag_per_host(self) -> None:
         """ENH-2627: only the claude CLI honors the inline --json-schema flag the
         FSM evaluators append; every other host gates the flag off."""

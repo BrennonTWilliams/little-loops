@@ -373,11 +373,16 @@ class ClaudeCodeRunner:
                 CapabilityEntry("permission_skip", "full"),
                 CapabilityEntry("agent_select", "full"),
                 CapabilityEntry("tool_allowlist", "full"),
-                # build_blocking_json silently drops json_schema (no Codex-style warning)
+                # BUG-2759: corrected to agree with structured_output — the inline
+                # --json-schema flag IS honored (Anthropic backend). Note still
+                # documents that build_blocking_json()'s separate json_schema
+                # parameter is silently dropped (no Codex-style file-bridge).
                 CapabilityEntry(
                     "json_schema",
-                    "unsupported",
-                    "claude CLI does not accept an inline schema flag; parameter is silently dropped",
+                    "full",
+                    "claude CLI honors an inline --json-schema flag for streaming "
+                    "invocations; build_blocking_json()'s json_schema parameter is "
+                    "still silently dropped (no inline-flag path there)",
                 ),
                 # ENH-2627: separate from json_schema — describes the inline
                 # --json-schema flag the FSM evaluators append (honored by the

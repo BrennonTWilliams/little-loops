@@ -131,7 +131,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] |
 | Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] |
 | Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   |
-| `json_schema`    | ✗           | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            |
+| `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            |
 | `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            |
 
@@ -154,7 +154,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     research note and either wires the capability or marks it a documented
     permanent gap.
 
-[^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` has no schema flag and silently drops `json_schema`.
+[^schema]: `CodexRunner.build_blocking_json` serializes the schema dict to a temp file and passes `--output-schema <path>` to Codex (ENH-1530). The temp file path is returned in `HostInvocation.cleanup_paths`; callers must call `p.unlink(missing_ok=True)` for each path after the subprocess completes. `ClaudeCodeRunner` honors an inline `--json-schema` flag (BUG-2759 corrected this row to agree with `structured_output` below) — but its `build_blocking_json()` has no schema flag of its own and still silently drops a `json_schema` parameter passed there.
 
 [^struct]: `HostCapabilities.structured_output` (ENH-2627) is a *separate* flag from `json_schema`: it describes whether the host's CLI honors the inline `--json-schema` flag the FSM evaluators (`evaluators.py`) append at their call sites. Only the Anthropic `claude` CLI does, so the evaluators gate the flag on this capability and fall back to prompt-and-parse (with the BUG-2626 `<StructuredOutput>` tag recovery) on every other host. Codex's file-mediated `--output-schema` path is unrelated — the evaluators do not use it.
 
