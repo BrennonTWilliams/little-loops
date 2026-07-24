@@ -50,7 +50,7 @@ Raw agents re-derive the same structural moves differently on every run. The `ll
 
 ## 3. The harness is the spec
 
-Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then loop until it passes. Layered gates — exit codes, output patterns, numeric metrics, LLM judges, full agentic simulation — grade every iteration cheapest-first, and failures route back into execution instead of forward into your codebase. The engineering tax that makes teams skip evals is automated away: `/ll:create-eval-from-issues` turns acceptance criteria into a runnable harness, `/ll:create-loop` derives one from a description, and `harness-optimize` hill-climbs the harness itself against a benchmark, accepting each mutation only when the score rises.
+Harness-driven development is TDD's analog for agent-built software: define what "working" looks like first, then loop until it passes. Layered gates — exit codes, output patterns, numeric metrics, LLM judges, full agentic simulation — grade every iteration cheapest-first, and failures route back into execution instead of forward into your codebase. The engineering tax that makes teams skip evals is automated away: `/ll:create-eval-from-issues` turns acceptance criteria into a runnable harness, `/ll:create-loop` derives one from a description, and `ll-loop run harness-optimize` hill-climbs the harness itself against a benchmark, accepting each mutation only when the score rises.
 
 *Point at context. Get a harness.*
 
@@ -175,7 +175,7 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 - **29 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
 - **42 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
-- **39 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
+- **44 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **99 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 - **Design tokens** — WCAG AA palette template set with FSM context injection for artifact-generating loops
