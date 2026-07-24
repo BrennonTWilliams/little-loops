@@ -22,8 +22,10 @@ max_steps: 500
 timeout: 28800
 on_handoff: spawn
 context:
-  readiness_threshold: 85
-  outcome_threshold: 75
+  # readiness_threshold / outcome_threshold are seeded at launch from
+  # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
+  # (defaults 85 / 65). Declaring them here would shadow that config —
+  # override per-run with `--context readiness_threshold=NN` instead (BUG-2767).
   max_depth: 3
   max_remediation_passes: 3
   # ENH-1977 Fix 3: resume support. Re-run a killed loop against its prior run

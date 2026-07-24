@@ -762,8 +762,10 @@ class TestValidation:
         """Context defaults match the specification."""
         data = _load_loop()
         ctx = data["context"]
-        assert ctx["readiness_threshold"] == 85
-        assert ctx["outcome_threshold"] == 75
+        # BUG-2768: thresholds must NOT be pinned in context: — they are seeded
+        # at launch from commands.confidence_gate in ll-config.json (BUG-2767).
+        assert "readiness_threshold" not in ctx
+        assert "outcome_threshold" not in ctx
         assert ctx["max_depth"] == 3
         assert ctx["max_remediation_passes"] == 3
         assert ctx["schedule_mode"] == "fifo", "schedule_mode must default to fifo"
@@ -1446,7 +1448,7 @@ class TestEpicFlagInit:
             .replace("${context.resume}", "")
             .replace("${context.run_dir}", str(run_dir))
             .replace("${context.readiness_threshold}", "85")
-            .replace("${context.outcome_threshold}", "75")
+            .replace("${context.outcome_threshold}", "65")
             .replace("${context.max_depth}", "3")
             .replace("${context.max_remediation_passes}", "3")
             .replace("$$", "$")  # unescape FSM shell-brace guards

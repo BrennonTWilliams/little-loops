@@ -1662,14 +1662,25 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_context_fallbacks_match_selector_defaults(self, data: dict) -> None:
-        """context.readiness_threshold and outcome_threshold must be 85/65 to match next-action defaults (BUG-2035)."""
-        ctx = data.get("context", {})
+        """Seeded thresholds must be 85/65 to match next-action defaults (BUG-2035).
+
+        BUG-2768: the loop no longer pins the values in context: — they are
+        seeded at launch from commands.confidence_gate (BUG-2767), so parity
+        with the `ll-issues next-action` argparse fallbacks is asserted on the
+        seeded result instead.
+        """
+        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+
+        ctx = dict(data.get("context") or {})
+        assert "readiness_threshold" not in ctx
+        assert "outcome_threshold" not in ctx
+        seed_confidence_thresholds(ctx)
         assert ctx.get("readiness_threshold") == 85, (
-            f"context.readiness_threshold should be 85 (matches next-action fallback), "
+            f"seeded readiness_threshold should be 85 (matches next-action fallback), "
             f"got {ctx.get('readiness_threshold')!r}"
         )
         assert ctx.get("outcome_threshold") == 65, (
-            f"context.outcome_threshold should be 65 (matches next-action fallback), "
+            f"seeded outcome_threshold should be 65 (matches next-action fallback), "
             f"got {ctx.get('outcome_threshold')!r}"
         )
 
@@ -12392,7 +12403,14 @@ class TestConfidenceGateThresholdsNotHardcoded:
     project's ``commands.confidence_gate.*`` setting would be silently ignored.
     """
 
-    LOOPS = ("autodev", "recursive-refine", "eval-driven-development")
+    LOOPS = (
+        "autodev",
+        "recursive-refine",
+        "eval-driven-development",
+        "refine-to-ready-issue",
+        "rn-implement",
+        "rn-remediate",
+    )
 
     @pytest.mark.parametrize("loop_name", LOOPS)
     def test_thresholds_absent_from_context(self, loop_name: str) -> None:

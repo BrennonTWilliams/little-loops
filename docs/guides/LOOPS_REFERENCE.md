@@ -423,8 +423,8 @@ ll-loop run rn-implement "FEAT-1808,ENH-1842"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `readiness_threshold` | `85` | Confidence score threshold for readiness gate (int, 0–100) |
-| `outcome_threshold` | `75` | Outcome confidence threshold for implementation success (int, 0–100) |
+| `readiness_threshold` | `85` | Confidence score threshold for readiness gate (int, 0–100). Not declared in the loop YAML — seeded at launch from `commands.confidence_gate.readiness_threshold` in `ll-config.json` (BUG-2768) |
+| `outcome_threshold` | `65` | Outcome confidence threshold for implementation success (int, 0–100). Seeded the same way from `commands.confidence_gate.outcome_threshold` |
 | `max_depth` | `3` | Maximum decomposition depth; issues at or beyond this depth are capped |
 | `max_remediation_passes` | `3` | Maximum remediation attempts per issue before escalation to decomposition |
 | `schedule_mode` | `"fifo"` | Scheduler: `"fifo"` (default, pop queue head) or `"value_ranked"` (select highest-value ready issue each tick) |
@@ -601,8 +601,8 @@ ll-loop run rn-remediate "<issue-id>" \
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `issue_id` | yes | — | Issue ID to remediate |
-| `readiness_threshold` | no | `85` | Confidence score threshold for readiness gate (int, 0–100) |
-| `outcome_threshold` | no | `75` | Outcome confidence threshold (int, 0–100) |
+| `readiness_threshold` | no | `85` | Confidence score threshold for readiness gate (int, 0–100). Seeded from `commands.confidence_gate.readiness_threshold` when not passed by the parent (BUG-2768) |
+| `outcome_threshold` | no | `65` | Outcome confidence threshold (int, 0–100). Seeded from `commands.confidence_gate.outcome_threshold` when not passed by the parent |
 | `max_remediation_passes` | no | `3` | Max remediation iterations before escalation to decomposition |
 | `require_refine_and_wire` | no | `true` | Enable the `gate_implement` marker-gate (see below); set `false` to skip the enforcement and proceed to `implement` unconditionally |
 | `diagnose_complexity_threshold` | no | `15` | Complexity score (0–25) above which an issue is classified as "above-minimal" and subject to the refine+wire gate |

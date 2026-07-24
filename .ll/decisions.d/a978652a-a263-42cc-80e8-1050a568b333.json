@@ -1,0 +1,12 @@
+{
+  "id": "40ca931e-f2ba-45ab-b8fc-742bf917dd39",
+  "type": "decision",
+  "timestamp": "2026-07-24T21:48:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses BUG-2767's already-shipped comment-block pattern with zero new infrastructure and a one-line test extension; Option B has no existing non-shadowing per-loop-deviation mechanism and would recreate the refine-vs-implement disagreement this issue reports as its defect.",
+  "rule": "Option A \u2014 delete confidence-threshold literals from refine-to-ready-issue.yaml, rn-implement.yaml, rn-remediate.yaml unconditionally",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep rn-implement/rn-remediate at outcome_threshold 75 as a declared, non-shadowing deviation",
+  "issue": "BUG-2768"
+}

@@ -442,7 +442,8 @@ Configuration for the `/ll:review-epic` skill:
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
 `readiness_threshold` / `outcome_threshold` also drive the confidence gates inside the
-`autodev`, `recursive-refine`, and `eval-driven-development` built-in loops. Those loops no
+`autodev`, `recursive-refine`, `eval-driven-development`, `refine-to-ready-issue`,
+`rn-implement`, and `rn-remediate` built-in loops. Those loops no
 longer hardcode the values: at launch the runner seeds `context.readiness_threshold` and
 `context.outcome_threshold` from `commands.confidence_gate.*` (BUG-2767). Precedence, highest
 first:
@@ -452,9 +453,9 @@ first:
 3. `commands.confidence_gate.readiness_threshold` / `.outcome_threshold` in `ll-config.json`
 4. Schema defaults — **85 / 65**
 
-An unconfigured project therefore gates at 85/65 in these loops (previously 90/75). The
-`refine-to-ready-issue` loop still declares its own 85/65 `context:` literals (BUG-2035) and
-reads config directly inside its gate states.
+An unconfigured project therefore gates at 85/65 in **every** built-in loop (BUG-2768
+reconciled the last three loops, which previously pinned 85/65 or 85/75 literals that
+shadowed this config).
 
 When `tdd_mode` is `true`, `manage-issue` splits Phase 3 into Phase 3a (Write Tests — Red) and Phase 3b (Implement — Green). In Phase 3a, tests are written based on the plan's acceptance criteria and must fail against the current codebase. In Phase 3b, implementation code is written to make those tests pass.
 

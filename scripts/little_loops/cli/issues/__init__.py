@@ -580,10 +580,10 @@ Examples:
         na.add_argument(
             "--outcome-threshold",
             type=int,
-            default=70,
+            default=65,
             dest="outcome_threshold",
             metavar="N",
-            help="Minimum outcome_confidence to pass (default: 70)",
+            help="Minimum outcome_confidence to pass (default: 65)",
         )
         add_skip_arg(na)
         add_config_arg(na)
@@ -669,16 +669,16 @@ Examples:
         cr.add_argument(
             "--readiness",
             type=int,
-            default=90,
+            default=85,
             metavar="N",
-            help="Fallback readiness threshold when not set in ll-config.json (default: 90)",
+            help="Fallback readiness threshold when not set in ll-config.json (default: 85)",
         )
         cr.add_argument(
             "--outcome",
             type=int,
-            default=75,
+            default=65,
             metavar="N",
-            help="Fallback outcome threshold when not set in ll-config.json (default: 75)",
+            help="Fallback outcome threshold when not set in ll-config.json (default: 65)",
         )
         add_config_arg(cr)
 

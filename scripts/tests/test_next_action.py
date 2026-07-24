@@ -449,7 +449,7 @@ class TestNextActionConfigFirstThresholds:
         _write_config(temp_project_dir, config)
         bugs_dir = _setup_dirs(temp_project_dir)
 
-        # outcome_confidence=75 passes the argparse default (70) but fails the config value (80)
+        # outcome_confidence=75 passes the argparse default (65) but fails the config value (80)
         _make_issue(
             bugs_dir,
             "P3-BUG-001-test.md",
@@ -470,25 +470,25 @@ class TestNextActionConfigFirstThresholds:
         assert result == 1, "Should NEEDS_REFINE because config outcome threshold (80) > score (75)"
         assert "NEEDS_REFINE BUG-001" in out
 
-    def test_fallback_to_85_70_when_config_key_absent(
+    def test_fallback_to_85_65_when_config_key_absent(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """next-action falls back to 85/70 when confidence_gate keys are absent."""
+        """next-action falls back to the canonical 85/65 pair when confidence_gate keys are absent (BUG-2768)."""
         config = dict(sample_config)
         config["commands"] = {"confidence_gate": {}}  # no readiness_threshold or outcome_threshold
         _write_config(temp_project_dir, config)
         bugs_dir = _setup_dirs(temp_project_dir)
 
-        # scores of 85/70 exactly meet the 85/70 fallbacks → ALL_DONE
+        # scores of 85/65 exactly meet the 85/65 fallbacks → ALL_DONE
         _make_issue(
             bugs_dir,
             "P3-BUG-001-test.md",
             "BUG-001: Test issue",
             confidence_score=85,
-            outcome_confidence=70,
+            outcome_confidence=65,
             session_commands=["/ll:format-issue", "/ll:verify-issues"],
         )
 
@@ -500,26 +500,26 @@ class TestNextActionConfigFirstThresholds:
             result = main_issues()
 
         out = capsys.readouterr().out
-        assert result == 0, "Should ALL_DONE: scores meet 85/70 fallback thresholds"
+        assert result == 0, "Should ALL_DONE: scores meet 85/65 fallback thresholds"
         assert "ALL_DONE" in out
 
-    def test_fallback_to_85_70_when_config_file_missing(
+    def test_fallback_to_85_65_when_config_file_missing(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """next-action falls back to 85/70 when ll-config.json is absent."""
+        """next-action falls back to the canonical 85/65 pair when ll-config.json is absent (BUG-2768)."""
         # Do NOT write a config file — simulate missing config
         bugs_dir = _setup_dirs(temp_project_dir)
 
-        # scores of 84/69 fail the 85/70 fallbacks → NEEDS_REFINE
+        # scores of 85/64 pass readiness but fail the 65 outcome fallback → NEEDS_REFINE
         _make_issue(
             bugs_dir,
             "P3-BUG-001-test.md",
             "BUG-001: Test issue",
-            confidence_score=84,
-            outcome_confidence=69,
+            confidence_score=85,
+            outcome_confidence=64,
             session_commands=["/ll:format-issue", "/ll:verify-issues"],
         )
 
@@ -531,7 +531,7 @@ class TestNextActionConfigFirstThresholds:
             result = main_issues()
 
         out = capsys.readouterr().out
-        assert result == 1, "Should NEEDS_REFINE: scores just below 85/70 fallback thresholds"
+        assert result == 1, "Should NEEDS_REFINE: outcome just below the 65 fallback threshold"
         assert "NEEDS_REFINE BUG-001" in out
 
     def test_cli_args_used_as_fallback_layer(

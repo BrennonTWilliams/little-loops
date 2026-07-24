@@ -718,7 +718,11 @@ def _build_final_config(
     # commands block (confidence_gate + tdd_mode)
     commands: dict[str, Any] = {}
     if "confidence_gate" in selected_set:
-        commands["confidence_gate"] = {"enabled": True, "readiness_threshold": 85}
+        commands["confidence_gate"] = {
+            "enabled": True,
+            "readiness_threshold": 85,
+            "outcome_threshold": 65,
+        }
     if "tdd" in selected_set:
         commands["tdd_mode"] = True
     if commands:

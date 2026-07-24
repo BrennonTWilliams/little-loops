@@ -796,6 +796,7 @@ class TestNewFeatureToggles:
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
         assert config["commands"]["confidence_gate"]["enabled"] is True
         assert config["commands"]["confidence_gate"]["readiness_threshold"] == 85
+        assert config["commands"]["confidence_gate"]["outcome_threshold"] == 65
 
     @patch("little_loops.init.tui.questionary")
     def test_tdd_mode_produces_commands_tdd_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
@@ -1118,6 +1119,7 @@ class TestBuildFinalConfigParity:
         )
         assert config["commands"]["confidence_gate"]["enabled"] is True
         assert config["commands"]["confidence_gate"]["readiness_threshold"] == 85
+        assert config["commands"]["confidence_gate"]["outcome_threshold"] == 65
 
     def test_tdd_key(self, generic_template: object) -> None:
         config = _build_final_config(

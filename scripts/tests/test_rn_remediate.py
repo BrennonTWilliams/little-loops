@@ -1108,8 +1108,8 @@ class TestParameterContract:
         assert param["required"] is True
 
     def test_parameters_thresholds_have_defaults(self) -> None:
-        """readiness_threshold default 85, outcome_threshold default 75,
-        max_remediation_passes default 3."""
+        """readiness_threshold / outcome_threshold are optional integers seeded
+        from commands.confidence_gate (BUG-2768); max_remediation_passes default 3."""
         data = _load_loop()
         params = data["parameters"]
         assert params["readiness_threshold"]["type"] == "integer"
@@ -1158,8 +1158,10 @@ class TestTopLevelDeclarations:
         """Context defaults match the parameter defaults."""
         data = _load_loop()
         ctx = data["context"]
-        assert ctx["readiness_threshold"] == 85
-        assert ctx["outcome_threshold"] == 75
+        # BUG-2768: thresholds must NOT be pinned in context: — they are seeded
+        # at launch from commands.confidence_gate in ll-config.json (BUG-2767).
+        assert "readiness_threshold" not in ctx
+        assert "outcome_threshold" not in ctx
         assert ctx["max_remediation_passes"] == 3
 
     def test_context_has_diagnose_thresholds(self) -> None:
@@ -1516,7 +1518,7 @@ class TestDiagnoseAmbiguityWireDiscrimination:
                 f"CONFIDENCE={confidence}",
                 f"OUTCOME={outcome}",
                 "READINESS_THRESHOLD=85",
-                "OUTCOME_THRESHOLD=75",
+                "OUTCOME_THRESHOLD=65",
                 f"AMBIGUITY={ambiguity}",
                 f"COMPLEXITY={complexity}",
                 f"CHANGE_SURFACE={change_surface}",

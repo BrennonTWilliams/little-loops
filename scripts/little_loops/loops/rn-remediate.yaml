@@ -36,11 +36,11 @@ parameters:
   readiness_threshold:
     type: integer
     required: false
-    description: "Confidence score threshold for readiness gate (default: 85)"
+    description: "Confidence score threshold for readiness gate (seeded from commands.confidence_gate.readiness_threshold in ll-config.json; default 85)"
   outcome_threshold:
     type: integer
     required: false
-    description: "Outcome confidence threshold (default: 75)"
+    description: "Outcome confidence threshold (seeded from commands.confidence_gate.outcome_threshold in ll-config.json; default 65)"
   max_remediation_passes:
     type: integer
     required: false
@@ -55,8 +55,10 @@ parameters:
     description: "Non-empty bypasses the ENH-2319 learning gate in the inner ll-auto --only (parity with ll-auto --skip-learning-gate)"
 
 context:
-  readiness_threshold: 85
-  outcome_threshold: 75
+  # readiness_threshold / outcome_threshold are seeded at launch from
+  # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
+  # (defaults 85 / 65). Declaring them here would shadow that config —
+  # the parent (rn-implement) passes its own seeded values via with: (BUG-2767).
   max_remediation_passes: 3
   # BUG-2007 Defect 2: diagnose routing thresholds, overridable so callers can
   # tune routing to match their score targets. Defaults preserve the prior
