@@ -1,0 +1,12 @@
+{
+  "id": "1b48e659-98c0-4783-a23f-122e6b043f3a",
+  "type": "decision",
+  "timestamp": "2026-07-24T17:54:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FSM executor already routes sub-loop on_yes/on_no purely by final_state==\"done\" name match, so a distinctly-named unevaluated terminal needs zero executor changes; established precedent exists in oracles/code-run-gate.yaml and oracles/generator-evaluator.yaml with a matching BUG-1017 regression test. Option A (content-based evaluate: routing on a loop:-typed state) would be silently inert since _execute_sub_loop never consults state.evaluate.",
+  "rule": "Option B: distinct unevaluated terminal state for rlhf-svg-evaluate sub-loop",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add evaluate:{type: output_contains, pattern: VISION_PASS} to the parent's run_evaluate sub-loop-invoking state",
+  "issue": "BUG-2756"
+}
