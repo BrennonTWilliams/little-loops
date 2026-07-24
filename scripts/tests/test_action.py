@@ -603,7 +603,8 @@ class TestCmdCapabilities:
         assert output["binary"] == "fake"
         assert output["version"] == "claude 1.0.3"
         assert isinstance(output["capabilities"], list)
-        assert isinstance(output["hooks"], list)
+        # BUG-2760: the never-populated ``hooks`` key was removed entirely.
+        assert "hooks" not in output
 
     def test_version_empty_when_host_unavailable(self, capsys: pytest.CaptureFixture) -> None:
         args = _make_namespace(output="json")

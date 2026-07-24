@@ -154,7 +154,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "CapabilityNotSupported", "FEAT-1462"),
     ("docs/reference/API.md", "CapabilityReport", "FEAT-1462"),
     ("docs/reference/API.md", "CapabilityEntry", "FEAT-1462"),
-    ("docs/reference/API.md", "HookEntry", "FEAT-1462"),
+    # REMOVED (stale/false-positive): ("docs/reference/API.md", "HookEntry", "FEAT-1462"),  # BUG-2760: dead surface deleted
     ("docs/reference/API.md", "describe_capabilities", "FEAT-1462"),
     ("docs/reference/API.md", "Orchestration", "FEAT-1462"),
     ("docs/reference/COMMANDS.md", "### `/ll:review-epic`", "FEAT-1856"),

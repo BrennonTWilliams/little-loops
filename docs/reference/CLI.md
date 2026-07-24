@@ -227,7 +227,7 @@ ll-harness dsl evals/dsl/my-loop/ --model claude-haiku-4-5-20251001
 
 ### ll-doctor
 
-Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output) and one `HookEntry` per registered hook event.
+Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output).
 
 **Flags:**
 - `-j`, `--json` — emit the `CapabilityReport` as JSON instead of the human-readable table.
@@ -245,11 +245,6 @@ Capabilities
   ✓  permission_skip
   ✓  agent_select
   ○  tool_allowlist  (flag accepted but not validated)
-
-Hooks
-────────────────────────────────────────
-  ✓  pre_tool_use
-  ○  post_tool_use
 
 Analytics Capture
 ────────────────────────────────────────

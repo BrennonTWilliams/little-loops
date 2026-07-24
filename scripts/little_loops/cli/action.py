@@ -361,7 +361,6 @@ def cmd_capabilities(args: argparse.Namespace) -> int:
             "capabilities": [
                 {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
             ],
-            "hooks": [{"name": h.name, "status": h.status, "note": h.note} for h in report.hooks],
         }
     )
     return 0

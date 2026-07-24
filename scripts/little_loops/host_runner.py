@@ -48,7 +48,6 @@ __all__ = [
     "ClaudeCodeRunner",
     "CodexRunner",
     "GeminiRunner",
-    "HookEntry",
     "HostCapabilities",
     "HostInvocation",
     "HostNotConfigured",
@@ -142,31 +141,18 @@ class CapabilityEntry:
 
 
 @dataclass(frozen=True)
-class HookEntry:
-    """A single hook's installation status for a given host.
-
-    ``status`` is one of ``"installed"``, ``"registered"``, ``"deferred"``, or ``"absent"``.
-    """
-
-    name: str
-    status: Literal["installed", "registered", "deferred", "absent"]
-    note: str = ""
-
-
-@dataclass(frozen=True)
 class CapabilityReport:
-    """Full capability and hook report for one host runner.
+    """Full capability report for one host runner.
 
     Returned by :meth:`HostRunner.describe_capabilities`. Consumers (e.g. the
-    ``ll-doctor`` CLI) iterate ``capabilities`` and ``hooks`` to produce a
-    tabular preflight report.
+    ``ll-doctor`` CLI) iterate ``capabilities`` to produce a tabular preflight
+    report.
     """
 
     host: str
     binary: str
     version: str
     capabilities: list[CapabilityEntry] = field(default_factory=list)
-    hooks: list[HookEntry] = field(default_factory=list)
 
 
 @runtime_checkable

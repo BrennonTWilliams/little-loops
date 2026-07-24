@@ -15,10 +15,6 @@ _STATUS_SYMBOLS: dict[str, str] = {
     "full": "✓",
     "partial": "○",
     "unsupported": "✗",
-    "installed": "✓",
-    "registered": "○",
-    "deferred": "○",
-    "absent": "✗",
 }
 
 
@@ -70,7 +66,6 @@ def _print_report(report: object, *, json_mode: bool = False) -> None:
             "capabilities": [
                 {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
             ],
-            "hooks": [{"name": h.name, "status": h.status, "note": h.note} for h in report.hooks],
         }
         print(json.dumps(data, indent=2))
         return
@@ -88,21 +83,12 @@ def _print_report(report: object, *, json_mode: bool = False) -> None:
             note = f"  {cap.note}" if cap.note else ""
             print(f"  {symbol}  {cap.name}{note}")
 
-    if report.hooks:
-        print()
-        print("Hooks")
-        print("─" * 40)
-        for hook in report.hooks:
-            symbol = _STATUS_SYMBOLS.get(hook.status, "?")
-            note = f"  {hook.note}" if hook.note else ""
-            print(f"  {symbol}  {hook.name}{note}")
-
 
 def main_doctor(argv: list[str] | None = None) -> int:
     """Entry point for ll-doctor command.
 
     Resolve the active host and print a ✓/✗/○ capability table covering
-    invocation modes and per-hook installation status.
+    invocation modes.
 
     Returns:
         Exit code (0 = all capabilities present, 1 = critical capability missing)

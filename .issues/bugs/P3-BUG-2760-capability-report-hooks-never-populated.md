@@ -2,8 +2,9 @@
 id: BUG-2760
 type: bug
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-24T19:36:28Z'
+completed_at: '2026-07-24T21:21:46Z'
 discovered_date: 2026-07-24
 discovered_by: capture-issue
 parent: EPIC-2765
@@ -441,7 +442,58 @@ _Added by `/ll:confidence-check` on 2026-07-24_
   test files, and 3 docs files, each individually a contained/local change but
   collectively a wide surface to touch consistently.
 
+## Resolution
+
+_Resolved 2026-07-24 via `/ll:manage-issue` — **Option B (remove the dead surface)** as decided._
+
+Deleted the never-populated `CapabilityReport.hooks` surface end-to-end:
+
+- `scripts/little_loops/host_runner.py` — removed the `HookEntry` dataclass, the
+  `CapabilityReport.hooks` field, and the `"HookEntry"` `__all__` entry. No
+  `describe_capabilities()` body needed changing (none passed `hooks=`), so this
+  fix carries zero merge overlap with the sibling BUG-2759 work.
+- `scripts/little_loops/cli/doctor.py` — removed the unreachable `if report.hooks:`
+  rendering branch, the `"hooks"` JSON key, the four hook-only `_STATUS_SYMBOLS`
+  keys (`installed`/`registered`/`deferred`/`absent` — their glyphs duplicated the
+  surviving capability-side values, so this was a pure deletion), and the stale
+  "per-hook installation status" clause in `main_doctor`'s docstring.
+- `scripts/little_loops/cli/action.py` — removed the `"hooks"` key from
+  `cmd_capabilities()`'s JSON payload.
+- `scripts/little_loops/__init__.py` — dropped the `HookEntry` import and `__all__`
+  entry in lockstep.
+- Tests: deleted `test_hooks_section_printed_when_hooks_present` and the `HookEntry`
+  import in `test_cli_doctor.py`; converted the three surviving `hooks` assertions
+  into regression asserts that the key/field is *gone*
+  (`test_cli_doctor.py`, `test_action.py::TestCmdCapabilities`,
+  `test_host_runner.py::test_capability_report_defaults`); marked
+  `test_wiring_reference_docs.py:157` as `# REMOVED (stale/false-positive)` per the
+  file's existing convention.
+- Docs: dropped the unfulfilled per-hook claims in `HOST_COMPATIBILITY.md:312` and
+  `CLI.md:230` (including the populated `Hooks` example block), removed the
+  `HookEntry` row in `ARCHITECTURE.md` and trimmed the `CapabilityReport` row's
+  field list, and removed `API.md`'s `### HookEntry` section, the `hooks:`
+  dataclass line, the `hooks` field-table row, and the `HookEntry` mentions in the
+  import block and `__all__` listing.
+
+**Surface change**: `ll-action capabilities --output json` and `ll-doctor --json`
+no longer emit a `hooks` key. It was always `[]` on every real host, so the
+observed *value* is unchanged for any consumer not doing strict key-presence
+checks. `little_loops.HookEntry` is likewise no longer importable.
+
+### Verification
+
+- `python -m pytest scripts/tests/` — 16,102 passed, 38 skipped, 1 failed.
+  The single failure is **pre-existing and unrelated**:
+  `test_wiring_guides_and_meta.py::test_string_present_in_doc[README.md-39 typed CLI tools-FEAT-1045]`
+  (README is unmodified by this change and does not contain the asserted string;
+  it last changed in `198796c7`, the BUG-2753 host-adapter doc fix).
+- `ruff check scripts/` — clean. `python -m mypy scripts/little_loops/` — clean
+  (271 files).
+- Smoke: `ll-doctor` exits 0 with no `Hooks` section; `ll-action capabilities
+  --output json` emits no `hooks` key.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-24T21:21:14Z - `c850cbfe-8f9d-41e4-867a-bb2efc65709b.jsonl`
 - `/ll:ready-issue` - 2026-07-24T21:09:12 - `ff1927cb-2c86-4f5d-a098-60c66bc1617e.jsonl`
 - `/ll:confidence-check` - 2026-07-24T21:20:00 - `66acd153-caee-48f4-966c-575333b4373a.jsonl`
 - `/ll:decide-issue` - 2026-07-24T21:05:24 - `fe604afd-9cae-4551-acd4-0503d61e5326.jsonl`

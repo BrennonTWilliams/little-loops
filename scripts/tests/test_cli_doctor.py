@@ -13,7 +13,6 @@ from little_loops.host_runner import (
     CapabilityEntry,
     CapabilityReport,
     ClaudeCodeRunner,
-    HookEntry,
 )
 
 
@@ -241,42 +240,13 @@ class TestMainDoctor:
         output = "\n".join(lines)
         assert "no inline schema flag" in output
 
-    def test_hooks_section_printed_when_hooks_present(self) -> None:
-        """Text output includes hooks section when hooks are present."""
-        report = CapabilityReport(
-            host="claude-code",
-            binary="claude",
-            version="",
-            capabilities=[],
-            hooks=[
-                HookEntry("pre_tool_use", "installed"),
-                HookEntry("post_tool_use", "absent"),
-            ],
-        )
-        runner = _make_runner(report)
-        lines, side_effect = _capture_print()
-
-        with (
-            patch("sys.argv", ["ll-doctor"]),
-            patch("little_loops.host_runner.resolve_host", return_value=runner),
-            patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
-            patch("builtins.print", side_effect=side_effect),
-        ):
-            main_doctor()
-
-        output = "\n".join(lines)
-        assert "pre_tool_use" in output
-        assert "post_tool_use" in output
-
     def test_json_output_flag(self) -> None:
-        """--json flag outputs valid JSON with host, capabilities, and hooks keys."""
+        """--json flag outputs valid JSON with host and capabilities keys."""
         report = CapabilityReport(
             host="claude-code",
             binary="claude",
             version="",
             capabilities=[CapabilityEntry("streaming", "full")],
-            hooks=[],
         )
         runner = _make_runner(report)
         lines, side_effect = _capture_print()
@@ -297,7 +267,8 @@ class TestMainDoctor:
         assert len(data["capabilities"]) == 1
         assert data["capabilities"][0]["name"] == "streaming"
         assert data["capabilities"][0]["status"] == "full"
-        assert "hooks" in data
+        # BUG-2760: the never-populated ``hooks`` key was removed entirely.
+        assert "hooks" not in data
 
     def test_json_short_flag(self) -> None:
         """-j is accepted as shorthand for --json."""

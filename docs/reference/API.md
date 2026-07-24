@@ -8586,13 +8586,12 @@ from little_loops.host_runner import (
     HostInvocation,
     HostNotConfigured,
     HostRunner,
-    HookEntry,
     apply_host_cli_from_config,
     resolve_host,
 )
 ```
 
-Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "GeminiRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "HookEntry", "OmpRunner", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
+Public surface — `__all__ = ["CapabilityEntry", "CapabilityNotSupported", "CapabilityReport", "ClaudeCodeRunner", "CodexRunner", "GeminiRunner", "HostCapabilities", "HostInvocation", "HostNotConfigured", "HostRunner", "OmpRunner", "OpenCodeRunner", "PiRunner", "apply_host_cli_from_config", "resolve_host"]`.
 
 ### HostInvocation
 
@@ -8707,26 +8706,6 @@ class CapabilityEntry:
 | `status` | `Literal["full", "partial", "unsupported"]` | *(required)* | Support level on the active host. |
 | `note` | `str` | `""` | Optional human-readable clarification (e.g., `"flag accepted but not validated"`). |
 
-### HookEntry
-
-Immutable value object describing the installation status of a single hook event.
-
-```python
-@dataclass(frozen=True)
-class HookEntry:
-    name: str
-    status: Literal["installed", "registered", "deferred", "absent"]
-    note: str = ""
-```
-
-**Fields:**
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `name` | `str` | *(required)* | Hook event name (e.g., `"pre_tool_use"`, `"post_tool_use"`). |
-| `status` | `Literal["installed", "registered", "deferred", "absent"]` | *(required)* | Whether the hook is active on this host. |
-| `note` | `str` | `""` | Optional clarification. |
-
 ### CapabilityReport
 
 Aggregated result of `describe_capabilities()`. Produced by every `HostRunner` implementation and consumed by `ll-doctor` and `ll-action capabilities`.
@@ -8738,7 +8717,6 @@ class CapabilityReport:
     binary: str
     version: str
     capabilities: list[CapabilityEntry]
-    hooks: list[HookEntry]
 ```
 
 **Fields:**
@@ -8749,7 +8727,6 @@ class CapabilityReport:
 | `binary` | `str` | Resolved binary path (e.g., `"/usr/local/bin/claude"`). |
 | `version` | `str` | Version string reported by the host, or `"unknown"` if detection fails. |
 | `capabilities` | `list[CapabilityEntry]` | One entry per capability probe. |
-| `hooks` | `list[HookEntry]` | One entry per registered hook event. |
 
 ### describe_capabilities
 

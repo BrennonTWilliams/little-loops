@@ -997,7 +997,8 @@ class TestCapabilityReport:
     def test_capability_report_defaults(self) -> None:
         report = CapabilityReport(host="h", binary="b", version="1.0")
         assert report.capabilities == []
-        assert report.hooks == []
+        # BUG-2760: the never-populated ``hooks`` field was removed entirely.
+        assert not hasattr(report, "hooks")
 
     def test_capability_report_round_trip(self) -> None:
         entries = [
