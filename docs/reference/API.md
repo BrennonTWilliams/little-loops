@@ -2561,6 +2561,43 @@ defer_issue(info, config, logger, reason="Blocked pending design review")
 new_path = undefer_issue(config, Path(".issues/features/P3-FEAT-042-example.md"), logger)
 ```
 
+### FailureType / classify_failure
+
+```python
+class FailureType(Enum):
+    TRANSIENT = "transient"          # temporary error, don't create a bug issue
+    NON_RECOVERABLE = "non_recoverable"  # auth/credential failure — retry won't help
+    REAL = "real"                    # actual bug/error, create an issue
+    INFRA_RETRY = "infra_retry"      # host-CLI teardown after output was already produced
+
+def classify_failure(
+    error_output: str, returncode: int, result_seen: bool = False
+) -> tuple[FailureType, str]
+```
+
+Classifies a command failure by scanning `error_output` for known transient
+patterns (API quota/rate-limit text, network errors, timeouts) and credential
+failures, falling back to `REAL` when nothing matches. `FSMExecutor` uses this
+to decide whether a failed state should retry, defer, or route to `on_error`
+without ever creating a spurious bug issue for a transient blip.
+
+`INFRA_RETRY` (BUG-2731) is checked first, ahead of any text pattern: when
+`returncode == 143` (SIGTERM) and `result_seen=True`, the failure is classified
+as infra teardown rather than a real error. This covers the headless host CLI
+reaping a still-running subagent process group when the top-level turn ends —
+a clean kill with no distinguishing error text, but one that occurred *after*
+a stream-json `"result"` event was already observed, so discarding the
+in-flight work as a genuine failure would be wrong. `result_seen` is threaded
+through from `ActionResult.result_seen`, populated only for host-CLI actions.
+The executor retries `INFRA_RETRY` failures via `_handle_infra_retry()`
+(`_DEFAULT_INFRA_RETRY_RETRIES` attempts, `_DEFAULT_INFRA_RETRY_BACKOFF`
+seconds apart — mirroring `_handle_api_error()`'s shape but with a short flat
+backoff since it's re-running an already-completed action, not waiting on an
+external service), emitting `InfraRetryVariant`/`InfraRetryExhaustedVariant`
+DES events. `ll-logs scan-failures` and `ll-loop test`'s simulated-failure path
+also treat `INFRA_RETRY` as a non-bug-worthy classification alongside
+`TRANSIENT`/`NON_RECOVERABLE`.
+
 ---
 
 ## little_loops.state
