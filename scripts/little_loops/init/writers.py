@@ -48,8 +48,14 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-ctx-stats:*)",
     "Bash(ll-adapt:*)",
     "Bash(ll-harness:*)",
-    "Write(.ll/ll-continue-prompt.md)",
+    # Claude Code's file-permission check only consults Edit(path) rules; a single
+    # Edit(...) rule covers every file-editing tool (Write, Edit, NotebookEdit).
+    "Edit(.ll/ll-continue-prompt.md)",
 )
+
+# Retired canonical entries swept from ``permissions.allow`` on re-init so a
+# project initialized by an older ll-init doesn't keep a dead rule (BUG-2758).
+_LEGACY_LL_PERMISSIONS: tuple[str, ...] = ("Write(.ll/ll-continue-prompt.md)",)
 
 _ISSUE_SUBDIRS: tuple[str, ...] = (
     "bugs",
@@ -205,14 +211,14 @@ def merge_settings(
     """Merge ll- CLI tool permissions into a Claude Code settings file.
 
     Idempotency sweep: removes stale ``Bash(ll-*`` and
-    ``Write(.ll/ll-continue-prompt.md)`` entries before re-appending the
-    canonical list.
+    ``Edit(.ll/ll-continue-prompt.md)`` entries before re-appending the
+    canonical list, plus any retired entry in ``_LEGACY_LL_PERMISSIONS``.
 
     Args:
         project_root: Project root directory.
         settings_file: Relative path to target settings JSON file.
         extra_permissions: Additional entries inserted before the trailing
-            ``Write(.ll/ll-continue-prompt.md)`` entry.
+            ``Edit(.ll/ll-continue-prompt.md)`` entry.
         dry_run: If True, print the target path; do not write.
     """
     target = project_root / settings_file
@@ -229,10 +235,12 @@ def merge_settings(
 
     # Idempotency sweep — remove only canonical ll entries; preserve user-added Bash(ll-*) permissions.
     allow = [e for e in allow if e not in _LL_PERMISSIONS]
+    # Migration sweep — drop entries this writer used to emit but no longer does.
+    allow = [e for e in allow if e not in _LEGACY_LL_PERMISSIONS]
     if extra_permissions:
         allow = [e for e in allow if e not in extra_permissions]
 
-    # Build canonical list (insert extras before trailing Write entry)
+    # Build canonical list (insert extras before trailing handoff-prompt entry)
     canonical = list(_LL_PERMISSIONS)
     if extra_permissions:
         canonical = canonical[:-1] + list(extra_permissions) + [canonical[-1]]

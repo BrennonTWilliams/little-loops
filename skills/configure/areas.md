@@ -846,7 +846,7 @@ questions:
     question: "Which ll- CLI commands should be allowed?"
     options:
       - label: "All ll- commands (Recommended)"
-        description: "Authorize all 31 ll- CLI tools and handoff write: ll-action, ll-harness, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-session, ll-history, ll-history-context, ll-deps, ll-sync, ll-verify-docs, ll-verify-skills, ll-verify-design-tokens, ll-verify-des-audit, ll-check-links, ll-gitignore, ll-migrate, ll-migrate-relationships, ll-migrate-status, ll-create-extension, ll-learning-tests, ll-logs, ll-generate-skill-descriptions, ll-adapt, ll-doctor, ll-ctx-stats, Write(.ll/ll-continue-prompt.md)"
+        description: "Authorize all 31 ll- CLI tools and handoff write: ll-action, ll-harness, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-session, ll-history, ll-history-context, ll-deps, ll-sync, ll-verify-docs, ll-verify-skills, ll-verify-design-tokens, ll-verify-des-audit, ll-check-links, ll-gitignore, ll-migrate, ll-migrate-relationships, ll-migrate-status, ll-create-extension, ll-learning-tests, ll-logs, ll-generate-skill-descriptions, ll-adapt, ll-doctor, ll-ctx-stats, Edit(.ll/ll-continue-prompt.md)"
       - label: "Keep current"
         description: "Keep existing entries without changes"
     multiSelect: false
@@ -855,11 +855,11 @@ questions:
 **Configuration result**: Perform the merge on the chosen target file using the same logic as SKILL.md Step 10:
 1. Read target file (or start with `{"permissions": {"allow": [], "deny": []}}` if absent)
 2. Remove all existing `Bash(ll-` entries from `permissions.allow`
-3. Remove any existing `Write(.ll/ll-continue-prompt.md)` entry from `permissions.allow`
+3. Remove any existing `Edit(.ll/ll-continue-prompt.md)` entry — and the legacy `Write(.ll/ll-continue-prompt.md)` form — from `permissions.allow`
 4. Append the canonical allow entries (if "All ll- commands" selected)
 5. Write result back with 2-space indent, preserving all top-level keys
 
-If "Skip / Remove entries" selected, remove all `Bash(ll-` entries and any `Write(.ll/ll-continue-prompt.md)` entry from both files (if they exist) and skip writing.
+If "Skip / Remove entries" selected, remove all `Bash(ll-` entries and any `Edit(.ll/ll-continue-prompt.md)` entry (plus the legacy `Write(.ll/ll-continue-prompt.md)` form) from both files (if they exist) and skip writing.
 
 ---
 

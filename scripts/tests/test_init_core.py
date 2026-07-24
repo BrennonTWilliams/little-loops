@@ -927,7 +927,7 @@ class TestMergeSettings:
             json.dumps(
                 {
                     "permissions": {
-                        "allow": ["Bash(ll-action:*)", "Write(.ll/ll-continue-prompt.md)"]
+                        "allow": ["Bash(ll-action:*)", "Edit(.ll/ll-continue-prompt.md)"]
                     }
                 }
             )
@@ -937,7 +937,19 @@ class TestMergeSettings:
         allow = data["permissions"]["allow"]
         # Canonical entries must appear exactly once after merge (idempotent).
         assert sum(1 for e in allow if e == "Bash(ll-action:*)") == 1
-        assert sum(1 for e in allow if e == "Write(.ll/ll-continue-prompt.md)") == 1
+        assert sum(1 for e in allow if e == "Edit(.ll/ll-continue-prompt.md)") == 1
+
+    def test_migrates_legacy_write_handoff_permission(self, tmp_project: Path) -> None:
+        """Legacy Write(...) handoff rule is replaced by the Edit(...) form (BUG-2758)."""
+        target = tmp_project / ".claude" / "settings.local.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps({"permissions": {"allow": ["Write(.ll/ll-continue-prompt.md)"]}})
+        )
+        merge_settings(tmp_project)
+        allow = json.loads(target.read_text())["permissions"]["allow"]
+        assert sum(1 for e in allow if e == "Edit(.ll/ll-continue-prompt.md)") == 1
+        assert "Write(.ll/ll-continue-prompt.md)" not in allow
 
     def test_preserves_custom_ll_prefix_permissions(self, tmp_project: Path) -> None:
         target = tmp_project / ".claude" / "settings.local.json"
@@ -954,8 +966,8 @@ class TestMergeSettings:
         data = json.loads((tmp_project / ".claude" / "settings.local.json").read_text())
         allow = data["permissions"]["allow"]
         assert "Skill(ll:explore-api)" in allow
-        # Must appear before the trailing Write entry
-        write_idx = allow.index("Write(.ll/ll-continue-prompt.md)")
+        # Must appear before the trailing handoff-prompt entry
+        write_idx = allow.index("Edit(.ll/ll-continue-prompt.md)")
         skill_idx = allow.index("Skill(ll:explore-api)")
         assert skill_idx < write_idx
 
