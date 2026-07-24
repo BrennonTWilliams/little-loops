@@ -878,6 +878,14 @@ class FSMExecutor:
             }
             child_fsm.context = {**self.fsm.context, **captured_as_context, **child_fsm.context}
 
+        # BUG-2767: a child loop launched here never passes through cli/loop/run.py,
+        # so it must seed its own confidence-gate thresholds from config. Anything
+        # already bound (with:, passthrough, or the child's own context: literals)
+        # wins, matching the CLI path's precedence.
+        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+
+        seed_confidence_thresholds(child_fsm.context)
+
         # ENH-2609: per-state worktree attach. state.worktree is a branch-name
         # template; empty after interpolation is a strict no-op so loop YAMLs can
         # gate it on a captured value (e.g. checkout_epic_branch's output). The

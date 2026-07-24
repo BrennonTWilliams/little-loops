@@ -700,6 +700,13 @@ config:
 
 Precedence, highest first: CLI flags → loop `config:` block → global `ll-config.json` → schema defaults. Supported keys: `handoff_threshold`, `commands.confidence_gate.readiness_threshold`, `commands.confidence_gate.outcome_threshold`, `automation.max_continuations` (alias `continuation.max_continuations`). Use `ll-loop show <name>` to see which overrides are active.
 
+> **Status note (BUG-2767):** only `handoff_threshold` and `automation.max_continuations` are
+> applied at runtime today. The block's `commands.confidence_gate.*` keys parse and display
+> (`ll-loop info`) but have no runtime consumer — the aspirational half of the chain above.
+> Confidence-gate thresholds are instead seeded into `context.readiness_threshold` /
+> `context.outcome_threshold` directly from `ll-config.json` at launch, so use
+> `--context readiness_threshold=NN` or `commands.confidence_gate.*` to control them.
+
 ### Project-Wide Run Defaults
 
 The `loops.run_defaults` block in `.ll/ll-config.json` lets you declare persistent defaults for `ll-loop run` flags so you don't have to retype them every invocation:

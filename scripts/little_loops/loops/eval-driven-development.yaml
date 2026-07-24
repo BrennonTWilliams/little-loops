@@ -13,8 +13,10 @@ import:
   - lib/common.yaml
 context:
   harness_name: ""            # required: name of harness loop to run
-  readiness_threshold: 90     # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
-  outcome_threshold: 75       # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+  # readiness_threshold / outcome_threshold are seeded at launch from
+  # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
+  # (defaults 85 / 65). Declaring them here would shadow that config —
+  # override per-run with `--context readiness_threshold=NN` instead (BUG-2767).
 
 states:
 

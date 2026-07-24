@@ -5795,10 +5795,15 @@ class TestRecursiveRefineLoop:
         assert "--auto" in action
 
     def test_context_thresholds_defined(self, data: dict) -> None:
-        """context block must define the three threshold/limit variables."""
+        """context block must define the refine limits, and must NOT pin the gate thresholds.
+
+        BUG-2767: readiness_threshold/outcome_threshold are deliberately absent so
+        the runner can seed them from commands.confidence_gate.*; a literal here
+        would shadow project config.
+        """
         ctx = data.get("context", {})
-        assert "readiness_threshold" in ctx
-        assert "outcome_threshold" in ctx
+        assert "readiness_threshold" not in ctx
+        assert "outcome_threshold" not in ctx
         assert "max_refine_count" in ctx
         assert "max_depth" in ctx
 
@@ -5956,9 +5961,7 @@ class TestRecursiveRefineLoop:
             "enqueue_children must NOT move the parent to legacy .issues/completed/"
         )
 
-    def test_enqueue_or_skip_closes_parent_in_place_when_children_found(
-        self, data: dict
-    ) -> None:
+    def test_enqueue_or_skip_closes_parent_in_place_when_children_found(self, data: dict) -> None:
         """enqueue_or_skip children-found branch must close the parent in place
         (finalize-decomposition), never recreating legacy .issues/completed/."""
         state = data["states"].get("enqueue_or_skip", {})
@@ -12379,3 +12382,47 @@ class TestWorkflowGeneratorLoop:
         ):
             action = data["states"][name].get("action", "") or ""
             assert "run_dir" in action, f"{name} must reference run_dir"
+
+
+class TestConfidenceGateThresholdsNotHardcoded:
+    """BUG-2767: gate-driving loops must not pin thresholds in their context: block.
+
+    A YAML-declared literal shadows the config seeding applied by
+    ``seed_confidence_thresholds`` (``--context`` > YAML literal > config), so a
+    project's ``commands.confidence_gate.*`` setting would be silently ignored.
+    """
+
+    LOOPS = ("autodev", "recursive-refine", "eval-driven-development")
+
+    @pytest.mark.parametrize("loop_name", LOOPS)
+    def test_thresholds_absent_from_context(self, loop_name: str) -> None:
+        data = yaml.safe_load((BUILTIN_LOOPS_DIR / f"{loop_name}.yaml").read_text())
+        ctx = data.get("context") or {}
+        assert "readiness_threshold" not in ctx, (
+            f"{loop_name}.yaml pins readiness_threshold, shadowing commands.confidence_gate"
+        )
+        assert "outcome_threshold" not in ctx, (
+            f"{loop_name}.yaml pins outcome_threshold, shadowing commands.confidence_gate"
+        )
+
+    @pytest.mark.parametrize("loop_name", LOOPS)
+    def test_no_misleading_canonical_comment(self, loop_name: str) -> None:
+        text = (BUILTIN_LOOPS_DIR / f"{loop_name}.yaml").read_text()
+        for line in text.splitlines():
+            if "canonical: commands.confidence_gate" in line:
+                raise AssertionError(
+                    f"{loop_name}.yaml still carries the misleading comment: {line}"
+                )
+
+    @pytest.mark.parametrize("loop_name", LOOPS)
+    def test_seeding_supplies_the_referenced_thresholds(self, loop_name: str) -> None:
+        """Every ${context.*_threshold} reference resolves via config seeding."""
+        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+
+        data = yaml.safe_load((BUILTIN_LOOPS_DIR / f"{loop_name}.yaml").read_text())
+        ctx = dict(data.get("context") or {})
+        seed_confidence_thresholds(ctx)
+        text = json.dumps(data)
+        for key in ("readiness_threshold", "outcome_threshold"):
+            if f"context.{key}" in text:
+                assert isinstance(ctx.get(key), int)

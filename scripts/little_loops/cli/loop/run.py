@@ -24,6 +24,7 @@ from little_loops.cli.loop._helpers import (
     resolve_loop_path,
     run_background,
     run_foreground,
+    seed_confidence_thresholds,
     with_diagram_color,
 )
 from little_loops.logger import Logger
@@ -233,6 +234,10 @@ def cmd_run(
     # --context include=VALUE (already applied above) takes precedence.
     if "include" not in fsm.context and _config.loops.run_defaults.include:
         fsm.context["include"] = _config.loops.run_defaults.include
+
+    # Seed confidence-gate thresholds from config (BUG-2767).
+    # --context / loop YAML context: values (already applied above) take precedence.
+    seed_confidence_thresholds(fsm.context, _config)
 
     if not fsm.context.get("design_tokens_context"):
         _tokens = load_design_tokens(_config)

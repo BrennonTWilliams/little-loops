@@ -1338,6 +1338,35 @@ def _render_artifact_header_lines(
     return [_truncate_to_width_ansi(line, cols) for line in merged]
 
 
+def seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> None:
+    """Seed ``readiness_threshold`` / ``outcome_threshold`` from ll-config (BUG-2767).
+
+    Resolves ``commands.confidence_gate.readiness_threshold`` and
+    ``.outcome_threshold`` into the FSM context so loops that gate on
+    ``${context.readiness_threshold}`` honor project configuration instead of a
+    hardcoded literal. Keys already present win, which gives the precedence
+    chain: ``--context`` override > loop YAML ``context:`` literal >
+    ``commands.confidence_gate.*`` > ``ConfidenceGateConfig`` defaults (85/65).
+
+    Args:
+        context: The FSM context dict, mutated in place.
+        config: An optional pre-built ``BRConfig``; loaded from the cwd if omitted.
+    """
+    if "readiness_threshold" in context and "outcome_threshold" in context:
+        return
+
+    if config is None:
+        from little_loops.config import BRConfig
+
+        config = BRConfig(Path.cwd())
+
+    gate = config.commands.confidence_gate
+    if "readiness_threshold" not in context:
+        context["readiness_threshold"] = gate.readiness_threshold
+    if "outcome_threshold" not in context:
+        context["outcome_threshold"] = gate.outcome_threshold
+
+
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
     """Resolve loop name to file path."""
     path = Path(name_or_path)

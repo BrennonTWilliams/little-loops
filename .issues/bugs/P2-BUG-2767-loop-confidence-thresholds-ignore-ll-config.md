@@ -3,7 +3,7 @@ id: BUG-2767
 title: Built-in loops hardcode confidence thresholds and never read commands.confidence_gate
   from ll-config
 type: bug
-status: open
+status: done
 priority: P2
 labels:
 - bug
@@ -11,6 +11,7 @@ labels:
 - config
 - loops
 captured_at: 2026-07-24
+completed_at: '2026-07-24T21:39:46Z'
 discovered_date: 2026-07-24
 discovered_by: capture-issue
 discovered_commit: 8926f14b
@@ -298,7 +299,50 @@ _Added by `/ll:confidence-check` on 2026-07-24_
 ### Outcome Risk Factors
 - Change surface spans ~8 files across two layers (seeding logic in `run.py`/`lifecycle.py`, three loop YAMLs, one new test class, one existing test update, two docs). Steps 8, 9, and 10 — previously open sub-decisions — are now all marked Resolved in Implementation Steps, so this is largely mechanical execution against an already-decided design rather than judgment calls made mid-implementation.
 
+## Resolution
+
+_Implemented 2026-07-24 via Option B (context-default seeding)._
+
+**Seeding helper.** `seed_confidence_thresholds(context, config=None)` in
+`scripts/little_loops/cli/loop/_helpers.py` fills `readiness_threshold` /
+`outcome_threshold` from `commands.confidence_gate.*`, skipping any key already
+present. Precedence: `--context` > loop YAML `context:` literal >
+`commands.confidence_gate.*` > `ConfidenceGateConfig` defaults (85/65).
+
+**Call sites (three, not two).** `cli/loop/run.py` (beside the existing
+`loops.run_defaults.include` injection) and `cli/loop/lifecycle.py` (the separate
+resume launch path, per step 8) — plus `fsm/executor.py::_execute_sub_loop`,
+which step 8 did not anticipate. That third site is load-bearing: `autodev` and
+`recursive-refine` are invoked as sub-loops by `scan-and-implement`,
+`auto-refine-and-implement`, `issue-refinement`, `rn-build`, and
+`sprint-build-and-validate`, and a child FSM never passes through `run.py`.
+Without it, removing the YAML literals would have raised `InterpolationError` on
+every sub-loop invocation.
+
+**Loop YAMLs.** The `context.readiness_threshold` / `outcome_threshold` literals
+were removed from `autodev.yaml`, `recursive-refine.yaml`, and
+`eval-driven-development.yaml` (a literal shadows the seeding under the same
+guard that makes `--context` win) and replaced with a comment naming the config
+key. The misleading `# canonical:` comments are gone.
+
+**Out of scope, deliberately.** `refine-to-ready-issue.yaml` keeps its own 85/65
+literals — `test_builtin_loops.py:1665` pins them under BUG-2035, and its gate
+states already read `commands.confidence_gate` directly. `LoopConfigOverrides`
+stays display-only per step 9; `LOOPS_GUIDE.md`'s `config:`-block precedence
+chain is now labeled aspirational rather than implemented.
+
+**Behavior change:** unconfigured projects now gate at 85/65 instead of 90/75
+(step 10 — intentional, called out in the changelog).
+
+**Verification:** `python -m pytest scripts/tests/` → 16115 passed, 38 skipped.
+(One unrelated pre-existing failure, `test_string_present_in_doc[README.md-39
+typed CLI tools]`, reproduces on clean `main`.) `ruff check` clean, `mypy` clean,
+`ll-loop validate` passes for all three loops with no new warnings.
+`ll-loop show autodev` now prints `gate: readiness_threshold=85,
+outcome_threshold=65`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-24T21:39:14Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/15d1fb18-c849-4828-aeff-4a5464ee6ee8.jsonl`
 - `/ll:confidence-check` - 2026-07-24T22:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/806d3d5d-9481-4f49-9763-99583ba281d1.jsonl`
 - `/ll:wire-issue` - 2026-07-24T20:38:19 - `4083d30b-3c26-4c92-a9d7-cef0b98ab1cb.jsonl`
 - `/ll:decide-issue` - 2026-07-24T20:09:38 - `9011fd25-bf92-4159-a529-61f1828a9755.jsonl`

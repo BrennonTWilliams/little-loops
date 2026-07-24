@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 
 # Drop redundant filesystem prefixes from loop-name display. These mirror the
@@ -1557,6 +1558,20 @@ def cmd_show(
             cfg_parts.append(f"max_continuations={fsm.config.max_continuations}")
         if cfg_parts:
             config_parts.append(f"config: {', '.join(cfg_parts)}")
+    # BUG-2767: show the confidence-gate thresholds this loop will actually gate
+    # on. For loops that don't declare them in `context:`, the runner seeds them
+    # from commands.confidence_gate.*, so the literal spec alone is misleading.
+    _gate_keys = ("readiness_threshold", "outcome_threshold")
+    if any(f"context.{key}" in json.dumps(spec) for key in _gate_keys):
+        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+
+        _resolved = dict(fsm.context)
+        seed_confidence_thresholds(_resolved)
+        config_parts.append(
+            "gate: "
+            + ", ".join(f"{key}={_resolved[key]}" for key in _gate_keys if key in _resolved)
+        )
+
     imports = spec.get("import", [])
     if imports:
         config_parts.append(f"imports: {', '.join(imports)}")

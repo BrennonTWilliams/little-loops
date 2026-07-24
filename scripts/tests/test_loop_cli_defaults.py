@@ -430,3 +430,107 @@ class TestLoopRunIncludeContextInjection:
 
         assert captured_contexts, "PersistentExecutor was never constructed"
         assert "include" not in captured_contexts[0]
+
+
+class TestLoopRunConfidenceThresholdContextInjection:
+    """BUG-2767: commands.confidence_gate thresholds seed fsm.context."""
+
+    def _write_config(self, tmp_path: Path, gate: dict | None) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        config: dict = {} if gate is None else {"commands": {"confidence_gate": gate}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config))
+
+    def _write_loop(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(exist_ok=True)
+        (loops_dir / "test-loop.yaml").write_text(_MINIMAL_LOOP_YAML)
+
+    def _run(self, argv: list[str]) -> dict:
+        captured_contexts: list[dict] = []
+
+        def capturing_executor(fsm, **kwargs):  # type: ignore[no-untyped-def]
+            captured_contexts.append(dict(fsm.context))
+            raise SystemExit(0)
+
+        with (
+            patch.object(sys, "argv", argv),
+            patch(
+                "little_loops.fsm.persistence.PersistentExecutor", side_effect=capturing_executor
+            ),
+        ):
+            from little_loops.cli import main_loop
+
+            with pytest.raises(SystemExit):
+                main_loop()
+
+        assert captured_contexts, "PersistentExecutor was never constructed"
+        return captured_contexts[0]
+
+    def test_config_thresholds_seed_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Configured thresholds flow into fsm.context."""
+        self._write_config(tmp_path, {"readiness_threshold": 70, "outcome_threshold": 55})
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        ctx = self._run(["ll-loop", "run", "test-loop"])
+        assert ctx.get("readiness_threshold") == 70
+        assert ctx.get("outcome_threshold") == 55
+
+    def test_cli_context_overrides_config_thresholds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--context outcome_threshold=... beats the configured value."""
+        self._write_config(tmp_path, {"readiness_threshold": 70, "outcome_threshold": 55})
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        ctx = self._run(
+            [
+                "ll-loop",
+                "run",
+                "test-loop",
+                "--context",
+                "outcome_threshold=90",
+            ]
+        )
+        assert ctx.get("outcome_threshold") == "90"
+        assert ctx.get("readiness_threshold") == 70
+
+    def test_absent_config_seeds_schema_defaults(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unconfigured projects inherit the ConfidenceGateConfig defaults (85/65)."""
+        self._write_config(tmp_path, None)
+        self._write_loop(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        ctx = self._run(["ll-loop", "run", "test-loop"])
+        assert ctx.get("readiness_threshold") == 85
+        assert ctx.get("outcome_threshold") == 65
+
+    def test_loop_yaml_literal_wins_over_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A loop that explicitly declares thresholds keeps its own literals."""
+        self._write_config(tmp_path, {"readiness_threshold": 70, "outcome_threshold": 55})
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(exist_ok=True)
+        (loops_dir / "test-loop.yaml").write_text(
+            "name: test-loop\n"
+            "description: loop declaring its own thresholds\n"
+            "context:\n"
+            "  readiness_threshold: 95\n"
+            "  outcome_threshold: 80\n"
+            "initial: done\n"
+            "states:\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+
+        ctx = self._run(["ll-loop", "run", "test-loop"])
+        assert ctx.get("readiness_threshold") == 95
+        assert ctx.get("outcome_threshold") == 80

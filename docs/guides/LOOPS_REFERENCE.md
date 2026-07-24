@@ -129,13 +129,13 @@ The loop follows a structured cycle:
 
 The loop runs up to **500 steps** (`max_steps: 500` in `general-task.yaml:5`) and uses `on_handoff: spawn` to continue across session boundaries. Each plan step consumes approximately 6 iterations minimum (`select_step` + `do_work` + `verify_step` + `mark_done` + `check_done` + `count_done`), plus a one-time `resume_check` iteration at startup and a one-time four-state terminal gate (`final_verify` + `run_final_tests` + `count_final` + `summarize_success`), supporting ~83 plan steps before the cap fires.
 
-The `refine-to-ready-issue` loop uses configurable confidence thresholds (default: readiness > 90, outcome confidence > 75). Override per-run:
+The confidence-gated loops use configurable thresholds (defaults: readiness ≥ 85, outcome confidence ≥ 65). Override per-run:
 
 ```bash
 ll-loop run refine-to-ready-issue --context readiness_threshold=85 --context outcome_threshold=70
 ```
 
-To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`, then install the loop locally (`ll-loop install refine-to-ready-issue`) and update its `context:` block defaults.
+To apply project-wide defaults, set `commands.confidence_gate.readiness_threshold` / `outcome_threshold` in `ll-config.json`. For `autodev`, `recursive-refine`, and `eval-driven-development` this takes effect directly — the runner seeds those context variables from config at launch (BUG-2767), with `--context` still winning. `refine-to-ready-issue` declares its own 85/65 `context:` literals, so applying config defaults there additionally requires installing the loop locally (`ll-loop install refine-to-ready-issue`) and editing its `context:` block.
 
 **Three-stage threshold check**: After `confidence_check` runs, the loop evaluates scores in three sequential shell states rather than one combined check. This split lets the loop route failures differently depending on what went wrong:
 
@@ -1084,8 +1084,8 @@ With `order=next-action` the loop drives the entire active backlog using `ll-iss
 | `order` | `queue` | Queue strategy: `queue` (seeded input list) or `next-action` (drives whole backlog in value-ranked order via `ll-issues next-action`) |
 | `commit_every` | `0` | Run `/ll:commit` after every N completed refinements; `0` disables periodic commits |
 | `no_recursion` | `false` | Skip child detection and size-review (flat one-pass-per-issue mode); used by the `issue-refinement` alias |
-| `readiness_threshold` | `90` | Minimum confidence score for an issue to be considered ready (override via `commands.confidence_gate.readiness_threshold` in `ll-config.json`) |
-| `outcome_threshold` | `75` | Minimum outcome confidence score (override via `commands.confidence_gate.outcome_threshold` in `ll-config.json`) |
+| `readiness_threshold` | `85` | Minimum confidence score for an issue to be considered ready. Not declared in the loop YAML — seeded at launch from `commands.confidence_gate.readiness_threshold` in `ll-config.json` (schema default 85); `--context` wins over both |
+| `outcome_threshold` | `65` | Minimum outcome confidence score. Seeded the same way from `commands.confidence_gate.outcome_threshold` (schema default 65) |
 | `max_refine_count` | `5` | Maximum `/ll:refine-issue` calls per issue lifetime; enforced directly by `check_attempt_budget` before each sub-loop entry — issues that reach this cap are skipped with reason `budget` (override via `commands.max_refine_count` in `ll-config.json`) |
 | `max_depth` | `3` | Maximum decomposition depth per subtree; issues at or beyond this depth are skipped with reason `depth-cap` instead of being passed to size-review (override via `commands.recursive_refine.max_depth` in `ll-config.json`) |
 | `tree_summary` | `true` | When `true` (default), the `done` state renders an indented decomposition tree after the flat summary; set to `false` to suppress the block for noisy multi-root runs |
