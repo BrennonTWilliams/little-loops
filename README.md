@@ -34,7 +34,7 @@ ll-init                                            # detects your stack, writes 
 ll-loop run general-task "fix the lint warnings"   # your first self-verifying loop
 ```
 
-Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), with host adapters for Codex, OpenCode, and Pi. MIT-licensed.
+Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), with a host adapter for Codex; OpenCode and Pi adapters are not yet available. MIT-licensed.
 
 ## 1. Run agents until done
 
@@ -74,7 +74,7 @@ ll-init
 /plugin install ll@little-loops
 ```
 
-**Using Codex CLI?** Run `ll-init --hosts codex` and `ll-adapt --host codex --apply` — see [docs/codex/getting-started.md](docs/codex/getting-started.md). OpenCode and Pi wire up the same way via `ll-init --hosts`.
+**Using Codex CLI?** Run `ll-init --hosts codex` and `ll-adapt --host codex --apply` — see [docs/codex/getting-started.md](docs/codex/getting-started.md). OpenCode and Pi adapters aren't wired yet — `ll-init --hosts opencode`/`--hosts pi` currently install nothing.
 
 <details>
 <summary>Alternative install methods</summary>
