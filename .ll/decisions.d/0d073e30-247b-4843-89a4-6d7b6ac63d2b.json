@@ -1,0 +1,14 @@
+{
+  "id": "91872ee7-0dbf-4607-b2af-3636b4572fa2",
+  "type": "rule",
+  "timestamp": "2026-07-24T19:51:00Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The legacy completed/ directory kept being recreated by loops and skill guidance that contradicted the ENH-1418 in-place-close convention, causing done issues to be misreported as open backlog by grep-based consumers.",
+  "rule": "Never document .issues/completed/ or .issues/deferred/ as sibling homes for closed issues; status lives only in frontmat",
+  "enforcement": "advisory",
+  "issue": "BUG-2766"
+}

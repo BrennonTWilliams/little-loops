@@ -493,8 +493,8 @@ expansion.
   - Behaves identically to fix/implement actions across all issue types
   - `verify` - Verify issue status only
   - `plan` - Create plan only (equivalent to --plan-only flag)
-  - `defer` - Move issue to deferred/ (parked, not active or completed)
-  - `undefer` - Move issue from deferred/ back to its active category directory
+  - `defer` - Set `status: deferred` in place via `ll-issues set-status` (parked; file stays in its type directory)
+  - `undefer` - Set `status: open` in place via `ll-issues set-status`
 
 - **issue_id** (optional): Specific issue ID
   - If provided, work on that issue

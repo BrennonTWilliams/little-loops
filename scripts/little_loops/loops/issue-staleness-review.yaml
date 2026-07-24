@@ -56,8 +56,11 @@ states:
     action_type: prompt
     timeout: 120
     action: |
-      Move the reviewed stale issue to .issues/completed/ with a note
+      Close the reviewed stale issue in place: set `status: cancelled` (or
+      `done` if already fixed) via `ll-issues set-status`, and append a note
       explaining why it was closed (stale, already fixed, or duplicated).
+      Do NOT move the file — issues stay in their type directory; the legacy
+      .issues/completed/ directory must not be recreated.
     next: commit
   reprioritize:
     action_type: prompt

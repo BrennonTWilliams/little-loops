@@ -1,0 +1,11 @@
+{
+  "id": "148418ce-601a-40ee-895d-c0ab3dcc3039",
+  "type": "decision",
+  "timestamp": "2026-07-24T19:41:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Config-state sections are guarded behind 'if not args.json', so machine consumers get a smaller report than humans.",
+  "rule": "Captured: ll-doctor --json omits Analytics Capture and Issues sections",
+  "scope": "issue",
+  "issue": "ENH-2762"
+}

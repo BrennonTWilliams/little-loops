@@ -5944,34 +5944,33 @@ class TestRecursiveRefineLoop:
             "enqueue_or_skip must filter candidates by 'Decomposed from' parent reference"
         )
 
-    def test_enqueue_children_moves_parent_to_completed(self, data: dict) -> None:
-        """enqueue_children must find and move the parent file to .issues/completed/ after decomposition."""
+    def test_enqueue_children_closes_parent_in_place(self, data: dict) -> None:
+        """enqueue_children must close the decomposed parent in place (finalize-decomposition),
+        never recreating the legacy .issues/completed/ directory."""
         state = data["states"].get("enqueue_children", {})
         action = state.get("action", "")
-        assert "ll-issues path" in action, (
-            "enqueue_children must use 'll-issues path' to locate the parent file"
+        assert "finalize-decomposition" in action, (
+            "enqueue_children must close the parent via 'll-issues finalize-decomposition'"
         )
-        assert "completed" in action, (
-            "enqueue_children must reference 'completed' directory for the move"
+        assert ".issues/completed" not in action, (
+            "enqueue_children must NOT move the parent to legacy .issues/completed/"
         )
-        assert "mv" in action, "enqueue_children must contain 'mv' to move the parent file"
 
-    def test_enqueue_or_skip_moves_parent_to_completed_when_children_found(
+    def test_enqueue_or_skip_closes_parent_in_place_when_children_found(
         self, data: dict
     ) -> None:
-        """enqueue_or_skip children-found branch must find and move the parent file to .issues/completed/."""
+        """enqueue_or_skip children-found branch must close the parent in place
+        (finalize-decomposition), never recreating legacy .issues/completed/."""
         state = data["states"].get("enqueue_or_skip", {})
         action = state.get("action", "")
-        # The ll-issues path + mv block must appear before the 'else' (no-children branch)
+        # The finalize block must appear before the 'else' (no-children branch)
         children_branch = action.split("else")[0] if "else" in action else action
-        assert "ll-issues path" in children_branch, (
-            "enqueue_or_skip children-found branch must use 'll-issues path' to locate the parent file"
+        assert "finalize-decomposition" in children_branch, (
+            "enqueue_or_skip children-found branch must close the parent via "
+            "'ll-issues finalize-decomposition'"
         )
-        assert "completed" in children_branch, (
-            "enqueue_or_skip children-found branch must reference 'completed' directory"
-        )
-        assert "mv" in children_branch, (
-            "enqueue_or_skip children-found branch must contain 'mv' to move the parent file"
+        assert ".issues/completed" not in action, (
+            "enqueue_or_skip must NOT move the parent to legacy .issues/completed/"
         )
 
     def test_enqueue_or_skip_else_does_not_move_parent(self, data: dict) -> None:

@@ -404,12 +404,10 @@ states:
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
       echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
       echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
-      PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
-      if [ -n "$PARENT_FILE" ]; then
-        mkdir -p .issues/completed
-        git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
-          || mv "$PARENT_FILE" .issues/completed/
-      fi
+      # Close the decomposed parent in place (ENH-1418/ENH-2615 convention);
+      # never recreate the legacy completed-issues directory.
+      ll-issues finalize-decomposition "${captured.input.output}" 2>/dev/null \
+        || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
       CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
       PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
       printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
@@ -696,12 +694,10 @@ states:
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${context.run_dir}/recursive-refine-decomposition.tsv
         echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt
         echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-decomposed.txt
-        PARENT_FILE=$(ll-issues path "${captured.input.output}" 2>/dev/null)
-        if [ -n "$PARENT_FILE" ]; then
-          mkdir -p .issues/completed
-          git mv "$PARENT_FILE" .issues/completed/ 2>/dev/null \
-            || mv "$PARENT_FILE" .issues/completed/
-        fi
+        # Close the decomposed parent in place (ENH-1418/ENH-2615 convention);
+        # never recreate the legacy completed-issues directory.
+        ll-issues finalize-decomposition "${captured.input.output}" 2>/dev/null \
+          || echo "WARN: finalize-decomposition failed for ${captured.input.output} (children remain enqueued)" >&2
         CHILD_COUNT=$(wc -l < ${context.run_dir}/recursive-refine-new-children.txt | tr -d ' ')
         PREV_TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo 0)
         printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt

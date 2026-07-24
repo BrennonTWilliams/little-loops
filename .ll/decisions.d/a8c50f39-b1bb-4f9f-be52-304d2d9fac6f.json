@@ -1,0 +1,11 @@
+{
+  "id": "f5ac9ceb-b07c-46cd-8169-4d027f7a179a",
+  "type": "decision",
+  "timestamp": "2026-07-24T19:43:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-doctor is incorrect within its own scope (contradictory capability entries, dead hooks section, unprobed version, JSON/text drift) and narrower than its name implies (no install-surface validation, no ll-verify-* aggregation).",
+  "rule": "Captured: EPIC over the six ll-doctor audit findings",
+  "scope": "issue",
+  "issue": "EPIC-2765"
+}

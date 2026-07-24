@@ -1,0 +1,11 @@
+{
+  "id": "39b6f2bb-0b2c-49b2-8c91-4f29c2063b31",
+  "type": "decision",
+  "timestamp": "2026-07-24T19:41:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "build_version_check() exists on the HostRunner protocol with no production callers; CapabilityReport.version is hardcoded empty for every host.",
+  "rule": "Captured: ll-doctor never probes the host binary version",
+  "scope": "issue",
+  "issue": "ENH-2761"
+}

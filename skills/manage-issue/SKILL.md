@@ -28,7 +28,6 @@ You are tasked with autonomously managing issues across the project. This comman
 This command uses project configuration from `.ll/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
-- **Completed dir**: `{{config.issues.completed_dir}}`
 - **Source dir**: `{{config.project.src_dir}}`
 - **Test command**: `{{config.project.test_cmd}}`
 - **Lint command**: `{{config.project.lint_cmd}}`
@@ -41,16 +40,14 @@ This command uses project configuration from `.ll/ll-config.json`:
 
 ### Directory Structure
 
-**IMPORTANT**: The `completed/` directory is a SIBLING to category directories, NOT a child:
+**IMPORTANT**: Issues stay in their type directory for their entire lifecycle — status (`done`, `deferred`, `cancelled`, …) lives ONLY in frontmatter. NEVER create or move files into `completed/` or `deferred/` directories; those are legacy locations (pre-ENH-1418) that must not be recreated.
 
 ```
 {{config.issues.base_dir}}/
-├── bugs/           # Active bugs (NEVER create completed/ or deferred/ here)
-├── features/       # Active features (NEVER create completed/ or deferred/ here)
-├── enhancements/   # Active enhancements (NEVER create completed/ or deferred/ here)
-├── epics/          # Active epics — coordination containers, NOT directly implementable
-├── completed/      # ALL completed issues go here (sibling to categories)
-└── deferred/       # ALL deferred/parked issues go here (sibling to categories)
+├── bugs/           # All bugs, any status (status: frontmatter, not location)
+├── features/       # All features, any status
+├── enhancements/   # All enhancements, any status
+└── epics/          # All epics — coordination containers, NOT directly implementable
 ```
 
 **EPIC handling**: An EPIC is a coordination container, not a directly implementable unit. When `issue_type=epic`, do NOT proceed to implementation — instead, list the EPIC's child issues (via `parent: EPIC-NNN` references in child issues or the EPIC's `children:` frontmatter), and redirect the user to run `/ll:manage-issue` on individual children, or to run `/ll:create-sprint` with the children for grouped execution. `ll-auto` and `ll-parallel` should be invoked with `--type BUG,FEAT,ENH` to skip EPICs in batch runs.
@@ -419,7 +416,7 @@ See [templates.md](templates.md) for the Session Log entry format.
 
 ### 1.6. Inject `completed_at` Timestamp
 
-Before moving the issue file, add a `completed_at` field to its YAML frontmatter with the current ISO 8601 UTC timestamp. Use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format (Z-suffixed, matches the `captured_at` precedent and the Python helper `_completed_at_now()`). Use the Edit tool to insert the line into the issue's frontmatter block (after `captured_at` if present, otherwise alongside the other timestamp fields):
+Before flipping the status, add a `completed_at` field to its YAML frontmatter with the current ISO 8601 UTC timestamp. Use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format (Z-suffixed, matches the `captured_at` precedent and the Python helper `_completed_at_now()`). Use the Edit tool to insert the line into the issue's frontmatter block (after `captured_at` if present, otherwise alongside the other timestamp fields):
 
 ```yaml
 ---

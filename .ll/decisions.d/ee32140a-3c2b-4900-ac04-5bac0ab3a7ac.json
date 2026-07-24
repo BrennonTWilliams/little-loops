@@ -1,0 +1,11 @@
+{
+  "id": "fdf37e02-b0ce-4e60-8a95-e4b0e04e3e5b",
+  "type": "decision",
+  "timestamp": "2026-07-24T19:41:12Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-doctor checks host CLI capabilities only; the ~10 ll-verify-* checkers have no aggregation point and install coherence is unverified.",
+  "rule": "Captured: Expand ll-doctor to validate little-loops' own install surface",
+  "scope": "issue",
+  "issue": "FEAT-2763"
+}

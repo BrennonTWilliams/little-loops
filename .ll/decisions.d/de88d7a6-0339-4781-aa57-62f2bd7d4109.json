@@ -1,0 +1,14 @@
+{
+  "id": "39714efb-27bf-425b-9c09-f5d401d3dba9",
+  "type": "rule",
+  "timestamp": "2026-07-24T19:51:00Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "Mechanical `git mv` to a completed/ directory in recursive-refine.yaml and prose instructions to 'move' files in issue-staleness-review.yaml both bypassed the canonical in-place status API.",
+  "rule": "When a loop or skill needs to close/decompose an issue, use `ll-issues finalize-decomposition`/`ll-issues set-status` in",
+  "enforcement": "advisory",
+  "issue": "BUG-2766"
+}
