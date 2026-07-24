@@ -1,5 +1,5 @@
 ---
-id: 1182
+id: BUG-1182
 type: BUG
 priority: P2
 captured_at: "2026-04-18T21:39:42Z"

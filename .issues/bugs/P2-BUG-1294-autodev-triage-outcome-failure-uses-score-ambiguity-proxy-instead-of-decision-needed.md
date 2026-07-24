@@ -1,5 +1,5 @@
 ---
-id: "1294"
+id: BUG-1294
 type: BUG
 priority: P2
 title: "autodev triage_outcome_failure uses score_ambiguity proxy instead of decision_needed flag"

@@ -1,5 +1,5 @@
 ---
-id: 2756
+id: BUG-2756
 title: Fix rlhf SVG Playwright smoke harness failure and propagate evaluation status
 type: BUG
 priority: P2
