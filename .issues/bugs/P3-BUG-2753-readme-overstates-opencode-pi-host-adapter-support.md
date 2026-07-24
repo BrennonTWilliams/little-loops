@@ -7,6 +7,12 @@ status: open
 discovered_date: 2026-07-23
 discovered_by: audit-docs
 testable: false
+confidence_score: 98
+outcome_confidence: 96
+score_complexity: 25
+score_test_coverage: 21
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 README.md claims parity across three hosts that don't actually have parity.
@@ -45,3 +51,7 @@ reader doesn't attempt an unsupported `--hosts` value expecting it to work.
 ## Source
 
 Found by `/ll:audit-docs readme` (2026-07-23).
+
+## Session Log
+- `/ll:verify-issues` - 2026-07-24T03:31:20 - `830776b6-8e8e-4688-bb99-ecd84751534a.jsonl`
+- `/ll:confidence-check` - 2026-07-23T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d9178da1-6fdf-41d0-81ae-1fb0156b305f.jsonl`
