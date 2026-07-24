@@ -1,0 +1,11 @@
+{
+  "id": "3b1dbfa8-e833-40bb-b61a-19183411c1c6",
+  "type": "decision",
+  "timestamp": "2026-07-24T22:12:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Issue numbers are immutable and globally unique; types are mutable. 7 retypes have already split history across two keys. Add issue_num INTEGER as join key alongside issue_id TEXT for display; numeric-only loses reconstructability (issue_type NULL in ~2-3% of rows) and degrades search_index.ref FTS quality.",
+  "rule": "Captured: Key history tables on the stable numeric issue id, not the mutable TYPE-NNN string",
+  "scope": "issue",
+  "issue": "ENH-2771"
+}
