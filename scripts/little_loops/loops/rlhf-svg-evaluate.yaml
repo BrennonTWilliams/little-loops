@@ -94,8 +94,17 @@ states:
         const browser = await chromium.launch({ headless: true });
         const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
         const errors = [];
-        page.on('pageerror', e => errors.push(e.message));
-        page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+        function toMessage(e) {
+          try {
+            if (e && typeof e.message === 'string') return e.message;
+            if (e && typeof e.text === 'function') return String(e.text());
+            return String(e && e.message !== undefined ? e.message : 'UNKNOWN_PAGE_ERROR');
+          } catch (_) {
+            return 'UNKNOWN_PAGE_ERROR';
+          }
+        }
+        page.on('pageerror', e => { try { errors.push(toMessage(e)); } catch (_) { errors.push('NON_STRING_PAGE_ERROR'); } });
+        page.on('console', msg => { if (msg.type() === 'error') { try { errors.push(toMessage(msg)); } catch (_) { errors.push('NON_STRING_PAGE_ERROR'); } } });
         try {
           await page.goto('file://' + process.env.ABS_DIR + '/output.html', {
             waitUntil: 'networkidle', timeout: 15000
@@ -159,7 +168,13 @@ states:
           }
           await browser.close();
           if (errors.length > 0) {
-            console.log('SMOKE_FAIL: ' + errors.join('; '));
+            let joined;
+            try {
+              joined = errors.map(String).join('; ');
+            } catch (_) {
+              joined = 'NON_STRING_PAGE_ERROR';
+            }
+            console.log('SMOKE_FAIL: ' + joined);
             process.exit(1);
           }
           console.log('SMOKE_PASS');
@@ -186,12 +201,16 @@ states:
     on_error: smoke_fail_exit
 
   smoke_fail_exit:
-    # Normalises smoke test failure to VISION_FAIL sentinel so the parent
-    # can route uniformly on the sub-loop output.
+    # Normalises smoke test failure to an UNEVALUATED sentinel and routes to
+    # the distinct `unevaluated` terminal (not `done`) so the parent's
+    # generic sub-loop dispatch (_execute_sub_loop, which routes purely on
+    # final_state == "done" by name) takes the on_failure branch instead of
+    # on_success — the smoke harness never reached the vision API, so this
+    # is not an evaluated VISION_FAIL.
     action_type: shell
     action: |
-      echo "VISION_FAIL: smoke test failed — artifact did not pass browser validation"
-    next: done
+      echo "UNEVALUATED: smoke test failed — artifact did not pass browser validation"
+    next: unevaluated
 
   score:
     # External vision API scores multi-frame screenshot captures from the smoke
@@ -682,6 +701,15 @@ states:
     on_yes: done
     on_no: done
     on_error: done
+
+  unevaluated:
+    # Distinct terminal from `done` (BUG-2756): reached only via
+    # smoke_fail_exit, when the artifact never reached the vision API. The
+    # generic sub-loop dispatch in the parent routes any non-"done" terminal
+    # to on_failure, letting the parent's existing smoke-fail-streak
+    # accounting (check_oscillation, keyed on .smoke_fail_streak — distinct
+    # from .score_fail_streak) apply without inflating VISION_FAIL counts.
+    terminal: true
 
   done:
     terminal: true
