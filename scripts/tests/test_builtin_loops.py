@@ -1348,12 +1348,12 @@ class TestRefineToReadyIssueSubLoop:
     @pytest.mark.parametrize(
         "exit_codes,expected",
         [
-            ("143 0 0", "infra"),   # SIGTERM in refine_issue
-            ("0 137 0", "infra"),   # SIGKILL/OOM in refine_followup
-            ("0 0 124", "infra"),   # timeout(1) kill
-            ("2 0 0", "quality"),   # ll-issues tooling error (exit 2) — a real defect
-            ("1 0 0", "quality"),   # ordinary non-zero
-            ("", "quality"),        # no captures populated → default quality
+            ("143 0 0", "infra"),  # SIGTERM in refine_issue
+            ("0 137 0", "infra"),  # SIGKILL/OOM in refine_followup
+            ("0 0 124", "infra"),  # timeout(1) kill
+            ("2 0 0", "quality"),  # ll-issues tooling error (exit 2) — a real defect
+            ("1 0 0", "quality"),  # ordinary non-zero
+            ("", "quality"),  # no captures populated → default quality
         ],
     )
     def test_classify_terminal_classifies_by_exit_code(
@@ -1470,9 +1470,7 @@ class TestRefineToReadyIssueSubLoop:
         capture resolves to '' instead of raising InterpolationError."""
         action = data["states"].get("diagnose", {}).get("action", "")
         refs = re.findall(r"\$\{captured\.[^}]*\}", action)
-        offenders = [
-            m for m in refs if not (m.rstrip("}").endswith("?") or ":default=" in m)
-        ]
+        offenders = [m for m in refs if not (m.rstrip("}").endswith("?") or ":default=" in m)]
         assert not offenders, (
             f"diagnose ${{captured.*}} refs must be nullable (?/:default=): {offenders} "
             "(BUG-2726 — a bare ref to an unpopulated capture raises InterpolationError)"
@@ -3570,9 +3568,7 @@ class TestVerifyStateConfigReadShell:
 
         (tmp_path / ".ll").mkdir()
         cmd = 'sh -c \'echo "npm error Missing script: \\"test\\"" >&2; exit 1\''
-        (tmp_path / ".ll" / "ll-config.json").write_text(
-            json.dumps({"project": {"test_cmd": cmd}})
-        )
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps({"project": {"test_cmd": cmd}}))
 
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -4209,9 +4205,7 @@ class TestAutodevLoop:
         )
         assert not (run_dir / "autodev-inflight").exists()
 
-    def test_skip_inflight_infra_sentinel_routes_to_on_no(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_skip_inflight_infra_sentinel_routes_to_on_no(self, data: dict, tmp_path: Path) -> None:
         """ENH-2727: when refine-terminal-class == 'infra', skip_inflight exits 1
         (→ on_no: skip_inflight_infra) WITHOUT writing refine_failed itself — the
         infra ledger write is deferred to skip_inflight_infra."""

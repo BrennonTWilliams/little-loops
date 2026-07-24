@@ -330,11 +330,7 @@ class TestParseCardFields:
         the same way closing_note/cancelled_reason/deferred_reason already do."""
         path, config = self._write_issue(
             tmp_path,
-            (
-                "---\nstatus: done\n"
-                "closed_reason: already_fixed\n"
-                "---\n# ENH-5108: T\n"
-            ),
+            ("---\nstatus: done\nclosed_reason: already_fixed\n---\n# ENH-5108: T\n"),
             "P3-ENH-5108-t.md",
         )
         fields = _parse_card_fields(path, config)

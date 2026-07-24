@@ -381,9 +381,7 @@ class TestAssistantMessagesUnchangedRegression:
     mutate either source table (mirrors TestMessageEventsUnchangedRegression).
     """
 
-    def test_does_not_delete_message_events_or_assistant_messages(
-        self, tmp_path: Path
-    ) -> None:
+    def test_does_not_delete_message_events_or_assistant_messages(self, tmp_path: Path) -> None:
         session_id = "assistant-messages-unchanged"
         db = tmp_path / "history.db"
         conn = connect(db)

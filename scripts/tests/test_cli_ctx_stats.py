@@ -508,9 +508,7 @@ class TestMainCtxStats:
         rendered = "".join(str(call.args[0]) for call in printed.call_args_list if call.args)
         assert "sqlite" in rendered
 
-    def test_env_var_overrides_default_db_location(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_env_var_overrides_default_db_location(self, tmp_path: Path, monkeypatch) -> None:
         """LL_HISTORY_DB (ENH-2623) must be honored via resolve_history_db(), not bypassed.
 
         Regression test for the ctx_stats.py bug this issue fixes: db_path was

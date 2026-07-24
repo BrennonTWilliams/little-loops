@@ -57,7 +57,10 @@ def _run_reconcile_predicate(
     action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
     script = _extract_python_script(action).replace("${context.run_dir}", str(run_dir))
     payload = json.dumps(
-        {"confidence": confidence, "reconcile_attempted": "true" if reconcile_attempted else "false"}
+        {
+            "confidence": confidence,
+            "reconcile_attempted": "true" if reconcile_attempted else "false",
+        }
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -75,8 +78,7 @@ def _pattern(states: dict[str, Any], state_name: str) -> str:
 
 
 REAL_FEAT_021_OUTPUT = (
-    "FEAT-021 skipped: score 11 (Very Large) — strictly sequential, "
-    "shared-infra children"
+    "FEAT-021 skipped: score 11 (Very Large) — strictly sequential, shared-infra children"
 )
 
 
@@ -192,9 +194,7 @@ class TestCheckReconcileNeededFallbackSnapshot:
         current confidence and no prior reconcile attempt → plateau detected."""
         (tmp_path / "autodev-pre-readiness.txt").write_text("85")
 
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="85", reconcile_attempted=False
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False)
 
         assert exit_code == 0, "plateau must be detected from the fallback snapshot alone"
 
@@ -206,42 +206,32 @@ class TestCheckReconcileNeededFallbackSnapshot:
 
         # Current confidence matches the spike snapshot, not the stale fallback —
         # plateau should fire only because the spike snapshot is preferred.
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="85", reconcile_attempted=False
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False)
 
         assert exit_code == 0
 
         # Current confidence matches the fallback snapshot instead — since the
         # spike snapshot takes precedence and does NOT match, no plateau.
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="70", reconcile_attempted=False
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="70", reconcile_attempted=False)
 
         assert exit_code == 1
 
     def test_no_fire_on_confidence_improvement(self, tmp_path: Path) -> None:
         (tmp_path / "autodev-pre-readiness.txt").write_text("85")
 
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="88", reconcile_attempted=False
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="88", reconcile_attempted=False)
 
         assert exit_code == 1
 
     def test_no_fire_when_reconcile_already_attempted(self, tmp_path: Path) -> None:
         (tmp_path / "autodev-pre-readiness.txt").write_text("85")
 
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="85", reconcile_attempted=True
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=True)
 
         assert exit_code == 1
 
     def test_no_fire_when_neither_snapshot_exists(self, tmp_path: Path) -> None:
-        exit_code = _run_reconcile_predicate(
-            tmp_path, confidence="85", reconcile_attempted=False
-        )
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False)
 
         assert exit_code == 1
 
