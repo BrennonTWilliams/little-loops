@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.150.0] - 2026-07-23
+
+### Added
+
+- FEAT-2354: Built-in FSM loop that generates reusable Claude Code workflows
+- FEAT-2711: FSM session reuse for continuity-of-reasoning state chains
+- FEAT-2747: Assistant-inclusive session compaction (message_events + assistant_messages)
+- FEAT-2751: autodev: generalize reconcile plateau gate beyond the spike path (stagnation backstop)
+
+### Fixed
+
+- BUG-2726: refine-to-ready-issue diagnose prompt carries no failure evidence, producing confabulated wrong-run diagnoses
+- BUG-2731: FSM treats exit-143-after-result as a terminal action failure instead of retryable infra teardown, discarding in-flight subagent work
+- BUG-2744: autodev's check_guard2_verdict can read stale cross-issue captured state
+- BUG-2750: next-issue/next-issues log spurious "unknown issue" warnings for done/deferred/cancelled blockers
+- BUG-2752: autodev: check_guard2_verdict regex misses real issue-size-review skip line
+- BUG-2753: README overstates OpenCode/Pi host adapter support
+- BUG-2754: Verify PyPI publication status matches README install instructions
+
+### Changed
+
+- ENH-2493: Persist ll-harness / eval outcomes into history.db
+- ENH-2498: Capture prompt-optimization outcomes into history.db
+- ENH-2506: Capture hook execution telemetry into history.db
+- ENH-2507: Persist context-window pressure measurements into history.db
+- ENH-2512: Persist read-side audit / review outcomes into history.db
+- ENH-2719: EPIC-2456 realized-savings verification and closure gate
+- ENH-2720: Default-flip tranche: orchestration.request_path cli → sdk/batch after parity verification
+- ENH-2722: ll-ctx-stats waste view over history.db (split from ENH-2712)
+- ENH-2727: autodev refine_current on_error collapses infra kills into the refine_failed ledger reason
+- ENH-2736: Scope codegraph staleness dirty-file check to source-relevant paths
+- ENH-2737: orchestration.request_path: fall back to cli on missing anthropic package or API key
+- ENH-2739: harness_events schema, kind registration, and record_harness_event() recorder
+- ENH-2740: Wire ll-harness producer to write harness_events (signature refactor + DSL per-task rows)
+- ENH-2741: harness_events read API, ll-session CLI wiring, and docs
+- ENH-2742: Verify state's classify() should distinguish "missing npm script" config error from real test failure
+- ENH-2743: Add closed_via_recovery counter to sprint-refine-and-implement summary.json for parked-then-closed issues
+- ENH-2745: Tier 0 before/after cost gate blocked on model-pricing drift
+- ENH-2746: F3 compaction shrink ratio measured outside 50-70% gate band
+- ENH-2748: Suppress flag for capture-reachability validator warning
+- ENH-2749: set-status --reason can't express already_fixed for done transitions
+
+### Documentation
+
+- docs(readme): fix harness-optimize command name and CLI tool count; capture follow-up bugs (c4fa6a65)
+- docs(api): document FailureType/classify_failure incl. INFRA_RETRY variant (4d8c49b6)
+- docs(claude-md): add dependency-minimization guideline to code style (047516e1)
+
+### Other
+
+- style(tests): apply ruff format to test files (bc97d06a)
+
 ## [1.149.0] - 2026-07-22
 
 ### Added
@@ -127,6 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.150.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.149.0...v1.150.0
 [1.149.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.148.0...v1.149.0
 [1.148.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.147.0...v1.148.0
 
