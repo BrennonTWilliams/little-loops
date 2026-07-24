@@ -1,0 +1,12 @@
+{
+  "id": "003fa6ca-839d-44b6-bca5-39dae55300af",
+  "type": "decision",
+  "timestamp": "2026-07-24T20:56:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B (context-default seeding) was chosen to avoid new config-merge/interpolation surface; wiring the dormant LoopConfigOverrides dataclass in would reintroduce that complexity and create two competing config inputs with no established precedence.",
+  "rule": "LoopConfigOverrides config: block stays display-only; not wired into confidence-threshold seeding",
+  "scope": "issue",
+  "alternatives_rejected": "Wire LoopConfigOverrides into the seeding to make the documented config: block precedence chain functional",
+  "issue": "BUG-2767"
+}

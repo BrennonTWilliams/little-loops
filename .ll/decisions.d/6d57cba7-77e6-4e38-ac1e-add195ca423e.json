@@ -1,0 +1,12 @@
+{
+  "id": "b2ce6429-801a-43af-82fc-8ff0827b76ef",
+  "type": "decision",
+  "timestamp": "2026-07-24T20:09:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Extends existing near-exact precedent in cli/loop/run.py (include default-injection block) with minimal risk (10/12 score); Option A would introduce new interpolation-engine surface (config namespace) with no functional precedent (4/12 score).",
+  "rule": "Option B - resolve at context-default time",
+  "scope": "issue",
+  "alternatives_rejected": "Option A - add config: block + new interpolation namespace",
+  "issue": "BUG-2767"
+}
