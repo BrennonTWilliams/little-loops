@@ -1,0 +1,12 @@
+{
+  "id": "eccfe55d-d373-4ab1-a785-267b010a118d",
+  "type": "decision",
+  "timestamp": "2026-07-24T21:05:24Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Evidence-based scoring: Option B (delete dead HookEntry/hooks field/rendering branch) scored 11/12 vs Option A (populate hooks per host) at 6/12. Option A would be the first dynamic on-disk-probe capability in host_runner.py with no analogous pattern for Claude Code/OpenCode; Option B is a mechanically clean deletion of code confirmed dead across all six runners.",
+  "rule": "Remove dead CapabilityReport.hooks surface (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: populate hooks per host via on-disk probe cross-checked against hooks/hooks.json inventory",
+  "issue": "BUG-2760"
+}

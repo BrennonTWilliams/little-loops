@@ -126,8 +126,9 @@ _Gap-analysis pass 2026-07-24 — anchor re-verification:_
   `hooks/__init__.py:66`, `read_adapter_gen_version` `writers.py:489`,
   `install_codex_adapter` `:439`, `TestDescribeCapabilities`
   `test_host_runner.py:1014`, `TestCmdCapabilities` `test_action.py:585`).
-- ⚠ The `HOST_COMPATIBILITY.md` claim is at **line 313**, not 312 (cited as
-  `:312` in two places below). Verbatim text: "prints a `CapabilityReport` with
+- ✅ Re-verified 2026-07-24 (`/ll:ready-issue`): the `HOST_COMPATIBILITY.md`
+  claim is at **line 312** — the earlier "not 312, it's 313" note was itself
+  wrong and is retracted. Verbatim text: "prints a `CapabilityReport` with
   one entry per capability ... and per registered hook event."
 - **Path (b) deletion detail**: of the four hook-only `_STATUS_SYMBOLS` keys
   (`cli/doctor.py:14-23`), `installed`/`registered`/`deferred`/`absent` are
@@ -224,10 +225,7 @@ is a mechanically clean deletion of code confirmed dead across all six runners
 (`HookEntry(...)` is constructed only in `test_cli_doctor.py`); its main risk — a
 JSON schema/`__all__` surface change for external consumers of `ll-action
 capabilities --output json` or `little_loops.HookEntry` — is well-understood and
-easily called out in the changelog, not a complexity risk. Evidence-gathering also
-found the issue's `WIRING_CASES` claim about `test_wiring_reference_docs.py`
-inaccurate — those tuples reference an unrelated module and need no edits, which
-narrows Option B's touch-point list further. This overturns the issue's own
+easily called out in the changelog, not a complexity risk. This overturns the issue's own
 "Recommended: Option A" note; the rubric evidence favors B on every dimension.
 
 **Scoring Summary**:
@@ -248,6 +246,16 @@ narrows Option B's touch-point list further. This overturns the issue's own
   JSON unconditionally — real hosts already emit `"hooks": []` today, so removing
   the key changes shape, not observed value, for any consumer not doing strict
   key-presence checks.
+- ⚠ **Correction (`/ll:ready-issue`, 2026-07-24)**: the rationale previously
+  claimed the `WIRING_CASES` tuples were "an unrelated module [that] need no
+  edits." That is wrong. `scripts/tests/test_wiring_reference_docs.py:157`
+  contains `("docs/reference/API.md", "HookEntry", "FEAT-1462")`, which
+  hard-asserts the literal string `HookEntry` appears in `docs/reference/API.md`.
+  Under Option B it **must** be commented out as
+  `# REMOVED (stale/false-positive): ...` per the file's existing convention
+  (see lines 147-149 for the idiom) or the test fails. The sibling
+  `CapabilityReport` / `CapabilityEntry` / `describe_capabilities` tuples
+  (lines 155, 156, 158) stay — those symbols survive Option B.
 
 ## Integration Map
 
@@ -328,12 +336,39 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Decide (a) populate vs. (b) remove; if (a), settle what each of the four
-   statuses means for a hook intent.
-2. Implement the producer side (or the removal) across all six runners.
-3. Add a test asserting the real runner report matches the on-disk hook
-   inventory — not a hand-built `HookEntry` fixture.
-4. Reconcile `HOST_COMPATIBILITY.md` and `API.md` with actual behavior.
+_Path decided: **Option B — remove the dead surface** (see Decision Rationale).
+Steps below are the Option-B sequence; the Option-A branches in the Wiring Phase
+section are retained for historical context only and must **not** be executed._
+
+1. Delete `HookEntry` (`host_runner.py:145`) and the
+   `CapabilityReport.hooks` field (`host_runner.py:169`). No
+   `describe_capabilities()` body changes are needed — none of the six
+   constructors (`:367`, `:648`, `:765`, `:838`, `:1012`, `:1179`) pass `hooks=`.
+2. Delete the `if report.hooks:` rendering branch (`cli/doctor.py:91-98`), the
+   `"hooks"` key in its JSON branch (`:73`), and the four hook-only
+   `_STATUS_SYMBOLS` keys `installed` / `registered` / `deferred` / `absent`
+   (`:18-21`) — their glyphs duplicate the surviving capability-side values, so
+   this is a pure deletion.
+3. Delete the `"hooks"` key from `cmd_capabilities()`'s JSON payload
+   (`cli/action.py:364`).
+4. Remove the `HookEntry` import (`scripts/little_loops/__init__.py:26`) and its
+   `__all__` entry (`:87`) in lockstep, or the top-level package import breaks.
+5. Remove the `HookEntry(...)` fixture construction in
+   `scripts/tests/test_cli_doctor.py:252-253` and any assertion depending on it;
+   drop the `isinstance(output["hooks"], list)` assertion in
+   `scripts/tests/test_action.py::TestCmdCapabilities` (~line 598-606).
+6. Comment out `scripts/tests/test_wiring_reference_docs.py:157` as
+   `# REMOVED (stale/false-positive): ("docs/reference/API.md", "HookEntry", "FEAT-1462")`.
+7. Reconcile docs: drop the "and per registered hook event" clause at
+   `HOST_COMPATIBILITY.md:312`; remove the `HookEntry` clause and the populated
+   `Hooks` example block in `CLI.md` (~230-259); remove the `HookEntry` row at
+   `ARCHITECTURE.md:877` and trim the `CapabilityReport` row's field list; remove
+   `API.md`'s `### HookEntry` section (~8710), the `hooks:` dataclass line
+   (~8741), the `hooks` field-table row (`:8752`), and the `"HookEntry"`
+   `__all__` listing (~8595).
+8. Note the `ll-action capabilities --output json` `hooks` key removal in the
+   changelog — it is a live (always-empty) output field.
+9. Run `python -m pytest scripts/tests/` and `ll-verify-docs` / `ll-check-links`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -380,26 +415,34 @@ _Added by `/ll:confidence-check` on 2026-07-24_
 **Outcome Confidence**: 57/100 → LOW
 
 ### Concerns
-- Sibling issue `P2-BUG-2759` touches the same `describe_capabilities()` methods
+- ~~Sibling issue `P2-BUG-2759` touches the same `describe_capabilities()` methods
   and `_print_report()` — sequence or coordinate the two fixes to avoid merge
-  churn on the same functions.
-- Path (a) vs (b) is still unresolved, and the two paths have very different
+  churn on the same functions.~~ **RESOLVED** (`/ll:ready-issue`, 2026-07-24):
+  BUG-2759 is `done` (landed as `ea7c10c4`), so there is no concurrent-edit
+  contention left.
+- ~~Path (a) vs (b) is still unresolved~~ **RESOLVED**: `/ll:decide-issue`
+  selected Option B; Implementation Steps are now written against B, and the
+  scores below (which were computed against path (a)) understate readiness —
+  the frontmatter `confidence_score: 100` / `outcome_confidence: 86` are the
+  current values. Historical note: the two paths had the two paths have very different
   effort/risk profiles (Medium probe-building vs. Small deletion) — the rest of
   this assessment is scored against path (a) since it's the "more useful
   outcome" the issue itself recommends, but that recommendation hasn't been
   formally decided.
 
 ### Outcome Risk Factors
-- Fundamental approach unclear — this is an open decision between populating
-  hooks (Option A) vs removing the dead field entirely (Option B), with no
-  resolution yet in the issue. Resolve before implementing; different code
-  actually gets written depending on which path is chosen.
-- Broad enumeration across many low-depth sites — 6 `describe_capabilities()`
+- ~~Fundamental approach unclear — open decision between Option A and Option B.~~
+  **RESOLVED**: Option B selected.
+- Under Option B the surface narrows: no `describe_capabilities()` body edits at
+  all, and the remaining breadth is mechanical deletion across `host_runner.py`,
+  `cli/doctor.py`, `cli/action.py`, `__init__.py`, 3 test files, and 4 docs
+  files. Original path-(a)-scoped note follows. Broad enumeration across many low-depth sites — 6 `describe_capabilities()`
   implementations, `cli/doctor.py`, `cli/action.py`, `hooks/__init__.py`, 2
   test files, and 3 docs files, each individually a contained/local change but
   collectively a wide surface to touch consistently.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-24T21:09:12 - `ff1927cb-2c86-4f5d-a098-60c66bc1617e.jsonl`
 - `/ll:confidence-check` - 2026-07-24T21:20:00 - `66acd153-caee-48f4-966c-575333b4373a.jsonl`
 - `/ll:decide-issue` - 2026-07-24T21:05:24 - `fe604afd-9cae-4551-acd4-0503d61e5326.jsonl`
 - `/ll:refine-issue` - 2026-07-24T21:02:14 - `b16cc295-c985-4a92-9bd5-e5010f3088b7.jsonl`
