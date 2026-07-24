@@ -174,7 +174,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 39 skill definitions (user-invocable workflows)
+├── skills/               # 42 skill definitions (user-invocable workflows)
 │   ├── adversarial-verify-loop/      # Generate adversarial FSM verification loop
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history

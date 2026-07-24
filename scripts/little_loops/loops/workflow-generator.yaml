@@ -1,0 +1,561 @@
+name: workflow-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+artifact_versioning: true
+description: |
+  Meta-loop that lowers a prose brief into a reusable, validated FSM-loop YAML
+  artifact via sequential "compiler lowering" passes: intent capture ->
+  state-graph sketch -> evaluator attachment -> routing-table resolution ->
+  artifact emission -> optional adversarial minimum-coupling shrink.
+
+  Per MR-1 (meta-loop discipline): every LLM-generated pass is paired with a
+  non-LLM `shell`/`exit_code` gate that validates the pass's output before the
+  next pass consumes it — mirroring cli-anything-bootstrap.yaml's
+  generate-then-validate sequencing. The final emitted artifact is itself
+  re-validated with `ll-loop validate` (an external, non-LLM structural gate).
+
+  All intermediate artifacts (intent.yaml, graph-sketch.yaml,
+  graph-evaluators.yaml, graph-routed.yaml, workflow.yaml, probes/) live under
+  ${context.run_dir}/ (MR-3). `artifact_versioning: true` because emit_artifact
+  and the optional shrink pass iteratively rewrite workflow.yaml (MR-5).
+
+  v1 scope (per issue FEAT-2354): FSM-YAML output only; prose-brief input only
+  (no history-mining); the adversarial shrink pass is implemented but gated
+  behind `enable_shrink` (default off). Promotion to the project loops dir is
+  HITL-gated behind `auto_promote` (default off) — a run without auto_promote
+  stops at `await_confirmation` and reports the validated draft's path.
+initial: init
+max_steps: 30
+timeout: 5400
+
+context:
+  description: ""
+  enable_shrink: "false"
+  auto_promote: "false"
+  max_emit_retries: "3"
+  loops_dir: ".ll/loops"
+
+states:
+  init:
+    # HARNESS: capture the runner-injected run_dir as an absolute path (guard
+    # against double-prefixing an already-absolute path, per BUG-2435).
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      mkdir -p "$DIR/probes"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
+    capture: run_dir
+    next: capture_intent
+
+  capture_intent:
+    # HARNESS: distill the brief into a structured intent spec — the first
+    # lowering pass. Downstream passes read this file, not the raw brief.
+    action_type: prompt
+    action: |
+      Brief: ${context.description}
+
+      Distill this brief into a structured intent spec for a reusable FSM
+      automation loop. Write ${captured.run_dir.output}/intent.yaml in this
+      exact format:
+
+      ```yaml
+      name: <short kebab-case loop name derived from the brief>
+      goal: <one sentence: what repeatable work this automates>
+      inputs:
+        - <input the loop needs, e.g. "a bug report URL">
+      steps:
+        - <ordered, concrete step describing one unit of work>
+      success_signal: <how to tell the work succeeded, in concrete/checkable terms>
+      ```
+
+      Be concrete and decisive. Do not equivocate or leave placeholders.
+    next: validate_intent
+
+  validate_intent:
+    # HARNESS: non-LLM exit_code gate — intent.yaml must parse and have the
+    # required keys before sketch_state_graph consumes it.
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/intent.yaml'))
+      assert d.get('name'), 'name is empty'
+      assert d.get('goal'), 'goal is empty'
+      assert d.get('steps'), 'steps list is empty'
+      assert d.get('success_signal'), 'success_signal is empty'
+      "
+    evaluate:
+      type: exit_code
+    on_yes: sketch_state_graph
+    on_no: capture_intent
+
+  sketch_state_graph:
+    # HARNESS: second lowering pass — propose the workflow's state graph from
+    # the intent spec, without evaluators or routing yet (those are separate
+    # passes so each stays a tractable sub-problem).
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/intent.yaml.
+
+      Propose a minimal FSM state graph that accomplishes intent.goal via
+      intent.steps. Favor the fewest states that cover the work — reusability
+      is a property of minimum coupling, not completeness. Write
+      ${captured.run_dir.output}/graph-sketch.yaml in this exact format:
+
+      ```yaml
+      states:
+        - name: <kebab-case state name>
+          purpose: <one sentence: what this state does>
+          kind: <prompt | shell>
+        # one entry per state, in a plausible execution order; include
+        # exactly one terminal "done" state and exactly one terminal
+        # "failed" state
+      ```
+    next: validate_sketch
+
+  validate_sketch:
+    # HARNESS: non-LLM exit_code gate — the sketch must have >=1 non-terminal
+    # state, unique names, and both terminal states declared.
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/graph-sketch.yaml'))
+      states = d.get('states') or []
+      names = [s.get('name') for s in states]
+      assert names, 'states list is empty'
+      assert len(names) == len(set(names)), f'duplicate state names: {names}'
+      assert 'done' in names, 'missing terminal state: done'
+      assert 'failed' in names, 'missing terminal state: failed'
+      assert len(names) > 2, 'sketch has no non-terminal work states'
+      "
+    evaluate:
+      type: exit_code
+    on_yes: attach_evaluators
+    on_no: sketch_state_graph
+
+  attach_evaluators:
+    # HARNESS: third lowering pass — attach a non-LLM discriminator to every
+    # non-terminal state. Restricting the allowed evaluator vocabulary to
+    # NON_LLM_EVALUATOR_TYPES makes the emitted artifact's own MR-1 gate
+    # satisfiable by construction, not by luck.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/graph-sketch.yaml.
+
+      For every state that is NOT "done" or "failed", attach a non-LLM
+      evaluator. Choose exactly one evaluator type per state from this
+      allowed vocabulary: exit_code, output_numeric, output_json,
+      output_contains, convergence, diff_stall, score_stall, action_stall,
+      mcp_result, classify. A "kind: prompt" state generating free text is
+      typically followed logically by an "output_contains" or "exit_code"
+      check; a "kind: shell" state doing a concrete check is typically
+      "exit_code". Do not use llm_structured, comparator, or contract — those
+      are LLM-graded and do not satisfy this loop's non-LLM discriminator
+      requirement.
+
+      Write ${captured.run_dir.output}/graph-evaluators.yaml: the same
+      structure as graph-sketch.yaml, with an added `evaluate` key per
+      non-terminal state:
+
+      ```yaml
+      states:
+        - name: <state name>
+          purpose: <unchanged>
+          kind: <unchanged>
+          evaluate:
+            type: <one of the allowed types above>
+            pattern: <only if type is output_contains>
+            operator: <only if type is output_numeric, e.g. "ge">
+            target: <only if type is output_numeric or convergence>
+        # "done" and "failed" carry no evaluate key
+      ```
+    next: validate_evaluators
+
+  validate_evaluators:
+    # HARNESS: non-LLM exit_code gate — every non-terminal state must have an
+    # evaluate.type drawn from the non-LLM vocabulary (mirrors validation.py's
+    # NON_LLM_EVALUATOR_TYPES so the emitted artifact will pass MR-1).
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/graph-evaluators.yaml'))
+      allowed = {
+          'exit_code', 'output_numeric', 'output_json', 'output_contains',
+          'convergence', 'diff_stall', 'score_stall', 'open_question_stall',
+          'action_stall', 'mcp_result', 'harbor_scorer', 'classify',
+      }
+      for s in d.get('states') or []:
+          if s.get('name') in ('done', 'failed'):
+              continue
+          etype = (s.get('evaluate') or {}).get('type')
+          assert etype in allowed, f\"state {s.get('name')!r} has disallowed evaluator {etype!r}\"
+      "
+    evaluate:
+      type: exit_code
+    on_yes: resolve_routing
+    on_no: attach_evaluators
+
+  resolve_routing:
+    # HARNESS: fourth lowering pass — add transitions. Every non-terminal
+    # state must route somewhere on every outcome its evaluator can produce,
+    # and the graph must be fully reachable from the initial state.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/graph-evaluators.yaml.
+
+      Add routing to every non-terminal state so the graph has no dead ends:
+      a state with `evaluate.type: exit_code` needs both `on_yes` and `on_no`;
+      other evaluator types may use `next` for an unconditional handoff where
+      appropriate. Every state must be reachable from the first state in the
+      list. Exactly one path must reach "done" on success and one must reach
+      "failed" on unrecoverable error. Write
+      ${captured.run_dir.output}/graph-routed.yaml: the same structure as
+      graph-evaluators.yaml, with `on_yes`/`on_no`/`next` keys added per
+      non-terminal state (state names as the values, referencing only names
+      that exist in the graph).
+    next: validate_routing
+
+  validate_routing:
+    # HARNESS: non-LLM exit_code gate — every non-terminal state routes
+    # somewhere real, "done"/"failed" are reachable, and no route targets a
+    # name absent from the graph.
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/graph-routed.yaml'))
+      states = d.get('states') or []
+      names = {s.get('name') for s in states}
+      assert names, 'no states'
+      for s in states:
+          if s.get('name') in ('done', 'failed'):
+              continue
+          targets = [s.get('on_yes'), s.get('on_no'), s.get('next')]
+          targets = [t for t in targets if t]
+          assert targets, f\"state {s.get('name')!r} has no routing\"
+          for t in targets:
+              assert t in names, f\"state {s.get('name')!r} routes to unknown state {t!r}\"
+      assert 'done' in names and 'failed' in names, 'missing done/failed terminal'
+      "
+    evaluate:
+      type: exit_code
+    on_yes: emit_artifact
+    on_no: resolve_routing
+
+  emit_artifact:
+    # HARNESS: fifth lowering pass — assemble the final runnable FSM-loop
+    # YAML from intent.yaml + graph-routed.yaml. This is the artifact that
+    # gets re-validated by ll-loop validate below.
+    action_type: prompt
+    action: |
+      Read ${captured.run_dir.output}/intent.yaml and
+      ${captured.run_dir.output}/graph-routed.yaml.
+
+      Assemble a complete, runnable FSM-loop YAML file at
+      ${captured.run_dir.output}/workflow.yaml with these top-level keys:
+      `name` (from intent.yaml), `description` (from intent.goal),
+      `initial` (the first state in graph-routed.yaml), `input_key: "input"`,
+      `max_steps` (a reasonable bound, e.g. 2x the state count),
+      `timeout` (a reasonable bound in seconds, e.g. 3600), and `states:` —
+      one entry per state from graph-routed.yaml, each carrying an `action`
+      (write concrete, executable prompt/shell text implementing that
+      state's purpose from intent.yaml/graph-routed.yaml — not a placeholder),
+      `action_type` (prompt or shell, from `kind`), `evaluate` (if present),
+      and its routing keys (`on_yes`/`on_no`/`next`). Terminal states ("done",
+      "failed") must carry `terminal: true` and no routing keys.
+
+      Every `action` must be concrete and executable — no "TODO" or
+      "<placeholder>" text.
+    next: validate_artifact
+
+  validate_artifact:
+    # HARNESS: MR-1's actual proof — re-validate the emitted artifact with
+    # `ll-loop validate`, the same external structural gate this loop's own
+    # workflow.yaml file will need to pass. Bounded retry via
+    # count_emit_retry so a persistently invalid artifact fails loudly
+    # instead of looping forever.
+    action_type: shell
+    action: |
+      ll-loop validate "${captured.run_dir.output}/workflow.yaml"
+    evaluate:
+      type: exit_code
+    on_yes: check_shrink_enabled
+    on_no: count_emit_retry
+
+  count_emit_retry:
+    # HARNESS: bounded-retry guard, same idiom as cli-anything-bootstrap's
+    # count-refine-cycle — routes back to emit_artifact under the limit,
+    # to diagnose once exhausted.
+    action_type: shell
+    action: |
+      COUNTER_FILE="${captured.run_dir.output}/.emit_retry_count"
+      COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$COUNTER_FILE"
+      MAX="${context.max_emit_retries}"
+      [ -z "$MAX" ] && MAX=3
+      [ "$COUNT" -lt "$MAX" ] && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: emit_artifact
+    on_no: diagnose
+
+  check_shrink_enabled:
+    # HARNESS: v1-optionality gate (issue FEAT-2354 Rank-3) — the shrink pass
+    # has no in-repo precedent and carries the most outcome risk, so it is
+    # off by default.
+    action_type: shell
+    action: |
+      [ "${context.enable_shrink}" = "true" ] && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: shrink_baseline
+    on_no: promotion_gate
+
+  shrink_baseline:
+    # HARNESS: record the pre-shrink outcome tuple — (simulate's reached
+    # terminal state, validate --json violation set, warning count) — that
+    # every candidate removal must reproduce exactly to be kept. `validate`
+    # alone is a toothless discriminator for state removal (most removals
+    # still validate); `simulate` makes it behavioral.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      python3 <<'PYEOF'
+      import json
+      import subprocess
+
+      run_dir = "${captured.run_dir.output}"
+      artifact = f"{run_dir}/workflow.yaml"
+
+      sim = subprocess.run(
+          ["ll-loop", "simulate", artifact, "--scenario", "all-pass"],
+          capture_output=True, text=True,
+      )
+      terminal = "unknown"
+      for line in sim.stdout.splitlines():
+          if "Terminated by:" in line:
+              terminal = line.split("Terminated by:", 1)[1].strip()
+
+      val = subprocess.run(
+          ["ll-loop", "validate", artifact, "--json"], capture_output=True, text=True
+      )
+      violations = []
+      try:
+          payload = json.loads(val.stdout)
+          violations = [v["message"] for v in payload.get("violations", []) if v["severity"] == "error"]
+          warnings = len([v for v in payload.get("violations", []) if v["severity"] == "warning"])
+      except (json.JSONDecodeError, KeyError):
+          warnings = 0
+
+      baseline = {"terminal": terminal, "violations": sorted(violations), "warnings": warnings}
+      with open(f"{run_dir}/probes/baseline.json", "w") as f:
+          json.dump(baseline, f)
+      print(f"baseline recorded: {baseline}")
+      PYEOF
+      echo "0" > "${captured.run_dir.output}/.shrink_state_index"
+    next: shrink_select_candidate
+
+  shrink_select_candidate:
+    # HARNESS: advance to the next candidate state to try removing. Exits
+    # non-zero once every non-terminal, non-initial state has been tried.
+    action_type: shell
+    action: |
+      python3 -c "
+      import yaml
+      d = yaml.safe_load(open('${captured.run_dir.output}/workflow.yaml'))
+      names = [n for n, s in d['states'].items() if not s.get('terminal') and n != d['initial']]
+      idx = int(open('${captured.run_dir.output}/.shrink_state_index').read().strip() or 0)
+      if idx >= len(names):
+          raise SystemExit(1)
+      with open('${captured.run_dir.output}/.shrink_candidate_name', 'w') as f:
+          f.write(names[idx])
+      print(f'candidate: {names[idx]} ({idx+1}/{len(names)})')
+      "
+    evaluate:
+      type: exit_code
+    on_yes: shrink_try_remove
+    on_no: promotion_gate
+
+  shrink_try_remove:
+    # HARNESS: write a candidate artifact with the selected state excised and
+    # every dangling route to it repointed at its own on_yes successor (the
+    # simplest safe splice — probing decides whether this is behavior-safe).
+    action_type: shell
+    action: |
+      python3 <<'PYEOF'
+      import yaml
+
+      run_dir = "${captured.run_dir.output}"
+      candidate_name = open(f"{run_dir}/.shrink_candidate_name").read().strip()
+      d = yaml.safe_load(open(f"{run_dir}/workflow.yaml"))
+      states = d["states"]
+      removed = states[candidate_name]
+      splice_to = removed.get("on_yes") or removed.get("next") or removed.get("on_no")
+
+      new_states = {}
+      for name, state in states.items():
+          if name == candidate_name:
+              continue
+          patched = dict(state)
+          for key in ("on_yes", "on_no", "next"):
+              if patched.get(key) == candidate_name:
+                  patched[key] = splice_to
+          new_states[name] = patched
+      d["states"] = new_states
+      if d["initial"] == candidate_name:
+          d["initial"] = splice_to
+
+      with open(f"{run_dir}/candidate-workflow.yaml", "w") as f:
+          yaml.safe_dump(d, f, sort_keys=False)
+      print(f"candidate artifact written without state: {candidate_name}")
+      PYEOF
+    next: shrink_probe_candidate
+
+  shrink_probe_candidate:
+    # HARNESS: the actual discriminator — keep the removal only if the full
+    # probe tuple (terminal state, violation set, warning count) is
+    # byte-identical to the pre-removal baseline. Any drift vetoes it.
+    action_type: shell
+    action: |
+      python3 <<'PYEOF'
+      import json
+      import subprocess
+
+      run_dir = "${captured.run_dir.output}"
+      artifact = f"{run_dir}/candidate-workflow.yaml"
+      baseline = json.load(open(f"{run_dir}/probes/baseline.json"))
+
+      sim = subprocess.run(
+          ["ll-loop", "simulate", artifact, "--scenario", "all-pass"],
+          capture_output=True, text=True,
+      )
+      terminal = "unknown"
+      for line in sim.stdout.splitlines():
+          if "Terminated by:" in line:
+              terminal = line.split("Terminated by:", 1)[1].strip()
+
+      val = subprocess.run(
+          ["ll-loop", "validate", artifact, "--json"], capture_output=True, text=True
+      )
+      violations = []
+      warnings = 0
+      try:
+          payload = json.loads(val.stdout)
+          violations = sorted(
+              v["message"] for v in payload.get("violations", []) if v["severity"] == "error"
+          )
+          warnings = len([v for v in payload.get("violations", []) if v["severity"] == "warning"])
+      except (json.JSONDecodeError, KeyError):
+          pass
+
+      candidate = {"terminal": terminal, "violations": violations, "warnings": warnings}
+      raise SystemExit(0 if candidate == baseline else 1)
+      PYEOF
+    evaluate:
+      type: exit_code
+    on_yes: shrink_apply
+    on_no: shrink_select_candidate
+
+  shrink_apply:
+    # HARNESS: the probed removal was outcome-neutral — adopt the candidate
+    # as the new workflow.yaml and advance to the next candidate.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      mv "$RUN_DIR/candidate-workflow.yaml" "$RUN_DIR/workflow.yaml"
+      IDX=$(cat "$RUN_DIR/.shrink_state_index" 2>/dev/null || echo 0)
+      echo "$((IDX + 1))" > "$RUN_DIR/.shrink_state_index"
+      echo "removal kept; workflow.yaml updated"
+    next: shrink_select_candidate
+
+  promotion_gate:
+    # HARNESS: HITL gate (issue FEAT-2354 § Artifact Destination & Promotion)
+    # — landing a runnable loop where loop-router/loop-composer can
+    # auto-select it has real blast radius, so promotion requires explicit
+    # opt-in via auto_promote (default off), consistent with
+    # loop-composer's auto:"false" default.
+    action_type: shell
+    action: |
+      [ "${context.auto_promote}" = "true" ] && exit 0 || exit 1
+    evaluate:
+      type: exit_code
+    on_yes: promote
+    on_no: await_confirmation
+
+  promote:
+    # HARNESS: resolve the target name against both the built-in loop set and
+    # existing project loops (ll-loop list --json covers both via filesystem
+    # scan); on collision, suffix rather than overwrite; never shadow a
+    # built-in name.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      LOOPS_DIR="${context.loops_dir}"
+      mkdir -p "$LOOPS_DIR"
+      NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RUN_DIR/workflow.yaml'))['name'])")
+
+      EXISTING=$(ll-loop list --json 2>/dev/null | python3 -c "
+      import json, sys
+      try:
+          data = json.load(sys.stdin)
+      except json.JSONDecodeError:
+          data = []
+      names = {e.get('name') for e in data if isinstance(e, dict)}
+      print('\n'.join(sorted(n for n in names if n)))
+      ")
+
+      CANDIDATE="$NAME"
+      SUFFIX=1
+      while echo "$EXISTING" | grep -qx "$CANDIDATE" || [ -f "$LOOPS_DIR/$CANDIDATE.yaml" ]; do
+        SUFFIX=$((SUFFIX + 1))
+        CANDIDATE="$${NAME}-$${SUFFIX}"
+      done
+
+      cp "$RUN_DIR/workflow.yaml" "$LOOPS_DIR/$CANDIDATE.yaml"
+      echo "PROMOTED: $LOOPS_DIR/$CANDIDATE.yaml"
+    next: done
+
+  await_confirmation:
+    # HARNESS: terminal, non-error — the validated draft is ready but not
+    # promoted. Reports the path so the operator can review, then re-run with
+    # auto_promote: "true", or promote by hand.
+    action_type: prompt
+    action: |
+      A validated workflow draft is ready at
+      ${captured.run_dir.output}/workflow.yaml but has NOT been promoted to
+      the project loops dir (promotion is HITL-gated by default).
+
+      Tell the operator: review the draft, then either re-run this loop with
+      `--set auto_promote=true`, or manually copy the file into
+      ${context.loops_dir}/ under a name that doesn't collide with an
+      existing built-in or project loop.
+    terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The workflow-generator loop terminated with an unrecoverable error.
+
+      Diagnose by reading whichever of these exist under
+      ${captured.run_dir.output}/: intent.yaml, graph-sketch.yaml,
+      graph-evaluators.yaml, graph-routed.yaml, workflow.yaml,
+      .emit_retry_count.
+
+      Most common failure: emit_artifact could not produce a workflow.yaml
+      that passes `ll-loop validate` within max_emit_retries attempts. Write
+      a one-paragraph diagnostic the operator can use to adjust the brief.
+    next: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

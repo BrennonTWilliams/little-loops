@@ -118,6 +118,65 @@ In addition to trajectory JSONL files written under `${context.run_dir}/states/`
 
 ---
 
+## `workflow-generator`
+
+**Category**: harness
+**File**: `scripts/little_loops/loops/workflow-generator.yaml`
+
+Meta-loop that lowers a prose brief into a reusable, validated FSM-loop YAML artifact. Six sequential "compiler lowering" passes (intent capture → state-graph sketch → evaluator attachment → routing-table resolution → artifact emission → optional adversarial minimum-coupling shrink), each LLM pass paired with a non-LLM `shell`/`exit_code` gate — MR-1 is satisfied by architecture, not a suppression flag. Does not delegate to `oracles/generator-evaluator` (that oracle scores visual/screenshot artifacts; this loop's artifact is FSM YAML, validated instead by `ll-loop validate`).
+
+### Invocation
+
+```bash
+ll-loop run workflow-generator --input "triage a new bug report: read it, grep for the offending code, confirm repro, draft a fix plan, open a PR"
+```
+
+### Context Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | `""` | **Required.** Prose brief describing the repeatable work to automate. |
+| `enable_shrink` | `"false"` | Gate for the adversarial minimum-coupling shrink pass — off by default (no in-repo precedent, most outcome risk of the six passes). |
+| `auto_promote` | `"false"` | Gate for the HITL promotion step — without it, the run stops at `await_confirmation` with the validated draft's path. |
+| `max_emit_retries` | `"3"` | Bound on `emit_artifact` retries before routing to `diagnose`. |
+| `loops_dir` | `".ll/loops"` | Promotion target directory. |
+
+### State Graph
+
+```
+init → capture_intent → validate_intent (loops back on fail)
+     → sketch_state_graph → validate_sketch (loops back on fail)
+     → attach_evaluators → validate_evaluators (loops back on fail)
+     → resolve_routing → validate_routing (loops back on fail)
+     → emit_artifact → validate_artifact (`ll-loop validate`)
+         on_no → count_emit_retry → emit_artifact (under limit) / diagnose (exhausted)
+         on_yes → check_shrink_enabled
+             on_no  → promotion_gate
+             on_yes → shrink_baseline → shrink_select_candidate
+                        → shrink_try_remove → shrink_probe_candidate
+                            on_yes (outcome-neutral) → shrink_apply → shrink_select_candidate
+                            on_no  (outcome changed) → shrink_select_candidate (try next)
+                        (no candidates left) → promotion_gate
+     → promotion_gate
+         on_yes (auto_promote) → promote → done
+         on_no  → await_confirmation (terminal)
+diagnose → failed
+```
+
+### Shrink-pass probe
+
+The shrink pass's discriminator is deliberately behavioral, not structural: `ll-loop validate` alone approves nearly every single-state removal (most still validate; routes degrade to warnings at worst), which is the toothless-evaluator failure mode `ll-loop diagnose-evaluators` exists to catch. The probe instead compares a full outcome tuple — `ll-loop simulate`'s reached terminal state, `ll-loop validate --json`'s violation set, and its warning count — between the candidate and the pre-removal baseline. A removal is kept only if all three are identical.
+
+### Promotion
+
+Promotion is HITL-gated (`auto_promote`, default off), mirroring `loop-composer`'s `auto: "false"` safe default: landing a runnable loop where `loop-router`/`loop-composer` can auto-select it has real blast radius. When enabled, the target name (derived from the emitted artifact's `name:` field) is checked against `ll-loop list --json` (built-ins + discovered project loops) and the loops dir itself; a collision appends a numeric suffix rather than overwriting, and a built-in name is never shadowed.
+
+### v1 scope
+
+FSM-YAML output only — a Workflow-JS output target is a follow-on gated by a lint-grade validator plus an execution shim for the `agent()`/`pipeline()` runtime globals. Prose-brief input only — mining `.ll/history.db` session traces for the brief is a follow-on.
+
+---
+
 ## `deep-research`
 
 **Category**: research

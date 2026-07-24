@@ -21,9 +21,9 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>28 slash commands]
+        CMD[Commands<br/>29 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>39 composable skills]
+        SKL[Skills<br/>42 composable skills]
     end
 
     subgraph "Configuration"
@@ -109,7 +109,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 39 skill definitions
+├── skills/                  # 42 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked

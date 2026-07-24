@@ -164,6 +164,7 @@ class TestBuiltinLoopFiles:
             "brainstorm",
             "openscad-model-generator",
             "interactive-component-generator",
+            "workflow-generator",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -12247,3 +12248,135 @@ class TestCodeRunGateOracleWiring:
         assert rec["action_type"] == "shell"
         assert "GATE_FAILED_INFRA" in rec["action"]
         assert "failures.txt" in rec["action"]
+
+
+class TestWorkflowGeneratorLoop:
+    """Structural tests for the workflow-generator meta-loop (FEAT-2354).
+
+    Six compiler-lowering passes (intent -> sketch -> evaluators -> routing ->
+    emission -> optional shrink), each LLM pass paired with a shell/exit_code
+    gate (MR-1 by architecture), plus a HITL-gated promotion tail.
+    """
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "workflow-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "workflow-generator"
+        assert data.get("initial") == "init"
+        assert data.get("input_key") == "description"
+        assert data.get("category") == "harness"
+        assert isinstance(data.get("states"), dict)
+
+    def test_max_steps_and_timeout_defined(self, data: dict) -> None:
+        assert data.get("max_steps", 0) > 0
+        assert data.get("timeout", 0) > 0
+
+    def test_artifact_versioning_declared(self, data: dict) -> None:
+        """emit_artifact/shrink_apply iteratively rewrite workflow.yaml (MR-5)."""
+        assert data.get("artifact_versioning") is True
+
+    def test_init_action_uses_absolute_path(self, data: dict) -> None:
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert "$(pwd)" in action, f"init.action must use $(pwd), got: {action!r}"
+
+    def test_init_action_guards_against_already_absolute_run_dir(self, data: dict) -> None:
+        state = data["states"].get("init", {})
+        action = state.get("action", "")
+        assert 'case "$DIR" in' in action
+        assert "/*)" in action
+
+    def test_pipeline_states_exist(self, data: dict) -> None:
+        required = {
+            "init",
+            "capture_intent",
+            "validate_intent",
+            "sketch_state_graph",
+            "validate_sketch",
+            "attach_evaluators",
+            "validate_evaluators",
+            "resolve_routing",
+            "validate_routing",
+            "emit_artifact",
+            "validate_artifact",
+            "count_emit_retry",
+            "check_shrink_enabled",
+            "shrink_baseline",
+            "shrink_select_candidate",
+            "shrink_try_remove",
+            "shrink_probe_candidate",
+            "shrink_apply",
+            "promotion_gate",
+            "await_confirmation",
+            "promote",
+            "diagnose",
+            "done",
+            "failed",
+        }
+        missing = required - set(data["states"].keys())
+        assert not missing, f"Missing states: {missing}"
+
+    def test_terminal_states(self, data: dict) -> None:
+        for name in ("done", "failed", "await_confirmation"):
+            assert data["states"][name].get("terminal") is True, f"{name} must be terminal"
+
+    def test_shrink_gated_by_context_flag(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert ctx.get("enable_shrink") == "false"
+        state = data["states"]["check_shrink_enabled"]
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_no") == "promotion_gate"
+
+    def test_promotion_gated_by_auto_promote_flag(self, data: dict) -> None:
+        ctx = data.get("context", {})
+        assert ctx.get("auto_promote") == "false"
+        state = data["states"]["promotion_gate"]
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+        assert state.get("on_no") == "await_confirmation"
+        assert state.get("on_yes") == "promote"
+
+    @pytest.mark.parametrize(
+        "state_name",
+        [
+            "validate_intent",
+            "validate_sketch",
+            "validate_evaluators",
+            "validate_routing",
+            "validate_artifact",
+        ],
+    )
+    def test_validation_gates_are_exit_code(self, data: dict, state_name: str) -> None:
+        """Every lowering-pass gate is a non-LLM exit_code evaluator (MR-1)."""
+        state = data["states"][state_name]
+        assert state.get("action_type") == "shell"
+        assert state.get("evaluate", {}).get("type") == "exit_code"
+
+    def test_validate_artifact_invokes_ll_loop_validate(self, data: dict) -> None:
+        state = data["states"]["validate_artifact"]
+        assert "ll-loop validate" in state.get("action", "")
+
+    def test_promote_never_overwrites_on_collision(self, data: dict) -> None:
+        state = data["states"]["promote"]
+        action = state.get("action", "")
+        assert "ll-loop list" in action or "list --json" in action
+
+    def test_no_bare_loops_tmp_writes(self, data: dict) -> None:
+        for name, state in data["states"].items():
+            action = state.get("action", "") or ""
+            assert ".loops/tmp/" not in action, f"{name} writes to shared .loops/tmp/"
+
+    def test_run_dir_used_throughout(self, data: dict) -> None:
+        for name in (
+            "capture_intent",
+            "validate_intent",
+            "sketch_state_graph",
+            "emit_artifact",
+            "validate_artifact",
+        ):
+            action = data["states"][name].get("action", "") or ""
+            assert "run_dir" in action, f"{name} must reference run_dir"

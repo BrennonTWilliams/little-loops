@@ -3,8 +3,9 @@ id: FEAT-2354
 title: Built-in FSM loop that generates reusable Claude Code workflows
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-06-27T22:11:29Z'
+completed_at: '2026-07-24T01:16:34Z'
 discovered_date: 2026-06-27
 discovered_by: capture-issue
 parent: EPIC-1811
@@ -13,10 +14,10 @@ labels:
 - meta-loop
 - codegen
 - harness
-confidence_score: 94
-outcome_confidence: 72
+confidence_score: 95
+outcome_confidence: 73
 score_complexity: 14
-score_test_coverage: 19
+score_test_coverage: 20
 score_ambiguity: 19
 score_change_surface: 20
 ---
@@ -288,10 +289,11 @@ loop directory scanned alongside the built-ins), not `run_dir`. Define the tail 
   `TestHtmlWebsiteGeneratorLoop` (line ~3290).
 - No loop registry exists — discovery is a pure filesystem scan, so dropping the YAML into
   `scripts/little_loops/loops/` is sufficient for `ll-loop list`/`run`. `cmd_list()`
-  (`scripts/little_loops/cli/loop/info.py:66`) calls `get_builtin_loops_dir()`
-  (`scripts/little_loops/cli/loop/_helpers.py:825`) -> `rglob("*.yaml")` filtered by
-  `is_runnable_loop()` (`scripts/little_loops/fsm/validation.py:2071`; requires `name` +
-  `initial` + `states`/`flow`). `pyproject.toml`'s `little_loops/**` wheel glob bundles the new
+  (`scripts/little_loops/cli/loop/info.py:102`) calls `get_builtin_loops_dir()`
+  (`scripts/little_loops/cli/loop/_helpers.py:1205`) -> `rglob("*.yaml")` filtered by
+  `is_runnable_loop()` (`scripts/little_loops/fsm/validation.py:2993`; requires `name` +
+  `initial` + `states`/`flow`; line refs updated from drift — `/ll:ready-issue`, 2026-07-23).
+  `pyproject.toml`'s `little_loops/**` wheel glob bundles the new
   YAML automatically — no packaging change needed.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -323,6 +325,31 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/apo-beam.yaml` — compact beam-search N-candidates pattern (`generate_variants → score_variants → select_best → route_convergence` with `output_contains: CONVERGED`); the reference for the Rank-2 scoped genetic graft at the state-graph sketch pass.
 - `scripts/little_loops/loops/lib/common.yaml:118,148` — reusable `convergence_gate` (line 118) and `diff_stall_gate` (line 148) fragments; use via `fragment: convergence_gate` / `fragment: diff_stall_gate` in applicable states to satisfy MR-1 with minimal boilerplate.
 
+_Added by `/ll:refine-issue` (2026-07-23) — precedent for the promotion step, which § Artifact
+Destination & Promotion otherwise designs from scratch:_
+- **`scripts/little_loops/loops/cli-anything-bootstrap.yaml`'s `emit-task-loop` state** (lines
+  ~426–464) — the closest in-repo precedent for "an FSM state writes a generated loop YAML to a
+  real, discoverable location." It renders a per-target task loop via deterministic `sed`
+  substitution against a template (not LLM-authored), writing to `${context.generated_dir}`
+  (default `.loops/generated/`, not `.ll/loops/`) — its own comment notes this stays MR-1-safe
+  "since the emitted file IS a harness artifact and would otherwise need a gate." Useful shape
+  reference for the `emit` pass, though `workflow-generator`'s target directory differs (project
+  loops dir, not `.loops/generated/`).
+- **`skills/create-loop/SKILL.md` Step 5 "Save and Validate"** (lines ~269–391) — the closest
+  in-repo precedent for "generate then write into the project's *configured* loops dir
+  (`{{config.loops.loops_dir}}`), check for an existing file first (prompt to overwrite), then
+  run `ll-loop validate <name>` and offer `ll-loop test <name>` as a smoke check." This is a
+  Skill (interactive, human-in-the-loop), not an FSM state, but its collision-check +
+  validate-before-confirm sequence is the pattern to port into the FSM promotion state.
+- For contrast, `ll-loop promote-baseline` (`cmd_promote_baseline`,
+  `scripts/little_loops/cli/loop/info.py`) is a **different** concept — it promotes a run's
+  action-output events as a comparator-baseline text blob to `.loops/baselines/<loop>/output.txt`,
+  not a generated loop YAML. Do not confuse it with the promotion step this issue proposes.
+- No existing loop implements a shrink/prune/minimum-coupling pass against a probe set (grepped
+  `prune|shrink|minimum.coupling|remove.*state|dead.state` across `scripts/little_loops/loops/`);
+  this reconfirms the issue's own "no directly equivalent loop already shipped" statement in
+  Confidence Check Notes — the Rank-3 shrink pass remains first-of-its-kind in this codebase.
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py:76` — `TestBuiltinLoopFiles.test_expected_loops_exist` maintains an **exact allowlist** via `.glob("*.yaml")`; add `"workflow-generator"` to the `expected` set or CI fails immediately.
 - `scripts/tests/test_builtin_loops.py:3290` — `TestHtmlWebsiteGeneratorLoop` / `TestSvgImageGeneratorLoop` (line ~3405) — model the new `TestWorkflowGeneratorLoop` class on these (standard shape: `LOOP_FILE`, `data` fixture, `test_required_top_level_fields`, `test_artifact_versioning_declared`, `test_done_state_is_terminal`).
@@ -340,8 +367,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   (line ~168 — no `output_contains` evaluator may use a bare `pattern: PASS`; use `ALL_PASS`/`ITERATE`),
   `test_all_failure_terminals_have_diagnostic_action` (line ~255 — a `diagnose`/`diagnose_failure`
   state paired with a `failed`/`error`/`aborted` terminal must carry an `action:`/`fragment:` and
-  not be terminal itself), and `TestBuiltinLoopValidatorRatchet` (~line 7540 — new loops must emit
-  no `capture-ordering` / `partial-route` / `loop-reference` warnings without an ALLOWLIST entry). [Agent 3 finding]
+  not be terminal itself), and `TestValidatorWarningBudget` (~line 11050 — new loops must emit
+  no `capture-ordering` / `partial-route` / `loop-reference` warnings without an ALLOWLIST entry;
+  class name corrected from `TestBuiltinLoopValidatorRatchet`, which does not exist in the file —
+  `/ll:ready-issue`, 2026-07-23). [Agent 3 finding]
 - **MR-3 explicit per-class guard to copy:** `test_no_bare_loops_tmp_writes` (line ~6484, used in
   `TestExamplesMiner`) and `test_run_dir_used_throughout` (line ~6508 — asserts `${context.run_dir}`
   appears in every shell-state action). Add both to `TestWorkflowGeneratorLoop`. [Agent 3 finding]
@@ -350,6 +379,59 @@ _Wiring pass added by `/ll:wire-issue`:_
   asserts `evaluate.type == "output_contains"` + `pattern == "CAPTURED"`); replicate one such
   per-LLM-pass non-LLM-evaluator assertion per lowering pass. `TestInteractiveComponentGeneratorLoop`
   (line ~8031) is the most recent class and adds `test_max_steps_and_timeout_defined`. [Agent 3 finding]
+
+_Wiring pass re-run `/ll:wire-issue` (2026-07-23) — two genuinely novel test surfaces with
+**zero existing precedent**, plus templates for two verification steps already named in
+Implementation Steps:_
+- **Promotion-with-collision-handling has no test precedent — flag as net-new test surface.**
+  The only adjacent code is `skills/create-loop/SKILL.md` § "Step 5: Save and Validate"
+  (lines ~269–303), which is an LLM-executed *skill prompt* (not FSM/CLI code) with no test file
+  at all. The closest actual test, `TestLoopFileCreation.test_existing_file_detection`
+  (`scripts/tests/test_create_loop.py:227`, explicitly commented
+  `# Simulate the check from create-loop/SKILL.md Step 5`), only asserts bare `Path.exists()`
+  truthiness — it does **not** test the overwrite-confirmation branch, collision-safe
+  rename/suffix behavior, or writing into a configured `{{config.loops.loops_dir}}`. Since
+  `workflow-generator`'s promotion step is an FSM state (not a skill), it has no FSM-level test
+  precedent to model on — write `TestWorkflowGeneratorLoop` promotion tests from scratch,
+  covering both the collision and no-collision paths. [Agent 3 finding]
+- **The adversarial minimum-coupling shrink pass has no test precedent anywhere in the suite —
+  do not confuse with `TestHitlCompareLoop`'s `prune` state.** Searched `shrink`, `prune`,
+  `minimum coupling`, `redundant state` across `scripts/tests/`; the only `prune`-named class is
+  `TestHitlCompareLoop` (`scripts/tests/test_builtin_loops.py:7607`,
+  `test_prune_routes_to_run_gen_eval` at 7707 and `test_prune_action_writes_review_md` at 7736)
+  — an unrelated semantic (item/candidate-list culling before generate/evaluate, not removing
+  *states* from a generated FSM graph). The shrink pass needs a wholly new test class/fixture
+  (e.g. a seeded loop with a deliberately redundant state + a deliberately load-bearing state,
+  per the Acceptance Criteria) with no existing class to extend. [Agent 3 finding]
+- **`ll-loop simulate` probe template** (for the shrink pass's `simulate`-based discriminator):
+  `scripts/tests/test_cli_loop_testing.py` — classes covering `--scenario` (line 79),
+  `--max-steps` (line 201), runner-context injection e.g. `run_dir` (line 221), and error
+  handling for nonexistent/malformed loops (line 282), all driving `cmd_simulate()`
+  (`little_loops.cli.loop.testing`) directly. Model the shrink-pass probe test on the
+  `--max-steps` and error-handling classes. [Agent 3 finding]
+- **`ll-loop diagnose-evaluators` test template** (cited by Implementation Step 7's verification
+  command): `TestCmdDiagnoseEvaluators` (`scripts/tests/test_ll_loop_commands.py:6205`), driving
+  `cmd_diagnose_evaluators()` (`little_loops.cli.loop.info`) against synthetic
+  `.history/<run-id>/events.jsonl` fixtures via helper `_make_events_jsonl` (line 6208) — no live
+  loop run required. Includes `test_all_pass_returns_one` (6253, zero-variance/"toothless
+  evaluator" detection) and `test_mixed_returns_zero` (6274, discriminating evaluator) — the
+  exact pattern Implementation Step 7's `ll-loop diagnose-evaluators workflow-generator` check
+  should be validated against. [Agent 3 finding]
+- **`scripts/tests/test_doc_counts.py`** exercises `doc_counts.py` directly (already referenced
+  generically above as "the doc-count gate"); this is its concrete file name for the
+  Implementation Steps' doc-wiring verification. [Agent 1 finding]
+
+_Refreshed by `/ll:refine-issue` (2026-07-23) — line anchor re-verified against current file
+growth, since the caveat at the top of § Integration Map already warns these drift fast:_
+- `TestInteractiveComponentGeneratorLoop` is now at **line ~11532** (docstring: "Structural tests
+  for the interactive-component-generator fan-out FSM loop (FEAT-2343)"), not ~8031 — a further
+  ~3,500-line drift since the wiring pass. It remains the best template to model
+  `TestWorkflowGeneratorLoop` on: `LOOP_FILE`/`data` fixture, `test_required_top_level_fields`,
+  `test_max_steps_and_timeout_defined`, `test_init_action_uses_absolute_path`,
+  `test_init_action_guards_against_already_absolute_run_dir`, `test_pipeline_states_exist`
+  (set-membership check on required states), `test_terminal_states`,
+  `test_imports_common_fragments`. As always, locate by class name/docstring, not the cited line
+  number, per the caveat above.
 
 ### Documentation
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and/or `AUTOMATIC_HARNESSING_GUIDE.md` — document
@@ -379,6 +461,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — loop-directory README; check whether it enumerates
   generator loops and add `workflow-generator` if so (advisory). [Agent 1 finding]
 
+_Wiring pass re-run `/ll:wire-issue` (2026-07-23) — upgrades the above from advisory to
+required, with concrete edit sites confirmed by direct read:_
+- **`scripts/little_loops/loops/README.md` is a confirmed required edit, not advisory.** Two
+  concrete sites: (a) the `## Harness / Templates` table (~lines 143–173) hand-enumerates every
+  generator-family loop by name with a one-line description (`html-website-generator`,
+  `svg-image-generator`, `openscad-model-generator`, `interactive-component-generator`, etc.) —
+  add a `workflow-generator` row in the same style; (b) the `## Oracle Sub-loops` table's
+  `oracles/generator-evaluator` row (~line 181) lists its callers by name ("used by
+  html-website-generator, html-anything, hitl-md, p5js-sketch-generator, and
+  svg-image-generator") — append `workflow-generator` **iff** it delegates via
+  `loop: oracles/generator-evaluator`. This is the same "Used by …" cross-reference pattern
+  already required for `docs/reference/loops.md` and `docs/guides/LOOPS_REFERENCE.md` above —
+  a third instance of the same coupling, not a separate/optional one. [confirmed by
+  codebase-analyzer, 2026-07-23]
+
 ### Configuration
 - N/A (uses existing `loops.run_defaults`; per-run artifacts under `${context.run_dir}/`).
 
@@ -404,6 +501,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `output_numeric`, `output_json`, `output_contains`, `convergence`, `diff_stall`,
   `action_stall`, `harbor_scorer`, `mcp_result`, `classify`. The LLM evaluators
   `llm_structured` / `comparator` / `contract` do **not** count.
+  **Refresh (`/ll:refine-issue` re-verification, 2026-07-23):** the set has grown by two members
+  since this bullet was written — `score_stall` and `open_question_stall` (`ENH-2428`/`ENH-2446`)
+  are now implemented in `evaluators.py` and also satisfy MR-1. Note the in-repo MR-1 ERROR
+  message itself (`_validate_meta_loop_evaluation()`, `validation.py`) still under-lists the
+  full set too (names only `exit_code, output_numeric, convergence, diff_stall, score_stall,
+  action_stall, mcp_result`) — this is a pre-existing drift in the codebase's own error text,
+  not specific to this issue, so no action needed here beyond using the full 12-member set when
+  choosing evaluator types for the lowering passes.
 - **`${context.run_dir}` injection.** `cmd_run()` (`scripts/little_loops/cli/loop/run.py`) sets
   `fsm.context["run_dir"] = .loops/runs/<name>-<YYYYMMDDTHHMMSS>/` and `mkdir(parents=True,
   exist_ok=True)` *before* executor construction; `cmd_resume()`
@@ -564,7 +669,50 @@ _Added by `/ll:confidence-check` on 2026-07-18_
   into one coherent, MR-1-clean meta-loop carries deep per-site complexity beyond a typical
   generator-loop addition.
 
+## Resolution
+
+Implemented `scripts/little_loops/loops/workflow-generator.yaml`: a meta-loop that
+lowers a prose brief into a validated, reusable FSM-loop YAML artifact via six
+sequential compiler-lowering passes (intent capture -> state-graph sketch ->
+evaluator attachment -> routing-table resolution -> artifact emission -> optional
+adversarial minimum-coupling shrink), each LLM pass paired with a `shell`/`exit_code`
+gate (MR-1 satisfied by architecture — `ll-loop validate workflow-generator` passes
+with zero violations). The emit-retry loop is bounded via a counter state
+(`count_emit_retry`), and the shrink pass's discriminator is `simulate`-based (not
+bare `validate`), comparing a full outcome tuple (terminal state, violation set,
+warning count) between candidate and baseline, per the issue's critical correction.
+Promotion to `context.loops_dir` is HITL-gated behind `auto_promote` (default off),
+with collision-safe suffixing against both `ll-loop list --json` and the target
+directory.
+
+v1 deviation from "Proposed Solution": the Rank-2 "scoped genetic graft" (N parallel
+state-graph sketches, pick best by validate-diagnostics score) was not implemented —
+it was framed as an optional refinement in the issue text, not named in Acceptance
+Criteria, and the single-sketch-with-retry-on-validation-failure design satisfies all
+ACs and MR-1..MR-6 without it.
+
+Added `TestWorkflowGeneratorLoop` (18 tests) to `scripts/tests/test_builtin_loops.py`
+plus the `"workflow-generator"` entry in `test_expected_loops_exist`. Reconciled doc
+counts via `ll-verify-docs --fix` (README/CONTRIBUTING/ARCHITECTURE — pre-existing
+drift, not caused by this issue, but the fix run bumped `loops` 82->99 as expected and
+also corrected an unrelated stale `skills` count 68/39->42; updated the 4 now-stale
+hardcoded count-ratchet assertions in `test_wiring_guides_and_meta.py` to match, same
+"REMOVED (stale/false-positive)" pattern already used elsewhere in that file). Added
+catalog/detail entries to `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`,
+`docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, and `scripts/little_loops/loops/README.md`.
+
+Verification: `python -m pytest scripts/tests/` (16095 passed, 38 skipped),
+`ruff check scripts/` (clean), `ll-loop validate workflow-generator` (zero
+violations), `ll-loop simulate workflow-generator` (traced all-pass/all-fail
+scenarios correctly), `ll-check-links` (no new broken internal refs),
+`ll-verify-docs` (all counts match).
+
 ## Session Log
+- `/ll:manage-issue implement` - 2026-07-24T01:15:40Z - `c94697cf-8c72-4302-81d7-c862c26d9f0a.jsonl`
+- `/ll:ready-issue` - 2026-07-24T00:52:12 - `96df45d5-b575-465d-9980-78f4d8c61c9a.jsonl`
+- `/ll:wire-issue` - 2026-07-24T00:47:18 - `eae1a9a4-531f-4785-a6cc-394c52bcbc9b.jsonl`
+- `/ll:wire-issue` - 2026-07-24T00:46:57 - `eae1a9a4-531f-4785-a6cc-394c52bcbc9b.jsonl`
+- `/ll:refine-issue` - 2026-07-24T00:41:15 - `9e5cb35a-806b-40ee-9a6a-daab8b27aba3.jsonl`
 - issue-review (apply review recommendations) - 2026-07-23 - Applied `feat-2354-review.txt`:
   (1) redefined the shrink-pass discriminator from bare `ll-loop validate` (structurally toothless)
   to a `simulate`-based probe tuple (terminal state + `validate --json` violation set + warning
