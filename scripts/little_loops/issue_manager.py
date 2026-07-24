@@ -50,6 +50,7 @@ from little_loops.session_store import (
 from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager, _iso_now
 from little_loops.subprocess_utils import (
+    TokenUsage,
     assemble_guillotine_prompt,
     detect_context_handoff,
     read_continuation_prompt,
@@ -115,6 +116,7 @@ def run_claude_command(
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
+    on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     resume_session: bool = False,
 ) -> subprocess.CompletedProcess[str]:
@@ -127,7 +129,11 @@ def run_claude_command(
         stream_output: Whether to stream output to console
         idle_timeout: Kill process if no output for this many seconds (0 to disable)
         on_model_detected: Optional callback invoked with the model name from the
-            stream-json system/init event.
+            stream-json system/init event. This is the requested alias
+            (e.g. "sonnet"), not the resolved model ID the CLI actually ran.
+        on_usage_detailed: Optional callback invoked with a TokenUsage dataclass
+            from the stream-json result event. TokenUsage.model carries the
+            resolved model ID (e.g. "claude-sonnet-5"), unlike on_model_detected.
         preview_full: If True, display the full command without truncation (for --verbose).
         resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation (used for Option E explicit-handoff path).
@@ -168,6 +174,7 @@ def run_claude_command(
         idle_timeout=idle_timeout,
         on_model_detected=on_model_detected,
         on_usage=on_usage,
+        on_usage_detailed=on_usage_detailed,
         resume_session=resume_session,
     )
 
@@ -569,6 +576,7 @@ def process_issue_inplace(
     dry_run: bool = False,
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
+    on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     event_bus: EventBus | None = None,
     sprint_context: SprintWorkerContext | None = None,
@@ -587,8 +595,12 @@ def process_issue_inplace(
         dry_run: If True, only preview what would be done
         on_model_detected: Optional callback invoked with the model name from the
             first stream-json system/init event during this issue's processing.
+            This is the requested alias, not the resolved model ID (BUG-2757).
         on_usage: Optional callback invoked with (input_tokens, output_tokens) from
             each stream-json result event. Passed through to all run_claude_command calls.
+        on_usage_detailed: Optional callback invoked with a TokenUsage dataclass
+            (including the resolved model ID) from each stream-json result event.
+            Passed through to all run_claude_command calls (BUG-2757).
 
     Returns:
         IssueProcessingResult with outcome details
@@ -631,6 +643,7 @@ def process_issue_inplace(
                 stream_output=config.automation.stream_output,
                 idle_timeout=config.automation.idle_timeout_seconds,
                 on_model_detected=on_model_detected,
+                on_usage_detailed=on_usage_detailed,
                 preview_full=preview_full,
             )
             if result.returncode != 0:
@@ -687,6 +700,7 @@ def process_issue_inplace(
                                 stream_output=config.automation.stream_output,
                                 idle_timeout=config.automation.idle_timeout_seconds,
                                 on_model_detected=on_model_detected,
+                                on_usage_detailed=on_usage_detailed,
                                 preview_full=preview_full,
                             )
 
@@ -848,6 +862,7 @@ def process_issue_inplace(
             stream_output=config.automation.stream_output,
             idle_timeout=config.automation.idle_timeout_seconds,
             on_model_detected=on_model_detected,
+            on_usage_detailed=on_usage_detailed,
             preview_full=preview_full,
         )
         if decide_result.returncode != 0:
@@ -1423,12 +1438,22 @@ class AutoManager:
         self.state_manager.mark_attempted(info.issue_id, save=False)
         self.state_manager.update_current(str(info.path), "processing")
 
+        # BUG-2757: prefer the resolved model ID (from the result event's
+        # TokenUsage.model, via on_usage_detailed) over the requested alias
+        # (from the init event, via on_model_detected) when logging/storing
+        # the detected model. Mirrors fsm/runners.py's _collect_usage pattern.
         on_model: Callable[[str], None] | None = None
+        on_usage_detailed: Callable[[TokenUsage], None] | None = None
+        _alias_model: list[str] = []
         if not self._detected_model:
 
             def on_model(m: str) -> None:
-                self._detected_model.append(m)
-                self.logger.info(f"model: {m}")
+                _alias_model.append(m)
+
+            def on_usage_detailed(u: TokenUsage) -> None:
+                if not self._detected_model and u.model:
+                    self._detected_model.append(u.model)
+                    self.logger.info(f"model: {u.model}")
 
         resolved_limit = context_window_for(
             self._detected_model[0] if self._detected_model else None
@@ -1439,11 +1464,19 @@ class AutoManager:
             self.logger,
             self.dry_run,
             on_model_detected=on_model,
+            on_usage_detailed=on_usage_detailed,
             preview_full=self._preview_full,
             event_bus=self.event_bus,
             context_limit=resolved_limit,
             skip_learning_gate=self.skip_learning_gate,
         )
+
+        # Fallback: if no result event ever fired (e.g., the subprocess failed
+        # before completion) but we did capture the requested alias, use that
+        # so logging/context-window sizing isn't left empty.
+        if not self._detected_model and _alias_model:
+            self._detected_model.append(_alias_model[0])
+            self.logger.info(f"model: {_alias_model[0]} (unresolved alias, no result event)")
 
         # Map result back to state tracking
         if result.was_closed:

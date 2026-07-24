@@ -1201,6 +1201,22 @@ class TestRunClaudeCommand:
 
             assert not callback_passed
 
+    def test_forwards_on_usage_detailed(self, mock_logger: MagicMock) -> None:
+        """run_claude_command forwards on_usage_detailed to _run_claude_base (BUG-2757)."""
+        from little_loops.issue_manager import run_claude_command
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        def on_usage_detailed(usage: object) -> None:
+            pass
+
+        with patch("little_loops.issue_manager._run_claude_base") as mock_run:
+            mock_run.return_value = mock_result
+            run_claude_command("test command", mock_logger, on_usage_detailed=on_usage_detailed)
+
+            assert mock_run.call_args.kwargs["on_usage_detailed"] is on_usage_detailed
+
 
 class TestRunWithContinuation:
     """Tests for run_with_continuation context handoff handling (ENH-207)."""
@@ -1968,6 +1984,41 @@ class TestReadyIssueErrorHandling:
 
         # Should continue (not crash) - verify implementation was called
         mock_impl.assert_called_once()
+
+    def test_forwards_on_usage_detailed_to_ready_issue_call(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """process_issue_inplace forwards on_usage_detailed to run_claude_command
+        for the ready-issue phase call (BUG-2757)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+
+        def on_usage_detailed(usage: object) -> None:
+            pass
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", return_value=mock_result
+        ) as mock_run:
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
+                    mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
+                    with patch(
+                        "little_loops.issue_manager.verify_issue_completed", return_value=True
+                    ):
+                        process_issue_inplace(
+                            sample_issue,
+                            mock_config,
+                            mock_logger,
+                            on_usage_detailed=on_usage_detailed,
+                        )
+
+        assert mock_run.call_args.kwargs["on_usage_detailed"] is on_usage_detailed
 
     def test_fallback_ready_issue_failure_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -3681,9 +3732,11 @@ class TestAutoManagerModelDetection:
         return temp_project_dir
 
     def test_auto_manager_logs_detected_model(self, temp_project_with_issue: Path) -> None:
-        """AutoManager logs model name when on_model_detected callback fires."""
+        """AutoManager logs the resolved model ID (from on_usage_detailed), not the
+        requested alias (from on_model_detected), when both fire (BUG-2757)."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager, IssueProcessingResult
+        from little_loops.subprocess_utils import TokenUsage
 
         config = BRConfig(temp_project_with_issue)
         manager = AutoManager(config, dry_run=False)
@@ -3702,14 +3755,28 @@ class TestAutoManagerModelDetection:
             dry_run: bool = False,
             on_model_detected: Any = None,
             on_usage: Any = None,
+            on_usage_detailed: Any = None,
             preview_full: bool = False,
             event_bus: Any = None,
             sprint_context: Any = None,
             context_limit: Any = None,
             skip_learning_gate: bool = False,
         ) -> IssueProcessingResult:
+            # Simulate the real subprocess_utils flow: the init event fires
+            # on_model_detected with the requested alias, then the result event
+            # fires on_usage_detailed with the resolved model ID.
             if on_model_detected:
-                on_model_detected("claude-sonnet-4-6")
+                on_model_detected("sonnet")
+            if on_usage_detailed:
+                on_usage_detailed(
+                    TokenUsage(
+                        input_tokens=100,
+                        output_tokens=50,
+                        cache_read_tokens=0,
+                        cache_creation_tokens=0,
+                        model="claude-sonnet-4-6",
+                    )
+                )
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         with patch(
@@ -3719,6 +3786,53 @@ class TestAutoManagerModelDetection:
             manager._process_issue(issue)
 
         assert any("model: claude-sonnet-4-6" in msg for msg in info_log)
+        assert not any(msg.strip() == "model: sonnet" for msg in info_log)
+        assert manager._detected_model == ["claude-sonnet-4-6"]
+
+    def test_auto_manager_falls_back_to_alias_when_no_result_event(
+        self, temp_project_with_issue: Path
+    ) -> None:
+        """AutoManager falls back to the requested alias when no result event
+        (on_usage_detailed) ever fires, e.g. the subprocess fails before completing
+        (BUG-2757)."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+
+        config = BRConfig(temp_project_with_issue)
+        manager = AutoManager(config, dry_run=False)
+
+        info_log: list[str] = []
+        manager.logger.info = lambda msg: info_log.append(msg)  # type: ignore[method-assign]
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+
+        def mock_process_inplace(
+            info: Any,
+            cfg: Any,
+            logger: Any,
+            dry_run: bool = False,
+            on_model_detected: Any = None,
+            on_usage: Any = None,
+            on_usage_detailed: Any = None,
+            preview_full: bool = False,
+            event_bus: Any = None,
+            sprint_context: Any = None,
+            context_limit: Any = None,
+            skip_learning_gate: bool = False,
+        ) -> IssueProcessingResult:
+            if on_model_detected:
+                on_model_detected("sonnet")
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            side_effect=mock_process_inplace,
+        ):
+            manager._process_issue(issue)
+
+        assert any("model: sonnet" in msg for msg in info_log)
+        assert manager._detected_model == ["sonnet"]
 
     def test_records_mixed_issue_outcomes_with_one_batch_id(
         self, temp_project_with_issue: Path
@@ -3790,6 +3904,61 @@ class TestAutoManagerModelDetection:
             ),
         ):
             assert manager._process_issue(issue) is True
+
+    def test_context_window_sizes_from_resolved_model_not_alias(
+        self, temp_project_with_issue: Path
+    ) -> None:
+        """context_window_for() sizes context using the resolved model ID
+        (self._detected_model), not the requested alias, once it's populated
+        via on_usage_detailed (BUG-2757)."""
+        from little_loops.config import BRConfig
+        from little_loops.context_window import context_window_for
+        from little_loops.issue_manager import AutoManager, IssueProcessingResult
+        from little_loops.subprocess_utils import TokenUsage
+
+        config = BRConfig(temp_project_with_issue)
+        manager = AutoManager(config, dry_run=False)
+
+        issue = manager._get_next_issue()
+        assert issue is not None
+
+        def mock_process_inplace(
+            info: Any,
+            cfg: Any,
+            logger: Any,
+            dry_run: bool = False,
+            on_model_detected: Any = None,
+            on_usage: Any = None,
+            on_usage_detailed: Any = None,
+            preview_full: bool = False,
+            event_bus: Any = None,
+            sprint_context: Any = None,
+            context_limit: Any = None,
+            skip_learning_gate: bool = False,
+        ) -> IssueProcessingResult:
+            if on_model_detected:
+                on_model_detected("sonnet")  # unresolved alias — sizes to 200K default
+            if on_usage_detailed:
+                on_usage_detailed(
+                    TokenUsage(
+                        input_tokens=100,
+                        output_tokens=50,
+                        cache_read_tokens=0,
+                        cache_creation_tokens=0,
+                        model="claude-sonnet-4-6[1m]",  # resolved — sizes to 1M
+                    )
+                )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            side_effect=mock_process_inplace,
+        ):
+            manager._process_issue(issue)
+
+        assert manager._detected_model == ["claude-sonnet-4-6[1m]"]
+        assert context_window_for(manager._detected_model[0]) == 1_000_000
+        assert context_window_for("sonnet") == 200_000
 
 
 class TestDecisionNeededGate:

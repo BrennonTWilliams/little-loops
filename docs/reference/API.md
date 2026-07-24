@@ -2385,6 +2385,7 @@ def run_claude_command(
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
     on_usage: Callable[[int, int], None] | None = None,
+    on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     resume_session: bool = False,
 ) -> subprocess.CompletedProcess[str]
@@ -2398,8 +2399,9 @@ Preview and invoke a Claude CLI command with output streaming. This is the `issu
 - `timeout` - Timeout in seconds
 - `stream_output` - Whether to stream output to console
 - `idle_timeout` - Kill process if no output for this many seconds (0 to disable)
-- `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event
+- `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event. This is the **requested alias** (e.g. `"sonnet"`), not the resolved model the CLI actually ran.
 - `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event
+- `on_usage_detailed` - Optional callback invoked with a `TokenUsage` dataclass from the stream-json result event. `TokenUsage.model` carries the **resolved** model ID (e.g. `"claude-sonnet-5"`), unlike `on_model_detected` (BUG-2757).
 - `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
 
