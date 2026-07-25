@@ -74,7 +74,9 @@ def _make_config(tmp_path: Path, categories: dict[str, Any]) -> Any:
 class TestResolveIssueId:
     """Tests for _resolve_issue_id()."""
 
-    def _make_config_with_file(self, tmp_path: Path, filename: str) -> tuple[Any, Path]:
+    def _make_config_with_file(
+        self, tmp_path: Path, filename: str, *, include_id: bool = True
+    ) -> tuple[Any, Path]:
         """Create a config with one issue file and return (config, file_path)."""
         categories = {
             "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
@@ -83,7 +85,11 @@ class TestResolveIssueId:
         config = _make_config(tmp_path, categories)
         enh_dir = tmp_path / ".issues" / "enhancements"
         issue_file = enh_dir / filename
-        issue_file.write_text("---\nstatus: open\n---\n# ENH-2001: Test issue\n")
+        frontmatter = "---\nstatus: open\n"
+        if include_id:
+            frontmatter += "id: ENH-2001\n"
+        frontmatter += "---\n# ENH-2001: Test issue\n"
+        issue_file.write_text(frontmatter)
         return config, issue_file
 
     def test_full_format_p_type_nnn(self, tmp_path: Path) -> None:
@@ -111,8 +117,14 @@ class TestResolveIssueId:
         assert result is None
 
     def test_stale_type_prefix_falls_back_to_numeric(self, tmp_path: Path) -> None:
-        """FEAT-2001 resolves to ENH-2001 file via numeric fallback (BUG-2003)."""
-        config, issue_file = self._make_config_with_file(tmp_path, "P3-ENH-2001-test-issue.md")
+        """FEAT-2001 resolves to ENH-2001 file via numeric fallback (BUG-2003).
+
+        Fixture deliberately omits frontmatter `id:` — proves the "no
+        frontmatter opinion" fallback path (BUG-2806) still works.
+        """
+        config, issue_file = self._make_config_with_file(
+            tmp_path, "P3-ENH-2001-test-issue.md", include_id=False
+        )
         result = _resolve_issue_id(config, "FEAT-2001")
         assert result == issue_file
 
@@ -125,8 +137,8 @@ class TestResolveIssueId:
         enh_dir = tmp_path / ".issues" / "enhancements"
         p2_file = enh_dir / "P2-ENH-2001-old.md"
         p3_file = enh_dir / "P3-ENH-2001-new.md"
-        p2_file.write_text("---\nstatus: open\n---\n")
-        p3_file.write_text("---\nstatus: open\n---\n")
+        p2_file.write_text("---\nstatus: open\nid: ENH-2001\n---\n")
+        p3_file.write_text("---\nstatus: open\nid: ENH-2001\n---\n")
 
         result = _resolve_issue_id(config, "P3-ENH-2001")
         assert result == p3_file
@@ -146,7 +158,7 @@ class TestResolveIssueId:
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
         issue_file = completed_dir / "P3-ENH-2001-test-issue.md"
-        issue_file.write_text("---\nstatus: done\n---\n# ENH-2001: Test issue\n")
+        issue_file.write_text("---\nstatus: done\nid: ENH-2001\n---\n# ENH-2001: Test issue\n")
 
         result = _resolve_issue_id(config, "ENH-2001")
         assert result == issue_file
@@ -160,10 +172,30 @@ class TestResolveIssueId:
         deferred_dir = tmp_path / ".issues" / "deferred"
         deferred_dir.mkdir(parents=True)
         issue_file = deferred_dir / "P3-ENH-2001-test-issue.md"
-        issue_file.write_text("---\nstatus: deferred\n---\n# ENH-2001: Test issue\n")
+        issue_file.write_text(
+            "---\nstatus: deferred\nid: ENH-2001\n---\n# ENH-2001: Test issue\n"
+        )
 
         result = _resolve_issue_id(config, "ENH-2001")
         assert result == issue_file
+
+    def test_frontmatter_id_wins_over_slug_embedded_substring(self, tmp_path: Path) -> None:
+        """EPIC-2456 resolves to the EPIC file, not the ENH whose slug embeds
+        "epic-2456" (BUG-2806)."""
+        categories = {
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
+            "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
+        }
+        config = _make_config(tmp_path, categories)
+        epic_dir = tmp_path / ".issues" / "epics"
+        enh_dir = tmp_path / ".issues" / "enhancements"
+        epic_file = epic_dir / "P2-EPIC-2456-token-cost-reduction.md"
+        enh_file = enh_dir / "P2-ENH-2719-epic-2456-closure-gate.md"
+        epic_file.write_text("---\nstatus: open\nid: EPIC-2456\n---\n# EPIC-2456: T\n")
+        enh_file.write_text("---\nstatus: open\nid: ENH-2719\n---\n# ENH-2719: T\n")
+
+        result = _resolve_issue_id(config, "EPIC-2456")
+        assert result == epic_file
 
 
 # =============================================================================

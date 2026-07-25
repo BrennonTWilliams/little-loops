@@ -16,6 +16,7 @@ from little_loops.cli.output import (
     strip_ansi,
     terminal_width,
 )
+from little_loops.frontmatter import parse_frontmatter
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -108,6 +109,28 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
 
     if not candidates:
         return None
+
+    def _frontmatter_id(path: Path) -> str | None:
+        try:
+            content = path.read_text()
+        except OSError:
+            return None
+        value = parse_frontmatter(content).get("id")
+        if not value:
+            return None
+        return str(value).strip().upper()
+
+    # Prefer an exact frontmatter `id:` match over filename substring matching
+    # (BUG-2806): when a candidate's own frontmatter says `id: EPIC-2456`, it
+    # wins outright over another candidate whose filename slug merely embeds
+    # "epic-2456" as a substring. A missing `id:` field is "no opinion" and
+    # falls through unchanged to the filename-derived matching below (BUG-2003
+    # tolerance for stale/mismatched type prefixes relies on that fallback).
+    if type_prefix:
+        expected_id = f"{type_prefix}-{numeric_id}"
+        frontmatter_matches = [p for p in candidates if _frontmatter_id(p) == expected_id]
+        if frontmatter_matches:
+            candidates = frontmatter_matches
 
     def _matches_type(path: Path) -> bool:
         upper = path.name.upper()

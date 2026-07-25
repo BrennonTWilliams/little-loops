@@ -447,3 +447,39 @@ class TestPathSearchesTypeDirs:
         assert result == 0
         assert "features" in out
         assert out.endswith("P3-FEAT-1009-my-feature.md")
+
+
+class TestPathFrontmatterIdWinsOverSubstring:
+    """BUG-2806: frontmatter `id:` must win over a slug-embedded substring."""
+
+    def test_epic_resolves_over_slug_embedded_enh(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """EPIC-2456 resolves to the EPIC file, not the ENH whose slug embeds
+        "epic-2456"."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir, _, _ = _setup_dirs(temp_project_dir)
+        epics_dir = temp_project_dir / ".issues" / "epics"
+        epics_dir.mkdir(parents=True, exist_ok=True)
+        _make_issue(
+            epics_dir, "P2-EPIC-2456-token-cost-reduction.md", "EPIC-2456: Token Cost Reduction"
+        )
+        _make_issue(
+            features_dir,
+            "P2-ENH-2719-epic-2456-closure-gate.md",
+            "ENH-2719: Epic 2456 Closure Gate",
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "path", "EPIC-2456", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out.strip()
+        assert result == 0
+        assert out.endswith("P2-EPIC-2456-token-cost-reduction.md")

@@ -49,6 +49,42 @@ class TestIssuesCLISetStatus:
         content = issue_file.read_text()
         assert "status: in_progress" in content
 
+    def test_set_status_frontmatter_id_wins_over_slug_embedded_substring(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """set-status EPIC-2456 updates the EPIC file, not the ENH whose slug
+        embeds "epic-2456" as a substring (BUG-2806)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        epic_file = issues_dir / "epics" / "P2-EPIC-2456-token-cost-reduction.md"
+        epic_file.write_text("---\nid: EPIC-2456\nstatus: open\n---\n# EPIC-2456: T\n")
+        enh_dir = issues_dir / "features"
+        enh_file = enh_dir / "P2-ENH-2719-epic-2456-closure-gate.md"
+        enh_file.write_text("---\nid: ENH-2719\nstatus: open\n---\n# ENH-2719: T\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "EPIC-2456",
+                "done",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        assert "status: done" in epic_file.read_text()
+        assert "status: open" in enh_file.read_text()
+
     def test_set_status_prints_transition(
         self,
         temp_project_dir: Path,
