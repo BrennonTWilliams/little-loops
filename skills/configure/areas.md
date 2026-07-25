@@ -846,13 +846,13 @@ questions:
     question: "Which ll- CLI commands should be allowed?"
     options:
       - label: "All ll- commands (Recommended)"
-        description: "Authorize all 31 ll- CLI tools and handoff write: ll-action, ll-harness, ll-issues, ll-auto, ll-parallel, ll-sprint, ll-loop, ll-workflows, ll-messages, ll-session, ll-history, ll-history-context, ll-deps, ll-sync, ll-verify-docs, ll-verify-skills, ll-verify-design-tokens, ll-verify-des-audit, ll-check-links, ll-gitignore, ll-migrate, ll-migrate-relationships, ll-migrate-status, ll-create-extension, ll-learning-tests, ll-logs, ll-generate-skill-descriptions, ll-adapt, ll-doctor, ll-ctx-stats, Edit(.ll/ll-continue-prompt.md)"
+        description: "Authorize all ll- CLI tools and handoff write: ll-action, ll-adapt, ll-adapt-agents-for-codex, ll-adapt-skills-for-codex, ll-artifact, ll-auto, ll-check-links, ll-code, ll-compact-session, ll-config, ll-create-extension, ll-ctx-stats, ll-deps, ll-doctor, ll-generate-schemas, ll-generate-skill-descriptions, ll-gitignore, ll-harness, ll-history, ll-history-context, ll-init, ll-issues, ll-learning-tests, ll-logs, ll-loop, ll-messages, ll-migrate, ll-migrate-labels, ll-migrate-relationships, ll-migrate-status, ll-parallel, ll-queue, ll-session, ll-sprint, ll-sync, ll-verify-cli-allowlist, ll-verify-decisions, ll-verify-des-audit, ll-verify-design-tokens, ll-verify-docs, ll-verify-kinds, ll-verify-package-data, ll-verify-skill-budget, ll-verify-skills, ll-verify-triggers, ll-workflows, Edit(.ll/ll-continue-prompt.md)"
       - label: "Keep current"
         description: "Keep existing entries without changes"
     multiSelect: false
 ```
 
-**Configuration result**: Perform the merge on the chosen target file using the same logic as SKILL.md Step 10:
+**Configuration result**: Perform the merge on the chosen target file as follows:
 1. Read target file (or start with `{"permissions": {"allow": [], "deny": []}}` if absent)
 2. Remove all existing `Bash(ll-` entries from `permissions.allow`
 3. Remove any existing `Edit(.ll/ll-continue-prompt.md)` entry — and the legacy `Write(.ll/ll-continue-prompt.md)` form — from `permissions.allow`
