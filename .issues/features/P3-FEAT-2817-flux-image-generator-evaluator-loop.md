@@ -2,14 +2,12 @@
 id: FEAT-2817
 type: FEAT
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-25T00:00:00Z'
+completed_at: '2026-07-25T23:14:28Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
 decision_needed: false
-deferred_by: automation
-deferred_date: '2026-07-25T22:23:01Z'
-deferred_reason: decision_unresolved
 reconcile_attempted: true
 confidence_score: 96
 outcome_confidence: 82
@@ -164,7 +162,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `IMAGE_BASE_URL` to `.env` / `.env.example` and document it alongside the `VISION_*` vars.
+1. Add `IMAGE_BASE_URL` to `.env` (no `.env.example` exists in this repo) and document it alongside
+   the `VISION_*` vars.
 2. Author `scripts/little_loops/loops/flux-image-generator.yaml` following the
    `svg-image-generator.yaml` skeleton, substituting the shell generate + base64-decode states for the
    LLM SVG-authoring state.
@@ -331,7 +330,60 @@ written:
 | `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` | MR-* rule rationale and canonical loop shape |
 | `.claude/CLAUDE.md` § Loop Authoring | MR-1/5/7/9/11 escaping and artifact-isolation rules |
 
+## Resolution
+
+Implemented as Option A via `from:` inheritance, exactly as decided.
+
+**Files added**
+- `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml` — `from: generator-evaluator`
+  oracle variant. Overrides `generate` (routes all outcomes to the new shell state), adds
+  `synthesize` (POST to `${IMAGE_BASE_URL}/generate`, base64-decode to a per-iteration PNG,
+  record seed), and overrides `evaluate` to copy the PNG straight to `screenshot.png` — no
+  Playwright step at all, since the FLUX response is already a raster.
+  `snapshot`/`score`/`record_score`/`check_stall`/`check_diff_stall` are inherited unchanged.
+- `scripts/little_loops/loops/flux-image-generator.yaml` — wrapper:
+  `init → check_image_env → plan → run_gen_eval → vision_gate → done`, with `diagnose → failed`.
+- `scripts/tests/test_flux_image_generator.py` — 22 tests. The behavioural half extracts the real
+  `synthesize` action from the YAML, interpolates it as the engine would, and runs it under bash
+  against a stub HTTP FLUX endpoint.
+
+**Files modified**
+- `scripts/tests/test_builtin_loops.py` — registered `flux-image-generator`.
+- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_REFERENCE.md` — catalog entries.
+- `README.md` — loop count 99 → 101 (`ll-verify-docs` gate).
+- `.env` — added `IMAGE_BASE_URL` (gitignored; local only).
+
+**Design decisions**
+- The LLM authors `image-prompt.txt`; `synthesize` reads it inside a quoted Python heredoc via
+  `os.environ` and builds the body with `json.dumps` — the prompt never reaches the shell
+  tokenizer or a `curl -d` string (MR-11). Verified by a test asserting a prompt containing
+  `"`, `$HOME`, backticks, `!`, `\`, and single quotes arrives at the endpoint verbatim.
+- `IMAGE_BASE_URL` is a hard dependency (`check_image_env`, `exit_code` evaluator → `diagnose`);
+  `VISION_*` degrades to a logged skip, matching the existing loops.
+- Per-iteration numbering uses the `.gen_counter` file idiom (`${state.iteration}` is unavailable
+  in shell actions); each iteration writes `image-iter-N.png` plus a `seeds.txt` line
+  (`image-iter-N.png seed=… steps=…`). Seed derives from `base_seed` and the counter, so a
+  regenerate after critique re-samples the latent instead of re-rendering.
+- `steps` and `base_seed` are context vars with defaults (Open Question 1); all iterations are
+  kept (Open Question 2).
+
+**Acceptance criteria** — all met:
+- `ll-loop validate flux-image-generator` and `ll-loop validate oracles/generator-evaluator-flux`
+  both exit 0 with zero MR-* violations.
+- HTTP failure, missing/empty `image_b64`, undecodable base64, and zero-byte PNG each emit
+  `IMAGE_FAIL` and route to `failed` — covered by parametrized tests against the stub endpoint.
+- Distinct non-overwriting per-iteration PNGs with recorded, varying seeds — covered.
+- Shell-metacharacter prompt safety — covered.
+- Unset `VISION_*` skips, unset `IMAGE_BASE_URL` fails actionably — covered.
+- `python -m pytest scripts/tests/` → 16290 passed, 38 skipped.
+
+The `ll-loop run` end-to-end criterion is not exercised in CI by design (per the issue's own
+Dependency note): it requires a reachable self-hosted FLUX endpoint. The stub-server tests cover
+the same generate → decode → per-iteration-artifact contract without network access.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-25T23:13:52 - `e1de7126-8d26-4bd2-94d1-fac3b5acb3b7.jsonl`
+- `/ll:ready-issue` - 2026-07-25T23:01:44 - `9ee34df3-a41d-4a72-a52d-7bed31cb2a6e.jsonl`
 - `/ll:confidence-check` - 2026-07-25T23:10:00 - `0e9d5cfe-a08f-405d-9496-907be762d917.jsonl`
 - `/ll:decide-issue` - 2026-07-25T22:55:19 - `2ca7e4e9-549a-485e-8997-dfeea82dbe66.jsonl`
 - `/ll:reconcile-issue` - 2026-07-25T22:51:20 - `830752a3-91ce-445d-9136-04118d609b90.jsonl`
@@ -342,4 +394,4 @@ written:
 
 ## Status
 
-open
+done

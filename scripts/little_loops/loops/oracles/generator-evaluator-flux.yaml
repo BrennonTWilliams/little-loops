@@ -1,0 +1,180 @@
+name: generator-evaluator-flux
+from: generator-evaluator
+visibility: internal
+description: |
+  Diffusion-API oracle variant of generator-evaluator (FEAT-2817). The LLM
+  generate state authors/refines a text-to-image PROMPT rather than an artifact;
+  a new shell synthesize state POSTs it to a self-hosted FLUX endpoint
+  (${IMAGE_BASE_URL}/generate), base64-decodes the response into a
+  per-iteration PNG, and records the seed. evaluate is overridden to skip
+  Playwright entirely — the FLUX response is already a raster image, so it is
+  copied straight to screenshot.png for the inherited rubric scorer. All
+  snapshot / score / record_score / check_stall / check_diff_stall machinery is
+  inherited unchanged. Second oracle to use from: inheritance (FEAT-2269
+  precedent: generator-evaluator-cli). Used by flux-image-generator.
+
+parameters:
+  prompt_file:
+    type: string
+    required: false
+    description: |
+      Filename (relative to run_dir) that the generate state writes the final
+      FLUX prompt to. Read by synthesize via a quoted heredoc, never spliced
+      into the shell body (MR-11). Default image-prompt.txt.
+  steps:
+    type: string
+    required: false
+    description: Diffusion step count sent to the FLUX endpoint (default 4).
+  base_seed:
+    type: string
+    required: false
+    description: |
+      Seed basis. The per-iteration seed is derived from base_seed and the
+      iteration counter so a regenerate after critique is never a no-op
+      re-render of the same latent.
+
+context:
+  artifact_path: "image.png"
+  prompt_file: "image-prompt.txt"
+  steps: 4
+  base_seed: 1
+
+states:
+  generate:
+    # The LLM's role here is prompt authoring/refinement only — image synthesis
+    # is the shell POST in `synthesize`. Every generate outcome routes forward
+    # for the same reason the base oracle routes yes/no/partial to evaluate
+    # (ENH-1907): gating on the default judge's read of the agent's narration
+    # dead-ends the sub-loop nondeterministically.
+    on_yes: synthesize
+    on_no: synthesize
+    on_partial: synthesize
+    on_error: failed
+
+  synthesize:
+    description: |
+      Shell generator: POST the authored prompt to the FLUX endpoint, decode the
+      base64 response to a per-iteration PNG, record the seed. This is the MR-1
+      non-LLM gate on the generator side — HTTP failure, a missing/empty
+      image_b64, undecodable base64, and a zero-byte PNG all emit IMAGE_FAIL and
+      route to `failed` rather than being handed to the scorer as a pass.
+    action_type: shell
+    timeout: 900
+    action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${IMAGE_BASE_URL:-}" ]; then
+        echo "IMAGE_FAIL: IMAGE_BASE_URL is not set. Export it or add it to .env, pointing at your self-hosted FLUX endpoint (e.g. IMAGE_BASE_URL=http://localhost:8000)."
+        exit 1
+      fi
+      PROMPT_FILE="$ABS_DIR/${context.prompt_file}"
+      if [ ! -s "$PROMPT_FILE" ]; then
+        echo "IMAGE_FAIL: no prompt found at $PROMPT_FILE — the generate state must write the FLUX prompt there."
+        exit 1
+      fi
+      export ABS_DIR PROMPT_FILE
+      export FLUX_STEPS="${context.steps}"
+      export FLUX_BASE_SEED="${context.base_seed}"
+      export FLUX_ARTIFACT="${context.artifact_path}"
+      python3 <<'PY'
+      import base64, json, os, sys, urllib.request
+
+      abs_dir = os.environ["ABS_DIR"]
+      artifact = os.environ.get("FLUX_ARTIFACT") or "image.png"
+      try:
+          steps = int(os.environ.get("FLUX_STEPS") or 4)
+      except ValueError:
+          steps = 4
+      try:
+          base_seed = int(os.environ.get("FLUX_BASE_SEED") or 1)
+      except ValueError:
+          base_seed = 1
+
+      with open(os.environ["PROMPT_FILE"]) as f:
+          prompt = f.read().strip()
+
+      # Per-iteration counter: ${state.iteration} is unavailable inside shell
+      # actions, so use the file-counter idiom (canvas-sketch-generator snapshot).
+      counter_file = os.path.join(abs_dir, ".gen_counter")
+      try:
+          with open(counter_file) as f:
+              n = int(f.read().strip())
+      except Exception:
+          n = 0
+      n += 1
+      with open(counter_file, "w") as f:
+          f.write(str(n))
+
+      # Vary the seed per iteration so a regenerate after critique re-samples the
+      # latent instead of re-rendering the same image with a new prompt.
+      seed = (base_seed * 1000003 + n * 7919) % 2147483647
+
+      base = os.environ["IMAGE_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("/generate") else base + "/generate"
+      # json.dumps builds the body — the prompt never touches the shell tokenizer
+      # or a curl -d string, so arbitrary metacharacters are safe (MR-11).
+      body = json.dumps({"prompt": prompt, "seed": seed, "steps": steps}).encode()
+      req = urllib.request.Request(
+          endpoint, data=body, headers={"Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=600) as r:
+              data = json.load(r)
+      except Exception as e:
+          print("IMAGE_FAIL: FLUX request to %s failed (%s)" % (endpoint, e))
+          sys.exit(1)
+
+      b64 = (data or {}).get("image_b64") or ""
+      if not b64:
+          print("IMAGE_FAIL: response from %s carried no image_b64 payload" % endpoint)
+          sys.exit(1)
+      try:
+          img = base64.b64decode(b64, validate=True)
+      except Exception as e:
+          print("IMAGE_FAIL: image_b64 is not decodable base64 (%s)" % e)
+          sys.exit(1)
+      if not img:
+          print("IMAGE_FAIL: decoded image_b64 is zero bytes")
+          sys.exit(1)
+
+      iter_png = os.path.join(abs_dir, "image-iter-%d.png" % n)
+      with open(iter_png, "wb") as f:
+          f.write(img)
+      if os.path.getsize(iter_png) == 0:
+          print("IMAGE_FAIL: wrote a zero-byte PNG at %s" % iter_png)
+          sys.exit(1)
+      with open(os.path.join(abs_dir, artifact), "wb") as f:
+          f.write(img)
+      with open(os.path.join(abs_dir, "seeds.txt"), "a") as f:
+          f.write("%s seed=%d steps=%d\n" % (os.path.basename(iter_png), seed, steps))
+      print("IMAGE_OK: %s (%d bytes, seed=%d, steps=%d)" % (iter_png, len(img), seed, steps))
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "IMAGE_OK"
+    on_yes: evaluate
+    on_no: failed
+    on_error: failed
+
+  evaluate:
+    description: |
+      No render step: the FLUX response IS the raster artifact, so this override
+      replaces the inherited playwright_screenshot action with a plain copy to
+      screenshot.png (the path the inherited snapshot/score states read).
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      cp "$ABS_DIR/${context.artifact_path}" "$ABS_DIR/screenshot.png" && echo "CAPTURED"
+    evaluate:
+      type: output_contains
+      pattern: "CAPTURED"
+    on_yes: snapshot
+    on_no: failed
+    on_error: failed

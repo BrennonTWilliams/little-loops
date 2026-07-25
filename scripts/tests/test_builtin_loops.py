@@ -163,6 +163,7 @@ class TestBuiltinLoopFiles:
             "policy-refine",
             "brainstorm",
             "openscad-model-generator",
+            "flux-image-generator",
             "interactive-component-generator",
             "workflow-generator",
         }

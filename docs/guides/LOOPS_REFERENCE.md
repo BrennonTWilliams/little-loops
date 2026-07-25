@@ -1727,6 +1727,66 @@ init → plan → generate → evaluate
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
 - To customize the scoring criteria, install the loop locally (`ll-loop install svg-image-generator`) and edit the `score` state's prompt.
 
+### `flux-image-generator` — Diffusion Text-to-Image Loop
+
+> **Prerequisites**: a reachable self-hosted FLUX endpoint exposing `POST <base>/generate`, set via `IMAGE_BASE_URL` (in `.env` or the environment). Unlike the optional `VISION_*` gate, this is a hard dependency — the loop fails fast with an actionable message when it is unset.
+
+**Technique**: The one visual harness whose *generator is not an LLM emitting code*. A **planner** expands the description into a visual brief (subject, style, composition, palette, anti-patterns); a **prompt author** (LLM) writes a single text-to-image prompt to `image-prompt.txt`; a **synthesizer** (shell) POSTs `{"prompt", "seed", "steps"}` to `${IMAGE_BASE_URL}/generate`, base64-decodes `image_b64` into a per-iteration PNG, and records the seed; a **scorer** judges the raster against a diffusion-specific rubric and rewrites the *prompt* — not the artifact — for the next pass.
+
+The prompt is read from a file inside a quoted Python heredoc and serialized with `json.dumps`, so it never touches the shell tokenizer or a `curl -d` string (MR-11): arbitrary quotes, `$`, backticks, and `!` are safe.
+
+**When to use**: When you want a raster illustration and the iteration cost is prompt phrasing rather than markup. Use `svg-image-generator` instead when you need an editable, resolution-independent vector artifact.
+
+**Usage:**
+
+```bash
+ll-loop run flux-image-generator --input "a clean vector illustration of a server rack, diagram style"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language image description |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/flux-image-generator-{instance_id}/`) for `image.png`, `image-iter-N.png`, `seeds.txt`, `image-prompt.txt`, `brief.md`, `critique.md` |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all five** must clear it |
+| `steps` | `4` | Diffusion steps per generation |
+| `base_seed` | `1` | Seed basis; the per-iteration seed derives from it so a regenerate re-samples the latent instead of re-rendering the same image |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values, or empty |
+
+**FSM flow:**
+
+```
+init → check_image_env ──(IMAGE_BASE_URL unset)──→ diagnose → failed
+          │
+          └→ plan → run_gen_eval  [oracles/generator-evaluator-flux]
+                       generate (author prompt) → synthesize (POST + decode)
+                            ├─ IMAGE_OK   → evaluate (copy PNG) → snapshot → score
+                            │                                                 ├─ ALL_PASS → done
+                            │                                                 └─ ITERATE  → stall guards → generate
+                            └─ IMAGE_FAIL → failed
+                       │
+                       ├─ done → vision_gate ─ VISION_PASS → done
+                       │                     └ VISION_FAIL → run_gen_eval
+                       └─ failed → diagnose → failed
+```
+
+**Evaluation criteria** (all five must meet `pass_threshold`):
+
+| Criterion | What it checks |
+|-----------|----------------|
+| `prompt_adherence` | Does the image depict what the brief asked for? Missing or substituted subjects penalized hardest. |
+| `subject_clarity` | Is the primary subject unambiguous and legible against the background? |
+| `composition` | Framing, balance, negative space, background treatment, palette and lighting coherence |
+| `artifact_freedom` | Distortions, duplicated or malformed structures, garbled lettering, smeared edges |
+| `style_adherence` | Does the rendering style match the brief? A photorealistic render for a flat-vector brief scores 1–3 regardless of appeal. |
+
+**Notes:**
+- **MR-1 non-LLM gates**: HTTP failure, a missing/empty `image_b64`, undecodable base64, and a zero-byte PNG each emit `IMAGE_FAIL` and route to `failed` — none of them reaches the scorer as a pass.
+- **Per-iteration artifacts**: `synthesize` uses the `.gen_counter` file idiom (`${state.iteration}` is unavailable in shell actions) to write `image-iter-N.png` with a matching `seeds.txt` line, so a good result is reproducible and no iteration is overwritten.
+- Unset `VISION_*` degrades to `VISION_PASS: skipped (VISION_* env not configured)` rather than failing; the gate is capped at 3 rounds via `.vision_rounds`.
+- Delegation goes through `oracles/generator-evaluator-flux`, which extends `oracles/generator-evaluator` via `from:` inheritance — it overrides only `generate` (routing) and `evaluate` (copy the PNG instead of screenshotting it) and adds `synthesize`, inheriting all snapshot / score / score-stall / diff-stall machinery.
+
 ### `openscad-model-generator` — Parametric CAD Model Generator
 
 > **Prerequisites**: [OpenSCAD CLI](https://openscad.org/downloads.html) must be installed and on PATH.

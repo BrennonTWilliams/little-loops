@@ -1,0 +1,325 @@
+name: flux-image-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+description: |
+  Generator-evaluator harness for raster text-to-image generation against a
+  self-hosted FLUX endpoint. Accepts a natural language description, expands it
+  into a visual brief, then iterates prompt -> POST ${IMAGE_BASE_URL}/generate ->
+  base64-decode PNG -> vision rubric score -> refined prompt until every
+  criterion passes or max_iterations is hit. Unlike the other visual harnesses
+  (svg / html / openscad / canvas), the generator is a diffusion HTTP endpoint
+  rather than an LLM emitting code — the LLM's role is prompt authoring and
+  refinement. Thin wrapper over oracles/generator-evaluator-flux (FEAT-2817).
+initial: init
+max_steps: 20
+timeout: 7200
+
+# HARNESS: Context variables control quality threshold and sampling parameters.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  steps: 4                    # diffusion steps per generation
+  base_seed: 1                # seed basis; the per-iteration seed derives from this
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+
+states:
+
+  init:
+    # HARNESS: Setup phase — captures the runner-injected run_dir as an absolute path
+    # so all subsequent states write to the same isolated per-run directory (MR-3).
+    action_type: shell
+    action: |
+      DIR="${context.run_dir}"
+      mkdir -p "$DIR"
+      case "$DIR" in
+        /*) echo "$DIR" ;;
+        *) echo "$(pwd)/$DIR" ;;
+      esac
+    capture: run_dir
+    next: check_image_env
+
+  check_image_env:
+    # HARNESS: Hard dependency gate. IMAGE_BASE_URL is this loop's core dependency
+    # (there is no generator without it), so unlike the optional VISION_* gate it
+    # fails the run outright with an actionable message rather than degrading.
+    # exit_code evaluator — a non-LLM gate ahead of any generation spend.
+    action_type: shell
+    action: |
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${IMAGE_BASE_URL:-}" ]; then
+        echo "IMAGE_BASE_URL is not set. This loop requires a reachable self-hosted FLUX endpoint."
+        echo "Set it in .env or the environment, e.g.: IMAGE_BASE_URL=http://localhost:8000"
+        exit 1
+      fi
+      echo "IMAGE_BASE_URL configured: $IMAGE_BASE_URL"
+    evaluate:
+      type: exit_code
+    on_yes: plan
+    on_no: diagnose
+    on_error: diagnose
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into a visual brief
+    # that the prompt author works from, mirroring svg-image-generator's plan state.
+    # Diffusion-specific: the brief must name subject, style, composition, and
+    # lighting explicitly, since those are the levers a text-to-image prompt has.
+    action_type: prompt
+    action: |
+      Write a visual brief to ${captured.run_dir.output}/brief.md for the following image:
+      "${context.description}"
+
+      The brief must include:
+      - **Subject**: what is depicted, and which details must be unambiguous
+      - **Style**: the rendering style in diffusion-prompt vocabulary (e.g. flat vector
+        illustration, technical diagram, isometric line art, photographic) — be explicit,
+        since style drift is the single most common failure of text-to-image generation
+      - **Composition**: framing, subject placement, background treatment, negative space
+      - **Palette and lighting**: specific colors and lighting character
+      - **Anti-patterns to avoid**: what the image must NOT be (e.g. "not photorealistic",
+        "no text or lettering", "no extra limbs or duplicated hardware")
+      - **Intended use**: where the image will appear and at what size
+
+      Be specific and opinionated. The prompt author will work from this brief.
+    next: run_gen_eval
+
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate (author prompt) -> synthesize
+    # (POST to FLUX, decode PNG) -> evaluate (copy PNG as screenshot) -> snapshot ->
+    # score (LLM rubric) -> stall guards, inside oracles/generator-evaluator-flux,
+    # until ALL_PASS or max_iterations. Routes to vision_gate on success; diagnose on
+    # error or exhausted retries (FEAT-2817).
+    loop: oracles/generator-evaluator-flux
+    with:
+      run_dir: "${captured.run_dir.output}"
+      artifact_path: "image.png"
+      prompt_file: "image-prompt.txt"
+      steps: "${context.steps}"
+      base_seed: "${context.base_seed}"
+      generate_prompt: |
+        Read ${captured.run_dir.output}/brief.md for the visual brief.
+
+        If ${captured.run_dir.output}/critique.md exists, read it and address every issue
+        listed in the "Issues to Address" section specifically and completely — the
+        previous image failed on those criteria.
+
+        ${context.design_tokens_context}
+
+        Write a single text-to-image prompt to ${captured.run_dir.output}/image-prompt.txt.
+
+        Requirements for that file:
+        - Plain prose or comma-separated clauses only — no JSON, no markdown, no code
+          fences, no commentary before or after. The entire file contents are sent
+          verbatim to the diffusion endpoint.
+        - Front-load the subject, then style, then composition, then palette/lighting.
+        - Convert every anti-pattern from the brief into positive phrasing where possible
+          (diffusion models handle "flat vector illustration" far better than
+          "not photorealistic"), and state the remaining exclusions explicitly.
+        - If a critique exists, change the phrasing that caused each failing criterion —
+          re-submitting a near-identical prompt wastes an iteration.
+        - Keep it under 120 words. Long prompts dilute attention across clauses.
+
+        Do NOT call the image API yourself and do NOT write any image file — the next
+        state performs the generation. Your only output artifact is image-prompt.txt.
+      rubric: |
+        Read the generated image at ${captured.run_dir.output}/screenshot.png.
+        Also read ${captured.run_dir.output}/brief.md for the visual intent and
+        ${captured.run_dir.output}/image-prompt.txt for the prompt that produced it.
+
+        Score the image on each criterion from 1 to 10 and write the evaluation to
+        ${captured.run_dir.output}/critique.md using this exact format:
+
+        ```
+        # Evaluation
+
+        prompt_adherence: N/10 — [explanation: does the image depict what the brief and
+          prompt asked for? Missing or substituted subjects are the harshest penalty.]
+        subject_clarity: N/10 — [explanation: is the primary subject unambiguous and
+          legible, or does it blend into the background / read as something else?]
+        composition: N/10 — [explanation: framing, balance, use of negative space,
+          background treatment, palette and lighting coherence.]
+        artifact_freedom: N/10 — [explanation: distortions, duplicated or malformed
+          structures, garbled lettering, smeared edges, obvious diffusion artifacts.]
+        style_adherence: N/10 — [explanation: does the rendering style match the brief?
+          A photorealistic render for a "flat vector diagram" brief scores 1-3 here
+          regardless of how attractive it is.]
+
+        ## Issues to Address
+        [Specific, actionable critique aimed at the PROMPT, not at a human retoucher.
+         Say which phrasing to change and how. If all scores meet threshold, write
+         "No issues — all criteria pass."]
+        ```
+
+        After writing the file, evaluate the scores:
+        - prompt_adherence threshold 6
+        - subject_clarity threshold 6
+        - composition threshold 6
+        - artifact_freedom threshold 6
+        - style_adherence threshold 6
+
+        If ALL five individual scores are >= 6, output exactly: ALL_PASS
+        Otherwise output: ITERATE
+      pass_threshold: 6
+    on_yes: vision_gate
+    on_no: diagnose
+    on_error: diagnose
+
+  vision_gate:
+    # HARNESS: Independent external-vision evaluator (VISION_* env wiring), the same
+    # anti-self-certification gate svg-image-generator applies to its screenshot —
+    # here it re-scores the raster output with a model that did not author the prompt.
+    # Failing criteria are appended to critique.md so the next prompt-refinement pass
+    # addresses them; a per-run round cap (.vision_rounds) bounds ping-pong.
+    #
+    # GRACEFUL DEGRADATION: no-op pass when VISION_* vars are absent (unlike
+    # IMAGE_BASE_URL, this evaluator is optional). API/parse errors also pass —
+    # never block a generated image on an optional gate.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      if [ ! -s "$ABS_DIR/image.png" ]; then
+        echo "VISION_PASS: skipped (no image.png)"; exit 0
+      fi
+      export ABS_DIR
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      img_path = os.path.join(abs_dir, "image.png")
+      rc_file = os.path.join(abs_dir, ".vision_rounds")
+      crit = os.path.join(abs_dir, "critique.md")
+      ROUND_CAP = 3
+      try:
+          rc = int(open(rc_file).read().strip())
+      except Exception:
+          rc = 0
+      if rc >= ROUND_CAP:
+          print("VISION_PASS: round cap (%d) reached, accepting" % ROUND_CAP); sys.exit(0)
+      try:
+          with open(img_path, "rb") as f:
+              b64 = base64.b64encode(f.read()).decode()
+      except Exception as e:
+          print("VISION_PASS: image unreadable (%s)" % e); sys.exit(0)
+      try:
+          brief = open(os.path.join(abs_dir, "brief.md")).read()[:2000]
+      except Exception:
+          brief = ""
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+      rubric = (
+          "You are a strict, impartial critic of generated images. Study the "
+          "attached image and score it 1-10 on each:\n"
+          "- prompt_adherence: does it depict what the brief asked for? "
+          "Missing or substituted subjects are the harshest penalty.\n"
+          "- subject_clarity: is the primary subject unambiguous and legible?\n"
+          "- composition: framing, balance, negative space, background, "
+          "palette and lighting coherence.\n"
+          "- artifact_freedom: distortions, duplicated or malformed structures, "
+          "garbled lettering, smeared edges, obvious diffusion artifacts.\n"
+          "- style_adherence: does the rendering style match the brief? A "
+          "photorealistic render for a flat-vector brief scores 1-3 here.\n"
+          "Threshold: every criterion must be >= 6.\n"
+          "The visual brief follows between triple backticks:\n"
+          "```\n" + brief + "\n```\n"
+          'Reply with ONE JSON object only, no prose: {"scores": '
+          '{"prompt_adherence": N, "subject_clarity": N, "composition": N, '
+          '"artifact_freedom": N, "style_adherence": N}, '
+          '"issues": ["specific prompt-level fix", ...]}'
+      )
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 900,
+          "messages": [{"role": "user", "content": [
+              {"type": "text", "text": rubric},
+              {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+          ]}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < 6}
+      print("VISION scores: " + json.dumps(scores))
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+      open(rc_file, "w").write(str(rc + 1))
+      lines = ["", "## Issues to Address (external vision critique, round %d)" % (rc + 1)]
+      for k, v in failing.items():
+          lines.append("- %s scored %s/10 (below threshold 6)" % (k, v))
+      for i in issues:
+          lines.append("- %s" % i)
+      with open(crit, "a") as f:
+          f.write("\n".join(lines) + "\n")
+      print("VISION_FAIL: %d criteria below threshold" % len(failing))
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: run_gen_eval
+    on_error: done
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    action_type: prompt
+    action: |
+      The FLUX image generation loop has completed successfully.
+
+      Final output files:
+      - ${captured.run_dir.output}/image.png        — the latest generated image (primary output)
+      - ${captured.run_dir.output}/image-iter-*.png — every iteration's image, kept in order
+      - ${captured.run_dir.output}/seeds.txt        — the seed and step count behind each image
+      - ${captured.run_dir.output}/image-prompt.txt — the final prompt sent to the endpoint
+      - ${captured.run_dir.output}/brief.md         — the visual planning brief
+      - ${captured.run_dir.output}/critique.md      — the final evaluation scores and notes
+
+      Report these paths to the user, note which iteration scored best, and quote the
+      seed for the accepted image so it can be reproduced.
+    terminal: true
+
+  diagnose:
+    action_type: prompt
+    action: |
+      The flux-image-generator loop has terminated with an unrecoverable failure.
+
+      Diagnose what happened:
+      - If IMAGE_BASE_URL was unset, say so plainly — that is the loop's core dependency
+        and the most common cause of an immediate failure.
+      - If ${captured.run_dir.output}/critique.md exists, read it and summarize the last
+        evaluation scores.
+      - Note whether ${captured.run_dir.output}/image.png and any image-iter-*.png exist
+        as partial output, and check ${captured.run_dir.output}/seeds.txt for how many
+        generations completed.
+      - Identify the most likely failure cause (most commonly: an unreachable FLUX
+        endpoint, an empty or undecodable image_b64 response, or an LLM error in the
+        score state).
+
+      Write a one-paragraph diagnostic summary the operator can use to re-run or adjust
+      the brief.
+    next: failed
+
+  failed:
+    # HARNESS: Explicit failure terminal — distinct from a max_iterations timeout,
+    # making the failure mode visible in ll-loop history.
+    terminal: true
