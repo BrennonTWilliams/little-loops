@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.151.0] - 2026-07-25
+
+### Added
+
+- FEAT-2763: Expand ll-doctor to validate little-loops' own install surface
+- FEAT-2793: Introduce ll-doctor check-registry protocol and settle exit-code semantics
+- FEAT-2794: Add ll-doctor fast default install-surface checks
+- FEAT-2795: Add ll-doctor --full aggregation of the ll-verify-* family
+- FEAT-2796: Document ll-doctor's new install-surface sections
+- FEAT-2786: Cycle-breaking strategy for `ll-deps` dependency auto-fix
+- FEAT-2808: Project .env fallback loading at every CLI entry point
+
+### Fixed
+
+- BUG-2755: `ll-init --upgrade` silently drops into the wizard without `--yes`
+- BUG-2756: Fix rlhf SVG Playwright smoke harness failure and propagate evaluation status
+- BUG-2757: refine-issue/ready-issue model log shows requested alias, not resolved model ID
+- BUG-2758: ll-init writes inert Write() permission rule for handoff prompt
+- BUG-2759: ll-doctor always exits 1 on claude-code (contradictory json_schema entry)
+- BUG-2760: CapabilityReport.hooks never populated — ll-doctor Hooks section is dead
+- BUG-2764: configure skill's ll- CLI permission allowlist is stale (31 of 46 tools)
+- BUG-2766: Legacy .issues/completed/ directory kept being recreated by recursive-refine, issue-staleness-review, and manage-issue guidance
+- BUG-2767: Built-in loops hardcode confidence thresholds and never read commands.confidence_gate from ll-config
+- BUG-2768: Confidence threshold defaults disagree across built-in loops, so gate verdicts depend on which loop touched the issue
+- BUG-2769: Issue-id ingest trusts malformed frontmatter id, silently mis-keying history rows
+- BUG-2770: set-status writes a snapshot but no issue_event, silently breaking session lookup
+- BUG-2777: `_run_cmd` per-command timeout not enforced while subprocess holds stdout open
+- BUG-2778: `_send_jsonrpc` deadline does not bound blocking `readline()`; unresponsive MCP server hangs `call_mcp_tool` indefinitely
+- BUG-2779: `call_mcp_tool` cleanup issues `kill()` without a follow-up `wait()`, leaving a zombie process
+- BUG-2788: Full-suite filesystem churn starves macOS services → beachball (post cap+renice)
+- BUG-2798: Purge stale .issues/completed/ directory references across skills and docs
+- BUG-2799: review-epic has broken CLI invocations and a status-corrupting --cascade recommendation
+- BUG-2800: YAML-invalid skill frontmatter + integration guard swallows parse errors
+- BUG-2802: `ll-issues sequence` warns on every reference to a `done` issue
+- BUG-2803: autodev defers fresh issues as low_readiness with all readiness remedies structurally unreachable
+- BUG-2806: Issue ID resolver matches filename substring before frontmatter id (EPIC-2456 resolved to ENH-2719)
+- BUG-2807: request_path: sdk was inert — API-key-only credential probe, missing max_tokens, silent downgrade
+
+### Changed
+
+- ENH-2504: Persist verification / readiness-review verdict outcomes into history.db
+- ENH-2761: ll-doctor never probes the host binary version
+- ENH-2762: ll-doctor --json omits Analytics Capture and Issues sections
+- ENH-2771: Key history tables on the stable numeric issue id, not the mutable TYPE-NNN string
+- ENH-2780: `find_issues(skip_blocked=True)` re-parses the entire issue directory to build the dependency graph
+- ENH-2781: `next-issue`/`next-issues` invoke `find_issues` 2-4 times per command; parse once and share
+- ENH-2782: `session_store.backfill()` reads and parses every issue file's frontmatter twice
+- ENH-2783: Parallel/sprint issue-close events are not live-written to the history event bus
+- ENH-2785: Complete the `editorial-mono` design-token theme so `ll-verify-design-tokens` can gate on exit 0
+- ENH-2804: verify-issue-loop / create-eval-from-issues templates emit MR-4 (and risk MR-8) warnings
+- ENH-2805: Audit builtin-loop skill-invoking states for missing pruning_profile coverage
+- ENH-2809: Add pruning_profile to the five MR-12-flagged skill-invoking states in autodev.yaml
+
+### Other
+
+- feat(logo): redraw ll-init CLI textart logo (3850c2b0)
+- improve(logo): add bordered splash logo and compact small variant (188819b8)
+
 ## [1.150.0] - 2026-07-23
 
 ### Added
@@ -179,6 +237,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.151.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.150.0...v1.151.0
 [1.150.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.149.0...v1.150.0
 [1.149.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.148.0...v1.149.0
 [1.148.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.147.0...v1.148.0
