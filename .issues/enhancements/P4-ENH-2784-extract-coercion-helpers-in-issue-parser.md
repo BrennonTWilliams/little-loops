@@ -3,6 +3,7 @@ discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
+parent: EPIC-2789
 ---
 
 # ENH-2784: Extract `_coerce_tristate_bool` / `_coerce_optional_int` helpers for 12 copy-pasted coercions in `IssueParser.parse_file`
