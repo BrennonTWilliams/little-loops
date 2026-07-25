@@ -463,9 +463,9 @@ _MIGRATIONS: list[str] = [
     """,
     # v5 (ENH-1711): issue_sessions VIEW joins issue_events to message_events via
     # overlapping timestamps, making the implicit session→issue link explicit and
-    # queryable. Requires captured_at IS NOT NULL; populated by _backfill_issues()
-    # for historical rows and by issue_lifecycle.py emit sites (ENH-1839) for
-    # live-emitted rows.
+    # queryable. Requires captured_at IS NOT NULL; populated by
+    # _backfill_issues_and_snapshots() for historical rows and by
+    # issue_lifecycle.py emit sites (ENH-1839) for live-emitted rows.
     """
     CREATE VIEW issue_sessions AS
     SELECT ie.issue_id,
@@ -1100,7 +1100,7 @@ _MIGRATIONS: list[str] = [
     # history on issue_id silently splits one issue's history across two rows
     # whenever it is retyped. Backfill is a pure trailing-digit extraction
     # (`TYPE-NNN` -> NNN); no regex needed, so it runs inline as SQL rather
-    # than through the separate _backfill_issues()/_backfill_snapshots()
+    # than through the _backfill_issues_and_snapshots()/_backfill_snapshots()
     # Python pass (those are updated too, in this same change, so a future
     # `backfill()` re-run also populates issue_num for newly-ingested rows).
     #
@@ -3319,67 +3319,6 @@ def _derive_type_priority(filename: str, fm: dict[str, Any]) -> tuple[str | None
     return issue_type, priority
 
 
-def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
-    """Seed ``issue_events`` from issue-file frontmatter under *issues_dir*.
-
-    Populates the v2 summary columns (``issue_type``, ``priority``,
-    ``completed_date``, ``captured_at``, ``completed_at``) so ``ll-history
-    summary`` can be answered from the DB without re-reading the files
-    (ENH-1621). ``completed_date`` is derived from ``completed_at`` (taking the
-    date portion) when present, leaving file-mtime / Resolution-section
-    inference to the file-parsing fallback path.
-    """
-    from little_loops.frontmatter import parse_frontmatter
-
-    count = 0
-    for issue_file in sorted(issues_dir.rglob("*.md")):
-        try:
-            fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
-        except OSError:
-            continue
-        issue_id = canonicalize_issue_id(fm.get("id"), issue_file)
-        if not issue_id:
-            continue
-        status = str(fm.get("status", "open"))
-        discovered_by = fm.get("discovered_by")
-        captured_at = fm.get("captured_at")
-        completed_at = fm.get("completed_at")
-        ts = str(completed_at or captured_at or fm.get("discovered_date") or "")
-        issue_type, priority = _derive_type_priority(issue_file.name, fm)
-        completed_date: str | None = None
-        if isinstance(completed_at, str) and completed_at:
-            completed_date = completed_at[:10]
-        issue_num = normalize_issue_id(str(issue_id))
-        conn.execute(
-            "INSERT OR IGNORE INTO issue_events("
-            "ts, issue_id, issue_num, transition, discovered_by, "
-            "issue_type, priority, completed_date, captured_at, completed_at"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                ts,
-                str(issue_id),
-                issue_num,
-                status,
-                str(discovered_by) if discovered_by else None,
-                issue_type,
-                priority,
-                completed_date,
-                str(captured_at) if captured_at else None,
-                str(completed_at) if completed_at else None,
-            ),
-        )
-        _index(
-            conn,
-            content=f"{issue_id} {status} {issue_type or ''}",
-            kind="issue",
-            ref=str(issue_id),
-            anchor=str(issue_file),
-            ts=ts,
-        )
-        count += 1
-    return count
-
-
 def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
     """Seed ``issue_snapshots`` and ``search_index`` from issue files under *issues_dir*.
 
@@ -3433,6 +3372,110 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
         )
         count += 1
     return count
+
+
+def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> tuple[int, int]:
+    """Seed ``issue_events`` and ``issue_snapshots`` in a single read/parse pass.
+
+    Combines :func:`_backfill_issues` and :func:`_backfill_snapshots` into one
+    ``rglob("*.md")`` walk so each issue file is read and its frontmatter
+    parsed exactly once (ENH-2782), instead of once per helper. The read and
+    parse are wrapped in a single ``try/except OSError`` (matching
+    ``_backfill_issues``'s broader guard rather than ``_backfill_snapshots``'s
+    read-only one — no existing test asserts on the narrower propagation
+    behavior). Otherwise preserves each function's per-file logic: the
+    per-file event ``ts`` derivation vs. the single shared snapshot ``ts``,
+    and the ``_derive_type_priority()`` normalization used only for events.
+    Returns ``(issues_count, snapshots_count)``.
+    """
+    from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
+
+    issues_count = 0
+    snapshots_count = 0
+    snapshot_ts = _now()
+    for issue_file in sorted(issues_dir.rglob("*.md")):
+        try:
+            content = issue_file.read_text(encoding="utf-8")
+            fm = parse_frontmatter(content)
+        except OSError:
+            continue
+        issue_id = canonicalize_issue_id(fm.get("id"), issue_file)
+        if not issue_id:
+            continue
+        issue_num = normalize_issue_id(str(issue_id))
+
+        # _backfill_issues portion
+        status = str(fm.get("status", "open"))
+        discovered_by = fm.get("discovered_by")
+        captured_at = fm.get("captured_at")
+        completed_at = fm.get("completed_at")
+        event_ts = str(completed_at or captured_at or fm.get("discovered_date") or "")
+        issue_type, priority = _derive_type_priority(issue_file.name, fm)
+        completed_date: str | None = None
+        if isinstance(completed_at, str) and completed_at:
+            completed_date = completed_at[:10]
+        conn.execute(
+            "INSERT OR IGNORE INTO issue_events("
+            "ts, issue_id, issue_num, transition, discovered_by, "
+            "issue_type, priority, completed_date, captured_at, completed_at"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event_ts,
+                str(issue_id),
+                issue_num,
+                status,
+                str(discovered_by) if discovered_by else None,
+                issue_type,
+                priority,
+                completed_date,
+                str(captured_at) if captured_at else None,
+                str(completed_at) if completed_at else None,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{issue_id} {status} {issue_type or ''}",
+            kind="issue",
+            ref=str(issue_id),
+            anchor=str(issue_file),
+            ts=event_ts,
+        )
+        issues_count += 1
+
+        # _backfill_snapshots portion
+        transition = status
+        title = fm.get("title") or fm.get("id") or issue_id
+        snapshot_priority = fm.get("priority")
+        snapshot_issue_type = fm.get("type")
+        body = strip_frontmatter(content)
+        fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
+        conn.execute(
+            "INSERT OR IGNORE INTO issue_snapshots"
+            "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                snapshot_ts,
+                str(issue_id),
+                issue_num,
+                transition,
+                str(title),
+                snapshot_priority,
+                snapshot_issue_type,
+                body,
+                fm_json,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{issue_id} {title} {body or ''}".strip(),
+            kind="snapshot",
+            ref=str(issue_id),
+            anchor=str(issue_file),
+            ts=snapshot_ts,
+        )
+        snapshots_count += 1
+
+    return issues_count, snapshots_count
 
 
 def _backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int:
@@ -4954,8 +4997,9 @@ def backfill(
     }
     try:
         if issues_dir.is_dir():
-            counts["issues"] = _backfill_issues(conn, issues_dir)
-            counts["snapshots"] = _backfill_snapshots(conn, issues_dir)
+            counts["issues"], counts["snapshots"] = _backfill_issues_and_snapshots(
+                conn, issues_dir
+            )
         if loops_dir.is_dir():
             counts["loops"] = _backfill_loops(conn, loops_dir)
         if repo_root is not None and (repo_root / ".git").exists():

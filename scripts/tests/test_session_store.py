@@ -4299,6 +4299,42 @@ class TestBackfillSnapshots:
         assert row is not None
 
 
+class TestBackfillSinglePass:
+    """ENH-2782: backfill() reads/parses each issue file exactly once."""
+
+    def test_backfill_reads_each_issue_file_once(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        for i in range(1, 6):
+            (issues / f"P2-ENH-{2900 + i}-issue.md").write_text(
+                f"---\nid: ENH-{2900 + i}\ntype: ENH\npriority: P2\nstatus: open\n"
+                f"title: Issue {i}\n---\n\n# Issue {i}\n\nBody content.",
+                encoding="utf-8",
+            )
+        db = tmp_path / "history.db"
+
+        from little_loops import frontmatter as frontmatter_module
+
+        real_parse_frontmatter = frontmatter_module.parse_frontmatter
+        call_counts: dict[str, int] = {}
+
+        def counting_parse_frontmatter(content: str):
+            call_counts[content] = call_counts.get(content, 0) + 1
+            return real_parse_frontmatter(content)
+
+        with patch.object(
+            frontmatter_module, "parse_frontmatter", side_effect=counting_parse_frontmatter
+        ):
+            counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        assert counts["issues"] == 5
+        assert counts["snapshots"] == 5
+        assert len(call_counts) == 5, "expected one distinct file content per issue"
+        assert all(n == 1 for n in call_counts.values()), (
+            f"each issue file's frontmatter must be parsed exactly once, got {call_counts}"
+        )
+
+
 def _bootstrap_schema_at(db: Path, version: int) -> None:
     """Bootstrap a database at an exact historical schema *version*.
 
