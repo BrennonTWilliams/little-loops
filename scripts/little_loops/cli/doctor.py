@@ -430,6 +430,306 @@ def _loop_validity_check() -> list[CheckResult]:
     ]
 
 
+# --full-gated checks: one adapter per ll-verify-* / ll-check-links checker,
+# aggregating the FEAT-2795 target family. Kept separate from `_CHECKS` so the
+# default (non-`--full`) run never executes them.
+_FULL_CHECKS: list[Callable[[], list[CheckResult]]] = []
+
+
+def register_full_check(fn: Callable[[], list[CheckResult]]) -> Callable[[], list[CheckResult]]:
+    """Register a no-arg check function that only runs under `--full`."""
+    _FULL_CHECKS.append(fn)
+    return fn
+
+
+def _run_full_checks() -> list[CheckResult]:
+    """Run every check in `_FULL_CHECKS`, flattening their results."""
+    results: list[CheckResult] = []
+    for check in _FULL_CHECKS:
+        results.extend(check())
+    return results
+
+
+def _full_docs_data() -> dict:
+    """Adapter over `verify_documentation()` (ll-verify-docs)."""
+    from little_loops.doc_counts import verify_documentation
+
+    result = verify_documentation(Path.cwd())
+    if result.all_match:
+        return {"status": "full", "note": f"{result.total_checked} categor(y/ies) match"}
+    names = ", ".join(m.category for m in result.mismatches)
+    return {"status": "unsupported", "note": f"mismatched: {names}"}
+
+
+@register_full_check
+def _full_docs_check() -> list[CheckResult]:
+    data = _full_docs_data()
+    return [CheckResult(name="full:docs", status=data["status"], note=data["note"])]
+
+
+def _full_skill_budget_data() -> dict:
+    """Adapter over `check_skill_budget()` (ll-verify-skill-budget)."""
+    from little_loops.doc_counts import check_skill_budget
+
+    result = check_skill_budget(base_dir=Path.cwd())
+    if result.under_budget:
+        return {
+            "status": "full",
+            "note": f"{result.total_tokens}/{result.threshold_tokens} tokens",
+        }
+    return {
+        "status": "unsupported",
+        "note": f"over budget: {result.total_tokens}/{result.threshold_tokens} tokens",
+    }
+
+
+@register_full_check
+def _full_skill_budget_check() -> list[CheckResult]:
+    data = _full_skill_budget_data()
+    return [CheckResult(name="full:skill_budget", status=data["status"], note=data["note"])]
+
+
+def _full_skills_data() -> dict:
+    """Adapter over `check_skill_sizes()` (ll-verify-skills)."""
+    from little_loops.doc_counts import check_skill_sizes
+
+    violations = check_skill_sizes(base_dir=Path.cwd())
+    if not violations:
+        return {"status": "full", "note": "all SKILL.md files within limit"}
+    names = ", ".join(path.parent.name for path, _ in violations)
+    return {"status": "unsupported", "note": f"over limit: {names}"}
+
+
+@register_full_check
+def _full_skills_check() -> list[CheckResult]:
+    data = _full_skills_data()
+    return [CheckResult(name="full:skills", status=data["status"], note=data["note"])]
+
+
+def _full_triggers_data() -> dict:
+    """Adapter over `_run_validation()`/`_any_failures()` (ll-verify-triggers)."""
+    from little_loops.cli.verify_triggers import _any_failures, _run_validation
+
+    skills_dir = Path.cwd() / "skills"
+    if not skills_dir.is_dir():
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "skills directory not found",
+        }
+    results, collisions, thresholds = _run_validation(skills_dir)
+    if _any_failures(
+        results,
+        collisions,
+        thresholds["precision_threshold"],
+        thresholds["recall_threshold"],
+    ):
+        return {
+            "status": "unsupported",
+            "severity": "error",
+            "note": "one or more skills below threshold or collisions detected",
+        }
+    return {
+        "status": "full",
+        "severity": "error",
+        "note": f"{len(results)} skill(s) validated",
+    }
+
+
+@register_full_check
+def _full_triggers_check() -> list[CheckResult]:
+    data = _full_triggers_data()
+    return [
+        CheckResult(
+            name="full:triggers",
+            status=data["status"],
+            note=data["note"],
+            severity=data.get("severity", "error"),
+        )
+    ]
+
+
+def _full_decisions_data() -> dict:
+    """Adapter over `verify_decisions._run()` (ll-verify-decisions)."""
+    from little_loops.cli.verify_decisions import _resolve_log_path
+    from little_loops.cli.verify_decisions import _run as _verify_decisions_run
+
+    log_path = _resolve_log_path(None)
+    exit_code, error_message = _verify_decisions_run(log_path)
+    if exit_code == 0:
+        return {"status": "full", "note": "clean"}
+    return {"status": "unsupported", "note": error_message or "failed"}
+
+
+@register_full_check
+def _full_decisions_check() -> list[CheckResult]:
+    data = _full_decisions_data()
+    return [CheckResult(name="full:decisions", status=data["status"], note=data["note"])]
+
+
+def _full_package_data_data() -> dict:
+    """Adapter over `run_escape_lint()`/`run_manifest_check()` (ll-verify-package-data)."""
+    from little_loops.cli.verify_package_data import (
+        _find_pkg_root,
+        run_escape_lint,
+        run_manifest_check,
+    )
+
+    pkg_root = _find_pkg_root(Path.cwd())
+    if pkg_root is None:
+        return {"status": "unsupported", "note": "package root not found"}
+
+    lint_results = run_escape_lint(pkg_root)
+    missing_assets = run_manifest_check()
+    if not lint_results and not missing_assets:
+        return {"status": "full", "note": "no escapes, all assets accessible"}
+
+    parts = []
+    if lint_results:
+        parts.append(f"{len(lint_results)} file(s) with escape violations")
+    if missing_assets:
+        parts.append(f"{len(missing_assets)} missing asset(s)")
+    return {"status": "unsupported", "note": "; ".join(parts)}
+
+
+@register_full_check
+def _full_package_data_check() -> list[CheckResult]:
+    data = _full_package_data_data()
+    return [CheckResult(name="full:package_data", status=data["status"], note=data["note"])]
+
+
+def _full_kinds_data() -> dict:
+    """Adapter over `verify_kinds._run()` (ll-verify-kinds)."""
+    from little_loops.cli.verify_kinds import _run as _verify_kinds_run
+
+    exit_code, unregistered = _verify_kinds_run()
+    if exit_code == 0:
+        return {"status": "full", "note": "all tables registered"}
+    return {"status": "unsupported", "note": f"unregistered: {', '.join(unregistered)}"}
+
+
+@register_full_check
+def _full_kinds_check() -> list[CheckResult]:
+    data = _full_kinds_data()
+    return [CheckResult(name="full:kinds", status=data["status"], note=data["note"])]
+
+
+def _full_design_tokens_data() -> dict:
+    """Adapter over `lint_profiles_dir()` (ll-verify-design-tokens)."""
+    from little_loops.cli.verify_design_tokens import _find_profiles_dir, lint_profiles_dir
+
+    profiles_dir = _find_profiles_dir(Path.cwd())
+    if profiles_dir is None:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "profiles directory not found",
+        }
+    results = lint_profiles_dir(profiles_dir)
+    if not results:
+        return {
+            "status": "full",
+            "severity": "error",
+            "note": "all inverting themes complete",
+        }
+    themes = ", ".join(f"{r.profile}/{v.theme}" for r in results for v in r.violations)
+    return {
+        "status": "unsupported",
+        "severity": "error",
+        "note": f"half-flipped themes: {themes}",
+    }
+
+
+@register_full_check
+def _full_design_tokens_check() -> list[CheckResult]:
+    data = _full_design_tokens_data()
+    return [
+        CheckResult(
+            name="full:design_tokens",
+            status=data["status"],
+            note=data["note"],
+            severity=data.get("severity", "error"),
+        )
+    ]
+
+
+def _full_des_audit_data() -> dict:
+    """Adapter over `audit_tree()` (ll-verify-des-audit)."""
+    from little_loops.cli.verify_des_audit import _find_source_dir
+    from little_loops.observability.audit import audit_tree
+
+    source_dir = _find_source_dir(Path.cwd())
+    if source_dir is None:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "source directory not found",
+        }
+    result = audit_tree(source_dir)
+    if result.passed:
+        return {
+            "status": "full",
+            "severity": "error",
+            "note": f"{result.emit_sites_found} emit site(s) covered",
+        }
+    return {
+        "status": "unsupported",
+        "severity": "error",
+        "note": f"uncovered event types: {', '.join(result.uncovered_event_types)}",
+    }
+
+
+@register_full_check
+def _full_des_audit_check() -> list[CheckResult]:
+    data = _full_des_audit_data()
+    return [
+        CheckResult(
+            name="full:des_audit",
+            status=data["status"],
+            note=data["note"],
+            severity=data.get("severity", "error"),
+        )
+    ]
+
+
+def _full_check_links_data() -> dict:
+    """Adapter over `check_markdown_links()` (ll-check-links)."""
+    from little_loops.link_checker import check_markdown_links, load_ignore_patterns
+
+    base_dir = Path.cwd()
+    ignore_patterns = load_ignore_patterns(base_dir)
+    result = check_markdown_links(base_dir, ignore_patterns)
+    if not result.has_errors:
+        return {"status": "full", "note": f"{result.valid_links} valid link(s)"}
+    return {"status": "unsupported", "note": f"{result.broken_links} broken link(s)"}
+
+
+@register_full_check
+def _full_check_links_check() -> list[CheckResult]:
+    data = _full_check_links_data()
+    return [CheckResult(name="full:check_links", status=data["status"], note=data["note"])]
+
+
+def _print_full_section() -> None:
+    """Print the `--full` aggregation section (one line per verifier)."""
+    print()
+    print("Full Verification (--full)")
+    print("─" * 40)
+    for result in _run_full_checks():
+        symbol = _STATUS_SYMBOLS.get(result.status, "?")
+        label = result.name.removeprefix("full:")
+        note = f"  {result.note}" if result.note else ""
+        print(f"  {symbol}  {label}{note}")
+
+
+def _full_section_data() -> dict:
+    """`--json --full`'s per-verifier section, keyed by verifier name."""
+    return {
+        result.name.removeprefix("full:"): {"status": result.status, "note": result.note}
+        for result in _run_full_checks()
+    }
+
+
 def _probe_version(runner: HostRunner) -> str:
     """Probe the host binary's version, swallowing all failures to "".
 
@@ -460,6 +760,7 @@ def _print_report(
     json_mode: bool = False,
     capture: object = None,
     issues_cfg: object = None,
+    full: bool = False,
 ) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
@@ -482,6 +783,8 @@ def _print_report(
             "history_db": _history_db_data(),
             "loop_validity": _loop_validity_data(),
         }
+        if full:
+            data["full"] = _full_section_data()
         print_json(data)
         return
 
@@ -532,6 +835,11 @@ Exit codes:
             action="store_true",
             help="Output as JSON",
         )
+        parser.add_argument(
+            "--full",
+            action="store_true",
+            help="Also run the full ll-verify-* / ll-check-links checker family",
+        )
 
         args = parser.parse_args(argv)
         configure_output()
@@ -549,6 +857,7 @@ Exit codes:
             json_mode=args.json,
             capture=cfg.analytics_capture,
             issues_cfg=cfg.issues,
+            full=args.full,
         )
 
         if not args.json:
@@ -559,6 +868,10 @@ Exit codes:
             _print_decisions_store_section()
             _print_history_db_section()
             _print_loop_validity_section()
+            if args.full:
+                _print_full_section()
 
         results = _capability_check_results(report) + _run_registered_checks()
+        if args.full:
+            results += _run_full_checks()
         return _exit_code_for(results)
