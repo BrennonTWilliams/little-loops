@@ -3531,6 +3531,121 @@ class TestMergeSequential:
 
         orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
+    def test_merge_sequential_close_forwards_event_bus(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+    ) -> None:
+        """_merge_sequential forwards the orchestrator's event_bus to close_issue (ENH-2783)."""
+        from little_loops.events import EventBus
+
+        bus = EventBus()
+        orchestrator._event_bus = bus
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            should_close=True,
+            close_reason="already_fixed",
+        )
+
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        with patch("little_loops.issue_lifecycle.close_issue", return_value=True) as mock_close:
+            orchestrator._merge_sequential(result)
+
+        assert mock_close.call_args.kwargs["event_bus"] is bus
+
+    def test_on_worker_complete_close_forwards_event_bus(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+    ) -> None:
+        """_on_worker_complete forwards the orchestrator's event_bus to close_issue (ENH-2783)."""
+        from little_loops.events import EventBus
+
+        bus = EventBus()
+        orchestrator._event_bus = bus
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worker-BUG-001"),
+            should_close=True,
+            close_reason="already_fixed",
+        )
+
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        with patch("little_loops.issue_lifecycle.close_issue", return_value=True) as mock_close:
+            orchestrator._on_worker_complete(result)
+
+        assert mock_close.call_args.kwargs["event_bus"] is bus
+
+    def test_complete_issue_lifecycle_if_needed_emits_issue_closed(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """_complete_issue_lifecycle_if_needed emits issue.closed for terminal_status=done (ENH-2783)."""
+        from little_loops.events import EventBus
+
+        issue_path = tmp_path / "P1-BUG-001-test.md"
+        issue_path.write_text(
+            "---\ncaptured_at: 2026-01-01T00:00:00Z\nstatus: open\n---\n\n# BUG-001: Test\n"
+        )
+        mock_issue.path = issue_path
+        mock_issue.issue_id = "BUG-001"
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        with patch.object(orchestrator, "_stage_and_commit_issue_scoped", return_value=None):
+            result = orchestrator._complete_issue_lifecycle_if_needed("BUG-001", "done")
+
+        assert result is True
+        assert len(received) == 1
+        event = received[0]
+        assert event["event"] == "issue.closed"
+        assert event["issue_id"] == "BUG-001"
+        assert event["captured_at"] == "2026-01-01T00:00:00Z"
+
+    def test_complete_issue_lifecycle_if_needed_skips_emit_for_in_progress(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """No issue.closed event when terminal_status is in_progress (feature-branch hold, ENH-2783)."""
+        from little_loops.events import EventBus
+
+        issue_path = tmp_path / "P1-BUG-002-test.md"
+        issue_path.write_text(
+            "---\ncaptured_at: 2026-01-01T00:00:00Z\nstatus: open\n---\n\n# BUG-002: Test\n"
+        )
+        mock_issue.path = issue_path
+        mock_issue.issue_id = "BUG-002"
+        mock_issue.issue_type = "bugs"
+        orchestrator._issue_info_by_id["BUG-002"] = mock_issue
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+        orchestrator._event_bus = bus
+
+        with patch.object(orchestrator, "_stage_and_commit_issue_scoped", return_value=None):
+            orchestrator._complete_issue_lifecycle_if_needed("BUG-002", "in_progress")
+
+        assert received == []
+
 
 class TestWaitForCompletion:
     """Tests for _wait_for_completion method."""

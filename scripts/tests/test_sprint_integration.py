@@ -559,6 +559,78 @@ issues:
         # (single-issue waves use process_issue_inplace, so call count == multi-issue waves)
         assert mock_wire.call_count >= 1, "wire_transports must be called for orchestrator waves"
 
+    def test_sprint_single_issue_wave_wires_event_bus(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Single-issue/contention-subwave branch threads a wired event_bus into
+        process_issue_inplace (ENH-2783) — previously no event_bus was in scope there."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_multi_wave_project(tmp_path)
+
+        captured_event_buses: list[Any] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            captured_event_buses.append(kwargs.get("event_bus"))
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.cli.sprint.run.process_issue_inplace",
+            mock_process_inplace,
+        )
+
+        class MockQueue:
+            def __init__(self, ids: set[str]):
+                self._ids = ids
+
+            @property
+            def completed_ids(self) -> list[str]:
+                return sorted(self._ids)
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
+        class MockOrchestrator:
+            execution_duration = 2.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue(parallel_config.only_ids)
+
+            def run(self) -> int:
+                return 0
+
+        monkeypatch.setattr(
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
+            MockOrchestrator,
+        )
+
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi-wave",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=4,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        # BUG-001 (Wave 1) is a single-issue wave — process_issue_inplace must
+        # have received a real EventBus, not None.
+        assert captured_event_buses, "process_issue_inplace was never called"
+        from little_loops.events import EventBus
+
+        assert any(isinstance(bus, EventBus) for bus in captured_event_buses)
+
 
 class TestErrorRecovery:
     """Integration tests for error recovery during sprint execution."""

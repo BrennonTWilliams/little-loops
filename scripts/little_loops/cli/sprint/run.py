@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     import argparse
 
     from little_loops.config import BRConfig
+    from little_loops.events import EventBus
     from little_loops.issue_parser import IssueInfo
 
 # Module-level shutdown flag for ll-sprint signal handling (ENH-183)
@@ -52,6 +53,7 @@ def _run_issue_with_wall_clock_timeout(
     dry_run: bool,
     max_seconds: int,
     sprint_context: SprintWorkerContext | None = None,
+    event_bus: EventBus | None = None,
 ) -> IssueProcessingResult:
     """Wrap process_issue_inplace with a SIGALRM-based wall-clock timeout.
 
@@ -74,6 +76,7 @@ def _run_issue_with_wall_clock_timeout(
             logger=logger,
             dry_run=dry_run,
             sprint_context=sprint_context,
+            event_bus=event_bus,
         )
     except IssueWallClockTimeout:
         elapsed = time.monotonic() - issue_start
@@ -616,6 +619,15 @@ def _cmd_sprint_run(
                 # (contention sub-waves are displayed as "serialized steps" so must run that way)
                 max_wall_clock = config.sprints.max_issue_wall_clock_time
 
+                # Unconditional issue-close event write, mirroring
+                # AutoManager.__init__() (ENH-2783) — no event_bus is otherwise
+                # in scope on this single-issue/contention-subwave branch.
+                from little_loops.events import EventBus
+                from little_loops.session_store import SQLiteTransport
+
+                single_issue_event_bus = EventBus()
+                single_issue_event_bus.add_transport(SQLiteTransport(resolve_history_db()))
+
                 wave_failed = False
                 _current_branch = _detect_current_branch()
                 _feature_branches_arg = getattr(args, "feature_branches", None)
@@ -643,7 +655,6 @@ def _cmd_sprint_run(
                     )
                     _eb_warning_emitted = True
                 for issue in wave:
-                    # TODO(ENH-1686): sprint sequential path not yet live-written
                     issue_result = _run_issue_with_wall_clock_timeout(
                         issue=issue,
                         config=config,
@@ -654,6 +665,7 @@ def _cmd_sprint_run(
                             issue_id=issue.issue_id,
                             branch=_current_branch,
                         ),
+                        event_bus=single_issue_event_bus,
                     )
                     total_duration += issue_result.duration
                     if issue_result.success:
@@ -690,6 +702,7 @@ def _cmd_sprint_run(
                             wave=f"Wave {wave_num}/{total_waves}",
                             branch=_current_branch,
                         )
+                single_issue_event_bus.close_transports()
                 if wave_failed:
                     failed_waves += 1
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
@@ -736,11 +749,18 @@ def _cmd_sprint_run(
 
                 from little_loops.events import EventBus
                 from little_loops.extension import wire_extensions
+                from little_loops.session_store import SQLiteTransport
                 from little_loops.transport import wire_transports
 
                 event_bus = EventBus()
                 wire_extensions(event_bus, config.extensions)
                 wire_transports(event_bus, config.events)
+                # Unconditional issue-close event write, mirroring
+                # AutoManager.__init__() (ENH-2783) — independent of
+                # `events.transports` config. Skip if wire_transports() already
+                # attached one (avoids a duplicate row per event).
+                if "sqlite" not in config.events.transports:
+                    event_bus.add_transport(SQLiteTransport(resolve_history_db()))
                 orchestrator = ParallelOrchestrator(
                     parallel_config,
                     config,
@@ -778,7 +798,6 @@ def _cmd_sprint_run(
                         if issue.issue_id not in actually_failed:
                             continue
                         logger.info(f"  Retrying {issue.issue_id} in-place...")
-                        # TODO(ENH-1686): sprint sequential path not yet live-written
                         retry_branch = _detect_current_branch()
                         retry_result = process_issue_inplace(
                             info=issue,
@@ -789,6 +808,7 @@ def _cmd_sprint_run(
                                 issue_id=issue.issue_id,
                                 branch=retry_branch,
                             ),
+                            event_bus=event_bus,
                         )
                         total_duration += retry_result.duration
                         if retry_result.success:

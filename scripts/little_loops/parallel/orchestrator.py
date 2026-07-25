@@ -36,7 +36,7 @@ from little_loops.parallel.types import (
     WorkerResult,
 )
 from little_loops.parallel.worker_pool import WorkerPool
-from little_loops.session_log import append_session_log_entry
+from little_loops.session_log import append_session_log_entry, get_current_session_id
 from little_loops.session_store import (
     record_orchestration_run,
     record_session_lifecycle_event,
@@ -1068,7 +1068,6 @@ class ParallelOrchestrator:
             self.logger.info(f"{result.issue_id} should be closed: {result.close_status}")
             info = self._issue_info_by_id.get(result.issue_id)
             if info:
-                # TODO(ENH-1686): parallel-path close events not yet live-written
                 if close_issue(
                     info,
                     self.br_config,
@@ -1076,6 +1075,7 @@ class ParallelOrchestrator:
                     result.close_reason,
                     result.close_status,
                     interceptors=None,
+                    event_bus=self._event_bus,
                 ):
                     self.queue.mark_completed(result.issue_id)
                 else:
@@ -1487,7 +1487,6 @@ class ParallelOrchestrator:
             from little_loops.issue_lifecycle import close_issue
 
             info = self._issue_info_by_id.get(result.issue_id)
-            # TODO(ENH-1686): parallel-path close events not yet live-written
             if info and close_issue(
                 info,
                 self.br_config,
@@ -1495,6 +1494,7 @@ class ParallelOrchestrator:
                 result.close_reason,
                 result.close_status,
                 interceptors=None,
+                event_bus=self._event_bus,
             ):
                 self.queue.mark_completed(result.issue_id)
             else:
@@ -1716,7 +1716,6 @@ class ParallelOrchestrator:
         Returns:
             True if lifecycle was completed (or already complete), False on error
         """
-        # TODO(ENH-1686): parallel-path close events not yet live-written
         info = self._issue_info_by_id.get(issue_id)
         if not info:
             self.logger.warning(f"No issue info found for {issue_id}")
@@ -1731,6 +1730,7 @@ class ParallelOrchestrator:
 
         try:
             content = original_path.read_text()
+            captured_at = parse_frontmatter(content).get("captured_at")
 
             # Add resolution section if not already present
             if "## Resolution" not in content:
@@ -1769,6 +1769,19 @@ class ParallelOrchestrator:
             content = update_frontmatter(content, fm_updates)
             original_path.write_text(content)
             append_session_log_entry(original_path, "ll-parallel")
+
+            if terminal_status == "done" and self._event_bus is not None:
+                self._event_bus.emit(
+                    {
+                        "event": "issue.closed",
+                        "ts": datetime.now(UTC).isoformat(),
+                        "issue_id": info.issue_id,
+                        "file_path": str(original_path),
+                        "close_reason": "parallel_merge_fallback",
+                        "captured_at": captured_at,
+                        "session_id": get_current_session_id(),
+                    }
+                )
 
             action = self.br_config.get_category_action(info.issue_type)
             if terminal_status == "in_progress":
