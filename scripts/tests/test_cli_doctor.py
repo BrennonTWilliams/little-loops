@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,8 @@ from little_loops.host_runner import (
     CapabilityEntry,
     CapabilityReport,
     ClaudeCodeRunner,
+    HostInvocation,
+    HostNotConfigured,
 )
 
 
@@ -27,6 +30,7 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def _make_runner(report: CapabilityReport) -> MagicMock:
     runner = MagicMock()
     runner.describe_capabilities.return_value = report
+    runner.detect.return_value = False
     return runner
 
 
@@ -437,3 +441,126 @@ class TestMainDoctor:
         assert "auto_commit" in output
         assert "disabled" in output
         assert "✗" in output
+
+
+class TestVersionProbe:
+    """Tests for the build_version_check() probe wired into main_doctor (ENH-2761)."""
+
+    def test_probes_version_when_binary_detected(self) -> None:
+        """A detected binary is probed and its output populates the version field."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        runner.detect.return_value = True
+        runner.build_version_check.return_value = HostInvocation(
+            binary="claude", args=["--version"]
+        )
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print", side_effect=side_effect),
+            patch(
+                "little_loops.cli.doctor.subprocess.run",
+                return_value=MagicMock(stdout="2.1.0\n"),
+            ),
+        ):
+            main_doctor()
+
+        data = json.loads("\n".join(lines))
+        assert data["version"] == "2.1.0"
+
+    def test_skips_probe_when_binary_not_detected(self) -> None:
+        """detect() returning False skips the subprocess probe entirely."""
+        report = CapabilityReport(host="codex", binary="codex", version="", capabilities=[])
+        runner = _make_runner(report)
+        runner.detect.return_value = False
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print", side_effect=side_effect),
+            patch("little_loops.cli.doctor.subprocess.run") as mock_run,
+        ):
+            main_doctor()
+
+        mock_run.assert_not_called()
+        data = json.loads("\n".join(lines))
+        assert data["version"] == "(unknown)"
+
+    def test_probe_timeout_falls_back_to_unknown(self) -> None:
+        """A subprocess timeout degrades to '(unknown)' rather than crashing."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        runner.detect.return_value = True
+        runner.build_version_check.return_value = HostInvocation(
+            binary="claude", args=["--version"]
+        )
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print", side_effect=side_effect),
+            patch(
+                "little_loops.cli.doctor.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=10),
+            ),
+        ):
+            main_doctor()
+
+        data = json.loads("\n".join(lines))
+        assert data["version"] == "(unknown)"
+
+    def test_probe_failing_binary_falls_back_to_unknown(self) -> None:
+        """An OSError/FileNotFoundError from the probe degrades to '(unknown)'."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        runner.detect.return_value = True
+        runner.build_version_check.return_value = HostInvocation(
+            binary="claude", args=["--version"]
+        )
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print", side_effect=side_effect),
+            patch(
+                "little_loops.cli.doctor.subprocess.run",
+                side_effect=FileNotFoundError("claude not found"),
+            ),
+        ):
+            main_doctor()
+
+        data = json.loads("\n".join(lines))
+        assert data["version"] == "(unknown)"
+
+    def test_probe_host_not_configured_falls_back_to_unknown(self) -> None:
+        """build_version_check() raising HostNotConfigured degrades to '(unknown)'."""
+        report = CapabilityReport(host="opencode", binary="opencode", version="", capabilities=[])
+        runner = _make_runner(report)
+        runner.detect.return_value = True
+        runner.build_version_check.side_effect = HostNotConfigured("opencode has no version check")
+        lines, side_effect = _capture_print()
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        data = json.loads("\n".join(lines))
+        assert data["version"] == "(unknown)"

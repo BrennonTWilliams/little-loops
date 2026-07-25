@@ -227,7 +227,7 @@ ll-harness dsl evals/dsl/my-loop/ --model claude-haiku-4-5-20251001
 
 ### ll-doctor
 
-Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output).
+Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output). When the binary is detected, also runs the host's version check (`build_version_check()`) and reports the real version string, degrading to `(unknown)` when the binary is absent, the probe fails, or it times out (ENH-2761).
 
 **Flags:**
 - `-j`, `--json` — emit the `CapabilityReport` as JSON instead of the human-readable table.
@@ -236,8 +236,8 @@ Probes the active host CLI and reports which little-loops features are supported
 
 **Example output:**
 ```
-Host:    claude  (1.2.3)
-Binary:  /usr/local/bin/claude
+Host:    claude-code
+Binary:  claude  2.1.0
 
 Capabilities
 ────────────────────────────────────────

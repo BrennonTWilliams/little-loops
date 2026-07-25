@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from little_loops.cli.output import configure_output, use_color_enabled
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+
+if TYPE_CHECKING:
+    from little_loops.host_runner import HostRunner
 
 _STATUS_SYMBOLS: dict[str, str] = {
     "full": "✓",
@@ -52,7 +57,30 @@ def _print_issues_section(issues_cfg: object) -> None:
     print(f"  {_STATUS_SYMBOLS['full']}  auto_commit_prefix: {auto_commit_prefix}")
 
 
-def _print_report(report: object, *, json_mode: bool = False) -> None:
+def _probe_version(runner: HostRunner) -> str:
+    """Probe the host binary's version, swallowing all failures to "".
+
+    Mirrors cmd_capabilities()'s probe shape (cli/action.py) — probing here
+    in the CLI layer keeps describe_capabilities() pure and I/O-free.
+    """
+    from little_loops.host_runner import HostNotConfigured
+
+    try:
+        if not runner.detect():
+            return ""
+        invocation = runner.build_version_check()
+        result = subprocess.run(
+            [invocation.binary, *invocation.args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, HostNotConfigured):
+        return ""
+
+
+def _print_report(report: object, *, version: str = "", json_mode: bool = False) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
 
@@ -62,7 +90,7 @@ def _print_report(report: object, *, json_mode: bool = False) -> None:
         data = {
             "host": report.host,
             "binary": report.binary,
-            "version": report.version or "(unknown)",
+            "version": version or "(unknown)",
             "capabilities": [
                 {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
             ],
@@ -70,7 +98,7 @@ def _print_report(report: object, *, json_mode: bool = False) -> None:
         print(json.dumps(data, indent=2))
         return
 
-    version_display = report.version or "(unknown)"
+    version_display = version or "(unknown)"
     print(f"Host:    {report.host}")
     print(f"Binary:  {report.binary}  {version_display}")
 
@@ -126,8 +154,9 @@ Exit codes:
         apply_host_cli_from_config(cfg)
         runner = resolve_host()
         report = runner.describe_capabilities()
+        version = _probe_version(runner)
 
-        _print_report(report, json_mode=args.json)
+        _print_report(report, version=version, json_mode=args.json)
 
         if not args.json:
             _print_capture_section(cfg.analytics_capture)
