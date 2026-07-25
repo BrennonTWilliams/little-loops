@@ -41,6 +41,7 @@ from little_loops.config.features import (
     SyncConfig,
 )
 from little_loops.config.orchestration import OrchestrationConfig
+from little_loops.env_file import load_env_fallback
 from little_loops.parallel.types import EpicBranchesConfig as RuntimeEpicBranchesConfig
 from little_loops.parallel.types import ParallelConfig
 
@@ -193,6 +194,10 @@ class BRConfig:
             project_root: Path to the project root directory
         """
         self.project_root = project_root.resolve()
+        # Fallback-load <project_root>/.env before anything reads the
+        # environment (host selection, SDK credential probes); real env
+        # vars always win over .env values.
+        load_env_fallback(self.project_root)
         self._raw_config = self._load_config()
         self._parse_config()
 
