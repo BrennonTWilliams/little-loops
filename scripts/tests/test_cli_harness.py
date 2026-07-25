@@ -308,26 +308,81 @@ class TestCmdSkill:
 # ---------------------------------------------------------------------------
 
 
+class _MockFileObj:
+    """File-like object supporting fileno() and readline() for selector tests."""
+
+    def __init__(self, lines: list[str] | None = None):
+        self._lines = list(lines) if lines else []
+        self._pos = 0
+
+    def fileno(self) -> int:
+        return id(self) % 65536
+
+    def readline(self) -> str:
+        if self._pos < len(self._lines):
+            line = self._lines[self._pos]
+            self._pos += 1
+            return line
+        return ""  # EOF
+
+
+def _make_selector_mock_process(
+    stdout_lines: list[str] | None = None,
+    stderr_lines: list[str] | None = None,
+    returncode: int = 0,
+) -> MagicMock:
+    """Mock Popen process compatible with runner_spec._run_cmd's selector loop."""
+    proc = MagicMock()
+    proc.stdout = _MockFileObj(stdout_lines or [])
+    proc.stderr = _MockFileObj(stderr_lines or [])
+    proc.returncode = returncode
+    proc.pid = 12345
+    proc.wait.return_value = None
+    proc.kill.return_value = None
+    return proc
+
+
+def _make_ready_selector() -> MagicMock:
+    """Mock DefaultSelector returning all registered keys as ready on every select()."""
+    sel = MagicMock()
+    registered: dict = {}
+
+    def _register(fobj, events, data=None):
+        registered[fobj] = (events, data)
+
+    def _unregister(fobj):
+        registered.pop(fobj, None)
+
+    def _select(timeout=None):
+        result = []
+        for fobj, (events, data) in list(registered.items()):
+            key = MagicMock()
+            key.fileobj = fobj
+            key.data = data
+            result.append((key, events))
+        return result
+
+    sel.register.side_effect = _register
+    sel.unregister.side_effect = _unregister
+    sel.get_map.side_effect = lambda: dict(registered)
+    sel.select.side_effect = _select
+    sel.close.return_value = None
+    return sel
+
+
 class TestCmdCmd:
     """Tests for cmd_cmd()."""
-
-    def _make_popen_mock(
-        self, stdout_lines: list[str], stderr_lines: list[str], returncode: int = 0
-    ) -> MagicMock:
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(stdout_lines)
-        mock_proc.stderr = iter(stderr_lines)
-        mock_proc.returncode = returncode
-        mock_proc.wait.return_value = None
-        mock_proc.kill.return_value = None
-        return mock_proc
 
     def test_cmd_captures_stdout(self, capsys: pytest.CaptureFixture) -> None:
         """Captures stdout from the shell command."""
         args = _make_namespace(runner="cmd", target="echo hello", verbose=True)
-        mock_proc = self._make_popen_mock(["hello\n"], [])
+        mock_proc = _make_selector_mock_process(["hello\n"])
+        sel = _make_ready_selector()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
             result = cmd_cmd(args)
 
         assert result == 0
@@ -337,9 +392,13 @@ class TestCmdCmd:
     def test_cmd_exit_code_pass(self) -> None:
         """Exits 0 when exit code matches --exit-code."""
         args = _make_namespace(runner="cmd", target="true", exit_code=0)
-        mock_proc = self._make_popen_mock([], [], returncode=0)
+        mock_proc = _make_selector_mock_process(returncode=0)
+        sel = _make_ready_selector()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
             result = cmd_cmd(args)
 
         assert result == 0
@@ -347,9 +406,13 @@ class TestCmdCmd:
     def test_cmd_exit_code_fail(self, capsys: pytest.CaptureFixture) -> None:
         """Exits 1 when exit code does not match --exit-code."""
         args = _make_namespace(runner="cmd", target="false", exit_code=0)
-        mock_proc = self._make_popen_mock([], [], returncode=1)
+        mock_proc = _make_selector_mock_process(returncode=1)
+        sel = _make_ready_selector()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
             result = cmd_cmd(args)
 
         assert result == 1
@@ -359,35 +422,52 @@ class TestCmdCmd:
     def test_cmd_no_criteria_always_pass(self) -> None:
         """Exits 0 with no criteria when runner completes."""
         args = _make_namespace(runner="cmd", target="false")
-        mock_proc = self._make_popen_mock([], [], returncode=1)
+        mock_proc = _make_selector_mock_process(returncode=1)
+        sel = _make_ready_selector()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
             result = cmd_cmd(args)
 
         assert result == 0
 
     def test_cmd_timeout_returns_2(self, capsys: pytest.CaptureFixture) -> None:
-        """Exits 2 on timeout."""
-        args = _make_namespace(runner="cmd", target="sleep 999", timeout=1)
-        mock_proc = self._make_popen_mock([], [])
-        # First call (with timeout=) raises; second call (post-kill, no timeout) succeeds.
-        mock_proc.wait.side_effect = [
-            subprocess.TimeoutExpired(cmd="bash", timeout=1),
-            None,
-        ]
+        """Exits 2 on timeout, enforced via the wall-clock deadline (BUG-2777).
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        Simulates a hang by making the selector report no ready pipes while
+        get_map() stays non-empty, forcing the deadline check to fire — this
+        exercises the same dead-zone the bug covers (drain never reaching EOF).
+        """
+        args = _make_namespace(runner="cmd", target="sleep 999", timeout=0)
+        mock_proc = _make_selector_mock_process()
+        sel = MagicMock()
+        sel.get_map.return_value = {"pipe": "data"}  # never empty → loop continues
+        sel.select.return_value = []  # no data ever ready
+        sel.close.return_value = None
+        sel.register.return_value = None
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.runner_spec._kill_process_group") as mock_killpg,
+        ):
             result = cmd_cmd(args)
 
         assert result == 2
-        mock_proc.kill.assert_called_once()
+        mock_killpg.assert_called_once_with(mock_proc)
 
     def test_cmd_json_output(self, capsys: pytest.CaptureFixture) -> None:
         """--output json produces valid JSON with result field."""
         args = _make_namespace(runner="cmd", target="echo hi", output="json")
-        mock_proc = self._make_popen_mock(["hi\n"], [])
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
             result = cmd_cmd(args)
 
         assert result == 0
@@ -589,14 +669,12 @@ class TestSemanticEvaluator:
         from little_loops.fsm.evaluators import EvaluationResult
 
         args = _make_namespace(runner="cmd", target="echo hi", semantic="output contains hi")
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["hi\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
 
         with (
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
             patch(
                 "little_loops.cli.harness.evaluate_llm_structured",
                 return_value=EvaluationResult(verdict="yes", details={"confidence": 0.9}),
@@ -615,14 +693,12 @@ class TestSemanticEvaluator:
         from little_loops.fsm.evaluators import EvaluationResult
 
         args = _make_namespace(runner="cmd", target="echo hi", semantic="some criterion")
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["hi\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
 
         with (
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
             patch(
                 "little_loops.cli.harness.evaluate_llm_structured",
                 return_value=EvaluationResult(verdict=verdict, details={}),
@@ -639,14 +715,12 @@ class TestSemanticEvaluator:
         from little_loops.fsm.evaluators import EvaluationResult
 
         args = _make_namespace(runner="cmd", target="echo hi", exit_code=0, semantic="must fail")
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["hi\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
 
         with (
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
             patch(
                 "little_loops.cli.harness.evaluate_llm_structured",
                 return_value=EvaluationResult(verdict="no", details={}),
@@ -667,15 +741,13 @@ class TestMainHarness:
 
     def test_main_harness_cmd_pass(self, capsys: pytest.CaptureFixture) -> None:
         """main_harness returns 0 for a passing cmd invocation."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["hello\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["hello\n"])
+        sel = _make_ready_selector()
 
         with (
             patch("sys.argv", ["ll-harness", "cmd", "echo hello", "--exit-code", "0"]),
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
         ):
             result = main_harness(["cmd", "echo hello", "--exit-code", "0"])
 
@@ -683,15 +755,13 @@ class TestMainHarness:
 
     def test_main_harness_cmd_fail(self, capsys: pytest.CaptureFixture) -> None:
         """main_harness returns 1 for a failing cmd invocation."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter([])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 1
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(returncode=1)
+        sel = _make_ready_selector()
 
         with (
             patch("sys.argv", ["ll-harness", "cmd", "false", "--exit-code", "0"]),
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
         ):
             result = main_harness(["cmd", "false", "--exit-code", "0"])
 
@@ -731,15 +801,13 @@ class TestMainHarness:
 
     def test_main_harness_json_output(self, capsys: pytest.CaptureFixture) -> None:
         """main_harness --output json produces parseable JSON."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["hi\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
 
         with (
             patch("sys.argv", ["ll-harness", "cmd", "echo hi", "--output", "json"]),
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
         ):
             result = main_harness(["cmd", "echo hi", "--output", "json"])
 
@@ -752,15 +820,13 @@ class TestMainHarness:
 
     def test_main_harness_verbose_shows_output_on_pass(self, capsys: pytest.CaptureFixture) -> None:
         """--verbose shows captured output even when result is PASS."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(["secret output\n"])
-        mock_proc.stderr = iter([])
-        mock_proc.returncode = 0
-        mock_proc.wait.return_value = None
+        mock_proc = _make_selector_mock_process(["secret output\n"])
+        sel = _make_ready_selector()
 
         with (
             patch("sys.argv", ["ll-harness", "cmd", "echo secret output", "--verbose"]),
-            patch("subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
         ):
             result = main_harness(["cmd", "echo secret output", "--verbose"])
 

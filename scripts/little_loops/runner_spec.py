@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import json
 import os
+import selectors
 import subprocess
-import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -31,6 +32,7 @@ from typing import Any
 
 from little_loops.host_runner import resolve_host
 from little_loops.mcp_call import call_mcp_tool
+from little_loops.subprocess_utils import _kill_process_group
 
 __all__ = [
     "RunnerType",
@@ -135,34 +137,61 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
 
 
 def _run_cmd(spec: ActionSpec) -> RunnerResult:
-    """Run a shell command with deadlock-safe stderr draining."""
+    """Run a shell command with deadline-enforced, deadlock-safe I/O draining.
+
+    Selector-based read loop (mirrors ``fsm/runners.py``'s shell-command
+    branch, BUG-2777) so ``spec.timeout`` bounds the entire call — including
+    the stdout drain — not just the final ``process.wait()``. A blocking
+    ``for line in process.stdout`` loop never reaches the wait() call while
+    the child holds stdout open without exiting.
+    """
     process = subprocess.Popen(
         ["bash", "-c", spec.target],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
+    deadline = time.time() + spec.timeout
 
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
 
-    def _drain_stderr() -> None:
-        assert process.stderr is not None
-        for line in process.stderr:
-            stderr_chunks.append(line)
+    sel = selectors.DefaultSelector()
+    if process.stdout is not None:
+        sel.register(process.stdout, selectors.EVENT_READ, data="stdout")
+    if process.stderr is not None:
+        sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
-    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-    stderr_thread.start()
-
+    timed_out = False
     try:
-        assert process.stdout is not None
-        for line in process.stdout:
-            stdout_chunks.append(line)
-        process.wait(timeout=spec.timeout)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        stderr_thread.join(timeout=5)
+        while sel.get_map():
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                timed_out = True
+                break
+            ready = sel.select(timeout=min(1.0, remaining))
+            if not ready:
+                continue
+            for key, _mask in ready:
+                line = key.fileobj.readline()  # type: ignore[union-attr]
+                if line:
+                    if key.data == "stdout":
+                        stdout_chunks.append(line)
+                    else:
+                        stderr_chunks.append(line)
+                else:
+                    sel.unregister(key.fileobj)
+    finally:
+        sel.close()
+
+    if timed_out:
+        _kill_process_group(process)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
         return RunnerResult(
             stdout="".join(stdout_chunks),
             stderr="".join(stderr_chunks),
@@ -170,7 +199,7 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
             timed_out=True,
         )
 
-    stderr_thread.join(timeout=5)
+    process.wait(timeout=5)
     return RunnerResult(
         stdout="".join(stdout_chunks),
         stderr="".join(stderr_chunks),

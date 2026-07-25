@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -127,3 +127,35 @@ class TestRunActionDispatch:
         result = run_action(spec)
         assert result.exit_code == 0
         assert result.stdout == "hi\n"
+
+    def test_cmd_hang_before_stdout_eof_times_out(self) -> None:
+        """BUG-2777: a process that holds stdout open without exiting must still
+        time out — the drain loop must not block until EOF before checking the
+        deadline. Mirrors test_fsm_runners.py::test_hanging_process_timeout_fires_during_read.
+        """
+        proc = MagicMock()
+        proc.stdout = MagicMock()
+        proc.stderr = MagicMock()
+        proc.returncode = None
+        proc.pid = 12345
+        proc.wait.return_value = None
+        proc.kill.return_value = None
+
+        sel = MagicMock()
+        sel.get_map.return_value = {"pipe": "data"}  # never empty -> loop continues
+        sel.select.return_value = []  # no data ever ready
+        sel.close.return_value = None
+        sel.register.return_value = None
+
+        spec = ActionSpec(name="hang", runner=RunnerType.CMD, target="sleep 9999", timeout=0)
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch("little_loops.runner_spec._kill_process_group") as mock_killpg,
+        ):
+            result = run_action(spec)
+
+        assert result.timed_out is True
+        assert result.exit_code == 2
+        mock_killpg.assert_called_once_with(proc)
