@@ -1,0 +1,12 @@
+{
+  "id": "2ccf0f41-cf4e-481f-84b2-15873c26730b",
+  "type": "decision",
+  "timestamp": "2026-07-25T22:55:19Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "with:-supplied evaluate: override is not a real codebase mechanism (scored 0/3 consistency); the actual precedent is from:-based loop inheritance as used by oracles/generator-evaluator-cli.yaml. Applying it to FLUX is simpler than the CLI case since the artifact is already a PNG.",
+  "rule": "Option A via from: inheritance (oracles/generator-evaluator-flux.yaml extends oracles/generator-evaluator.yaml)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A as literally described (with:-override, 5/12, mechanism does not exist); Option B (top-level states, no oracle delegation, 5/12, outlier pattern that loses score_stall detection)",
+  "issue": "FEAT-2817"
+}

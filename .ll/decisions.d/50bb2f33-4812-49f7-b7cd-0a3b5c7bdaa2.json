@@ -1,0 +1,11 @@
+{
+  "id": "805bd1ad-d487-4ea8-9bc2-36988754e5f9",
+  "type": "decision",
+  "timestamp": "2026-07-25T22:57:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reader-side fix complementing BUG-2820: widen section resolution and add a whole-document fallback so correctly-formatted options are never silently inert; preserve the conservative Pattern 1+2 matcher.",
+  "rule": "Captured: Option-counting probes scan only three exact H2 headings",
+  "scope": "issue",
+  "issue": "ENH-2821"
+}
