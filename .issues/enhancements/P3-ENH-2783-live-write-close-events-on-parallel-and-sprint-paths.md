@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 relates_to: [ENH-1686]
+parent: EPIC-2791
 ---
 
 # ENH-2783: Parallel/sprint issue-close events are not live-written to the history event bus

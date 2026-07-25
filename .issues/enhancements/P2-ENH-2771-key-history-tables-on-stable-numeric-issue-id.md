@@ -15,6 +15,7 @@ labels:
 relates_to:
 - BUG-2769
 decision_needed: false
+parent: EPIC-2791
 ---
 
 # ENH-2771: Key history tables on the stable numeric issue id, not the mutable `TYPE-NNN` string

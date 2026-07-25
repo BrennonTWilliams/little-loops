@@ -12,6 +12,7 @@ labels:
 - session-store
 - data-integrity
 decision_needed: false
+parent: EPIC-2791
 ---
 
 # BUG-2769: Issue-id ingest trusts malformed frontmatter `id`, silently mis-keying history rows

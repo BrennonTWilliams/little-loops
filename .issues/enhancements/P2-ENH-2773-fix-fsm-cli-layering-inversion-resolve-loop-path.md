@@ -8,6 +8,7 @@ discovered_date: 2026-07-24T22:31:26Z
 discovered_by: audit-architecture
 focus_area: integration
 labels: [enhancement, architecture, refactoring, auto-generated]
+parent: EPIC-2789
 ---
 
 # ENH-2773: Fix fsm→cli layering inversion (move resolve_loop_path out of cli/loop/_helpers)

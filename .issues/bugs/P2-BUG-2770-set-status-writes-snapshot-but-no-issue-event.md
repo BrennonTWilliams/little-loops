@@ -15,6 +15,7 @@ relates_to:
 - BUG-1882
 - BUG-2769
 decision_needed: false
+parent: EPIC-2791
 ---
 
 # BUG-2770: `set-status` writes a snapshot but no `issue_event`, silently breaking session lookup

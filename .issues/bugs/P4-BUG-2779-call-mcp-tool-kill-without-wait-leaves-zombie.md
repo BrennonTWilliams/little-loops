@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 relates_to: [BUG-2778]
+parent: EPIC-2790
 ---
 
 # BUG-2779: `call_mcp_tool` cleanup issues `kill()` without a follow-up `wait()`, leaving a zombie process

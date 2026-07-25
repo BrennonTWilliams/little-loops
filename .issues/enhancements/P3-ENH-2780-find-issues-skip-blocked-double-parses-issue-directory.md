@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 relates_to: [ENH-2781]
+parent: EPIC-2792
 ---
 
 # ENH-2780: `find_issues(skip_blocked=True)` re-parses the entire issue directory to build the dependency graph

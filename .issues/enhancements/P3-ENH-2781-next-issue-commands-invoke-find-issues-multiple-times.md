@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 blocked_by: [ENH-2780]
+parent: EPIC-2792
 ---
 
 <!-- Suggested by scan-codebase: file overlap with issue_parser.py (ENH-2780) -->

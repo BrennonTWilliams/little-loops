@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 relates_to: [BUG-2779]
+parent: EPIC-2790
 ---
 
 # BUG-2778: `_send_jsonrpc` deadline does not bound blocking `readline()`; unresponsive MCP server hangs `call_mcp_tool` indefinitely

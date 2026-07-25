@@ -3,6 +3,7 @@ discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
+parent: EPIC-2792
 ---
 
 # ENH-2782: `session_store.backfill()` reads and parses every issue file's frontmatter twice
