@@ -16,7 +16,7 @@ arguments:
     description: Loop name to assess (optional — auto-selects most recent if omitted)
     required: false
   - name: tail
-    description: Limit history events analyzed to the N most recent (default: all events; auto-scaled)
+    description: "Limit history events analyzed to the N most recent (default: all events; auto-scaled)"
     required: false
   - name: no_rubric_audit
     description: Skip the LLM rubric-vs-description pass (cost gate)

@@ -8,7 +8,7 @@ allowed-tools:
   - Write
   - AskUserQuestion
 metadata:
-  short-description: Review loop quality: validate YAML, behavioral verification, rubric scorecard, artifact persistence
+  short-description: "Review loop quality: validate YAML, behavioral verification, rubric scorecard"
 ---
 
 # Review Loop

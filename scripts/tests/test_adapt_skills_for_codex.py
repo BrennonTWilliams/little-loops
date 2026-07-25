@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.cli.adapt_skills_for_codex import (
     _extract_short_desc,
     _insert_fields,
@@ -337,6 +339,43 @@ class TestMainAdaptSkillsForCodex:
 # =============================================================================
 
 
+def _parse_skill_frontmatter_or_fail(skill_md: Path, skill_name: str) -> dict:
+    """Shared frontmatter-parse step for TestRealSkillsIntegrationGuard.
+
+    Hard-fails (rather than silently skipping) on a yaml.safe_load error, since a
+    parse failure means the guard can no longer inspect that skill's frontmatter
+    (BUG-2800).
+    """
+    import re
+
+    import yaml
+
+    text = skill_md.read_text()
+    fm_end = re.search(r"\n---\s*\n", text[3:])
+    if not fm_end:
+        return {}
+    fm_raw = text[3 : 3 + fm_end.start()]
+    try:
+        return yaml.safe_load(fm_raw) or {}
+    except Exception as e:
+        pytest.fail(f"skills/{skill_name}/SKILL.md: invalid frontmatter YAML: {e}")
+
+
+def test_guard_hard_fails_on_malformed_frontmatter_yaml(tmp_path: Path) -> None:
+    """Regression guard for BUG-2800: a yaml.safe_load failure must fail the test,
+    not silently skip the file via `except Exception: continue`."""
+    skill_md = tmp_path / "skills" / "my-skill" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text(
+        "---\n"
+        "name: my-skill\n"
+        "description: Unquoted value with a bad colon: this breaks YAML\n"
+        "---\n\n# My Skill\n"
+    )
+    with pytest.raises(pytest.fail.Exception):
+        _parse_skill_frontmatter_or_fail(skill_md, "my-skill")
+
+
 class TestRealSkillsIntegrationGuard:
     """After ll-adapt-skills-for-codex --apply, all real skills must be adapted."""
 
@@ -357,8 +396,8 @@ class TestRealSkillsIntegrationGuard:
                 import yaml
 
                 fm = yaml.safe_load(fm_raw) or {}
-            except Exception:
-                continue
+            except Exception as e:
+                pytest.fail(f"skills/{skill_name}/SKILL.md: invalid frontmatter YAML: {e}")
             assert "name" in fm, (
                 f"skills/{skill_name}/SKILL.md missing 'name:' frontmatter field. "
                 "Run: ll-adapt-skills-for-codex --apply"
@@ -384,8 +423,8 @@ class TestRealSkillsIntegrationGuard:
                 import yaml
 
                 fm = yaml.safe_load(fm_raw) or {}
-            except Exception:
-                continue
+            except Exception as e:
+                pytest.fail(f"skills/{skill_name}/SKILL.md: invalid frontmatter YAML: {e}")
             metadata = fm.get("metadata") or {}
             assert isinstance(metadata, dict), (
                 f"skills/{skill_name}/SKILL.md: metadata field is not a dict"
@@ -417,8 +456,8 @@ class TestRealSkillsIntegrationGuard:
                 import yaml
 
                 fm = yaml.safe_load(fm_raw) or {}
-            except Exception:
-                continue
+            except Exception as e:
+                pytest.fail(f"skills/{skill_name}/SKILL.md: invalid frontmatter YAML: {e}")
             if fm.get("disable-model-invocation"):
                 continue
             openai_yaml = skill_md.parent / "agents" / "openai.yaml"

@@ -1,4 +1,5 @@
 ---
+name: manage-issue
 description: Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.
 argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
@@ -6,7 +7,7 @@ allowed-tools:
   - Bash(ll-history-context:*)
 arguments:
   - name: issue_type
-    description: Type of issue (bug|feature|enhancement|epic). Note: epic issues are coordination containers — manage-issue surfaces them but redirects to child issues for implementation.
+    description: "Type of issue (bug|feature|enhancement|epic). Note: epic issues are coordination containers — manage-issue surfaces them but redirects to child issues for implementation."
     required: true
   - name: action
     description: Action to perform (fix|implement|improve|verify|plan)
@@ -17,6 +18,8 @@ arguments:
   - name: flags
     description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification), --dry-run (alias for --plan-only), --quick (skip deep research and confidence check), --force-implement (bypass confidence gate)"
     required: false
+metadata:
+  short-description: Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.
 ---
 
 # Manage Issue

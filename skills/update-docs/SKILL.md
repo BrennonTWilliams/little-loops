@@ -1,4 +1,5 @@
 ---
+name: update-docs
 description: Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.
 disable-model-invocation: true
 argument-hint: "[--since <date|git-ref>] [--fix]"
@@ -11,11 +12,13 @@ allowed-tools:
   - Bash(git:*, ll-history:*, ll-issues:*)
 arguments:
   - name: since
-    description: Change window start — date (YYYY-MM-DD) or git ref (default: last commit touching a doc file)
+    description: "Change window start — date (YYYY-MM-DD) or git ref (default: last commit touching a doc file)"
     required: false
   - name: fix
     description: Draft stub documentation sections inline rather than just reporting gaps
     required: false
+metadata:
+  short-description: Use when asked to update docs, find stale documentation, or check doc coverage a
 ---
 
 # Update Docs
