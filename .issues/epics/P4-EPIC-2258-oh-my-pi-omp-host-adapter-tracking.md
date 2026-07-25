@@ -59,6 +59,10 @@ EPIC-2257:
 - **FEAT-2261** — omp hook adapter (`hooks/adapters/omp/`)
 - **FEAT-2262** — omp config probe (`.omp` config candidate in `_config_candidates()`)
 - **FEAT-2263** — omp hook-event parity audit (absorbs cancelled FEAT-1715 intent)
+- **FEAT-2787** — `OmpEmitter` implementation (`emit_skill`/`emit_command`/`emit_agent`
+  all raise `AdapterError` today); plugs into the generic FEAT-2260 adapter
+- **FEAT-2797** — omp structured-output surface: audit findings, matrix
+  correction, and agent `output:` schema wiring for FEAT-2787
 
 ## Acceptance Criteria
 

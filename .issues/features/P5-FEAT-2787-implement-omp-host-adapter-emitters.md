@@ -1,4 +1,13 @@
 ---
+id: FEAT-2787
+title: Implement the `omp` host adapter — all `OmpEmitter` methods currently raise
+type: feature
+status: open
+priority: P5
+parent: EPIC-2258
+depends_on: [FEAT-2260]
+relates_to: [FEAT-2797]
+labels: [host-compat, omp, adapters, skills, commands]
 discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
 discovered_date: 2026-07-24 22:31:44+00:00
