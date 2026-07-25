@@ -117,6 +117,11 @@ states:
       " > ${context.run_dir}/autodev-pre-readiness.txt) || true
       printf '0' > ${context.run_dir}/autodev-repair-cycle-count.txt
       rm -f ${context.run_dir}/autodev-pre-spike-readiness.txt
+      # BUG-2803: clear the pre-deferral remedy handshake files so a prior
+      # issue's armed-but-unconsumed remedy (or fired marker) never leaks
+      # into this issue's deferral decision.
+      rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
+      rm -f ${context.run_dir}/autodev-pre-deferral-remedy-fired
 
       (ll-issues list --json | python3 -c "
       import json, sys
@@ -1142,6 +1147,16 @@ states:
     # baseline for a spike-triage issue); otherwise fall back to
     # autodev-pre-readiness.txt, the dequeue-time snapshot written for every
     # issue regardless of spike_needed.
+    # BUG-2803: a freshly captured issue has no confidence_score at dequeue, so
+    # its pre-readiness snapshot is EMPTY and the plateau predicate (pre != '')
+    # excluded it by construction — the most common below-threshold case
+    # reached the low_readiness deferral with every readiness remedy
+    # structurally unreachable. Relax: an empty snapshot with a current
+    # Readiness below the configured threshold is also reconcile-eligible
+    # (one-shot, still guarded by reconcile_attempted). On that branch,
+    # backfill the empty dequeue-time snapshot with the current score so the
+    # post-remedy revisit can apply the readiness_stagnated discriminator
+    # (FEAT-2751) instead of falling back to low_readiness.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
       import json, os, sys
@@ -1156,7 +1171,12 @@ states:
           with open(snap) as fh:
               pre = fh.read().strip()
       plateau = (pre != '' and pre == cur and not attempted)
-      sys.exit(0 if plateau else 1)"
+      fresh_below = (pre == '' and cur != ''
+                     and int(cur) < ${context.readiness_threshold} and not attempted)
+      if fresh_below:
+          with open(fallback_snap, 'w') as fh:
+              fh.write(cur)
+      sys.exit(0 if (plateau or fresh_below) else 1)"
     fragment: shell_exit
     on_yes: reconcile_current
     on_no: check_size_review_ran_this_pass
@@ -1422,6 +1442,41 @@ states:
           ll-issues set-status "$ID" deferred --by automation --reason readiness_stagnated 2>/dev/null || true
           exit 1
         fi
+        # BUG-2803: never write a low_readiness deferral when NO non-refine
+        # readiness remedy (spike or reconcile) was ever attempted — for a
+        # freshly captured issue every remedy arming flag is unset by
+        # construction, so the loop's "defer only after remedies" policy was
+        # violated for exactly the most common case. Arm a one-shot remedy
+        # instead: spike when the ambiguity subscore is the strictly weakest
+        # dimension (ambiguity-driven readiness gap → prove the mechanism),
+        # else reconcile. The run-dir fired marker (cleared at dequeue_next)
+        # bounds this to one extra remedy per issue per run even if the
+        # remedy skill fails to stamp its frontmatter flag.
+        FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
+        if [ ! -f "$FIRED" ]; then
+          REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      if d.get('spike_attempted') == 'true' or d.get('reconcile_attempted') == 'true':
+          print('')
+      else:
+          amb = int(d.get('score_ambiguity') or 0)
+          others = [int(d.get(k) or 0) for k in
+                    ('score_complexity', 'score_test_coverage', 'score_change_surface')]
+          print('spike' if (amb and amb < min(others)) else 'reconcile')" 2>/dev/null || echo "")
+          if [ -n "$REMEDY" ]; then
+            touch "$FIRED"
+            printf '%s' "$REMEDY" > ${context.run_dir}/autodev-pre-deferral-remedy.txt
+            # Backfill an empty dequeue-time snapshot (fresh issue) so the
+            # post-remedy revisit can defer as readiness_stagnated (FEAT-2751)
+            # rather than low_readiness.
+            if [ -z "$PRE_READINESS" ]; then
+              printf '%s' "$CUR_CONFIDENCE" > ${context.run_dir}/autodev-pre-readiness.txt
+            fi
+            echo "[PRE-DEFER] $ID below readiness with no remedy attempted; routing to $REMEDY"
+            exit 1
+          fi
+        fi
         echo "$ID  low_readiness" >> ${context.run_dir}/autodev-skipped.txt
         rm -f ${context.run_dir}/autodev-inflight
         ll-issues set-status "$ID" deferred --by automation --reason low_readiness 2>/dev/null || true
@@ -1429,8 +1484,51 @@ states:
       fi
     fragment: shell_exit
     on_yes: decide_current
+    on_no: check_pre_deferral_remedy
+    on_error: dequeue_next
+
+  check_pre_deferral_remedy:
+    # BUG-2803: post-recheck dispatcher gate. recheck_after_size_review's FAIL
+    # branch exits 1 both when it deferred (skip → advance the queue) and when
+    # it armed a pre-deferral remedy instead of deferring. Disambiguate via the
+    # remedy handshake file: present → dispatch the armed remedy; absent → the
+    # issue was deferred/skipped, advance to the next queued issue (the
+    # pre-BUG-2803 on_no behaviour).
+    action: |
+      if [ -s ${context.run_dir}/autodev-pre-deferral-remedy.txt ]; then
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: dispatch_pre_deferral_remedy
     on_no: dequeue_next
     on_error: dequeue_next
+
+  dispatch_pre_deferral_remedy:
+    # BUG-2803: consume the armed remedy and route to it. On the spike branch,
+    # snapshot the pre-spike Readiness exactly like check_spike_needed's
+    # on_yes so the downstream plateau detector has the fresher baseline.
+    # Anything unexpected falls through to reconcile_current (the generic
+    # rewrite remedy) rather than dead-ending. Both remedies re-run
+    # /ll:confidence-check and funnel back to recheck_after_size_review, where
+    # the frontmatter attempted-flags (and the fired marker as backstop) make
+    # a second arming impossible — repeat failures defer as
+    # readiness_stagnated via the FEAT-2751 backstop.
+    action: |
+      REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
+      rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
+      if [ "$REMEDY" = "spike" ]; then
+        (ll-issues show ${captured.input.output} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print(d.get('confidence') or '')" > ${context.run_dir}/autodev-pre-spike-readiness.txt) || true
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: run_spike
+    on_no: reconcile_current
+    on_error: reconcile_current
 
   done:
     # Emit a structured summary of passed and skipped issues for this run.

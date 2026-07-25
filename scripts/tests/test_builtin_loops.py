@@ -4820,12 +4820,76 @@ class TestAutodevLoop:
             f"got {state.get('on_yes')!r}"
         )
 
-    def test_recheck_after_size_review_on_no_routes_to_dequeue_next(self, data: dict) -> None:
-        """recheck_after_size_review.on_no (scores fail) must route to dequeue_next."""
+    def test_recheck_after_size_review_on_no_routes_to_pre_deferral_gate(self, data: dict) -> None:
+        """BUG-2803: recheck_after_size_review.on_no (scores fail) must route through
+        check_pre_deferral_remedy so an armed-but-undeferred issue gets its remedy
+        dispatched instead of the queue silently advancing."""
         state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("on_no") == "dequeue_next", (
-            f"recheck_after_size_review.on_no should be 'dequeue_next', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_pre_deferral_remedy", (
+            f"recheck_after_size_review.on_no should be 'check_pre_deferral_remedy', "
+            f"got {state.get('on_no')!r}"
         )
+
+    def test_pre_deferral_remedy_gate_routing(self, data: dict) -> None:
+        """BUG-2803: check_pre_deferral_remedy dispatches an armed remedy and
+        otherwise preserves the pre-fix advance-the-queue behaviour."""
+        gate = data["states"].get("check_pre_deferral_remedy", {})
+        assert gate.get("fragment") == "shell_exit"
+        assert "autodev-pre-deferral-remedy.txt" in gate.get("action", "")
+        assert gate.get("on_yes") == "dispatch_pre_deferral_remedy"
+        assert gate.get("on_no") == "dequeue_next"
+        assert gate.get("on_error") == "dequeue_next"
+
+    def test_pre_deferral_remedy_dispatch_routing(self, data: dict) -> None:
+        """BUG-2803: dispatch_pre_deferral_remedy consumes the remedy handshake
+        file and routes spike → run_spike (with a pre-spike snapshot, mirroring
+        check_spike_needed) and anything else → reconcile_current."""
+        state = data["states"].get("dispatch_pre_deferral_remedy", {})
+        action = state.get("action", "")
+        assert "autodev-pre-deferral-remedy.txt" in action
+        assert "rm -f" in action, "dispatch must consume the remedy handshake file"
+        assert "autodev-pre-spike-readiness.txt" in action, (
+            "spike branch must snapshot pre-spike Readiness like check_spike_needed"
+        )
+        assert state.get("on_yes") == "run_spike"
+        assert state.get("on_no") == "reconcile_current"
+        assert state.get("on_error") == "reconcile_current"
+
+    def test_recheck_after_size_review_arms_remedy_before_low_readiness(self, data: dict) -> None:
+        """BUG-2803: the low_readiness write must be preceded by a one-shot guard
+        that arms a spike/reconcile remedy when neither spike_attempted nor
+        reconcile_attempted is set, bounded by a run-dir fired marker and
+        backfilling an empty pre-readiness snapshot so the post-remedy revisit
+        defers as readiness_stagnated (FEAT-2751), not low_readiness."""
+        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
+        assert "autodev-pre-deferral-remedy-fired" in action
+        assert "spike_attempted" in action and "reconcile_attempted" in action
+        assert "score_ambiguity" in action, (
+            "remedy selection must be ambiguity-aware (spike when ambiguity-dominant)"
+        )
+        assert action.index("autodev-pre-deferral-remedy-fired") < action.index(
+            "--reason low_readiness"
+        ), "the remedy guard must run BEFORE the low_readiness deferral write"
+        # Snapshot backfill so AC-3 (readiness_stagnated on repeat failure) holds
+        # for fresh issues whose dequeue-time snapshot was empty.
+        assert 'printf \'%s\' "$CUR_CONFIDENCE" > ${context.run_dir}/autodev-pre-readiness.txt' in action
+
+    def test_dequeue_next_clears_pre_deferral_remedy_files(self, data: dict) -> None:
+        """BUG-2803: dequeue_next must clear the pre-deferral remedy handshake and
+        fired-marker files so they never leak across issues within a run."""
+        action = data["states"].get("dequeue_next", {}).get("action", "")
+        assert "autodev-pre-deferral-remedy.txt" in action
+        assert "autodev-pre-deferral-remedy-fired" in action
+
+    def test_check_reconcile_needed_fires_for_fresh_below_threshold(self, data: dict) -> None:
+        """BUG-2803: check_reconcile_needed must treat an empty pre-readiness
+        snapshot with a below-threshold current score as reconcile-eligible
+        (fresh issues are no longer excluded by the pre != '' plateau guard),
+        and backfill the snapshot so the stagnation discriminator can apply."""
+        action = data["states"].get("check_reconcile_needed", {}).get("action", "")
+        assert "fresh_below" in action
+        assert "${context.readiness_threshold}" in action
+        assert "plateau or fresh_below" in action
 
     def test_recheck_after_size_review_clears_autodev_inflight(self, data: dict) -> None:
         """recheck_after_size_review must clear autodev-inflight on the skip path."""

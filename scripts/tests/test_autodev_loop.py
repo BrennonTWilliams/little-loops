@@ -55,7 +55,14 @@ def _run_reconcile_predicate(
     the actual CLI call, which the FSM pipes in at runtime).
     """
     action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
-    script = _extract_python_script(action).replace("${context.run_dir}", str(run_dir))
+    script = (
+        _extract_python_script(action)
+        .replace("${context.run_dir}", str(run_dir))
+        # BUG-2803: the fresh-below-threshold branch reads the configured
+        # readiness threshold; substitute it the way the FSM interpolator
+        # would (seeded from commands.confidence_gate.readiness_threshold).
+        .replace("${context.readiness_threshold}", "85")
+    )
     payload = json.dumps(
         {
             "confidence": confidence,
@@ -232,6 +239,56 @@ class TestCheckReconcileNeededFallbackSnapshot:
 
     def test_no_fire_when_neither_snapshot_exists(self, tmp_path: Path) -> None:
         exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False)
+
+        assert exit_code == 1
+
+
+class TestCheckReconcileNeededFreshBelowThreshold:
+    """BUG-2803: a freshly captured issue (empty dequeue-time snapshot, no prior
+    score) that scores below the readiness threshold must be reconcile-eligible —
+    the plateau gate's `pre != ''` guard excluded it by construction, deferring
+    fresh issues as low_readiness with every remedy structurally unreachable."""
+
+    def test_fires_for_never_scored_below_threshold_issue(self, tmp_path: Path) -> None:
+        """Empty snapshot (fresh issue) + Readiness 72 < 85 → reconcile fires
+        (the BUG-2801 evidence profile)."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("")
+
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="72", reconcile_attempted=False)
+
+        assert exit_code == 0, "empty snapshot must no longer exclude below-threshold issues"
+
+    def test_backfills_snapshot_so_stagnation_discriminator_applies(self, tmp_path: Path) -> None:
+        """On the fresh-below branch the current score must be backfilled into
+        autodev-pre-readiness.txt so a post-remedy repeat failure defers as
+        readiness_stagnated (FEAT-2751 backstop), not low_readiness."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("")
+
+        _run_reconcile_predicate(tmp_path, confidence="72", reconcile_attempted=False)
+
+        assert (tmp_path / "autodev-pre-readiness.txt").read_text().strip() == "72"
+
+    def test_no_fire_for_fresh_issue_at_or_above_threshold(self, tmp_path: Path) -> None:
+        (tmp_path / "autodev-pre-readiness.txt").write_text("")
+
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="90", reconcile_attempted=False)
+
+        assert exit_code == 1
+
+    def test_no_fire_for_fresh_issue_after_reconcile_attempted(self, tmp_path: Path) -> None:
+        """One-shot guard: reconcile_attempted still suppresses the fresh branch."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("")
+
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="72", reconcile_attempted=True)
+
+        assert exit_code == 1
+
+    def test_no_fire_when_still_unscored(self, tmp_path: Path) -> None:
+        """No current confidence at all (refine produced no score) → no fire;
+        reconcile on an unscored issue would be meaningless."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("")
+
+        exit_code = _run_reconcile_predicate(tmp_path, confidence="", reconcile_attempted=False)
 
         assert exit_code == 1
 
