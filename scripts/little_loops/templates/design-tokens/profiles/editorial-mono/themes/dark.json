@@ -10,6 +10,20 @@
       "secondary": "{color.ink.300}",
       "muted":     "{color.ink.500}",
       "inverse":   "{color.ink.950}"
+    },
+    "border": {
+      "subtle": "{color.ink.800}",
+      "strong": "{color.ink.600}"
+    },
+    "action": {
+      "primary":       "{color.accent.500}",
+      "primary-hover": "{color.accent.300}",
+      "destructive":   "{color.danger.300}"
     }
+  },
+  "shadow": {
+    "sm": "0 1px 2px rgba(0, 0, 0, 0.5)",
+    "md": "0 3px 8px rgba(0, 0, 0, 0.55)",
+    "lg": "0 8px 20px rgba(0, 0, 0, 0.6)"
   }
 }

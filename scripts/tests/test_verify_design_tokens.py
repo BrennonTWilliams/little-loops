@@ -1,8 +1,7 @@
 """Tests for ll-verify-design-tokens — half-flipped design-token theme lint.
 
 All fixtures are synthetic temp-dir profile trees (per ENH-2308) so pass/fail is
-independent of the bundled-template state (notably the known-incomplete
-``editorial-mono`` profile).
+independent of the bundled-template state.
 """
 
 from __future__ import annotations
@@ -186,6 +185,15 @@ class TestMain:
         _make_profile(root, "ok", {"dark": _DARK_COMPLETE})
         with (
             patch("sys.argv", ["ll-verify-design-tokens", "--profiles-dir", str(root)]),
+            patch("builtins.print"),
+        ):
+            assert main_verify_design_tokens() == 0
+
+    def test_bundled_templates_return_zero(self) -> None:
+        """ENH-2785: the bundled profiles (default, warm-paper, editorial-mono)
+        are all complete, so this can be wrapped as a zero-tolerance CI gate."""
+        with (
+            patch("sys.argv", ["ll-verify-design-tokens"]),
             patch("builtins.print"),
         ):
             assert main_verify_design_tokens() == 0

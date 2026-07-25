@@ -198,10 +198,6 @@ def main_verify_design_tokens() -> int:
     """Entry point for ll-verify-design-tokens.
 
     Returns 0 when no half-flipped themes are found; 1 otherwise.
-
-    Note: run against the bundled little-loops templates this currently flags
-    ``editorial-mono`` (a known-incomplete profile pending a follow-on); fix or
-    point ``--profiles-dir`` at a complete profile set to gate CI on exit 0.
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-verify-design-tokens", sys.argv[1:]):
         parser = argparse.ArgumentParser(

@@ -2946,8 +2946,6 @@ For every profile under the profiles directory, each theme that performs a full 
 
 **Exit codes:** `0` = every inverting theme overrides all semantic color groups; `1` = one or more half-flipped themes (or no profiles directory found).
 
-> **Note:** Run against the bundled little-loops templates, this currently flags `editorial-mono`, a known-incomplete profile pending a follow-on. Point `--profiles-dir` at a complete profile set, or complete `editorial-mono`, to gate CI on exit 0.
-
 **Examples:**
 ```bash
 ll-verify-design-tokens                          # Auto-discover profiles dir from cwd

@@ -349,9 +349,8 @@ class TestBundledProfilesLoadEndToEnd:
             f"font.family.body must differ across profiles, got {body_fonts}"
         )
 
-    # ENH-2308: dark themes must be complete for the in-scope profiles. editorial-mono
-    # remains half-flipped pending a follow-on, so it is deliberately excluded here.
-    _DARK_COMPLETE_PROFILES = ("default", "warm-paper")
+    # ENH-2308: dark themes must be complete for the in-scope profiles.
+    _DARK_COMPLETE_PROFILES = ("default", "warm-paper", "editorial-mono")
 
     def test_dark_theme_overrides_all_semantic_groups(self) -> None:
         """ENH-2308: each in-scope profile's dark theme overrides every semantic
