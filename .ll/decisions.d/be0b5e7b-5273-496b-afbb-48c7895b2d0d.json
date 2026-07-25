@@ -1,0 +1,11 @@
+{
+  "id": "ab95c6a6-e22b-4010-a1a5-bc7714a90845",
+  "type": "decision",
+  "timestamp": "2026-07-25T18:11:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "usage_events audit showed session-level traffic (154M cache-write, 20.5M output/7d) is the real spend; pruning profiles are the applicable lever, not the SDK path",
+  "rule": "Captured: audit loop skill states for pruning_profile coverage",
+  "scope": "issue",
+  "issue": "ENH-2805"
+}

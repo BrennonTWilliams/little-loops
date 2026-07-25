@@ -3,7 +3,7 @@ id: FEAT-2674
 title: "F10 \u2014 Speculative cache warming hook (+ max_tokens=0 alt)"
 type: FEAT
 priority: P2
-status: open
+status: cancelled
 captured_at: '2026-07-18T15:15:21Z'
 discovered_date: 2026-07-18
 discovered_by: capture-issue
@@ -331,3 +331,16 @@ _Added by `/ll:confidence-check` on 2026-07-18_
 
 ### Commits
 - See git log for details
+
+---
+
+## Cancelled
+
+- **Date**: 2026-07-25
+- **Reason**: 2026-07-25 usage_events traffic audit — loop state-tagged
+  traffic (the only surface SDK-path cache warming can benefit) measured at
+  ~1% of fleet tokens over 7 days (77 calls vs 34,329 session-level calls);
+  the F10 warmed-cache-hit gate is structurally dormant. Pre-warming cache
+  for this segment cannot produce measurable savings. Session-level spend
+  (154M cache-write, 20.5M output tokens/7d) is targeted instead by
+  ENH-2805 (pruning_profile coverage audit).

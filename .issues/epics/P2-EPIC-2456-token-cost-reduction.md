@@ -3,7 +3,7 @@ id: EPIC-2456
 type: EPIC
 title: Token-Cost Reduction (Tier 0 + F1/F2/F3/F4-gated/F5/F6/F7-lite/F8/F10)
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-02T00:00:00Z'
 discovered_date: '2026-07-02'
 discovered_by: deep-research / manual synthesis
@@ -380,3 +380,22 @@ Tracking the questions raised in the plan files that need resolution before fili
 - epic-audit - 2026-07-06 - Audit pass: added ENH-2486/ENH-2490/ENH-2499 to `relates_to`; recorded FEAT-2470 + ENH-2499 as done in Children; added ENH-2499 entry (stateful edit-batch nudge follow-on) and "Related non-child work" note for ENH-2486; noted ENH-2471 trace-count relaxation (3–5 → ≥2, decided 2026-07-05) and that its hook-regression-test half shipped with FEAT-2470; updated Children intro (Tier 0–1 filed, Tier 2–4 TBD).
 - epic-audit - 2026-07-05 - Children section restructured: filed Tier 1 children (ENH-2475, FEAT-2476, ENH-2477, FEAT-2478, ENH-2479) moved from the Tier 0 list into the Tier 1 section, replacing the duplicate [TBD-3]–[TBD-7] placeholders. Added FEAT-2470/ENH-2471 to `relates_to` for consistency. Added anchor-drift note (executor.py 1295→1382–1393; usage.jsonl vs usage_event table; cost_limits.* keys not yet present).
 - `/ll:capture-issue` - 2026-07-02T00:00:00Z - initial EPIC capture from `thoughts/plans/2026-07-02-token-cost-reduction-architecture.md` + `thoughts/plans/2026-07-02-token-cost-optimal-techniques.md` (prioritization layer). Filing resolves Open Question #6 in both plan files. Captured ID `EPIC-2456` (next unique). Aggregate footprint ~1,550 LOC, 1 pip dep (`anthropic`), 0 sidecars.
+
+---
+
+## Closed
+
+- **Date**: 2026-07-25
+- **Closure gate**: ENH-2719 realized-savings verification report exists at
+  `docs/observability/realized-savings-verification.md` (the epic's stated
+  closure condition — report existence, not all-gates-pass).
+- **Final ledger**: 35 done, 7 cancelled (incl. FEAT-2674/FEAT-2676, cancelled
+  2026-07-25 on traffic-audit evidence), 3 deferred (ENH-2490, ENH-2687,
+  ENH-2738 — remain visible via `ll-issues deferred-triage`).
+- **Reality check recorded 2026-07-25**: the SDK request path shipped and is
+  live (credential chain incl. CLAUDE_CODE_OAUTH_TOKEN, .env fallback
+  loading, max_tokens fix), but loop state-tagged traffic measured at ~1% of
+  fleet tokens over 7 days — the F1/F10 savings surface is real yet small.
+  Session-level spend (154M cache-write, 20.5M output tokens/7d) is the
+  dominant cost and is tracked forward by ENH-2805 (pruning_profile coverage
+  audit), outside this epic.

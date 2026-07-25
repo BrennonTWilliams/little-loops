@@ -3,7 +3,7 @@ id: FEAT-2676
 title: "F4b \u2014 LLMLingua benchmark comparator + heuristic_underperforms gate flip"
 type: FEAT
 priority: P2
-status: open
+status: cancelled
 captured_at: '2026-07-18T00:00:00Z'
 discovered_date: 2026-07-18
 discovered_by: issue-size-review
@@ -403,3 +403,17 @@ _Added by `/ll:confidence-check` on 2026-07-21_
 - `/ll:wire-issue` - 2026-07-21T05:14:43 - `4e00fd75-61c8-4cea-aa7b-d851dccd9efb.jsonl`
 - `/ll:refine-issue` - 2026-07-21T05:08:13 - `4f97edc2-37b6-474e-91d0-b705c0264d09.jsonl`
 - `/ll:issue-size-review` - 2026-07-18T00:00:00Z - `70567c71-f6fe-461a-8bdd-2032806ffba1.jsonl`
+
+---
+
+## Cancelled
+
+- **Date**: 2026-07-25
+- **Reason**: The F4 heuristic compressor's 3–6× reduction band is already
+  test-enforced on every run (`test_heuristic_compression.py`, PASS in the
+  ENH-2719 closure report), so the LLMLingua comparator would only referee a
+  gate (`heuristic_underperforms`) with no observed failure signal — at the
+  cost of unproven `llmlingua`/`transformers` learning tests and a heavyweight
+  dependency contrary to the minimize-dependencies policy. Already
+  automation-deferred as low_readiness since 2026-07-21. The 2026-07-25
+  traffic audit further showed the compressor's traffic segment is small.

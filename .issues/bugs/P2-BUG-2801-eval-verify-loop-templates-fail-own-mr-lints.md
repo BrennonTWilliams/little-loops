@@ -1,6 +1,6 @@
 ---
 id: BUG-2801
-status: deferred
+status: cancelled
 captured_at: '2026-07-25T00:00:00Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
@@ -242,9 +242,38 @@ bug, or a stale/invalid report, before spending effort on either fix.
 - `.claude/CLAUDE.md` § Loop Authoring (MR-1, MR-3 table)
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
 
+## Repro Result (2026-07-25) — INVALID
+
+Option A end-to-end repro run: generated a real `verify-issue-loop` YAML from
+BUG-2803's four acceptance criteria, plus a Variant-B-shaped eval harness using
+the SKILL.md's literal `/tmp/<harness-name>-processed.txt` scratch path, then
+ran `ll-loop validate` on both. **Neither MR-1 nor MR-3 fired.** Both premises
+are false:
+
+- **MR-1 does not apply.** `_validate_meta_loop_evaluation()`
+  (`scripts/little_loops/fsm/validation.py:1355`) early-returns unless
+  `_is_meta_loop(fsm)` (line 1330) — i.e. the loop's action strings write
+  harness artifacts (loop YAML / skill / agent / command / project config),
+  import `lib/benchmark.yaml`, or reference `yaml_state_editor`/`replace_action`.
+  A verification or eval loop for an ordinary product issue is not a meta-loop,
+  so its `llm_structured` states are never required to carry a non-LLM
+  evaluator. Validation exited 0.
+- **MR-3 does not match `/tmp/`.** `_SHARED_TMP_PATH_RE`
+  (`validation.py:114`) is `\.loops/tmp/[\w./-]+` — it matches only the
+  repo-relative `.loops/tmp/` path, not a bare `/tmp/...` path. Variant B's
+  scratch path is invisible to the lint.
+
+Closing as invalid. Both repro YAMLs were deleted after validation; no source
+changes were made.
+
+Incidental (real but different, not the reported defect): the generated verify
+template *does* draw two WARNINGs — MR-4 (`partial` verdict has no route) and
+MR-8 (evaluator prompt omits evidence-contract keywords). That is a small
+template-polish enhancement, not this bug.
+
 ## Status
 
-**Open** | Created: 2026-07-25 | Priority: P2
+**Cancelled** (invalid — repro disproved both premises) | Created: 2026-07-25 | Priority: P2
 
 
 ## Session Log
