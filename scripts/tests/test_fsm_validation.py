@@ -18,6 +18,7 @@ from little_loops.fsm.schema import (
     LearningConfig,
     ParameterSpec,
     PromptSizeGuardConfig,
+    PruningProfileConfig,
     RepeatedFailureConfig,
     StateConfig,
     TargetFileSpec,
@@ -43,6 +44,7 @@ from little_loops.fsm.validation import (
     _validate_partial_route_dead_end,
     _validate_policy_dimensions_scored,
     _validate_progress_paths_isolation,
+    _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
     _validate_state_action,
     _validate_unsafe_context_interpolation,
@@ -4567,3 +4569,154 @@ class TestSessionModeEvaluatorInheritance:
         assert fsm is not None
         unknown_key_errors = [e for e in errors if "Unknown top-level" in e.message]
         assert unknown_key_errors == []
+
+
+class TestPruningProfileCoverageValidation:
+    """ENH-2805: MR-12 coverage-ranking check — a skill/command-invoking state
+
+    with no resolvable ``pruning_profile`` (state override or loop default)
+    is flagged WARNING. Modeled on TestLLMEvidenceContractValidation (MR-8).
+    """
+
+    def _simple_fsm(self, **kwargs) -> FSMLoop:
+        defaults: dict = {
+            "name": "test-pruning-coverage",
+            "initial": "check",
+            "states": {
+                "check": make_state(terminal=True),
+            },
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    def _mr12_coverage_warnings(self, errors: list) -> list:
+        return [
+            e
+            for e in errors
+            if e.severity == ValidationSeverity.WARNING
+            and "ENH-2805" in e.message
+            and "no resolvable pruning_profile" in e.message
+        ]
+
+    # --- positive control ---
+
+    def test_fires_for_skill_state_with_no_pruning_profile(self) -> None:
+        """WARNING fires when a /ll:<skill> state has no state or loop default profile."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
+
+    # --- negative control ---
+
+    def test_does_not_fire_when_state_pruning_profile_set(self) -> None:
+        """No WARNING when the state itself declares a pruning_profile."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    pruning_profile=PruningProfileConfig(enabled=True),
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING: {warnings}"
+
+    def test_does_not_fire_when_loop_default_pruning_profile_set(self) -> None:
+        """No WARNING when the loop-level default pruning_profile covers the state."""
+        fsm = self._simple_fsm(
+            pruning_profile=PruningProfileConfig(enabled=True),
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING: {warnings}"
+
+    # --- suppress-flag-honored ---
+
+    def test_suppressed_by_pruning_profile_ok(self) -> None:
+        """pruning_profile_ok: true suppresses the coverage WARNING."""
+        fsm = self._simple_fsm(
+            pruning_profile_ok=True,
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_pruning_profile(fsm)
+        assert errors == [], f"Unexpected errors with suppression flag: {errors}"
+
+    # --- sdk/batch exemption ---
+
+    def test_does_not_fire_for_sdk_request_path_state(self) -> None:
+        """A request_path: sdk state is exempt — pruning is a no-op there."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    request_path="sdk",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING for sdk state: {warnings}"
+
+    def test_does_not_fire_for_batch_request_path_state(self) -> None:
+        """A request_path: batch state is exempt — pruning is a no-op there."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    request_path="batch",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING for batch state: {warnings}"
+
+    # --- end-to-end via validate_fsm() ---
+
+    def test_fires_end_to_end_via_validate_fsm(self) -> None:
+        """MR-12 coverage WARNING appears in validate_fsm() output (end-to-end wiring check)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        all_errors = validate_fsm(fsm)
+        warnings = self._mr12_coverage_warnings(all_errors)
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"

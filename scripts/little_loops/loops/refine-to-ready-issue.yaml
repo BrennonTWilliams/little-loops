@@ -124,6 +124,10 @@ states:
     # of re-bulldozing the first pass's improvements.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: refine-issue-repair
+      suppress_claude_md: true
     # BUG-2726: capture so a killed refine (e.g. exit 143 SIGTERM) surfaces its
     # exit code / output tail via ${captured.refine_issue.*} in the diagnose prompt.
     capture: refine_issue
@@ -137,6 +141,10 @@ states:
     # additive-only (never removes content) and does not consume max_refine_count.
     action: "/ll:refine-issue ${captured.issue_id.output} --auto --gap-analysis"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: refine-issue-repair
+      suppress_claude_md: true
     # BUG-2726: capture the retry refine's failure context for the diagnose prompt.
     capture: refine_followup
     next: check_decision_mid_refine
@@ -169,6 +177,10 @@ states:
   wire_issue:
     action: "/ll:wire-issue ${captured.issue_id.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: wire-issue-auto
+      suppress_claude_md: true
     next: mark_wire_done
     on_error: confidence_check  # wiring failure is non-fatal
 

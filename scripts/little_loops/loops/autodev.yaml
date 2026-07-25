@@ -438,6 +438,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: recheck_after_decide
     on_error: recheck_after_decide
     on_rate_limit_exhausted: done
@@ -526,6 +530,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${captured.input.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: wire-issue-auto
+      suppress_claude_md: true
     next: count_repair_cycle_wire
     on_error: count_repair_cycle_wire
     on_rate_limit_exhausted: done
@@ -552,6 +560,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:refine-issue ${captured.input.output} --auto --gap-analysis"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: refine-issue-repair
+      suppress_claude_md: true
     next: rerun_confidence_after_wire
     on_error: rerun_confidence_after_wire
     on_rate_limit_exhausted: done
@@ -564,6 +576,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: enqueue_or_skip
     on_error: enqueue_or_skip
     on_rate_limit_exhausted: done
@@ -962,6 +978,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: enqueue_or_skip
     on_error: enqueue_or_skip
     on_rate_limit_exhausted: done
@@ -1283,6 +1303,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${captured.input.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: wire-issue-auto
+      suppress_claude_md: true
     next: rerun_confidence_after_atomic_remediation
     on_error: rerun_confidence_after_atomic_remediation
     on_rate_limit_exhausted: done
@@ -1294,6 +1318,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: regate_after_atomic_remediation
     on_error: regate_after_atomic_remediation
     on_rate_limit_exhausted: done
@@ -1376,6 +1404,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: recheck_after_size_review
     on_error: recheck_after_size_review
     on_rate_limit_exhausted: done

@@ -2077,9 +2077,9 @@ def _effective_pruning_profile(fsm: FSMLoop, state: StateConfig) -> PruningProfi
 
 
 def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
-    """Validate rule MR-12 (ENH-2714): automation-context pruning-profile consistency.
+    """Validate rule MR-12 (ENH-2714 / ENH-2805): automation-context pruning-profile consistency.
 
-    Two checks against the resolved pruning profile (state ``pruning_profile:``
+    Three checks against the resolved pruning profile (state ``pruning_profile:``
     override, else the loop-level default):
 
     1. ERROR — a state's own ``tools:`` allowlist excludes a ``/ll:<skill>``
@@ -2089,8 +2089,19 @@ def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
        invokes a ``/ll:<skill>`` action. Catalog suppression removes the skill
        listing the host needs to resolve the slash command, so the invocation
        may fail depending on host behavior.
+    3. WARN (ENH-2805) — a skill/command-invoking state has NO resolvable
+       ``pruning_profile`` at all (neither state override nor loop default).
+       Every such state pays the full automation-context static prefix
+       (catalog + SessionStart digest + CLAUDE.md) on every invocation, which
+       is the dominant share of fleet token spend (session-level traffic, not
+       the FSM-state-tagged ~1% `request_path: sdk` touches). States with
+       ``request_path: sdk``/``batch`` are exempt — they bypass
+       ``action_runner`` entirely via ``_dispatch_live`` and send a bare
+       single-turn API call with no catalog/CLAUDE.md/hooks to prune
+       (``executor.py:2183,2205``).
 
-    Suppressed by ``pruning_profile_ok: true`` at the loop top-level.
+    Suppressed by ``pruning_profile_ok: true`` at the loop top-level (all
+    three checks share this flag rather than minting a per-check flag).
     """
     if fsm.pruning_profile_ok:
         return []
@@ -2133,6 +2144,27 @@ def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
                         "at the loop top-level to suppress. (ENH-2714 MR-12)"
                     ),
                     path=f"states.{state_name}.action",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+
+        # Check 3 (WARN, ENH-2805): no resolvable pruning_profile at all.
+        if state.request_path in ("sdk", "batch"):
+            continue
+        if profile is None:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] invokes /ll:{skill} with no "
+                        "resolvable pruning_profile (state override or loop "
+                        "default) — this state pays the full automation-context "
+                        "static prefix (catalog + SessionStart digest + "
+                        "CLAUDE.md) on every invocation. Consider setting a "
+                        "`pruning_profile:` for high-volume repeated states, or "
+                        "set `pruning_profile_ok: true` at the loop top-level "
+                        "to suppress. (ENH-2805 MR-12)"
+                    ),
+                    path=f"states.{state_name}.pruning_profile",
                     severity=ValidationSeverity.WARNING,
                 )
             )

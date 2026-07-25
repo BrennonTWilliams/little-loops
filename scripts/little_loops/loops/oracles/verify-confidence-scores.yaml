@@ -16,6 +16,10 @@ states:
   confidence_check:
     action: "/ll:confidence-check ${context.issue_id}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: verify_scores_persisted
     on_error: failed
 
@@ -62,6 +66,10 @@ states:
     # a second consecutive miss so a transient skip does not trigger spurious size-review.
     action: "/ll:confidence-check ${context.issue_id}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
     next: verify_scores_persisted_final
     on_error: failed
 
