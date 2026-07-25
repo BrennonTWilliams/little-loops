@@ -41,7 +41,8 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
     if include_blocked:
         # EPICs are umbrella containers meant to be decomposed via scope
         # resolution, never ranked as implementable leaves (BUG-2638).
-        all_issues = [i for i in find_issues(config) if not i.issue_id.startswith("EPIC-")]
+        raw_issues = find_issues(config)
+        all_issues = [i for i in raw_issues if not i.issue_id.startswith("EPIC-")]
         if not all_issues:
             return 1
 
@@ -53,7 +54,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
         except Exception:
             pass
-        graph = DependencyGraph.from_issues(find_issues(config), all_known_ids=all_known_ids)
+        graph = DependencyGraph.from_issues(raw_issues, all_known_ids=all_known_ids)
         blocked_by_map: dict[str, list[str]] = {
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in all_issues)

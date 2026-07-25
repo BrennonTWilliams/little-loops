@@ -963,3 +963,57 @@ class TestNextIssuesEpicExclusion:
         ids = [row["id"] for row in data]
         assert "EPIC-482" not in ids
         assert "FEAT-477" in ids
+
+
+class TestNextIssuesSingleParse:
+    """Regression test for ENH-2781: --include-blocked must parse once."""
+
+    def test_include_blocked_parses_issues_once(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--include-blocked` calls `find_issues` exactly once, not twice."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-600-a.md",
+            "FEAT-600: A",
+            outcome_confidence=90,
+            confidence_score=90,
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-601-b.md",
+            "FEAT-601: B",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        from little_loops import issue_parser
+
+        real_find_issues = issue_parser.find_issues
+        call_count = 0
+
+        def _counting_find_issues(*args: Any, **kwargs: Any) -> Any:
+            nonlocal call_count
+            call_count += 1
+            return real_find_issues(*args, **kwargs)
+
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "next-issues", "--include-blocked", "--config", str(temp_project_dir)],
+            ),
+            patch("little_loops.issue_parser.find_issues", side_effect=_counting_find_issues),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert call_count == 1

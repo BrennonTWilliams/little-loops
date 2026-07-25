@@ -44,10 +44,17 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         # each candidate's blocked status against the dep graph.
         # EPICs are umbrella containers meant to be decomposed via scope
         # resolution, never ranked as implementable leaves (BUG-2638).
+        # Parse once, unfiltered, so blocking edges outside the requested
+        # slice are still correctly recognized when building the dep graph
+        # below; derive the skip_ids-filtered ranking candidates in memory
+        # instead of re-parsing with skip_ids applied (ENH-2781).
+        raw_issues = find_issues(config)
+        skip_id_set = set(skip_ids) if skip_ids else None
         ranked = [
             i
-            for i in find_issues(config, skip_ids=skip_ids or None)
+            for i in raw_issues
             if not i.issue_id.startswith("EPIC-")
+            and (skip_id_set is None or i.issue_id not in skip_id_set)
         ]
         if not ranked:
             return 1
@@ -62,7 +69,7 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
         except Exception:
             pass
-        graph = DependencyGraph.from_issues(find_issues(config), all_known_ids=all_known_ids)
+        graph = DependencyGraph.from_issues(raw_issues, all_known_ids=all_known_ids)
         blocked_by_map: dict[str, list[str]] = {
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in ranked)

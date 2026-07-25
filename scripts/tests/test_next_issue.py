@@ -1120,3 +1120,105 @@ class TestNextIssueEpicExclusion:
 
         assert result == 1
         assert capsys.readouterr().out.strip() == ""
+
+
+class TestNextIssueSingleParse:
+    """Regression tests for ENH-2781: --include-blocked must parse once."""
+
+    def test_include_blocked_parses_issues_once(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`--include-blocked` calls `find_issues` exactly once, not twice."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-600-a.md",
+            "FEAT-600: A",
+            outcome_confidence=90,
+            confidence_score=90,
+        )
+        _make_issue(
+            features_dir,
+            "P3-FEAT-601-b.md",
+            "FEAT-601: B",
+            outcome_confidence=50,
+            confidence_score=50,
+        )
+
+        from little_loops import issue_parser
+
+        real_find_issues = issue_parser.find_issues
+        call_count = 0
+
+        def _counting_find_issues(*args: Any, **kwargs: Any) -> Any:
+            nonlocal call_count
+            call_count += 1
+            return real_find_issues(*args, **kwargs)
+
+        with (
+            patch.object(sys, "argv", ["ll-issues", "next-issue", "--include-blocked",
+                                        "--config", str(temp_project_dir)]),
+            patch("little_loops.issue_parser.find_issues", side_effect=_counting_find_issues),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert call_count == 1
+
+    def test_skip_with_include_blocked_preserves_blocker_in_graph(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A skipped issue that blocks another must still register as a blocker.
+
+        FEAT-700 is blocked_by FEAT-701. `--skip FEAT-701 --include-blocked`
+        removes FEAT-701 from the ranking candidates, but FEAT-700's
+        `blocked`/`blocked_by` must still reflect the FEAT-701 edge since the
+        dep graph is built from the unfiltered issue set (ENH-2781 caveat).
+        """
+        _write_config(temp_project_dir, sample_config)
+        features_dir = _setup_dirs(temp_project_dir)
+
+        _make_issue(features_dir, "P0-FEAT-701-blocker.md", "FEAT-701: Blocker", status="open")
+        _make_issue(
+            features_dir,
+            "P2-FEAT-700-blocked.md",
+            "FEAT-700: Blocked by FEAT-701",
+            outcome_confidence=90,
+            confidence_score=90,
+            blocked_by=["FEAT-701"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "next-issue",
+                "--json",
+                "--include-blocked",
+                "--skip",
+                "FEAT-701",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        data = json.loads(out)
+        assert data["id"] == "FEAT-700"
+        assert data["blocked"] is True
+        assert data["blocked_by"] == ["FEAT-701"]
