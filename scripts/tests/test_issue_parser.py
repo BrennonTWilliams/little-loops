@@ -1264,6 +1264,43 @@ class TestFindIssues:
             f"find_issues should not glob legacy completed/ or deferred/ dirs; got {legacy_dir_globs}"
         )
 
+    def test_find_issues_skip_blocked_single_parse_pass(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """ENH-2780: skip_blocked=True parses each issue file exactly once,
+        not twice (the readiness graph is built from the same parse pass
+        used for the outer filtered result, instead of a second recursive
+        `find_issues()` call).
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        for i in range(1, 6):
+            (bugs_dir / f"P1-BUG-{i:03d}-issue.md").write_text(
+                f"---\nstatus: open\n---\n\n# BUG-{i:03d}: Issue\n\nContent."
+            )
+
+        real_parse_file = IssueParser.parse_file
+        call_counts: dict[Path, int] = {}
+
+        def counting_parse_file(self: IssueParser, path: Path):  # type: ignore[override]
+            call_counts[path] = call_counts.get(path, 0) + 1
+            return real_parse_file(self, path)
+
+        with patch.object(
+            IssueParser, "parse_file", autospec=True, side_effect=counting_parse_file
+        ):
+            find_issues(config, category="bugs", skip_blocked=True)
+
+        assert call_counts, "expected parse_file to be called"
+        assert all(count == 1 for count in call_counts.values()), (
+            f"expected exactly one parse_file() call per file, got {call_counts}"
+        )
+
     def test_find_issues_skip_blocked_default_is_byte_identical(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

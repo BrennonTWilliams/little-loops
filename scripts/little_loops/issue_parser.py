@@ -1256,41 +1256,50 @@ def find_issues(
     else:
         categories = config.issue_categories
 
-    for cat in categories:
-        issue_dir = config.get_issue_dir(cat)
-        if not issue_dir.exists():
-            continue
+    def _matches_status(info: IssueInfo, status_filter: set[str] | None) -> bool:
+        if status_filter is None:
+            return info.status not in ("done", "cancelled", "deferred")
+        return info.status in status_filter
 
-        for issue_file in issue_dir.glob("*.md"):
-            info = parser.parse_file(issue_file)
-            # Status-based filter
-            if status_filter is None:
-                if info.status in ("done", "cancelled", "deferred"):
-                    continue
-            elif info.status not in status_filter:
-                continue
-            # Apply skip filter
-            if info.issue_id in skip_ids:
-                continue
-            # Apply only filter (if specified)
-            if only_ids is not None and not any(_id_matches(info.issue_id, p) for p in only_ids):
-                continue
-            # Apply type filter (if specified)
-            if type_prefixes is not None:
-                prefix = info.issue_id.split("-", 1)[0]
-                if prefix not in type_prefixes:
-                    continue
-            issues.append(info)
+    def _matches_filters(info: IssueInfo) -> bool:
+        if info.issue_id in skip_ids:
+            return False
+        if only_ids is not None and not any(_id_matches(info.issue_id, p) for p in only_ids):
+            return False
+        if type_prefixes is not None:
+            prefix = info.issue_id.split("-", 1)[0]
+            if prefix not in type_prefixes:
+                return False
+        return True
 
     if skip_blocked:
         from little_loops.dependency_graph import DependencyGraph
         from little_loops.issue_progress import _ALL_STATUSES, _TERMINAL_STATUSES
 
-        # Build the graph from every non-terminal issue (ignoring this call's
-        # category/type/skip/only filters) so a blocker outside the requested
-        # slice is still correctly recognized as blocking or resolved.
+        # Single unfiltered non-terminal parse pass over every category (the
+        # superset the graph needs regardless of this call's category/type/
+        # skip/only filters, so a blocker outside the requested slice is
+        # still correctly recognized as blocking or resolved). The outer
+        # call's `issues` result is then derived from this same superset in
+        # memory instead of re-walking the directory a second time.
         non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES
-        all_active = find_issues(config, status_filter=set(non_terminal))
+        requested_categories = set(categories)
+        all_active: list[IssueInfo] = []
+        for cat in config.issue_categories:
+            issue_dir = config.get_issue_dir(cat)
+            if not issue_dir.exists():
+                continue
+            for issue_file in issue_dir.glob("*.md"):
+                info = parser.parse_file(issue_file)
+                if info.status in non_terminal:
+                    all_active.append(info)
+                    if cat in requested_categories:
+                        if not _matches_status(info, status_filter):
+                            continue
+                        if not _matches_filters(info):
+                            continue
+                        issues.append(info)
+
         all_known_ids: set[str] | None = None
         try:
             from little_loops.dependency_mapper import gather_all_issue_ids
@@ -1302,6 +1311,19 @@ def find_issues(
         graph = DependencyGraph.from_issues(all_active, all_known_ids=all_known_ids)
         ready_ids = {info.issue_id for info in graph.get_ready_issues()}
         issues = [info for info in issues if info.issue_id in ready_ids]
+    else:
+        for cat in categories:
+            issue_dir = config.get_issue_dir(cat)
+            if not issue_dir.exists():
+                continue
+
+            for issue_file in issue_dir.glob("*.md"):
+                info = parser.parse_file(issue_file)
+                if not _matches_status(info, status_filter):
+                    continue
+                if not _matches_filters(info):
+                    continue
+                issues.append(info)
 
     # When only_ids is a list, preserve input order; otherwise sort by priority
     if isinstance(only_ids, list):
