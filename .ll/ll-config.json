@@ -128,5 +128,9 @@
       "budget_tokens": 4096,
       "cross_session_enabled": true
     }
+  },
+  "orchestration": {
+    "host_cli": "claude-code",
+    "request_path": "sdk"
   }
 }
