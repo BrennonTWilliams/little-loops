@@ -1884,12 +1884,17 @@ Validate existing dependency references only (broken refs, cycles, stale complet
 
 #### `ll-deps fix`
 
-Auto-fix broken refs, stale refs, and missing backlinks.
+Auto-fix broken refs, stale refs, and missing backlinks. Cycles are always
+enumerated in the report (member edges plus a suggested lowest-priority-edge
+cut); pass `--break-cycles` to apply the suggested cut, keeping bidirectional
+`Blocked By`/`Blocks` consistency (paired removal, same shape `ll-deps apply`
+uses for paired writes).
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--dry-run` | `-n` | Preview fixes without modifying files |
 | `--sprint` | | Restrict fixes to named sprint |
+| `--break-cycles` | | Cut the suggested lowest-priority edge of each detected cycle |
 
 #### `ll-deps apply`
 
@@ -1925,6 +1930,7 @@ ll-deps validate --json               # JSON output
 ll-deps validate --sprint my-sprint   # Validate sprint issue deps
 ll-deps fix                           # Auto-fix broken refs and backlinks
 ll-deps fix --dry-run                 # Preview fixes
+ll-deps fix --break-cycles            # Also cut the lowest-priority edge of each cycle
 ll-deps apply                         # Apply proposals >= 0.7 confidence
 ll-deps apply --min-confidence 0.5    # Lower threshold
 ll-deps apply --dry-run               # Preview only (no writes)

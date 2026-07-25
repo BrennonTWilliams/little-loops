@@ -174,6 +174,11 @@ Examples:
             default=None,
             help="Restrict fixes to issues in the named sprint",
         )
+        fix_parser.add_argument(
+            "--break-cycles",
+            action="store_true",
+            help="Cut the suggested lowest-priority edge of each detected cycle",
+        )
 
         # apply subcommand
         apply_parser = subparsers.add_parser(
@@ -509,13 +514,28 @@ Examples:
 
         if args.command == "fix":
             fix_result = fix_dependencies(
-                issues, completed_ids, all_known_ids, dry_run=args.dry_run
+                issues,
+                completed_ids,
+                all_known_ids,
+                dry_run=args.dry_run,
+                break_cycles=args.break_cycles,
             )
+
+            def _cycle_hint() -> str:
+                if args.break_cycles:
+                    return (
+                        f"({fix_result.skipped_cycles} cycle(s) still unbroken — "
+                        f"re-run without --dry-run)"
+                    )
+                return (
+                    f"({fix_result.skipped_cycles} cycle(s) detected — "
+                    f"re-run with --break-cycles to resolve)"
+                )
 
             if not fix_result.changes:
                 print("No fixable issues found.")
                 if fix_result.skipped_cycles:
-                    print(f"({fix_result.skipped_cycles} cycle(s) detected — resolve manually)")
+                    print(_cycle_hint())
                 return 0
 
             prefix = "[DRY RUN] " if args.dry_run else ""
@@ -534,7 +554,7 @@ Examples:
 
             if fix_result.skipped_cycles:
                 print()
-                print(f"({fix_result.skipped_cycles} cycle(s) detected — resolve manually)")
+                print(_cycle_hint())
 
             return 0
 

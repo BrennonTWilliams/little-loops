@@ -109,9 +109,14 @@ class FixResult:
     Attributes:
         changes: Human-readable descriptions of each fix applied
         modified_files: Set of file paths that were modified
-        skipped_cycles: Number of cycles skipped (out of scope for auto-fix)
+        skipped_cycles: Number of cycles left unbroken (no ``--break-cycles``,
+            or ``dry_run``)
+        cycles: Cycles detected during this fix run, each a closed walk of
+            issue IDs (e.g. ``["A", "B", "A"]``), for programmatic access
+            beyond the human-readable ``changes`` entries
     """
 
     changes: list[str] = field(default_factory=list)
     modified_files: set[str] = field(default_factory=set)
     skipped_cycles: int = 0
+    cycles: list[list[str]] = field(default_factory=list)

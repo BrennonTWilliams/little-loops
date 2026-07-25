@@ -182,6 +182,8 @@ ll-deps apply FEAT-001 blocks FEAT-002  # Manual explicit pair
 
 `ll-deps apply` writes only the `## Blocked By` direction. Run `ll-deps fix` afterward to add missing `## Blocks` backlinks, then `ll-deps validate` to confirm a clean state.
 
+`ll-deps fix` also enumerates any circular `Blocked By`/`depends_on` chains (member edges plus a suggested lowest-priority-edge cut) without breaking them; pass `ll-deps fix --break-cycles` to apply the suggested cut and restore mutually-blocked issues to the ready pool.
+
 ### Auto Mode Behavior
 
 **When `AUTO_MODE` is true**: Skip the AskUserQuestion prompt below. Run `ll-deps apply` automatically (default threshold 0.7). Emit one status line per applied proposal: `[SOURCE-ID] → [TARGET-ID]: dependency added (confidence: HIGH)`

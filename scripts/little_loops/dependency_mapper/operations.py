@@ -186,11 +186,91 @@ def _remove_from_section(file_path: Path, section_name: str, issue_id: str) -> b
     return True
 
 
+def _issue_priority(issue_map: dict[str, IssueInfo], issue_id: str) -> int:
+    """Return an issue's priority_int, or 99 (lowest) if the issue is unknown."""
+    issue = issue_map.get(issue_id)
+    return issue.priority_int if issue is not None else 99
+
+
+def _cycle_edge_type(issue_map: dict[str, IssueInfo], source: str, target: str) -> str:
+    """Classify the edge (source -> target) in a cycle as its prerequisite kind.
+
+    Both ``blocked_by`` and ``depends_on`` point from a dependent issue to its
+    prerequisite (see ``DependencyGraph.detect_cycles()``), so a cycle edge may
+    be either. Defaults to "blocked_by" if the source issue is missing or
+    neither list contains the target (shouldn't happen for a real cycle edge).
+    """
+    issue = issue_map.get(source)
+    if issue is not None and target in issue.depends_on and target not in issue.blocked_by:
+        return "depends_on"
+    return "blocked_by"
+
+
+def _select_cycle_cut(
+    cycle: list[str], issue_map: dict[str, IssueInfo]
+) -> tuple[str, str, str]:
+    """Pick the edge to cut in a cycle: the lowest-priority source issue.
+
+    Ties (equal ``priority_int``) fall back to the lexicographically greatest
+    source ID, matching this module's deterministic tie-break convention
+    (see ``find_file_overlaps()``).
+
+    Args:
+        cycle: Closed walk of issue IDs, e.g. ``["A", "B", "A"]``
+        issue_map: Mapping from issue_id to IssueInfo
+
+    Returns:
+        (source_id, target_id, edge_type) for the edge to remove, where
+        edge_type is "blocked_by" or "depends_on"
+    """
+    edges = list(zip(cycle, cycle[1:], strict=False))
+    source, target = max(edges, key=lambda e: (_issue_priority(issue_map, e[0]), e[0]))
+    edge_type = _cycle_edge_type(issue_map, source, target)
+    return source, target, edge_type
+
+
+def _cut_cycle_edge(
+    issue_path_map: dict[str, Path],
+    source: str,
+    target: str,
+    edge_type: str,
+) -> set[str]:
+    """Remove a cycle-breaking edge, keeping backlinks consistent.
+
+    For a ``blocked_by`` edge, removes ``target`` from ``source``'s
+    ``## Blocked By`` and pairs it with removing ``source`` from ``target``'s
+    ``## Blocks`` (mirrors the paired-write shape in ``apply_proposals()``).
+    A ``depends_on`` edge has no reciprocal section, so only the source file
+    is touched.
+
+    Returns:
+        Set of file paths that were actually modified.
+    """
+    modified: set[str] = set()
+    source_path = issue_path_map.get(source)
+    target_path = issue_path_map.get(target)
+
+    if edge_type == "depends_on":
+        if source_path and source_path.exists():
+            if _remove_from_section(source_path, "Depends On", target):
+                modified.add(str(source_path))
+        return modified
+
+    if source_path and source_path.exists():
+        if _remove_from_section(source_path, "Blocked By", target):
+            modified.add(str(source_path))
+    if target_path and target_path.exists():
+        if _remove_from_section(target_path, "Blocks", source):
+            modified.add(str(target_path))
+    return modified
+
+
 def fix_dependencies(
     issues: list[IssueInfo],
     completed_ids: set[str] | None = None,
     all_known_ids: set[str] | None = None,
     dry_run: bool = False,
+    break_cycles: bool = False,
 ) -> FixResult:
     """Auto-repair broken dependency references.
 
@@ -199,13 +279,17 @@ def fix_dependencies(
     - Stale completed refs: removes references to completed issues from Blocked By
     - Missing backlinks: adds missing Blocks entries for bidirectional consistency
 
-    Cycles are explicitly out of scope and are skipped with a count.
+    Cycles are always enumerated (with member edges and a suggested cut) in
+    ``result.changes``. They are only actually broken when ``break_cycles`` is
+    True; otherwise they are reported but left unmodified.
 
     Args:
         issues: List of parsed issue objects
         completed_ids: Set of completed issue IDs
         all_known_ids: Set of all issue IDs that exist on disk
         dry_run: If True, report what would change without modifying files
+        break_cycles: If True, cut the suggested lowest-priority edge of each
+            detected cycle (subject to ``dry_run``)
 
     Returns:
         FixResult with changes made and files modified
@@ -218,6 +302,7 @@ def fix_dependencies(
 
     # Build issue path map
     issue_path_map: dict[str, Path] = {issue.issue_id: issue.path for issue in issues}
+    issue_map: dict[str, IssueInfo] = {issue.issue_id: issue for issue in issues}
 
     # Fix broken refs: remove from Blocked By
     for issue_id, ref_id in validation.broken_refs:
@@ -252,8 +337,28 @@ def fix_dependencies(
             _add_to_section(target_path, "Blocks", issue_id)
             result.modified_files.add(str(target_path))
 
-    # Report skipped cycles
-    result.skipped_cycles = len(validation.cycles)
+    # Enumerate cycles with their member edges and a suggested/applied cut
+    result.cycles = validation.cycles
+    for cycle in validation.cycles:
+        cycle_str = " -> ".join(cycle)
+        source, target, edge_type = _select_cycle_cut(cycle, issue_map)
+        cut_desc = f"{source} {edge_type} on {target}"
+
+        if break_cycles:
+            verb = "Would cut" if dry_run else "Cut"
+            result.changes.append(f"{verb} cycle edge ({cut_desc}): {cycle_str}")
+            if not dry_run:
+                result.modified_files |= _cut_cycle_edge(
+                    issue_path_map, source, target, edge_type
+                )
+            else:
+                result.skipped_cycles += 1
+        else:
+            result.changes.append(
+                f"Cycle detected: {cycle_str} "
+                f"(suggested cut: {cut_desc}; run with --break-cycles to apply)"
+            )
+            result.skipped_cycles += 1
 
     return result
 

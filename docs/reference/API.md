@@ -1394,6 +1394,30 @@ class DependencyReport:
 | `issue_count` | `int` | Total issues analyzed |
 | `existing_dep_count` | `int` | Number of existing dependency edges |
 
+### FixResult
+
+Result of `operations.fix_dependencies()` — auto-repairing broken/stale refs
+and missing backlinks, plus reporting (and optionally cutting) cycles.
+
+```python
+@dataclass
+class FixResult:
+    """Result of auto-fixing dependency validation issues."""
+    changes: list[str]         # Human-readable descriptions of each fix applied
+    modified_files: set[str]   # File paths that were modified
+    skipped_cycles: int        # Cycles left unbroken (no --break-cycles, or dry_run)
+    cycles: list[list[str]]    # Cycles detected this run, each a closed walk of issue IDs
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `changes` | `list[str]` | Human-readable descriptions of each fix applied (or, for cycles without `--break-cycles`, each cycle's edges plus its suggested cut) |
+| `modified_files` | `set[str]` | File paths that were modified |
+| `skipped_cycles` | `int` | Number of cycles left unbroken — all of them when `break_cycles=False`, or when `dry_run=True` |
+| `cycles` | `list[list[str]]` | Cycles detected this run, each a closed walk of issue IDs (e.g. `["A", "B", "A"]`), for programmatic access beyond `changes` |
+
 ### Functions
 
 #### extract_file_paths

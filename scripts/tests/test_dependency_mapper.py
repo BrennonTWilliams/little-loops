@@ -1890,16 +1890,57 @@ class TestFixDependencies:
         assert issue_file.read_text() == original
 
     def test_skips_cycles(self) -> None:
-        """Cycles are counted but not fixed."""
+        """Cycles are enumerated in changes but left unmodified by default."""
         issues = [
             make_issue("FEAT-001", blocked_by=["FEAT-002"]),
             make_issue("FEAT-002", blocked_by=["FEAT-001"]),
         ]
         result = fix_dependencies(issues)
         assert result.skipped_cycles > 0
-        # Cycles should not produce changes (only missing backlinks may)
-        cycle_changes = [c for c in result.changes if "cycle" in c.lower()]
-        assert len(cycle_changes) == 0
+        assert len(result.cycles) > 0
+        cycle_changes = [c for c in result.changes if "Cycle detected" in c]
+        assert len(cycle_changes) > 0
+        assert "suggested cut" in cycle_changes[0]
+        assert "--break-cycles" in cycle_changes[0]
+
+    def test_break_cycles_cuts_lowest_priority_edge(self, tmp_path: Path) -> None:
+        """--break-cycles removes the edge sourced from the lowest-priority issue."""
+        high_file = tmp_path / "P1-FEAT-001-test.md"
+        high_file.write_text("# FEAT-001: Test\n\n## Blocked By\n\n- FEAT-002\n")
+        low_file = tmp_path / "P5-FEAT-002-test.md"
+        low_file.write_text("# FEAT-002: Test\n\n## Blocked By\n\n- FEAT-001\n")
+        issues = [
+            make_issue("FEAT-001", priority="P1", blocked_by=["FEAT-002"], path=high_file),
+            make_issue("FEAT-002", priority="P5", blocked_by=["FEAT-001"], path=low_file),
+        ]
+        result = fix_dependencies(issues, break_cycles=True)
+        assert result.skipped_cycles == 0
+        assert any("Cut cycle edge" in c for c in result.changes)
+        # FEAT-002 (P5, lower priority) is the cut edge's source: its Blocked
+        # By entry for FEAT-001 is removed; FEAT-001's Blocked By is untouched.
+        # (fix_dependencies also adds unrelated missing-backlink "## Blocks"
+        # entries, so scope the assertion to the Blocked By section.)
+        low_blocked_by = low_file.read_text().split("## Blocked By", 1)[-1].split("##", 1)[0]
+        assert "FEAT-001" not in low_blocked_by
+        assert "FEAT-002" in high_file.read_text()
+
+    def test_break_cycles_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        """--break-cycles with dry_run reports the plan but doesn't modify files."""
+        file_a = tmp_path / "P1-FEAT-001-test.md"
+        original_a = "# FEAT-001: Test\n\n## Blocked By\n\n- FEAT-002\n"
+        file_a.write_text(original_a)
+        file_b = tmp_path / "P1-FEAT-002-test.md"
+        original_b = "# FEAT-002: Test\n\n## Blocked By\n\n- FEAT-001\n"
+        file_b.write_text(original_b)
+        issues = [
+            make_issue("FEAT-001", blocked_by=["FEAT-002"], path=file_a),
+            make_issue("FEAT-002", blocked_by=["FEAT-001"], path=file_b),
+        ]
+        result = fix_dependencies(issues, break_cycles=True, dry_run=True)
+        assert result.skipped_cycles > 0
+        assert any("Would cut cycle edge" in c for c in result.changes)
+        assert file_a.read_text() == original_a
+        assert file_b.read_text() == original_b
 
     def test_no_issues_no_changes(self) -> None:
         """No validation issues means no changes."""
