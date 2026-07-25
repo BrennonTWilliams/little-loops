@@ -23,7 +23,13 @@ from little_loops.history_reader import (
     search,
     sessions_for_issue,
 )
-from little_loops.session_store import SQLiteTransport, connect, ensure_db, record_correction
+from little_loops.session_store import (
+    SQLiteTransport,
+    connect,
+    ensure_db,
+    normalize_issue_id,
+    record_correction,
+)
 
 
 class TestMissingDatabase:
@@ -604,8 +610,8 @@ class TestRelatedIssueEvents:
             ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO issue_events(ts, issue_id, transition) VALUES(?, ?, ?)",
-                    (ts, "BUG-1", f"step_{i}"),
+                    "INSERT INTO issue_events(ts, issue_id, issue_num, transition) VALUES(?, ?, ?, ?)",
+                    (ts, "BUG-1", normalize_issue_id("BUG-1"), f"step_{i}"),
                 )
             conn.commit()
         finally:
@@ -1936,12 +1942,12 @@ class TestNewEventReaders:
         conn = connect(db)
         try:
             conn.execute(
-                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
-                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 'done', 'sess-closer')"
+                "INSERT INTO issue_events(ts, issue_id, issue_num, transition, session_id) "
+                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 2462, 'done', 'sess-closer')"
             )
             conn.execute(
-                "INSERT INTO issue_events(ts, issue_id, transition) "
-                "VALUES('2026-07-01T09:00:00Z', 'ENH-9', 'done')"
+                "INSERT INTO issue_events(ts, issue_id, issue_num, transition) "
+                "VALUES('2026-07-01T09:00:00Z', 'ENH-9', 9, 'done')"
             )
             conn.commit()
         finally:
@@ -1956,12 +1962,12 @@ class TestNewEventReaders:
         conn = connect(db)
         try:
             conn.execute(
-                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
-                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 'open', 'sess-a')"
+                "INSERT INTO issue_events(ts, issue_id, issue_num, transition, session_id) "
+                "VALUES('2026-07-01T10:00:00Z', 'ENH-2462', 2462, 'open', 'sess-a')"
             )
             conn.execute(
-                "INSERT INTO issue_events(ts, issue_id, transition, session_id) "
-                "VALUES('2026-07-01T11:00:00Z', 'ENH-2462', 'done', 'sess-b')"
+                "INSERT INTO issue_events(ts, issue_id, issue_num, transition, session_id) "
+                "VALUES('2026-07-01T11:00:00Z', 'ENH-2462', 2462, 'done', 'sess-b')"
             )
             conn.commit()
         finally:

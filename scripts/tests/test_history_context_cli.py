@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.history_context import main_history_context
-from little_loops.session_store import connect, ensure_db, record_correction
+from little_loops.session_store import connect, ensure_db, normalize_issue_id, record_correction
 
 
 class TestArgumentParsing:
@@ -376,9 +376,16 @@ class TestHistoryContextSnapshot:
         conn = connect(db)
         try:
             conn.execute(
-                "INSERT INTO issue_snapshots(ts, issue_id, transition, title, body) "
-                "VALUES(?, ?, ?, ?, ?)",
-                ("2026-01-01T00:00:00Z", issue_id, "done", f"Title for {issue_id}", body),
+                "INSERT INTO issue_snapshots(ts, issue_id, issue_num, transition, title, body) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (
+                    "2026-01-01T00:00:00Z",
+                    issue_id,
+                    normalize_issue_id(issue_id),
+                    "done",
+                    f"Title for {issue_id}",
+                    body,
+                ),
             )
             conn.commit()
         finally:
