@@ -15,6 +15,7 @@ import os
 import random
 import selectors
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -217,6 +218,7 @@ class FSMExecutor:
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
+        self._request_path_downgrade_warned = False
         self.action_runner: ActionRunner = action_runner or DefaultActionRunner()
         self.signal_detector = signal_detector
         self.handoff_handler = handoff_handler
@@ -2107,9 +2109,14 @@ class FSMExecutor:
         one) resolves to ``"cli"``, matching pre-FEAT-2716 behavior.
 
         Before returning ``"sdk"``/``"batch"``, probes that the ``anthropic``
-        package is importable and ``ANTHROPIC_API_KEY`` is set; if either
-        probe fails, downgrades to ``"cli"`` so a missing package/key never
-        hard-fails the run (ENH-2737).
+        package is importable and that *some* credential is resolvable via
+        the SDK's own auth chain — not ``ANTHROPIC_API_KEY`` specifically,
+        since subscription-only users authenticate via
+        ``ANTHROPIC_AUTH_TOKEN`` or the on-disk OAuth profile from
+        ``ant auth login`` (FEAT-2673 correction, 2026-07-19). If either
+        probe fails, downgrades to ``"cli"`` — with a one-shot
+        ``request_path_downgrade`` event and stderr warning — so a missing
+        package/credential never hard-fails the run (ENH-2737).
         """
         if state.request_path:
             resolved = state.request_path
@@ -2122,11 +2129,56 @@ class FSMExecutor:
             try:
                 import anthropic  # noqa: F401
             except ImportError:
+                self._warn_request_path_downgrade(resolved, "anthropic package not importable")
                 return "cli"
-            if not os.environ.get("ANTHROPIC_API_KEY"):
+            if not self._sdk_credentials_available():
+                self._warn_request_path_downgrade(
+                    resolved,
+                    "no Anthropic credential resolvable (set ANTHROPIC_API_KEY, "
+                    "ANTHROPIC_AUTH_TOKEN, or CLAUDE_CODE_OAUTH_TOKEN via `claude setup-token`)",
+                )
                 return "cli"
 
         return resolved
+
+    @staticmethod
+    def _sdk_credentials_available() -> bool:
+        """True when the anthropic SDK would resolve some credential.
+
+        Mirrors the client's own resolution order: the env statics
+        ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN`` are read directly by
+        ``anthropic.Anthropic()`` (outside ``default_credentials()``), and
+        ``CLAUDE_CODE_OAUTH_TOKEN`` (from ``claude setup-token``) is passed
+        explicitly by ``host_runner._anthropic_client()``; then the provider
+        chain covers explicit profiles, workload identity federation, and the
+        active on-disk OAuth profile. A raising chain
+        (e.g. an explicitly-selected but broken profile) counts as
+        unresolvable rather than propagating, preserving ENH-2737's
+        never-hard-fail contract.
+        """
+        if (
+            os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        ):
+            return True
+        try:
+            from anthropic.lib.credentials import default_credentials
+        except ImportError:
+            return False
+        try:
+            return default_credentials() is not None
+        except Exception:
+            return False
+
+    def _warn_request_path_downgrade(self, requested: str, reason: str) -> None:
+        """Emit the sdk/batch → cli downgrade once per run (event + stderr)."""
+        if self._request_path_downgrade_warned:
+            return
+        self._request_path_downgrade_warned = True
+        message = f"request_path '{requested}' downgraded to 'cli': {reason}"
+        self._emit("request_path_downgrade", {"requested": requested, "reason": reason})
+        print(f"Warning: {message}", file=sys.stderr)
 
     def _dispatch_live(
         self, state: StateConfig, action: str, ctx: InterpolationContext

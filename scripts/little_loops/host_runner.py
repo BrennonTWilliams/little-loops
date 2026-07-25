@@ -1348,8 +1348,13 @@ def build_anthropic_request(
     require_repeat: bool = True,
     defer_loading_threshold: int | None = None,
     search_tool_variant: str = "bm25",
+    max_tokens: int = 8192,
 ) -> dict[str, Any]:
     """Build Anthropic Messages API request kwargs with oracle-gated caching.
+
+    ``max_tokens`` is a required Messages API parameter; the 8192 default is
+    the largest budget every current Claude model supports, mirroring the
+    effectively-uncapped CLI path for generator states.
 
     FEAT-2673 (EPIC-2456 F1) — the first non-CLI-subprocess request path in
     this module. Only builds request kwargs suitable for
@@ -1400,7 +1405,7 @@ def build_anthropic_request(
     )
     fragment_store.put(key)
 
-    request: dict[str, Any] = {"model": model, "messages": messages}
+    request: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
 
     if system_prompt:
         system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
@@ -1463,6 +1468,27 @@ def build_batch_request(
         search_tool_variant=search_tool_variant,
     )
     return {"requests": [{"custom_id": custom_id, "params": params}]}
+
+
+def _anthropic_client() -> Any:
+    """Construct an ``anthropic.Anthropic`` client, honoring Claude Code's OAuth token.
+
+    The SDK natively reads ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN`` (then
+    its profile/federation chain). ``CLAUDE_CODE_OAUTH_TOKEN`` — the var
+    ``claude setup-token`` tells subscription users to set — is CLI-namespaced
+    and invisible to the SDK, but the Messages API accepts it as a Bearer
+    credential (live-verified 2026-07-25), so pass it as ``auth_token``
+    explicitly when no SDK-native env credential is present.
+    """
+    import os
+
+    import anthropic
+
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if oauth_token:
+            return anthropic.Anthropic(auth_token=oauth_token)
+    return anthropic.Anthropic()
 
 
 def _text_from_content_blocks(content: Any) -> str:
@@ -1531,7 +1557,7 @@ def dispatch_anthropic_request(
     import anthropic
 
     try:
-        client = anthropic.Anthropic()
+        client = _anthropic_client()
         response = client.messages.create(**request)
     except anthropic.APIError as exc:
         return ActionResult(
@@ -1571,7 +1597,6 @@ def dispatch_batch_request(
     resumed run doesn't double-submit) is the caller's responsibility — see
     ``fsm/batch_tracker.py``.
     """
-    import anthropic
 
     kwargs = build_batch_request(
         custom_id=custom_id,
@@ -1585,7 +1610,7 @@ def dispatch_batch_request(
         defer_loading_threshold=defer_loading_threshold,
         search_tool_variant=search_tool_variant,
     )
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     batch = client.messages.batches.create(**kwargs)
     return batch.id
 
@@ -1618,12 +1643,10 @@ def poll_batch_result(
     """
     import time
 
-    import anthropic
-
     from little_loops.fsm.types import ActionResult
 
     start = time.time()
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     interval = poll_interval_seconds
     while True:
         batch = client.messages.batches.retrieve(batch_id)

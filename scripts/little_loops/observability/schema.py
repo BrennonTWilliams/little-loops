@@ -190,6 +190,18 @@ class ThrottleStopVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class RequestPathDowngradeVariant(DESVariant):
+    """FSMExecutor._emit('request_path_downgrade') — sdk/batch fell back to cli.
+
+    Fired once per run when a configured ``request_path: sdk``/``batch`` is
+    downgraded because the ``anthropic`` package is unimportable or no
+    credential is resolvable (ENH-2737).
+    """
+
+    type: Literal["request_path_downgrade"] = "request_path_downgrade"
+
+
+@dataclass(frozen=True)
 class StallDetectedVariant(DESVariant):
     """FSMExecutor._emit('stall_detected') — evaluator stalled for max_stall iterations."""
 
@@ -609,6 +621,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     LearningTargetRefutedVariant,
     LearningTargetProvenVariant,
     LearningCompleteVariant,
+    RequestPathDowngradeVariant,
     ThrottleWarnVariant,
     ThrottleHardVariant,
     ThrottleStopVariant,

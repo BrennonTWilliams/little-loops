@@ -230,3 +230,47 @@ class TestPollBatchResult:
 
         assert result.exit_code == 1
         assert "errored" in result.stderr
+
+
+class TestAnthropicClientCredentials:
+    """_anthropic_client(): CLAUDE_CODE_OAUTH_TOKEN handoff to the SDK."""
+
+    def test_oauth_token_passed_as_auth_token_when_no_sdk_env_credential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.host_runner import _anthropic_client
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+
+        with patch("anthropic.Anthropic") as mock_client:
+            _anthropic_client()
+
+        mock_client.assert_called_once_with(auth_token="sk-ant-oat-test")
+
+    def test_sdk_native_env_credential_wins_over_oauth_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.host_runner import _anthropic_client
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api-test")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+
+        with patch("anthropic.Anthropic") as mock_client:
+            _anthropic_client()
+
+        mock_client.assert_called_once_with()
+
+    def test_default_construction_when_no_env_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.host_runner import _anthropic_client
+
+        for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+
+        with patch("anthropic.Anthropic") as mock_client:
+            _anthropic_client()
+
+        mock_client.assert_called_once_with()

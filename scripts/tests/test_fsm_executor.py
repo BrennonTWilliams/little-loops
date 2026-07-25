@@ -9782,18 +9782,161 @@ class TestRequestPathDispatchWiring:
         assert mock_runner.calls == ["Say hi"]
         assert result.terminated_by != "error"
 
-    def test_request_path_sdk_falls_back_to_cli_when_api_key_missing(
+    def test_request_path_sdk_falls_back_to_cli_when_no_credentials(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """ENH-2737: missing ANTHROPIC_API_KEY downgrades sdk -> cli, run completes."""
+        """ENH-2737: no resolvable credential downgrades sdk -> cli, run completes."""
         from little_loops.config.orchestration import OrchestrationConfig
 
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
         fsm = self._sdk_fsm()
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0, output="cli output")
 
         with (
+            patch(
+                "anthropic.lib.credentials.default_credentials",
+                return_value=None,
+            ),
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            result = executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls == ["Say hi"]
+        assert result.terminated_by != "error"
+
+    def test_request_path_sdk_accepts_auth_token_without_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FEAT-2673 correction: ANTHROPIC_AUTH_TOKEN alone keeps the sdk path live."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-oauth-token")
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
+    def test_request_path_sdk_accepts_claude_code_oauth_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) keeps the sdk path live."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
+    def test_request_path_sdk_accepts_on_disk_profile_credentials(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FEAT-2673 correction: SDK chain resolving an OAuth profile keeps sdk live."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "anthropic.lib.credentials.default_credentials",
+                return_value=object(),
+            ),
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
+    def test_request_path_sdk_broken_credential_chain_downgrades_not_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A raising credential chain (broken explicit profile) downgrades to cli."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch(
+                "anthropic.lib.credentials.default_credentials",
+                side_effect=RuntimeError("Config file not found"),
+            ),
             patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
             patch(
                 "little_loops.fsm.executor.evaluate_llm_structured",
