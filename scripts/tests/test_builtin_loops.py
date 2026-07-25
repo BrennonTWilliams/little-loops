@@ -4872,7 +4872,10 @@ class TestAutodevLoop:
         ), "the remedy guard must run BEFORE the low_readiness deferral write"
         # Snapshot backfill so AC-3 (readiness_stagnated on repeat failure) holds
         # for fresh issues whose dequeue-time snapshot was empty.
-        assert 'printf \'%s\' "$CUR_CONFIDENCE" > ${context.run_dir}/autodev-pre-readiness.txt' in action
+        assert (
+            "printf '%s' \"$CUR_CONFIDENCE\" > ${context.run_dir}/autodev-pre-readiness.txt"
+            in action
+        )
 
     def test_dequeue_next_clears_pre_deferral_remedy_files(self, data: dict) -> None:
         """BUG-2803: dequeue_next must clear the pre-deferral remedy handshake and

@@ -1007,7 +1007,13 @@ class TestNextIssuesSingleParse:
             patch.object(
                 sys,
                 "argv",
-                ["ll-issues", "next-issues", "--include-blocked", "--config", str(temp_project_dir)],
+                [
+                    "ll-issues",
+                    "next-issues",
+                    "--include-blocked",
+                    "--config",
+                    str(temp_project_dir),
+                ],
             ),
             patch("little_loops.issue_parser.find_issues", side_effect=_counting_find_issues),
         ):

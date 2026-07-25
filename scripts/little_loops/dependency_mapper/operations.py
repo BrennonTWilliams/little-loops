@@ -206,9 +206,7 @@ def _cycle_edge_type(issue_map: dict[str, IssueInfo], source: str, target: str) 
     return "blocked_by"
 
 
-def _select_cycle_cut(
-    cycle: list[str], issue_map: dict[str, IssueInfo]
-) -> tuple[str, str, str]:
+def _select_cycle_cut(cycle: list[str], issue_map: dict[str, IssueInfo]) -> tuple[str, str, str]:
     """Pick the edge to cut in a cycle: the lowest-priority source issue.
 
     Ties (equal ``priority_int``) fall back to the lexicographically greatest
@@ -348,9 +346,7 @@ def fix_dependencies(
             verb = "Would cut" if dry_run else "Cut"
             result.changes.append(f"{verb} cycle edge ({cut_desc}): {cycle_str}")
             if not dry_run:
-                result.modified_files |= _cut_cycle_edge(
-                    issue_path_map, source, target, edge_type
-                )
+                result.modified_files |= _cut_cycle_edge(issue_path_map, source, target, edge_type)
             else:
                 result.skipped_cycles += 1
         else:

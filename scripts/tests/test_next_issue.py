@@ -1161,8 +1161,11 @@ class TestNextIssueSingleParse:
             return real_find_issues(*args, **kwargs)
 
         with (
-            patch.object(sys, "argv", ["ll-issues", "next-issue", "--include-blocked",
-                                        "--config", str(temp_project_dir)]),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "next-issue", "--include-blocked", "--config", str(temp_project_dir)],
+            ),
             patch("little_loops.issue_parser.find_issues", side_effect=_counting_find_issues),
         ):
             from little_loops.cli import main_issues

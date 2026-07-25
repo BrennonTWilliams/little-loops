@@ -172,9 +172,7 @@ class TestResolveIssueId:
         deferred_dir = tmp_path / ".issues" / "deferred"
         deferred_dir.mkdir(parents=True)
         issue_file = deferred_dir / "P3-ENH-2001-test-issue.md"
-        issue_file.write_text(
-            "---\nstatus: deferred\nid: ENH-2001\n---\n# ENH-2001: Test issue\n"
-        )
+        issue_file.write_text("---\nstatus: deferred\nid: ENH-2001\n---\n# ENH-2001: Test issue\n")
 
         result = _resolve_issue_id(config, "ENH-2001")
         assert result == issue_file

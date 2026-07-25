@@ -4997,9 +4997,7 @@ def backfill(
     }
     try:
         if issues_dir.is_dir():
-            counts["issues"], counts["snapshots"] = _backfill_issues_and_snapshots(
-                conn, issues_dir
-            )
+            counts["issues"], counts["snapshots"] = _backfill_issues_and_snapshots(conn, issues_dir)
         if loops_dir.is_dir():
             counts["loops"] = _backfill_loops(conn, loops_dir)
         if repo_root is not None and (repo_root / ".git").exists():

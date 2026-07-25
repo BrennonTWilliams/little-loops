@@ -29,9 +29,7 @@ _NON_LL_TOOLS = frozenset({"mcp-call"})
 
 _PYPROJECT_PATH = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
-_AREAS_MD_PATH = (
-    Path(__file__).resolve().parents[3] / "skills" / "configure" / "areas.md"
-)
+_AREAS_MD_PATH = Path(__file__).resolve().parents[3] / "skills" / "configure" / "areas.md"
 
 _TOOL_TOKEN_RE = re.compile(r"\bll-[a-z0-9-]+\b")
 

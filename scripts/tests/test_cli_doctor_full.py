@@ -80,11 +80,21 @@ class TestFullAdapters:
 
         monkeypatch.chdir(tmp_path)
         (tmp_path / "skills").mkdir()
-        with patch.object(
-            verify_triggers_mod, "_run_validation", return_value=({}, [], {
-                "precision_threshold": 0.5, "recall_threshold": 0.5,
-            })
-        ), patch.object(verify_triggers_mod, "_any_failures", return_value=True):
+        with (
+            patch.object(
+                verify_triggers_mod,
+                "_run_validation",
+                return_value=(
+                    {},
+                    [],
+                    {
+                        "precision_threshold": 0.5,
+                        "recall_threshold": 0.5,
+                    },
+                ),
+            ),
+            patch.object(verify_triggers_mod, "_any_failures", return_value=True),
+        ):
             data = _full_triggers_data()
         assert data["status"] == "unsupported"
         assert data["severity"] == "error"

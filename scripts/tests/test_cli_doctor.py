@@ -650,9 +650,7 @@ class TestCheckRegistry:
         original = list(doctor._CHECKS)
         try:
             doctor._CHECKS.clear()
-            register_check(
-                lambda: [CheckResult(name="fake_check", status="full", note="ok")]
-            )
+            register_check(lambda: [CheckResult(name="fake_check", status="full", note="ok")])
 
             results = _run_registered_checks()
 
@@ -697,7 +695,9 @@ class TestCheckRegistry:
             doctor._CHECKS.clear()
             register_check(
                 lambda: [
-                    CheckResult(name="informational_gap", status="unsupported", severity="informational"),
+                    CheckResult(
+                        name="informational_gap", status="unsupported", severity="informational"
+                    ),
                     CheckResult(name="broken_install", status="unsupported", severity="error"),
                 ]
             )
