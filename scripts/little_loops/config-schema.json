@@ -1575,7 +1575,7 @@
           "type": "string",
           "enum": ["cli", "sdk", "batch"],
           "default": "cli",
-          "description": "FEAT-2673/FEAT-2710 (EPIC-2456 F1): 'cli' (default) uses the existing CLI shell-subprocess path, unchanged. 'sdk' opts into the Anthropic SDK request path (build_anthropic_request()), the only path that can carry a cache_control parameter and unlock the 0.1x-read / 1.25x-write prompt-caching discount. 'batch' opts into the Anthropic Message Batches API (build_batch_request()) for a flat 50% discount on both input and output tokens (stacks with prompt caching); results are asynchronous (submit + poll), so only latency-insensitive states/loops should opt in."
+          "description": "FEAT-2673/FEAT-2710 (EPIC-2456 F1): 'cli' (default) uses the existing CLI shell-subprocess path, unchanged. 'sdk' opts into the Anthropic SDK request path (build_anthropic_request()), the only path that can carry a cache_control parameter and unlock the 0.1x-read / 1.25x-write prompt-caching discount. 'batch' opts into the Anthropic Message Batches API (build_batch_request()) for a flat 50% discount on both input and output tokens (stacks with prompt caching); results are asynchronous (submit + poll), so only latency-insensitive states/loops should opt in. Also consulted by MR-12 Check 3 (ENH-2810): a skill-invoking state with no explicit state-level request_path is exempt from the no-resolvable-pruning_profile warning when this config default is 'sdk'/'batch'."
         },
         "composer": {
           "type": "object",

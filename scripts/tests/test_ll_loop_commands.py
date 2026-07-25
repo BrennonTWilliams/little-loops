@@ -248,6 +248,84 @@ states:
         assert all("severity" in v and "path" in v and "message" in v for v in data["violations"])
         assert any(v["severity"] == "error" for v in data["violations"])
 
+    def test_validate_no_json_suppresses_mr12_check3_under_config_sdk(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-2810: orchestration.request_path: sdk in ll-config.json suppresses the
+        MR-12 Check 3 warning (no resolvable pruning_profile) for a skill-invoking
+        state with no explicit state-level request_path, through the non-JSON path."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"orchestration": {"request_path": "sdk"}})
+        )
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "skill-loop.yaml").write_text(
+            "name: skill-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "/ll:confidence-check test"\n'
+            "    action_type: slash_command\n"
+            "    capture: input\n"
+            "    next: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        monkeypatch.chdir(tmp_path)
+        logger = Logger(use_color=False)
+        result = cmd_validate("skill-loop", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ENH-2805" not in captured.out
+
+    def test_validate_json_still_warns_mr12_check3_under_config_cli(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-2810: with no orchestration.request_path override (default cli), the
+        --json path still reports the MR-12 Check 3 warning — confirms both call
+        sites in cmd_validate are threaded consistently, not just the non-JSON one."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text("{}")
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "skill-loop.yaml").write_text(
+            "name: skill-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "/ll:confidence-check test"\n'
+            "    action_type: slash_command\n"
+            "    capture: input\n"
+            "    next: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        monkeypatch.chdir(tmp_path)
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        cmd_validate("skill-loop", args, loops_dir, logger)
+
+        data = json.loads(capsys.readouterr().out)
+        assert any("ENH-2805" in v["message"] for v in data["violations"])
+
     def test_validate_json_loop_reference_error(
         self,
         tmp_path: Path,

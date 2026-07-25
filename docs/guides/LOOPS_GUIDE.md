@@ -630,7 +630,7 @@ states:
 
 A `pruning_profile:` at the loop level sets the default for every state; a state-level `pruning_profile:` overrides it. Declaring the profile sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process environment, which automation-aware hooks (`session_start.py`, `history_context.py`) check to suppress their own static-prefix output — this part applies on every host regardless of `ll-doctor` capability confirmation. Unconfirmed hosts no-op cleanly on `suppress_catalog`/`suppress_claude_md` rather than erroring. Run `ll-doctor` to check which capabilities your configured host supports before relying on the narrowing flags.
 
-`ll-loop validate` lints for coverage of this feature — the MR-12 rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a skill/command-invoking state has no resolvable `pruning_profile` (state override or loop default) at all, since that state pays the full static prefix on every invocation. `request_path: sdk`/`batch` states are exempt since pruning is a no-op there.
+`ll-loop validate` lints for coverage of this feature — the MR-12 rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a skill/command-invoking state has no resolvable `pruning_profile` (state override or loop default) at all, since that state pays the full static prefix on every invocation. `request_path: sdk`/`batch` states are exempt since pruning is a no-op there — including when no state-level `request_path` is set but the project's `orchestration.request_path` config defaults to `sdk`/`batch` (ENH-2810); an explicit state-level `request_path: cli` still warns regardless of the config default.
 
 ### Continuity Chains
 

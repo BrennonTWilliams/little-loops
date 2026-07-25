@@ -4701,6 +4701,96 @@ class TestPruningProfileCoverageValidation:
         warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
         assert warnings == [], f"Unexpected MR-12 coverage WARNING for batch state: {warnings}"
 
+    # --- config-level request_path exemption (ENH-2810) ---
+
+    def test_does_not_fire_when_orchestration_request_path_sdk(self) -> None:
+        """No state-level request_path, but orchestration config default is sdk — exempt."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(
+            _validate_pruning_profile(fsm, orchestration_request_path="sdk")
+        )
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING under config sdk: {warnings}"
+
+    def test_still_fires_when_orchestration_request_path_cli(self) -> None:
+        """No state-level request_path, orchestration config default is cli — still warns."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(
+            _validate_pruning_profile(fsm, orchestration_request_path="cli")
+        )
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
+
+    def test_still_fires_when_orchestration_request_path_unset(self) -> None:
+        """orchestration_request_path=None (default) preserves current no-exemption behavior."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
+
+    def test_state_level_cli_override_still_warns_under_config_sdk(self) -> None:
+        """A state's explicit request_path: cli overrides a config-level sdk default."""
+        fsm = self._simple_fsm(
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    request_path="cli",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            }
+        )
+        warnings = self._mr12_coverage_warnings(
+            _validate_pruning_profile(fsm, orchestration_request_path="sdk")
+        )
+        assert len(warnings) == 1, (
+            f"Expected explicit state request_path: cli to still warn under config sdk: {warnings}"
+        )
+
+    def test_config_exemption_via_validate_fsm(self) -> None:
+        """validate_fsm() threads orchestration_request_path through to Check 3."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(
+                    action="/ll:confidence-check ${captured.input.output}",
+                    action_type="slash_command",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        warnings = self._mr12_coverage_warnings(
+            validate_fsm(fsm, orchestration_request_path="sdk")
+        )
+        assert warnings == [], f"Unexpected MR-12 coverage WARNING under config sdk: {warnings}"
+
     # --- end-to-end via validate_fsm() ---
 
     def test_fires_end_to_end_via_validate_fsm(self) -> None:

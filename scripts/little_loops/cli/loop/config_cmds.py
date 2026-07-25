@@ -16,9 +16,11 @@ def cmd_validate(
     logger: Logger,
 ) -> int:
     """Validate a loop definition."""
+    from little_loops.config import BRConfig
     from little_loops.fsm.validation import ValidationSeverity, load_and_validate
 
     as_json = getattr(args, "json", False)
+    orchestration_request_path = BRConfig(Path.cwd()).orchestration.request_path
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
@@ -26,7 +28,9 @@ def cmd_validate(
         if as_json:
             from little_loops.cli.output import print_json
 
-            fsm, violations = load_and_validate(path, raise_on_error=False)
+            fsm, violations = load_and_validate(
+                path, raise_on_error=False, orchestration_request_path=orchestration_request_path
+            )
             has_errors = any(v.severity == ValidationSeverity.ERROR for v in violations)
             print_json(
                 {
@@ -40,7 +44,9 @@ def cmd_validate(
             )
             return 1 if has_errors else 0
 
-        fsm, warnings = load_and_validate(path)
+        fsm, warnings = load_and_validate(
+            path, orchestration_request_path=orchestration_request_path
+        )
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")
         print(f"  Initial: {fsm.initial}")

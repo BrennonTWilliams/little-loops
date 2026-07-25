@@ -1131,7 +1131,9 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     return errors
 
 
-def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
+def validate_fsm(
+    fsm: FSMLoop, orchestration_request_path: str | None = None
+) -> list[ValidationError]:
     """Validate FSM structure and return list of errors.
 
     Performs comprehensive validation:
@@ -1144,6 +1146,9 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     Args:
         fsm: The FSM loop to validate
+        orchestration_request_path: Optional project-level ``orchestration.request_path``
+            config default (ENH-2810), consulted by MR-12 Check 3's exemption when a
+            state has no explicit ``request_path`` of its own.
 
     Returns:
         List of validation errors (empty if valid)
@@ -1297,7 +1302,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
     errors.extend(_validate_parse_swallow(fsm))
 
-    errors.extend(_validate_pruning_profile(fsm))
+    errors.extend(_validate_pruning_profile(fsm, orchestration_request_path))
 
     errors.extend(_validate_unsafe_context_interpolation(fsm))
 
@@ -2076,7 +2081,9 @@ def _effective_pruning_profile(fsm: FSMLoop, state: StateConfig) -> PruningProfi
     return fsm.pruning_profile
 
 
-def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
+def _validate_pruning_profile(
+    fsm: FSMLoop, orchestration_request_path: str | None = None
+) -> list[ValidationError]:
     """Validate rule MR-12 (ENH-2714 / ENH-2805): automation-context pruning-profile consistency.
 
     Three checks against the resolved pruning profile (state ``pruning_profile:``
@@ -2098,7 +2105,13 @@ def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
        ``request_path: sdk``/``batch`` are exempt — they bypass
        ``action_runner`` entirely via ``_dispatch_live`` and send a bare
        single-turn API call with no catalog/CLAUDE.md/hooks to prune
-       (``executor.py:2183,2205``).
+       (``executor.py:2183,2205``). ``orchestration_request_path`` mirrors
+       ``FSMExecutor._resolve_request_path``'s config-default fallback
+       (ENH-2810): when a state has no explicit ``request_path`` but the
+       project's ``orchestration.request_path`` config resolves to
+       ``sdk``/``batch``, the state is exempt too since it will dispatch via
+       the same no-op-pruning path at runtime. A state-level explicit
+       ``request_path: cli`` still overrides and warns regardless of config.
 
     Suppressed by ``pruning_profile_ok: true`` at the loop top-level (all
     three checks share this flag rather than minting a per-check flag).
@@ -2149,7 +2162,8 @@ def _validate_pruning_profile(fsm: FSMLoop) -> list[ValidationError]:
             )
 
         # Check 3 (WARN, ENH-2805): no resolvable pruning_profile at all.
-        if state.request_path in ("sdk", "batch"):
+        effective_request_path = state.request_path or orchestration_request_path
+        if effective_request_path in ("sdk", "batch"):
             continue
         if profile is None:
             errors.append(
@@ -3054,6 +3068,7 @@ def is_runnable_loop(path: Path) -> bool:
 def load_and_validate(
     path: Path,
     raise_on_error: bool = True,
+    orchestration_request_path: str | None = None,
 ) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 
@@ -3061,6 +3076,9 @@ def load_and_validate(
         path: Path to the YAML file to load
         raise_on_error: When True (default), raise ValueError on ERROR violations.
             When False, return all violations (errors + warnings) without raising.
+        orchestration_request_path: Optional project-level ``orchestration.request_path``
+            config default (ENH-2810), threaded into ``validate_fsm`` for MR-12 Check 3's
+            config-level exemption.
 
     Returns:
         When raise_on_error=True: (FSMLoop, list of WARNING-severity ValidationErrors)
@@ -3133,7 +3151,7 @@ def load_and_validate(
     fsm = FSMLoop.from_dict(data)
 
     # Validate
-    errors = validate_fsm(fsm)
+    errors = validate_fsm(fsm, orchestration_request_path)
 
     # Validate with: bindings against child loop parameters (requires file-system access)
     errors.extend(_validate_with_bindings(fsm, path.parent))

@@ -5587,7 +5587,7 @@ class ValidationError:
 #### validate_fsm
 
 ```python
-def validate_fsm(fsm: FSMLoop) -> list[ValidationError]
+def validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None) -> list[ValidationError]
 ```
 
 Validate FSM structure and return list of errors.
