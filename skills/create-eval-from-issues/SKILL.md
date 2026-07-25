@@ -181,7 +181,7 @@ done
 
 Use the `path` field from each JSON result. If `ll-issues show` fails for an ID, report the error and skip that ID (do not halt).
 
-**Both open and completed issues are accepted.** The `ll-issues show` command searches all categories including `completed/` and `deferred/`.
+**Both open and completed issues are accepted.** The `ll-issues show` command finds an issue by ID regardless of its `status:` frontmatter (open, done, deferred, etc.) — there is no `completed/` or `deferred/` directory.
 
 ## Step 2: Extract Evaluation Context
 

@@ -262,7 +262,7 @@ MISSING_WIRING:
 ```
 
 **Signal-to-noise filter** — skip adding a file if:
-- The file is in `completed/` (already done)
+- The file has `status: done` (already done)
 - The file is an auto-generated artifact (e.g., `*.pyc`, `__pycache__`)
 - The coupling is a test that already explicitly checks "this won't change" (test intent mismatch)
 

@@ -180,7 +180,11 @@ if [ -n "$ISSUES_ARG" ]; then
     fi
 else
     # List all open issues (by frontmatter status)
-    mapfile -t ISSUE_FILES < <(ll-issues list --format path | sort)
+    mapfile -t ISSUE_FILES < <(ll-issues list --json | python3 -c "
+import json, sys
+for i in json.load(sys.stdin):
+    print(i['path'])
+" | sort)
 fi
 ```
 

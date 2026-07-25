@@ -171,7 +171,11 @@ For each finding, check if a matching issue already exists:
 
 ```bash
 # Search active issues (type dirs only)
-ll-issues list --format path | xargs grep -l "<keywords>"
+ll-issues list --json | python3 -c "
+import json, sys
+for i in json.load(sys.stdin):
+    print(i['path'])
+" | xargs grep -l "<keywords>"
 ```
 
 Keywords to search for each category:

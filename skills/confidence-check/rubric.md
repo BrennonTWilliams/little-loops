@@ -17,7 +17,7 @@ extraction site. Behavior is unchanged — this is progressive disclosure only.
 
 - **flags** (optional): Command behavior flags
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
-  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/ and deferred/. Implies `--auto`.
+  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip issues with `status: done` or `status: deferred`. Implies `--auto`.
   - `--check` — Check-only mode for FSM loop evaluators. Run all evaluation logic without writes, print one line per failing issue (`[ID] check: score N/100 (below threshold)`), exit 1 if any fail, exit 0 if all pass. Implies `--auto`.
   - `--sprint <name>` — Scope evaluation to only the issues listed in the named sprint definition (`.sprints/<name>.yaml`). Implies `--auto`. Cannot be combined with `--all`.
 

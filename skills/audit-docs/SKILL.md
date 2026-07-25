@@ -285,8 +285,12 @@ Before creating issues, search for existing issues that cover the same problem:
 
 2. **Search completed issues** for potential reopen:
    ```bash
-   # Check if this was previously fixed and regressed
-   grep -r "README.md" .issues/completed/
+   # Check if this was previously fixed and regressed (status: done, any type dir)
+   ll-issues list --status done --json | python3 -c "
+import json, sys
+for i in json.load(sys.stdin):
+    print(i['path'])
+" | xargs grep -l "README.md"
    ```
 
 3. **Match criteria**:
@@ -315,9 +319,9 @@ If a completed issue matches a new finding:
    - Same section or similar content
    - Problem has actually recurred (not just similar wording)
 
-2. **Move from completed to active**:
+2. **Reopen it** (flip status back to `open` in place — issues never move directories):
    ```bash
-   git mv .issues/completed/P2-BUG-XXX-broken-link.md .issues/bugs/
+   ll-issues set-status P2-BUG-XXX open
    ```
 
 3. **Append Reopened section** using the template in [templates.md](templates.md) (see "Reopened Section Template").

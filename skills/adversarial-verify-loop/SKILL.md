@@ -63,7 +63,7 @@ ll-issues show "$ISSUE_ID" --json
 
 Use the `path` field from the JSON result. If `ll-issues show` fails, report the error and stop.
 
-**Both open and completed issues are accepted.** The `ll-issues show` command searches all categories including `completed/` and `deferred/`.
+**Both open and completed issues are accepted.** The `ll-issues show` command finds an issue by ID regardless of its `status:` frontmatter (open, done, deferred, etc.) — there is no `completed/` or `deferred/` directory.
 
 ## Step 2: Extract Title and Acceptance Criteria
 

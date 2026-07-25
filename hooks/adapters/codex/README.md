@@ -38,8 +38,8 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | `Stop`                         | —               | —                                              | Deferred |
 
 This mapping conforms to the `LLHookEvent` contract introduced by
-[FEAT-1116](../../../.issues/completed/) and reuses the same Python
-dispatcher as the Claude Code and OpenCode adapters.
+[FEAT-1116](../../../.issues/features/P3-FEAT-1116-hook-intent-abstraction-layer.md)
+and reuses the same Python dispatcher as the Claude Code and OpenCode adapters.
 
 ## SessionStart `matcher: "startup"`
 
@@ -204,7 +204,7 @@ skipped if `bash` is not available on `PATH`.
 
 ## Related
 
-- Parent epic: [FEAT-1116](../../../.issues/completed/) (hook-intent
+- Parent epic: [FEAT-1116](../../../.issues/features/P3-FEAT-1116-hook-intent-abstraction-layer.md) (hook-intent
   abstraction layer for multi-host support)
 - Sibling adapter: [`hooks/adapters/claude-code/`](../claude-code/) (Bash
   shim, canonical template — the reference for this adapter)

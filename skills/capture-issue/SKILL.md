@@ -199,7 +199,7 @@ distinguished by `status: done` (or `cancelled`) in frontmatter:
 
 ```bash
 # Find completed issues by scanning type dirs and filtering status: done
-ll-issues list --status done --format path
+ll-issues list --status done --json
 ```
 
 Apply same scoring. If a completed issue has score >= {{config.issues.duplicate_detection.similar_threshold}}, it's a candidate for reopening.

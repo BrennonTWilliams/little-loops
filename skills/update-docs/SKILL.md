@@ -78,7 +78,9 @@ Group changed files by module/component (e.g., `scripts/little_loops/cli/`, `scr
 
 ### 3. Collect Completed Issues
 
-Scan `.issues/completed/` for issues completed after the since-ref:
+Find issues with `status: done` completed after the since-ref, preferring the
+DB-backed scan when `.ll/history.db` exists (falls back to a filesystem scan
+of the issue type directories otherwise):
 
 ```bash
 # Get completion date of the since-ref (if it's a git hash)
@@ -91,17 +93,22 @@ fi
 
 # List completed issues modified after since-date
 python3 -c "
-from little_loops.issue_history.parsing import scan_completed_issues
 from pathlib import Path
 import sys
 
-issues = scan_completed_issues(Path('.issues/completed'))
+db_path = Path('.ll/history.db')
+if db_path.exists():
+    from little_loops.issue_history.parsing import scan_completed_issues_from_db
+    issues = scan_completed_issues_from_db(db_path)
+else:
+    from little_loops.issue_history.parsing import scan_completed_issues
+    issues = scan_completed_issues(Path('.issues'))
+
 since = sys.argv[1] if sys.argv[1:] else ''
 for i in sorted(issues, key=lambda x: str(x.completed_date or ''), reverse=True):
     if not since or (i.completed_date and str(i.completed_date) >= since):
         print(f'{i.completed_date or \"unknown\"}\t{i.path.name}\t{i.title or \"\"}')
-" "$SINCE_DATE" 2>/dev/null || \
-find .issues/completed -name "*.md" -newer ".git/refs/heads/$(git branch --show-current)" | sort
+" "$SINCE_DATE"
 ```
 
 ### 4. Build Change Inventory
