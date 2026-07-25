@@ -5,21 +5,77 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 if TYPE_CHECKING:
-    from little_loops.host_runner import HostRunner
+    from little_loops.host_runner import CapabilityReport, HostRunner
 
 _STATUS_SYMBOLS: dict[str, str] = {
     "full": "✓",
     "partial": "○",
     "unsupported": "✗",
 }
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    """One registered doctor check's outcome.
+
+    Mirrors `host_runner.CapabilityEntry`'s frozen-dataclass + closed-status
+    shape. `severity` decides exit-code impact independently of `status`:
+    an "error"-severity result with status "unsupported" fails the default
+    exit code (the pre-registry host-capability behavior); "informational"
+    results never do, regardless of status (for checks like an absent-but-
+    optional subsystem).
+    """
+
+    name: str
+    status: Literal["full", "partial", "unsupported"]
+    note: str = ""
+    severity: Literal["error", "informational"] = "error"
+
+
+# Registered no-arg checks run unconditionally by main_doctor(). The host-
+# capability report is not registered here because it needs the resolved
+# HostRunner at call time; it is folded into the same CheckResult vocabulary
+# via _capability_check_results() instead. New install-surface checks
+# (FEAT-2794, FEAT-2795) register against this list.
+_CHECKS: list[Callable[[], list[CheckResult]]] = []
+
+
+def register_check(fn: Callable[[], list[CheckResult]]) -> Callable[[], list[CheckResult]]:
+    """Register a no-arg check function returning a list of CheckResult."""
+    _CHECKS.append(fn)
+    return fn
+
+
+def _capability_check_results(report: CapabilityReport) -> list[CheckResult]:
+    """Fold a CapabilityReport's entries into CheckResult (error severity)."""
+    return [
+        CheckResult(name=c.name, status=c.status, note=c.note, severity="error")
+        for c in report.capabilities
+    ]
+
+
+def _run_registered_checks() -> list[CheckResult]:
+    """Run every check in `_CHECKS`, flattening their results."""
+    results: list[CheckResult] = []
+    for check in _CHECKS:
+        results.extend(check())
+    return results
+
+
+def _exit_code_for(results: list[CheckResult]) -> int:
+    """0 unless an error-severity result is 'unsupported'."""
+    has_error = any(r.severity == "error" and r.status == "unsupported" for r in results)
+    return 1 if has_error else 0
 
 
 def _capture_section_data(capture: object) -> dict:
@@ -197,4 +253,5 @@ Exit codes:
             _print_capture_section(cfg.analytics_capture)
             _print_issues_section(cfg.issues)
 
-        return 0 if not any(c.status == "unsupported" for c in report.capabilities) else 1
+        results = _capability_check_results(report) + _run_registered_checks()
+        return _exit_code_for(results)

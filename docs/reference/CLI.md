@@ -232,7 +232,7 @@ Probes the active host CLI and reports which little-loops features are supported
 **Flags:**
 - `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`) and `issues` (`{auto_commit, auto_commit_prefix}`), the same config state the text output prints under "Analytics Capture" and "Issues" (ENH-2762).
 
-**Exit codes:** `0` = all capabilities supported, `1` = one or more capabilities unsupported.
+**Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) into a single severity split: `unsupported` capabilities are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
 
 **Example output:**
 ```

@@ -614,3 +614,104 @@ class TestVersionProbe:
 
         data = json.loads("\n".join(lines))
         assert data["version"] == "(unknown)"
+
+
+class TestCheckRegistry:
+    """Tests for the CheckResult / _CHECKS check-registry protocol (FEAT-2793)."""
+
+    def test_capability_check_results_mirror_report_entries(self) -> None:
+        """_capability_check_results() converts capabilities to error-severity CheckResults."""
+        from little_loops.cli.doctor import CheckResult, _capability_check_results
+
+        report = CapabilityReport(
+            host="claude-code",
+            binary="claude",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full"),
+                CapabilityEntry("agent_select", "unsupported", "no support"),
+            ],
+        )
+
+        results = _capability_check_results(report)
+
+        assert results == [
+            CheckResult(name="streaming", status="full", note="", severity="error"),
+            CheckResult(
+                name="agent_select", status="unsupported", note="no support", severity="error"
+            ),
+        ]
+
+    def test_register_check_appends_and_runs(self) -> None:
+        """register_check() adds a callable that _run_registered_checks() invokes."""
+        from little_loops.cli import doctor
+        from little_loops.cli.doctor import CheckResult, _run_registered_checks, register_check
+
+        original = list(doctor._CHECKS)
+        try:
+            doctor._CHECKS.clear()
+            register_check(
+                lambda: [CheckResult(name="fake_check", status="full", note="ok")]
+            )
+
+            results = _run_registered_checks()
+
+            assert results == [CheckResult(name="fake_check", status="full", note="ok")]
+        finally:
+            doctor._CHECKS.clear()
+            doctor._CHECKS.extend(original)
+
+    def test_exit_code_ignores_informational_unsupported(self) -> None:
+        """An 'informational' severity result never flips the exit code, even if unsupported."""
+        from little_loops.cli.doctor import CheckResult, _exit_code_for
+
+        results = [
+            CheckResult(name="optional_subsystem", status="unsupported", severity="informational"),
+        ]
+
+        assert _exit_code_for(results) == 0
+
+    def test_exit_code_flips_on_error_unsupported(self) -> None:
+        """An 'error' severity 'unsupported' result flips the exit code to 1."""
+        from little_loops.cli.doctor import CheckResult, _exit_code_for
+
+        assert _exit_code_for([CheckResult(name="core", status="unsupported")]) == 1
+
+    def test_mixed_severity_registered_check_affects_exit_code_via_main_doctor(self) -> None:
+        """A registered error-tier unsupported check flips main_doctor()'s exit code to 1
+        even when the host-capability report itself is fully supported — mirrors
+        cmd_validate()'s mixed-severity folding (test_ll_loop_commands.py)."""
+        from little_loops.cli import doctor
+        from little_loops.cli.doctor import CheckResult, register_check
+
+        report = CapabilityReport(
+            host="claude-code",
+            binary="claude",
+            version="",
+            capabilities=[CapabilityEntry("streaming", "full")],
+        )
+        runner = _make_runner(report)
+
+        original = list(doctor._CHECKS)
+        try:
+            doctor._CHECKS.clear()
+            register_check(
+                lambda: [
+                    CheckResult(name="informational_gap", status="unsupported", severity="informational"),
+                    CheckResult(name="broken_install", status="unsupported", severity="error"),
+                ]
+            )
+
+            with (
+                patch("sys.argv", ["ll-doctor"]),
+                patch("little_loops.host_runner.resolve_host", return_value=runner),
+                patch("little_loops.host_runner.apply_host_cli_from_config"),
+                patch("little_loops.config.BRConfig"),
+                patch("builtins.print"),
+            ):
+                result = main_doctor()
+
+            assert result == 1
+        finally:
+            doctor._CHECKS.clear()
+            doctor._CHECKS.extend(original)
