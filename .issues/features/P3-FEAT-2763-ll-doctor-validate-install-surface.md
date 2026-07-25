@@ -15,6 +15,7 @@ score_ambiguity: 15
 score_change_surface: 10
 decision_needed: true
 size: Very Large
+completed_at: '2026-07-25T13:50:58Z'
 ---
 
 # FEAT-2763: Expand ll-doctor to validate little-loops' own install surface
@@ -357,3 +358,13 @@ _Added by `/ll:confidence-check` on 2026-07-25_
 ## Status
 
 **Done** | Created: 2026-07-24 | Priority: P3
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-25
+- **Decomposed into**: FEAT-2793, FEAT-2794, FEAT-2795, FEAT-2796
+
+Work for FEAT-2763 is now carried by its child issues; this parent was closed by rn-decompose.

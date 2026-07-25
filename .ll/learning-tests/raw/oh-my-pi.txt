@@ -1,0 +1,37 @@
+=== which omp ===
+/Users/brennon/.bun/bin/omp
+exit: 0
+=== bun --version ===
+1.3.9
+=== omp --version ===
+133 | `:"",W=i.map((Y)=>`| ${n.fn(Y).trim()} |`).join(`
+134 | `);return u+W});u6.registerHelper("codeblock",function(i){let n=i.hash.lang??"",h=i.fn(this).trim();return`\`\`\`${n}
+135 | ${h}
+136 | \`\`\``});u6.registerHelper("xml",function(i,n){let h=n.fn(this).trim();if(!h)return"";return`<${i}>
+137 | ${h}
+138 | </${i}>`});u6.registerHelper("escapeXml",(i)=>{if(i==null)return"";return String(i).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")});u6.registerHelper("len",(i)=>{if(Array.isArray(i))return i.length;if(typeof i==="string")return i.length;return 0});u6.registerHelper("add",(i,n)=>(i??0)+(n??0));u6.registerHelper("sub",(i,n)=>(i??0)-(n??0));u6.registerHelper("has",function(i,n,h){let f=!1;if(Array.isArray(i))f=i.includes(n);else if(i instanceof Set)f=i.has(n);else if(i instanceof Map)f=i.has(n);else if(i&&typeof i==="object"){if(typeof n==="string"||typeof n==="number"||typeof n==="symbol")f=n in i}return f?h.fn(this):h.inverse(this)});u6.registerHelper("includes",(i,n)=>{if(Array.isArray(i))return i.includes(n);if(i instanceof Set)return i.has(n);if(i instanceof Map)return i.has(n);return!1});u6.registerHelper("not",(i)=>!i);u6.registerHelper("jsonStringify",(i)=>JSON.stringify(i));s12=new Map});var Gi={};J1(Gi,{spawn:()=>oln,exec:()=>mln,combineSignals:()=>yln,TimeoutEr
+
+SyntaxError: Unexpected identifier 'g'
+      at <parse> (/Users/brennon/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js:138:1)
+      at native:11:43
+note: missing sourcemaps for /Users/brennon/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js
+note: consider bundling with '--sourcemap' to get unminified traces
+
+Bun v1.3.9 (macOS arm64)
+exit: 1
+=== omp -p (one-shot print mode, trivial prompt) ===
+133 | `:"",W=i.map((Y)=>`| ${n.fn(Y).trim()} |`).join(`
+134 | `);return u+W});u6.registerHelper("codeblock",function(i){let n=i.hash.lang??"",h=i.fn(this).trim();return`\`\`\`${n}
+135 | ${h}
+136 | \`\`\``});u6.registerHelper("xml",function(i,n){let h=n.fn(this).trim();if(!h)return"";return`<${i}>
+137 | ${h}
+138 | </${i}>`});u6.registerHelper("escapeXml",(i)=>{if(i==null)return"";return String(i).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")});u6.registerHelper("len",(i)=>{if(Array.isArray(i))return i.length;if(typeof i==="string")return i.length;return 0});u6.registerHelper("add",(i,n)=>(i??0)+(n??0));u6.registerHelper("sub",(i,n)=>(i??0)-(n??0));u6.registerHelper("has",function(i,n,h){let f=!1;if(Array.isArray(i))f=i.includes(n);else if(i instanceof Set)f=i.has(n);else if(i instanceof Map)f=i.has(n);else if(i&&typeof i==="object"){if(typeof n==="string"||typeof n==="number"||typeof n==="symbol")f=n in i}return f?h.fn(this):h.inverse(this)});u6.registerHelper("includes",(i,n)=>{if(Array.isArray(i))return i.includes(n);if(i instanceof Set)return i.has(n);if(i instanceof Map)return i.has(n);return!1});u6.registerHelper("not",(i)=>!i);u6.registerHelper("jsonStringify",(i)=>JSON.stringify(i));s12=new Map});var Gi={};J1(Gi,{spawn:()=>oln,exec:()=>mln,combineSignals:()=>yln,TimeoutEr
+
+SyntaxError: Unexpected identifier 'g'
+      at <parse> (/Users/brennon/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js:138:1)
+      at native:11:43
+note: missing sourcemaps for /Users/brennon/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js
+note: consider bundling with '--sourcemap' to get unminified traces
+
+Bun v1.3.9 (macOS arm64)
+exit: 1

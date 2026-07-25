@@ -1,0 +1,12 @@
+{
+  "id": "cc2b147b-aa11-4753-8196-65b7f7f1869f",
+  "type": "decision",
+  "timestamp": "2026-07-25T14:46:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches doctor.py's existing _data()/_check() adapter precedent (used 5x already); honors the issue's imported-not-modified file-scope constraint since only 3/10 verifiers conform to Option A's uniform _run() shape",
+  "rule": "Option B: per-verifier adapters normalizing to CheckResult",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: factor a uniform _run() out of all 7 non-conforming verifiers",
+  "issue": "FEAT-2795"
+}

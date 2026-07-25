@@ -4,10 +4,19 @@ title: 'll-doctor: report correctness and install-surface scope'
 type: EPIC
 priority: P3
 status: open
-captured_at: "2026-07-24T19:36:28Z"
+captured_at: '2026-07-24T19:36:28Z'
 discovered_date: 2026-07-24
 discovered_by: capture-issue
-relates_to: [BUG-2759, BUG-2760, ENH-2761, ENH-2762, FEAT-2763, BUG-2764]
+relates_to:
+- BUG-2759
+- BUG-2760
+- ENH-2761
+- ENH-2762
+- BUG-2764
+- FEAT-2793
+- FEAT-2794
+- FEAT-2795
+- FEAT-2796
 labels:
 - cli
 - doctor
