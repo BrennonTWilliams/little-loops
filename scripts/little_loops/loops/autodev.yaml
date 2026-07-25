@@ -343,6 +343,10 @@ states:
     fragment: with_rate_limit_handling
     action_type: slash_command
     action: "/ll:refine-issue ${captured.input.output} --auto"
+    pruning_profile:
+      enabled: true
+      name: refine-issue-auto
+      suppress_claude_md: true
     on_yes: record_options_deposited
     on_no: run_decide
     on_partial: record_options_deposited
@@ -400,6 +404,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:decide-issue ${captured.input.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: decide-issue-auto
+      suppress_claude_md: true
     next: mark_decide_ran
     on_error: check_decision_after_decide_error
     on_rate_limit_exhausted: done
@@ -953,6 +961,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:spike ${captured.input.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: spike-auto
+      suppress_claude_md: true
     rate_limit_max_wait_seconds: 14400
     next: count_repair_cycle_spike
     on_error: count_repair_cycle_spike
@@ -1010,6 +1022,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:issue-size-review ${captured.input.output} --auto"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: issue-size-review-auto
+      suppress_claude_md: true
     capture: size_review_output
     next: count_repair_cycle_size_review
     on_error: count_repair_cycle_size_review
@@ -1379,6 +1395,10 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:reconcile-issue ${captured.input.output}"
     action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: reconcile-issue-auto
+      suppress_claude_md: true
     next: count_repair_cycle_reconcile
     on_error: count_repair_cycle_reconcile
     on_rate_limit_exhausted: done

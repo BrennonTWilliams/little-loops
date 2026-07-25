@@ -1,0 +1,11 @@
+{
+  "id": "0d6e4988-ca3f-4dba-8c1e-9763edd6eb3d",
+  "type": "decision",
+  "timestamp": "2026-07-25T20:14:39Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Check 3 only sees state-level request_path; config-level orchestration.request_path: sdk projects get false-positive prefix-cost warnings",
+  "rule": "Captured: MR-12 Check 3 should honor config-level request_path sdk exemption",
+  "scope": "issue",
+  "issue": "ENH-2810"
+}
