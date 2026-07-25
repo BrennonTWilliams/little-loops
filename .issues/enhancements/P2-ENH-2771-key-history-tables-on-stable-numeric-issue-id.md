@@ -101,6 +101,78 @@ one. The merge needs an explicit rule (keep earliest `ts`? keep the row whose
 `issue_type` matches the file on disk?) rather than whichever-lands-first. Decide
 this before writing the migration, and log what was merged.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Migration mechanism**: `_MIGRATIONS` (`session_store.py:378`) is a flat
+  `list[str]` of raw SQL — `_apply_migrations()` (`session_store.py:1158`)
+  splits each entry on `;` and executes it inside one `BEGIN IMMEDIATE`
+  transaction. There is **no per-migration Python callback hook**, so the
+  `issue_num` backfill must be expressible as SQL, not a Python loop, unless
+  routed through the separate `_backfill_issues()`/`_backfill_snapshots()`
+  Python pass (`session_store.py:3133`/`:3196`, called from `backfill()` at
+  `:4718`). Since the transform is a simple trailing-digit extraction, SQLite's
+  `substr()`/`instr()` can do it inline in the migration itself, e.g.
+  `CAST(substr(issue_id, instr(issue_id, '-') + 1) AS INTEGER)` — no regex
+  needed. Closest precedent for "add column + index in one migration": v12
+  (`summary_nodes.level` + `idx_summary_nodes_cross_dedup`); closest precedent
+  for "add column, prefer it, fall back to a legacy view for pre-migration
+  rows": v16 (`session_id` + rebuilt `issue_sessions` VIEW,
+  `session_store.py:630-669`).
+- **`ll-verify-kinds` is a no-op for this migration**: it only scans
+  `_MIGRATIONS` for `CREATE TABLE` statements
+  (`cli/verify_kinds.py:25`, `_CREATE_TABLE_RE`) and checks the table name
+  against `_KIND_TABLE`/`_KINDLESS_TABLES`. An `ALTER TABLE ADD COLUMN`
+  migration — all this issue needs, since no new table is created — is
+  invisible to it. Implementation Step 6 ("Verify `ll-verify-kinds` still
+  passes") will trivially pass with no registration action required.
+- **No `normalize_issue_id` helper exists yet** — grepping for
+  `normalize_issue_id` and `parse_issue_id` across `scripts/little_loops`
+  returns no hits. The closest prior art is `issue_parser.py`'s
+  `get_next_issue_number()` prefix-union regex (`issue_parser.py:453-502`,
+  matches `(?:BUG|ENH|FEAT|EPIC)-(\d+)`), which can be adapted for the
+  normalize-on-read boundary helper. This issue and `BUG-2769` are both
+  introducing this helper for the first time, not reusing an existing one —
+  whichever lands first should own it.
+- **Root cause of the NULL `issue_type` rows** (the 1.6%/3% cited under
+  Proposed Solution): write paths are asymmetric in whether they fall back to
+  filename-derived type when frontmatter `type:` is absent.
+  `_backfill_issues()` (`session_store.py:3133`) calls
+  `_derive_type_priority()` (`:3110`), which falls back to
+  `_FILENAME_TYPE_RE = re.compile(r"(BUG|ENH|FEAT|EPIC)-(\d+)")`
+  (`:3106`) when frontmatter has no `type`. `_backfill_snapshots()`
+  (`:3196`) does **not** call this fallback — it sets
+  `issue_type = fm.get("type")` directly (`:3223`) even though it already
+  computes `issue_id` via the same filename regex a few lines earlier
+  (`:3213-3217`). The three live/direct write paths
+  (`SQLiteTransport.send()`'s `issue.*` branch at `:3011-3042`,
+  `record_issue_event()` at `:1414`, `record_issue_snapshot()` at `:1361`)
+  have no derivation at all — they take `issue_type` verbatim from the
+  caller/frontmatter and write `NULL` if absent. Fixing this asymmetry is
+  optional for `issue_num` (which derives from `issue_id`, not `issue_type`)
+  but worth noting since a NULL `issue_type` row is exactly the case where
+  `TYPE-NNN` reconstruction from `issue_num` alone would fail — reinforcing
+  the "keep `issue_id` TEXT alongside `issue_num`" decision already made
+  above.
+- **Two more history-DB tables carry `issue_id` and are arguably in-scope**,
+  not just the 8 sites in `history_reader.py`/`cli/session.py`: `orchestration_runs`
+  (`session_store.py:798`, `issue_id TEXT NOT NULL`, `idx_orchestration_runs_issue_id`
+  at `:812`) and `commit_events` (`:684`, `idx_commit_events_issue_id` at `:687`).
+  Both live in the same `.ll/history.db` this issue targets (unlike
+  `.ll/queue.db`, which Scope Boundaries correctly excludes) and have the same
+  retype-split exposure as `issue_events`/`issue_snapshots`. Worth an explicit
+  scope call: include them in the migration/repoint pass, or add them to Scope
+  Boundaries' "Out of scope" list with a reason (e.g. lower query volume, no
+  known split evidence yet, same caveat given for `search_index`).
+- **Precise `WHERE issue_id` site count**: `history_reader.py` has 4
+  (`related_issue_events` at `:571` and its session_id-filtered branch at
+  `:608`, `sessions_for_issue` at `:1909`, `issue_effort` at `:1939` — plus
+  `find_session_for_issue_transition` at `:588` and `recent_issue_velocity`
+  at `:1956`, which the issue's "8 sites" count likely folds in), and
+  `cli/history_context.py:313` is a 5th outside `history_reader.py` not
+  currently listed in the Integration Map's Dependent Files.
+
 ## API/Interface
 
 - `sessions_for_issue(issue_id)`, `issue_effort(issue_id)`, and
@@ -148,6 +220,8 @@ rule, the `issue_sessions` VIEW, and the read-side normalization boundary in
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/session.py` — `recent --issue`, `related`
+- `scripts/little_loops/cli/history_context.py:313` — snapshot body lookup by
+  `issue_id`, not previously listed here (found via research)
 - `ll-history-context`, `ll-history` — per-issue reads
 
 ### Tests
@@ -173,6 +247,7 @@ rule, the `issue_sessions` VIEW, and the read-side normalization boundary in
 | `docs/reference/API.md#little_loopssession_store` | schema + `_MIGRATIONS` |
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-25T03:58:52 - `1386fb28-a538-4cb4-8530-41254608bcd9.jsonl`
 - `/ll:capture-issue` - 2026-07-24T22:09:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65a565ab-fdff-4457-9611-217b87d7512a.jsonl`
 
 ---
