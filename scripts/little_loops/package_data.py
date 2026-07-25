@@ -27,6 +27,7 @@ _PACKAGE: Final[str] = "little_loops"
 # completeness result — the check won't catch a missing asset it doesn't know about.
 PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("assets", "ll-cli-logo.txt"),
+    ("assets", "ll-cli-logo-small.txt"),
     ("config-schema.json",),
     ("hooks", "prompts", "optimize-prompt-hook.md"),
     ("hooks", "adapters", "codex", "hooks.json"),
