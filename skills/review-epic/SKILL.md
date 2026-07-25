@@ -45,7 +45,7 @@ Extract from `$ARGUMENTS`:
 ### 2a. Verify EPIC exists
 
 ```bash
-ll-issues list --status open,in_progress,blocked,done,cancelled,deferred --type EPIC --json
+ll-issues list --status all --type EPIC --json
 ```
 
 Parse the JSON output. Find the record where `issue_id == EPIC_ID`.
@@ -62,7 +62,7 @@ Record the EPIC's `path`, `title`, `status`, and `relates_to` list.
 ### 2b. Load all issues for child resolution
 
 ```bash
-ll-issues list --status open,in_progress,blocked,done,cancelled,deferred --json
+ll-issues list --status all --json
 ```
 
 Parse the JSON list as `all_issues`.
@@ -102,7 +102,7 @@ Next steps:
 ## Step 3: Compute Progress Aggregates
 
 ```bash
-ll-issues epic-progress EPIC_ID
+ll-issues epic-progress EPIC_ID --format json
 ```
 
 Parse the JSON output for `by_status`, `percent_done`, `total`, and `oldest_open`.
@@ -221,7 +221,7 @@ EPIC HEALTH REPORT: EPIC_ID — EPIC title
 [For each stalled child]:
 - CHILD_ID — CHILD_TITLE
   Status: child_status · Last activity: DATE (days_since_activity days ago)
-  Recommendation: `ll-issues set-status CHILD_ID deferred` to park, or `/ll:manage-issue ... CHILD_ID` to resume. For bulk deferral of all stalled children, prefer `ll-issues set-status EPIC_ID done --cascade` to close everything at once.
+  Recommendation: `ll-issues set-status CHILD_ID deferred` to park, or `/ll:manage-issue ... CHILD_ID` to resume. For bulk deferral of all stalled children, loop `ll-issues set-status CHILD_ID deferred` per child (this leaves the EPIC's own status untouched). Do NOT use `set-status EPIC_ID ... --cascade` for this — `--cascade` terminally closes the EPIC itself while only deferring children.
 
 [If none]: No stalled children detected.
 
@@ -243,7 +243,7 @@ EPIC HEALTH REPORT: EPIC_ID — EPIC title
 
 ### Closure recommendation
 
-[If ready]: All children done or cancelled — recommend: `ll-issues set-status EPIC_ID done`. Use `--cascade` to close any remaining open children in the same call.
+[If ready]: All children done or cancelled — recommend: `ll-issues set-status EPIC_ID done`. If any children are still open, resolve them individually first (`ll-issues set-status CHILD_ID done|cancelled`); do not use `--cascade`, which would only defer them while terminally closing the EPIC.
 [If not ready]: Not ready (active_count active children)
 
 ### Related (not children)
@@ -265,7 +265,7 @@ implied by the findings above, formatted as a numbered checklist:
 [N findings — or "No action needed." if all sections are clean]
 
 1. (if stalled children exist) Defer or resume stalled children:
-   `ll-issues set-status CHILD_ID deferred`  — park ENH-NNN (stalled N days). Bulk option: `ll-issues set-status EPIC_ID cancelled --cascade`
+   `ll-issues set-status CHILD_ID deferred`  — park ENH-NNN (stalled N days). Bulk option: loop this command per stalled child; do not use `set-status EPIC_ID ... --cascade`, which terminally closes the EPIC while only deferring children.
 
 2. (if scope drift) Reparent or detach drifted children:
    Review CHILD_ID frontmatter to update or remove `parent:` field
@@ -274,7 +274,7 @@ implied by the findings above, formatted as a numbered checklist:
    `/ll:capture-issue` — describe the missing sub-area and set `parent: EPIC_ID`
 
 4. (if closure-ready) Mark EPIC done:
-   `ll-issues set-status EPIC_ID done --cascade`
+   `ll-issues set-status EPIC_ID done`
 ```
 
 ---
