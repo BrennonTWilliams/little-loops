@@ -52,8 +52,10 @@ class TestHandoffHandler:
         assert result.continuation_prompt == "continuation prompt"
         assert result.spawned_process is None
 
-    def test_spawn_behavior(self) -> None:
+    def test_spawn_behavior(self, monkeypatch) -> None:
         """Spawn launches Claude process as detached daemon."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
         with patch("subprocess.Popen") as mock_popen:
             handler = HandoffHandler(HandoffBehavior.SPAWN)
             result = handler.handle("test-loop", "continuation prompt")
@@ -84,8 +86,10 @@ class TestHandoffHandler:
             assert kwargs["stderr"] == subprocess.DEVNULL
             assert kwargs["stdin"] == subprocess.DEVNULL
 
-    def test_spawn_propagates_non_interactive_env(self) -> None:
+    def test_spawn_propagates_non_interactive_env(self, monkeypatch) -> None:
         """_spawn_continuation passes LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS to Popen (BUG-2110)."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
         with patch("subprocess.Popen") as mock_popen:
             handler = HandoffHandler(HandoffBehavior.SPAWN)
             handler.handle("test-loop", "continuation prompt")
@@ -97,8 +101,10 @@ class TestHandoffHandler:
             assert "DANGEROUSLY_SKIP_PERMISSIONS" in env
             assert env["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
 
-    def test_spawn_with_none_continuation(self) -> None:
+    def test_spawn_with_none_continuation(self, monkeypatch) -> None:
         """Spawn handles None continuation prompt."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
         with patch("subprocess.Popen") as mock_popen:
             handler = HandoffHandler(HandoffBehavior.SPAWN)
             result = handler.handle("test-loop", None)
