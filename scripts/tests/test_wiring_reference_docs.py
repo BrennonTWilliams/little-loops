@@ -48,6 +48,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/EVENT-SCHEMA.md", "LLEvent", "FEAT-1459"),
     ("docs/reference/CONFIGURATION.md", "LLHookIntentExtension", "FEAT-1459"),
     ("docs/reference/API.md", "loop-specialist", "FEAT-1532"),
+    ("docs/reference/API.md", "loop_validity", "FEAT-2796"),
     ("docs/reference/COMMANDS.md", "**Arguments:**", "ENH-1362"),
     ("docs/reference/COMMANDS.md", "issues", "ENH-1362"),
     ("docs/guides/ISSUE_MANAGEMENT_GUIDE.md", "status:", "ENH-1421"),

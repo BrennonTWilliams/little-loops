@@ -37,7 +37,7 @@ Provides command-line interfaces for automated issue management:
 - ll-generate-schemas: Generate JSON Schema files for all LLEvent types (internal: dev tooling)
 - ll-generate-skill-descriptions: Auto-generate ≤100-char skill descriptions via Claude CLI
 - ll-learning-tests: Query and manage the learning test registry
-- ll-doctor: Check host CLI capability support for little-loops features
+- ll-doctor: Check host CLI capability support and little-loops install surface
 - ll-code: Structural code queries (callers, callees, imports, impact) via a pluggable provider protocol
 - ll-config: Resolve and print a single dot-path config value (e.g. `ll-config get history.go_no_go.correction_penalty`)
 - ll-queue: Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)

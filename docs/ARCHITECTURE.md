@@ -872,7 +872,7 @@ FSM handoff.
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |
-| `CapabilityReport` (frozen dataclass) | Structured preflight report returned by `describe_capabilities()` — holds `host`, `binary`, `version`, and `capabilities`; consumed by `ll-doctor` and `ll-action`. `ll-doctor --json`'s payload is a superset of this dataclass — it also adds `analytics_capture`/`issues` keys sourced from `BRConfig`, not from `CapabilityReport` itself (ENH-2762) |
+| `CapabilityReport` (frozen dataclass) | Structured preflight report returned by `describe_capabilities()` — holds `host`, `binary`, `version`, and `capabilities`; consumed by `ll-doctor` and `ll-action`. `ll-doctor --json`'s payload is a superset of this dataclass — it also adds `analytics_capture`/`issues` keys sourced from `BRConfig` (ENH-2762), plus install-surface keys (`entry_points`, `skills_commands`, `decisions_store`, `history_db`, `loop_validity`, and `full` under `--full`) covering little-loops' own project state, none of which come from `CapabilityReport` itself (FEAT-2793/FEAT-2795) |
 | `CapabilityEntry` (frozen dataclass) | One capability's name and `"full"` / `"partial"` / `"unsupported"` status |
 | `apply_host_cli_from_config()` | Reads `orchestration.host_cli` from `BRConfig` and exports it as `LL_HOST_CLI` before `resolve_host()` runs |
 

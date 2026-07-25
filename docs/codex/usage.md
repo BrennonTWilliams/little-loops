@@ -93,7 +93,7 @@ After saving, start a new Codex session. Codex will prompt you to re-trust the m
 
 The injection workaround is therefore the only way to get ll-defined persona behavior under Codex; interactive Codex TUI sessions can additionally select agents via `--agent <name>` once the TOML files exist.
 
-**Note for CI/`ll-doctor` consumers:** Before ENH-1533, `ll-doctor` exited `1` on Codex hosts because `agent_select` was `"unsupported"`. With prompt injection, `agent_select` is `"partial"`, which does not trigger exit `1`. Codex hosts that previously failed `ll-doctor` solely on `agent_select` will now exit `0`.
+**Note for CI/`ll-doctor` consumers:** Before ENH-1533, `ll-doctor` exited `1` on Codex hosts because `agent_select` was `"unsupported"`. With prompt injection, `agent_select` is `"partial"`, which does not trigger exit `1`. Codex hosts that previously failed `ll-doctor` solely on `agent_select` will now exit `0` — but `ll-doctor`'s exit code is no longer tied solely to host capabilities: it also folds in the default install-surface checks (Entry Points, Skills & Commands, Decisions Store, History DB, FSM Loop Validity) and, under `--full`, the `ll-verify-*` / `ll-check-links` family, any of which can independently fail exit `0` at error-tier severity (FEAT-2793/FEAT-2795).
 
 ### `--tools` (tool allowlist / sandbox modes)
 
