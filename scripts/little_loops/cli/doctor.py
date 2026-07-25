@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.metadata as importlib_metadata
 import json
 import subprocess
 import sys
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -142,15 +142,19 @@ def _entry_points_data() -> list[dict[str, str]]:
     """One row per ``[project.scripts]`` entry point: name, status, note.
 
     Distinguishes "module not found" from "function renamed/removed" so a
-    stale ``pyproject.toml`` entry produces an actionable note.
+    stale entry point produces an actionable note.
+
+    Reads the *installed* distribution metadata rather than ``pyproject.toml``:
+    the source file is absent from a wheel, so a ``__file__``-relative lookup
+    would silently yield no rows for every non-editable install.
     """
-    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     try:
-        with pyproject_path.open("rb") as f:
-            data = tomllib.load(f)
-        scripts: dict[str, str] = data.get("project", {}).get("scripts", {})
-    except (OSError, tomllib.TOMLDecodeError):
+        dist = importlib_metadata.distribution("little-loops")
+    except importlib_metadata.PackageNotFoundError:
         return []
+    scripts: dict[str, str] = {
+        ep.name: ep.value for ep in dist.entry_points if ep.group == "console_scripts"
+    }
 
     rows: list[dict[str, str]] = []
     for name, target in sorted(scripts.items()):

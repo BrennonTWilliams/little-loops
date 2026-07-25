@@ -15,9 +15,9 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata as importlib_metadata
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 from little_loops.init.writers import _LL_PERMISSIONS
@@ -27,24 +27,41 @@ from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 # presets document) — excluded from the parity check.
 _NON_LL_TOOLS = frozenset({"mcp-call"})
 
-_PYPROJECT_PATH = Path(__file__).resolve().parents[2] / "pyproject.toml"
-
-_AREAS_MD_PATH = Path(__file__).resolve().parents[3] / "skills" / "configure" / "areas.md"
-
 _TOOL_TOKEN_RE = re.compile(r"\bll-[a-z0-9-]+\b")
 
 
-def _all_ll_entry_points(pyproject_path: Path = _PYPROJECT_PATH) -> set[str]:
-    """Return every ``ll-``-prefixed ``[project.scripts]`` entry point name."""
-    with pyproject_path.open("rb") as f:
-        data = tomllib.load(f)
-    scripts = data["project"]["scripts"]
-    return {name for name in scripts if name.startswith("ll-") and name not in _NON_LL_TOOLS}
+def _areas_md_path() -> Path:
+    """Return the path to ``skills/configure/areas.md`` in the plugin repo.
+
+    Resolved via the shared plugin-root helper (``CLAUDE_PLUGIN_ROOT`` first)
+    rather than a ``__file__`` walk: this file lives in the installed package,
+    but ``areas.md`` ships in the plugin repo, so the two are only adjacent in
+    a source checkout.
+    """
+    from little_loops.skill_expander import _find_plugin_root
+
+    return _find_plugin_root() / "skills" / "configure" / "areas.md"
 
 
-def _areas_md_preset_tools(areas_md_path: Path = _AREAS_MD_PATH) -> set[str]:
+def _all_ll_entry_points() -> set[str]:
+    """Return every ``ll-``-prefixed ``console_scripts`` entry point name.
+
+    Reads installed distribution metadata instead of ``pyproject.toml``, which
+    is absent from a wheel.
+    """
+    dist = importlib_metadata.distribution("little-loops")
+    return {
+        ep.name
+        for ep in dist.entry_points
+        if ep.group == "console_scripts"
+        and ep.name.startswith("ll-")
+        and ep.name not in _NON_LL_TOOLS
+    }
+
+
+def _areas_md_preset_tools(areas_md_path: Path | None = None) -> set[str]:
     """Return the ``ll-`` tool names listed in the "All ll- commands" preset line."""
-    text = areas_md_path.read_text(encoding="utf-8")
+    text = (areas_md_path or _areas_md_path()).read_text(encoding="utf-8")
     marker = "Authorize all"
     idx = text.find(marker)
     if idx == -1:
@@ -65,12 +82,26 @@ def _writers_preset_tools() -> set[str]:
 
 
 def _run() -> tuple[int, dict[str, list[str]]]:
-    """Return ``(exit_code, {preset_name: missing_tool_names})``."""
+    """Return ``(exit_code, {preset_name: missing_tool_names})``.
+
+    ``areas.md`` lives in the plugin repo, not the installed package, so it is
+    unavailable to a plain ``pip install``. Its absence is reported as a skip
+    rather than a crash; the ``_LL_PERMISSIONS`` half still runs.
+    """
     canonical = _all_ll_entry_points()
-    missing = {
-        "areas.md": sorted(canonical - _areas_md_preset_tools()),
-        "writers._LL_PERMISSIONS": sorted(canonical - _writers_preset_tools()),
-    }
+    missing: dict[str, list[str]] = {}
+
+    areas_md = _areas_md_path()
+    if areas_md.is_file():
+        missing["areas.md"] = sorted(canonical - _areas_md_preset_tools(areas_md))
+    else:
+        print(
+            f"SKIP: {areas_md} not found (plugin repo not available); "
+            "checking writers._LL_PERMISSIONS only.",
+            file=sys.stderr,
+        )
+
+    missing["writers._LL_PERMISSIONS"] = sorted(canonical - _writers_preset_tools())
     exit_code = 1 if any(missing.values()) else 0
     return exit_code, missing
 
