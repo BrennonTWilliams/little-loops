@@ -1,0 +1,12 @@
+{
+  "id": "2645d0b3-106a-48ef-a7fd-8cbe3eeeea14",
+  "type": "decision",
+  "timestamp": "2026-07-25T16:22:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Hand-built repro confirmed accurate against validation.py; MR-1/MR-3 genuinely don't fire on generated templates. Option B (broaden MR-1) would contradict documented HARNESS_OPTIMIZATION_GUIDE.md exemption for non-meta loops and risk false positives across 25 built-in loops.",
+  "rule": "Option A: re-verify against real skill-generated YAML before touching templates/validator",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: extend _is_meta_loop()/_SHARED_TMP_PATH_RE to catch self-evaluation loops broadly, then apply template fixes",
+  "issue": "BUG-2801"
+}

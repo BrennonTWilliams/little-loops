@@ -1,10 +1,20 @@
 ---
 id: BUG-2801
-status: open
-captured_at: "2026-07-25T00:00:00Z"
+status: deferred
+captured_at: '2026-07-25T00:00:00Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
-decision_needed: true
+decision_needed: false
+confidence_score: 72
+outcome_confidence: 68
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 8
+score_change_surface: 20
+size: Very Large
+deferred_by: automation
+deferred_date: '2026-07-25T16:24:24Z'
+deferred_reason: low_readiness
 ---
 
 # BUG-2801: create-eval-from-issues/verify-issue-loop templates fail the repo's own loop lints
@@ -186,6 +196,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis and direct reproduct
   it's good practice regardless of whether MR-1 currently enforces it for
   this loop shape.
 
+> **Selected:** Option A — re-verify against real skill-generated YAML end-to-end before touching any template or validator code; cheap, low-risk, and resolves whether this is a template bug, a validator-scope gap, or a stale report.
+
 **Option A**: Re-verify the bug against the real skill-generated YAML
 (run `/ll:create-eval-from-issues` and `/ll:verify-issue-loop` end-to-end,
 then `ll-loop validate` the actual output) before touching any template
@@ -205,6 +217,26 @@ originally proposed on top of the corrected validator.
 and will determine whether this is a template bug, a validator-scope
 bug, or a stale/invalid report, before spending effort on either fix.
 
+### Decision Rationale
+
+**Selected**: Option A (re-verify end-to-end against real skill-generated YAML before any code/template change)
+
+**Reasoning**: Codebase evidence confirms the hand-built repro in this issue's own research is accurate against current `scripts/little_loops/fsm/validation.py` — neither `verify-issue-loop`'s nor `create-eval-from-issues`' generated templates contain any `_META_LOOP_ACTION_PATTERNS`/`_META_LOOP_ACTION_TOKENS`/`lib/benchmark.yaml` markers, so MR-1 genuinely does not fire, and `_SHARED_TMP_PATH_RE` genuinely only matches `.loops/tmp/`, not bare `/tmp/`. Option B (broadening MR-1 to catch any self-evaluation loop) would directly contradict `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`'s documented "Note on MR-1," which explicitly exempts non-meta specialist-pipeline loops from this rule, and would risk firing across ~25 built-in loop files with legitimate `llm_structured` states. Option A is the established "repro before fix" convention already used by this issue's own `/ll:refine-issue` research pass, is nearly free, and cleanly determines scope before any code is touched.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 1 |
+| Simplicity | 3 | 1 |
+| Testability | 3 | 1 |
+| Risk | 3 | 1 |
+| **Total** | **12/12** | **4/12** |
+
+**Key evidence**:
+- `_is_meta_loop()` (`validation.py:1330`) and `_SHARED_TMP_PATH_RE` (`validation.py:114`) confirmed not to fire on either generated template, matching the issue's hand-built repro exactly (no drift, no missed markers).
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` lines 473-484 explicitly document that non-meta specialist-pipeline loops are *supposed* to be exempt from MR-1 — Option B would reverse documented behavior.
+- 40 `llm_structured` occurrences across 25 built-in loop files would be at risk of new MR-1 firings under Option B's broadened heuristic.
+- `adversarial-verify-loop`'s `count_probes` pattern is already a clean, zero-validator-change template fix available if re-verification confirms the bug — supporting Option A's premise that the eventual fix (if any) is template-only, not validator-scope.
+
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` § Loop Authoring (MR-1, MR-3 table)
@@ -216,4 +248,5 @@ bug, or a stale/invalid report, before spending effort on either fix.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-07-25T16:22:07 - `9b9f56ac-8efb-4ecb-a5ff-1c26b3d71704.jsonl`
 - `/ll:refine-issue` - 2026-07-25T16:18:57 - `de51d3f6-b54d-4748-9d4e-e4e242e4b558.jsonl`
