@@ -127,7 +127,15 @@ class TestBackfillThenCompact:
 class TestSummaryOmitsAssistantContent:
     """Additional risk: compact_session() reads only message_events (user turns)."""
 
-    def test_compact_summary_omits_assistant_derived_content(self, tmp_path: Path) -> None:
+    def test_compact_summary_omits_assistant_derived_content(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # Pin the host so the `-p`-flag prompt inspection below is deterministic:
+        # resolve_host() otherwise reads worker-process env/PATH, which a
+        # co-resident xdist test can leave pointing at a non-claude host (whose
+        # invocation has no -p) or at nothing (fail-soft level-3 truncation,
+        # zero CLI calls).
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
         db = tmp_path / "history.db"
         jsonl_path = _write_transcript(tmp_path)
 
@@ -166,8 +174,10 @@ class TestSummaryIncludesAssistantContent:
     """FEAT-2747: the assistant-inclusive counterpart closes the gap above."""
 
     def test_compact_with_reasoning_includes_assistant_derived_content(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch
     ) -> None:
+        # See TestSummaryOmitsAssistantContent: pin the host for deterministic -p args.
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
         from little_loops.compaction.result import compact_result_for_session_with_reasoning
         from little_loops.session_store import (
             _backfill_assistant_messages,

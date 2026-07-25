@@ -925,11 +925,7 @@ class TestMergeSettings:
         # Seed a canonical entry that should be de-duped (not doubled) on re-init.
         target.write_text(
             json.dumps(
-                {
-                    "permissions": {
-                        "allow": ["Bash(ll-action:*)", "Edit(.ll/ll-continue-prompt.md)"]
-                    }
-                }
+                {"permissions": {"allow": ["Bash(ll-action:*)", "Edit(.ll/ll-continue-prompt.md)"]}}
             )
         )
         merge_settings(tmp_project)

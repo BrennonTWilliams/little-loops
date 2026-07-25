@@ -6,12 +6,73 @@ all loop/FSM tests can import them from a single source.
 
 from __future__ import annotations
 
+import atexit
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
     RouteConfig,
     StateConfig,
 )
+
+# Hypothesis fuzz depth. Fast by default: an interactive full-suite run
+# otherwise generates ~3,600 examples across the fuzz/property files, a real
+# chunk of wall-clock and (for file-writing fuzz tests) filesystem churn.
+# LL_FUZZ=full restores each test's full depth; the automated verify gate
+# (worktree_utils.verify_epic_branch_before_merge) sets it, so the enforced
+# gate always runs at full depth. See also the profile registration in
+# conftest.py, which throttles tests WITHOUT an explicit @settings decorator.
+FUZZ_FULL = os.environ.get("LL_FUZZ") == "full"
+
+
+def fuzz_max_examples(full_depth: int, fast: int = 25) -> int:
+    """Per-test hypothesis ``max_examples``: *full_depth* under ``LL_FUZZ=full``,
+    else ``min(full_depth, fast)``."""
+    return full_depth if FUZZ_FULL else min(full_depth, fast)
+
+
+# Cached commitless git-repo template, built once per (xdist worker) process.
+_git_template_cache: Path | None = None
+
+
+def copy_git_template(dst: Path, initial_branch: str = "main") -> Path:
+    """Copy a pre-initialized, commitless git repo into *dst* and return it.
+
+    Replaces the ``git init`` + 2x ``git config`` subprocess spawns that a dozen
+    repo fixtures each ran per test with a single in-process ``copytree`` of a
+    per-process cached template (branch ``main``, test user configured, no
+    commits). Callers seed files and commit on top exactly as before, so test
+    semantics are unchanged — only the per-test fork/exec churn goes away.
+
+    ``dst`` may already exist (``tmp_path`` itself is a valid target).
+    """
+    global _git_template_cache
+    if _git_template_cache is None or not _git_template_cache.exists():
+        base = Path(tempfile.mkdtemp(prefix="ll-git-template-"))
+        atexit.register(shutil.rmtree, base, True)
+        repo = base / "repo"
+        repo.mkdir()
+        for args in (
+            ("init", "-q", "--initial-branch", "main"),
+            ("config", "user.email", "test@example.com"),
+            ("config", "user.name", "Test User"),
+        ):
+            subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+        _git_template_cache = repo
+    shutil.copytree(_git_template_cache, dst, dirs_exist_ok=True)
+    if initial_branch != "main":
+        subprocess.run(
+            ["git", "symbolic-ref", "HEAD", f"refs/heads/{initial_branch}"],
+            cwd=dst,
+            capture_output=True,
+            check=True,
+        )
+    return dst
 
 
 def make_test_state(

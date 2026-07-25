@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from tests.helpers import copy_git_template
+
 REPO_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = REPO_ROOT / "skills" / "manage-issue" / "SKILL.md"
 RELEASE_CMD_FILE = REPO_ROOT / "commands" / "manage-release.md"
@@ -26,10 +28,7 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _init_repo(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    _git(path, "init", "--initial-branch", "main")
-    _git(path, "config", "user.email", "test@example.com")
-    _git(path, "config", "user.name", "Test User")
+    copy_git_template(path)
     (path / "README.md").write_text("x\n")
     _git(path, "add", "README.md")
     _git(path, "commit", "-m", "initial commit")

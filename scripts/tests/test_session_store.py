@@ -4507,9 +4507,9 @@ class TestBackfillCommitEvents:
 
         if shutil.which("git") is None:
             pytest.skip("git not available")
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        self._git(repo, "init", "-q")
+        from tests.helpers import copy_git_template
+
+        repo = copy_git_template(tmp_path / "repo")
         (repo / "a.txt").write_text("one\n", encoding="utf-8")
         self._git(repo, "add", "a.txt")
         self._git(repo, "commit", "-q", "-m", "feat: initial commit")

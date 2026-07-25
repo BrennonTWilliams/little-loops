@@ -27,6 +27,7 @@ from little_loops.worktree_utils import (
     setup_worktree,
     verify_epic_branch_before_merge,
 )
+from tests.helpers import copy_git_template
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -42,10 +43,7 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def _init_repo(path: Path, initial_branch: str = "main") -> Path:
     """Initialize a git repo with one commit on the given initial branch."""
-    path.mkdir(parents=True, exist_ok=True)
-    _git(path, "init", "--initial-branch", initial_branch)
-    _git(path, "config", "user.email", "test@example.com")
-    _git(path, "config", "user.name", "Test User")
+    copy_git_template(path, initial_branch=initial_branch)
     (path / "README.md").write_text("test\n")
     _git(path, "add", "README.md")
     _git(path, "commit", "-m", "initial commit")

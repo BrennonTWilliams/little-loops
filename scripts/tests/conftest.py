@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import tempfile
@@ -10,6 +11,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from hypothesis import settings as _hypothesis_settings
+
+# =============================================================================
+# Hypothesis fuzz depth profiles
+# =============================================================================
+#
+# Fast by default so interactive full-suite runs don't burn ~3,600 generated
+# examples; LL_FUZZ=full restores full depth (the automated verify gate sets
+# it). These profiles govern tests WITHOUT an explicit @settings decorator;
+# decorated fuzz tests use tests.helpers.fuzz_max_examples for the same knob
+# (an explicit @settings always overrides the loaded profile).
+_hypothesis_settings.register_profile("ll-dev", max_examples=25)
+_hypothesis_settings.register_profile("ll-full", max_examples=100)
+_hypothesis_settings.load_profile("ll-full" if os.environ.get("LL_FUZZ") == "full" else "ll-dev")
 
 # =============================================================================
 # macOS "beachball" defense: worker cap + lowered scheduling priority
@@ -39,13 +54,17 @@ def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     (serial) bypasses it. ``PYTEST_XDIST_AUTO_NUM_WORKERS`` is honored as a
     manual override.
     """
+    cpus = os.cpu_count() or 4
     env = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS")
     if env:
         try:
-            return int(env)
+            # Clamp to cpus-2: honor the override's intent but never allow it
+            # (e.g. a value inherited from a parent automation env) to
+            # oversubscribe every core and re-create the freeze this hook
+            # exists to prevent.
+            return max(1, min(int(env), cpus - 2))
         except ValueError:
             pass
-    cpus = os.cpu_count() or 4
     # Reserve ~half the cores for the OS/other apps. Individual tests also spawn
     # their own threads/subprocesses (ThreadPoolExecutors, unix sockets, git),
     # so effective load per worker is > 1 core; half keeps real headroom.
@@ -543,21 +562,53 @@ def _isolate_history_db_session(
     os.environ.pop("LL_HISTORY_DB", None)
 
 
+_isolation_seq = itertools.count()
+
+
+@pytest.fixture(scope="session")
+def _isolation_base(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One real mkdir per (xdist worker) process for all per-test DB paths.
+
+    Under xdist each worker has its own ``basetemp/popen-gwN`` subtree, so this
+    base is globally unique with no cross-worker coordination.
+    """
+    return tmp_path_factory.mktemp("isolation")
+
+
 @pytest.fixture(autouse=True)
 def _isolate_history_db(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    request: pytest.FixtureRequest,
+    _isolation_base: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Generator[None, None, None]:
-    """Redirect all session-store DB opens to a per-test temp directory.
+    """Redirect all session-store DB opens to a per-test temp path.
 
     Sets LL_HISTORY_DB so cli_event_context and resolve_history_db route
-    writes to tmp_path instead of the real .ll/history.db.
+    writes away from the real .ll/history.db.
+
+    Deliberately does NOT request ``tmp_path``: an autouse tmp_path forces
+    pytest to materialize (and later rmtree) a numbered directory for every
+    test, and at ~13.7k tests that directory churn is what drives macOS
+    launchservicesd/fseventsd to saturate cores (the "beachball").
+
+    Two cases:
+    - The test itself requests ``tmp_path``: point LL_HISTORY_DB at
+      ``tmp_path/.ll/history.db``. Many such tests construct that exact path
+      and expect the env override to coincide with it (``_resolve_db_path``
+      routes any default-shaped ``.ll/history.db`` argument through the env
+      var). The directory is materialized for them anyway, so this costs
+      nothing extra.
+    - Otherwise: a unique path STRING under a single session-scoped base —
+      never materialized here; only tests that actually open a DB pay a mkdir
+      (ensure_db() creates parents on first open). The .ll/ segment keeps
+      ensure_db's legacy migration (session.db → history.db) from ever seeing
+      a session.db sibling.
     """
-    # Use a .ll/ subdirectory so ensure_db's legacy migration (session.db →
-    # history.db) never sees a session.db sibling left by other fixtures.
-    # Do NOT pre-create the directory here; tests that assert ".ll/" is absent
-    # on entry would fail. ensure_db() creates the parent on first open.
-    db = tmp_path / ".ll" / "history.db"
-    monkeypatch.setenv("LL_HISTORY_DB", str(db))
+    if "tmp_path" in request.fixturenames:
+        base: Path = request.getfixturevalue("tmp_path")
+    else:
+        base = _isolation_base / f"t{next(_isolation_seq)}"
+    monkeypatch.setenv("LL_HISTORY_DB", str(base / ".ll" / "history.db"))
     yield
 
 
@@ -609,9 +660,22 @@ def _guard_real_history_db() -> Generator[None, None, None]:
 # =============================================================================
 
 
+@pytest.fixture(scope="session")
+def _shared_fake_home(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One empty fake home per (xdist worker) process.
+
+    Shared across tests because production ``Path.home()`` consumers
+    (``user_messages.py``, ``cli/logs.py``) only read/glob under home — nothing
+    writes — so an always-empty shared dir cannot cross-contaminate tests.
+    Sharing it avoids a per-test tmp_path + mkdir for all ~13.7k tests (see
+    ``_isolate_history_db`` for why that churn matters).
+    """
+    return tmp_path_factory.mktemp("fake_home")
+
+
 @pytest.fixture(autouse=True)
 def _isolate_session_log_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    _shared_fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Generator[None, None, None]:
     """Redirect host session-log resolution away from the real ~/.claude/projects dir.
 
@@ -630,11 +694,10 @@ def _isolate_session_log_dir(
 
     Function-scoped and monkeypatch-based so per-test ``Path.home`` overrides
     (e.g. ``TestSessionLogHostAware`` and the ``test_ll_logs.py`` host-aware tests)
-    run *after* this fixture and win — composition, not conflict.
+    run *after* this fixture and win — composition, not conflict. Only the
+    (empty, read-only-by-convention) home directory itself is session-scoped.
     """
-    fake_home = tmp_path / "fake_home"
-    fake_home.mkdir(exist_ok=True)
-    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setattr(Path, "home", lambda: _shared_fake_home)
     yield
 
 

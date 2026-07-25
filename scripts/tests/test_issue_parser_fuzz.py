@@ -18,6 +18,7 @@ from hypothesis import strategies as st
 
 from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
+from tests.helpers import fuzz_max_examples
 
 # =============================================================================
 # Issue Content Fuzzing Strategy
@@ -126,7 +127,7 @@ class TestIssueParserFuzz:
     @pytest.mark.slow
     @given(content=malformed_issue_content())
     @settings(
-        max_examples=500,
+        max_examples=fuzz_max_examples(500),
         deadline=None,  # Disable deadline for potentially slow parsing
         suppress_health_check=list(HealthCheck),
     )
@@ -159,7 +160,7 @@ class TestIssueParserFuzz:
     @pytest.mark.slow
     @given(filename=issue_filename(), content=st.text(min_size=0, max_size=50000))
     @settings(
-        max_examples=300,
+        max_examples=fuzz_max_examples(300),
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )
@@ -194,7 +195,7 @@ class TestIssueParserFuzz:
     @pytest.mark.slow
     @given(frontmatter=st.text(min_size=0, max_size=100000))
     @settings(
-        max_examples=200,
+        max_examples=fuzz_max_examples(200),
         deadline=None,
         suppress_health_check=[HealthCheck.too_slow],
     )
@@ -229,7 +230,7 @@ class TestIssueParserFuzz:
         depends_on=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
         relates_to=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_dependency_parsing_handles_lists(
         self,
         blocked_by: list[str],
@@ -293,7 +294,7 @@ class TestIssueParserFindIssuesFuzz:
             max_size=50,
         )
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=fuzz_max_examples(100), deadline=None)
     def test_find_issues_handles_mixed_files(self, files: list[tuple]) -> None:
         """Directory scanning should handle mixed valid/invalid files."""
         with tempfile.TemporaryDirectory() as tmpdir:

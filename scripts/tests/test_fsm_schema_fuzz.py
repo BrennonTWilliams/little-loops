@@ -25,6 +25,7 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from tests.helpers import fuzz_max_examples
 
 # =============================================================================
 # Dict Fuzzing Strategies
@@ -306,7 +307,7 @@ class TestEvaluateConfigFuzz:
 
     @pytest.mark.slow
     @given(config=malformed_evaluate_config())
-    @settings(max_examples=500, deadline=None)
+    @settings(max_examples=fuzz_max_examples(500), deadline=None)
     def test_from_dict_handles_malformed(self, config: dict) -> None:
         """from_dict should handle malformed input without crashing."""
         try:
@@ -341,7 +342,7 @@ class TestPromptSizeGuardConfigFuzz:
             },
         )
     )
-    @settings(max_examples=300, deadline=None)
+    @settings(max_examples=fuzz_max_examples(300), deadline=None)
     def test_from_dict_handles_malformed(self, config: dict) -> None:
         """from_dict should not raise unexpected exceptions on malformed input."""
         try:
@@ -364,7 +365,7 @@ class TestRouteConfigFuzz:
 
     @pytest.mark.slow
     @given(config=malformed_route_config())
-    @settings(max_examples=500, deadline=None)
+    @settings(max_examples=fuzz_max_examples(500), deadline=None)
     def test_from_dict_handles_malformed(self, config: dict) -> None:
         """from_dict should handle malformed route configs without crashing.
 
@@ -388,7 +389,7 @@ class TestStateConfigFuzz:
 
     @pytest.mark.slow
     @given(config=malformed_state_config())
-    @settings(max_examples=500, deadline=None)
+    @settings(max_examples=fuzz_max_examples(500), deadline=None)
     def test_from_dict_handles_malformed(self, config: dict) -> None:
         """from_dict should handle malformed state configs without crashing.
 
@@ -418,7 +419,7 @@ class TestFSMLoopFuzz:
 
     @pytest.mark.slow
     @given(fsm_dict=malformed_fsm_loop())
-    @settings(max_examples=300, deadline=None)
+    @settings(max_examples=fuzz_max_examples(300), deadline=None)
     def test_from_dict_handles_malformed(self, fsm_dict: dict) -> None:
         """from_dict should handle malformed FSM configs without crashing.
 
@@ -446,7 +447,7 @@ class TestFSMLoopFuzz:
 
     @pytest.mark.slow
     @given(yaml_content=st.text(min_size=0, max_size=50000))
-    @settings(max_examples=200, deadline=None)
+    @settings(max_examples=fuzz_max_examples(200), deadline=None)
     def test_yaml_loading_never_crashes(self, yaml_content: str) -> None:
         """Loading YAML and creating FSM should never crash.
 
@@ -482,7 +483,7 @@ class TestFSMLoopFuzz:
             max_size=50,
         )
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(max_examples=fuzz_max_examples(200), deadline=None)
     def test_large_state_dicts(self, states: dict) -> None:
         """Large state dictionaries should be handled without issues.
 

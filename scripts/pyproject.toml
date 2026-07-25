@@ -180,6 +180,10 @@ python_functions = ["test_*"]
 # can opt out via @pytest.mark.timeout(N) per test.
 # --timeout-method=thread is explicit because signal-based timeouts race
 # with xdist worker process management.
+# --dist loadfile gives each test file worker affinity: far fewer
+# controller<->worker scheduling round-trips than the default per-test `load`
+# on a ~13.7k-test suite, and per-file fixtures (git repos, subprocess envs)
+# stay on one worker.
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -187,7 +191,16 @@ addopts = [
     "--timeout-method=thread",
     "-n",
     "logical",
+    "--dist",
+    "loadfile",
 ]
+# Keep only failed-test tmp dirs, and only the last session's tree. The default
+# (keep everything, retain 3 sessions) makes pytest rmtree three full
+# pytest-of-<user> trees at startup — tens of thousands of fs events that feed
+# the same launchservicesd/fseventsd storm the conftest isolation fixtures were
+# reworked to avoid (see tests/conftest.py `_isolate_history_db`).
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow running (deselect with '-m \"not slow\"')",

@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from little_loops.codequery.fallback import FallbackProvider
+from tests.helpers import copy_git_template
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -17,11 +18,7 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _init_repo(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    _git(path, "init", "--initial-branch", "main")
-    _git(path, "config", "user.email", "test@example.com")
-    _git(path, "config", "user.name", "Test User")
-    return path
+    return copy_git_template(path)
 
 
 def _write_and_commit(repo: Path, rel_path: str, content: str) -> None:

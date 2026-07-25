@@ -38,6 +38,7 @@ from little_loops.issue_lifecycle import (
 )
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger
+from tests.helpers import copy_git_template
 
 # =============================================================================
 # Fixtures
@@ -302,14 +303,10 @@ class TestCommitIssueCompletion:
 def temp_git_repo(tmp_path: Path) -> Path:
     """A real temporary git repo with an initial commit (BUG-2421 regression).
 
-    Duplicated locally per the established pattern — ``conftest.py`` has no
-    git-init fixture (mirrors ``test_worktree_concurrency.py:25``).
+    Repo scaffolding comes from the shared ``copy_git_template`` helper
+    (mirrors ``test_worktree_concurrency.py:25``).
     """
-    subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, capture_output=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=tmp_path, capture_output=True)
+    copy_git_template(tmp_path)
     (tmp_path / "seed.txt").write_text("seed\n")
     subprocess.run(["git", "add", "."], cwd=tmp_path, capture_output=True)
     subprocess.run(["git", "commit", "-m", "initial commit"], cwd=tmp_path, capture_output=True)

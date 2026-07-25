@@ -18,6 +18,7 @@ import pytest
 
 from little_loops.parallel.git_lock import GitLock
 from little_loops.worktree_utils import cleanup_worktree, setup_worktree
+from tests.helpers import copy_git_template
 
 pytestmark = pytest.mark.integration
 
@@ -27,18 +28,7 @@ def temp_git_repo() -> Generator[Path, None, None]:
     """Create a temporary git repository with an initial commit."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
-
-        subprocess.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
-        subprocess.run(
-            ["git", "config", "user.email", "test@example.com"],
-            cwd=repo_path,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=repo_path,
-            capture_output=True,
-        )
+        copy_git_template(repo_path)
 
         test_file = repo_path / "test.txt"
         test_file.write_text("initial content")

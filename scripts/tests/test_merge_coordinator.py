@@ -14,6 +14,7 @@ import pytest
 
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.types import MergeRequest, MergeStatus, ParallelConfig, WorkerResult
+from tests.helpers import copy_git_template
 
 pytestmark = pytest.mark.integration
 
@@ -23,24 +24,7 @@ def temp_git_repo() -> Generator[Path, None, None]:
     """Create a temporary git repository for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
-
-        # Initialize git repo
-        subprocess.run(
-            ["git", "init"],
-            cwd=repo_path,
-            capture_output=True,
-            check=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.email", "test@example.com"],
-            cwd=repo_path,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "config", "user.name", "Test User"],
-            cwd=repo_path,
-            capture_output=True,
-        )
+        copy_git_template(repo_path)
 
         # Create initial commit
         test_file = repo_path / "test.txt"

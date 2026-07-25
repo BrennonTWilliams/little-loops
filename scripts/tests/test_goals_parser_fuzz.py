@@ -21,6 +21,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from little_loops.goals_parser import ProductGoals
+from tests.helpers import fuzz_max_examples
 
 # =============================================================================
 # YAML Fuzzing Strategies
@@ -172,7 +173,7 @@ class TestGoalsParserFuzz:
     @pytest.mark.slow
     @given(content=malformed_goals_content())
     @settings(
-        max_examples=500,
+        max_examples=fuzz_max_examples(500),
         deadline=5000,
         suppress_health_check=list(HealthCheck),
     )
@@ -195,7 +196,7 @@ class TestGoalsParserFuzz:
     @pytest.mark.slow
     @given(content=yaml_bomb_content())
     @settings(
-        max_examples=200,
+        max_examples=fuzz_max_examples(200),
         deadline=5000,
         suppress_health_check=[HealthCheck.too_slow],
     )
@@ -216,7 +217,7 @@ class TestGoalsParserFuzz:
     @pytest.mark.slow
     @given(content=deeply_nested_yaml())
     @settings(
-        max_examples=100,
+        max_examples=fuzz_max_examples(100),
         deadline=5000,
         suppress_health_check=[HealthCheck.too_slow],
     )
@@ -239,7 +240,7 @@ class TestGoalsParserFuzz:
         content=st.text(min_size=0, max_size=100000),
         filename=st.text(min_size=1, max_size=100),
     )
-    @settings(max_examples=200, deadline=5000)
+    @settings(max_examples=fuzz_max_examples(200), deadline=5000)
     def test_from_file_with_various_content(self, content: str, filename: str) -> None:
         """File parsing should handle various file contents gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -784,6 +784,20 @@ When adding **new** subprocess + signal-handling tests:
 
 See `.issues/bugs/P2-BUG-2523-sigint-subprocess-test-flakes-under-xdist.md` for the original analysis and the BUG-2524 sibling issue (`TestRateLimitCircuitIntegration` at `scripts/tests/test_fsm_executor.py`).
 
+### Full-suite run makes macOS sluggish (beachball)
+
+**Symptom**: During `python -m pytest scripts/tests/`, the UI stutters or shows the spinning beachball even though pytest workers are capped and reniced.
+
+**Cause**: macOS system services (`launchservicesd`, `mds`/Spotlight) run at normal priority and react to the suite's filesystem events (temp dirs, git repos, subprocess spawns). The project-side defenses — worker cap, `os.nice`, non-materialized isolation fixtures, fast hypothesis profile, `--dist loadfile` — minimize that churn, but the services themselves cannot be reniced from the repo.
+
+**Optional system-level mitigations** (machine-wide, apply manually if the defenses above aren't enough):
+
+1. **Exclude the pytest temp root from Spotlight**: System Settings → Siri & Spotlight → Spotlight Privacy, add the `pytest-of-<user>` directory under `$TMPDIR` (see `python -c "import tempfile; print(tempfile.gettempdir())"`). Keeps `mds` out of test temp trees.
+2. **Run the suite in the background QoS band**: `taskpolicy -b python -m pytest scripts/tests/` — stronger than `nice`; macOS schedules the whole process tree on efficiency cores and always prefers the UI.
+3. **After killing a run**, reap orphaned workers: `pkill -9 -f "pytest-xdist running"` (xdist rewrites worker process titles, so `pkill -f pytest` misses them).
+
+**Environment knobs**: `PYTEST_XDIST_AUTO_NUM_WORKERS=<N>` (clamped to `cpus-2`), `LL_TEST_NO_NICE=1`, `-n 0` for serial, `LL_FUZZ=full` for full hypothesis fuzz depth (the automated verify gate sets this itself).
+
 ---
 
 ## Loop Issues

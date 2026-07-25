@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from little_loops.frontmatter import STATUS_SYNONYMS
 from little_loops.issue_parser import IssueInfo, ProductImpact, slugify
+from tests.helpers import fuzz_max_examples
 
 
 class TestSlugifyProperties:
@@ -109,7 +110,7 @@ class TestIssueInfoProperties:
         ),
         labels=st.lists(st.text(min_size=1, max_size=50), max_size=10),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_roundtrip_serialization(
         self,
         path: Path,
@@ -308,7 +309,7 @@ class TestProductImpactProperties:
         business_value=st.one_of(st.none(), st.sampled_from(["high", "medium", "low"])),
         user_benefit=st.one_of(st.none(), st.text(min_size=1, max_size=200)),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_product_impact_roundtrip(
         self,
         goal_alignment: str | None,
@@ -336,7 +337,7 @@ class TestProductImpactProperties:
         business_value=st.one_of(st.none(), st.sampled_from(["high", "medium", "low"])),
         user_benefit=st.one_of(st.none(), st.text(min_size=1, max_size=200)),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_product_impact_none_from_dict(
         self,
         goal_alignment: str | None,
@@ -390,7 +391,7 @@ class TestIssueInfoWithProductImpactProperties:
             st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
         ),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_roundtrip_with_product_impact(
         self,
         path: Path,
@@ -460,7 +461,7 @@ class TestIssueInfoWithProductImpactProperties:
             st.none(), st.lists(st.text(min_size=1, max_size=50), max_size=5)
         ),
     )
-    @settings(max_examples=200)
+    @settings(max_examples=fuzz_max_examples(200))
     def test_roundtrip_without_product_impact(
         self,
         path: Path,

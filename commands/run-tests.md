@@ -19,14 +19,13 @@ You are tasked with running the test suite based on the specified scope and opti
 ## Configuration
 
 This command uses project configuration from `.ll/ll-config.json`:
-- **Test command**: `{{config.project.test_cmd}}`
-- **Test directory**: `{{config.project.test_dir}}`
+- **Test command**: `{{config.project.test_cmd}}` (already includes the test path)
 - **Source directory**: `{{config.project.src_dir}}`
 
 ## Test Scopes
 
-- **unit**: Fast unit tests (no external dependencies)
-- **integration**: Integration tests (may require external services)
+- **unit**: Fast unit tests (excludes tests marked `integration`)
+- **integration**: Integration tests (marked `integration`; may require external services)
 - **all**: Complete test suite
 - **affected**: Tests for files changed since last commit
 
@@ -53,9 +52,9 @@ if [ "$SCOPE" = "unit" ]; then
     echo "Running unit tests..."
 
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} {{config.project.test_dir}}/unit/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} -m "not integration" -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} {{config.project.test_dir}}/unit/ -v --tb=short
+        {{config.project.test_cmd}} -m "not integration" --tb=short
     fi
 fi
 ```
@@ -67,9 +66,9 @@ if [ "$SCOPE" = "integration" ]; then
     echo "Running integration tests..."
 
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} {{config.project.test_dir}}/integration/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} -m integration -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} {{config.project.test_dir}}/integration/ -v --tb=short
+        {{config.project.test_cmd}} -m integration --tb=short
     fi
 fi
 ```
@@ -80,10 +79,12 @@ fi
 if [ "$SCOPE" = "all" ]; then
     echo "Running complete test suite..."
 
+    # No -v on full runs: per-test result lines for a 10k+-test suite are pure
+    # controller I/O and transcript noise under xdist.
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} {{config.project.test_dir}}/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} {{config.project.test_dir}}/ -v --tb=short
+        {{config.project.test_cmd}} --tb=short
     fi
 fi
 ```
@@ -95,7 +96,7 @@ if [ "$SCOPE" = "affected" ]; then
     echo "Finding tests for changed files..."
 
     # Get changed Python files
-    CHANGED_FILES=$(git diff --name-only HEAD~1 -- '*.py' | grep -E '^{{config.project.src_dir}}|^{{config.project.test_dir}}/' || true)
+    CHANGED_FILES=$(git diff --name-only HEAD~1 -- '*.py' | grep -E '^{{config.project.src_dir}}' || true)
 
     if [ -z "$CHANGED_FILES" ]; then
         echo "No Python files changed since last commit"
@@ -107,7 +108,7 @@ if [ "$SCOPE" = "affected" ]; then
     echo ""
 
     # Run tests for changed files
-    {{config.project.test_cmd}} {{config.project.test_dir}}/ -v --tb=short
+    {{config.project.test_cmd}} --tb=short
 fi
 ```
 
@@ -117,7 +118,7 @@ If the user requests coverage, add coverage flags:
 
 ```bash
 # To run with coverage:
-{{config.project.test_cmd}} {{config.project.test_dir}}/ --cov={{config.project.src_dir}} --cov-report=term-missing --cov-report=html
+{{config.project.test_cmd}} --cov={{config.project.src_dir}} --cov-report=term-missing --cov-report=html
 
 echo "Coverage report generated at htmlcov/index.html"
 ```

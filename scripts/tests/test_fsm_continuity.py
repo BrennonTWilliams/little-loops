@@ -61,8 +61,18 @@ class TestSummarizeCompletedState:
             result = summarize_completed_state(SESSION_ID, db=tmp_path / "history.db")
         assert result is None
 
-    def test_backfills_and_compacts_with_assistant_content(self, tmp_path: Path) -> None:
-        """The assistant-inclusive summary carries forward both user and assistant turns."""
+    def test_backfills_and_compacts_with_assistant_content(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """The assistant-inclusive summary carries forward both user and assistant turns.
+
+        LL_HOST_CLI is pinned so the ``-p``-flag prompt inspection is
+        deterministic: resolve_host() otherwise reads worker env/PATH, which a
+        co-resident xdist test can leave in a state that routes the summarizer
+        to a non-claude host (no ``-p``) or to fail-soft truncation (no CLI
+        call at all).
+        """
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
         db = tmp_path / "history.db"
         project_folder = tmp_path / "project"
         project_folder.mkdir()

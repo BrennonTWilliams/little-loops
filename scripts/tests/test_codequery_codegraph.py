@@ -23,6 +23,7 @@ from little_loops.codequery.core import (
     Unsupported,
     resolve_provider,
 )
+from tests.helpers import copy_git_template
 
 # Schema-drift guard: pinned column set from the discovered codegraph schema
 # (see codegraph.py module docstring). If this ever fails, the upstream tool
@@ -74,10 +75,7 @@ def _commit_at(repo: Path, message: str, iso_date: str) -> None:
 
 
 def _init_repo(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    _git(path, "init", "--initial-branch", "main")
-    _git(path, "config", "user.email", "test@example.com")
-    _git(path, "config", "user.name", "Test User")
+    copy_git_template(path)
     (path / "README.md").write_text("test\n")
     _git(path, "add", "README.md")
     _commit_at(path, "initial commit", _T0)

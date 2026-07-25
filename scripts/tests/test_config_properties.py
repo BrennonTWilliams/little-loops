@@ -16,6 +16,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from little_loops.config import BRConfig
+from tests.helpers import fuzz_max_examples
 
 
 @st.composite
@@ -51,7 +52,7 @@ class TestBRConfigProperties:
     @pytest.mark.slow
     @given(cfg=minimal_config_dict())
     @settings(
-        max_examples=50,
+        max_examples=fuzz_max_examples(50),
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )

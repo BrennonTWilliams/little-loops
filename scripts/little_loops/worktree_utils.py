@@ -453,6 +453,17 @@ def verify_epic_branch_before_merge(
     # idiom (host_runner.py / session_start.py).
     env: dict[str, str] = os.environ.copy()
     env["LL_VERIFY_GATE"] = "1"
+    # Global worker budget for nested pytest-xdist runs: ll-parallel/ll-sprint
+    # can trigger several verify gates concurrently, each of which would
+    # otherwise spawn its own cpus//2-worker suite (the conftest cap is
+    # per-process, so N gates x 7 workers oversubscribes every core and
+    # starves the macOS compositor). cpus//4 per gate keeps headroom while
+    # composing with the conftest renice. setdefault preserves an explicit
+    # caller/user override.
+    env.setdefault("PYTEST_XDIST_AUTO_NUM_WORKERS", str(max(2, (os.cpu_count() or 4) // 4)))
+    # The enforced gate always fuzzes at full depth; interactive runs default
+    # to the fast hypothesis profile (see scripts/tests/helpers.py).
+    env.setdefault("LL_FUZZ", "full")
     if src_dir:
         # Prepend the worktree's source dir to PYTHONPATH so branch-only modules
         # resolve here, not via the editable-install .pth pointing at the main

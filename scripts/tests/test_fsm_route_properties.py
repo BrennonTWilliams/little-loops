@@ -11,6 +11,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from little_loops.fsm.route_table import RouteTableParser, RouteTableRenderer
+from tests.helpers import fuzz_max_examples
 
 # Safe identifiers: start with a letter, contain only lowercase alphanumeric and hyphens/underscores.
 # Excluding pipe characters avoids breaking the markdown table delimiters.
@@ -42,7 +43,7 @@ class TestRouteTableRoundTrip:
     @pytest.mark.slow
     @given(matrix=route_matrix())
     @settings(
-        max_examples=100,
+        max_examples=fuzz_max_examples(100),
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )
