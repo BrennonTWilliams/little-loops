@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -254,6 +255,61 @@ class TestCallMcpToolSuccess:
             envelope, code = call_mcp_tool("my-server", "tool", {}, cwd=tmp_path)
         assert code == 1
         assert envelope["isError"] is True
+
+
+class TestCallMcpToolFinallyReap:
+    """Tests for the finally block's kill/reap path when terminate() doesn't work."""
+
+    def test_wait_called_after_kill_process_group_on_terminate_timeout(
+        self, tmp_path: Path
+    ) -> None:
+        """When proc.wait() after terminate() times out, _kill_process_group fires
+        and is followed by a bounded wait() to reap the child (no zombie left)."""
+        _make_mcp_json(tmp_path)
+        init_resp = {"jsonrpc": "2.0", "id": 1, "result": {}}
+        call_resp = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"isError": False, "content": [{"type": "text", "text": "ok"}]},
+        }
+        proc = _make_proc_mock(init_resp, call_resp)
+        proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="x", timeout=5), 0]
+
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            patch("little_loops.mcp_call._kill_process_group") as mock_kill,
+            _patch_selector(),
+        ):
+            call_mcp_tool("my-server", "my-tool", {}, cwd=tmp_path)
+
+        mock_kill.assert_called_once_with(proc)
+        assert proc.wait.call_count == 2
+
+    def test_logs_warning_when_reap_wait_times_out(self, tmp_path: Path) -> None:
+        """If the follow-up wait() after _kill_process_group also times out,
+        a warning is logged instead of raising."""
+        _make_mcp_json(tmp_path)
+        init_resp = {"jsonrpc": "2.0", "id": 1, "result": {}}
+        call_resp = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"isError": False, "content": [{"type": "text", "text": "ok"}]},
+        }
+        proc = _make_proc_mock(init_resp, call_resp)
+        proc.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="x", timeout=5),
+            subprocess.TimeoutExpired(cmd="x", timeout=10),
+        ]
+
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            patch("little_loops.mcp_call._kill_process_group"),
+            patch("little_loops.mcp_call.logger") as mock_logger,
+            _patch_selector(),
+        ):
+            call_mcp_tool("my-server", "my-tool", {}, cwd=tmp_path)
+
+        mock_logger.warning.assert_called_once()
 
 
 class TestCallMcpToolTimeout:

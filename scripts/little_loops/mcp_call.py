@@ -18,6 +18,7 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import logging
 import selectors
 import subprocess
 import sys
@@ -30,6 +31,8 @@ from little_loops.subprocess_utils import _kill_process_group
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 _DEFAULT_TIMEOUT = 30  # seconds
+
+logger = logging.getLogger(__name__)
 
 
 def _load_mcp_config(cwd: Path) -> dict[str, Any]:
@@ -325,6 +328,13 @@ def call_mcp_tool(
             proc.wait(timeout=5)
         except Exception:
             _kill_process_group(proc)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process %s did not terminate within 10s after kill",
+                    proc.pid,
+                )
         stderr_thread.join(timeout=5)
 
 
