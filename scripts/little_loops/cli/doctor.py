@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import json
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+import yaml
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.logger import Logger
@@ -133,6 +138,298 @@ def _print_issues_section(issues_cfg: object) -> None:
     print(f"  {_STATUS_SYMBOLS['full']}  auto_commit_prefix: {auto_commit_prefix}")
 
 
+def _entry_points_data() -> list[dict[str, str]]:
+    """One row per ``[project.scripts]`` entry point: name, status, note.
+
+    Distinguishes "module not found" from "function renamed/removed" so a
+    stale ``pyproject.toml`` entry produces an actionable note.
+    """
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as f:
+            data = tomllib.load(f)
+        scripts: dict[str, str] = data.get("project", {}).get("scripts", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+
+    rows: list[dict[str, str]] = []
+    for name, target in sorted(scripts.items()):
+        module_path, _, func_name = target.partition(":")
+        try:
+            module = importlib.import_module(module_path)
+        except ModuleNotFoundError as exc:
+            rows.append({"name": name, "status": "unsupported", "note": f"module not found: {exc}"})
+            continue
+        if not hasattr(module, func_name):
+            rows.append(
+                {
+                    "name": name,
+                    "status": "unsupported",
+                    "note": f"{module_path}.{func_name} not found (function renamed/removed)",
+                }
+            )
+            continue
+        rows.append({"name": name, "status": "full", "note": ""})
+    return rows
+
+
+def _print_entry_points_section() -> None:
+    """Print the Entry Points section."""
+    rows = _entry_points_data()
+    print()
+    print("Entry Points")
+    print("─" * 40)
+    if not rows:
+        print("  (none found)")
+        return
+    for row in rows:
+        symbol = _STATUS_SYMBOLS.get(row["status"], "?")
+        note = f"  {row['note']}" if row["note"] else ""
+        print(f"  {symbol}  {row['name']}{note}")
+
+
+@register_check
+def _entry_points_check() -> list[CheckResult]:
+    """Registered check: each broken entry point is an error-severity result."""
+    return [
+        CheckResult(
+            name=f"entry_point:{row['name']}",
+            status="full" if row["status"] == "full" else "unsupported",
+            note=row["note"],
+        )
+        for row in _entry_points_data()
+    ]
+
+
+def _skills_commands_data() -> dict:
+    """Discoverability count via `assemble_tool_catalog()` (skills/commands/agents)."""
+    from little_loops.tool_catalog import assemble_tool_catalog
+
+    try:
+        entries = assemble_tool_catalog(Path.cwd())
+    except OSError as exc:
+        return {"status": "unsupported", "note": f"catalog load failed: {exc}", "total": 0}
+    return {"status": "full", "note": f"{len(entries)} tool(s) discovered", "total": len(entries)}
+
+
+def _print_skills_commands_section() -> None:
+    """Print the Skills & Commands section."""
+    data = _skills_commands_data()
+    print()
+    print("Skills & Commands")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _skills_commands_check() -> list[CheckResult]:
+    """Registered check for the skills/commands catalog."""
+    data = _skills_commands_data()
+    return [CheckResult(name="skills_commands", status=data["status"], note=data["note"])]
+
+
+def _decisions_store_data() -> dict:
+    """Two-pass health probe mirroring ``verify_decisions.py:_run()``.
+
+    Absent (fresh install, no `.ll/decisions.yaml` or `.ll/decisions.d/`) is
+    informational, not a failure — the decisions store is opt-in.
+    """
+    from little_loops.decisions import _entry_from_dict, _fragments_dir, load_decisions
+
+    log_path = Path.cwd() / ".ll" / "decisions.yaml"
+    frag_dir = _fragments_dir(log_path)
+
+    if not log_path.exists() and not frag_dir.exists():
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "not configured (optional)",
+        }
+
+    if log_path.exists():
+        try:
+            load_decisions(log_path)
+        except (yaml.YAMLError, KeyError, ValueError) as exc:
+            return {
+                "status": "unsupported",
+                "severity": "error",
+                "note": f"{log_path.name}: {type(exc).__name__}: {exc}",
+            }
+
+    if frag_dir.exists():
+        for frag in sorted(frag_dir.glob("*.json")):
+            try:
+                frag_data = json.loads(frag.read_text(encoding="utf-8"))
+                _entry_from_dict(frag_data)
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                ValueError,
+                TypeError,
+                AttributeError,
+            ) as exc:
+                return {
+                    "status": "unsupported",
+                    "severity": "error",
+                    "note": f"{frag.name}: {type(exc).__name__}: {exc}",
+                }
+
+    return {"status": "full", "severity": "error", "note": "healthy"}
+
+
+def _print_decisions_store_section() -> None:
+    """Print the Decisions Store section."""
+    data = _decisions_store_data()
+    print()
+    print("Decisions Store")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _decisions_store_check() -> list[CheckResult]:
+    """Registered check for the decisions store."""
+    data = _decisions_store_data()
+    return [
+        CheckResult(
+            name="decisions_store",
+            status=data["status"],
+            note=data["note"],
+            severity=data["severity"],
+        )
+    ]
+
+
+def _history_db_data() -> dict:
+    """Presence/readability probe for `.ll/history.db`.
+
+    Must not create the DB: `session_store.connect()`/`ensure_db()` both
+    create-on-demand, so a genuinely absent DB is probed via `Path.exists()`
+    first and never passed through either function.
+    """
+    db_path = Path.cwd() / DEFAULT_DB_PATH
+    if not db_path.exists():
+        return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
+
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        return {"status": "unsupported", "severity": "error", "note": f"unreadable: {exc}"}
+    return {"status": "full", "severity": "error", "note": str(db_path)}
+
+
+def _print_history_db_section() -> None:
+    """Print the History DB section."""
+    data = _history_db_data()
+    print()
+    print("History DB")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _history_db_check() -> list[CheckResult]:
+    """Registered check for `.ll/history.db` presence/readability."""
+    data = _history_db_data()
+    return [
+        CheckResult(
+            name="history_db", status=data["status"], note=data["note"], severity=data["severity"]
+        )
+    ]
+
+
+def _loop_validity_data() -> dict:
+    """Aggregate `load_and_validate()` across every runnable loop YAML.
+
+    Never executes a loop — purely a static-validation aggregation over the
+    built-in loops directory plus a project-local `loops/` dir if present.
+    """
+    from little_loops.cli.loop._helpers import get_builtin_loops_dir
+    from little_loops.fsm.validation import (
+        ValidationSeverity,
+        is_runnable_loop,
+        load_and_validate,
+    )
+
+    loop_dirs = {get_builtin_loops_dir()}
+    cwd_loops = Path.cwd() / "loops"
+    if cwd_loops.exists():
+        loop_dirs.add(cwd_loops)
+
+    paths: list[Path] = []
+    for loop_dir in loop_dirs:
+        if loop_dir.exists():
+            paths.extend(sorted(p for p in loop_dir.rglob("*.yaml") if is_runnable_loop(p)))
+
+    if not paths:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "no loops found",
+            "total": 0,
+            "invalid": [],
+        }
+
+    invalid: list[str] = []
+    for path in paths:
+        try:
+            _, violations = load_and_validate(path, raise_on_error=False)
+        except (FileNotFoundError, ValueError) as exc:
+            invalid.append(f"{path.name}: {exc}")
+            continue
+        if any(v.severity == ValidationSeverity.ERROR for v in violations):
+            invalid.append(path.name)
+
+    if invalid:
+        return {
+            "status": "unsupported",
+            "severity": "error",
+            "note": f"{len(invalid)}/{len(paths)} invalid: {', '.join(invalid)}",
+            "total": len(paths),
+            "invalid": invalid,
+        }
+    return {
+        "status": "full",
+        "severity": "error",
+        "note": f"{len(paths)} loop(s) valid",
+        "total": len(paths),
+        "invalid": [],
+    }
+
+
+def _print_loop_validity_section() -> None:
+    """Print the FSM Loop Validity section."""
+    data = _loop_validity_data()
+    print()
+    print("FSM Loop Validity")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+
+
+@register_check
+def _loop_validity_check() -> list[CheckResult]:
+    """Registered check for FSM loop validity."""
+    data = _loop_validity_data()
+    return [
+        CheckResult(
+            name="loop_validity",
+            status=data["status"],
+            note=data["note"],
+            severity=data["severity"],
+        )
+    ]
+
+
 def _probe_version(runner: HostRunner) -> str:
     """Probe the host binary's version, swallowing all failures to "".
 
@@ -179,6 +476,11 @@ def _print_report(
             ],
             "analytics_capture": _capture_section_data(capture),
             "issues": _issues_section_data(issues_cfg),
+            "entry_points": _entry_points_data(),
+            "skills_commands": _skills_commands_data(),
+            "decisions_store": _decisions_store_data(),
+            "history_db": _history_db_data(),
+            "loop_validity": _loop_validity_data(),
         }
         print_json(data)
         return
@@ -252,6 +554,11 @@ Exit codes:
         if not args.json:
             _print_capture_section(cfg.analytics_capture)
             _print_issues_section(cfg.issues)
+            _print_entry_points_section()
+            _print_skills_commands_section()
+            _print_decisions_store_section()
+            _print_history_db_section()
+            _print_loop_validity_section()
 
         results = _capability_check_results(report) + _run_registered_checks()
         return _exit_code_for(results)
