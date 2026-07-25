@@ -1,0 +1,14 @@
+{
+  "id": "10f906dd-3b4d-4852-ac9f-6268e98df244",
+  "type": "rule",
+  "timestamp": "2026-07-24T23:14:38Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "BUG-2788: two autouse conftest fixtures forced a fresh tmp_path per test (~13.7k roots/run), driving macOS launchservicesd/fseventsd to ~220% CPU and causing full-suite beachballs. Session-scoped shared paths with per-request reuse fixed it.",
+  "rule": "Avoid autouse pytest fixtures that unconditionally request tmp_path or perform filesystem writes (mkdir, file creation) ",
+  "enforcement": "advisory",
+  "issue": "BUG-2788"
+}
