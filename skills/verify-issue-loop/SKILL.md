@@ -120,6 +120,7 @@ For each state at position `i` (1-indexed):
 - `on_yes: verify-criterion-<i+1>` for `i < N`
 - `on_yes: done` for `i == N`
 - `on_no: failed` for every state
+- `on_partial: failed` for every state (an ambiguous/partial verdict is treated as a failed criterion, not a dead end)
 
 `done` and `failed` are both `terminal: true`.
 
@@ -175,6 +176,7 @@ states:
         Provide a one-sentence reason citing the observed evidence.
     on_yes: verify-criterion-2
     on_no: failed
+    on_partial: failed
 
   verify-criterion-2:
     action: >
@@ -195,6 +197,7 @@ states:
         Provide a one-sentence reason citing the observed evidence.
     on_yes: done   # or verify-criterion-3 if more criteria remain
     on_no: failed
+    on_partial: failed
 
   # ... repeat verify-criterion-N for each remaining criterion ...
 
@@ -210,6 +213,7 @@ states:
 - Exactly N `verify-criterion-N` states for N criteria.
 - The final verify state's `on_yes` is `done` (not `verify-criterion-<N+1>`).
 - Every verify state's `on_no` is `failed`.
+- Every verify state's `on_partial` is `failed`.
 - Both `done` and `failed` have `terminal: true`.
 - No `discover` or `advance` states — this is single-issue scope.
 - No `check_invariants`, `check_stall`, or `check_concrete` — those belong in code-quality loops, not verification loops.

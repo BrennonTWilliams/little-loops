@@ -237,6 +237,8 @@ Example pattern:
 
 Include both a success signal (what YES looks like) and a failure signal (what NO looks like, drawn from any "should not" or negative conditions in the issue).
 
+End the evaluation criteria prompt with an evidence-contract clause requiring a verbatim quote, e.g.: "Provide a VERBATIM quote from the observed output that supports your verdict. Do not assert a verdict without evidence." (matches `scripts/little_loops/fsm/evaluators.py`'s `CHECK_SEMANTIC_EVIDENCE_CONTRACT`; satisfies MR-8's `VERBATIM`/`quote`/`evidence` keyword check).
+
 ## Step 4: Select Harness Variant
 
 - **1 issue → Variant A**: single-shot harness, `initial: execute`
@@ -288,6 +290,7 @@ states:
         <synthesized evaluation criteria from Step 3>
     on_yes: done
     on_no: execute
+    on_partial: execute  # ambiguous → retry
 
   done:
     terminal: true
@@ -379,6 +382,7 @@ states:
         <Per-issue criteria: for each issue ID, list its numbered conditions. Apply only the conditions for the current issue.>
     on_yes: advance
     on_no: execute
+    on_partial: execute  # ambiguous → retry
 
   advance:
     action: |

@@ -57,6 +57,7 @@ states:
         Provide a one-sentence reason citing the observed evidence.
     on_yes: verify-criterion-2
     on_no: failed
+    on_partial: failed
 
   verify-criterion-2:
     action: >
@@ -78,6 +79,7 @@ states:
         Provide a one-sentence reason citing the observed evidence.
     on_yes: verify-criterion-3
     on_no: failed
+    on_partial: failed
 
   verify-criterion-3:
     action: >
@@ -99,6 +101,7 @@ states:
         Provide a one-sentence reason citing the observed evidence.
     on_yes: done
     on_no: failed
+    on_partial: failed
 
   done:
     terminal: true
@@ -230,3 +233,21 @@ class TestVerifyLoopValidation:
             result = main_loop()
 
         assert result == 0
+
+    def test_no_mr4_partial_route_warnings(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Generated verify states route on_partial, so MR-4 (ENH-1917) never fires."""
+        path = loops_dir / "verify-feat-919-add-json-schema-generation.yaml"
+        path.write_text(VERIFY_YAML_3_CRITERIA)
+        monkeypatch.chdir(loops_dir.parent)
+
+        fsm, _ = load_and_validate(path)
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        partial_route_warnings = [
+            e for e in warnings if "ENH-1917" in str(e) and "partial" in str(e)
+        ]
+        assert not partial_route_warnings, (
+            f"unexpected MR-4 partial-route warnings: {[str(e) for e in partial_route_warnings]}"
+        )

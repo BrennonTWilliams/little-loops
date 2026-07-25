@@ -57,8 +57,10 @@ states:
         (3) The interaction felt smooth — no confusing errors, no unexpected delays
         Answer YES only if all three conditions were clearly met.
         Answer NO and specify which condition(s) failed and what was observed.
+        Provide a VERBATIM quote from the observed output that supports your verdict.
     on_yes: done
     on_no: execute
+    on_partial: execute
 
   done:
     terminal: true
@@ -120,8 +122,10 @@ states:
         For ENH-950: (1) export completed without errors, (2) output was correctly formatted.
         Answer YES only if all conditions for the current issue were clearly met.
         Answer NO and specify which condition(s) failed.
+        Provide a VERBATIM quote from the observed output that supports your verdict.
     on_yes: advance
     on_no: execute
+    on_partial: execute
 
   advance:
     action: |
@@ -378,6 +382,32 @@ class TestEvalHarnessValidation:
             result = main_loop()
 
         assert result == 0
+
+    def test_variant_a_no_mr4_mr8_warnings(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Variant A's check_skill routes on_partial and its prompt has an evidence contract."""
+        (loops_dir / "eval-harness-feat-919.yaml").write_text(VARIANT_A_YAML)
+        monkeypatch.chdir(loops_dir.parent)
+
+        fsm, _ = load_and_validate(loops_dir / "eval-harness-feat-919.yaml")
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        mr4_or_mr8 = [e for e in warnings if "ENH-1917" in str(e) or "MR-8" in str(e)]
+        assert not mr4_or_mr8, f"unexpected MR-4/MR-8 warnings: {[str(e) for e in mr4_or_mr8]}"
+
+    def test_variant_b_no_mr4_mr8_warnings(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Variant B's check_skill routes on_partial and its prompt has an evidence contract."""
+        (loops_dir / "eval-harness-feat-919-enh-950.yaml").write_text(VARIANT_B_YAML)
+        monkeypatch.chdir(loops_dir.parent)
+
+        fsm, _ = load_and_validate(loops_dir / "eval-harness-feat-919-enh-950.yaml")
+        errors = validate_fsm(fsm)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        mr4_or_mr8 = [e for e in warnings if "ENH-1917" in str(e) or "MR-8" in str(e)]
+        assert not mr4_or_mr8, f"unexpected MR-4/MR-8 warnings: {[str(e) for e in mr4_or_mr8]}"
 
 
 # ---------------------------------------------------------------------------
