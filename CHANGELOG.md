@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.151.1] - 2026-07-25
+
+### Fixed
+
+- `ll-doctor` and `ll-verify-cli-allowlist` resolved `pyproject.toml` (and
+  `skills/configure/areas.md`) through `__file__` traversals that escape the
+  installed package, so both were broken for non-editable installs: the
+  `ll-doctor` Entry Points section silently reported zero rows, and
+  `ll-verify-cli-allowlist` raised `FileNotFoundError`. Entry points now come
+  from installed distribution metadata (`importlib.metadata`), and `areas.md`
+  resolves via the shared `_find_plugin_root()` helper, skipping cleanly when
+  the plugin repo is absent. Restores `ll-verify-package-data` to exit 0.
+
 ## [1.151.0] - 2026-07-25
 
 ### Added
@@ -237,6 +250,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.151.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.0...v1.151.1
 [1.151.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.150.0...v1.151.0
 [1.150.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.149.0...v1.150.0
 [1.149.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.148.0...v1.149.0
