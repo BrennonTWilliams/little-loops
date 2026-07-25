@@ -1501,6 +1501,8 @@ def record_issue_snapshot(
     """
     from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 
+    issue_id = canonicalize_issue_id(issue_id, file_path) or issue_id
+
     try:
         content = Path(file_path).read_text(encoding="utf-8")
     except OSError:
@@ -3138,7 +3140,10 @@ class SQLiteTransport:
                         ts=ts,
                     )
                 elif event_type.startswith("issue."):
-                    issue_id = event.get("issue_id")
+                    _id_source_path = event.get("file_path") or event.get("issue_file")
+                    issue_id = canonicalize_issue_id(
+                        event.get("issue_id"), _id_source_path
+                    ) or event.get("issue_id")
                     transition = _derive_transition(event_type)
                     # Authoritative session linkage (ENH-2462): producers put the
                     # emitting session's ID in the payload; both snake_case and
@@ -3236,6 +3241,59 @@ def _parse_mcp_tool_name(tool_name: str) -> tuple[str | None, str | None]:
 
 _FILENAME_TYPE_RE = re.compile(r"(BUG|ENH|FEAT|EPIC)-(\d+)")
 _FILENAME_PRIORITY_RE = re.compile(r"^(P\d)")
+_CANONICAL_ISSUE_ID_RE = re.compile(r"^(?:BUG|ENH|FEAT|EPIC)-\d+$", re.IGNORECASE)
+
+
+def canonicalize_issue_id(raw: object, file_path: str | Path | None) -> str | None:
+    """Canonicalize a frontmatter/caller-supplied issue id to ``TYPE-NNN``.
+
+    BUG-2769: every history-db ingest path previously trusted a truthy
+    frontmatter ``id`` verbatim, falling back to the filename-derived
+    ``TYPE-NNN`` only when ``id`` was entirely absent. A present-but-malformed
+    id (bare ``2756``, quoted ``"1294"``) sailed through and mis-keyed the
+    row. This helper is the single normalization point for all four ingest
+    sites:
+
+    - if *raw* already has the canonical ``TYPE-NNN`` shape (case-insensitive),
+      it is returned uppercased as-is;
+    - else, if *file_path*'s filename yields a ``TYPE`` via
+      ``_FILENAME_TYPE_RE`` and *raw* is a bare integer/numeric string, the two
+      are spliced into ``TYPE-<raw>``;
+    - else, falls back to the filename's own ``TYPE-NNN`` match entirely (this
+      also covers the "id absent" case);
+    - else ``None`` when nothing usable can be derived.
+
+    Distinct from :func:`normalize_issue_id` (line ~1189), which is a
+    deliberately permissive numeric (``int | None``) extractor already used
+    for DB key columns — this helper instead validates/repairs the *display*
+    ``TYPE-NNN`` string written to ``issue_id``/``ref`` columns.
+    """
+    raw_str = str(raw).strip() if raw is not None else ""
+    if _CANONICAL_ISSUE_ID_RE.match(raw_str):
+        canonical = raw_str.upper()
+        if canonical != raw_str:
+            logger.warning("canonicalize_issue_id: normalized id casing %r -> %r", raw, canonical)
+        return canonical
+
+    filename = Path(file_path).name if file_path else ""
+    m = _FILENAME_TYPE_RE.search(filename) if filename else None
+    filename_type = m.group(1) if m else None
+    filename_num = m.group(2) if m else None
+
+    result: str | None = None
+    if filename_type and raw_str.isdigit():
+        result = f"{filename_type}-{raw_str}"
+    elif filename_type and filename_num:
+        result = f"{filename_type}-{filename_num}"
+
+    if result:
+        logger.warning(
+            "canonicalize_issue_id: normalized malformed id %r -> %r (file=%s)",
+            raw,
+            result,
+            filename or file_path,
+        )
+    return result
 
 
 def _derive_type_priority(filename: str, fm: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -3279,11 +3337,7 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
             fm = parse_frontmatter(issue_file.read_text(encoding="utf-8"))
         except OSError:
             continue
-        issue_id = fm.get("id")
-        if not issue_id:
-            m = _FILENAME_TYPE_RE.search(issue_file.name)
-            if m:
-                issue_id = f"{m.group(1)}-{m.group(2)}"
+        issue_id = canonicalize_issue_id(fm.get("id"), issue_file)
         if not issue_id:
             continue
         status = str(fm.get("status", "open"))
@@ -3343,11 +3397,7 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
         except OSError:
             continue
         fm = parse_frontmatter(content)
-        issue_id = fm.get("id")
-        if not issue_id:
-            m = _FILENAME_TYPE_RE.search(issue_file.name)
-            if m:
-                issue_id = f"{m.group(1)}-{m.group(2)}"
+        issue_id = canonicalize_issue_id(fm.get("id"), issue_file)
         if not issue_id:
             continue
         transition = str(fm.get("status", "open"))

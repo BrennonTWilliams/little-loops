@@ -1122,3 +1122,47 @@ class TestSetStatusRecordsIssueEvent:
         assert event_row["transition"] == "done"
         assert event_row["issue_type"] == "BUG"
         assert event_row["priority"] == "P0"
+
+    def test_set_status_canonicalizes_malformed_frontmatter_id(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """BUG-2769: a malformed frontmatter id (bare int) lands under the
+        canonical TYPE-NNN key in history.db, not the raw bare-numeric value."""
+        from little_loops.session_store import connect
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P2-BUG-2756-malformed-id.md"
+        issue_file.write_text(
+            "---\nid: 2756\ntype: BUG\npriority: P2\nstatus: open\n---\n"
+            "# BUG-2756: Malformed frontmatter id\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "set-status", "BUG-2756", "done", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = connect(db_path)
+        try:
+            snapshot_row = conn.execute(
+                "SELECT * FROM issue_snapshots WHERE issue_id='BUG-2756'"
+            ).fetchone()
+            bare_snapshot_row = conn.execute(
+                "SELECT * FROM issue_snapshots WHERE issue_id='2756'"
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert snapshot_row is not None
+        assert bare_snapshot_row is None

@@ -210,6 +210,32 @@ class TestFormatCheckBoilerplate:
 
 
 # ---------------------------------------------------------------------------
+# TestFormatCheckMalformedId
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckMalformedId:
+    """A frontmatter id disagreeing with the filename's TYPE-NNN exits 1 (BUG-2769)."""
+
+    def test_malformed_id_section_exits_one(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: 9108")
+        _write_issue(format_check_dir, "P3-BUG-9108-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9108", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "malformed_id: id: 9108 (expected BUG-9108)" in out
+
+
+# ---------------------------------------------------------------------------
 # TestFormatCheckJsonOutput
 # ---------------------------------------------------------------------------
 
@@ -223,7 +249,8 @@ class TestFormatCheckJsonOutput:
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        _write_issue(format_check_dir, "P3-BUG-9106-test-bug.md", _CLEAN_BUG_BODY)
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9106")
+        _write_issue(format_check_dir, "P3-BUG-9106-test-bug.md", body)
 
         result = _invoke(
             [
@@ -240,7 +267,13 @@ class TestFormatCheckJsonOutput:
 
         assert result == 0
         data = json.loads(out)
-        assert data == {"missing": [], "renamed": [], "empty": [], "boilerplate": []}
+        assert data == {
+            "missing": [],
+            "renamed": [],
+            "empty": [],
+            "boilerplate": [],
+            "malformed_id": [],
+        }
 
     def test_gapped_issue_json_output(
         self,

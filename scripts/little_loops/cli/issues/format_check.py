@@ -17,7 +17,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     p = subs.add_parser(
         "format-check",
         help="Deterministic structural linter for issue formatting "
-        "(missing/renamed/empty/boilerplate)",
+        "(missing/renamed/empty/boilerplate/malformed_id)",
     )
     p.set_defaults(command="format-check")
     p.add_argument("issue_id", help="Issue ID (e.g., 2426, ENH-2426, P3-ENH-2426)")
@@ -33,7 +33,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
-    """Report structural format gaps (missing/renamed/empty/boilerplate) for an issue.
+    """Report structural format gaps (missing/renamed/empty/boilerplate/malformed_id) for an issue.
 
     Returns:
         0 when structurally compliant, 1 when gaps were found or the issue is not found.
@@ -68,4 +68,6 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"  empty: {name}")
     for name in gaps.boilerplate:
         print(f"  boilerplate: {name}")
+    for entry in gaps.malformed_id:
+        print(f"  malformed_id: {entry}")
     return 1

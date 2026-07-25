@@ -28,6 +28,7 @@ ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
 _NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$")
 _ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
+_FILENAME_ID_RE = re.compile(r"(BUG|FEAT|ENH|EPIC)-(\d+)")
 
 
 def is_normalized(filename: str) -> bool:
@@ -143,11 +144,14 @@ class FormatGaps:
     renamed: list[str] = field(default_factory=list)
     empty: list[str] = field(default_factory=list)
     boilerplate: list[str] = field(default_factory=list)
+    malformed_id: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
         """True when any gap category is non-empty."""
-        return bool(self.missing or self.renamed or self.empty or self.boilerplate)
+        return bool(
+            self.missing or self.renamed or self.empty or self.boilerplate or self.malformed_id
+        )
 
     def to_dict(self) -> dict[str, list[str]]:
         """Serialize to a JSON-serializable dict for --format json output."""
@@ -156,6 +160,7 @@ class FormatGaps:
             "renamed": self.renamed,
             "empty": self.empty,
             "boilerplate": self.boilerplate,
+            "malformed_id": self.malformed_id,
         }
 
 
@@ -197,6 +202,10 @@ def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> Fo
             canonical replacement (e.g. "Proposed Fix" -> "Proposed Solution").
         empty: a required section header is present but its body is whitespace-only.
         boilerplate: a required section's body still equals its creation_template.
+        malformed_id: frontmatter ``id`` is present but does not match the
+            filename-derived ``TYPE-NNN`` (BUG-2769) — e.g. a bare int
+            (``id: 2756``) or quoted numeric (``id: "1294"``) instead of
+            ``id: BUG-2756``.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -260,6 +269,15 @@ def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> Fo
         template = section_defs.get(name, {}).get("creation_template", "")
         if template and _normalize_whitespace(stripped) == _normalize_whitespace(template):
             gaps.boilerplate.append(name)
+
+    fm = parse_frontmatter(content)
+    raw_id = fm.get("id")
+    filename_id_match = _FILENAME_ID_RE.search(issue_path.name)
+    if raw_id and filename_id_match:
+        raw_str = str(raw_id).strip()
+        canonical = f"{filename_id_match.group(1)}-{filename_id_match.group(2)}"
+        if raw_str.upper() != canonical:
+            gaps.malformed_id.append(f"id: {raw_str} (expected {canonical})")
 
     return gaps
 

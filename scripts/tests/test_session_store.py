@@ -910,6 +910,54 @@ class TestBackfillIssuesV2Columns:
         assert rows[0]["issue_type"] == "BUG"
         assert rows[0]["priority"] == "P3"
 
+    def test_bare_int_id_canonicalized_to_type_nnn(self, tmp_path: Path) -> None:
+        """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 from the filename."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-2756-bare-int-id.md").write_text(
+            "---\nid: 2756\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-2756"
+
+    def test_quoted_numeric_id_canonicalized_to_type_nnn(self, tmp_path: Path) -> None:
+        """BUG-2769: id: "1294" (quoted numeric) is canonicalized to BUG-1294."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1294-quoted-numeric-id.md").write_text(
+            '---\nid: "1294"\nstatus: done\ntype: BUG\n---\n# x\n', encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-1294"
+
+    def test_absent_id_derived_from_filename(self, tmp_path: Path) -> None:
+        """BUG-2769: absent id falls back to the filename-derived TYPE-NNN."""
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-1548-no-id.md").write_text(
+            "---\nstatus: done\ntype: ENH\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "ENH-1548"
+
+    def test_correct_id_passes_through_unchanged(self, tmp_path: Path) -> None:
+        """BUG-2769: a correct id: TYPE-NNN is left untouched."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1182-correct-id.md").write_text(
+            "---\nid: BUG-1182\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-1182"
+
 
 class TestDeriveTransition:
     """_derive_transition() maps issue event types to canonical status strings."""
@@ -1022,6 +1070,30 @@ class TestSQLiteTransportIssueEvents:
             conn.close()
         assert len(rows) == 1
         assert rows[0]["captured_at"] == "2026-05-20T10:00:00Z"
+
+    def test_bare_numeric_issue_id_canonicalized_via_file_path(self, tmp_path: Path) -> None:
+        """BUG-2769: a bare-numeric issue_id is canonicalized using the event's file_path."""
+        issue_file = tmp_path / "P2-BUG-2756-bare-int-id.md"
+        issue_file.write_text("---\nid: 2756\nstatus: done\n---\n# x\n", encoding="utf-8")
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send(
+            {
+                "event": "issue.completed",
+                "ts": "2026-05-24T12:00:00Z",
+                "issue_id": "2756",
+                "file_path": str(issue_file),
+            }
+        )
+        transport.close()
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT issue_id FROM issue_events WHERE issue_id = 'BUG-2756'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
 
 
 class TestSchemaV3:
@@ -4153,6 +4225,78 @@ class TestBackfillSnapshots:
             conn.close()
         assert row is not None
         assert "Body content here" in (row[0] or "")
+
+    def test_bare_int_id_canonicalized_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-2756-bare-int-id.md").write_text(
+            "---\nid: 2756\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-2756'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_quoted_numeric_id_canonicalized_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: id: "1294" (quoted numeric) is canonicalized to BUG-1294 in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1294-quoted-numeric-id.md").write_text(
+            '---\nid: "1294"\nstatus: done\ntype: BUG\n---\n# x\n', encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-1294'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_absent_id_derived_from_filename_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: absent id falls back to the filename-derived TYPE-NNN in issue_snapshots."""
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-1548-no-id.md").write_text(
+            "---\nstatus: done\ntype: ENH\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='ENH-1548'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_correct_id_passes_through_unchanged_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: a correct id: TYPE-NNN is left untouched in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1182-correct-id.md").write_text(
+            "---\nid: BUG-1182\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-1182'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
 
 
 def _bootstrap_schema_at(db: Path, version: int) -> None:
