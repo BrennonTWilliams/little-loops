@@ -135,16 +135,79 @@ class TestCallMcpToolConfigErrors:
 # ---------------------------------------------------------------------------
 
 
+class _MockFileObj:
+    """File-like object supporting fileno() and readline() for selector tests.
+
+    Mirrors test_fsm_runners.py's _MockFileObj — _send_jsonrpc() now reads
+    proc.stdout through a real selectors.DefaultSelector() call, which needs
+    a valid fileno() to register(); a bare MagicMock() has none and the
+    selector-bound read loop hangs (BUG-2778).
+    """
+
+    def __init__(self, lines: list[str] | None = None):
+        self._lines = list(lines) if lines else []
+        self._pos = 0
+
+    def fileno(self) -> int:
+        return id(self) % 65536
+
+    def readline(self) -> str:
+        if self._pos < len(self._lines):
+            line = self._lines[self._pos]
+            self._pos += 1
+            return line
+        return ""  # EOF
+
+
+def _make_ready_selector() -> MagicMock:
+    """Create a mock DefaultSelector that always reports registered fds ready.
+
+    Mirrors test_fsm_runners.py's _make_ready_selector — every select() call
+    returns all currently-registered keys, so the caller's readline() drives
+    progress/EOF instead of the selector itself.
+    """
+    sel = MagicMock()
+    _registered: dict = {}
+
+    def _register(fobj, events, data=None):
+        _registered[fobj] = (events, data)
+
+    def _unregister(fobj):
+        _registered.pop(fobj, None)
+
+    def _select(timeout=None):
+        result = []
+        for fobj, (events, data) in list(_registered.items()):
+            key = MagicMock()
+            key.fileobj = fobj
+            key.data = data
+            key.events = events
+            result.append((key, events))
+        return result
+
+    sel.register.side_effect = _register
+    sel.unregister.side_effect = _unregister
+    sel.select.side_effect = _select
+    sel.close.return_value = None
+    return sel
+
+
+def _patch_selector():
+    """Patch little_loops.mcp_call.selectors.DefaultSelector with a fresh mock per call."""
+    return patch(
+        "little_loops.mcp_call.selectors.DefaultSelector",
+        side_effect=lambda: _make_ready_selector(),
+    )
+
+
 def _make_proc_mock(init_response: dict, call_response: dict) -> MagicMock:
     """Create a mock Popen process that returns two JSON-RPC responses."""
     responses = [json.dumps(init_response) + "\n", json.dumps(call_response) + "\n"]
     proc = MagicMock()
     proc.stdin = MagicMock()
-    proc.stdout = MagicMock()
+    proc.stdout = _MockFileObj(responses)
     proc.stderr = MagicMock()
     proc.stderr.__iter__ = MagicMock(return_value=iter([]))
-    proc.stdout.readline.side_effect = responses
-    proc.stdout.readable.return_value = True
     proc.wait.return_value = 0
     return proc
 
@@ -165,7 +228,10 @@ class TestCallMcpToolSuccess:
             "result": {"isError": False, "content": [{"type": "text", "text": "ok"}]},
         }
         proc = _make_proc_mock(init_resp, call_resp)
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "my-tool", {}, cwd=tmp_path)
         assert code == 0
         assert envelope["isError"] is False
@@ -181,7 +247,10 @@ class TestCallMcpToolSuccess:
             "result": {"isError": True, "content": [{"type": "text", "text": "fail"}]},
         }
         proc = _make_proc_mock(init_resp, call_resp)
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "tool", {}, cwd=tmp_path)
         assert code == 1
         assert envelope["isError"] is True
@@ -195,15 +264,15 @@ class TestCallMcpToolTimeout:
         _make_mcp_json(tmp_path)
         proc = MagicMock()
         proc.stdin = MagicMock()
-        proc.stdout = MagicMock()
+        proc.stdout = _MockFileObj([])
         proc.stderr = MagicMock()
         proc.stderr.__iter__ = MagicMock(return_value=iter([]))
-        proc.stdout.readable.return_value = True
-        # readline returns empty string immediately → EOF / no response
-        proc.stdout.readline.return_value = ""
         proc.wait.return_value = 0
 
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "tool", {}, timeout=0, cwd=tmp_path)
         assert code == 124
         assert "timeout" in envelope["content"][0]["text"].lower()
@@ -214,17 +283,49 @@ class TestCallMcpToolTimeout:
         init_resp = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {}}) + "\n"
         proc = MagicMock()
         proc.stdin = MagicMock()
-        proc.stdout = MagicMock()
+        # First call returns initialize response, subsequent calls return "" (EOF)
+        proc.stdout = _MockFileObj([init_resp])
         proc.stderr = MagicMock()
         proc.stderr.__iter__ = MagicMock(return_value=iter([]))
-        proc.stdout.readable.return_value = True
-        # First call returns initialize response, subsequent calls return ""
-        proc.stdout.readline.side_effect = [init_resp, ""]
         proc.wait.return_value = 0
 
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "tool", {}, timeout=0, cwd=tmp_path)
         assert code == 124
+
+    def test_hang_before_response_times_out(self, tmp_path: Path) -> None:
+        """A live-but-silent server (select() never reports ready) still hits 124.
+
+        Regression test for BUG-2778: readline() itself has no timeout, so the
+        deadline must be enforced by the selector loop, not just between reads.
+        Simulated via a selector whose select() always returns empty ("no data
+        ready") — mirrors test_runner_spec.py::test_cmd_hang_before_stdout_eof_times_out.
+        """
+        _make_mcp_json(tmp_path)
+        proc = MagicMock()
+        proc.stdin = MagicMock()
+        proc.stdout = _MockFileObj([])
+        proc.stderr = MagicMock()
+        proc.stderr.__iter__ = MagicMock(return_value=iter([]))
+        proc.wait.return_value = 0
+
+        hanging_selector = MagicMock()
+        hanging_selector.select.return_value = []
+        hanging_selector.close.return_value = None
+
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            patch(
+                "little_loops.mcp_call.selectors.DefaultSelector",
+                return_value=hanging_selector,
+            ),
+        ):
+            envelope, code = call_mcp_tool("my-server", "tool", {}, timeout=0, cwd=tmp_path)
+        assert code == 124
+        assert "timeout" in envelope["content"][0]["text"].lower()
 
 
 class TestCallMcpToolRpcErrors:
@@ -239,13 +340,14 @@ class TestCallMcpToolRpcErrors:
         init_resp = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32600, "message": "bad"}}
         proc = MagicMock()
         proc.stdin = MagicMock()
-        proc.stdout = MagicMock()
+        proc.stdout = _MockFileObj([json.dumps(init_resp) + "\n"])
         proc.stderr = MagicMock()
         proc.stderr.__iter__ = MagicMock(return_value=iter([]))
-        proc.stdout.readable.return_value = True
-        proc.stdout.readline.return_value = json.dumps(init_resp) + "\n"
         proc.wait.return_value = 0
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "tool", {}, cwd=tmp_path)
         assert code == 1
         assert "Initialize failed" in envelope["content"][0]["text"]
@@ -260,7 +362,10 @@ class TestCallMcpToolRpcErrors:
             "error": {"code": -32601, "message": "Method not found"},
         }
         proc = _make_proc_mock(init_resp, call_resp)
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "my-tool", {}, cwd=tmp_path)
         assert code == 127
         assert "not found" in envelope["content"][0]["text"]
@@ -275,7 +380,10 @@ class TestCallMcpToolRpcErrors:
             "error": {"code": -32000, "message": "server error"},
         }
         proc = _make_proc_mock(init_resp, call_resp)
-        with patch("little_loops.mcp_call.subprocess.Popen", return_value=proc):
+        with (
+            patch("little_loops.mcp_call.subprocess.Popen", return_value=proc),
+            _patch_selector(),
+        ):
             envelope, code = call_mcp_tool("my-server", "tool", {}, cwd=tmp_path)
         assert code == 1
         assert "tools/call error" in envelope["content"][0]["text"]

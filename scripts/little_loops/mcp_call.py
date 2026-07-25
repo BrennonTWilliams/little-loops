@@ -18,12 +18,15 @@ Exit codes:
 from __future__ import annotations
 
 import json
+import selectors
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+from little_loops.subprocess_utils import _kill_process_group
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 _DEFAULT_TIMEOUT = 30  # seconds
@@ -90,26 +93,38 @@ def _send_jsonrpc(
         # Notification — no response expected
         return None
 
-    # Read response lines until we find the matching id or timeout
+    # Read response lines until we find the matching id or timeout. Bound each
+    # read with a selector (mirrors runner_spec.py:_run_cmd(), BUG-2777) so a
+    # live-but-silent server can't block readline() past the deadline.
     assert proc.stdout is not None
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        proc.stdout.readable()
-        try:
-            response_line = proc.stdout.readline()
-        except (OSError, ValueError):
-            break
-        if not response_line:
-            break
-        response_line = response_line.strip()
-        if not response_line:
-            continue
-        try:
-            response: dict[str, Any] = json.loads(response_line)
-            if response.get("id") == request_id:
-                return response
-        except json.JSONDecodeError:
-            continue
+    sel = selectors.DefaultSelector()
+    sel.register(proc.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            ready = sel.select(timeout=min(1.0, remaining))
+            if not ready:
+                continue
+            try:
+                response_line = proc.stdout.readline()
+            except (OSError, ValueError):
+                break
+            if not response_line:
+                break
+            response_line = response_line.strip()
+            if not response_line:
+                continue
+            try:
+                response: dict[str, Any] = json.loads(response_line)
+                if response.get("id") == request_id:
+                    return response
+            except json.JSONDecodeError:
+                continue
+    finally:
+        sel.close()
 
     return None
 
@@ -190,6 +205,7 @@ def call_mcp_tool(
             stderr=subprocess.PIPE,
             text=True,
             env=env,
+            start_new_session=True,
         )
     except FileNotFoundError:
         return {
@@ -226,7 +242,7 @@ def call_mcp_tool(
         )
 
         if init_response is None:
-            proc.kill()
+            _kill_process_group(proc)
             return {
                 "isError": True,
                 "content": [
@@ -235,7 +251,7 @@ def call_mcp_tool(
             }, 124
 
         if "error" in init_response:
-            proc.kill()
+            _kill_process_group(proc)
             return {
                 "isError": True,
                 "content": [
@@ -265,7 +281,7 @@ def call_mcp_tool(
         )
 
         if call_response is None:
-            proc.kill()
+            _kill_process_group(proc)
             return {
                 "isError": True,
                 "content": [
@@ -298,7 +314,7 @@ def call_mcp_tool(
         return result, exit_code
 
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _kill_process_group(proc)
         return {
             "isError": True,
             "content": [{"type": "text", "text": "MCP tool call timed out"}],
@@ -308,7 +324,7 @@ def call_mcp_tool(
             proc.terminate()
             proc.wait(timeout=5)
         except Exception:
-            proc.kill()
+            _kill_process_group(proc)
         stderr_thread.join(timeout=5)
 
 
