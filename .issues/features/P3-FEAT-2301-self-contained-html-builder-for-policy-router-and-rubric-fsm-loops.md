@@ -53,7 +53,7 @@ not what's actually shipped). Status key: ✅ shipped / ❌ missing / ⚠️ par
   onchange, no `<script src>`/CDN refs).
 - ⚠️ Downloaded YAML passes `ll-loop validate` — `serializeLoopYaml` looks
   structurally complete but wasn't executed against a live sample as part of this
-  pass; still needs an actual `ll-loop validate` run to confirm zero errors.
+  pass; closed permanently by the new round-trip pytest gate (see Capability AC 2).
 - ✅ Dimension type restricts operator choices (`opsForType()` maps
   boolean → `==true/==false`, else `GRAMMAR.all_ops`).
 - ✅ Skill dropdown populated from emit-time catalog (`artifact.py` globs
@@ -267,7 +267,12 @@ reading any documentation or hand-editing a `route:` map.
 - [ ] Loads over `file://` with no external dependency; mode switch (Rubric ⇄ Decision
   Table) renders without reload.
 - [ ] Downloaded YAML for either mode passes `ll-loop validate` with zero errors. (Engine:
-  FEAT-2390.)
+  FEAT-2390.) **Automated round-trip gate:** a pytest test (in or alongside
+  `test_policy_builder_node_gate.py`) has node call `serializeLoopYaml` on a sample
+  model for **each mode**, writes the YAML to a temp file, and shells out to
+  `ll-loop validate` asserting exit 0 / zero errors. This turns the never-actually-run
+  ⚠️ from the 2026-07-25 re-baseline into a permanent regression gate (~30 lines);
+  skip gracefully when node is absent, per the existing node-gate pattern.
 - [ ] Decision Table: dimension type (numeric/boolean) restricts the operator choices to
   valid ops only. (Engine grammar: FEAT-2390.)
 - [ ] Skill dropdown for "run a skill" is populated from the emit-time-stamped project
@@ -278,13 +283,41 @@ reading any documentation or hand-editing a `route:` map.
 
 These can and must be checked by machine against the generated page, so they cannot
 silently regress after the one-time walkthrough. Each becomes a `node --test`
-assertion over the emitted HTML/DOM:
+assertion — but note the **no-DOM constraint**: the project bans npm dependencies,
+so there is no jsdom, and Node ≥22 stdlib has no DOM. Assertions therefore come in
+exactly two testable shapes:
+
+1. **Static-markup assertions** — regex/string checks over the emitted HTML text
+   (an element exists, a `<details>` wraps the YAML, no `<input>` inside the
+   fallback footer, denylisted strings absent). Cheap and sufficient for structural
+   claims about the shipped page.
+2. **Pure-model assertions** — runtime behavior (reorder mutates rule order, the
+   "Try it" tester picks the first matching rule, seed/blank transforms the model)
+   is testable **only** if that logic lives in `policy_builder_core.mjs` as pure
+   functions the template merely renders. This is a required architecture
+   constraint of this issue, not a suggestion: extend the core with e.g.
+   `moveRule(model, index, direction)`, `firstMatch(model, sampleValues)`,
+   `seedExample()` / `blankModel()`, and have the node suite exercise them
+   directly. Inline-`innerHTML`-only logic (the current template's shape) is
+   untestable under this constraint and is exactly what let the first build ship
+   unverified.
+
+**Jargon-denylist extraction rule** (so the assertion is well-defined): strip all
+`<script>...</script>` and `<style>...</style>` blocks and HTML comments from the
+emitted page, then assert none of the denylisted tokens appear in what remains
+(visible markup: element text content, labels, attributes like `placeholder`/
+`title`/`aria-label`). The serializer legitimately emits `policy_rules` /
+`context.subject` inside the script block; a naive whole-file grep would
+false-positive on them.
+
+The assertions:
 
 - [ ] **No internal jargon in the UI:** denylist assertion — no `Axis A`, `Axis B`,
   `context.subject`, `policy_rules`, `predicate`, or raw normalized identifiers appear
-  in visible markup (element text content / labels; code comments exempt). *(Still
-  present verbatim in the shipped template as on-screen labels — "Subject
-  (context.subject)", "Action (Axis A)", "Then (Axis B)" — confirmed 2026-07-25.)*
+  in visible markup, per the extraction rule above (script/style/comments stripped
+  first). *(Still present verbatim in the shipped template as on-screen labels —
+  "Subject (context.subject)", "Action (Axis A)", "Then (Axis B)" — confirmed
+  2026-07-25.)*
 - [ ] **Catch-all is a pinned, non-deletable "Otherwise →" footer**, visually distinct
   from rules — a structured element with no delete control and no free-text target
   input among the rule fields (target chosen from existing outcomes). *(Partially
@@ -305,7 +338,8 @@ assertion over the emitted HTML/DOM:
 - [ ] **Single mode control:** exactly one mode toggle in the DOM; no in-form
   duplicate. *(Shipped — keep as a regression assertion.)*
 - [ ] **Seeded example** present on load; a "Start blank" control clears it. Assert:
-  initial model non-empty; blank control exists.
+  `seedExample()` returns a non-empty model and `blankModel()` an empty one
+  (pure-model shape); blank control exists in the markup (static shape).
 - [ ] **Rubric mode is grammar-faithful, not a DT clone:** in Rubric mode the DOM
   contains no weight inputs, no add-rule/reorder/conjunction affordances, exactly two
   threshold fields and three fixed tiers. The UI never offers structure
@@ -320,9 +354,10 @@ assertion over the emitted HTML/DOM:
   number; reordering (drag or ↑/↓) changes which rule wins in the "Try it" tester
   (UX model §8) for the same sample values, live. *(Still missing in the shipped
   template: `Rule N` appears in warning text but there is no visible numbered rule
-  list or reorder control — confirmed 2026-07-25.)* The mechanical halves (numbers
-  render, ↑/↓ mutate rule order in the model, tester highlights first match) also get
-  node-suite assertions; the walkthrough judges whether it *feels* legible.
+  list or reorder control — confirmed 2026-07-25.)* The mechanical halves get
+  node-suite assertions in the pure-model shape (`moveRule` mutates rule order,
+  `firstMatch` returns the first matching rule for sample values); the walkthrough
+  judges whether it *feels* legible.
 - [ ] **Inline messages reference visible rule numbers** and update live — shadow
   engine already returns numbered messages (`policy_builder_core.mjs:168-198`); this
   AC is about surfacing them next to the rows they name.
@@ -341,7 +376,15 @@ Two layers, in order:
    rescope diagnosed. The gate is:
 
    - A **fresh reviewer who did not build it** — a second person, or a freshly
-     spawned subagent with an empty context.
+     spawned subagent with an empty context. **Evidence-strength caveat:** a
+     subagent has no browser; it reviews by reading the generated HTML source and
+     narrating what a user would see and click (judging label clarity, flow, and
+     whether the task is completable from the visible affordances). That tests
+     legibility of the surface, not felt interaction — the human walkthrough is
+     the primary gate; the subagent variant is the acceptable fallback when no
+     second person is available. For a subagent, "≤15 interaction turns" means
+     ≤15 read/reason exchanges over the page source while performing the task
+     mentally, producing the model object the page would emit.
    - Given **only** the generated `policy-router-builder.html` (emitted by
      `ll-artifact policy-builder` against this repo's config) — no
      `POLICY_ROUTER_GUIDE.md`, no issue file, no template source, no builder
@@ -418,8 +461,11 @@ original `ll-artifact` self-contained-HTML substrate).
   or trivially fixable (single toggle, rubric-faithful, seeded example, theme stamping now
   works). Remaining work is four targeted UI changes to the existing template: a visible
   reorderable rule list, de-jargoning three labels, a structured non-input catch-all footer,
-  collapsing YAML behind a summary, plus a one-line fix to `initTheme()`'s precedence order.
-  No new shell needed.
+  collapsing YAML behind a summary, plus a one-line fix to `initTheme()`'s precedence order
+  (also correct the stale comment at `policy-router-builder.html.tmpl:477`, which documents
+  the wrong precedence). The interaction logic added for these fixes must land in
+  `policy_builder_core.mjs` as pure functions (see the no-DOM constraint in
+  § Acceptance Criteria) — modest extra structure, still Small. No new shell needed.
 - **Risk**: Low to runtime (additive); the real risk is UX quality, now caught by the
   walkthrough gate rather than after release.
 - **Breaking Change**: No
@@ -429,6 +475,20 @@ original `ll-artifact` self-contained-HTML substrate).
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`
 
 ## Session Log
+- `verification-mechanics hardening` - 2026-07-25 - Second review pass confirmed the
+  AC re-baseline against the template, then closed four verification-mechanics gaps:
+  (1) pinned the no-DOM testability constraint — no npm deps means no jsdom, so
+  node assertions are either static-markup string checks or pure-model function
+  tests, requiring reorder/first-match/seed logic to live in
+  `policy_builder_core.mjs` (the inline-`innerHTML` shape is what let the first
+  build ship unverified); (2) added an automated emit→`ll-loop validate` round-trip
+  pytest gate for both modes, closing the never-actually-run capability ⚠️;
+  (3) defined the jargon-denylist extraction rule (strip script/style/comments
+  before scanning) so the serializer's legitimate internal tokens don't
+  false-positive; (4) specified the subagent walkthrough variant's mechanics and
+  demoted it to fallback evidence behind the human gate. Also flagged the stale
+  precedence comment at `policy-router-builder.html.tmpl:477` for fixing alongside
+  `initTheme()`.
 - `/ll:format-issue` - 2026-07-25T16:15:53 - `ed6813fd-6bdd-41e8-88cc-99233de55ac7.jsonl`
 - `review hardening` - 2026-07-25 - Applied review recommendations on top of the AC
   re-baseline: (1) added a mockup-copy guard (the `thoughts/` mockup is reference
