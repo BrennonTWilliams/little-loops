@@ -77,6 +77,7 @@ __all__ = [
     "VALID_KINDS",
     "ensure_db",
     "connect",
+    "normalize_issue_id",
     "SQLiteTransport",
     "backfill",
     "backfill_snapshots",
@@ -227,7 +228,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 36
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1091,12 +1092,137 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_review_target ON review_events(target_id);
     CREATE INDEX IF NOT EXISTS idx_review_session ON review_events(session_id);
     """,
+    # v36 (ENH-2771): issue_num INTEGER — a stable numeric join key on
+    # issue_events/issue_snapshots alongside the mutable issue_id TEXT display
+    # column. An issue's type is mutable metadata (ENH -> FEAT retypes happen
+    # routinely) but its number is immutable and globally unique
+    # (ll-issues next-id allocates numbers with no type argument), so keying
+    # history on issue_id silently splits one issue's history across two rows
+    # whenever it is retyped. Backfill is a pure trailing-digit extraction
+    # (`TYPE-NNN` -> NNN); no regex needed, so it runs inline as SQL rather
+    # than through the separate _backfill_issues()/_backfill_snapshots()
+    # Python pass (those are updated too, in this same change, so a future
+    # `backfill()` re-run also populates issue_num for newly-ingested rows).
+    #
+    # Ordering is load-bearing: backfill issue_num BEFORE the collision-merge
+    # DELETE, and the DELETE BEFORE the new (issue_num, transition) unique
+    # index, or the retype-split rows for the seven currently-known collided
+    # numbers (see ENH-2771's Current Behavior table) would violate the new
+    # constraint. The collision-merge rule is Option A (keep the earliest
+    # `ts`) per ENH-2771's Decision Rationale: it is expressible as a single
+    # pure-SQL statement with no new migration mechanism, unlike Option B
+    # (prefer on-disk type), which would need a Python reconciliation pass
+    # with no precedent in this file's migration history and is lossy for the
+    # ~1.6%/~3% of issue_events/issue_snapshots rows with NULL issue_type.
+    # ts is stored as an ISO-8601 string (session_store.py, see record_issue_event/
+    # record_issue_snapshot), so lexical ORDER BY ts ASC is chronological.
+    """
+    ALTER TABLE issue_events ADD COLUMN issue_num INTEGER;
+    ALTER TABLE issue_snapshots ADD COLUMN issue_num INTEGER;
+    UPDATE issue_events
+        SET issue_num = CAST(substr(issue_id, instr(issue_id, '-') + 1) AS INTEGER)
+        WHERE issue_id IS NOT NULL AND instr(issue_id, '-') > 0;
+    UPDATE issue_snapshots
+        SET issue_num = CAST(substr(issue_id, instr(issue_id, '-') + 1) AS INTEGER)
+        WHERE issue_id IS NOT NULL AND instr(issue_id, '-') > 0;
+    DELETE FROM issue_events
+    WHERE id NOT IN (
+        SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY issue_num, transition ORDER BY ts ASC
+            ) AS rn
+            FROM issue_events
+            WHERE issue_num IS NOT NULL
+        ) WHERE rn = 1
+    ) AND issue_num IS NOT NULL;
+    DELETE FROM issue_snapshots
+    WHERE id NOT IN (
+        SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY issue_num, transition ORDER BY ts ASC
+            ) AS rn
+            FROM issue_snapshots
+            WHERE issue_num IS NOT NULL
+        ) WHERE rn = 1
+    ) AND issue_num IS NOT NULL;
+    DROP INDEX IF EXISTS idx_issue_events_dedup;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_events_dedup
+        ON issue_events(issue_num, transition) WHERE issue_num IS NOT NULL;
+    DROP INDEX IF EXISTS idx_issue_snapshots_dedup;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_snapshots_dedup
+        ON issue_snapshots(issue_num, transition) WHERE issue_num IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_issue_events_num ON issue_events(issue_num);
+    CREATE INDEX IF NOT EXISTS idx_issue_snapshots_num ON issue_snapshots(issue_num);
+    DROP VIEW IF EXISTS issue_sessions;
+    CREATE VIEW issue_sessions AS
+    SELECT MIN(ie.issue_id) AS issue_id,
+           ie.issue_num AS issue_num,
+           ie.session_id,
+           s.jsonl_path,
+           MIN(ie.ts) AS first_message_ts,
+           MAX(ie.ts) AS last_message_ts
+    FROM issue_events ie
+    LEFT JOIN sessions s ON s.session_id = ie.session_id
+    WHERE ie.session_id IS NOT NULL
+    GROUP BY ie.issue_num, ie.session_id
+    UNION ALL
+    SELECT l.issue_id,
+           CAST(substr(l.issue_id, instr(l.issue_id, '-') + 1) AS INTEGER) AS issue_num,
+           l.session_id, l.jsonl_path, l.first_message_ts, l.last_message_ts
+    FROM legacy_issue_sessions_ts_overlap l
+    WHERE CAST(substr(l.issue_id, instr(l.issue_id, '-') + 1) AS INTEGER) NOT IN (
+        SELECT issue_num FROM issue_events
+        WHERE session_id IS NOT NULL AND issue_num IS NOT NULL
+    );
+    """,
 ]
 
 
 def _now() -> str:
     """Return the current UTC time as a Z-suffixed ISO 8601 string."""
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+_ISSUE_NUM_RE = re.compile(r"(?:BUG|ENH|FEAT|EPIC)-(\d+)", re.IGNORECASE)
+
+
+def normalize_issue_id(issue_id: str | int | None) -> int | None:
+    """Extract the stable numeric issue id from a ``TYPE-NNN`` string or bare number.
+
+    ENH-2771: history tables key on the immutable numeric ``issue_num`` rather
+    than the mutable ``TYPE-NNN`` display string, so every read boundary that
+    accepts a caller-supplied ``issue_id`` normalizes it through this helper
+    first. Accepts:
+
+    - a canonical ``TYPE-NNN`` string (``"ENH-2705"`` -> ``2705``), matching
+      any of the known prefixes (case-insensitive), mirroring
+      ``issue_parser.py``'s ``get_next_issue_number()`` prefix-union regex;
+    - a bare/string number (``"2705"`` or ``2705`` -> ``2705``);
+    - a trailing-digit fallback for any other ``"-"``-delimited string (e.g.
+      an unrecognized/legacy prefix), consistent with the migration's
+      backfill extraction (``substr(issue_id, instr(issue_id, '-') + 1)``).
+
+    Returns ``None`` if no digits can be extracted (including ``None`` input).
+    """
+    if issue_id is None:
+        return None
+    if isinstance(issue_id, int):
+        return issue_id
+    issue_id = issue_id.strip()
+    if not issue_id:
+        return None
+    match = _ISSUE_NUM_RE.search(issue_id)
+    if match:
+        return int(match.group(1))
+    if issue_id.isdigit():
+        return int(issue_id)
+    # Fallback: trailing digits after the last '-', mirroring the migration's
+    # SQL extraction for any prefix not in the known BUG/ENH/FEAT/EPIC set.
+    if "-" in issue_id:
+        tail = issue_id.rsplit("-", 1)[-1]
+        if tail.isdigit():
+            return int(tail)
+    return None
 
 
 # Milliseconds a contended open will wait for the write lock before giving up.
@@ -1389,14 +1515,15 @@ def record_issue_snapshot(
     # Serialise frontmatter as JSON for storage.
     fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
 
+    issue_num = normalize_issue_id(issue_id)
     conn = connect(db_path)
     ts = _now()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
-            "(ts, issue_id, transition, title, priority, issue_type, body, frontmatter)"
-            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (ts, issue_id, transition, str(title), priority, issue_type, body, fm_json),
+            "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ts, issue_id, issue_num, transition, str(title), priority, issue_type, body, fm_json),
         )
         _index(
             conn,
@@ -1437,17 +1564,19 @@ def record_issue_event(
     ``(issue_id, transition)`` — repeated calls for the same pair are
     no-ops after the first.
     """
+    issue_num = normalize_issue_id(issue_id)
     conn = connect(db_path)
     ts = _now()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO issue_events("
-            "ts, issue_id, transition, discovered_by, "
+            "ts, issue_id, issue_num, transition, discovered_by, "
             "issue_type, priority, captured_at, completed_at, session_id"
-            ") VALUES(?,?,?,?,?,?,?,?,?)",
+            ") VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 ts,
                 issue_id,
+                issue_num,
                 transition,
                 discovered_by,
                 issue_type,
@@ -3015,14 +3144,16 @@ class SQLiteTransport:
                     # emitting session's ID in the payload; both snake_case and
                     # the host JSONL camelCase spelling are accepted.
                     session_id = event.get("session_id") or event.get("sessionId")
+                    issue_num = normalize_issue_id(issue_id) if issue_id else None
                     conn.execute(
                         "INSERT OR IGNORE INTO issue_events("
-                        "ts, issue_id, transition, discovered_by, "
+                        "ts, issue_id, issue_num, transition, discovered_by, "
                         "issue_type, priority, captured_at, completed_at, session_id"
-                        ") VALUES(?,?,?,?,?,?,?,?,?)",
+                        ") VALUES(?,?,?,?,?,?,?,?,?,?)",
                         (
                             ts,
                             issue_id,
+                            issue_num,
                             transition,
                             event.get("discovered_by"),
                             event.get("issue_type"),
@@ -3164,14 +3295,16 @@ def _backfill_issues(conn: sqlite3.Connection, issues_dir: Path) -> int:
         completed_date: str | None = None
         if isinstance(completed_at, str) and completed_at:
             completed_date = completed_at[:10]
+        issue_num = normalize_issue_id(str(issue_id))
         conn.execute(
             "INSERT OR IGNORE INTO issue_events("
-            "ts, issue_id, transition, discovered_by, "
+            "ts, issue_id, issue_num, transition, discovered_by, "
             "issue_type, priority, completed_date, captured_at, completed_at"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 str(issue_id),
+                issue_num,
                 status,
                 str(discovered_by) if discovered_by else None,
                 issue_type,
@@ -3223,11 +3356,22 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
         issue_type = fm.get("type")
         body = strip_frontmatter(content)
         fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
+        issue_num = normalize_issue_id(str(issue_id))
         conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
-            "(ts, issue_id, transition, title, priority, issue_type, body, frontmatter)"
-            " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (ts, str(issue_id), transition, str(title), priority, issue_type, body, fm_json),
+            "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
+            " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                str(issue_id),
+                issue_num,
+                transition,
+                str(title),
+                priority,
+                issue_type,
+                body,
+                fm_json,
+            ),
         )
         _index(
             conn,

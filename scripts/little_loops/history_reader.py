@@ -86,7 +86,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-from little_loops.session_store import DEFAULT_DB_PATH, ensure_db, fts_phrase
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    ensure_db,
+    fts_phrase,
+    normalize_issue_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -568,9 +573,9 @@ def related_issue_events(
     try:
         sql = (
             "SELECT ts, issue_id, transition, discovered_by, issue_type, priority, session_id "
-            "FROM issue_events WHERE issue_id = ? "
+            "FROM issue_events WHERE issue_num = ? "
         )
-        params: list[Any] = [issue_id]
+        params: list[Any] = [normalize_issue_id(issue_id)]
         if session_id is not None:
             sql += "AND session_id = ? "
             params.append(session_id)
@@ -605,9 +610,9 @@ def find_session_for_issue_transition(
     try:
         row = conn.execute(
             "SELECT session_id FROM issue_events "
-            "WHERE issue_id = ? AND transition = ? AND session_id IS NOT NULL "
+            "WHERE issue_num = ? AND transition = ? AND session_id IS NOT NULL "
             "ORDER BY ts DESC LIMIT 1",
-            (issue_id, transition),
+            (normalize_issue_id(issue_id), transition),
         ).fetchone()
     except sqlite3.Error:
         logger.warning(
@@ -1906,9 +1911,9 @@ def sessions_for_issue(
     try:
         rows = conn.execute(
             "SELECT issue_id, session_id, jsonl_path, first_message_ts, last_message_ts "
-            "FROM issue_sessions WHERE issue_id = ? "
+            "FROM issue_sessions WHERE issue_num = ? "
             "ORDER BY first_message_ts DESC LIMIT ?",
-            (issue_id, limit),
+            (normalize_issue_id(issue_id), limit),
         ).fetchall()
     except sqlite3.Error:
         logger.warning("history_reader: sessions_for_issue query failed", exc_info=True)
@@ -1936,8 +1941,8 @@ def issue_effort(
     try:
         row = conn.execute(
             "SELECT COUNT(*) AS session_count, MIN(first_message_ts) AS first_ts, "
-            "MAX(last_message_ts) AS last_ts FROM issue_sessions WHERE issue_id = ?",
-            (issue_id,),
+            "MAX(last_message_ts) AS last_ts FROM issue_sessions WHERE issue_num = ?",
+            (normalize_issue_id(issue_id),),
         ).fetchone()
     except sqlite3.Error:
         logger.warning("history_reader: issue_effort query failed", exc_info=True)
@@ -1969,8 +1974,9 @@ def recent_issue_velocity(
         return []
     try:
         rows = conn.execute(
-            "SELECT DISTINCT issue_id FROM issue_events "
+            "SELECT issue_id, issue_num, MAX(completed_at) AS completed_at FROM issue_events "
             "WHERE completed_at IS NOT NULL "
+            "GROUP BY COALESCE(issue_num, issue_id) "
             "ORDER BY completed_at DESC LIMIT ?",
             (limit,),
         ).fetchall()

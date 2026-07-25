@@ -1,0 +1,12 @@
+{
+  "id": "9a8020fa-5d26-4e93-a566-1526ab182f54",
+  "type": "decision",
+  "timestamp": "2026-07-25T04:11:56Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Expressible as a single pure-SQL ROW_NUMBER()-based DELETE inside the existing _MIGRATIONS list, no new Python hook needed; Option B requires a two-phase migration with no precedent and is lossy for NULL issue_type rows.",
+  "rule": "Option A: retype-collision merge keeps the row with the earliest ts",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep the row whose issue_type matches the on-disk file",
+  "issue": "ENH-2771"
+}

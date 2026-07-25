@@ -40,7 +40,12 @@ from little_loops.history_reader import (
     search,
 )
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, connect
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    cli_event_context,
+    connect,
+    normalize_issue_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -310,8 +315,8 @@ def main_history_context() -> int:
                 try:
                     snap = conn.execute(
                         "SELECT title, body FROM issue_snapshots"
-                        " WHERE issue_id = ? ORDER BY ts DESC LIMIT 1",
-                        (args.issue_id,),
+                        " WHERE issue_num = ? ORDER BY ts DESC LIMIT 1",
+                        (normalize_issue_id(args.issue_id),),
                     ).fetchone()
                 finally:
                     conn.close()
