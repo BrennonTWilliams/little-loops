@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import configure_output, use_color_enabled
+from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
@@ -23,17 +22,37 @@ _STATUS_SYMBOLS: dict[str, str] = {
 }
 
 
+def _capture_section_data(capture: object) -> dict:
+    """Gather the Analytics Capture config-state fields as a plain dict."""
+    return {
+        "skills": getattr(capture, "skills", ["*"]),
+        "cli_commands": getattr(capture, "cli_commands", ["*"]),
+        "corrections": getattr(capture, "corrections", True),
+        "file_events": getattr(capture, "file_events", True),
+        "correction_patterns": getattr(capture, "correction_patterns", []),
+    }
+
+
+def _issues_section_data(issues_cfg: object) -> dict:
+    """Gather the Issues config-state fields as a plain dict."""
+    return {
+        "auto_commit": getattr(issues_cfg, "auto_commit", False),
+        "auto_commit_prefix": getattr(issues_cfg, "auto_commit_prefix", "chore(issues)"),
+    }
+
+
 def _print_capture_section(capture: object) -> None:
     """Print the Analytics Capture config-state section."""
+    data = _capture_section_data(capture)
     print()
     print("Analytics Capture")
     print("─" * 40)
     full = _STATUS_SYMBOLS["full"]
-    skills = getattr(capture, "skills", ["*"])
-    cli_commands = getattr(capture, "cli_commands", ["*"])
-    corrections = getattr(capture, "corrections", True)
-    file_events = getattr(capture, "file_events", True)
-    correction_patterns = getattr(capture, "correction_patterns", [])
+    skills = data["skills"]
+    cli_commands = data["cli_commands"]
+    corrections = data["corrections"]
+    file_events = data["file_events"]
+    correction_patterns = data["correction_patterns"]
     print(f"  {full}  skills:               {skills}")
     print(f"  {full}  cli_commands:         {cli_commands}")
     corr_sym = _STATUS_SYMBOLS["full" if corrections else "unsupported"]
@@ -47,11 +66,12 @@ def _print_capture_section(capture: object) -> None:
 
 def _print_issues_section(issues_cfg: object) -> None:
     """Print the Issues config-state section."""
+    data = _issues_section_data(issues_cfg)
     print()
     print("Issues")
     print("─" * 40)
-    auto_commit = getattr(issues_cfg, "auto_commit", False)
-    auto_commit_prefix = getattr(issues_cfg, "auto_commit_prefix", "chore(issues)")
+    auto_commit = data["auto_commit"]
+    auto_commit_prefix = data["auto_commit_prefix"]
     ac_sym = _STATUS_SYMBOLS["full" if auto_commit else "unsupported"]
     print(f"  {ac_sym}  auto_commit:        {'enabled' if auto_commit else 'disabled'}")
     print(f"  {_STATUS_SYMBOLS['full']}  auto_commit_prefix: {auto_commit_prefix}")
@@ -80,7 +100,14 @@ def _probe_version(runner: HostRunner) -> str:
         return ""
 
 
-def _print_report(report: object, *, version: str = "", json_mode: bool = False) -> None:
+def _print_report(
+    report: object,
+    *,
+    version: str = "",
+    json_mode: bool = False,
+    capture: object = None,
+    issues_cfg: object = None,
+) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
 
@@ -94,8 +121,10 @@ def _print_report(report: object, *, version: str = "", json_mode: bool = False)
             "capabilities": [
                 {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
             ],
+            "analytics_capture": _capture_section_data(capture),
+            "issues": _issues_section_data(issues_cfg),
         }
-        print(json.dumps(data, indent=2))
+        print_json(data)
         return
 
     version_display = version or "(unknown)"
@@ -156,7 +185,13 @@ Exit codes:
         report = runner.describe_capabilities()
         version = _probe_version(runner)
 
-        _print_report(report, version=version, json_mode=args.json)
+        _print_report(
+            report,
+            version=version,
+            json_mode=args.json,
+            capture=cfg.analytics_capture,
+            issues_cfg=cfg.issues,
+        )
 
         if not args.json:
             _print_capture_section(cfg.analytics_capture)

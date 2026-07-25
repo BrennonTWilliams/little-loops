@@ -40,6 +40,19 @@ def _capture_print() -> tuple[list[str], object]:
     return lines, lambda *a: lines.append(str(a[0]) if a else "")
 
 
+def _json_safe_config() -> MagicMock:
+    """A BRConfig mock whose analytics_capture/issues fields are JSON-serializable."""
+    mock_config = MagicMock()
+    mock_config.analytics_capture.skills = ["*"]
+    mock_config.analytics_capture.cli_commands = ["*"]
+    mock_config.analytics_capture.corrections = True
+    mock_config.analytics_capture.file_events = True
+    mock_config.analytics_capture.correction_patterns = []
+    mock_config.issues.auto_commit = False
+    mock_config.issues.auto_commit_prefix = "chore(issues)"
+    return mock_config
+
+
 class TestMainDoctor:
     """Tests for main_doctor entry point."""
 
@@ -259,7 +272,7 @@ class TestMainDoctor:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
         ):
             result = main_doctor()
@@ -284,7 +297,7 @@ class TestMainDoctor:
             patch("sys.argv", ["ll-doctor", "-j"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
         ):
             main_doctor()
@@ -302,7 +315,7 @@ class TestMainDoctor:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
         ):
             main_doctor()
@@ -324,12 +337,49 @@ class TestMainDoctor:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print"),
         ):
             result = main_doctor()
 
         assert result == 1
+
+    def test_json_output_includes_analytics_capture_and_issues_sections(self) -> None:
+        """--json is a superset of text output: analytics_capture/issues keys (ENH-2762)."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        lines, side_effect = _capture_print()
+
+        mock_config = MagicMock()
+        mock_config.analytics_capture.skills = ["*"]
+        mock_config.analytics_capture.cli_commands = ["*"]
+        mock_config.analytics_capture.corrections = True
+        mock_config.analytics_capture.file_events = False
+        mock_config.analytics_capture.correction_patterns = ["fix:", "wrong"]
+        mock_config.issues.auto_commit = True
+        mock_config.issues.auto_commit_prefix = "chore(issues)"
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=mock_config),
+            patch("builtins.print", side_effect=side_effect),
+        ):
+            main_doctor()
+
+        data = json.loads("\n".join(lines))
+        assert data["analytics_capture"] == {
+            "skills": ["*"],
+            "cli_commands": ["*"],
+            "corrections": True,
+            "file_events": False,
+            "correction_patterns": ["fix:", "wrong"],
+        }
+        assert data["issues"] == {
+            "auto_commit": True,
+            "auto_commit_prefix": "chore(issues)",
+        }
 
     def test_analytics_capture_section_all_enabled(self) -> None:
         """Analytics Capture section appears with ✓ symbols when all fields enabled."""
@@ -460,7 +510,7 @@ class TestVersionProbe:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
             patch(
                 "little_loops.cli.doctor.subprocess.run",
@@ -483,7 +533,7 @@ class TestVersionProbe:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
             patch("little_loops.cli.doctor.subprocess.run") as mock_run,
         ):
@@ -507,7 +557,7 @@ class TestVersionProbe:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
             patch(
                 "little_loops.cli.doctor.subprocess.run",
@@ -533,7 +583,7 @@ class TestVersionProbe:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
             patch(
                 "little_loops.cli.doctor.subprocess.run",
@@ -557,7 +607,7 @@ class TestVersionProbe:
             patch("sys.argv", ["ll-doctor", "--json"]),
             patch("little_loops.host_runner.resolve_host", return_value=runner),
             patch("little_loops.host_runner.apply_host_cli_from_config"),
-            patch("little_loops.config.BRConfig"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
             patch("builtins.print", side_effect=side_effect),
         ):
             main_doctor()

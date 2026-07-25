@@ -230,7 +230,7 @@ ll-harness dsl evals/dsl/my-loop/ --model claude-haiku-4-5-20251001
 Probes the active host CLI and reports which little-loops features are supported. Produces a `CapabilityReport` with one `CapabilityEntry` per capability (streaming, permission skip, agent selection, tool allowlist, structured output). When the binary is detected, also runs the host's version check (`build_version_check()`) and reports the real version string, degrading to `(unknown)` when the binary is absent, the probe fails, or it times out (ENH-2761).
 
 **Flags:**
-- `-j`, `--json` — emit the `CapabilityReport` as JSON instead of the human-readable table.
+- `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`) and `issues` (`{auto_commit, auto_commit_prefix}`), the same config state the text output prints under "Analytics Capture" and "Issues" (ENH-2762).
 
 **Exit codes:** `0` = all capabilities supported, `1` = one or more capabilities unsupported.
 

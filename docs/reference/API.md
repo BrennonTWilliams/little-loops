@@ -8740,6 +8740,8 @@ def describe_capabilities(self) -> CapabilityReport: ...
 
 Used by `ll-doctor` (and `ll-doctor --json`) to generate human-readable and JSON diagnostic output. Each runner reports only the capabilities it can probe; stubs (`OpenCodeRunner`, `PiRunner`) return `"unsupported"` for all entries.
 
+`ll-doctor --json`'s payload is not a 1:1 serialization of this dataclass — it's a superset. Alongside `host`/`binary`/`version`/`capabilities`, it adds `analytics_capture` and `issues` keys sourced from `BRConfig` (`cfg.analytics_capture`, `cfg.issues`), the same config state the text output prints under the "Analytics Capture" and "Issues" sections (ENH-2762).
+
 ### apply_host_cli_from_config
 
 Apply the `orchestration.host_cli` config key (or `LL_HOST_CLI` env var) to the runner selection before the binary probe runs. Typically called once at startup by orchestration entry points.
