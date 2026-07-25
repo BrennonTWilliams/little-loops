@@ -1071,3 +1071,54 @@ class TestIssuesCLISetStatus:
         assert result == 0
         captured = capsys.readouterr()
         assert "Cascading to 0" in captured.out
+
+
+class TestSetStatusRecordsIssueEvent:
+    """BUG-2770: set-status writes an issue_events row alongside the snapshot."""
+
+    def test_set_status_writes_issue_events_row(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """A set-status transition produces a row in issue_events, not just
+        issue_snapshots — the gap BUG-2770 describes."""
+        from little_loops.session_store import connect
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text(
+            "---\nid: BUG-001\ntype: BUG\npriority: P0\nstatus: open\n---\n"
+            "# BUG-001: Critical crash on startup\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "set-status", "BUG-001", "done", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = connect(db_path)
+        try:
+            snapshot_row = conn.execute(
+                "SELECT * FROM issue_snapshots WHERE issue_id='BUG-001'"
+            ).fetchone()
+            event_row = conn.execute(
+                "SELECT * FROM issue_events WHERE issue_id='BUG-001'"
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert snapshot_row is not None
+        assert event_row is not None
+        assert event_row["transition"] == "done"
+        assert event_row["issue_type"] == "BUG"
+        assert event_row["priority"] == "P0"

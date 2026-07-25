@@ -149,6 +149,14 @@ Reads three sources sequentially:
 2. **Loop state** (`.loops/.running/`, `.loops/.history/`) → `loop_events`
 3. **Session JSONL files** (discovered from your project folder) → `tool_events`, `message_events`, `assistant_messages`, `sessions`, `user_corrections`
 
+Beyond backfill, `issue_events` rows also arrive through two live channels:
+the EventBus-emitted `issue.*` path (`SQLiteTransport.send()`, FSM-loop/
+issue-lifecycle events only), and a direct-call `record_issue_event()`
+(`session_store.py`) invoked from `ll-issues set-status`'s transition
+side-effect block — added by BUG-2770 so a manual/CLI status transition
+produces the same row a bus-emitted one would, keeping `issue_sessions` and
+`issue_effort()` populated regardless of which path closed the issue.
+
 Output shows counts per table:
 
 ```

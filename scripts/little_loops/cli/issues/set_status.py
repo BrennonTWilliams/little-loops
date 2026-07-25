@@ -131,10 +131,33 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Capture content snapshot on status transition (Decision 2: Option C — direct call,
     # same pattern as user_prompt_submit.py calling record_correction() without EventBus).
     try:
-        from little_loops.session_store import record_issue_snapshot, resolve_history_db
+        from little_loops.session_store import (
+            record_issue_event,
+            record_issue_snapshot,
+            resolve_history_db,
+        )
 
         db_path = resolve_history_db()
         record_issue_snapshot(db_path, args.issue_id, args.status, str(path))
+
+        # Also write the issue_events row (BUG-2770): record_issue_snapshot alone
+        # left issue_sessions/issue_effort() with no rows to join against, since
+        # both are rooted in issue_events, which was previously written only by
+        # the EventBus SQLiteTransport path (not exercised by set-status).
+        from little_loops.issue_lifecycle import _session_id_or_none
+
+        fm = parse_frontmatter(new_content)
+        record_issue_event(
+            db_path,
+            args.issue_id,
+            args.status,
+            session_id=_session_id_or_none(),
+            issue_type=fm.get("type"),
+            priority=fm.get("priority"),
+            discovered_by=fm.get("discovered_by"),
+            captured_at=fm.get("captured_at"),
+            completed_at=fm.get("completed_at"),
+        )
     except Exception:
         pass
 

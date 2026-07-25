@@ -4033,6 +4033,68 @@ class TestRecordIssueSnapshot:
         assert count == 0, "Missing file should produce no rows"
 
 
+class TestRecordIssueEvent:
+    """BUG-2770: record_issue_event() DB write round-trip."""
+
+    def test_record_issue_event_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_event
+
+        db = tmp_path / "history.db"
+        record_issue_event(
+            db,
+            "ENH-2151",
+            "done",
+            session_id="sess-abc",
+            issue_type="ENH",
+            priority="P2",
+            discovered_by="scan-codebase",
+            captured_at="2026-07-24T00:00:00Z",
+            completed_at="2026-07-24T12:00:00Z",
+        )
+
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT * FROM issue_events WHERE issue_id='ENH-2151'").fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["issue_id"] == "ENH-2151"
+        assert row["transition"] == "done"
+        assert row["session_id"] == "sess-abc"
+        assert row["issue_type"] == "ENH"
+        assert row["priority"] == "P2"
+        assert row["discovered_by"] == "scan-codebase"
+        assert row["captured_at"] == "2026-07-24T00:00:00Z"
+        assert row["completed_at"] == "2026-07-24T12:00:00Z"
+
+    def test_record_issue_event_read_via_recent(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_event
+
+        db = tmp_path / "history.db"
+        record_issue_event(db, "ENH-2151", "done", session_id="sess-abc", issue_type="ENH")
+
+        rows = recent(db, kind="issue")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "ENH-2151"
+        assert rows[0]["transition"] == "done"
+
+    def test_record_issue_event_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_issue_event
+
+        db = tmp_path / "history.db"
+        record_issue_event(db, "ENH-2151", "done")
+        record_issue_event(db, "ENH-2151", "done")  # duplicate
+
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM issue_events WHERE issue_id='ENH-2151' AND transition='done'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1, "INSERT OR IGNORE must deduplicate on (issue_id, transition)"
+
+
 class TestBackfillSnapshots:
     """ENH-2151: _backfill_snapshots() hydrates issue_snapshots from .issues/."""
 

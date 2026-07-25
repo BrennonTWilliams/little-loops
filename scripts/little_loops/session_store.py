@@ -30,6 +30,7 @@ Public API:
     recent(db,...):              recent rows for a given event kind
     is_correction(text):         return True if text matches a user-correction signal
     record_correction(db,...):   write one row to ``user_corrections`` + search_index
+    record_issue_event(db,...):  write one row to ``issue_events`` + search_index (BUG-2770)
     record_skill_event(db,...):  write one row to ``skill_events`` + search_index
     cli_event_context(db,...):   context manager: INSERT on enter, UPDATE exit_code+duration on exit
     skill_event_context(db,...): skill-host analogue of cli_event_context (ENH-2460)
@@ -94,6 +95,7 @@ __all__ = [
     "record_correction",
     "record_skill_event",
     "record_issue_snapshot",
+    "record_issue_event",
     "record_commit_event",
     "record_test_run_event",
     "record_orchestration_run",
@@ -1402,6 +1404,65 @@ def record_issue_snapshot(
             kind="snapshot",
             ref=issue_id,
             anchor=file_path,
+            ts=ts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_issue_event(
+    db_path: Path | str,
+    issue_id: str,
+    transition: str,
+    *,
+    session_id: str | None = None,
+    issue_type: str | None = None,
+    priority: str | None = None,
+    discovered_by: str | None = None,
+    captured_at: str | None = None,
+    completed_at: str | None = None,
+) -> None:
+    """Write one row to ``issue_events`` and index it in ``search_index`` (BUG-2770).
+
+    Direct-call sibling of :func:`record_issue_snapshot`, modeled on the
+    inline ``INSERT OR IGNORE INTO issue_events(...)`` in
+    ``SQLiteTransport.send()``'s ``issue.*`` branch. Callers that own an
+    issue transition outside the EventBus (e.g. ``ll-issues set-status``)
+    call this directly rather than emitting a bus event, per the
+    ENH-2466 decision that scoped the EventBus to FSM-loop/issue-lifecycle
+    events only.
+
+    Idempotent via the ``idx_issue_events_dedup`` unique index on
+    ``(issue_id, transition)`` — repeated calls for the same pair are
+    no-ops after the first.
+    """
+    conn = connect(db_path)
+    ts = _now()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO issue_events("
+            "ts, issue_id, transition, discovered_by, "
+            "issue_type, priority, captured_at, completed_at, session_id"
+            ") VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                ts,
+                issue_id,
+                transition,
+                discovered_by,
+                issue_type,
+                priority,
+                captured_at,
+                completed_at,
+                session_id,
+            ),
+        )
+        _index(
+            conn,
+            content=f"{issue_id} {issue_type or ''}".strip(),
+            kind="issue",
+            ref=issue_id,
+            anchor="",
             ts=ts,
         )
         conn.commit()

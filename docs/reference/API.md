@@ -8079,6 +8079,7 @@ from little_loops.session_store import (
     record_loop_run_summary, # write a loop_runs row (ENH-2463)
     update_loop_run_diagnostics, # link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_learning_test_event, # UPSERT one learning_test_events row (ENH-2466)
+    record_issue_event,    # write an issue_events row; direct-call sibling of record_issue_snapshot, used by `ll-issues set-status` (BUG-2770)
     record_session_lifecycle_event, # write a session_lifecycle_events row (ENH-2495)
     record_subagent_run_start, # write a running subagent_runs row from SubagentStart (ENH-2505)
     record_subagent_run_stop, # UPDATE ended_at/status/agent_transcript_path from SubagentStop (ENH-2505)

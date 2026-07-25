@@ -1649,6 +1649,8 @@ ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score
 
 Transition an issue to a new status value. Validates the target status against the canonical enum, updates the `status:` frontmatter field in-place, and prints the before→after transition to stdout.
 
+**Side effect**: also writes a content snapshot to `issue_snapshots` and, since BUG-2770, a matching row to `issue_events` in `.ll/history.db` (best-effort, direct `record_issue_event()` call — not an EventBus emit), so `ll-session recent --issue` and `issue_effort()` resolve sessions for issues closed via this command.
+
 | Argument | Description |
 |----------|-------------|
 | `issue_id` | Issue ID (e.g., `518`, `ENH-518`, `P3-ENH-518`) |
