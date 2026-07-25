@@ -31,7 +31,16 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
         print("No active issues found.")
         return 0
 
-    graph = DependencyGraph.from_issues(issues)
+    all_known_ids: set[str] | None = None
+    try:
+        from little_loops.dependency_mapper import gather_all_issue_ids
+
+        issues_dir = config.project_root / config.issues.base_dir
+        all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+    except Exception:
+        pass
+
+    graph = DependencyGraph.from_issues(issues, all_known_ids=all_known_ids)
 
     try:
         ordered = graph.topological_sort()

@@ -214,6 +214,19 @@ class TestDependencyGraphConstruction:
         assert "FEAT-001" not in graph.depends_on_edges
         assert "depends_on unknown issue NONEXISTENT-999" in caplog.text
 
+    def test_known_but_absent_target_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A blocked_by/depends_on target absent from `issues` but present in
+        all_known_ids (e.g. a done issue) must not warn."""
+        issue = make_issue(
+            "FEAT-001", blocked_by=["DONE-001"], depends_on=["DONE-002"]
+        )
+
+        graph = DependencyGraph.from_issues(
+            [issue], all_known_ids={"FEAT-001", "DONE-001", "DONE-002"}
+        )
+
+        assert "unknown issue" not in caplog.text
+
 
 class TestGetReadyIssues:
     """Tests for get_ready_issues()."""
