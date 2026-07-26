@@ -351,14 +351,18 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         if ps:
             parent_str = ps
     parent_display: str | None = None
-    if parent_str:
-        try:
-            from little_loops.issue_parser import find_issues
+    superseded_by_str: str | None = None
+    try:
+        from little_loops.issue_parser import find_issues, superseded_by
 
-            _all = find_issues(config)
+        _all = find_issues(config)
+        if parent_str:
             _title = next((i.title for i in _all if i.issue_id == parent_str), None)
             parent_display = f"{parent_str} ({_title})" if _title else parent_str
-        except Exception:
+        _superseded_by_ids = superseded_by(issue_id, _all)
+        superseded_by_str = ", ".join(_superseded_by_ids) if _superseded_by_ids else None
+    except Exception:
+        if parent_str:
             parent_display = parent_str
 
     # Closure: prefer per-status reason field (closing_note / closed_reason /
@@ -445,6 +449,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "blocked_by": _join_ids(blocked_by_raw),
         "blocks": _join_ids(blocks_raw),
         "supersedes": _join_ids(supersedes_raw),
+        "superseded_by": superseded_by_str,
         "decomposed_into": _join_ids(decomposed_into_raw),
         # ENH-2535: misc
         "affects": _join_ids(affects_raw),
@@ -581,6 +586,7 @@ _RELATIONSHIP_KEYS: tuple[tuple[str, str], ...] = (
     ("depends_on", "Depends on"),
     ("relates_to", "Relates to"),
     ("supersedes", "Supersedes"),
+    ("superseded_by", "Superseded by"),
     ("decomposed_into", "Decomposed into"),
     ("affects", "Affects"),
     ("focus_area", "Focus area"),

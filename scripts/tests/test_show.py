@@ -388,6 +388,30 @@ class TestParseCardFields:
         assert fields["blocked_by"] == "BUG-1"
         assert fields["blocks"] == "BUG-3, BUG-4"
 
+    def test_superseded_by_derived_from_reverse_edge(self, tmp_path: Path) -> None:
+        """superseded_by is derived from another issue's forward supersedes edge (ENH-2829)."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\n---\n# ENH-5110: Old\n",
+            "P3-ENH-5110-old.md",
+        )
+        enh_dir = tmp_path / ".issues" / "enhancements"
+        (enh_dir / "P3-ENH-5111-new.md").write_text(
+            "---\nstatus: open\nsupersedes:\n- ENH-5110\n---\n# ENH-5111: New\n"
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["superseded_by"] == "ENH-5111"
+
+    def test_superseded_by_absent_when_nobody_references(self, tmp_path: Path) -> None:
+        """superseded_by is None (absent), not empty, when no issue supersedes this one."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\n---\n# ENH-5112: T\n",
+            "P3-ENH-5112-t.md",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["superseded_by"] is None
+
     def test_discovery_fields_extracted(self, tmp_path: Path) -> None:
         """discovered_date / discovered_commit / discovered_branch are surfaced."""
         path, config = self._write_issue(
@@ -487,6 +511,7 @@ class TestParseCardFields:
             "blocked_by",
             "blocks",
             "supersedes",
+            "superseded_by",
             "decomposed_into",
             "decision_ref",
             "affects",

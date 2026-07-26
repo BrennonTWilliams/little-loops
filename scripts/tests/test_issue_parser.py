@@ -2125,6 +2125,28 @@ class TestDependencyParsing:
 
         assert info.duplicate_of == "BUG-001"
 
+    def test_parse_supersedes_from_frontmatter(self, tmp_path: Path) -> None:
+        """supersedes: YAML list in frontmatter is parsed into IssueInfo.supersedes."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P2-ENH-010-test.md"
+        issue_file.write_text("---\nsupersedes:\n  - ENH-001\n  - ENH-002\n---\n# ENH-010: Test\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.supersedes == ["ENH-001", "ENH-002"]
+
     def test_new_relationship_fields_default_to_empty(self) -> None:
         """New relationship fields default to None/empty list when absent."""
         info = IssueInfo(
@@ -2138,6 +2160,7 @@ class TestDependencyParsing:
         assert info.depends_on == []
         assert info.relates_to == []
         assert info.duplicate_of is None
+        assert info.supersedes == []
 
     def test_new_relationship_fields_roundtrip_serialization(self) -> None:
         """New relationship fields survive to_dict/from_dict roundtrip."""
@@ -2151,6 +2174,7 @@ class TestDependencyParsing:
             depends_on=["ENH-5", "ENH-6"],
             relates_to=["FEAT-10"],
             duplicate_of="ENH-3",
+            supersedes=["ENH-1", "ENH-2"],
         )
 
         data = original.to_dict()
@@ -2159,12 +2183,14 @@ class TestDependencyParsing:
         assert data["depends_on"] == ["ENH-5", "ENH-6"]
         assert data["relates_to"] == ["FEAT-10"]
         assert data["duplicate_of"] == "ENH-3"
+        assert data["supersedes"] == ["ENH-1", "ENH-2"]
 
         restored = IssueInfo.from_dict(data)
         assert restored.parent == original.parent
         assert restored.depends_on == original.depends_on
         assert restored.relates_to == original.relates_to
         assert restored.duplicate_of == original.duplicate_of
+        assert restored.supersedes == original.supersedes
 
     def test_from_dict_defaults_empty_new_relationship_fields(self) -> None:
         """from_dict provides correct defaults for missing new relationship fields."""
@@ -2181,7 +2207,61 @@ class TestDependencyParsing:
         assert info.depends_on == []
         assert info.relates_to == []
         assert info.duplicate_of is None
+        assert info.supersedes == []
         assert info.milestone is None
+
+
+class TestSupersededBy:
+    """Tests for the superseded_by() reverse-lookup helper (ENH-2829)."""
+
+    def _make(self, issue_id: str, supersedes: list[str] | None = None, status: str = "open") -> Any:
+        return IssueInfo(
+            path=Path(f"/test/{issue_id}.md"),
+            issue_type="enhancements",
+            priority="P2",
+            issue_id=issue_id,
+            title="Test",
+            supersedes=supersedes or [],
+            status=status,
+        )
+
+    def test_single_replacement(self) -> None:
+        from little_loops.issue_parser import superseded_by
+
+        a = self._make("ENH-1")
+        b = self._make("ENH-2", supersedes=["ENH-1"])
+        assert superseded_by("ENH-1", [a, b]) == ["ENH-2"]
+
+    def test_multiple_replacements(self) -> None:
+        from little_loops.issue_parser import superseded_by
+
+        a = self._make("ENH-1")
+        b = self._make("ENH-2", supersedes=["ENH-1"])
+        c = self._make("ENH-3", supersedes=["ENH-1"])
+        assert superseded_by("ENH-1", [a, b, c]) == ["ENH-2", "ENH-3"]
+
+    def test_no_replacement(self) -> None:
+        from little_loops.issue_parser import superseded_by
+
+        a = self._make("ENH-1")
+        b = self._make("ENH-2", supersedes=["ENH-99"])
+        assert superseded_by("ENH-1", [a, b]) == []
+
+    def test_superseding_issue_done_still_found_when_scan_unfiltered(self) -> None:
+        """Resolves the issue's 'Silent degradation' open design question.
+
+        find_issues(config) with no status_filter excludes done/cancelled/
+        deferred by default. If show.py ever narrows its scan to that default,
+        a closed superseding issue would silently vanish from the reverse
+        lookup. superseded_by() itself takes a plain iterable, so it is the
+        caller's responsibility to pass an unfiltered scan; this test asserts
+        that when it does, closed superseding issues are still found.
+        """
+        from little_loops.issue_parser import superseded_by
+
+        a = self._make("ENH-1")
+        b = self._make("ENH-2", supersedes=["ENH-1"], status="done")
+        assert superseded_by("ENH-1", [a, b]) == ["ENH-2"]
 
 
 class TestIssueInfoTestable:

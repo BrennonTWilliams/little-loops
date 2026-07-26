@@ -9,6 +9,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli_args import _id_matches
@@ -683,6 +684,7 @@ class IssueInfo:
         depends_on: List of issue IDs this issue depends on (soft prerequisite)
         relates_to: List of related issue IDs; populated from frontmatter `relates_to:` or deprecated `related:`
         duplicate_of: Issue ID that this issue duplicates
+        supersedes: List of issue IDs this issue supersedes/replaces; populated from frontmatter `supersedes:`
     """
 
     path: Path
@@ -697,6 +699,7 @@ class IssueInfo:
     depends_on: list[str] = field(default_factory=list)
     relates_to: list[str] = field(default_factory=list)
     duplicate_of: str | None = None
+    supersedes: list[str] = field(default_factory=list)
     discovered_by: str | None = None
     epic: str | None = None
     product_impact: ProductImpact | None = None
@@ -743,6 +746,7 @@ class IssueInfo:
             "depends_on": self.depends_on,
             "relates_to": self.relates_to,
             "duplicate_of": self.duplicate_of,
+            "supersedes": self.supersedes,
             "discovered_by": self.discovered_by,
             "epic": self.epic,
             "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
@@ -782,6 +786,7 @@ class IssueInfo:
             depends_on=data.get("depends_on", []),
             relates_to=data.get("relates_to", []),
             duplicate_of=data.get("duplicate_of"),
+            supersedes=data.get("supersedes", []),
             discovered_by=data.get("discovered_by"),
             epic=data.get("epic"),
             product_impact=ProductImpact.from_dict(data.get("product_impact")),
@@ -977,6 +982,7 @@ class IssueParser:
             )
 
         depends_on: list[str] = []
+        supersedes: list[str] = []
 
         # Parse title: prefer frontmatter title: field, then markdown header, then filename stem
         title = frontmatter.get("title") or self._parse_title_from_content(content, issue_path)
@@ -991,6 +997,7 @@ class IssueParser:
             ("blocks", blocks),
             ("depends_on", depends_on),
             ("relates_to", relates_to),
+            ("supersedes", supersedes),
         ):
             fm_val = frontmatter.get(fm_key)
             if not fm_val:
@@ -1045,6 +1052,7 @@ class IssueParser:
             depends_on=depends_on,
             relates_to=relates_to,
             duplicate_of=duplicate_of,
+            supersedes=supersedes,
             discovered_by=discovered_by,
             epic=epic,
             product_impact=product_impact,
@@ -1419,6 +1427,15 @@ def find_issues(
     else:
         issues.sort(key=lambda x: (x.priority_int, x.issue_id))
     return issues
+
+
+def superseded_by(issue_id: str, all_issues: Iterable[IssueInfo]) -> list[str]:
+    """Return IDs of every issue whose `supersedes` list contains `issue_id`.
+
+    Derives the reverse edge of the `supersedes` forward reference rather than
+    requiring a second hand-maintained frontmatter field (ENH-2829).
+    """
+    return [info.issue_id for info in all_issues if issue_id in info.supersedes]
 
 
 def find_highest_priority_issue(

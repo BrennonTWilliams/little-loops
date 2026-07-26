@@ -677,6 +677,7 @@ class IssueInfo:
     depends_on: list[str] = []            # Soft ordering prerequisites (wave-gated: scheduled after; non-fatal if absent)
     relates_to: list[str] = []            # Thematically related issue IDs (no ordering constraint)
     duplicate_of: str | None = None        # Issue ID this duplicates; set when closing a duplicate
+    supersedes: list[str] = []            # Issue IDs this issue replaces; `superseded_by()` derives the reverse edge
     discovered_by: str | None = None       # Source command/workflow that created this issue
     epic: str | None = None                # Epic issue ID this child belongs to (e.g., "EPIC-001")
     base_branch: str | None = None         # For EPIC issues, the fork base for the integration branch; from frontmatter `base_branch:` or alias `target_branch:`; None means fall back to `parallel.base_branch` (FEAT-2652)
@@ -3982,7 +3983,7 @@ Searches all type directories regardless of status. Displays a box-drawing chara
 - **Details**: summary text (word-wrapped to fit card width), source (`discovered_by` alias), norm (✓/✗ filename convention check), fmt (✓/✗ required sections check), integration file count, labels, session log history with command counts
 - **Path**: relative path from project root
 
-**`--json` output fields**: `issue_id`, `title`, `priority`, `status`, `effort`, `confidence`, `outcome`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`, `summary`, `integration_files`, `risk`, `labels`, `history`, `path`, `source`, `norm`, `fmt`. ENH-2535 added the following additive keys (all `str | None`; absent when the source issue lacks the field): `raw_status`, `decision_ref`, `closing_note`, `closed_reason`, `cancelled_reason`, `deferred_reason`, `closed_by`, `closed_at`, `deferred_date`, `closure_text`, `discovered_date`, `discovered_commit`, `discovered_branch`, `discovered_source`, `discovered_external_repo`, `parent`, `parent_display`, `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `decomposed_into`, `affects`, `focus_area`, `testable`.
+**`--json` output fields**: `issue_id`, `title`, `priority`, `status`, `effort`, `confidence`, `outcome`, `score_complexity`, `score_test_coverage`, `score_ambiguity`, `score_change_surface`, `summary`, `integration_files`, `risk`, `labels`, `history`, `path`, `source`, `norm`, `fmt`. ENH-2535 added the following additive keys (all `str | None`; absent when the source issue lacks the field): `raw_status`, `decision_ref`, `closing_note`, `closed_reason`, `cancelled_reason`, `deferred_reason`, `closed_by`, `closed_at`, `deferred_date`, `closure_text`, `discovered_date`, `discovered_commit`, `discovered_branch`, `discovered_source`, `discovered_external_repo`, `parent`, `parent_display`, `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `superseded_by`, `decomposed_into`, `affects`, `focus_area`, `testable`.
 
 ### main_history
 
