@@ -2180,6 +2180,19 @@ class FSMExecutor:
         self._emit("request_path_downgrade", {"requested": requested, "reason": reason})
         print(f"Warning: {message}", file=sys.stderr)
 
+    def _resolve_action_model(self, state: StateConfig) -> str:
+        """Resolve the action-dispatch model: state override, run override, else
+        ``fsm.llm.model`` (never empty — ``LLMConfig.model`` defaults to
+        ``DEFAULT_LLM_MODEL``).
+
+        Mirrors the CLI path (``state.model or self.run_model``), extended with
+        the ``fsm.llm.model`` fallback the CLI path doesn't need — the host CLI
+        binary applies its own default when ``model=None`` is passed, but the
+        SDK/Batches API has no such downstream default and rejects an empty
+        string outright (BUG-2818).
+        """
+        return state.model or self.run_model or self.fsm.llm.model
+
     def _dispatch_live(
         self, state: StateConfig, action: str, ctx: InterpolationContext
     ) -> ActionResult:
@@ -2197,7 +2210,7 @@ class FSMExecutor:
         from little_loops.fsm.batch_tracker import BatchTracker
         from little_loops.prompts import FragmentStore
 
-        model = state.model or self.run_model or ""
+        model = self._resolve_action_model(state)
         fragment_store = FragmentStore()
         request_path = self._resolve_request_path(state)
 
