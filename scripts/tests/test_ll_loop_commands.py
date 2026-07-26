@@ -2969,7 +2969,7 @@ class TestCmdListENH2572ScanningFirst:
                 assert self._run(loops_dir, builtin_dir, long=True) == 0
         out = capsys.readouterr().out
         row = next(ln for ln in out.split("\n") if "canvas output" in ln)
-        assert "\033[2mGenerator-evaluator harness for " in row
+        assert "\033[90mGenerator-evaluator harness for " in row
 
     def test_subgroup_rule_relaxed_no_dominance_requirement(self) -> None:
         """ENH-2572 item 10: a ≥3-member prefix cluster subgroups even when it

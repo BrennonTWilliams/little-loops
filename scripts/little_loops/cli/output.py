@@ -74,8 +74,10 @@ PRIORITY_COLOR: dict[str, str] = {
     "P1": "38;5;208",
     "P2": "33",
     "P3": "0",
-    "P4": "2",
-    "P5": "2",
+    # Gray, not SGR 2 (faint): dim is optional in the spec and renders
+    # inconsistently across emulators and through tmux.
+    "P4": "90",
+    "P5": "90",
 }
 TYPE_COLOR: dict[str, str] = {
     "BUG": "38;5;208",

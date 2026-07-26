@@ -243,8 +243,8 @@ class TestConfigureOutput:
             "P1": "38;5;208",
             "P2": "33",
             "P3": "0",
-            "P4": "2",
-            "P5": "2",
+            "P4": "90",
+            "P5": "90",
         },
         "TYPE_COLOR": {"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"},
         # Filled in by setup from the actual module's defaults (which may grow
@@ -257,7 +257,7 @@ class TestConfigureOutput:
 
         m._USE_COLOR = False
         m.PRIORITY_COLOR.update(
-            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
+            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "90", "P5": "90"}
         )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
         # ENH-2539: also reset new color maps to their module defaults
@@ -281,7 +281,7 @@ class TestConfigureOutput:
 
         m._USE_COLOR = False
         m.PRIORITY_COLOR.update(
-            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
+            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "90", "P5": "90"}
         )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34", "EPIC": "35"})
         if hasattr(m, "CATEGORY_COLOR") and hasattr(self, "_category_defaults"):

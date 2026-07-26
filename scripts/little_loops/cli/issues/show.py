@@ -465,8 +465,13 @@ def _ljust(text: str, width: int) -> str:
 
 
 def _dim(text: str) -> str:
-    """Wrap *text* in the dim SGR code (ENH-2574 item 3: label hierarchy)."""
-    return colorize(text, "2")
+    """Wrap *text* in gray (ENH-2574 item 3: label hierarchy).
+
+    Gray ``90``, not SGR ``2`` (faint): dim is optional in the spec and is
+    rendered, ignored, or synthesized inconsistently across emulators and
+    through tmux, so de-emphasized labels would sometimes not recede at all.
+    """
+    return colorize(text, "90")
 
 
 def _date_only(value: str) -> str:
@@ -505,8 +510,8 @@ _STATUS_COLOR: dict[str, str] = {
     "Completed": "32",
     "In Progress": "33",
     "Blocked": "31",
-    "Deferred": "2",
-    "Cancelled": "2",
+    "Deferred": "90",
+    "Cancelled": "90",
 }
 
 
@@ -806,7 +811,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
     if effort:
         colored_meta_parts.append(f"{_dim('Effort:')} {effort}")
     if risk:
-        risk_code = {"High": "38;5;208", "Medium": "33", "Low": "2"}.get(risk, "0")
+        risk_code = {"High": "38;5;208", "Medium": "33", "Low": "90"}.get(risk, "0")
         colored_meta_parts.append(f"{_dim('Risk:')} {colorize(risk, risk_code)}")
     colored_meta_line = sep.join(colored_meta_parts)
 

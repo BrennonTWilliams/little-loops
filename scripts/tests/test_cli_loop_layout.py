@@ -55,11 +55,11 @@ class TestColorizeLabel:
         assert "\033[32" in result  # green for yes
 
     def test_next_underscore_gets_next_color(self) -> None:
-        """'next' or '_' gets next color (dim)."""
+        """'next' or '_' gets next color (gray)."""
         from little_loops.cli.loop.layout import _colorize_label
 
         result = _colorize_label("next")
-        assert "\033[2" in result  # dim for next
+        assert "\033[90m" in result  # gray for next
 
     def test_unknown_label_returns_uncolorized(self) -> None:
         """A label with no matched color codes is returned unchanged."""
@@ -169,19 +169,32 @@ class TestBoxKindColor:
         st = self._state(action="do x", action_type="prompt")
         assert _box_kind_color(st) == "35"
 
-    def test_shell_explicit_maps_to_bright_black(self) -> None:
-        # Per UX request: shell states render as bright black (gray) to recede
-        # on the warm-paper dark theme palette (cyan 36 was rendering greenish).
+    def test_shell_explicit_maps_to_dark_gray(self) -> None:
+        # Per UX request: shell states render gray to recede on the warm-paper
+        # dark theme palette (cyan 36 was rendering greenish). Pinned 240 rather
+        # than bright-black 90, which is theme-remappable and can converge on
+        # the terminal-state gray (38;5;245) on themes that map it near #808080.
         from little_loops.cli.loop.layout import _box_kind_color
 
         st = self._state(action="echo hi", action_type="shell")
-        assert _box_kind_color(st) == "90"
+        assert _box_kind_color(st) == "38;5;240"
 
     def test_bare_action_defaults_to_shell(self) -> None:
         from little_loops.cli.loop.layout import _box_kind_color
 
         st = self._state(action="echo hi", action_type=None)
-        assert _box_kind_color(st) == "90"
+        assert _box_kind_color(st) == "38;5;240"
+
+    def test_shell_and_terminal_grays_stay_distinct(self) -> None:
+        """Both grays are pinned so no terminal theme can collapse them."""
+        from little_loops.cli.loop.layout import (
+            _ACTION_TYPE_KIND_COLORS,
+            _TERMINAL_KIND_COLOR,
+        )
+
+        assert _ACTION_TYPE_KIND_COLORS["shell"] != _TERMINAL_KIND_COLOR
+        assert _ACTION_TYPE_KIND_COLORS["shell"].startswith("38;5;")
+        assert _TERMINAL_KIND_COLOR.startswith("38;5;")
 
     def test_mcp_tool_maps_to_yellow(self) -> None:
         from little_loops.cli.loop.layout import _box_kind_color
@@ -207,11 +220,11 @@ class TestBoxKindColor:
         st = self._state(action="do x", action_type="weird")
         assert _box_kind_color(st) is None
 
-    def test_terminal_without_action_returns_dim(self) -> None:
+    def test_terminal_without_action_returns_gray(self) -> None:
         from little_loops.cli.loop.layout import _TERMINAL_KIND_COLOR, _box_kind_color
 
         st = self._state(terminal=True, action=None, action_type=None)
-        assert _box_kind_color(st) == _TERMINAL_KIND_COLOR == "2"
+        assert _box_kind_color(st) == _TERMINAL_KIND_COLOR == "38;5;245"
 
     def test_loop_wins_over_action_type(self) -> None:
         from little_loops.cli.loop.layout import _SUB_LOOP_KIND_COLOR, _box_kind_color
@@ -313,9 +326,11 @@ class TestDiagramKindColors:
             title_only=True,
         )
 
-        assert "\033[90" in diagram, "shell action_type should color the box bright black (gray)"
+        assert "\033[38;5;240" in diagram, "shell action_type should color the box pinned dark gray"
         assert "\033[35" in diagram, "sub-loop state should be magenta"
-        assert "\033[2m" in diagram, "terminal state should be dim"
+        # Both grays are pinned (not bright-black "90") specifically so they
+        # cannot converge on a theme that remaps bright-black near #8a8a8a.
+        assert "\033[38;5;245" in diagram, "terminal state should be indexed mid-gray"
 
     def test_learning_state_color_in_diagram(self) -> None:
         """A ``type: learning`` state colors its box muted cyan (36) end-to-end."""
@@ -831,11 +846,11 @@ class TestRenderLabels:
         assert "[c]" not in out
         assert "[d]" not in out
 
-    def test_unknown_label_uses_dim_green(self) -> None:
+    def test_unknown_label_uses_gray(self) -> None:
         from little_loops.cli.loop.info import _render_labels
 
         out = _render_labels(["unknown-label"])
-        assert "\033[2m[unknown-label]\033[0m" in out
+        assert "\033[90m[unknown-label]\033[0m" in out
 
 
 class TestDetectSubgroups:

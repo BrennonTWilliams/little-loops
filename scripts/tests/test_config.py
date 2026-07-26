@@ -2401,8 +2401,8 @@ class TestCliColorsPriorityConfig:
         assert config.P1 == "38;5;208"
         assert config.P2 == "33"
         assert config.P3 == "0"
-        assert config.P4 == "2"
-        assert config.P5 == "2"
+        assert config.P4 == "90"
+        assert config.P5 == "90"
 
     def test_from_dict_partial(self) -> None:
         config = CliColorsPriorityConfig.from_dict({"P0": "31;1", "P2": "91"})
@@ -2480,10 +2480,10 @@ class TestCliColorsEdgeLabelsConfig:
         assert config.no == "38;5;208"
         assert config.error == "31"
         assert config.partial == "33"
-        assert config.next == "2"
-        assert config.default == "2"
+        assert config.next == "90"
+        assert config.default == "90"
         assert config.blocked == "31"
-        assert config.retry_exhausted == "38;5;208"
+        assert config.retry_exhausted == "38;5;202"
         assert config.rate_limit_exhausted == "38;5;214"
 
     def test_from_dict_empty(self) -> None:
@@ -2502,7 +2502,7 @@ class TestCliColorsEdgeLabelsConfig:
         d = config.to_dict()
         assert "_" in d
         assert "default" not in d
-        assert d["_"] == "2"
+        assert d["_"] == "90"
         assert d["yes"] == "32"
 
 

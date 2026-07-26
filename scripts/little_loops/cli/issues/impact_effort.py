@@ -21,7 +21,7 @@ _MAX_PER_QUADRANT = 6
 _QUADRANT_HEADER_COLOR = {
     "quick_wins": "32;1",  # bold green   — desirable
     "major_projects": "33",  # yellow       — important, costly
-    "fill_ins": "2",  # dim          — low priority
+    "fill_ins": "90",  # gray         — low priority
     "thankless": "38;5;208",  # orange       — avoid
 }
 

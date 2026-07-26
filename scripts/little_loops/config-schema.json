@@ -1334,8 +1334,8 @@
                 "P1": { "type": "string", "default": "38;5;208", "description": "ANSI SGR code for P1 (default: orange)" },
                 "P2": { "type": "string", "default": "33", "description": "ANSI SGR code for P2 (default: yellow)" },
                 "P3": { "type": "string", "default": "0", "description": "ANSI SGR code for P3 (default: normal)" },
-                "P4": { "type": "string", "default": "2", "description": "ANSI SGR code for P4 (default: dim)" },
-                "P5": { "type": "string", "default": "2", "description": "ANSI SGR code for P5 (default: dim)" }
+                "P4": { "type": "string", "default": "90", "description": "ANSI SGR code for P4 (default: gray)" },
+                "P5": { "type": "string", "default": "90", "description": "ANSI SGR code for P5 (default: gray)" }
               },
               "additionalProperties": false
             },
@@ -1363,10 +1363,10 @@
                 "no":              { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'no' transitions (default: orange)" },
                 "error":           { "type": "string", "default": "31",      "description": "ANSI SGR code for 'error' transitions (default: red)" },
                 "partial":         { "type": "string", "default": "33",      "description": "ANSI SGR code for 'partial' transitions (default: yellow)" },
-                "next":            { "type": "string", "default": "2",       "description": "ANSI SGR code for 'next' transitions (default: dim)" },
-                "default":         { "type": "string", "default": "2",       "description": "ANSI SGR code for unlabeled ('_') transitions (default: dim)" },
+                "next":            { "type": "string", "default": "90",      "description": "ANSI SGR code for 'next' transitions (default: gray)" },
+                "default":         { "type": "string", "default": "90",      "description": "ANSI SGR code for unlabeled ('_') transitions (default: gray)" },
                 "blocked":         { "type": "string", "default": "31",      "description": "ANSI SGR code for 'blocked' transitions (default: red)" },
-                "retry_exhausted": { "type": "string", "default": "38;5;208","description": "ANSI SGR code for 'retry_exhausted' transitions (default: orange)" },
+                "retry_exhausted": { "type": "string", "default": "38;5;202","description": "ANSI SGR code for 'retry_exhausted' transitions (default: deep orange; distinct from 'no' orange, and second rung of the 214/202/196 exhaustion severity ramp)" },
                 "rate_limit_exhausted": { "type": "string", "default": "38;5;214","description": "ANSI SGR code for 'rate_limit_exhausted' transitions (default: amber)" }
               },
               "additionalProperties": false

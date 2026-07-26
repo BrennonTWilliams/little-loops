@@ -760,8 +760,8 @@ class TestRenderCard:
         for status, code in (
             ("In Progress", "33"),
             ("Blocked", "31"),
-            ("Deferred", "2"),
-            ("Cancelled", "2"),
+            ("Deferred", "90"),
+            ("Cancelled", "90"),
         ):
             fields: dict[str, str | None] = {
                 "issue_id": "ENH-1",

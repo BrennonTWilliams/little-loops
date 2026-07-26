@@ -1347,7 +1347,9 @@ class TestRenderFsmDiagram:
             result = _render_fsm_diagram(fsm)
 
         # State names should be bold — accept bare (\\033[1m) or colored (\\033[X;1m).
-        assert "\033[1m" in result or re.search(r"\033\[\d+;1m", result) is not None, (
+        # ``[\d;]+`` not ``\d+``: kind colors may be multi-segment indexed-256
+        # codes, so the compounded form is e.g. ``\033[38;5;240;1m``.
+        assert "\033[1m" in result or re.search(r"\033\[[\d;]+;1m", result) is not None, (
             "Non-highlighted state names should use bold (ANSI code 1, bare or compounded)"
         )
 

@@ -1136,7 +1136,7 @@ class StateFeedRenderer:
                     verdict_colored = colorize(verdict, _vc)
                 else:
                     symbol = colorize("✗", "38;5;208")
-                    verdict_colored = colorize(verdict, "2")
+                    verdict_colored = colorize(verdict, "90")
                 # Build verdict line
                 if error and verdict == "error":
                     verdict_line = f"{symbol} {verdict_colored}: {error}"
@@ -1874,7 +1874,7 @@ def run_foreground(
                     print()
                     print(colorize("Failure reason:", "1"))
                     for _line in reason_text.splitlines()[-40:]:  # cap to bound scrollback
-                        print(colorize("│ " + _line, "2"))
+                        print(colorize("│ " + _line, "90"))
 
             completion_prefix = "Resumed and completed" if mode == "resume" else "Loop completed"
             rejection_count = 0

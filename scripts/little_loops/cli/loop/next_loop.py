@@ -291,7 +291,7 @@ def cmd_next_loop(
     for i, c in enumerate(candidates, 1):
         rank = colorize(f"#{i}", "36;1")
         name = colorize(c.loop, "1")
-        score_str = colorize(f"score={c.score:.3f}", "2")
+        score_str = colorize(f"score={c.score:.3f}", "90")
         print(f"  {rank}  {name}  {score_str}")
         print(f"       {colorize(c.rationale, '2')}")
         print(f"       {colorize('$', '32')} {c.command}")

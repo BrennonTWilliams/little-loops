@@ -122,12 +122,15 @@ def cmd_list(
             print_json([s.to_dict() for s in states])
             return 0
         print(colorize("Running loops:", "1"))
+        # Gray "90" rather than SGR 2 (faint) for de-emphasis throughout this
+        # module: dim is optional in the spec and is rendered, ignored, or
+        # synthesized inconsistently across emulators and through tmux.
         _STATUS_COLORS = {
             "running": "32",
             "interrupted": "33",
             "user_stopped": "33",  # ENH-2522: same color as interrupted (clean pause)
             "system_signal": "31",  # ENH-2522: red — kernel/OOM kill
-            "stopped": "2",
+            "stopped": "90",
             "starting": "33",
         }
 
@@ -147,14 +150,14 @@ def cmd_list(
                 )
                 name_str = colorize(state.loop_name, "1")
                 state_str = colorize(state.current_state, "34")
-                status_color = _STATUS_COLORS.get(state.status, "2")
+                status_color = _STATUS_COLORS.get(state.status, "90")
                 display_status = (
                     "paused"
                     if state.status in ("interrupted", "user_stopped")  # ENH-2522
                     else state.status
                 )
                 status_str = colorize(f"[{display_status}]", status_color)
-                elapsed_colored = colorize(elapsed_str, "2")
+                elapsed_colored = colorize(elapsed_str, "90")
                 print(
                     f"  {name_str}: {state_str} (iteration {state.iteration})"
                     f" {status_str} {elapsed_colored}"
@@ -165,11 +168,11 @@ def cmd_list(
                 statuses = ", ".join(
                     colorize(
                         f"[{'paused' if s.status in ('interrupted', 'user_stopped') else s.status}]",
-                        _STATUS_COLORS.get(s.status, "2"),
+                        _STATUS_COLORS.get(s.status, "90"),
                     )
                     for s in group_states
                 )
-                count_str = colorize(f"({len(group_states)} instances)", "2")
+                count_str = colorize(f"({len(group_states)} instances)", "90")
                 print(f"  {name_str}: {count_str} {statuses}")
         return 0
 
@@ -376,11 +379,11 @@ def cmd_list(
     print()
     if hidden_total:
         hidden_bits = ", ".join(f"{v} {k}" for k, v in hidden_counts.items() if v)
-        print(colorize(f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show", "2"))
+        print(colorize(f"  {hidden_total} hidden ({hidden_bits}) — pass --all to show", "90"))
     hints = ["ll-loop show <name> for details", "--category <cat> to filter"]
     if not grid_mode:
         hints.insert(0, "--grid for a compact name grid")
-    print(colorize("  " + " · ".join(hints), "2"))
+    print(colorize("  " + " · ".join(hints), "90"))
     return 0
 
 
@@ -429,10 +432,10 @@ def _emit_grid_section(
         if suppress_project_badge and badge == "◆ project":
             badge = ""
         if badge:
-            rendered += "  " + colorize(badge, _BADGE_COLOR.get(badge, "2"))
+            rendered += "  " + colorize(badge, _BADGE_COLOR.get(badge, "90"))
             width += 2 + _display_width(badge)
         if tag:
-            rendered += "  " + colorize(f"({tag})", "2")
+            rendered += "  " + colorize(f"({tag})", "90")
             width += 2 + _display_width(f"({tag})")
         cells.append((rendered, width))
     if not cells:
@@ -501,13 +504,13 @@ def _emit_long_section(
         if badge_w:
             pad = " " * (badge_w - 2 - _display_width(badge))
             badge_str = (
-                (colorize(badge, _BADGE_COLOR.get(badge, "2")) if badge else "") + pad + "  "
+                (colorize(badge, _BADGE_COLOR.get(badge, "90")) if badge else "") + pad + "  "
             )
         tag_str = ""
         if tag_w:
             tag_text = f"({tag})" if tag else ""
             pad = " " * (tag_w - 2 - _display_width(tag_text))
-            tag_str = (colorize(tag_text, "2") if tag_text else "") + pad + "  "
+            tag_str = (colorize(tag_text, "90") if tag_text else "") + pad + "  "
         label_str = _render_labels(lp.get("labels") or [])
         desc_src = lp["description"] or ""
         # Per-row prefix budget: shrink the desc column when labels are wide
@@ -529,7 +532,7 @@ def _emit_long_section(
             desc_text = ""
         if desc_text and shared_prefix and desc_text.startswith(shared_prefix):
             # Dim the repeated boilerplate so the distinguishing tail pops.
-            desc_str = "  " + colorize(shared_prefix, "2") + desc_text[len(shared_prefix) :]
+            desc_str = "  " + colorize(shared_prefix, "90") + desc_text[len(shared_prefix) :]
         elif desc_text:
             desc_str = "  " + desc_text
         else:
@@ -554,7 +557,7 @@ def _emit_long_section(
             if prefix:
                 # Bullet + lowercase prefix + glob, dim gray — visually
                 # distinct from the "▸ ALL-CAPS (N)" category headers.
-                print(colorize(f"  · {prefix}-* ({len(members)})", "2"))
+                print(colorize(f"  · {prefix}-* ({len(members)})", "90"))
                 leaf_indent = "    "
             else:
                 leaf_indent = "  "
@@ -678,10 +681,10 @@ def _render_labels(labels: list[str]) -> str:
     hidden = max(0, len(labels) - 2)
     parts: list[str] = []
     for lab in visible:
-        code = LABEL_COLOR.get(lab.lower(), "2")
+        code = LABEL_COLOR.get(lab.lower(), "90")
         parts.append(colorize(f"[{lab}]", code))
     if hidden:
-        parts.append(colorize(f"[+{hidden}]", "2"))
+        parts.append(colorize(f"[+{hidden}]", "90"))
     return "  " + " ".join(parts)
 
 
@@ -731,7 +734,7 @@ def _format_history_event(
     if event_type == "action_output" and not verbose:
         return None
 
-    ts_str = colorize(ts, "2")
+    ts_str = colorize(ts, "90")
     etype_padded = event_type.ljust(_EVENT_TYPE_WIDTH)
     etype_color = "0"
     detail = ""
@@ -769,7 +772,7 @@ def _format_history_event(
         action = event.get("action", "")
         is_prompt = event.get("is_prompt", False)
         kind_label = "prompt" if is_prompt else "shell"
-        kind_str = colorize(f"[{kind_label}]", "2")
+        kind_str = colorize(f"[{kind_label}]", "90")
         first_line = (
             next((ln.strip() for ln in action.splitlines() if ln.strip()), "")
             if is_prompt
@@ -780,14 +783,14 @@ def _format_history_event(
 
     elif event_type == "action_output":
         # Only reached in verbose mode
-        etype_color = "2"
-        detail = colorize("\u2502 " + event.get("line", ""), "2")
+        etype_color = "90"
+        detail = colorize("\u2502 " + event.get("line", ""), "90")
 
     elif event_type == "action_complete":
         exit_code = event.get("exit_code", 0)
         duration_ms = event.get("duration_ms", 0)
         if exit_code == 0:
-            etype_color = "2"
+            etype_color = "90"
             status_str = colorize("\u2713", "32")
         else:
             etype_color = "38;5;208"
@@ -806,7 +809,7 @@ def _format_history_event(
                     output_preview if full else _truncate(output_preview, max(avail_w, 40))
                 )
                 for preview_line in preview_text.splitlines()[:5]:
-                    extra_lines.append(colorize(_indent + "\u2502 " + preview_line, "2"))
+                    extra_lines.append(colorize(_indent + "\u2502 " + preview_line, "90"))
 
     elif event_type == "evaluate":
         verdict = event.get("verdict", "")
@@ -835,20 +838,20 @@ def _format_history_event(
                     meta_parts.append(f"latency={llm_latency_ms}ms")
                 meta_str = "  ".join(meta_parts)
                 extra_lines.append(
-                    colorize(_indent + colorize("LLM Call", "2") + "  " + meta_str, "2")
+                    colorize(_indent + colorize("LLM Call", "90") + "  " + meta_str, "90")
                 )
                 avail_w = width - len(_indent) - len("Prompt:   ") - 2
                 if llm_prompt:
                     prompt_text = llm_prompt if full else _truncate(llm_prompt, max(avail_w, 40))
-                    extra_lines.append(colorize(_indent + "Prompt:   " + prompt_text, "2"))
+                    extra_lines.append(colorize(_indent + "Prompt:   " + prompt_text, "90"))
                 if llm_raw_output:
                     resp_text = (
                         llm_raw_output if full else _truncate(llm_raw_output, max(avail_w, 40))
                     )
-                    extra_lines.append(colorize(_indent + "Response: " + resp_text, "2"))
+                    extra_lines.append(colorize(_indent + "Response: " + resp_text, "90"))
 
     elif event_type == "route":
-        etype_color = "2"
+        etype_color = "90"
         from_state = event.get("from", "")
         to_state = event.get("to", "")
         detail = f"{from_state} \u2192 {colorize(to_state, '34')}"
@@ -1422,7 +1425,7 @@ def _print_state_overview_table(fsm: FSMLoop) -> None:
         if len(trans_col) > col3_w:
             trans_col = trans_col[: col3_w - 1] + "\u2026"
         if type_col == "\u2014":
-            colored_type = colorize(type_col, "2")
+            colored_type = colorize(type_col, "90")
         elif type_col == "sub-loop":
             colored_type = colorize(type_col, "35")
         else:
@@ -1787,7 +1790,7 @@ def cmd_fragments(
         first_line = raw_desc.splitlines()[0] if raw_desc else ""
         if first_line and len(first_line) > desc_col_w:
             first_line = first_line[: desc_col_w - 1] + "\u2026"
-        desc_str = first_line if first_line else colorize("(no description)", "2")
+        desc_str = first_line if first_line else colorize("(no description)", "90")
         padded_name = name.ljust(name_col_w)
         print(f"  {colorize(padded_name, '36;1')}  {desc_str}")
 

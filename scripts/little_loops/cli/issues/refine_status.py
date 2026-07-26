@@ -494,7 +494,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                     parts.append(
                         colorize(raw, "32") + padded[len(raw) :]
                         if hit
-                        else colorize(raw, "2") + padded[len(raw) :]
+                        else colorize(raw, "90") + padded[len(raw) :]
                     )
 
         for c in post_cmd:

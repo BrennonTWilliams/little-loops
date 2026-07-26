@@ -38,8 +38,10 @@ class CliColorsPriorityConfig:
     P1: str = "38;5;208"
     P2: str = "33"
     P3: str = "0"
-    P4: str = "2"
-    P5: str = "2"
+    # Gray, not SGR 2 (faint): dim is optional in the spec and renders
+    # inconsistently across emulators and through tmux.
+    P4: str = "90"
+    P5: str = "90"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CliColorsPriorityConfig:
@@ -49,8 +51,8 @@ class CliColorsPriorityConfig:
             P1=data.get("P1", "38;5;208"),
             P2=data.get("P2", "33"),
             P3=data.get("P3", "0"),
-            P4=data.get("P4", "2"),
-            P5=data.get("P5", "2"),
+            P4=data.get("P4", "90"),
+            P5=data.get("P5", "90"),
         )
 
 
@@ -82,10 +84,12 @@ class CliColorsEdgeLabelsConfig:
     no: str = "38;5;208"
     error: str = "31"
     partial: str = "33"
-    next: str = "2"
-    default: str = "2"
+    # Gray, not SGR 2 (faint): dim is optional in the spec and renders
+    # inconsistently across emulators and through tmux.
+    next: str = "90"
+    default: str = "90"
     blocked: str = "31"
-    retry_exhausted: str = "38;5;208"
+    retry_exhausted: str = "38;5;202"
     rate_limit_exhausted: str = "38;5;214"
 
     @classmethod
@@ -96,10 +100,10 @@ class CliColorsEdgeLabelsConfig:
             no=data.get("no", "38;5;208"),
             error=data.get("error", "31"),
             partial=data.get("partial", "33"),
-            next=data.get("next", "2"),
-            default=data.get("default", "2"),
+            next=data.get("next", "90"),
+            default=data.get("default", "90"),
             blocked=data.get("blocked", "31"),
-            retry_exhausted=data.get("retry_exhausted", "38;5;208"),
+            retry_exhausted=data.get("retry_exhausted", "38;5;202"),
             rate_limit_exhausted=data.get("rate_limit_exhausted", "38;5;214"),
         )
 

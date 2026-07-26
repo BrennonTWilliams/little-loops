@@ -22,16 +22,35 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 # Edge label colorization
 # ---------------------------------------------------------------------------
 
+# Two deliberate color mechanisms, split by what each label has to express:
+#
+#   Theme-relative basic-16 for the ordinary routing verdicts (yes/partial/
+#   error/blocked). These should look like *the user's* green/yellow/red, so
+#   they resolve against the terminal theme by design.
+#
+#   Pinned indexed-256 for the exhaustion family, which needs three warm tones
+#   that stay in monotonic severity order (214 amber -> 202 deep orange -> 196
+#   vivid red). Basic-16 carries only one red and one yellow, so a
+#   theme-relative ramp cannot express the grading. Pure 196 is reserved as the
+#   loudest code on screen for ``throttle_hard`` alone; generic failure stays on
+#   theme red ``31``, so the two never compete to mean "the error color".
+#
+# Duplications below are intentional: error/blocked are the same severity tier
+# (hard failure, no retry semantics) and share ``31`` on purpose. ``no`` owns
+# ``38;5;208`` exclusively — ``retry_exhausted`` previously shared it, which
+# flattened a terminal failure into a routine negative branch.
 _EDGE_LABEL_COLORS: dict[str, str] = {
     "yes": "32",
     "no": "38;5;208",
     "error": "31",
     "partial": "33",
-    "next": "2",
-    "_": "2",
+    # Gray, not SGR 2 (faint): dim is optional in the spec and renders
+    # inconsistently across emulators and through tmux.
+    "next": "90",
+    "_": "90",
     "blocked": "31",
-    "retry_exhausted": "38;5;208",
     "rate_limit_exhausted": "38;5;214",
+    "retry_exhausted": "38;5;202",
     "throttle_hard": "38;5;196",
 }
 
@@ -123,16 +142,56 @@ _ROUTE_BADGE = "\u2443"  # ⑃
 # initial render before any state executes, or main-scope fallback that hides the
 # active state). Active states continue to use ``highlight_color`` with background
 # fill via ``_draw_box``.
+# One hue per action type, no duplications — every entry here can appear in the
+# same diagram, so unlike _EDGE_LABEL_COLORS there are no intentional shared
+# codes and any future collision is a bug.
+#
+# ``shell`` is the one pinned entry. It was bright-black ``90``, but ``90`` is
+# theme-remappable and _TERMINAL_KIND_COLOR is a fixed ``38;5;245``: on themes
+# that map bright-black near #808080 (several light themes, Solarized notably)
+# the two grays converge and shell boxes become indistinguishable from terminal
+# boxes. Pinning to 240 guarantees the gap on every theme rather than relying on
+# where bright-black happens to land.
 _ACTION_TYPE_KIND_COLORS: dict[str, str] = {
     "slash_command": "34",  # blue
     "prompt": "35",  # magenta
-    "shell": "90",  # bright black (gray) — recedes on warm-paper dark theme
+    "shell": "38;5;240",  # dark gray — pinned to stay clear of terminal's 245
     "mcp_tool": "33",  # yellow
     "learning": "36",  # muted cyan — distillation/proof theme (type: learning)
 }
 
 _SUB_LOOP_KIND_COLOR = "35"  # magenta — distinguishes nested FSMs
-_TERMINAL_KIND_COLOR = "2"  # dim — end states visually recede
+# Indexed mid-gray rather than SGR 2 (faint): "dim" is optional in the spec and
+# is rendered, ignored, or synthesized inconsistently across emulators and
+# through tmux, so end states would sometimes not recede at all. Indexed slots
+# 16–255 are fixed by the xterm spec and are not theme-remappable. A 256 code
+# (not bright-black "90") because ``shell`` already claims 90 — terminal and
+# shell states must stay visually distinct.
+_TERMINAL_KIND_COLOR = "38;5;245"  # mid-gray — end states visually recede
+
+
+def _bg_of(fg: str) -> str | None:
+    """Return the background SGR code matching foreground code *fg*, or ``None``.
+
+    Handles all three foreground forms rather than the ``int(fg) + 10``
+    arithmetic this replaces, which raised ``ValueError`` on any non-basic code
+    and silently dropped the highlight's background fill. ``fsm_active_state``
+    is user-configurable, so a 256-color or truecolor value reaches here in
+    normal use.
+
+    Basic codes outside the 30–37 / 90–97 foreground ranges (e.g. ``"0"``, or a
+    compound ``"32;1"``) have no meaningful background counterpart and return
+    ``None``, which callers already treat as "no fill".
+    """
+    if fg.startswith("38;5;"):
+        return "48;5;" + fg[len("38;5;") :]
+    if fg.startswith("38;2;"):
+        return "48;2;" + fg[len("38;2;") :]
+    try:
+        n = int(fg)
+    except (ValueError, TypeError):
+        return None
+    return str(n + 10) if (30 <= n <= 37 or 90 <= n <= 97) else None
 
 
 def _box_kind_color(state: StateConfig | None) -> str | None:
@@ -776,10 +835,7 @@ def _draw_box(
     # Effective border-color for non-highlighted boxes (foreground only).
     nc: str | None = kind_color if (not is_highlighted and kind_color) else None
     total_width = len(grid[0]) if grid else 0
-    try:
-        bg_code: str | None = str(int(highlight_color) + 10)
-    except (ValueError, TypeError):
-        bg_code = None
+    bg_code: str | None = _bg_of(highlight_color)
 
     # Pre-compute the combined border SGR code for highlighted boxes so
     # entire border strings can be batched into a single colorize() call.
@@ -2347,10 +2403,7 @@ def _render_neighborhood_diagram(
     box_w_succ = inner_succ + 4 if succ_labels else 0
 
     n_rows = max(len(pred_labels), len(succ_labels), 1)
-    try:
-        nd_bg_code: str | None = str(int(highlight_color) + 10)
-    except (ValueError, TypeError):
-        nd_bg_code = None
+    nd_bg_code: str | None = _bg_of(highlight_color)
 
     def _make_box(
         label: str,
