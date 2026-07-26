@@ -1176,10 +1176,15 @@ lines, an optional `export ` prefix, and quoted values — no `python-dotenv`
 dependency.
 
 A configured `"sdk"`/`"batch"` value downgrades to `"cli"` at runtime if the
-`anthropic` package is not importable or no credential is resolvable via the
+`anthropic` package is not importable, no credential is resolvable via the
 SDK's auth chain — `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or the
 on-disk OAuth profile from `ant auth login` (ENH-2737; subscription-only
-users need no console API key). The downgrade emits a one-shot
+users need no console API key) — or the state's action invokes a `/ll:`
+skill or declares `tools:` (BUG-2831): the sdk/batch dispatch path sends a
+bare, tool-less single-turn API call, which can't run the host CLI's
+agentic tool loop that a skill invocation needs, so it's downgraded
+unconditionally — even under an explicit per-state `request_path: sdk`
+override — rather than silently no-opping. The downgrade emits a one-shot
 `request_path_downgrade` event and stderr warning, and the run still
 completes normally rather than hard-failing.
 
@@ -1543,7 +1548,12 @@ the matching server-side search-tool injection. Only consulted when
 path never serializes a tool-definition catalog at all, so this block has no
 effect there. This same opt-in condition gates EPIC-2456's F1/F10 gates, which
 `docs/observability/realized-savings-verification.md` (ENH-2719) found
-structurally dormant under the `"cli"` default.
+structurally dormant under the `"cli"` default. BUG-2831 narrows the
+`"sdk"`/`"batch"` states that actually reach this dispatch: a state whose
+action invokes a `/ll:` skill is force-downgraded to `"cli"` at runtime
+(since `_dispatch_live` never passes tool definitions at all), so
+`deferred_tools` in practice only ever applies to pure evaluator prompt
+states, not skill-invoking ones.
 
 `threshold` sets the catalog index at or past which
 `tool_catalog.to_anthropic_tools()` flags each tool `defer_loading: True`,

@@ -57,6 +57,34 @@ Observed on `ll-loop run autodev ENH-2825` and `ll-loop run autodev ENH-2829`
 (runs `.loops/runs/autodev-20260726T115354/` and `autodev-20260726T115416/`),
 each completing in ~40–55s with 5 tiny SDK invocations under `refine_current`.
 
+## Current Behavior
+
+With `orchestration.request_path: "sdk"` configured, every agentic skill state
+(`/ll:refine-issue`, `/ll:format-issue`, `/ll:wire-issue`, `/ll:confidence-check`,
+etc.) is dispatched as a bare, tool-less `messages.create()` call. The model
+cannot execute tools or edit files, so it emits its intended actions as plain
+text and the state exits 0 having changed nothing. Downstream, `autodev`
+diagnoses this no-op as a `refine_failed` quality failure and skips the issue,
+while the loop run still terminates with a `done` status.
+
+## Impact
+
+Every issue processed by `autodev`/`ll-auto` under an `sdk`/`batch`
+`orchestration.request_path` default is silently skipped rather than refined —
+the loop reports success (`done`) while no issue file is actually modified.
+This masks real backlog progress and wastes the ~40–55s per run spent on
+useless single-shot API calls. Mitigated today only by the interim workaround
+of removing `orchestration.request_path: "sdk"` from `.ll/ll-config.json`
+(applied in commit 9510a10f), which is not a durable fix — any future opt-in
+to the sdk/batch path will silently reintroduce this bug for agentic states.
+
+## Status
+
+Open — interim mitigation applied (removed `orchestration.request_path: "sdk"`
+project-wide default), but the underlying dispatch defect in
+`_resolve_request_path()`/`_dispatch_live()` is unfixed. Deferred by automation
+(`gate_blocked`) pending the code change described in Proposed Fix.
+
 ## Root Cause
 
 The sdk/batch request path was designed for lightweight evaluator/verdict
@@ -164,6 +192,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] Regression test in `scripts/tests/` covering the downgrade decision in `_resolve_request_path()`/dispatch for skill-invoking vs. evaluator states.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-26T18:11:31 - `f7d7bf20-f34a-4fc9-be2a-96035eba2254.jsonl`
 - `/ll:wire-issue` - 2026-07-26T17:50:33 - `6c9e3799-ee10-42c6-be43-83fa4abe251b.jsonl`
 - `/ll:refine-issue` - 2026-07-26T17:43:20 - `ca1fe139-8e4a-45a9-8e81-4359c1b633d7.jsonl`
 - `/ll:capture-issue` - 2026-07-26T17:03:09Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b6b3c38-43c1-4595-a323-7b5c44517c87.jsonl`

@@ -895,9 +895,16 @@ CLI-subprocess path returns. `FSMExecutor` selects between the two
 mechanisms per state via `state.request_path or
 orchestration_config.request_path` (`"cli"` default, `"sdk"`, or `"batch"`);
 a configured `"sdk"`/`"batch"` value automatically downgrades to `"cli"` (with
-a one-shot warning) if `anthropic` is not importable or no credential is
+a one-shot warning) if `anthropic` is not importable, no credential is
 resolvable via the SDK's auth chain — env key/token or the on-disk OAuth
-profile from `ant auth login` (ENH-2737), so
+profile from `ant auth login` (ENH-2737) — or the state's action invokes a
+`/ll:` skill or declares `tools:` (BUG-2831): the SDK/Batches dispatch path
+sends a bare, tool-less single-turn call with no host-CLI agentic tool
+loop, so a skill invocation can only emit its intended actions as inert
+text and silently no-op if left on this path — the downgrade applies
+unconditionally, overriding even an explicit per-state `request_path: sdk`.
+This keeps `"sdk"`/`"batch"` scoped to what the mechanism can actually
+serve: pure text-in/text-out evaluator prompts. Either way,
 a run never hard-fails on a host that only has the CLI available; see
 [API.md § little_loops.host_runner](reference/API.md#little_loopshost_runner)
 for the dispatch function reference.

@@ -194,8 +194,11 @@ class RequestPathDowngradeVariant(DESVariant):
     """FSMExecutor._emit('request_path_downgrade') — sdk/batch fell back to cli.
 
     Fired once per run when a configured ``request_path: sdk``/``batch`` is
-    downgraded because the ``anthropic`` package is unimportable or no
-    credential is resolvable (ENH-2737).
+    downgraded because the ``anthropic`` package is unimportable, no
+    credential is resolvable (ENH-2737), or the state's action invokes a
+    ``/ll:`` skill / declares ``tools:`` (BUG-2831) — the sdk/batch path
+    sends a bare, tool-less single-turn call that can't run an agentic
+    skill invocation.
     """
 
     type: Literal["request_path_downgrade"] = "request_path_downgrade"

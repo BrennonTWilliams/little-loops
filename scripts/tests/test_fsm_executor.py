@@ -10128,6 +10128,84 @@ class TestRequestPathDispatchWiring:
         assert mock_runner.calls == ["Say hi"]
         assert result.terminated_by != "error"
 
+    def test_request_path_sdk_downgrades_for_skill_invoking_action(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2831: a /ll: skill-invoking action forces sdk -> cli even with valid
+        credentials — _dispatch_live sends tools=None and can't run a skill."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        # Credentials are VALID so this isolates the new skill-invocation
+        # downgrade reason from the existing credential-downgrade reason.
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        fsm = FSMLoop(
+            name="test",
+            initial="ask",
+            states={
+                "ask": StateConfig(
+                    action="/ll:refine-issue BUG-1234",
+                    action_type="prompt",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            result = executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls == ["/ll:refine-issue BUG-1234"]
+        assert result.terminated_by != "error"
+
+    def test_request_path_sdk_unchanged_for_pure_evaluator_action(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2831 non-regression: a pure evaluator prompt (no skill invocation,
+        no tools:) still honors request_path='sdk' unchanged."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="should not be used")
+
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
     def test_request_path_sdk_accepts_auth_token_without_api_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

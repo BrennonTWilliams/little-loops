@@ -4755,10 +4755,14 @@ class TestPruningProfileCoverageValidation:
         errors = _validate_pruning_profile(fsm)
         assert errors == [], f"Unexpected errors with suppression flag: {errors}"
 
-    # --- sdk/batch exemption ---
+    # --- sdk/batch exemption (BUG-2831: narrowed to no longer apply to
+    # skill-invoking states — the executor now force-downgrades those to
+    # cli at runtime, so they genuinely reach action_runner and need
+    # pruning guidance same as any other skill-invoking state) ---
 
-    def test_does_not_fire_for_sdk_request_path_state(self) -> None:
-        """A request_path: sdk state is exempt — pruning is a no-op there."""
+    def test_fires_for_sdk_request_path_state_invoking_skill(self) -> None:
+        """BUG-2831: a skill-invoking request_path: sdk state now warns — it's
+        force-downgraded to cli at runtime and genuinely needs pruning."""
         fsm = self._simple_fsm(
             states={
                 "check": make_state(
@@ -4771,10 +4775,11 @@ class TestPruningProfileCoverageValidation:
             }
         )
         warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
-        assert warnings == [], f"Unexpected MR-12 coverage WARNING for sdk state: {warnings}"
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
 
-    def test_does_not_fire_for_batch_request_path_state(self) -> None:
-        """A request_path: batch state is exempt — pruning is a no-op there."""
+    def test_fires_for_batch_request_path_state_invoking_skill(self) -> None:
+        """BUG-2831: a skill-invoking request_path: batch state now warns — it's
+        force-downgraded to cli at runtime and genuinely needs pruning."""
         fsm = self._simple_fsm(
             states={
                 "check": make_state(
@@ -4787,12 +4792,14 @@ class TestPruningProfileCoverageValidation:
             }
         )
         warnings = self._mr12_coverage_warnings(_validate_pruning_profile(fsm))
-        assert warnings == [], f"Unexpected MR-12 coverage WARNING for batch state: {warnings}"
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
 
-    # --- config-level request_path exemption (ENH-2810) ---
+    # --- config-level request_path (ENH-2810) ---
 
-    def test_does_not_fire_when_orchestration_request_path_sdk(self) -> None:
-        """No state-level request_path, but orchestration config default is sdk — exempt."""
+    def test_fires_when_orchestration_request_path_sdk_invoking_skill(self) -> None:
+        """BUG-2831: no state-level request_path, orchestration config default is
+        sdk — still warns, since the skill-invoking state is force-downgraded
+        to cli at runtime and genuinely needs pruning."""
         fsm = self._simple_fsm(
             states={
                 "check": make_state(
@@ -4806,7 +4813,7 @@ class TestPruningProfileCoverageValidation:
         warnings = self._mr12_coverage_warnings(
             _validate_pruning_profile(fsm, orchestration_request_path="sdk")
         )
-        assert warnings == [], f"Unexpected MR-12 coverage WARNING under config sdk: {warnings}"
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
 
     def test_still_fires_when_orchestration_request_path_cli(self) -> None:
         """No state-level request_path, orchestration config default is cli — still warns."""
@@ -4860,8 +4867,9 @@ class TestPruningProfileCoverageValidation:
             f"Expected explicit state request_path: cli to still warn under config sdk: {warnings}"
         )
 
-    def test_config_exemption_via_validate_fsm(self) -> None:
-        """validate_fsm() threads orchestration_request_path through to Check 3."""
+    def test_config_request_path_sdk_via_validate_fsm_still_fires(self) -> None:
+        """BUG-2831: validate_fsm() threads orchestration_request_path through to
+        Check 3, but a skill-invoking sdk state still warns (no exemption)."""
         fsm = FSMLoop(
             name="test",
             initial="check",
@@ -4875,7 +4883,7 @@ class TestPruningProfileCoverageValidation:
             },
         )
         warnings = self._mr12_coverage_warnings(validate_fsm(fsm, orchestration_request_path="sdk"))
-        assert warnings == [], f"Unexpected MR-12 coverage WARNING under config sdk: {warnings}"
+        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
 
     # --- end-to-end via validate_fsm() ---
 

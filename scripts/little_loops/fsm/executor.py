@@ -60,7 +60,7 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
-from little_loops.fsm.validation import _effective_session_mode
+from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import get_current_session_jsonl
@@ -2137,6 +2137,19 @@ class FSMExecutor:
         probe fails, downgrades to ``"cli"`` — with a one-shot
         ``request_path_downgrade`` event and stderr warning — so a missing
         package/credential never hard-fails the run (ENH-2737).
+
+        BUG-2831: also downgrades when the state's action invokes a ``/ll:``
+        skill (``_SKILL_INVOKE_RE``, same predicate ``validation.py`` MR-12
+        uses) or the state declares ``tools:``. ``_dispatch_live()`` sends a
+        bare, tool-less single-turn API call — a skill invocation needs the
+        host CLI's agentic loop (tools, catalog, CLAUDE.md) to do anything;
+        without it the model can only emit its intended actions as inert
+        text and the state silently no-ops. This downgrade applies even when
+        ``state.request_path`` is an explicit per-state override: the
+        override can't fix `_dispatch_live`'s ``tools=None`` defect, so
+        honoring it would just reproduce the same silent no-op for an
+        author who opted in without realizing the path can't serve agentic
+        actions.
         """
         if state.request_path:
             resolved = state.request_path
@@ -2146,6 +2159,21 @@ class FSMExecutor:
             resolved = "cli"
 
         if resolved in ("sdk", "batch"):
+            if state.action and _SKILL_INVOKE_RE.search(state.action):
+                self._warn_request_path_downgrade(
+                    resolved,
+                    "state action invokes a /ll: skill, which requires the host "
+                    "CLI's agentic tool loop — the sdk/batch path sends a bare "
+                    "tool-less single-turn call and would silently no-op",
+                )
+                return "cli"
+            if state.tools:
+                self._warn_request_path_downgrade(
+                    resolved,
+                    "state declares tools:, which the sdk/batch path cannot "
+                    "supply — _dispatch_live sends system_prompt=None, tools=None",
+                )
+                return "cli"
             try:
                 import anthropic  # noqa: F401
             except ImportError:

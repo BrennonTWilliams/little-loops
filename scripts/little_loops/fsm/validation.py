@@ -2165,22 +2165,27 @@ def _validate_pruning_profile(
        invokes a ``/ll:<skill>`` action. Catalog suppression removes the skill
        listing the host needs to resolve the slash command, so the invocation
        may fail depending on host behavior.
-    3. WARN (ENH-2805) — a skill/command-invoking state has NO resolvable
-       ``pruning_profile`` at all (neither state override nor loop default).
-       Every such state pays the full automation-context static prefix
-       (catalog + SessionStart digest + CLAUDE.md) on every invocation, which
-       is the dominant share of fleet token spend (session-level traffic, not
-       the FSM-state-tagged ~1% `request_path: sdk` touches). States with
-       ``request_path: sdk``/``batch`` are exempt — they bypass
-       ``action_runner`` entirely via ``_dispatch_live`` and send a bare
-       single-turn API call with no catalog/CLAUDE.md/hooks to prune
-       (``executor.py:2183,2205``). ``orchestration_request_path`` mirrors
-       ``FSMExecutor._resolve_request_path``'s config-default fallback
-       (ENH-2810): when a state has no explicit ``request_path`` but the
-       project's ``orchestration.request_path`` config resolves to
-       ``sdk``/``batch``, the state is exempt too since it will dispatch via
-       the same no-op-pruning path at runtime. A state-level explicit
-       ``request_path: cli`` still overrides and warns regardless of config.
+    3. WARN (ENH-2805, narrowed by BUG-2831) — a skill/command-invoking state
+       has NO resolvable ``pruning_profile`` at all (neither state override
+       nor loop default). Every such state pays the full automation-context
+       static prefix (catalog + SessionStart digest + CLAUDE.md) on every
+       invocation, which is the dominant share of fleet token spend
+       (session-level traffic, not the FSM-state-tagged ~1% `request_path:
+       sdk` touches). ``request_path: sdk``/``batch`` states used to be
+       exempt on the theory that they bypass ``action_runner`` entirely via
+       ``_dispatch_live`` and send a bare single-turn API call with no
+       catalog/CLAUDE.md/hooks to prune — but BUG-2831 found that theory
+       false for *this* branch of the function: every state reaching this
+       point already matched ``_SKILL_INVOKE_RE`` above, and
+       ``FSMExecutor._resolve_request_path()`` now force-downgrades any
+       skill-invoking sdk/batch state to ``cli`` at runtime (a bare
+       tool-less SDK call can't run a `/ll:` skill). A skill-invoking state
+       genuinely does reach ``action_runner`` and does need pruning, so the
+       exemption no longer applies here — the check fires regardless of
+       ``request_path``. (Non-skill-invoking sdk/batch states never enter
+       this loop body in the first place, since they're filtered out by the
+       ``/`` + skill-regex guard above; their exemption from pruning
+       guidance was never conditional on this check.)
 
     Suppressed by ``pruning_profile_ok: true`` at the loop top-level (all
     three checks share this flag rather than minting a per-check flag).
@@ -2231,9 +2236,11 @@ def _validate_pruning_profile(
             )
 
         # Check 3 (WARN, ENH-2805): no resolvable pruning_profile at all.
-        effective_request_path = state.request_path or orchestration_request_path
-        if effective_request_path in ("sdk", "batch"):
-            continue
+        # BUG-2831: no sdk/batch exemption here — every state reaching this
+        # point already invokes a /ll: skill, and the executor now
+        # force-downgrades skill-invoking sdk/batch states to cli at
+        # runtime, so they genuinely go through action_runner and need
+        # pruning guidance same as any other skill-invoking state.
         if profile is None:
             errors.append(
                 ValidationError(
