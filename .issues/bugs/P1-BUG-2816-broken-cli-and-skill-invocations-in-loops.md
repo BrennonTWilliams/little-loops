@@ -2,8 +2,9 @@
 id: BUG-2816
 type: BUG
 priority: P1
-status: open
+status: done
 captured_at: '2026-07-25T22:08:07Z'
+completed_at: '2026-07-26T04:47:42Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
 labels:
@@ -327,7 +328,37 @@ _(none)_
   demonstrated demand beyond this repo — deferrable to a follow-on issue if
   that changes.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-07-26
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/apply-research.yaml`: dropped nonexistent `--format table`, switched to `--flat --limit 30`, added `set -o pipefail` so the `|| echo` fallback can actually fire
+- `scripts/little_loops/loops/lib/cli.yaml`: `ll-deps check` → `ll-deps validate`
+- `scripts/little_loops/loops/brainstorm.yaml`: replaced nonexistent `ll-issues set-flag` prompt instruction with a direct Edit-tool frontmatter update
+- `scripts/little_loops/loops/adopt-third-party-api.yaml`: `/ll:scrape-docs` → `/scrape-docs` (prefix-free, matching the working `skills/explore-api/SKILL.md:109` precedent)
+- `scripts/little_loops/loops/backlog-flow-optimizer.yaml`, `sprint-build-and-validate.yaml`: dropped undeclared `--auto` flag from `/ll:tradeoff-review-issues` / `/ll:create-sprint` prompt text
+- `scripts/little_loops/loops/prompt-across-issues.yaml`: `--quick` → `--auto` in the canonical usage example
+- `scripts/little_loops/loops/rl-coding-agent.yaml`: comment fix, `ll-manage-issue` → `/ll:manage-issue` skill
+- `--input` → positional-arg prose sweep: `adversarial-redesign.yaml`, `sprint-refine-and-implement.yaml`, `cli-anything-bootstrap.yaml` (operator-facing success output), `loop-router.yaml`, `loop-composer.yaml`, `loop-composer-adaptive.yaml`, `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `skills/create-loop/loop-types.md`, `skills/create-loop/SKILL.md`, `skills/create-loop/reference.md`
+- `docs/guides/LEARNING_TESTS_GUIDE.md`: stale `/ll:scrape-docs` reference fixed to prefix-free form
+- New: `scripts/tests/test_bug_2816_cli_invocations.py` — regression tests asserting each broken string is gone and the corrected form is present
+
+### Not Done (deferred, per issue's own scoping)
+- Item 9 (new CLI-invocation validator) — explicitly scoped as an optional follow-on, not required for this fix
+
+### Verification Results
+- Tests: PASS (16338 passed, 38 skipped)
+- Lint: PASS
+- Types: N/A (no Python source changed, YAML/Markdown only)
+- Integration: PASS (`ll-loop validate` clean on all 14 touched loops; `lib/cli.yaml`'s pre-existing "missing required fields" is expected — it's a fragment, not a standalone loop)
+
+---
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-26T04:46:45Z - `1114bd32-b748-4086-8c2f-851399bc987d.jsonl`
 - `/ll:confidence-check` - 2026-07-26T04:02:25 - `1114bd32-b748-4086-8c2f-851399bc987d.jsonl`
 - `/ll:refine-issue` - 2026-07-26T03:59:56 - `c8adaf43-9d19-4fde-a9e2-a2f097a4b53b.jsonl`
 - `/ll:decide-issue` - 2026-07-26T03:51:20 - `56153c04-bfa0-42c4-a1b0-515afa72cee7.jsonl`

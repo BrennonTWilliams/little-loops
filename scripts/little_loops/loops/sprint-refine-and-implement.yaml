@@ -4,7 +4,7 @@ description: |
   Alias for auto-refine-and-implement scoped to a named sprint or EPIC.
   Delegates to auto-refine-and-implement with scope=<sprint-name|EPIC-NNN>.
   Preserved for backward compatibility; prefer the scope param directly:
-    ll-loop run auto-refine-and-implement --input scope=<sprint-name|EPIC-NNN>
+    ll-loop run auto-refine-and-implement 'scope=<sprint-name|EPIC-NNN>'
 input_key: sprint_name
 required_inputs: ["sprint_name"]
 initial: delegate

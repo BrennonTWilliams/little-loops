@@ -1159,14 +1159,14 @@ Transitions:
 
 The `dispatch_step` state uses the same dynamic loop interpolation as the Router:
 `loop: "${captured.next_step_loop.output}"`. Run the built-in directly via
-`ll-loop run loop-composer --input "your goal"`.
+`ll-loop run loop-composer "your goal"`.
 
 The plan is a JSON array of `{step_id, loop_name, input, depends_on}` objects written to
 `${context.run_dir}/composer-plan.json`. Step outputs are persisted as checkpoints under
 `${context.run_dir}/checkpoints/step-<step_id>.json` so FEAT-1809 can re-plan from them.
 
 **loop-composer-adaptive** — Run the adaptive fault-tolerant variant via
-`ll-loop run loop-composer-adaptive --input "your goal"`. When a step fails, a `reassess`
+`ll-loop run loop-composer-adaptive "your goal"`. When a step fails, a `reassess`
 gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints.
 
 **Config knobs (`ll-config.json`) for loop-composer-adaptive**
@@ -1181,7 +1181,7 @@ gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoin
 
 ### goal-cluster — Multi-Goal Fan-Out
 
-Run via `ll-loop run goal-cluster --input "goals"`. Accepts a multi-line goal list, sprint name, EPIC ID, or JSON array; groups goals into batches, executes each batch against its best-fit loop, propagates cross-batch context, and synthesizes a cluster-wide summary.
+Run via `ll-loop run goal-cluster "goals"`. Accepts a multi-line goal list, sprint name, EPIC ID, or JSON array; groups goals into batches, executes each batch against its best-fit loop, propagates cross-batch context, and synthesizes a cluster-wide summary.
 
 ```
 States: load_goals → dedup_and_batch → execute_cluster → propagate_context → synthesize_cluster_result → present_result

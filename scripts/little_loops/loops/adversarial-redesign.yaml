@@ -15,7 +15,7 @@ description: |
 # pip install -e ./AutoFigure && playwright install chromium
 # Set OPENROUTER_API_KEY (or AUTOFIGURE_API_KEY) in env before running.
 #
-# Usage: ll-loop run adversarial-redesign --input concept="how a transformer attends"
+# Usage: ll-loop run adversarial-redesign 'concept="how a transformer attends"'
 
 initial: init
 max_steps: 5

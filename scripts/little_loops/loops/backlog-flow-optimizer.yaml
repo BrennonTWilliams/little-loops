@@ -91,7 +91,7 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      The backlog is bloated. Run `/ll:tradeoff-review-issues --auto` to identify
+      The backlog is bloated. Run `/ll:tradeoff-review-issues` to identify
       and close low-value issues. Focus on:
       - P3+ issues older than ${context.stale_threshold_days} days with low utility scores
       - Issues that are duplicates, superseded, or no longer relevant

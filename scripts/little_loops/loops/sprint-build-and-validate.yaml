@@ -42,7 +42,7 @@ states:
     action_type: prompt
     timeout: 300
     action: |
-      Run `/ll:create-sprint --auto` to create a new sprint from open/active issues.
+      Run `/ll:create-sprint` to create a new sprint from open/active issues.
       Select up to ${context.max_issues} issues, prioritizing:
       1. P0-P1 issues first
       2. Issues with no blocking dependencies

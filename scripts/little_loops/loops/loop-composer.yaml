@@ -56,7 +56,7 @@ states:
       4. depends_on lists step_ids that must complete before this step runs.
          For a simple linear sequence all depends_on lists are [previous_step_id].
          For independent parallel work, depends_on may be [].
-      5. The input field is a string passed as --input to that loop. It may reference
+      5. The input field is a string passed as that loop's positional input argument. It may reference
          a prior step's output with {{step_id}} (e.g. {{step_1}}, replaced at runtime).
 
       Output your plan on the LAST block as:

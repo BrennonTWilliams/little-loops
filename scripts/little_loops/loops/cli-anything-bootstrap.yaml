@@ -476,7 +476,7 @@ states:
       - Generated task loop: ${context.generated_dir}/<target_name>-task.yaml
 
       Tell the operator they can now run the task loop with:
-        ll-loop run <target_name>-task --input "<their goal in natural language>"
+        ll-loop run <target_name>-task "<their goal in natural language>"
     next: done
     on_error: failed
   done:

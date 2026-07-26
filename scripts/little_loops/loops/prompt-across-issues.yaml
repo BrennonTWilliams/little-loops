@@ -16,7 +16,7 @@ description: |
 
   Usage:
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}"
-    ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --quick"
+    ll-loop run prompt-across-issues "/ll:normalize-issues {issue_id} --auto"
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context type=BUG
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context parent=EPIC-1773
     ll-loop run prompt-across-issues "/ll:refine-issue {issue_id}" --context ids=ENH-1,ENH-2,ENH-3

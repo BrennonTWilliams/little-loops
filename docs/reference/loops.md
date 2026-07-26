@@ -128,7 +128,7 @@ Meta-loop that lowers a prose brief into a reusable, validated FSM-loop YAML art
 ### Invocation
 
 ```bash
-ll-loop run workflow-generator --input "triage a new bug report: read it, grep for the offending code, confirm repro, draft a fix plan, open a PR"
+ll-loop run workflow-generator "triage a new bug report: read it, grep for the offending code, confirm repro, draft a fix plan, open a PR"
 ```
 
 ### Context Variables
@@ -781,10 +781,10 @@ Decomposes a natural-language goal into an ordered DAG of up to 8 loop invocatio
 ### Invocation
 
 ```bash
-ll-loop run loop-composer --input "your multi-step goal"
+ll-loop run loop-composer "your multi-step goal"
 
 # Skip HITL approval
-ll-loop run loop-composer --input "your goal" --context auto=true
+ll-loop run loop-composer "your goal" --context auto=true
 ```
 
 ### Context Variables
@@ -826,10 +826,10 @@ Fault-tolerant variant of `loop-composer`. When a sub-loop fails a reassess gate
 ### Invocation
 
 ```bash
-ll-loop run loop-composer-adaptive --input "your multi-step goal"
+ll-loop run loop-composer-adaptive "your multi-step goal"
 
 # Allow more replan attempts
-ll-loop run loop-composer-adaptive --input "your goal" --context max_replans=3
+ll-loop run loop-composer-adaptive "your goal" --context max_replans=3
 ```
 
 ### Context Variables
@@ -870,14 +870,14 @@ Multi-goal batch orchestrator for sprint- or EPIC-shaped input. Normalizes a lis
 
 ```bash
 # Multi-line goals
-ll-loop run goal-cluster --input "Fix auth bug
+ll-loop run goal-cluster "Fix auth bug
 Add retry logic"
 
 # EPIC ID (expands to open child issues)
-ll-loop run goal-cluster --input "EPIC-1811"
+ll-loop run goal-cluster "EPIC-1811"
 
 # JSON list
-ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"}]'
+ll-loop run goal-cluster '[{"goal_id":"g01","goal_text":"Fix auth bug"}]'
 ```
 
 ### Context Variables

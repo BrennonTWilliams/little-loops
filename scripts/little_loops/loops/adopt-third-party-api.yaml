@@ -14,7 +14,7 @@ context:
 states:
 
   scrape:
-    action: "/ll:scrape-docs ${context.input}"
+    action: "/scrape-docs ${context.input}"
     action_type: slash_command
     capture: scrape_output
     on_error: failed

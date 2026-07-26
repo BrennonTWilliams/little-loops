@@ -2049,7 +2049,7 @@ If user selected "Composer — decompose goal into a DAG of sub-loops":
 The Composer shape is available as a built-in loop. Direct the user to run it directly:
 
 ```
-ll-loop run loop-composer --input "natural language goal"
+ll-loop run loop-composer "natural language goal"
 ```
 
 Key context knobs:
@@ -2062,7 +2062,7 @@ The composer discovers available loops, decomposes the goal into an ordered DAG 
 
 ### Orch Supervisor
 
-**loop-composer-adaptive** (FEAT-1983): Adaptive composer with fault-tolerant re-plan-on-failure. Run via `ll-loop run loop-composer-adaptive --input "your goal"`. When a step fails, a `reassess` gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints and replacing only the unexecuted tail on REPLAN_TAIL. Use `loop-composer` for goals where failure should terminate immediately; use `loop-composer-adaptive` when mid-plan recovery is valuable.
+**loop-composer-adaptive** (FEAT-1983): Adaptive composer with fault-tolerant re-plan-on-failure. Run via `ll-loop run loop-composer-adaptive "your goal"`. When a step fails, a `reassess` gate decides CONTINUE / REPLAN_TAIL / ABORT, preserving completed-step checkpoints and replacing only the unexecuted tail on REPLAN_TAIL. Use `loop-composer` for goals where failure should terminate immediately; use `loop-composer-adaptive` when mid-plan recovery is valuable.
 
 **Config knobs (`ll-config.json`)**
 
@@ -2093,10 +2093,10 @@ If user selected "Cluster — fan-out a list of goals into batches":
 The Cluster shape is available as a built-in loop. Direct the user to run it directly:
 
 ```
-ll-loop run goal-cluster --input "goal1\ngoal2\ngoal3"
+ll-loop run goal-cluster "goal1\ngoal2\ngoal3"
 # or supply a sprint name, EPIC ID, or JSON list:
-ll-loop run goal-cluster --input "EPIC-1811"
-ll-loop run goal-cluster --input '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
+ll-loop run goal-cluster "EPIC-1811"
+ll-loop run goal-cluster '[{"goal_id":"g01","goal_text":"Fix auth bug"},{"goal_id":"g02","goal_text":"Add retry logic"}]'
 ```
 
 **When to use Cluster vs. Composer:**

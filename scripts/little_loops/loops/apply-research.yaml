@@ -54,13 +54,14 @@ states:
   load_context:
     action_type: shell
     action: |
+      set -o pipefail
       DIR="${context.run_dir}"
       {
         echo "## Project Overview"
         head -60 .claude/CLAUDE.md 2>/dev/null || echo "(no CLAUDE.md)"
         echo ""
         echo "## Open Issues (recent)"
-        ll-issues list --status open --format table 2>/dev/null | head -30 || echo "(none)"
+        ll-issues list --status open --flat --limit 30 || echo "(none)"
       } > "$DIR/project-context.md"
       cat "$DIR/project-context.md"
     capture: project_context

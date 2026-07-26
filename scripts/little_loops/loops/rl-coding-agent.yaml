@@ -19,12 +19,12 @@ import:
 states:
 
   # POLICY OUTER: Execute the current coding strategy on target files.
-  # Replace the echo stubs with your coding action: ll-manage-issue, a Claude
-  # prompt via claude -p, a patch application, etc.
+  # Replace the echo stubs with your coding action: the /ll:manage-issue skill,
+  # a Claude prompt via claude -p, a patch application, etc.
   act:
     action: |
       echo "Executing coding strategy on: ${context.target_files:default=<all changed files>}"
-      # Replace: run your coding action (ll-manage-issue, claude prompt, patch, etc.)
+      # Replace: run your coding action (/ll:manage-issue skill, claude prompt, patch, etc.)
       echo "strategy_applied"
     action_type: shell
     capture: action_result

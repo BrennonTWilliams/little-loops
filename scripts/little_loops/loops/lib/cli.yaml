@@ -91,7 +91,7 @@ fragments:
       Validate cross-issue dependency references.
       State must supply: on_yes, on_no.
     action_type: shell
-    action: "ll-deps check"
+    action: "ll-deps validate"
     evaluate:
       type: exit_code
 

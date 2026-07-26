@@ -159,7 +159,7 @@ states:
       Output ONLY these four lines (no other text):
       CHOSEN_LOOP:<exact loop name, or NONE if nothing fits well>
       CONFIDENCE:<decimal 0.0–1.0>
-      LOOP_INPUT:<derived input string to pass as the sub-loop's --input argument>
+      LOOP_INPUT:<derived input string to pass as the sub-loop's positional input argument>
       TOP_CANDIDATES:<comma-separated list of up to 3 loop names in descending fit order>
     capture: project_score
     evaluate:
@@ -217,7 +217,7 @@ states:
       Output ONLY these four lines (no other text):
       CHOSEN_LOOP:<exact loop name, or NONE if nothing fits well>
       CONFIDENCE:<decimal 0.0–1.0>
-      LOOP_INPUT:<derived input string to pass as the sub-loop's --input argument>
+      LOOP_INPUT:<derived input string to pass as the sub-loop's positional input argument>
       TOP_CANDIDATES:<comma-separated list of up to 3 loop names in descending fit order>
     capture: builtin_score
     evaluate:

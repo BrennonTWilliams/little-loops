@@ -172,9 +172,9 @@ questions:
 - "Policy router (decision table)" -> `policy-router` type (states: score, parse_scores, policy_dispatch, action states, done)
 - "Optimize a harness (meta-loop)" -> `meta-optimize` type (states: diagnose, baseline, propose, apply, score, gate, commit_or_revert, done)
 - "Orch: Router (dynamic dispatch)" -> `orch-router` type (states: classify, score, dispatch, review, done)
-- "Orch: Composer (goal → DAG)" -> `loop-composer` built-in loop (run via `ll-loop run loop-composer --input "..."`)
-- "Orch: Supervisor (adaptive re-plan)" -> `loop-composer-adaptive` built-in loop (run via `ll-loop run loop-composer-adaptive --input "..."`)
-- "Orch: Cluster (multi-goal fan-out)" -> `goal-cluster` built-in loop (run via `ll-loop run goal-cluster --input "goal1\ngoal2\n..."` or `--input "EPIC-NNN"`)
+- "Orch: Composer (goal → DAG)" -> `loop-composer` built-in loop (run via `ll-loop run loop-composer "..."`)
+- "Orch: Supervisor (adaptive re-plan)" -> `loop-composer-adaptive` built-in loop (run via `ll-loop run loop-composer-adaptive "..."`)
+- "Orch: Cluster (multi-goal fan-out)" -> `goal-cluster` built-in loop (run via `ll-loop run goal-cluster "goal1\ngoal2\n..."` or `ll-loop run goal-cluster "EPIC-NNN"`)
 
 ### Step 2: Type-Specific Questions
 

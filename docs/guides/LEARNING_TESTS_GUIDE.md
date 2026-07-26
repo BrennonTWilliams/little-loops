@@ -64,7 +64,7 @@ Enable automatic discovery of unproven API assumptions as you write code by sett
 
 ### 1. Ingest
 
-The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. via the `/ll:scrape-docs` skill — invoked as the first state of the `adopt-third-party-api` loop, or run standalone), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
+The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. via the `/scrape-docs` skill — invoked as the first state of the `adopt-third-party-api` loop, or run standalone), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
 
 ### 2. Hypothesize
 
