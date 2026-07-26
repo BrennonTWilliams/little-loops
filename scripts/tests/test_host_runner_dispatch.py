@@ -21,6 +21,7 @@ from little_loops.host_runner import (
     dispatch_anthropic_request,
     dispatch_batch_request,
     poll_batch_result,
+    resolve_model_alias,
 )
 from little_loops.prompts import FragmentStore
 
@@ -274,3 +275,76 @@ class TestAnthropicClientCredentials:
             _anthropic_client()
 
         mock_client.assert_called_once_with()
+
+
+class TestModelAliasResolution:
+    """BUG-2828: host-CLI aliases ("sonnet") 404 against the Messages API.
+
+    ``fsm.schema.DEFAULT_LLM_MODEL`` and the ``model:`` values throughout the
+    built-in loop YAMLs are CLI aliases. Under
+    ``orchestration.request_path: sdk``/``batch`` they reach the SDK verbatim,
+    which rejects them with ``404 not_found_error: model: sonnet``.
+    """
+
+    @pytest.mark.parametrize(
+        ("alias", "expected"),
+        [
+            ("sonnet", "claude-sonnet-5"),
+            ("opus", "claude-opus-5"),
+            ("haiku", "claude-haiku-4-5"),
+            ("fable", "claude-fable-5"),
+            ("Sonnet", "claude-sonnet-5"),
+            (" opus ", "claude-opus-5"),
+        ],
+    )
+    def test_aliases_map_to_concrete_ids(self, alias: str, expected: str) -> None:
+        assert resolve_model_alias(alias) == expected
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5-20251001",
+            "anthropic.claude-opus-5",
+            "some-unknown-model",
+        ],
+    )
+    def test_non_aliases_pass_through_unchanged(self, model: str) -> None:
+        assert resolve_model_alias(model) == model
+
+    def test_dispatch_sends_resolved_model_to_sdk(self) -> None:
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _fake_message()
+
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            dispatch_anthropic_request(
+                action="say hi",
+                model="sonnet",
+                fragment_store=FragmentStore(),
+            )
+
+        assert fake_client.messages.create.call_args.kwargs["model"] == "claude-sonnet-5"
+
+    def test_batch_submission_sends_resolved_model_to_sdk(self) -> None:
+        fake_client = MagicMock()
+        fake_client.messages.batches.create.return_value = SimpleNamespace(id="batch_1")
+
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            dispatch_batch_request(
+                custom_id="c1",
+                action="say hi",
+                model="sonnet",
+                fragment_store=FragmentStore(),
+            )
+
+        requests = fake_client.messages.batches.create.call_args.kwargs["requests"]
+        assert requests[0]["params"]["model"] == "claude-sonnet-5"
+
+    def test_default_fsm_model_is_a_resolvable_alias(self) -> None:
+        """Guards the exact BUG-2828 failure: the FSM default must not 404."""
+        from little_loops.fsm.schema import DEFAULT_LLM_MODEL
+
+        resolved = resolve_model_alias(DEFAULT_LLM_MODEL)
+        assert resolved != DEFAULT_LLM_MODEL
+        assert resolved.startswith("claude-")

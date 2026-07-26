@@ -62,7 +62,37 @@ __all__ = [
     "dispatch_batch_request",
     "poll_batch_result",
     "resolve_host",
+    "resolve_model_alias",
 ]
+
+
+# BUG-2828: the FSM's default model (``fsm.schema.DEFAULT_LLM_MODEL``) and every
+# ``--model``/``model:`` value in the loop YAMLs are *host CLI aliases* ("sonnet",
+# "opus", ...). The host CLI binary resolves those to concrete model IDs itself;
+# the Anthropic Messages API does not — it rejects them with
+# ``404 not_found_error: model: sonnet``. Any prompt state running under
+# ``orchestration.request_path: sdk``/``batch`` therefore failed instantly until
+# the alias was mapped here. Keep this table in sync with the current model
+# lineup; unknown values (already-concrete IDs, dated snapshots, provider-prefixed
+# Bedrock IDs) pass through untouched.
+MODEL_ALIASES: dict[str, str] = {
+    "fable": "claude-fable-5",
+    "opus": "claude-opus-5",
+    "sonnet": "claude-sonnet-5",
+    "haiku": "claude-haiku-4-5",
+}
+
+
+def resolve_model_alias(model: str) -> str:
+    """Map a host-CLI model alias to a concrete Anthropic model ID.
+
+    The CLI path passes aliases through verbatim (the binary resolves them);
+    only the SDK/Batches request paths need this. Values that are not known
+    aliases — including full model IDs and ``anthropic.``-prefixed Bedrock IDs —
+    are returned unchanged, so this is safe to apply unconditionally at the
+    API boundary.
+    """
+    return MODEL_ALIASES.get(model.strip().lower(), model)
 
 
 class HostNotConfigured(RuntimeError):
@@ -1390,6 +1420,13 @@ def build_anthropic_request(
     flag to have any effect. ``defer_loading_threshold=None`` (default) skips
     both, leaving ``tools`` serialized exactly as before this feature.
     """
+    # BUG-2828: resolve host-CLI aliases ("sonnet") to concrete model IDs before
+    # they reach the Messages API, which 404s on them. Applied here rather than at
+    # each dispatch site so batch requests (which reuse this builder) are covered
+    # too, and so the cache-marking oracle keys off the same value the API sees
+    # (its family match is a substring test, so full IDs still match).
+    model = resolve_model_alias(model)
+
     tool_names = [t.name for t in (tools or [])]
     key = fragment_key(skill_body, system_prompt, tool_names)
 
