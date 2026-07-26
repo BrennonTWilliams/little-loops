@@ -1,0 +1,12 @@
+{
+  "id": "eb4ebef5-7ff2-4234-9be2-2638a7dd28b4",
+  "type": "decision",
+  "timestamp": "2026-07-26T19:07:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the proven _run_learning_gate_preflight() pattern already in production; fully eliminates impl-loop overhead (ready-to-implement-gate has only done/blocked terminals, making BUG-2833's conflation structurally impossible) rather than partially trimming it as Option B (gate_only flag on proof-first-task) would.",
+  "rule": "Option A \u2014 gate.py invokes ready-to-implement-gate directly for resolved targets",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: add gate_only context flag to proof-first-task.yaml to skip run_impl \u2014 still pays proof-first-task's FSM preamble overhead and bolts an unrelated concern onto an impl-delegator loop",
+  "issue": "ENH-2834"
+}
