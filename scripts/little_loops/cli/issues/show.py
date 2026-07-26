@@ -359,7 +359,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         if parent_str:
             _title = next((i.title for i in _all if i.issue_id == parent_str), None)
             parent_display = f"{parent_str} ({_title})" if _title else parent_str
-        _superseded_by_ids = superseded_by(issue_id, _all)
+        _superseded_by_ids = superseded_by(issue_id, _all) if issue_id else []
         superseded_by_str = ", ".join(_superseded_by_ids) if _superseded_by_ids else None
     except Exception:
         if parent_str:

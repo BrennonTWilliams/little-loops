@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli_args import _id_matches
@@ -348,9 +348,9 @@ def locate_enumerable_options(content: str) -> tuple[int, str | None]:
         return count, "Proposed Solution"
 
     for heading in _OPTION_FALLBACK_SECTIONS:
-        body = _section_body(content, heading)
-        if body:
-            count = _count_options_in_text(body)
+        fallback_body = _section_body(content, heading)
+        if fallback_body:
+            count = _count_options_in_text(fallback_body)
             if count:
                 return count, heading
 
