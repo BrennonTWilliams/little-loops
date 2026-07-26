@@ -7383,6 +7383,201 @@ class TestRateLimitCircuitIntegration:
         )
         assert child._circuit is parent._circuit is circuit
 
+    def _delegating_parent_fsm(self, loops_dir: Path) -> FSMLoop:
+        """A parent loop delegating via `loop:` to a child with one prompt state."""
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: ask\nstates:\n"
+            "  ask:\n"
+            "    action: Say hi\n"
+            "    action_type: prompt\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n    terminal: true"
+        )
+        return FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+
+    def test_sub_loop_inherits_orchestration_config_request_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2819: a child state with no override resolves request_path from the parent's
+        orchestration_config, not the 'no orchestration_config -> cli' default."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        parent_fsm = self._delegating_parent_fsm(loops_dir)
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="should not be used")
+        sdk_result = ActionResult(output="hi from sdk", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                parent_fsm,
+                loops_dir=loops_dir,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert mock_dispatch.called
+        assert mock_runner.calls == []
+
+    def test_sub_loop_inherits_run_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-2819: a child prompt state dispatches with the parent's run_model."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        parent_fsm = self._delegating_parent_fsm(loops_dir)
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                parent_fsm,
+                loops_dir=loops_dir,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+                run_model="haiku",
+            )
+            executor.run()
+
+        assert mock_dispatch.call_args.kwargs["model"] == "haiku"
+
+    def test_sub_loop_state_level_request_path_override_still_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A child state's own request_path: cli override wins over an inherited sdk default."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: ask\nstates:\n"
+            "  ask:\n"
+            "    action: Say hi\n"
+            "    action_type: prompt\n"
+            "    request_path: cli\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fail"),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="cli output")
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                parent_fsm,
+                loops_dir=loops_dir,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+            executor.run()
+
+        assert not mock_dispatch.called
+        assert mock_runner.calls
+
+    def test_execute_sub_loop_signature_drift_guard(self) -> None:
+        """Every run-scoped FSMExecutor.__init__ param is either propagated at the
+        _execute_sub_loop child-construction call site or explicitly exempted here.
+        Fails when a new constructor param is added without a propagation decision
+        (BUG-2819)."""
+        import ast
+        import inspect
+        import textwrap
+
+        # Params intentionally NOT propagated to child executors (per BUG-2819's
+        # research: no existing docstring/behavior claims inheritance for these).
+        exempt = {
+            "self",
+            "fsm",
+            "signal_detector",
+            "handoff_handler",
+        }
+        # Params structurally handled elsewhere (event_callback is wrapped, not
+        # forwarded verbatim; circuit/loops_dir/action_runner/working_dir already
+        # propagate and aren't the subject of this issue but are asserted here too).
+        expected_propagated = {
+            "event_callback",
+            "action_runner",
+            "loops_dir",
+            "circuit",
+            "working_dir",
+            "run_model",
+            "compression_config",
+            "orchestration_config",
+        }
+
+        sig_params = set(inspect.signature(FSMExecutor.__init__).parameters) - exempt
+        assert sig_params == expected_propagated, (
+            f"FSMExecutor.__init__ gained/lost a run-scoped param not reflected here: "
+            f"{sig_params.symmetric_difference(expected_propagated)}"
+        )
+
+        source = textwrap.dedent(inspect.getsource(FSMExecutor._execute_sub_loop))
+        tree = ast.parse(source)
+        call_kwargs: set[str] = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "FSMExecutor"
+            ):
+                call_kwargs = {kw.arg for kw in node.keywords if kw.arg}
+                break
+        assert call_kwargs == expected_propagated, (
+            "_execute_sub_loop's child FSMExecutor(...) call site doesn't match the "
+            f"expected propagated param set: {call_kwargs.symmetric_difference(expected_propagated)}"
+        )
+
 
 # =============================================================================
 # Tests: API server-error retry (ENH-1293 Fix 1)

@@ -198,7 +198,8 @@ class FSMExecutor:
             loops_dir: Base directory for resolving sub-loop references
             circuit: Optional shared rate-limit circuit breaker for 429 coordination
             run_model: Run-level default model for host-CLI action states. Per-state
-                StateConfig.model overrides this value.
+                StateConfig.model overrides this value. Inherited by nested
+                sub-loop executors (BUG-2819).
             working_dir: Optional cwd override for this loop's subprocesses
                 (ENH-2609). The Python process itself never chdirs; only spawned
                 shell/prompt/mcp subprocesses run with this cwd. Inherited by
@@ -208,13 +209,14 @@ class FSMExecutor:
                 (FEAT-2675). None disables compression. When set (and
                 ``heuristic_underperforms`` is False), prompt-mode actions
                 crossing the window-relative trigger are compressed before the
-                host request.
+                host request. Inherited by nested sub-loop executors (BUG-2819).
             orchestration_config: Optional :class:`OrchestrationConfig` (FEAT-2716).
                 None (default) behaves exactly as ``request_path == "cli"`` — the
                 CLI subprocess dispatch path, unchanged from pre-FEAT-2716
                 behavior — so existing callers/tests are unaffected. Per-state
                 ``StateConfig.request_path`` overrides this default per FEAT-2710's
                 resolved precedent (state wins, falls through to this default).
+                Inherited by nested sub-loop executors (BUG-2819).
         """
         self.fsm = fsm
         self.event_callback = event_callback or (lambda _: None)
@@ -981,6 +983,9 @@ class FSMExecutor:
             event_callback=_sub_event_callback,
             circuit=self._circuit,
             working_dir=child_working_dir,
+            orchestration_config=self.orchestration_config,
+            run_model=self.run_model,
+            compression_config=self.compression_config,
         )
         child_executor._depth = depth  # propagate depth for further nesting
 
