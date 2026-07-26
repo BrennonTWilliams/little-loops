@@ -1,0 +1,11 @@
+{
+  "id": "6170643a-18c4-45df-bce7-eab08a9d1613",
+  "type": "decision",
+  "timestamp": "2026-07-26T18:11:21Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-auto only needs the gate verdict; proof-first-task's run_impl chain is redundant and mislabels impl failures as gate blocks",
+  "rule": "Captured: learning gate should prove directly without impl loop",
+  "scope": "issue",
+  "issue": "ENH-2834"
+}
