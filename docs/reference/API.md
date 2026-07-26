@@ -76,7 +76,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.issues` | Issue utility subpackage — anchor generation and sweep utilities used by `ll-issues anchor-sweep`. |
 | `little_loops.observability` | DES variant registry and audit-tree walker for cross-checking every emit site against registered event shapes (ENH-2475, F5 adoption gate). |
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
-| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. |
+| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
 | `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
