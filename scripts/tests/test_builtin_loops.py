@@ -734,6 +734,7 @@ class TestEvaluationQualityLoop:
             "prepare_report",
             "report",
             "done",
+            "failed",
         }
         actual = set(data["states"].keys())
         missing = required - actual
@@ -750,11 +751,47 @@ class TestEvaluationQualityLoop:
         assert score_state.get("capture") == "scores"
 
     def test_route_states_have_on_error(self, data: dict) -> None:
-        """All route/evaluate states must define on_error to prevent hangs."""
+        """All route/evaluate states must define on_error, routing to a
+        diagnostic state ahead of the `failed` terminal (BUG-2815) rather than
+        laundering an evaluator error into the `done` success terminal."""
         route_states = ["route_action", "route_issues", "route_code"]
         for state_name in route_states:
             state = data["states"].get(state_name, {})
             assert "on_error" in state, f"Route state '{state_name}' missing on_error"
+            assert state["on_error"] != "done", (
+                f"Route state '{state_name}' on_error must not point at the "
+                "success terminal 'done'"
+            )
+
+    def test_max_steps_covers_longest_remediation_path(self, data: dict) -> None:
+        """BUG-2815: max_steps must cover the longest remediation path (8
+        counted states: sample -> evaluate_code -> score -> route_action ->
+        route_issues/route_code -> remediate_* -> prepare_report -> report),
+        not just the 6-state healthy shortest path."""
+        LONGEST_PATH_STATES = 8
+        max_steps = data.get("max_steps", 0)
+        assert max_steps >= LONGEST_PATH_STATES, (
+            f"max_steps={max_steps} does not cover the {LONGEST_PATH_STATES}-state "
+            "longest remediation path"
+        )
+
+    def test_has_on_max_steps_summary_handler(self, data: dict) -> None:
+        """BUG-2815: budget exhaustion must produce a summary, not a bare exit 1."""
+        states = data.get("states", {})
+        on_max_steps = data.get("on_max_steps")
+        assert on_max_steps, "loop must declare on_max_steps"
+        assert on_max_steps in states, f"on_max_steps={on_max_steps!r} does not name a real state"
+        summary = states[on_max_steps]
+        assert summary.get("terminal") is True, (
+            "the on_max_steps handler must be terminal-doubling (BUG-158 shape) "
+            "so its action actually runs"
+        )
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """BUG-2815: failed must be a distinct terminal from done so an
+        evaluator error can't exit 0."""
+        failed_state = data["states"].get("failed", {})
+        assert failed_state.get("terminal") is True
 
     def test_context_thresholds_defined(self, data: dict) -> None:
         """context block must define the three quality thresholds."""

@@ -7,9 +7,16 @@ description: |
   are breached, and terminates with a persisted quality snapshot. Designed to
   run periodically — before sprint planning or weekly.
 initial: sample
-max_steps: 5
+# Shortest terminal path is 6 counted states (sample -> evaluate_code -> score
+# -> route_action -> prepare_report -> report); the longest remediation path
+# adds one more hop (route_action -> route_issues/route_code -> remediate_* ->
+# prepare_report -> report), so 8 counted states covers every branch. 15
+# leaves headroom for the on_max_steps summary state plus retry slack
+# (BUG-2815).
+max_steps: 15
 timeout: 3600
 on_handoff: spawn
+on_max_steps: summarize_max_steps
 context:
   issue_quality_threshold: 70
   code_health_threshold: 80
@@ -100,7 +107,7 @@ states:
       pattern: "PRIMARY_CONCERN: NONE"
     on_yes: prepare_report
     on_no: route_issues
-    on_error: done
+    on_error: diagnose_evaluator_failure
 
   route_issues:
     evaluate:
@@ -109,7 +116,7 @@ states:
       pattern: "PRIMARY_CONCERN: ISSUES"
     on_yes: remediate_issues
     on_no: route_code
-    on_error: done
+    on_error: diagnose_evaluator_failure
 
   route_code:
     evaluate:
@@ -118,7 +125,7 @@ states:
       pattern: "PRIMARY_CONCERN: CODE"
     on_yes: remediate_code
     on_no: remediate_backlog
-    on_error: done
+    on_error: diagnose_evaluator_failure
 
   remediate_issues:
     action_type: prompt
@@ -194,5 +201,34 @@ states:
       Write the report now using the Write tool or bash redirection.
     next: done
 
+  summarize_max_steps:
+    # BUG-2815: the executor stops immediately after the on_max_steps target
+    # state finishes (terminated_by: max_steps) — any next chain past it never
+    # runs on that path, so this state must do all summarization work itself
+    # rather than deferring it downstream (BUG-158 terminal-doubling shape).
+    action_type: prompt
+    terminal: true
+    action: |
+      The evaluation-quality loop hit its step budget before reaching
+      `report`/`done`. Summarize whatever was captured so far — issue metrics
+      (${captured.metrics.output}), code results (${captured.code_results.output}),
+      and scores (${captured.scores.output}), if available — into
+      `.loops/quality-report-$(date +%Y-%m-%d)-partial.md`, noting which
+      dimensions were scored and which remediation branch (if any) was still
+      running when the budget ran out.
+
   done:
+    terminal: true
+
+  diagnose_evaluator_failure:
+    action_type: prompt
+    action: |
+      One of this run's evaluator states (route_action, route_issues, or
+      route_code) failed to evaluate `${captured.scores.output}` — the scoring
+      output was likely malformed or missing the expected `PRIMARY_CONCERN`
+      tag. Report what was captured so far and why the evaluator could not
+      route, so an operator can diagnose the `score` state's output.
+    next: failed
+
+  failed:
     terminal: true
