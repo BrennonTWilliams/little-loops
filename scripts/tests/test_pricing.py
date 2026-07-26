@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import date
+from unittest.mock import patch
+
 from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, estimate_cost_usd
 
 
@@ -62,6 +65,43 @@ class TestEstimateCostUsd:
         assert cost_all is not None
         assert cost_input_only is not None
         assert cost_all > cost_input_only
+
+
+class TestIntroPricing:
+    def test_pre_expiry_uses_intro_rate(self) -> None:
+        with patch("little_loops.pricing.date") as mock_date:
+            mock_date.today.return_value = date(2026, 8, 15)
+            mock_date.fromisoformat = date.fromisoformat
+            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+        assert cost == 2.0 + 10.0
+
+    def test_post_expiry_uses_standard_rate(self) -> None:
+        with patch("little_loops.pricing.date") as mock_date:
+            mock_date.today.return_value = date(2026, 9, 1)
+            mock_date.fromisoformat = date.fromisoformat
+            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+        assert cost == 3.0 + 15.0
+
+    def test_boundary_2026_08_31_uses_intro_rate(self) -> None:
+        with patch("little_loops.pricing.date") as mock_date:
+            mock_date.today.return_value = date(2026, 8, 31)
+            mock_date.fromisoformat = date.fromisoformat
+            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+        assert cost == 2.0 + 10.0
+
+    def test_unaffected_model_regression(self) -> None:
+        with patch("little_loops.pricing.date") as mock_date:
+            mock_date.today.return_value = date(2026, 8, 15)
+            mock_date.fromisoformat = date.fromisoformat
+            cost = estimate_cost_usd("claude-sonnet-4-6", 1_000_000, 1_000_000)
+        assert cost == 3.0 + 15.0
+
+    def test_intro_sub_dict_has_all_rate_keys(self) -> None:
+        from little_loops.pricing import INTRO_PRICING
+
+        for model, rates in INTRO_PRICING.items():
+            for key in ("input", "output", "cache_read", "cache_creation", "expires"):
+                assert key in rates, f"{model} intro pricing missing {key}"
 
 
 class TestBatchDiscount:

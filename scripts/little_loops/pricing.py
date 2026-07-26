@@ -2,11 +2,14 @@
 
 Prices are in USD per million tokens ($/Mtok).
 Source: Anthropic pricing page (as of July 2026; ENH-2745 added
-claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's intro pricing
-($2/$10 through 2026-08-31) is not modeled here — standard rates are used.
+claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's introductory rate
+($2/$10 through 2026-08-31, inclusive) is modeled via `INTRO_PRICING`, which
+overrides `MODEL_PRICING` while active (ENH-2835).
 """
 
 from __future__ import annotations
+
+from datetime import date
 
 # Per-model pricing: {model_id: {token_type: usd_per_million}}
 MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -76,6 +79,19 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 }
 
 
+# Time-bounded introductory rates that override MODEL_PRICING while active.
+# {model_id: {"expires": iso_date, token_type: usd_per_million, ...}}
+INTRO_PRICING: dict[str, dict[str, float | str]] = {
+    "claude-sonnet-5": {
+        "expires": "2026-08-31",
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.20,
+        "cache_creation": 2.50,
+    },
+}
+
+
 BATCH_DISCOUNT = 0.5
 """Flat discount applied to both input and output tokens under the Anthropic
 Message Batches API (FEAT-2710, EPIC-2456). Stacks with prompt caching —
@@ -104,12 +120,20 @@ def estimate_cost_usd(
     pricing = MODEL_PRICING.get(model)
     if pricing is None:
         return None
+    intro = INTRO_PRICING.get(model)
+    if intro is not None and date.today() <= date.fromisoformat(str(intro["expires"])):
+        input_rate, output_rate = float(intro["input"]), float(intro["output"])
+        cache_read_rate = float(intro["cache_read"])
+        cache_creation_rate = float(intro["cache_creation"])
+    else:
+        input_rate, output_rate = pricing["input"], pricing["output"]
+        cache_read_rate, cache_creation_rate = pricing["cache_read"], pricing["cache_creation"]
     per_m = 1_000_000.0
     cost = (
-        input_tokens * pricing["input"] / per_m
-        + output_tokens * pricing["output"] / per_m
-        + cache_read_tokens * pricing["cache_read"] / per_m
-        + cache_creation_tokens * pricing["cache_creation"] / per_m
+        input_tokens * input_rate / per_m
+        + output_tokens * output_rate / per_m
+        + cache_read_tokens * cache_read_rate / per_m
+        + cache_creation_tokens * cache_creation_rate / per_m
     )
     if is_batch:
         cost *= BATCH_DISCOUNT

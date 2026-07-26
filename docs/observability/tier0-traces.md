@@ -228,7 +228,7 @@ Downstream consumers of this fixture:
 - `scripts/little_loops/fsm/cost_graph.py:184-254` — `CostReport.from_usage_jsonl` (canonical aggregator)
 - `scripts/little_loops/fsm/cost_graph.py:71-82` — `PerStateCost.to_dict` (locked per-state shape)
 - `scripts/little_loops/cli/loop/_helpers.py:1742-1767` — `_print_usage_summary` (thin delegating wrapper)
-- `scripts/little_loops/pricing.py:10-55` — `MODEL_PRICING` constants
+- `scripts/little_loops/pricing.py:15-80` — `MODEL_PRICING` constants
 - `scripts/tests/test_tier0_traces.py` — regression test gate
 - `scripts/tests/fixtures/policy_builder/conformance_corpus.json` — closest analog precedent (top-level indexed case-list)
 - `.issues/epics/P2-EPIC-2456-token-cost-reduction.md` — parent epic

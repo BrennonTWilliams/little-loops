@@ -7,5 +7,10 @@
   "rationale": "Sonnet 5 intro rate ($2/$10 through 2026-08-31) is not modeled in pricing.py, causing est_cost to overstate real cost by ~33% until then; ENH-2745 deliberately deferred this.",
   "rule": "Captured: MODEL_PRICING doesn't model Sonnet 5 intro pricing, inflating est_cost",
   "scope": "issue",
-  "issue": "ENH-2835"
+  "issue": "ENH-2835",
+  "outcome": {
+    "result": "worked",
+    "measured_at": "2026-07-26T22:15:28Z",
+    "notes": "Fixed via ENH-2835: INTRO_PRICING table added, estimate_cost_usd applies $2/$10 intro rate through 2026-08-31 inclusive."
+  }
 }
