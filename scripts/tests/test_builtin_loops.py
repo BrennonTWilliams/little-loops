@@ -296,6 +296,30 @@ class TestBuiltinLoopFiles:
                     "(BUG-2346). Use ${namespace.key:default=val} or $${VAR:-default} instead."
                 )
 
+    def test_no_grep_c_or_echo_fallback_in_shell_actions(self, builtin_loops: list[Path]) -> None:
+        """No shell action uses `grep -c ... || echo 0` (BUG-2827).
+
+        `grep -c` prints the match count to stdout AND exits 1 when the count is
+        zero. `|| echo 0` fires on that exit-1-with-zero-match case too, appending
+        a second `0` line and turning the assignment into a two-line string that
+        breaks `printf '%d'` and `[ -gt ]`. The fix is `grep -c ... || true`
+        followed by `[ -z "$VAR" ] && VAR=0` to normalize the missing-file case
+        without a second stdout write.
+        """
+        grep_c_echo_pattern = re.compile(r"grep\s+-c[^|]*\|\|\s*echo\s+0")
+        for loop_file in builtin_loops:
+            with open(loop_file) as f:
+                data = yaml.safe_load(f)
+            for state_name, state in (data.get("states") or {}).items():
+                if state.get("action_type") != "shell":
+                    continue
+                action = state.get("action", "")
+                assert not grep_c_echo_pattern.search(action), (
+                    f"{loop_file.name}/{state_name} uses the `grep -c ... || echo 0` "
+                    "idiom, which double-writes a zero count (BUG-2827). Use "
+                    "`grep -c ... || true` plus `[ -z \"$VAR\" ] && VAR=0` instead."
+                )
+
     def test_all_failure_terminals_have_diagnostic_action(self, builtin_loops: list[Path]) -> None:
         """Loops with a diagnose state must have a diagnostic action before failure terminals.
 

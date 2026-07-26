@@ -210,7 +210,9 @@ states:
         | grep -v '^[[:space:]]*$' > "$QUEUE.tmp"
       mv "$QUEUE.tmp" "$QUEUE"
       : > "$UNDRAINED"
-      echo "RECONCILED $(grep -c '[^[:space:]]' "$QUEUE" 2>/dev/null || echo 0)"
+      RECONCILED_COUNT=$(grep -c '[^[:space:]]' "$QUEUE" 2>/dev/null || true)
+      [ -z "$RECONCILED_COUNT" ] && RECONCILED_COUNT=0
+      echo "RECONCILED $RECONCILED_COUNT"
     capture: resume_reconcile
     next: dequeue_next
     on_error: dequeue_next

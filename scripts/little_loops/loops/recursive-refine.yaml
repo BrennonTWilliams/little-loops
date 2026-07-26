@@ -114,8 +114,10 @@ states:
     action: |
       ORDER="${context.order:default=queue}"
       DEQUEUED=$(cat ${context.run_dir}/recursive-refine-dequeued-count.txt 2>/dev/null || echo 0)
-      PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || echo 0)
-      SKIPPED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-skipped.txt 2>/dev/null || echo 0)
+      PASSED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null || true)
+      [ -z "$PASSED" ] && PASSED=0
+      SKIPPED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-skipped.txt 2>/dev/null || true)
+      [ -z "$SKIPPED" ] && SKIPPED=0
       if [ "$ORDER" = "next-action" ]; then
         SKIP=$(cat ${context.run_dir}/recursive-refine-visited.txt 2>/dev/null | tr '\n' ',' | sed 's/,$//')
         RESULT=$(ll-issues next-action --skip "$SKIP" 2>/dev/null)
@@ -146,7 +148,8 @@ states:
         DEQUEUED=$((DEQUEUED + 1))
         printf '%s' "$DEQUEUED" > ${context.run_dir}/recursive-refine-dequeued-count.txt
         TOTAL=$(cat ${context.run_dir}/recursive-refine-total-enqueued.txt 2>/dev/null || echo '?')
-        QUEUED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
+        QUEUED=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
+        [ -z "$QUEUED" ] && QUEUED=0
         DEPTH_STR=$${DEPTH:+" (depth: $DEPTH)"}
         printf '[%s/%s] → %s%s | passed: %d | queued: %d | skipped: %d\n' \
           "$DEQUEUED" "$TOTAL" "$CURRENT" "$DEPTH_STR" "$PASSED" "$QUEUED" "$SKIPPED" >&2
@@ -415,7 +418,8 @@ states:
       printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
       echo "Parent ${captured.input.output} decomposed; enqueued $CHILD_COUNT child issue(s)"
       PEEK_COUNT=5
-      QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
+      QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
+      [ -z "$QUEUE_LINES" ] && QUEUE_LINES=0
       if [ "$QUEUE_LINES" -gt 0 ]; then
         PEEK=$(head -"$PEEK_COUNT" ${context.run_dir}/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
         if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
@@ -705,7 +709,8 @@ states:
         printf '%s' "$((PREV_TOTAL + CHILD_COUNT))" > ${context.run_dir}/recursive-refine-total-enqueued.txt
         echo "Parent ${captured.input.output} decomposed by size-review; enqueued $CHILD_COUNT child issue(s)"
         PEEK_COUNT=5
-        QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || echo 0)
+        QUEUE_LINES=$(grep -c '[^[:space:]]' ${context.run_dir}/recursive-refine-queue.txt 2>/dev/null || true)
+        [ -z "$QUEUE_LINES" ] && QUEUE_LINES=0
         if [ "$QUEUE_LINES" -gt 0 ]; then
           PEEK=$(head -"$PEEK_COUNT" ${context.run_dir}/recursive-refine-queue.txt | tr '\n' ',' | sed 's/,$//')
           if [ "$QUEUE_LINES" -gt "$PEEK_COUNT" ]; then
@@ -793,14 +798,22 @@ states:
       MISSING_ARTIFACTS_IDS=$(cat ${context.run_dir}/recursive-refine-skipped-missing-artifacts.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
 
-      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      DEADEND_COUNT=$(echo "$DEADEND_IDS" | grep -c '[^[:space:]]' || echo 0)
-      DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      DECISION_COUNT=$(echo "$DECISION_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      MISSING_ARTIFACTS_COUNT=$(echo "$MISSING_ARTIFACTS_IDS" | grep -c '[^[:space:]]' || echo 0)
+      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$PASSED_COUNT" ] && PASSED_COUNT=0
+      DECOMPOSED_COUNT=$(echo "$DECOMPOSED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$DECOMPOSED_COUNT" ] && DECOMPOSED_COUNT=0
+      DEADEND_COUNT=$(echo "$DEADEND_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$DEADEND_COUNT" ] && DEADEND_COUNT=0
+      DEPTH_COUNT=$(echo "$DEPTH_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$DEPTH_COUNT" ] && DEPTH_COUNT=0
+      CYCLE_COUNT=$(echo "$CYCLE_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$CYCLE_COUNT" ] && CYCLE_COUNT=0
+      BUDGET_COUNT=$(echo "$BUDGET_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$BUDGET_COUNT" ] && BUDGET_COUNT=0
+      DECISION_COUNT=$(echo "$DECISION_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$DECISION_COUNT" ] && DECISION_COUNT=0
+      MISSING_ARTIFACTS_COUNT=$(echo "$MISSING_ARTIFACTS_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$MISSING_ARTIFACTS_COUNT" ] && MISSING_ARTIFACTS_COUNT=0
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECOMPOSED_LIST=$(echo "$DECOMPOSED_IDS" | tr '\n' ',' | sed 's/,$//')

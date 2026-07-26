@@ -32,7 +32,8 @@ states:
     action: |
       REPORT="${context.run_dir}/ll-dead-code-report.txt"
       if [ -f "$REPORT" ]; then
-        COUNT=$(grep -c '^[[:space:]]*-' "$REPORT" 2>/dev/null || echo 0)
+        COUNT=$(grep -c '^[[:space:]]*-' "$REPORT" 2>/dev/null || true)
+        [ -z "$COUNT" ] && COUNT=0
       else
         COUNT=0
       fi

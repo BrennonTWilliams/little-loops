@@ -888,11 +888,12 @@ states:
       # denominator; fall back to the capture when the ledger is absent.
       if [ -s "$RUN_DIR/auto-refine-and-implement-dispatched.txt" ]; then
         INPUT_SIZE=$(sort -u "$RUN_DIR/auto-refine-and-implement-dispatched.txt" \
-          | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+          | grep -c '[^[:space:]]' 2>/dev/null || true)
       else
         INPUT_SIZE=$(printf '%s' "${captured.issue_set.output}" | tr ',' '\n' \
-          | grep -c '[^[:space:]]' 2>/dev/null || echo 0)
+          | grep -c '[^[:space:]]' 2>/dev/null || true)
       fi
+      [ -z "$INPUT_SIZE" ] && INPUT_SIZE=0
       if [ "$INPUT_SIZE" -gt 0 ]; then
         PARKED_RATE=$(python3 -c "print(round(($SKIP + $NOT_CLOSED + $GATE_BLOCKED + $DECISION_UNRESOLVED + $INFLIGHT_UNRESOLVED + $ABANDONED) / $INPUT_SIZE, 4))" 2>/dev/null || echo 0.0)
       else

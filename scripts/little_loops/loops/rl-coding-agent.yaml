@@ -73,7 +73,8 @@ states:
       TEST_SCORE=$(python3 -c "print(round($PASSED / max($TOTAL, 1), 3))")
 
       # Lint score (0.0–1.0): 1 minus clamped error density
-      LINT_ERRORS=$(eval "$LINT_CMD" --select E,W 2>/dev/null | grep -c '^' || echo 0)
+      LINT_ERRORS=$(eval "$LINT_CMD" --select E,W 2>/dev/null | grep -c '^' || true)
+      [ -z "$LINT_ERRORS" ] && LINT_ERRORS=0
       LINT_SCORE=$(python3 -c "print(round(max(0, 1 - $LINT_ERRORS / 10), 3))")
 
       # LLM quality score (0.0–1.0): live judge via Claude

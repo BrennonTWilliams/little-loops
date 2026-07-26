@@ -1598,11 +1598,16 @@ states:
       DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
 
-      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      INFRA_SKIPPED_COUNT=$(echo "$INFRA_SKIPPED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || echo 0)
-      DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || echo 0)
+      PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$PASSED_COUNT" ] && PASSED_COUNT=0
+      SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$SKIPPED_COUNT" ] && SKIPPED_COUNT=0
+      INFRA_SKIPPED_COUNT=$(echo "$INFRA_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$INFRA_SKIPPED_COUNT" ] && INFRA_SKIPPED_COUNT=0
+      GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$GATE_BLOCKED_COUNT" ] && GATE_BLOCKED_COUNT=0
+      DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$DECISION_UNRESOLVED_COUNT" ] && DECISION_UNRESOLVED_COUNT=0
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')

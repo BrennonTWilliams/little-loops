@@ -102,7 +102,8 @@ states:
         S=$(echo "$S" | xargs)
         cat "$S"
       done > "$COMBINED"
-      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$COMBINED" 2>/dev/null || echo 0)
+      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$COMBINED" 2>/dev/null || true)
+      [ -z "$COUNT" ] && COUNT=0
       echo "Required section count: $COUNT / 3"
       [ "$COUNT" -eq 3 ] && exit 0 || exit 1
     evaluate:
@@ -144,7 +145,8 @@ states:
         echo "ERROR: normalized spec was not written to $NORMALIZED"
         exit 1
       fi
-      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$NORMALIZED" 2>/dev/null || echo 0)
+      COUNT=$(grep -c "## Overview\|## Core Features\|## Acceptance Criteria" "$NORMALIZED" 2>/dev/null || true)
+      [ -z "$COUNT" ] && COUNT=0
       echo "Required section count in normalized spec: $COUNT / 3"
       [ "$COUNT" -eq 3 ] && exit 0 || exit 1
     evaluate:
