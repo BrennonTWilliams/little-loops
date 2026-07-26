@@ -6305,7 +6305,7 @@ raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
 | `mark_stale` | Set `status: stale` on an existing record, preserving other fields |
 | `check_learning_test` | Look up a record by target name (slugified); returns `None` if not found |
 | `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
-| `run_learning_gate_for_issue` | Invoke `proof-first-task` loop and return `"passed"`, `"blocked"`, or `"skipped"` — ENH-2319 |
+| `run_learning_gate_for_issue` | Invoke `proof-first-task` loop and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833 |
 
 ### write_record
 
@@ -6400,10 +6400,10 @@ def run_learning_gate_for_issue(
     skip: bool = False,
     cwd: Path | None = None,
     targets: list[str] | None = None,
-) -> Literal["passed", "blocked", "skipped"]
+) -> Literal["passed", "blocked", "impl_failed", "skipped"]
 ```
 
-Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). All terminal states exit 0; `"blocked"` is distinguished from `"passed"` by reading the loop state file at `<cwd>/.loops/.running/proof-first-task.state.json`. `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`). `targets`, when non-empty, is forwarded as a `targets_csv` context input so `proof-first-task` proves exactly the registered `learning_tests_required` list instead of re-extracting one via `assumption-firewall`; `None`/empty preserves the JIT extraction fallback (ENH-2405).
+Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). `proof-first-task` has two distinct failure terminals — `blocked` (registry gate refuted/failed) and `impl_failed` (the delegated impl loop failed after the gate passed) — that share the same non-zero exit code, so a failing exit consults the archived `LoopState.current_state` for the just-completed run via `list_run_history("proof-first-task", ...)` to discriminate them: only the `blocked` terminal yields `"blocked"`; any other terminal (or unreadable/missing history) yields `"impl_failed"` (BUG-2833). `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`). `targets`, when non-empty, is forwarded as a `targets_csv` context input so `proof-first-task` proves exactly the registered `learning_tests_required` list instead of re-extracting one via `assumption-firewall`; `None`/empty preserves the JIT extraction fallback (ENH-2405).
 
 ---
 

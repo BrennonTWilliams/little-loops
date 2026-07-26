@@ -896,6 +896,22 @@ def process_issue_inplace(
                     failure_reason="Learning gate blocked: unproven external-API deps",
                     corrections=corrections,
                 )
+            elif verdict == "impl_failed":
+                # BUG-2833: the gate's delegated impl loop failed *after* the
+                # registry check passed — this is an ordinary implementation
+                # failure, not an unproven external-API dependency. Route it
+                # through the generic-failure marker (reusing the existing
+                # IMPLEMENT_FAILED outcome token, rn-remediate.yaml:907) so
+                # autodev does not defer with deferred_reason: gate_blocked.
+                logger.warning(f"Learning gate impl-failed for {info.issue_id}: implementation failed")
+                print(f"IMPLEMENT_FAILED {info.issue_id}", flush=True)
+                return IssueProcessingResult(
+                    success=False,
+                    duration=time.time() - issue_start_time,
+                    issue_id=info.issue_id,
+                    failure_reason="Learning gate: implementation failed",
+                    corrections=corrections,
+                )
 
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     action = config.get_category_action(info.issue_type)

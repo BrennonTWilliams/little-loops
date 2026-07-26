@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from little_loops.fsm.persistence import LoopState
 from little_loops.learning_tests.gate import run_learning_gate_for_issue
 
 
@@ -83,3 +84,86 @@ class TestRunLearningGateForIssueTargetsThreading:
 
         assert verdict == "skipped"
         mock_sub.assert_not_called()
+
+
+def _make_loop_state(current_state: str) -> LoopState:
+    return LoopState(
+        loop_name="proof-first-task",
+        current_state=current_state,
+        iteration=1,
+        captured={},
+        prev_result=None,
+        last_result=None,
+        started_at="2026-07-26T12:00:00+00:00",
+        updated_at="",
+        status="completed",
+    )
+
+
+class TestRunLearningGateForIssueTerminalDiscrimination:
+    """BUG-2833: the exit code alone cannot distinguish proof-first-task's two
+    failure terminals (blocked vs impl_failed), so the gate must consult the
+    archived LoopState to discriminate."""
+
+    def _failed_result(self) -> MagicMock:
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        mock = MagicMock()
+        mock.returncode = FAILURE_TERMINAL_EXIT_CODE
+        mock.stdout = ""
+        mock.stderr = ""
+        return mock
+
+    def test_blocked_terminal_yields_blocked_verdict(self, tmp_path: Path) -> None:
+        issue_path = tmp_path / "ENH-6.md"
+        issue_path.write_text("---\nid: ENH-6\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._failed_result(),
+            ),
+            patch(
+                "little_loops.fsm.persistence.list_run_history",
+                return_value=[_make_loop_state("blocked")],
+            ),
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path)
+
+        assert verdict == "blocked"
+
+    def test_impl_failed_terminal_yields_distinct_verdict(self, tmp_path: Path) -> None:
+        issue_path = tmp_path / "ENH-7.md"
+        issue_path.write_text("---\nid: ENH-7\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._failed_result(),
+            ),
+            patch(
+                "little_loops.fsm.persistence.list_run_history",
+                return_value=[_make_loop_state("impl_failed")],
+            ),
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path)
+
+        assert verdict == "impl_failed"
+        assert verdict != "blocked"
+
+    def test_missing_history_defaults_to_impl_failed(self, tmp_path: Path) -> None:
+        """No archived history to discriminate from — fail safe to the
+        generic-failure path rather than mislabeling as a gate block."""
+        issue_path = tmp_path / "ENH-8.md"
+        issue_path.write_text("---\nid: ENH-8\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._failed_result(),
+            ),
+            patch("little_loops.fsm.persistence.list_run_history", return_value=[]),
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path)
+
+        assert verdict == "impl_failed"

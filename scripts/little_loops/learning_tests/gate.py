@@ -61,14 +61,21 @@ def run_learning_gate_for_issue(
     skip: bool = False,
     cwd: Path | None = None,
     targets: list[str] | None = None,
-) -> Literal["passed", "blocked", "skipped"]:
+) -> Literal["passed", "blocked", "impl_failed", "skipped"]:
     """Invoke proof-first-task loop for an issue and return the gate verdict.
 
     ``skip=True`` short-circuits to "skipped" (honours --skip-learning-gate).
-    ENH-2814: the loop's failure terminals (``blocked``, ``impl_failed``) carry
-    ``failure: true``, so a blocked gate is read straight off the subprocess
-    exit code (``FAILURE_TERMINAL_EXIT_CODE``) instead of the state file left
-    behind on disk.
+    ``proof-first-task``'s two failure terminals (``blocked``, ``impl_failed``)
+    both carry ``failure: true`` and share the same subprocess exit code
+    (``FAILURE_TERMINAL_EXIT_CODE``), so the exit code alone cannot
+    discriminate a genuine registry-gate block from a delegated impl-loop
+    crash (BUG-2833). On a failure exit, the archived ``LoopState`` for the
+    just-completed run is consulted via ``list_run_history()`` to read the
+    actual terminal name; only the ``blocked`` terminal yields ``"blocked"``
+    (autodev's unproven-external-API-deps remedy path). Any other terminal
+    (including ``impl_failed``, or an unreadable/missing history) yields
+    ``"impl_failed"`` so the caller treats it as a generic implementation
+    failure rather than misrouting it to the learning-gate remedy.
 
     Args:
         issue_path: Absolute path to the issue file.
@@ -103,8 +110,12 @@ def run_learning_gate_for_issue(
 
     # Function-local import: little_loops.fsm's package __init__ pulls in the
     # executor, which imports little_loops.config — a cycle at module scope.
+    from little_loops.fsm.persistence import list_run_history
     from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
 
     if proc.returncode == FAILURE_TERMINAL_EXIT_CODE:
-        return "blocked"
+        history = list_run_history("proof-first-task", loops_dir=working_dir / ".loops")
+        if history and history[0].current_state == "blocked":
+            return "blocked"
+        return "impl_failed"
     return "passed"
