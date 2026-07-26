@@ -4813,7 +4813,9 @@ class TestPruningProfileCoverageValidation:
         warnings = self._mr12_coverage_warnings(
             _validate_pruning_profile(fsm, orchestration_request_path="sdk")
         )
-        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
+        assert len(warnings) == 1, (
+            f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
+        )
 
     def test_still_fires_when_orchestration_request_path_cli(self) -> None:
         """No state-level request_path, orchestration config default is cli — still warns."""
@@ -4883,7 +4885,9 @@ class TestPruningProfileCoverageValidation:
             },
         )
         warnings = self._mr12_coverage_warnings(validate_fsm(fsm, orchestration_request_path="sdk"))
-        assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
+        assert len(warnings) == 1, (
+            f"Expected one MR-12 coverage WARNING under config sdk: {warnings}"
+        )
 
     # --- end-to-end via validate_fsm() ---
 

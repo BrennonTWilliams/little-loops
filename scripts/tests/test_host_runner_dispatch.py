@@ -303,9 +303,7 @@ class TestAnthropicClientCredentials:
 
         assert request["system"] == [{"type": "text", "text": _CLAUDE_CODE_IDENTITY}]
 
-    def test_api_key_request_has_no_identity_block(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_api_key_request_has_no_identity_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from little_loops.host_runner import build_anthropic_request
         from little_loops.prompts.fragment_store import FragmentStore
 

@@ -122,7 +122,7 @@ class TestLoopInputFlagSweep:
         assert not offenders, f"--input still present in: {offenders}"
 
     def test_cli_anything_bootstrap_operator_output_fixed(self) -> None:
-        action = yaml.safe_load(_text("cli-anything-bootstrap.yaml"))["states"][
-            "finalize_done"
-        ]["action"]
+        action = yaml.safe_load(_text("cli-anything-bootstrap.yaml"))["states"]["finalize_done"][
+            "action"
+        ]
         assert 'll-loop run <target_name>-task "<their goal in natural language>"' in action

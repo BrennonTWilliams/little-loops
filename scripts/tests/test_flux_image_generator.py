@@ -159,8 +159,7 @@ class TestLoopStructure:
         while not partial_terminal.terminal:
             partial_terminal = fsm.states[partial_terminal.next]
         assert partial_terminal is not fsm.states["done"], (
-            "the partial-success path must not collapse into the same terminal "
-            "as a clean pass"
+            "the partial-success path must not collapse into the same terminal as a clean pass"
         )
 
     def test_wrapper_fails_loudly_on_missing_image_base_url(self) -> None:
@@ -206,13 +205,12 @@ class TestLoopStructure:
         wrapper_steps = wrapper_raw["context"]["steps"]
         oracle_steps = oracle_raw["context"]["steps"]
         assert wrapper_steps == oracle_steps, (
-            f"wrapper context.steps={wrapper_steps} != "
-            f"oracle context.steps={oracle_steps}"
+            f"wrapper context.steps={wrapper_steps} != oracle context.steps={oracle_steps}"
         )
         synth_action = oracle_raw["states"]["synthesize"]["action"]
-        fallback_literals = re.findall(
-            r'FLUX_STEPS"\) or (\d+)\)', synth_action
-        ) + re.findall(r"steps = (\d+)", synth_action)
+        fallback_literals = re.findall(r'FLUX_STEPS"\) or (\d+)\)', synth_action) + re.findall(
+            r"steps = (\d+)", synth_action
+        )
         assert fallback_literals, "no FLUX_STEPS fallback literal found in synthesize"
         assert all(int(lit) == wrapper_steps for lit in fallback_literals), (
             f"FLUX_STEPS fallback literals {fallback_literals} disagree with "
@@ -354,9 +352,7 @@ class TestSynthesizeBehaviour:
         seeds = {ln.split("seed=")[1].split()[0] for ln in seed_lines}
         assert len(seeds) == 2, f"seed must vary per iteration, got {seed_lines}"
 
-    def test_stale_prompt_on_second_iteration_fails_loudly(
-        self, flux_stub, tmp_path: Path
-    ) -> None:
+    def test_stale_prompt_on_second_iteration_fails_loudly(self, flux_stub, tmp_path: Path) -> None:
         """BUG-2822: a regenerate against an unrewritten image-prompt.txt must
         fail loudly (IMAGE_FAIL) on iteration >= 2 instead of burning a full
         FLUX generation to re-render a near-identical latent."""

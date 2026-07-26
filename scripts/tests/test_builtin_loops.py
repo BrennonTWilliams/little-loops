@@ -317,7 +317,7 @@ class TestBuiltinLoopFiles:
                 assert not grep_c_echo_pattern.search(action), (
                     f"{loop_file.name}/{state_name} uses the `grep -c ... || echo 0` "
                     "idiom, which double-writes a zero count (BUG-2827). Use "
-                    "`grep -c ... || true` plus `[ -z \"$VAR\" ] && VAR=0` instead."
+                    '`grep -c ... || true` plus `[ -z "$VAR" ] && VAR=0` instead.'
                 )
 
     def test_all_failure_terminals_have_diagnostic_action(self, builtin_loops: list[Path]) -> None:
@@ -1476,8 +1476,7 @@ class TestRefineToReadyIssueSubLoop:
         )
         fallback = data["states"].get("write_failure_evidence", {})
         assert fallback.get("action_type") == "shell", (
-            "BUG-2826: the diagnosis fallback must be non-LLM so it survives an "
-            "API-layer failure"
+            "BUG-2826: the diagnosis fallback must be non-LLM so it survives an API-layer failure"
         )
         assert fallback.get("next") == "classify_terminal"
         assert fallback.get("on_error") == "classify_terminal"
@@ -1615,9 +1614,7 @@ class TestRefineToReadyIssueSubLoop:
             f"{expected!r}, got {sentinel!r}"
         )
 
-    def test_classify_terminal_reads_failure_type_for_every_source_state(
-        self, data: dict
-    ) -> None:
+    def test_classify_terminal_reads_failure_type_for_every_source_state(self, data: dict) -> None:
         """BUG-2826: every state whose exit code the classifier already inspects
         must also have its `failure_type` inspected — otherwise a failure in one of
         them still falls through to `quality`."""

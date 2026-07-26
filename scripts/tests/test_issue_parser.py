@@ -2214,7 +2214,9 @@ class TestDependencyParsing:
 class TestSupersededBy:
     """Tests for the superseded_by() reverse-lookup helper (ENH-2829)."""
 
-    def _make(self, issue_id: str, supersedes: list[str] | None = None, status: str = "open") -> Any:
+    def _make(
+        self, issue_id: str, supersedes: list[str] | None = None, status: str = "open"
+    ) -> Any:
         return IssueInfo(
             path=Path(f"/test/{issue_id}.md"),
             issue_type="enhancements",

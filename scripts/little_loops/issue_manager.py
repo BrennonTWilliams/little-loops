@@ -903,7 +903,9 @@ def process_issue_inplace(
                 # through the generic-failure marker (reusing the existing
                 # IMPLEMENT_FAILED outcome token, rn-remediate.yaml:907) so
                 # autodev does not defer with deferred_reason: gate_blocked.
-                logger.warning(f"Learning gate impl-failed for {info.issue_id}: implementation failed")
+                logger.warning(
+                    f"Learning gate impl-failed for {info.issue_id}: implementation failed"
+                )
                 print(f"IMPLEMENT_FAILED {info.issue_id}", flush=True)
                 return IssueProcessingResult(
                     success=False,

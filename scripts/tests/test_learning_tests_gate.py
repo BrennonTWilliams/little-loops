@@ -213,9 +213,7 @@ class TestRunLearningGateForIssueDirectInvocation:
         assert verdict == "passed"
         mock_history.assert_not_called()
 
-    def test_unproven_target_yields_blocked_without_history_lookup(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unproven_target_yields_blocked_without_history_lookup(self, tmp_path: Path) -> None:
         issue_path = tmp_path / "ENH-10.md"
         issue_path.write_text("---\nid: ENH-10\n---\n")
 
