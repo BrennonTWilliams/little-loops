@@ -1748,6 +1748,20 @@ class FSMExecutor:
                 "stderr": result.stderr,
                 "exit_code": result.exit_code,
                 "duration_ms": result.duration_ms,
+                # BUG-2826: expose the same `classify_failure` verdict the router
+                # uses for retry/defer decisions (see the RouteContext block) so
+                # loop YAML can tell an API/config fault (exit 1, no signal) apart
+                # from a genuine quality failure. Empty on success — a nullable
+                # `${captured.x.failure_type?}` ref then word-splits away in bash.
+                "failure_type": (
+                    classify_failure(
+                        (result.output or "") + "\n" + (result.stderr or ""),
+                        result.exit_code,
+                        result_seen=result.result_seen,
+                    )[0].value
+                    if result.exit_code != 0
+                    else ""
+                ),
             }
 
         # Append to shared messages log if requested

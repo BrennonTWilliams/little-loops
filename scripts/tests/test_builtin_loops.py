@@ -1440,10 +1440,33 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_diagnose_routes_to_classify_terminal(self, data: dict) -> None:
-        """diagnose state must route to classify_terminal (ENH-2727), which emits the
-        termination-class sentinel before reaching the `failed` terminal."""
+        """diagnose routes through write_failure_evidence (BUG-2826) to
+        classify_terminal (ENH-2727), which emits the termination-class sentinel
+        before reaching the `failed` terminal."""
         state = data["states"].get("diagnose", {})
-        assert state.get("next") == "classify_terminal"
+        assert state.get("next") == "write_failure_evidence"
+        assert state.get("on_error") == "write_failure_evidence", (
+            "BUG-2826: a model-layer failure kills `diagnose` the same way it killed "
+            "the state being diagnosed — its on_error must still reach the non-LLM "
+            "evidence fallback"
+        )
+        fallback = data["states"].get("write_failure_evidence", {})
+        assert fallback.get("action_type") == "shell", (
+            "BUG-2826: the diagnosis fallback must be non-LLM so it survives an "
+            "API-layer failure"
+        )
+        assert fallback.get("next") == "classify_terminal"
+        assert fallback.get("on_error") == "classify_terminal"
+
+    def test_write_failure_evidence_records_run_self_description(self, data: dict) -> None:
+        """BUG-2826: the fallback must write a self-describing artifact (failing
+        state, exit code, stderr tail) under the shared run_dir so the operator
+        never has to read the events JSONL to find the real cause."""
+        action = data["states"].get("write_failure_evidence", {}).get("action", "")
+        assert "refine-failure-evidence.txt" in action
+        assert "${context.run_dir}" in action
+        assert "${prev.state}" in action
+        assert "${captured.refine_issue.stderr?}" in action
 
     def test_diagnose_is_not_terminal(self, data: dict) -> None:
         """diagnose state must not be a terminal state."""
@@ -1500,36 +1523,85 @@ class TestRefineToReadyIssueSubLoop:
         """ENH-2727: exit 143/137/124 (external kill) → infra; everything else →
         quality. Substitutes the first three captured exit-code refs with the given
         codes and the rest with '' (un-run states)."""
-        state = data["states"].get("classify_terminal", {})
-        action = state.get("action", "")
-        run_dir = tmp_path / "run"
-        run_dir.mkdir(parents=True)
         codes = exit_codes.split()
-        refs = [
-            "${captured.refine_issue.exit_code?}",
-            "${captured.refine_followup.exit_code?}",
-            "${captured.breakdown_issue.exit_code?}",
-        ]
-        script = action
-        for i, ref in enumerate(refs):
-            script = script.replace(ref, codes[i] if i < len(codes) else "")
-        # Remaining capture refs resolve to '' for un-run states.
-        for ref in (
-            "${captured.check_outcome.exit_code?}",
-            "${captured.check_refine_limit.exit_code?}",
-            "${captured.check_scores_from_file.exit_code?}",
-            "${captured.issue_id.exit_code?}",
-            "${captured.check_lifetime_limit.exit_code?}",
-        ):
-            script = script.replace(ref, "")
+        values = {
+            "refine_issue.exit_code": codes[0] if len(codes) > 0 else "",
+            "refine_followup.exit_code": codes[1] if len(codes) > 1 else "",
+            "breakdown_issue.exit_code": codes[2] if len(codes) > 2 else "",
+        }
+        sentinel = self._run_classify_terminal(data, tmp_path, values)
+        assert sentinel == expected, (
+            f"exit codes {exit_codes!r} should classify as {expected!r}, got {sentinel!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # BUG-2826: an API/config failure surfaces as exit 1 (no signal), so
+    # exit-code-only classification blames the issue for an infra fault. The
+    # classifier also consumes the executor's `classify_failure` verdict,
+    # exposed per captured state as `failure_type`.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _run_classify_terminal(data: dict, tmp_path: Path, values: dict) -> str:
+        """Execute classify_terminal's bash `action`, substituting `${captured.*}`
+        refs from `values` (keyed `<state>.<field>`); unlisted refs resolve to ''
+        exactly as the nullable `?` suffix does for un-run states."""
+        action = data["states"].get("classify_terminal", {}).get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        script = re.sub(
+            r"\$\{captured\.([A-Za-z0-9_.]+?)\??\}",
+            lambda m: values.get(m.group(1), ""),
+            action,
+        )
         script = script.replace("${context.run_dir}", str(run_dir))
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
         )
         assert result.returncode == 0, f"classify_terminal failed: {result.stderr}"
-        sentinel = (run_dir / "refine-terminal-class").read_text().strip()
+        return (run_dir / "refine-terminal-class").read_text().strip()
+
+    @pytest.mark.parametrize(
+        "failure_type,expected",
+        [
+            ("transient", "infra"),  # 429 / network / API 5xx — just re-run
+            ("non_recoverable", "infra"),  # 401/403 auth — config fault, not the issue
+            ("infra_retry", "infra"),  # BUG-2731 SIGTERM-after-result teardown
+            ("real", "quality"),  # genuine refine defect — needs attention
+            ("", "quality"),  # no verdict recorded → default quality
+        ],
+    )
+    def test_classify_terminal_classifies_by_failure_type(
+        self, data: dict, tmp_path: Path, failure_type: str, expected: str
+    ) -> None:
+        """BUG-2826: a non-signal failure (exit 1) carrying a transient /
+        non-recoverable / infra-retry `failure_type` classifies `infra`, so autodev
+        ledgers `refine_failed_infra` instead of blaming the issue."""
+        sentinel = self._run_classify_terminal(
+            data,
+            tmp_path,
+            {
+                "refine_issue.exit_code": "1",
+                "refine_issue.failure_type": failure_type,
+            },
+        )
         assert sentinel == expected, (
-            f"exit codes {exit_codes!r} should classify as {expected!r}, got {sentinel!r}"
+            f"failure_type {failure_type!r} with exit 1 should classify as "
+            f"{expected!r}, got {sentinel!r}"
+        )
+
+    def test_classify_terminal_reads_failure_type_for_every_source_state(
+        self, data: dict
+    ) -> None:
+        """BUG-2826: every state whose exit code the classifier already inspects
+        must also have its `failure_type` inspected — otherwise a failure in one of
+        them still falls through to `quality`."""
+        action = data["states"].get("classify_terminal", {}).get("action", "")
+        exit_states = set(re.findall(r"\$\{captured\.([A-Za-z0-9_]+)\.exit_code\??\}", action))
+        ft_states = set(re.findall(r"\$\{captured\.([A-Za-z0-9_]+)\.failure_type\??\}", action))
+        assert exit_states and exit_states <= ft_states, (
+            f"states inspected for exit_code but not failure_type: {exit_states - ft_states}"
         )
 
     # ------------------------------------------------------------------

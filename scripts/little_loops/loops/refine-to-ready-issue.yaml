@@ -449,7 +449,70 @@ states:
 
       Write a one-paragraph diagnostic summary, quoting the exit code and any
       stderr verbatim, that the operator can act on to re-run or inspect the issue.
+    next: write_failure_evidence
+    # BUG-2826: when the failure was at the model-invocation layer (404 on an
+    # unresolvable model, 401, 429 after retry exhaustion), this prompt state dies
+    # on the SAME error as the state it is diagnosing and writes nothing. Both
+    # routes therefore land on the non-LLM fallback so the run is self-describing
+    # either way.
+    on_error: write_failure_evidence
+
+  write_failure_evidence:
+    # BUG-2826: non-LLM diagnosis backstop. Always writes the failing state name,
+    # its exit code, and its captured stderr to the run dir, so an operator never
+    # has to read the events JSONL to discover that (say) a 404 killed the run.
+    # Shell, not prompt, precisely so it survives an API-layer failure.
+    #
+    # Every stderr block is emitted inside a QUOTED heredoc: the engine
+    # interpolates before bash sees the script, so quoting keeps arbitrary error
+    # prose (quotes, `$`, backticks) from being re-tokenized as bash.
+    action: |
+      EVIDENCE=${context.run_dir}/refine-failure-evidence.txt
+      {
+        printf 'failing_state: %s\n' '${prev.state}'
+        printf 'failing_exit_code: %s\n' '${prev.exit_code}'
+        printf 'issue: %s\n' '${captured.issue_id.output?}'
+        printf 'run_dir: %s\n' '${context.run_dir}'
+        printf '\n--- captured exit codes ---\n'
+        printf 'refine_issue: %s\n' '${captured.refine_issue.exit_code?}'
+        printf 'refine_followup: %s\n' '${captured.refine_followup.exit_code?}'
+        printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.exit_code?}'
+        printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?}'
+        printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?}'
+        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?}'
+        printf 'issue_id: %s\n' '${captured.issue_id.exit_code?}'
+        printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?}'
+        printf '\n--- classify_failure verdicts (BUG-2826) ---\n'
+        printf 'refine_issue: %s\n' '${captured.refine_issue.failure_type?}'
+        printf 'refine_followup: %s\n' '${captured.refine_followup.failure_type?}'
+        printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.failure_type?}'
+        printf 'check_outcome: %s\n' '${captured.check_outcome.failure_type?}'
+        printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.failure_type?}'
+        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.failure_type?}'
+        printf 'issue_id: %s\n' '${captured.issue_id.failure_type?}'
+        printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.failure_type?}'
+        printf '\n--- stderr tails ---\n'
+        printf 'refine_issue:\n'
+        cat <<'LL_STDERR_EOF' | tail -40
+      ${captured.refine_issue.stderr?}
+      LL_STDERR_EOF
+        printf 'refine_followup:\n'
+        cat <<'LL_STDERR_EOF' | tail -40
+      ${captured.refine_followup.stderr?}
+      LL_STDERR_EOF
+        printf 'breakdown_issue:\n'
+        cat <<'LL_STDERR_EOF' | tail -40
+      ${captured.breakdown_issue.stderr?}
+      LL_STDERR_EOF
+        printf 'failing_state_output_tail:\n'
+        cat <<'LL_STDERR_EOF' | tail -40
+      ${prev.output?}
+      LL_STDERR_EOF
+      } > "$EVIDENCE" 2>&1
+    action_type: shell
     next: classify_terminal
+    # Never let a diagnostics-writing failure swallow the termination class.
+    on_error: classify_terminal
 
   classify_terminal:
     # ENH-2727: emit a machine-readable termination-class sentinel for autodev's
@@ -459,6 +522,18 @@ states:
     # was killed externally (exit 143/137/124 = SIGTERM/OOM/timeout, or a
     # negative signal code) — a re-runnable transient — else `quality` (a genuine
     # refine defect that needs human attention).
+    #
+    # BUG-2826: exit codes alone are not enough. An API-layer failure (404 on an
+    # unresolvable model, 401 auth, 429 after retry exhaustion, a network error)
+    # surfaces as exit 1 — the universal catch-all — and was therefore ledgered
+    # `quality`, blaming the dequeued issue for an infrastructure fault. The
+    # second loop below consumes `failure_type`, the executor's own
+    # `issue_lifecycle.classify_failure()` verdict now exposed per captured state,
+    # and treats `transient` (rate limit / network / API 5xx),
+    # `non_recoverable` (auth/credentials) and `infra_retry` (BUG-2731
+    # SIGTERM-after-result teardown) as `infra`. Only `real` — an evidenced
+    # quality verdict — stays `quality`. Reusing the tested Python classifier
+    # avoids a second set of stderr regexes living in bash.
     #
     # The failing state's exit code survives in its OWN capture (BUG-2726 already
     # captures refine_issue/refine_followup/check_*), so this reads those rather
@@ -476,6 +551,11 @@ states:
         case "$c" in
           143|137|124) CLASS=infra ;;
           -*) CLASS=infra ;;
+        esac
+      done
+      for f in ${captured.refine_issue.failure_type?} ${captured.refine_followup.failure_type?} ${captured.breakdown_issue.failure_type?} ${captured.check_outcome.failure_type?} ${captured.check_refine_limit.failure_type?} ${captured.check_scores_from_file.failure_type?} ${captured.issue_id.failure_type?} ${captured.check_lifetime_limit.failure_type?}; do
+        case "$f" in
+          transient|non_recoverable|infra_retry) CLASS=infra ;;
         esac
       done
       printf '%s' "$CLASS" > ${context.run_dir}/refine-terminal-class

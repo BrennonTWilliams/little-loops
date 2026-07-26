@@ -2,8 +2,9 @@
 id: BUG-2826
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-26T06:40:00Z'
+completed_at: '2026-07-26T16:20:16Z'
 discovered_date: 2026-07-26
 discovered_by: capture-issue
 labels:
@@ -14,6 +15,12 @@ labels:
 relates_to:
 - ENH-2727
 - BUG-2611
+confidence_score: 96
+outcome_confidence: 78
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 20
+score_change_surface: 18
 ---
 
 # BUG-2826: `classify_terminal` only recognizes signal kills as infra, so API/config failures are ledgered as refine-quality failures
@@ -115,8 +122,9 @@ but the misreport is silent, which is what makes it costly.
 
 ## Status
 
-Open — not started. Reproduction and root cause established from run
-`.loops/runs/autodev-20260726T011116/`; no fix attempted.
+Done — fixed via Proposed Solution items 1-alternative (reuse the existing
+`classify_failure` verdict rather than duplicating stderr regexes in bash), 3,
+and 4. See Resolution.
 
 ## Motivation
 
@@ -160,9 +168,28 @@ The classifier needs a richer signal than an exit code; consider in this order:
 | `scripts/little_loops/loops/refine-to-ready-issue.yaml` | `classify_terminal` classification logic; `diagnose` fallback |
 | `scripts/little_loops/loops/autodev.yaml` | `skip_inflight` consumes the sentinel unchanged — verify no route change needed |
 | `scripts/tests/test_builtin_loops.py` | assert an API-error stderr classifies `infra`; assert a genuine quality failure still classifies `quality` |
+| `scripts/little_loops/fsm/executor.py` | expose `classify_failure()`'s verdict (already computed at ~line 1458 for retry/defer routing) into `self.captured[state_name]["failure_type"]` at the shell-capture site (~line 1746) so `classify_terminal` can read `${captured.<state>.failure_type}`; other `self.captured[...]` construction sites (~1011, ~1312, ~1365, ~1401/1432, ~1693) are candidates to audit for consistency but are not required to carry the new key |
 
 Check whether other loops replicate the same three-exit-code classifier before
 fixing this one in isolation.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation.py` — `_SUB_LOOP_CAPTURE_OWN_FIELDS` (line ~172) is the enumerated allow-list of nested-path suffixes (`{"output", "exit_code"}`) valid on a sub-loop-delegating state's own `capture:` name (BUG-2812 shape). If `failure_type` is exposed on the sub-loop capture path (executor.py ~line 1011-1012) too, this frozenset needs `"failure_type"` added or `${captured.<subloop_state>.failure_type}` references will be flagged as validation errors [Agent 1/2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (~line 1032) — the `autodev` "Notes" paragraph states today's exact (now-incorrect) rule: "`infra` when the failing state's captured exit code is 143/137/124 (SIGTERM/SIGKILL/timeout) or a signal, else `quality`" — must be rewritten to describe `FailureType`-based classification [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md` (~line 295, ENH-2404 section) — documents `refine_failed_infra` as meaning only "SIGTERM/OOM/timeout — exit 143/137/124"; same stale exit-code framing needs updating to reflect the broader classification [Agent 2 finding]
+- `docs/reference/EVENT-SCHEMA.md` `action_complete` event table (lines 200-217) — only needs a new row if `failure_type` is also surfaced on the event stream (not just the in-memory `captured` dict) for `audit-loop-run`/`ll-logs` observability; advisory, confirm scope during implementation [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py` — new test in the `TestCapture`/`TestCaptureWorkflow` classes asserting `result.captured["<state>"]["failure_type"]` is populated for a shell action that fails with API/config-error-shaped output (no existing test does this — the plumbing from `classify_failure()` into `self.captured[...]` doesn't exist yet). Also re-check `test_sub_loop_capture_shape_has_no_stderr_key` (~line 5724) if `failure_type` is added to the sub-loop capture shape at executor.py ~line 1011 — it currently documents that dict's exact key set (`{"output", "exit_code"}`) [Agent 1/3 finding]
+- `scripts/tests/test_builtin_loops.py` — `test_classify_terminal_classifies_by_exit_code` (~1497-1533) will need new parametrize rows/logic once `classify_terminal` also branches on `failure_type`, not just raw exit codes [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -284,6 +311,68 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `autodev-skipped.txt` — reuse for an end-to-end check.
 
 
+## Resolution
+
+Fixed by exposing the executor's already-computed `classify_failure()` verdict to
+loop YAML and consuming it in `classify_terminal`, plus a non-LLM diagnosis
+backstop. No new classifier was written — the tested
+`issue_lifecycle.classify_failure()` logic is reused, per the second Codebase
+Research Findings block.
+
+1. **`fsm/executor.py`** (shell/action capture site, "Capture if requested"):
+   `self.captured[state.capture]` now carries a `failure_type` key — the
+   `FailureType.value` string from `classify_failure(output + stderr, exit_code,
+   result_seen=...)` when `exit_code != 0`, else `""` (always present, so a
+   nullable `${captured.x.failure_type?}` ref word-splits away in bash). The
+   sub-loop capture site (~line 1011) was deliberately left unchanged, so
+   `validation.py`'s `_SUB_LOOP_CAPTURE_OWN_FIELDS` needed no edit and
+   `test_sub_loop_capture_shape_has_no_stderr_key` still holds.
+2. **`loops/refine-to-ready-issue.yaml`** — `classify_terminal` gained a second
+   pass over the same 8 states' `failure_type`, mapping `transient` /
+   `non_recoverable` / `infra_retry` → `infra`. The exit-code pass is unchanged;
+   only `real` (an evidenced quality verdict) now stays `quality`.
+3. **`loops/refine-to-ready-issue.yaml`** — new `write_failure_evidence` shell
+   state between `diagnose` and `classify_terminal`. `diagnose.next` *and* the new
+   `diagnose.on_error` both route to it, so a model-layer failure that kills the
+   prompt-based diagnosis still yields
+   `${context.run_dir}/refine-failure-evidence.txt` (failing state, all captured
+   exit codes, all `failure_type` verdicts, stderr tails). Stderr prose is emitted
+   inside quoted heredocs so arbitrary error text can't be re-tokenized as bash.
+   `on_error: classify_terminal` keeps a diagnostics failure from swallowing the
+   termination class.
+4. **`autodev.yaml` unchanged** — `skip_inflight` consumes the sentinel as-is;
+   BUG-2611's route constraint (Proposed Solution item 4) holds.
+5. **Docs** — `docs/guides/LOOPS_REFERENCE.md` (autodev Notes) and
+   `skills/audit-loop-run/SKILL.md` (ENH-2404 section) rewritten off the stale
+   exit-code-only rule. `docs/reference/EVENT-SCHEMA.md` was left alone:
+   `failure_type` lives only in the in-memory `captured` dict, not on the event
+   stream, so its `action_complete` table needs no row.
+
+Option 2 (a structural transport-failure exit code threaded through
+`host_runner.py`) was not pursued — reusing `classify_failure` achieves the same
+discrimination without a new `ActionResult` field.
+
+### Verification
+
+- `scripts/tests/test_fsm_executor.py` — 2 new tests: a 429-shaped stderr with
+  exit 1 captures `failure_type == "transient"`; a successful action captures `""`.
+- `scripts/tests/test_builtin_loops.py` — new `_run_classify_terminal` helper
+  (regex-substitutes any `${captured.*}` ref, and asserts no interpolation token
+  is left unsubstituted) backs both the existing exit-code test and a new
+  parametrized `failure_type` test (`transient`/`non_recoverable`/`infra_retry` →
+  `infra`; `real`/`""` → `quality`), plus a test asserting every state inspected
+  for `exit_code` is also inspected for `failure_type`, and tests for the
+  `diagnose` → `write_failure_evidence` → `classify_terminal` routing and the
+  evidence artifact's content.
+- `ll-loop validate refine-to-ready-issue` — valid, 24 states.
+- Full suite: 16405 passed, 42 skipped. `ruff check scripts/` clean. `mypy` shows
+  only the pre-existing unrelated `issue_parser.py:350` error (confirmed present
+  on the stashed tree).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-26T16:19:31 - `da324ba0-fa3b-47d4-9721-f97b1900609c.jsonl`
+- `/ll:ready-issue` - 2026-07-26T16:09:51 - `02c03dd5-5f8d-42fc-ad27-b9f94bbbd79e.jsonl`
+- `/ll:confidence-check` - 2026-07-26T16:15:00 - `02c03dd5-5f8d-42fc-ad27-b9f94bbbd79e.jsonl`
+- `/ll:wire-issue` - 2026-07-26T16:00:45 - `31974136-16cc-44e0-be8f-8ec79fa16ac6.jsonl`
 - `/ll:refine-issue` - 2026-07-26T15:55:19 - `6bef5b5d-7593-42f3-ac27-a41db893916f.jsonl`
 - `/ll:refine-issue` - 2026-07-26T15:54:16 - `1ce1fe65-85b4-46d0-8a32-e06d2cab4f5b.jsonl`

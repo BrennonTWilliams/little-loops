@@ -1034,6 +1034,58 @@ class TestCapture:
 
         assert result.captured["current_item"]["output"] == "FEAT-001"
 
+    def test_capture_exposes_failure_type_for_api_error(self) -> None:
+        """BUG-2826: a failed action's `classify_failure` verdict is exposed as
+        `captured.<key>.failure_type` so loop YAML can tell an API/config fault
+        apart from a genuine quality failure."""
+        fsm = FSMLoop(
+            name="test",
+            initial="refine",
+            states={
+                "refine": StateConfig(
+                    action="refine.sh",
+                    capture="refine_issue",
+                    next="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "refine.sh",
+            output="",
+            stderr=(
+                "Error code: 429 - {'type': 'error', 'error': "
+                "{'type': 'rate_limit_error', 'message': 'rate limit'}}"
+            ),
+            exit_code=1,
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.captured["refine_issue"]["failure_type"] == "transient"
+
+    def test_capture_failure_type_empty_on_success(self) -> None:
+        """BUG-2826: a successful action carries an empty `failure_type` so the
+        key is always present (nullable refs word-split it away in bash)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="ok",
+            states={
+                "ok": StateConfig(action="ok.sh", capture="ok_state", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("ok.sh", output="fine", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.captured["ok_state"]["failure_type"] == ""
+
 
 class TestCaptureWorkflow:
     """Tests for capture-then-use workflow in execution."""
