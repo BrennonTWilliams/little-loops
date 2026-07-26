@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from little_loops.fsm.batch_tracker import BatchTracker
 from little_loops.host_runner import build_batch_request
 from little_loops.prompts import FragmentStore
@@ -21,6 +23,18 @@ LONG_TEXT = "x" * 5000
 
 
 class TestBuildBatchRequest:
+    @pytest.fixture(autouse=True)
+    def _no_oauth_identity_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Isolate from ambient auth env vars.
+
+        BUG-2830 prepends an identity system block whenever
+        CLAUDE_CODE_OAUTH_TOKEN is set, which would shift system[0] away
+        from the caller's system prompt and break these index-based
+        cache_control assertions.
+        """
+        for var in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+
     def test_wraps_single_request_shape(self) -> None:
         store = FragmentStore()
         result = build_batch_request(

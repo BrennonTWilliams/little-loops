@@ -128,6 +128,18 @@ class TestDecideCacheMarking:
 class TestBuildAnthropicRequest:
     """Request-shape assembly and cache_control placement."""
 
+    @pytest.fixture(autouse=True)
+    def _no_oauth_identity_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Isolate from ambient auth env vars.
+
+        BUG-2830 prepends an identity system block whenever
+        CLAUDE_CODE_OAUTH_TOKEN is set, which would shift system[0] away
+        from the caller's system prompt and break these index-based
+        cache_control assertions.
+        """
+        for var in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+
     def _tools(self) -> list[ToolDefinition]:
         return [
             ToolDefinition(name="Read", description="d" * 20, input_schema={"type": "object"}),
