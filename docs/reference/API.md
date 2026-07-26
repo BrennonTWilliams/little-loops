@@ -6305,7 +6305,7 @@ raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
 | `mark_stale` | Set `status: stale` on an existing record, preserving other fields |
 | `check_learning_test` | Look up a record by target name (slugified); returns `None` if not found |
 | `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
-| `run_learning_gate_for_issue` | Invoke `proof-first-task` loop and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833 |
+| `run_learning_gate_for_issue` | Determine the learning-gate verdict for an issue and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833, ENH-2834 |
 
 ### write_record
 
@@ -6403,7 +6403,12 @@ def run_learning_gate_for_issue(
 ) -> Literal["passed", "blocked", "impl_failed", "skipped"]
 ```
 
-Invoke the `proof-first-task` loop for an issue and return the gate verdict (ENH-2319). `proof-first-task` has two distinct failure terminals — `blocked` (registry gate refuted/failed) and `impl_failed` (the delegated impl loop failed after the gate passed) — that share the same non-zero exit code, so a failing exit consults the archived `LoopState.current_state` for the just-completed run via `list_run_history("proof-first-task", ...)` to discriminate them: only the `blocked` terminal yields `"blocked"`; any other terminal (or unreadable/missing history) yields `"impl_failed"` (BUG-2833). `skip=True` short-circuits to `"skipped"` without running the loop (honours `--skip-learning-gate`). `targets`, when non-empty, is forwarded as a `targets_csv` context input so `proof-first-task` proves exactly the registered `learning_tests_required` list instead of re-extracting one via `assumption-firewall`; `None`/empty preserves the JIT extraction fallback (ENH-2405).
+Determine the learning-gate verdict for an issue and return it (ENH-2319). `skip=True` short-circuits to `"skipped"` without running any loop (honours `--skip-learning-gate`).
+
+Two distinct paths, selected by whether `targets` is non-empty (ENH-2834):
+
+- **`targets` non-empty** — the caller has already resolved the `learning_tests_required` registry (ENH-2209), so this invokes `ready-to-implement-gate` directly (`--context targets=<csv>`) instead of chaining through `proof-first-task`'s redundant impl-loop delegation (any impl work there was thrown away — `issue_manager.py` implements the issue itself afterwards). `ready-to-implement-gate` has exactly two terminals (`done`/`blocked`), so the subprocess exit code alone is sufficient: non-zero always means `"blocked"`, with no `impl_failed`-equivalent terminal to conflate it with — this branch structurally has no need for BUG-2833's discrimination. Mirrors the proven `_run_learning_gate_preflight()` pattern in `little_loops.cli.sprint.run`.
+- **`targets` empty/`None`** — the JIT-extraction fallback (`assumption-firewall` path) is still needed, so this falls back to `proof-first-task` (`--context issue_file=<path>`). `proof-first-task` has two distinct failure terminals — `blocked` (registry gate refuted/failed) and `impl_failed` (the delegated impl loop failed after the gate passed) — that share the same non-zero exit code, so a failing exit consults the archived `LoopState.current_state` for the just-completed run via `list_run_history("proof-first-task", ...)` to discriminate them: only the `blocked` terminal yields `"blocked"`; any other terminal (or unreadable/missing history) yields `"impl_failed"` (BUG-2833).
 
 ---
 
@@ -8857,6 +8862,19 @@ def poll_batch_result(*, batch_id, custom_id, poll_interval_seconds=5.0,
   response into an `ActionResult` (same contract `action_runner.run()`
   returns for the CLI subprocess path). `anthropic.APIError` is caught and
   returned as a nonzero-exit-code result rather than raised.
+- **Subscription OAuth fallback** (BUG-2830): the client is built via
+  `host_runner._anthropic_client()`, not a bare `anthropic.Anthropic()`. When
+  `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` are unset but
+  `CLAUDE_CODE_OAUTH_TOKEN` (the var `claude setup-token` tells subscription
+  users to set) is present, it's passed as `auth_token` with the
+  `anthropic-beta: oauth-2025-04-20` header attached — the Messages API only
+  honors a subscription OAuth token when the request also presents as Claude
+  Code (beta header **and** a system prompt whose first block is the Claude
+  Code identity line, which `build_anthropic_request()` supplies). A bare
+  Bearer request with a subscription token is otherwise rejected with a
+  header-less generic `429 rate_limit_error`, not an honest `401`/`403` —
+  which autodev's failure classifier previously misread as transient infra
+  instead of an auth problem.
 - `dispatch_batch_request()` builds via `build_batch_request()`, submits via
   `anthropic.Anthropic().messages.batches.create(**kwargs)`, and returns the
   new batch's id. Persisting that id so a resumed run doesn't double-submit
