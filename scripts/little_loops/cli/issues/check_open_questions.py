@@ -47,7 +47,7 @@ def cmd_check_open_questions(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.issue_parser import (
         count_open_questions_in_sections,
-        count_unresolved_options,
+        locate_unresolved_options,
     )
 
     path = _resolve_issue_id(config, args.issue_id)
@@ -56,16 +56,25 @@ def cmd_check_open_questions(config: BRConfig, args: argparse.Namespace) -> int:
         return 1
 
     content = path.read_text()
-    unresolved_options = count_unresolved_options(content)
+    unresolved_options, unresolved_heading = locate_unresolved_options(content)
     open_questions = count_open_questions_in_sections(content)
 
     if unresolved_options == 0 and open_questions == 0:
         print(f"Decidable (coverage-aware): {args.issue_id} has no unresolved decision surface")
         return 0
 
+    # ENH-2821: locate_unresolved_options() scans the whole document (scoped
+    # sections, then every H2 including nested H3s), so name the section the
+    # unresolved options were actually found in rather than only naming the
+    # originally-scanned sections.
+    unresolved_detail = (
+        f"{unresolved_options} unresolved option(s) in '{unresolved_heading}'"
+        if unresolved_options
+        else "0 unresolved option(s)"
+    )
     print(
         f"OPEN_QUESTIONS_REMAIN: {args.issue_id} — "
-        f"{open_questions} open question(s) and {unresolved_options} unresolved option(s); "
+        f"{open_questions} open question(s) and {unresolved_detail}; "
         f"run /ll:refine-issue {args.issue_id} --auto",
         file=sys.stderr,
     )

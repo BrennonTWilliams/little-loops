@@ -24,21 +24,25 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
         issue is not found.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
-    from little_loops.issue_parser import count_enumerable_options
+    from little_loops.issue_parser import locate_enumerable_options
 
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    count = count_enumerable_options(path.read_text())
+    count, heading = locate_enumerable_options(path.read_text())
     if count >= 1:
-        print(f"Decidable: {args.issue_id} has {count} enumerable option(s)")
+        print(f"Decidable: {args.issue_id} has {count} enumerable option(s) in '{heading}'")
         return 0
 
+    # ENH-2821: locate_enumerable_options() already scans the whole document
+    # (## Proposed Solution, the fallback sections, then every H2 section including
+    # nested H3s), so a count of 0 here means the document genuinely has none —
+    # not that the probe looked in the wrong place.
     print(
-        f"OPTIONS_MISSING: {args.issue_id} — decision_needed is true but "
-        "## Proposed Solution has no enumerable alternatives; "
+        f"OPTIONS_MISSING: {args.issue_id} — decision_needed is true but no enumerable "
+        "alternatives were found anywhere in the document; "
         f"run /ll:refine-issue {args.issue_id} --auto",
         file=sys.stderr,
     )

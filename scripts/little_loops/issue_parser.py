@@ -309,19 +309,69 @@ def _count_options_in_text(text: str) -> int:
     return 0
 
 
+def _iter_h2_sections(content: str) -> list[tuple[str, int, int]]:
+    """Yield ``(heading_text, start, end)`` for each H2 section in *content*.
+
+    A section's body spans to the next ``##`` line (or EOF), so it includes any
+    nested H3 subsections — this is what lets the whole-document fallback (ENH-2821)
+    find option blocks filed under an H3 nested inside an unrelated H2, or under an
+    H2 with a decorated/suffixed heading, without needing a separate depth- or
+    prefix-tolerant resolver.
+    """
+    matches = list(re.finditer(r"^##\s+(.+?)\s*$", content, re.MULTILINE))
+    sections = []
+    for i, m in enumerate(matches):
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        sections.append((m.group(1).strip(), start, end))
+    return sections
+
+
+def locate_enumerable_options(content: str) -> tuple[int, str | None]:
+    """Locate enumerable option blocks anywhere in *content* (ENH-2821).
+
+    Tries, in precedence order: (1) the scoped scan — ``## Proposed Solution``,
+    then :data:`_OPTION_FALLBACK_SECTIONS` — matching :func:`count_enumerable_options`'s
+    original behavior; (2) a whole-document fallback over every H2 section (which,
+    by construction, includes nested H3 subsections and decorated/suffixed H2
+    headings) when the scoped scan finds nothing.
+
+    Returns:
+        ``(count, containing_heading)``. ``containing_heading`` is the exact H2/section
+        name the options were found under, or ``None`` when *count* is 0 (nothing
+        found anywhere in the document).
+    """
+    body = _section_body(content, "Proposed Solution") or ""
+    count = _count_options_in_text(body)
+    if count:
+        return count, "Proposed Solution"
+
+    for heading in _OPTION_FALLBACK_SECTIONS:
+        body = _section_body(content, heading)
+        if body:
+            count = _count_options_in_text(body)
+            if count:
+                return count, heading
+
+    best = 0
+    best_heading: str | None = None
+    for heading_text, start, end in _iter_h2_sections(content):
+        count = _count_options_in_text(content[start:end])
+        if count > best:
+            best = count
+            best_heading = heading_text
+    return best, best_heading
+
+
 def count_enumerable_options(content: str) -> int:
-    """Count enumerable implementation options in an issue's Proposed Solution.
+    """Count enumerable implementation options anywhere in an issue (ENH-2821).
 
     Widens to ## Codebase Research Findings / ## Implementation Status when Proposed
-    Solution yields 0, mirroring Phase 3's Pattern 4 note (refined issues often deposit
-    options there instead).
+    Solution yields 0 (mirroring Phase 3's Pattern 4 note that refined issues often
+    deposit options there instead), then to a whole-document scan when those also
+    yield 0 — see :func:`locate_enumerable_options` for section attribution.
     """
-    count = _count_options_in_text(_section_body(content, "Proposed Solution") or "")
-    if count == 0:
-        for heading in _OPTION_FALLBACK_SECTIONS:
-            body = _section_body(content, heading)
-            if body:
-                count = max(count, _count_options_in_text(body))
+    count, _ = locate_enumerable_options(content)
     return count
 
 
@@ -367,23 +417,56 @@ def _is_option_resolved(block_body: str) -> bool:
     return bool(_RESOLVED_OPTION_MARKER_RE.search(block_body))
 
 
+def locate_unresolved_options(content: str) -> tuple[int, str | None]:
+    """Locate unresolved option blocks anywhere in *content* (ENH-2821).
+
+    Mirrors :func:`locate_enumerable_options`'s precedence: scoped sections first
+    (``## Proposed Solution`` then :data:`_OPTION_FALLBACK_SECTIONS`), falling back
+    to a whole-document scan (which covers nested H3s and decorated H2 headings)
+    only when the scoped sections carry no option blocks at all — resolved or not.
+
+    Returns:
+        ``(unresolved_count, containing_heading)``. ``containing_heading`` names the
+        first scoped section carrying any option block, or the whole-document
+        fallback's first H2 section carrying one; ``None`` when no option block
+        exists anywhere in the document.
+    """
+    sections = ["Proposed Solution", *_OPTION_FALLBACK_SECTIONS]
+    unresolved = 0
+    found_heading: str | None = None
+    for heading in sections:
+        body = _section_body(content, heading) or ""
+        blocks = _iter_option_blocks(body)
+        if blocks and found_heading is None:
+            found_heading = heading
+        for _, block in blocks:
+            if not _is_option_resolved(block):
+                unresolved += 1
+    if found_heading is not None:
+        return unresolved, found_heading
+
+    for heading_text, start, end in _iter_h2_sections(content):
+        blocks = _iter_option_blocks(content[start:end])
+        if not blocks:
+            continue
+        total = sum(1 for _, block in blocks if not _is_option_resolved(block))
+        return total, heading_text
+
+    return 0, None
+
+
 def count_unresolved_options(content: str) -> int:
     """Count enumerable option blocks lacking a `> **Selected:**` or `### Decision Rationale` marker (ENH-2446).
 
     Mirrors :func:`count_enumerable_options` for section selection (Proposed Solution
-    primary, fallback to ``_OPTION_FALLBACK_SECTIONS``), but only counts Pattern 1
-    + Pattern 2 blocks and filters those that lack a resolution marker. An
-    issue with resolved options PLUS unresolved open questions (free-form in
-    ``## Edge Cases`` etc.) is the coverage gap this probe catches.
+    primary, fallback to ``_OPTION_FALLBACK_SECTIONS``, then a whole-document scan —
+    ENH-2821), but only counts Pattern 1 + Pattern 2 blocks and filters those that
+    lack a resolution marker. An issue with resolved options PLUS unresolved open
+    questions (free-form in ``## Edge Cases`` etc.) is the coverage gap this probe
+    catches.
     """
-    sections = ["Proposed Solution", *_OPTION_FALLBACK_SECTIONS]
-    unresolved = 0
-    for heading in sections:
-        body = _section_body(content, heading) or ""
-        for _, block in _iter_option_blocks(body):
-            if not _is_option_resolved(block):
-                unresolved += 1
-    return unresolved
+    count, _ = locate_unresolved_options(content)
+    return count
 
 
 # Resolved-question markers — same vocabulary as skills/decide-issue/SKILL.md:197

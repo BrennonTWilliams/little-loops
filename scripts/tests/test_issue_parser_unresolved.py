@@ -16,6 +16,57 @@ FIXTURE_PATH = (
 )
 
 
+class TestCountEnumerableOptions:
+    """count_enumerable_options/locate_enumerable_options widen to a whole-document
+    fallback scan when the scoped sections yield nothing (ENH-2821)."""
+
+    def test_zero_when_no_options_anywhere(self) -> None:
+        from little_loops.issue_parser import count_enumerable_options
+
+        content = "## Summary\n\nNo options here.\n"
+        assert count_enumerable_options(content) == 0
+
+    def test_finds_options_in_proposed_solution(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n### Option A\nDo X.\n\n### Option B\nDo Y.\n"
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Proposed Solution"
+
+    def test_finds_options_nested_under_h3_in_unrelated_h2(self) -> None:
+        """FEAT-2817 shape: options nested under an H3 inside ## Open Questions,
+        a section not in the scoped/fallback list, are found by the whole-document scan."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nSome unrelated prose, no options here.\n\n"
+            "## Open Questions\n\n"
+            "### Codebase Research Findings — delegation architecture decision\n\n"
+            "**Option A**: Do X.\n\n"
+            "**Option B**: Do Y.\n\n"
+            "**Recommended**: Option A\n\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Open Questions"
+
+    def test_finds_options_under_decorated_fallback_heading(self) -> None:
+        """A fallback heading decorated with a suffix still resolves via the
+        whole-document scan (the exact-H2 scoped lookup alone would miss it)."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n\nNo options here.\n\n"
+            "## Codebase Research Findings — delegation architecture decision\n\n"
+            "### Option A\nDo X.\n\n### Option B\nDo Y.\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Codebase Research Findings — delegation architecture decision"
+
+
 class TestCountUnresolvedOptions:
     """count_unresolved_options distinguishes resolved vs. unresolved option blocks (ENH-2446)."""
 

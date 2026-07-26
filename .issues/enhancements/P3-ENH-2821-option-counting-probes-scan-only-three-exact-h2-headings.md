@@ -2,12 +2,26 @@
 id: ENH-2821
 type: ENH
 priority: P3
-status: open
-captured_at: "2026-07-25T22:53:35Z"
+status: done
+captured_at: '2026-07-25T22:53:35Z'
+completed_at: '2026-07-26T06:16:28Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
-labels: [issue-parser, decision-gate, observability]
-relates_to: [BUG-2820, ENH-2443, ENH-2446, ENH-2607]
+labels:
+- issue-parser
+- decision-gate
+- observability
+relates_to:
+- BUG-2820
+- ENH-2443
+- ENH-2446
+- ENH-2607
+confidence_score: 98
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 20
 ---
 
 # ENH-2821: Option-counting probes scan only three exact H2 headings — options elsewhere are silently inert
@@ -136,12 +150,92 @@ existing exact-H2 callers are untouched. A widened count can newly flip `check-d
 - Regression: existing exact-H2 callers (format-check, epic consistency) unchanged.
 - `check-decidable` message names the containing section when options are found out-of-scope.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` — `check_decision_decidable` state (~line 318-335) shells `ll-issues check-open-questions || ll-issues check-decidable`; a widened scan flips routing (`on_yes`/`on_no`) for previously-`no` issues [Agent 1/2 finding]
+- `scripts/little_loops/loops/rn-remediate.yaml` — parallel `check_decision_decidable` state (~line 277-298) with the same probe chain, plus an in-process Python snippet (~line 339-357) calling `count_open_questions_in_sections()`/`count_unresolved_options()` directly — check whether it needs a corresponding call-site update if widening is added behind a new non-default parameter [Agent 1/2 finding]
+- `skills/decide-issue/SKILL.md` — Phase 3 "Extract Options" prose describes the current three-section scan as the human-facing mirror of `check-decidable`'s Python re-implementation; will describe a narrower algorithm than the code after this lands [Agent 1/2 finding]
+- `commands/refine-issue.md` (lines 299-327, "Option-Count Detection") — references `count_enumerable_options()`/`count_unresolved_options()` scanning scope and the `ll-issues check-decidable` verification step [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `little_loops.issue_parser` section documents `count_enumerable_options`/`count_unresolved_options`/`count_open_questions_in_sections` scope as "Deterministic re-implementation of SKILL.md Phase 3" [Agent 2 finding]
+- `docs/reference/CLI.md` — `check-decidable`/`check-open-questions` sections contain worked examples with literal exit-code/message expectations (e.g. `FEAT-398 # Exit 1 OPTIONS_MISSING`) that may flip once the scan widens [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — Phase 1.5 "Decidability Gate (ENH-2443, ENH-2446)" prose describing the `check_decision_decidable` probe chain [Agent 2 finding]
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — "Escalation after low readiness scores" section describes the current "no enumerable options" behavior and `/ll:refine-issue --auto` remedy this issue's diagnostic revises [Agent 2 finding]
+- `docs/guides/DECISIONS_LOG_GUIDE.md`, `docs/reference/COMMANDS.md` — mention `--validate-only`/`OPTIONS_MISSING` exit-1/message contract [Agent 2 finding]
+
+### Tests (additional, beyond the four already listed above)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_check_open_questions.py` — dedicated subprocess test file for `check-open-questions` (mirrors `test_ll_issues_check_decidable.py`'s structure); check for the same exact-section-scope assumptions and `OPEN_QUESTIONS_REMAIN` message text [Agent 3 finding]
+- `scripts/tests/test_issue_parser_unresolved.py` — has no direct unit tests for `_section_body` or `count_enumerable_options` today (only indirect subprocess coverage); add a `TestCountEnumerableOptions` class following its existing `TestCountUnresolvedOptions`/`TestCountOpenQuestionsInSections` fixture-string-in/value-out convention [Agent 3 finding]
+- `scripts/tests/test_fsm_validation.py::TestPolicyDimensionsScored` (lines 4344-4496) — the analogous test-shape to model the new diagnostic on: per-behavior methods, a private fixture-builder helper, an explicit suppression-flag test, and a "wired into the top-level validator" integration test [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py::test_check_decision_decidable_state_exists_and_routes` / `test_check_decision_decidable_chains_coverage_probe` and `scripts/tests/test_rn_remediate.py::TestCheckDecisionDecidable*` — assert the literal shell invocation string/ordering in autodev.yaml/rn-remediate.yaml; stable unless a new CLI flag is added, but re-run to confirm [Agent 1/3 finding]
+- `scripts/tests/fixtures/issues/FEAT-398-decide-empty-proposed.md` — literal true-negative fixture referenced by the `docs/reference/CLI.md` "Exit 1 OPTIONS_MISSING" example; verify it stays a true negative (no options anywhere in the doc) after widening [Agent 2/3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Backwards Compatibility correction**: `_section_body()`'s only callers are internal to
+  `scripts/little_loops/issue_parser.py` itself — `check_format_gaps()` (line 262),
+  `count_enumerable_options` (319, 322), `count_unresolved_options` (382), and
+  `count_open_questions_in_sections` (451). There is **no** external caller in
+  `epic_consistency.py` — a repo-wide grep shows that file's `_section_body`-looking hit is an
+  unrelated local variable named `new_section_body` in a different function, not a call to this
+  helper. `check_format_gaps` is the one real in-module consumer whose exact-H2 semantics must
+  stay intact when widening is added (it matches literal canonical H2 template headings by
+  construction, so a shared/default-changed `_section_body` would also change its behavior — this
+  is exactly why the issue's own Backwards Compatibility section already says "new parameter or a
+  separate helper," and this finding confirms that constraint rather than changing it).
+- **Existing test will need updating, not just new tests added**: `test_ll_issues_check_decidable.py`
+  already has `test_options_under_open_questions_exit_one` (lines 107-136) — a regression fixture
+  for exactly the FEAT-2817-shaped scenario (options nested under
+  `### Codebase Research Findings — <suffix>` inside `## Open Questions`) that currently asserts
+  `returncode == 1` (NOT decidable). Once (1)+(2) land this test's expectation flips to
+  `returncode == 0`; its docstring and assertions need updating in the same change, not just
+  covered by new fixtures.
+- **Analogous silently-inert-lint pattern to model the new diagnostic on**:
+  `_validate_policy_dimensions_scored()` in `scripts/little_loops/fsm/validation.py:2431-2516` (the
+  `policy_dims_scored_ok` lint this issue's Motivation section cites) unions two sources before
+  declaring a dimension unscored — the declared `rubric_dimensions` set plus a regex scan
+  (`rubric-dim-([\w-]+)\.txt`) over literal write sites — and its message names the specific inert
+  predicate plus the runtime mechanism ("falls through to the catch-all"), not a generic
+  "not found." The new `OPTIONS_MISSING`/`OPEN_QUESTIONS_REMAIN` messages in `check_decidable.py`
+  (lines 39-44) and `check_open_questions.py` (lines 66-70) should follow the same shape: name the
+  section where options were actually found (or state truthfully that none exist anywhere) rather
+  than only naming the scanned section as today.
+- **No existing prefix/depth-tolerant section helper to reuse**: confirmed no other helper in
+  `issue_parser.py` does heading-depth-agnostic or prefix-tolerant matching —
+  `_parse_section_items()` (`IssueParser` method, lines 1109-1145) is a separate, non-shared
+  exact-H2 implementation used only for `Blocked By`/`Blocks` ID-list extraction. The widened
+  resolver in Proposed Solution item (1) is genuinely new code, not a reuse of an existing helper.
+  `_iter_option_blocks()` (346-362) and `_OPTION_HEADING_RE` (334-343) — the "Pattern 1+2" matcher
+  that must stay unchanged per Scope Boundaries — already scan whatever text they're handed
+  independent of section boundaries, so the whole-document fallback in item (2) can pass full
+  `content` straight to the existing `_count_options_in_text()` / `_iter_option_blocks()` without
+  modifying either.
+
 ## Implementation Steps
 
 1. Add the whole-document fallback scan plus the section-aware diagnostic (2 + 3).
 2. Add the widened/prefix section resolution behind a new parameter (1).
 3. Add the four tests above; confirm no existing `_section_body` caller changes behavior.
 4. Re-run `ll-issues deferred-triage` and re-check issues deferred as `decision_unresolved`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Update `scripts/tests/test_ll_issues_check_decidable.py::test_options_under_open_questions_exit_one` (lines 107-136) — flip the `returncode == 1`/`OPTIONS_MISSING` assertion and docstring to match the now-reachable option block; add a new negative-path fixture if a still-unreachable case is needed to preserve regression coverage.
+6. Check `scripts/tests/test_ll_issues_check_open_questions.py` for the same exact-section-scope assumptions and update `OPEN_QUESTIONS_REMAIN` message assertions if the diagnostic text changes.
+7. Add direct unit tests for `_section_body` and `count_enumerable_options` in `scripts/tests/test_issue_parser_unresolved.py` (new `TestCountEnumerableOptions` class), following that file's existing fixture-string-in/value-out convention — these functions currently have no unit coverage, only indirect subprocess coverage.
+8. Verify `scripts/little_loops/loops/rn-remediate.yaml`'s in-process Python snippet (~line 339-357) that calls `count_open_questions_in_sections()`/`count_unresolved_options()` directly picks up the widened behavior (or needs an explicit opt-in argument).
+9. Verify `scripts/tests/fixtures/issues/FEAT-398-decide-empty-proposed.md` stays a true-negative case after widening (referenced by the `docs/reference/CLI.md` "Exit 1 OPTIONS_MISSING" example).
+10. Update `docs/reference/CLI.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/guides/ISSUE_MANAGEMENT_GUIDE.md`, and `skills/decide-issue/SKILL.md` Phase 3 prose if the widened scope or diagnostic message changes their documented examples/behavior description.
 
 ## Impact
 
@@ -158,8 +252,34 @@ existing exact-H2 callers are untouched. A widened count can newly flip `check-d
 | `docs/reference/API.md` | `little_loops.issue_parser` section helpers |
 | `skills/decide-issue/SKILL.md` | option/resolved-marker vocabulary the probes mirror |
 
+## Resolution
+
+Implemented (2)+(3) fully and (1) implicitly via a whole-document fallback scan in
+`issue_parser.py`:
+
+- `locate_enumerable_options()` / `locate_unresolved_options()` (new, alongside the
+  existing `count_enumerable_options()` / `count_unresolved_options()`) try the scoped
+  sections first (`## Proposed Solution`, then the fallback headings), then fall back to
+  scanning every H2 section in the document — which, by construction, covers nested H3
+  subsections and decorated/suffixed H2 headings without a separate depth/prefix
+  resolver. Both return `(count, containing_heading)` for diagnostics.
+- `check-decidable` / `check-open-questions` now name the section options were actually
+  found in on success, and their failure messages state that the whole document was
+  scanned (no longer implying only `## Proposed Solution` was checked).
+- Flipped `test_options_under_open_questions_exit_one` → `test_options_under_open_questions_exit_zero`
+  (FEAT-2817-shaped fixture now resolves as decidable) and added `TestCountEnumerableOptions`
+  unit tests in `test_issue_parser_unresolved.py`.
+- `_iter_option_blocks()`/`_OPTION_HEADING_RE` (Pattern 1+2) and `_section_body()`'s
+  exact-H2 default were left untouched per Scope Boundaries; `check_format_gaps` (the one
+  other `_section_body` in-module consumer) is unaffected.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-26T06:07:56 - `12e06889-14de-4bac-93c0-0271b15156c1.jsonl`
+- `/ll:confidence-check` - 2026-07-26T00:00:00Z - `34e04778-f7ff-49f4-b11f-89ef0e9ac888.jsonl`
+- `/ll:wire-issue` - 2026-07-26T06:05:48 - `0240cca2-661d-430e-8c4a-5a27bd1780f7.jsonl`
+- `/ll:refine-issue` - 2026-07-26T06:00:06 - `d00ce073-12a9-4ac3-8b38-055e8a5baf8e.jsonl`
 - `/ll:capture-issue` - 2026-07-25T22:53:35Z - `ae9c212c-ff4e-4576-a5c4-7457be6284e5.jsonl`
+- `/ll:manage-issue` - 2026-07-26T06:15:16Z - `788019e6-6863-44ae-93c1-a26d30e2d204.jsonl`
 
 ---
 

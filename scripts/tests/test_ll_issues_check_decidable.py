@@ -101,12 +101,12 @@ class TestCheckDecidableHappyPath:
         assert "FEAT-9101" in result.stdout
 
 
-class TestCheckDecidableMissingOptions:
-    """Options deposited outside the scanned sections are invisible (exit 1)."""
+class TestCheckDecidableWidenedOptions:
+    """Options deposited outside the originally-scanned sections are now reachable (ENH-2821)."""
 
-    def test_options_under_open_questions_exit_one(self, temp_project_dir: Path) -> None:
-        """Regression fixture for BUG-2820: options nested under an H3 inside
-        ## Open Questions are not reachable by count_enumerable_options()."""
+    def test_options_under_open_questions_exit_zero(self, temp_project_dir: Path) -> None:
+        """Regression fixture for BUG-2820/ENH-2821: options nested under an H3 inside
+        ## Open Questions are now found by the whole-document fallback scan."""
         body = (
             "---\n"
             "id: FEAT-9102\n"
@@ -128,12 +128,13 @@ class TestCheckDecidableMissingOptions:
         )
         _write_issue(temp_project_dir, body)
         result = _invoke(temp_project_dir, "check-decidable", "FEAT-9102")
-        assert result.returncode == 1, (
-            f"Options outside scanned sections must not be decidable, got {result.returncode}: "
+        assert result.returncode == 0, (
+            f"Options nested under any H2 must now be found, got {result.returncode}: "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
-        assert "OPTIONS_MISSING" in result.stderr
-        assert "FEAT-9102" in result.stderr
+        assert "Decidable" in result.stdout
+        assert "Open Questions" in result.stdout
+        assert "FEAT-9102" in result.stdout
 
     def test_no_options_at_all_exit_one(self, temp_project_dir: Path) -> None:
         body = (
