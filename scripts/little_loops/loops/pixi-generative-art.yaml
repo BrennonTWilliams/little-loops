@@ -281,7 +281,8 @@ states:
 
       Report these paths to the user and confirm the sketch is ready.
     next: done
-    on_error: done
+    # ENH-2825: failing to write the final report is a failed run.
+    on_error: failed
   done:
     # HARNESS: Success terminal — reached when all criteria pass or
     # max_iterations exhausted. The final sketch is at

@@ -28,7 +28,8 @@ states:
       target: 0
     on_yes: enumerate_installed
     on_no: done_empty
-    on_error: done_empty
+    # ENH-2825: a registry query that errors is not an empty registry.
+    on_error: failed
 
   enumerate_installed:
     fragment: shell_exit
@@ -309,13 +310,18 @@ states:
       prompt: "Was the triage report successfully written to the file?"
       min_confidence: 0.5
     on_yes: done
-    on_no: done
+    # ENH-2825: "the report was not written" is a failed audit, not a completed one.
+    on_no: failed
     on_partial: done
     on_blocked: done
-    on_error: done
+    on_error: failed
 
   done:
     terminal: true
 
   done_empty:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

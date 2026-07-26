@@ -714,7 +714,8 @@ states:
     on_yes: done
     on_no: done
     on_partial: done
-    on_error: done
+    # ENH-2825: an errored synthesis produced no result to report.
+    on_error: build_failed
 
   # ─── Terminal States ───────────────────────────────────────────────────────────
 

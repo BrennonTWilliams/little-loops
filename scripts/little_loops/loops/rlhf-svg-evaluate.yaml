@@ -475,7 +475,9 @@ states:
       pattern: "VISION_PASS"
     on_yes: track_correlation
     on_no: track_correlation
-    on_error: done
+    # ENH-2825: a scoring step that errors produced no vision verdict — that is
+    # exactly what `unevaluated` exists to signal, not `done`.
+    on_error: unevaluated
 
   track_correlation:
     # FIX/SCORE CORRELATION TRACKING (ENH-013):
@@ -700,7 +702,14 @@ states:
       pattern: "VISION_PASS"
     on_yes: done
     on_no: done
-    on_error: done
+    # ENH-2825: correlation bookkeeping that errors is a failed run, but it is not
+    # a smoke failure — a distinct terminal keeps the parent's streak accounting
+    # (keyed on `unevaluated`) intact while still exiting non-zero.
+    on_error: failed
+
+  failed:
+    terminal: true
+    failure: true
 
   unevaluated:
     # Distinct terminal from `done` (BUG-2756): reached only via

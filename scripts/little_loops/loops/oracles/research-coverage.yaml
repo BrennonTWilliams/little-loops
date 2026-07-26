@@ -411,8 +411,13 @@ states:
       If academic_mode is ${context.academic_mode} and true: also note that the
       ## BibTeX section in report.md can be copied directly into a .bib file.
     next: done
-    on_error: done
+    # ENH-2825: failing to write the final report is a failed research run.
+    on_error: failed
   done:
     # Terminal — reports final output file locations and facet coverage summary.
     # academic_mode gates the BibTeX copy note.
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

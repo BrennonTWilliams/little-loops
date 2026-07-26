@@ -37,6 +37,11 @@ states:
     terminal: true
     failure: true
 
+  # ENH-2825: generic failure terminal for states that error out mid-evaluation.
+  failed:
+    terminal: true
+    failure: true
+
   load_definition:
     action_type: shell
     timeout: 60
@@ -107,7 +112,7 @@ states:
     capture: improvement_report
     on_blocked: $current
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825
     evaluate:
       type: llm_structured
       source: "${captured.improvement_report.output}"
@@ -129,9 +134,10 @@ states:
     action: "/ll:audit-loop-run ${context.input} --auto"
     capture: improvement_report
     on_blocked: $current
-    on_error: done
+    # ENH-2825: an analysis that never ran is not a completed evaluation.
+    on_error: failed
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed
     next: generate_report
 
   done:

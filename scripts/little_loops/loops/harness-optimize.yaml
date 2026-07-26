@@ -100,7 +100,7 @@ states:
     capture: baseline
     on_yes: init_prev
     on_no: done
-    on_error: done
+    on_error: failed  # ENH-2825: an unscoreable baseline blocks the whole run
 
   init_prev:
     action_type: shell
@@ -254,3 +254,8 @@ states:
 
   done:
     terminal: true
+
+  # ENH-2825: a baseline that cannot be measured is a failed optimization run.
+  failed:
+    terminal: true
+    failure: true

@@ -1169,7 +1169,9 @@ def _validate_terminal_action_ok(fsm: FSMLoop) -> list[ValidationError]:
     if fsm.terminal_action_ok:
         return []
 
-    exempt_terminal_names: set[str] = {fsm.on_max_steps, fsm.on_max_iterations} - {None}
+    exempt_terminal_names: set[str] = {
+        name for name in (fsm.on_max_steps, fsm.on_max_iterations) if name is not None
+    }
 
     errors: list[ValidationError] = []
     terminal_states = fsm.get_terminal_states()

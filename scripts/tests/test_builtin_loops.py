@@ -53,6 +53,47 @@ class TestBuiltinLoopFiles:
                 f"{loop_file.name}: validation errors: {[str(e) for e in error_list]}"
             )
 
+    def test_no_failure_edge_routes_to_a_success_terminal(self, builtin_loops: list[Path]) -> None:
+        """ENH-2825: an error/abort edge must not terminate in a success terminal.
+
+        ENH-2814 made failure terminals observable (exit 2, ``final_status:
+        "failed"``, ``loop_runs.failure_terminal``). That plumbing is inert for
+        any loop that routes ``on_error``/``on_failure``/``on_retry_exhausted``
+        into a terminal without ``failure: true`` — the run exits 0 and persists
+        as ``completed`` even though the step never succeeded.
+
+        Recoverable edges are unaffected: this only fires when the target is a
+        *terminal* state. Routing an error to a retry/fallback state is fine.
+        """
+        # Deliberate exemptions: a failed *summary write* must not retract the
+        # verdict the run already earned. Both predate ENH-2825 and were left in
+        # place by it. Keyed (loop file, state, edge) -> owning issue.
+        exempt = {
+            ("general-task.yaml", "summarize_success", "on_error"): "ENH-2365",
+            ("general-task.yaml", "write_partial_summary", "on_error"): "ENH-2575",
+        }
+
+        offenders: list[str] = []
+        for loop_file in builtin_loops:
+            fsm, _ = load_and_validate(loop_file)
+            terminals = set(fsm.get_terminal_states())
+            failures = set(fsm.get_failure_states())
+            for state_name, state in fsm.states.items():
+                for edge in ("on_error", "on_failure", "on_retry_exhausted"):
+                    target = getattr(state, edge, None)
+                    if (loop_file.name, state_name, edge) in exempt:
+                        continue
+                    if target in terminals and target not in failures:
+                        offenders.append(
+                            f"{loop_file.name}: {state_name}.{edge} -> '{target}' "
+                            f"(terminal without failure: true)"
+                        )
+
+        assert not offenders, (
+            "Failure edges terminating in a success terminal exit 0 and persist as "
+            "'completed'. Route them to a `failure: true` terminal:\n  " + "\n  ".join(offenders)
+        )
+
     def test_all_have_description_field(self, builtin_loops: list[Path]) -> None:
         """All built-in loops define a top-level description: field.
 
@@ -759,8 +800,7 @@ class TestEvaluationQualityLoop:
             state = data["states"].get(state_name, {})
             assert "on_error" in state, f"Route state '{state_name}' missing on_error"
             assert state["on_error"] != "done", (
-                f"Route state '{state_name}' on_error must not point at the "
-                "success terminal 'done'"
+                f"Route state '{state_name}' on_error must not point at the success terminal 'done'"
             )
 
     def test_max_steps_covers_longest_remediation_path(self, data: dict) -> None:
@@ -1142,13 +1182,22 @@ class TestIssueRefinementSubLoop:
             f"run_all.with_.no_recursion should be true, got {with_.get('no_recursion')!r}"
         )
 
-    def test_run_all_routes_all_outcomes_to_done(self, data: dict) -> None:
-        """run_all must route on_success, on_failure, and on_error to done (alias has no fallback logic)."""
+    def test_run_all_routes_every_outcome_to_a_terminal(self, data: dict) -> None:
+        """run_all must terminate on every child outcome (the alias has no fallback logic).
+
+        ENH-2825: success terminates on ``done``; a failed or errored child
+        terminates on ``failed`` (``failure: true``) so the run exits 2 and
+        persists as ``failed`` instead of reporting a completed refinement pass.
+        """
         state = data["states"].get("run_all", {})
-        for field in ("on_success", "on_failure", "on_error"):
-            assert state.get(field) == "done", (
-                f"run_all.{field} should be 'done', got {state.get(field)!r}"
+        expected = {"on_success": "done", "on_failure": "failed", "on_error": "failed"}
+        for field, target in expected.items():
+            assert state.get(field) == target, (
+                f"run_all.{field} should be '{target}', got {state.get(field)!r}"
             )
+        assert data["states"]["failed"].get("failure") is True, (
+            "the `failed` terminal must carry failure: true"
+        )
 
     def test_done_is_terminal(self, data: dict) -> None:
         """done state must be terminal."""

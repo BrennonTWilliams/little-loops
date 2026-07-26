@@ -51,7 +51,7 @@ states:
     capture: current_item             # stored as ${captured.current_item.output}
     on_yes: execute                   # item found → process it
     on_no: done                       # list empty → all items processed
-    on_error: done
+    on_error: failed                  # ENH-2825: unreadable list ≠ empty list
 
   execute:
     # EXAMPLE: Invoke the skill with the captured item ID.
@@ -180,3 +180,9 @@ states:
 
   done:
     terminal: true
+
+  # ENH-2825: every harness needs a failure terminal so a broken discovery step
+  # exits 2 rather than reporting a clean sweep of zero items.
+  failed:
+    terminal: true
+    failure: true

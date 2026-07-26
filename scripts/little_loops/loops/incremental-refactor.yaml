@@ -58,8 +58,12 @@ states:
     action: "The previous refactoring step failed tests or produced no changes. Review the refactoring goal: '${context.refactor_goal}'. Analyze what went wrong, adjust the plan, and prepare a different approach for the next step."
     action_type: prompt
     max_retries: 3
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825: retries exhausted = replan never landed
     next: execute_step
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

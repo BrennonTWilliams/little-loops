@@ -1,0 +1,11 @@
+{
+  "id": "1b98005a-9977-49f7-a374-41f8d0272693",
+  "type": "decision",
+  "timestamp": "2026-07-26T05:59:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2814 made failure terminals observable; 39/85 built-in loops still declare only a done terminal so error edges exit 0 as completed.",
+  "rule": "Captured: Add failed terminals to the 39 built-in loops that lack one",
+  "scope": "issue",
+  "issue": "ENH-2825"
+}

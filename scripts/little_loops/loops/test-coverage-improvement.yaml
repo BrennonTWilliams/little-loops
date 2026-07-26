@@ -135,7 +135,7 @@ states:
       - What code paths they cover
     on_blocked: done
     max_retries: 2
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825
     next: verify_tests
 
   verify_tests:
@@ -200,3 +200,7 @@ states:
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

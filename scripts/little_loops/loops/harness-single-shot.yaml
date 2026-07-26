@@ -36,7 +36,7 @@ states:
     action_type: prompt
     capture: execute_result           # captured as ${captured.execute_result.output}
     max_retries: 3
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825: retries exhausted = the step never ran
     next: check_stall
 
   check_stall:
@@ -49,7 +49,7 @@ states:
     fragment: diff_stall_gate
     on_yes: check_concrete            # progress detected → proceed to evaluation chain
     on_no: done                       # stalled in single-shot mode → nothing more to do
-    on_error: done
+    on_error: failed                  # ENH-2825: a broken stall check is not a pass
 
   check_concrete:
     # EXAMPLE: Cheapest gate first — run the project's configured test suite.
@@ -164,7 +164,12 @@ states:
       target: 50
     on_yes: done                      # diff is acceptably small → done
     on_no: execute                    # diff too large → retry
-    on_error: done
+    on_error: failed                  # ENH-2825: an uncheckable invariant is not a pass
 
   done:
     terminal: true
+
+  # ENH-2825: gates that error out must exit 2, not report success.
+  failed:
+    terminal: true
+    failure: true

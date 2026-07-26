@@ -61,7 +61,8 @@ states:
       pattern: "DRAIN"
     on_yes: done
     on_no: route_wait
-    on_error: done
+    # ENH-2825: a queue read that errors is not a drained queue.
+    on_error: failed
 
   route_wait:
     # Disambiguate the non-DRAIN pop: WAIT (nothing ready, sleep+retry) vs a real
@@ -155,3 +156,7 @@ states:
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

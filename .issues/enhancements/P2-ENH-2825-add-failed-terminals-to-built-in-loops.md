@@ -175,6 +175,53 @@ re-runs the check). Each edge needs a read.
 
 - N/A.
 
+## Resolution Note (2026-07-26)
+
+The scope above was refined during implementation. Two findings changed it:
+
+1. **Budget exhaustion was already observable.** `max_steps` maps to
+   `final_status: "interrupted"` and `EXIT_CODES["max_steps"] == 1`, so the ~17
+   loops whose only "failure" was running out of steps already exit non-zero.
+   Routing `on_max_steps` at a failure terminal would have *lost* the
+   ran-out-of-budget distinction, so step 3 above was dropped.
+2. **The real defect is narrower and sharper than "no failure terminal".** It is
+   an edge that routes a *failure* into a *success terminal* — exit 0,
+   `final_status: "completed"`. Counting loops by "has a `failure: true`
+   terminal" both over- and under-counted: several of the 39 had no failure edge
+   at all, while loops **not** in the 39 (`general-task`, `rn-build`,
+   `outer-loop-eval`, `rlhf-svg-evaluate`, `html-website-generator`,
+   `pixi-generative-art`, `prompt-across-issues`, `refine-to-ready-issue`) had a
+   failure terminal *and still* routed `on_error` to `done`.
+
+The implemented rule: **no `on_error` / `on_failure` / `on_retry_exhausted` edge
+may terminate in a terminal lacking `failure: true`.** Recoverable edges that
+route to a non-terminal retry/fallback state are untouched. 31 edges across 26
+loops were repointed; new `failed` terminals were added only where one was
+needed as a target. Enforced by
+`test_builtin_loops.py::test_no_failure_edge_routes_to_a_success_terminal`.
+
+### Deliberate exemptions
+
+Two `general-task.yaml` edges were repointed and then **reverted**: they encode a
+prior decision, not an accident, and the sweep should not silently override it.
+
+- `summarize_success.on_error -> done` (ENH-2365)
+- `write_partial_summary.on_error -> partial` (ENH-2575)
+
+In both cases the state writes a *summary file* after the verdict is already
+determined. A failed summary write does not retract the verdict the run earned.
+`partial` is additionally a non-`done` terminal, so parent sub-loop dispatch
+already routes it to `on_failure` rather than laundering it as success. Both are
+carried as an explicit keyed exemption in the regression guard, tagged with the
+owning issue.
+
+### Known remaining gap
+
+`autodev.yaml`'s `abort_env_not_ready` (host auth not configured) still routes
+`next: finalize_done` → `done`, so an auth abort exits 0. Fixing it means either
+losing the run summary or splitting `finalize_done`, and it interacts with the
+BUG-1226 in-flight warning — left for a follow-up rather than guessed at here.
+
 ## Implementation Steps
 
 1. Re-run the detection scan to get the current list (it shifts as loops land).

@@ -581,6 +581,8 @@ states:
         "$IMPLEMENTED" "$FAILED_FINALS"
     action_type: shell
     next: done
+    # ENH-2365: a failure to write the summary file does not retract the verdict
+    # the run already earned. Deliberately NOT repointed by the ENH-2825 sweep.
     on_error: done
 
   continue_work:
@@ -719,6 +721,10 @@ states:
         "$CHECKED" "$TOTAL" "$HARD_UNCHECKED"
     action_type: shell
     next: partial
+    # ENH-2575: the partial verdict the run earned must survive a failed summary
+    # write. `partial` is already a non-`done` terminal, so parent sub-loop
+    # dispatch routes it to on_failure rather than laundering it as success.
+    # Deliberately NOT repointed by the ENH-2825 sweep.
     on_error: partial
 
   partial:

@@ -37,6 +37,10 @@ flow:
   - research_web
   - "check_research?synthesize:done"
   - synthesize
+  # ENH-2825: a terminal must appear in the flow chain to be a known state.
+  # `failed` precedes `done` so the chain still ends on `done` — the sub-loop
+  # success-routing contract the parent depends on.
+  - failed
   - done
 
 state_defs:
@@ -189,11 +193,21 @@ state_defs:
     evaluate:
       type: output_contains
       pattern: "HAS_RESEARCH"
-    on_error: done
+    # ENH-2825: a guard that errors has not established "no research" — an honest
+    # no-op iteration is on_no, not a swallowed error.
+    on_error: failed
+
+  failed:
+    terminal: true
+    failure: true
 
   synthesize:
     # Synthesis — merges research findings into an improved plan. Updates plan.md
     # in-place. Steps 7/8 are gated on overwrite_source for rn-refine callers.
+    # ENH-2825: `failed` sits between synthesize and done in the flow chain (a
+    # terminal must be a flow entry to exist), so the implicit chain `next` would
+    # point at `failed`. Declared explicitly here to keep the real edge.
+    next: done
     action_type: prompt
     action: |
       Read all three files:

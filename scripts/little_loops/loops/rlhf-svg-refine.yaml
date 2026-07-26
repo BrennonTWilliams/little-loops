@@ -340,7 +340,7 @@ states:
     timeout: 600
     max_retries: 3
     retryable_exit_codes: [124]
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825
     capture: fix_plan
     evaluate:
       type: output_contains
@@ -439,7 +439,7 @@ states:
     timeout: 900
     max_retries: 3
     retryable_exit_codes: [124]
-    on_retry_exhausted: done
+    on_retry_exhausted: failed  # ENH-2825
     capture: candidate
     next: self_diagnose
     on_error: apply_refinements
@@ -664,3 +664,7 @@ states:
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

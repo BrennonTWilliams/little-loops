@@ -42,7 +42,7 @@ states:
       target: 0
     on_yes: done
     on_no: prune_branches
-    on_error: done
+    on_error: failed
   prune_branches:
     action: |
       git branch --merged main | grep -v '^\*' | grep -v 'main' | grep 'issue-' | while read -r b; do git branch -d "$b"; done 2>&1
@@ -51,6 +51,11 @@ states:
   done:
     terminal: true
     on_maintain: check_worktrees
+
+  # ENH-2825: a branch-inventory error is not a clean sweep — exit 2, not 0.
+  failed:
+    terminal: true
+    failure: true
 max_steps: 50
 timeout: 86400
 on_handoff: spawn

@@ -33,7 +33,7 @@ states:
       target: 8
     on_yes: done
     on_no: refine
-    on_error: done
+    on_error: failed
   refine:
     action: |
       # Refine the candidate based on evaluation feedback.
@@ -47,5 +47,10 @@ states:
     next: score
   done:
     terminal: true
+
+  # ENH-2825: a scorer that errors has not scored 8+ — exit 2, not 0.
+  failed:
+    terminal: true
+    failure: true
 max_steps: 30
 on_handoff: spawn

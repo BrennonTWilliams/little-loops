@@ -22,7 +22,7 @@ states:
       pattern: ".md"
     on_yes: review_issue
     on_no: done
-    on_error: done
+    on_error: failed
   review_issue:
     action_type: prompt
     timeout: 300
@@ -76,5 +76,10 @@ states:
     next: find_stale
   done:
     terminal: true
+
+  # ENH-2825: a failed stale-issue scan is not "nothing stale" — exit 2, not 0.
+  failed:
+    terminal: true
+    failure: true
 max_steps: 15
 timeout: 3600

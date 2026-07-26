@@ -31,8 +31,10 @@ states:
   discover:
     loop: issue-discovery-triage
     on_success: diff_issues
+    # A failed discovery pass may still have created issues, so the diff is
+    # worth running; an errored child never got that far.
     on_failure: diff_issues
-    on_error: done
+    on_error: failed  # ENH-2825
 
   diff_issues:
     # Diff active issue IDs against the pre-discovery baseline. Issues created
@@ -68,16 +70,22 @@ states:
     action_type: shell
     capture: input
     on_yes: implement
-    on_no: done
-    on_error: done
+    on_no: done          # exit 1 from the diff means "nothing new" — a real success
+    on_error: failed     # ENH-2825: a broken diff is not "nothing new"
 
   implement:
     loop: autodev
     with:
       input: "${captured.input.output}"
     on_success: done
-    on_failure: done
-    on_error: done
+    # ENH-2825: the implementation child failing or erroring is the whole point
+    # of this loop not having happened — do not report it as a completed scan.
+    on_failure: failed
+    on_error: failed
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

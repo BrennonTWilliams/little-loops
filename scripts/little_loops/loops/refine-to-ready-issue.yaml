@@ -397,7 +397,9 @@ states:
     action: printf '1' > ${context.run_dir}/refine-broke-down
     action_type: shell
     next: done
-    on_error: done
+    # ENH-2825: failing to record the decomposition marker loses the signal the
+    # parent loop reads — surface it instead of exiting 0.
+    on_error: failed
 
   done:
     terminal: true

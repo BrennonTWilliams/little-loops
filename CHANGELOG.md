@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- ENH-2825: built-in loops no longer report failures as success. 31 edges across
+  26 loops routed `on_error` / `on_failure` / `on_retry_exhausted` directly into
+  a success terminal, so a run that errored exited 0 and persisted as
+  `completed` — the ENH-2814 plumbing was inert for them. Each now terminates on
+  a `failure: true` terminal instead. Most visibly: `worktree-health` no longer
+  reports a clean sweep when the branch inventory errored, `scan-and-implement`
+  no longer reports a completed scan when the `autodev` child failed,
+  `issue-refinement` no longer collapses a failed child loop into `done`, and
+  `learning-tests-audit` / `migrate-sdk-version` no longer treat "the report was
+  not written" as a finished audit. Recoverable edges that route to a retry or
+  fallback *state* are unchanged — only edges landing on a terminal were
+  repointed, and `general-task`'s two summary-writing states keep their existing
+  routing (ENH-2365 / ENH-2575: a failed summary write does not retract the
+  verdict the run already earned). A new regression guard
+  (`test_builtin_loops.py::test_no_failure_edge_routes_to_a_success_terminal`)
+  keeps the invariant from regrowing, carrying those two as keyed exemptions.
+
+  **Behaviour change:** these loops now exit **2** on the affected paths where
+  they previously exited 0. That is the point, but callers that treated exit 0 as
+  "ran" will start seeing failures.
+
 - ENH-2814: FSM failure terminals are now observable end-to-end. `StateConfig`
   gains an explicit `failure: bool` flag (with `FSMLoop.get_failure_states()`
   alongside `get_terminal_states()`), and it is the single source of truth that

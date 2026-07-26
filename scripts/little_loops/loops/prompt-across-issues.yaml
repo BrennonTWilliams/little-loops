@@ -102,7 +102,8 @@ states:
     capture: current_item
     on_yes: prepare_prompt
     on_no: done
-    on_error: done
+    # ENH-2825: an unreadable issue list is not an exhausted one.
+    on_error: error
 
   prepare_prompt:
     # Substitute {issue_id} with the captured issue ID using shell sed.

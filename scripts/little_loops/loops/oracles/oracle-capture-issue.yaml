@@ -61,7 +61,8 @@ states:
       pattern: "PHASE1_PASS"
     on_yes: score_semantic
     on_no: done
-    on_error: done
+    # ENH-2825: an evaluator that errors produced no verdict — that is not a score.
+    on_error: diagnose_failure
 
   score_semantic:
     action_type: prompt
@@ -99,5 +100,19 @@ states:
     capture: score
     next: done
 
+  # ENH-2825: diagnostic predecessor for `failed` — the executor finishes the run
+  # the instant a terminal is entered, so the explanation must live in a
+  # non-terminal state that routes into it.
+  diagnose_failure:
+    action_type: shell
+    action: |
+      echo "oracle-capture-issue: the mechanical phase-1 check errored — no score was produced" >&2
+    next: failed
+    on_error: failed
+
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

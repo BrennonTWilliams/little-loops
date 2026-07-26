@@ -52,7 +52,8 @@ states:
       type: exit_code
     on_yes: reprove_next
     on_no: done_empty
-    on_error: done_empty
+    # ENH-2825: a registry query that errors is not an empty stale list.
+    on_error: failed
 
   reprove_next:
     action: |
@@ -250,13 +251,18 @@ states:
       prompt: "Was the triage report successfully written to the file?"
       min_confidence: 0.5
     on_yes: done
-    on_no: done
+    # ENH-2825: "the report was not written" is a failed migration pass.
+    on_no: failed
     on_partial: done
     on_blocked: done
-    on_error: done
+    on_error: failed
 
   done:
     terminal: true
 
   done_empty:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

@@ -1,0 +1,12 @@
+{
+  "id": "9c3c4707-309b-4231-9d93-17b0f0a98d3e",
+  "type": "decision",
+  "timestamp": "2026-07-26T03:51:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "skills/explore-api/SKILL.md already calls scrape-docs prefix-free and works; packaging as a full plugin skill is unjustified extra work with no demonstrated demand beyond this repo",
+  "rule": "Drop ll: prefix on scrape-docs invocation (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Package scrape-docs as a plugin skill (Option A)",
+  "issue": "BUG-2816"
+}

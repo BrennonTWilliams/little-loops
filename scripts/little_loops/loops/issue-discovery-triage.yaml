@@ -67,7 +67,7 @@ states:
       target: ${captured.baseline.output}
     on_yes: commit
     on_no: done
-    on_error: done
+    on_error: failed
   commit:
     fragment: ll_commit
     action: |
@@ -76,6 +76,11 @@ states:
     next: count_baseline
   done:
     terminal: true
+
+  # ENH-2825: a failed issue count is not "no new issues" — exit 2, not 0.
+  failed:
+    terminal: true
+    failure: true
 max_steps: 10
 timeout: 7200
 on_handoff: spawn

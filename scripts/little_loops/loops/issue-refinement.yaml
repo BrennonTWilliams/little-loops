@@ -21,7 +21,13 @@ states:
       commit_every: 5
       no_recursion: true
     on_success: done
-    on_failure: done
-    on_error: done
+    # ENH-2825: the child loop failing (or erroring) is not a successful refinement
+    # pass — surface it as exit 2 instead of collapsing every outcome into `done`.
+    on_failure: failed
+    on_error: failed
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true

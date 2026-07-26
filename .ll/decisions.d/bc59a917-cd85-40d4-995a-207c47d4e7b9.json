@@ -1,0 +1,12 @@
+{
+  "id": "e3f4aee0-3fb3-43a6-8357-6544df8241b4",
+  "type": "decision",
+  "timestamp": "2026-07-26T04:10:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Name-convention (Option A) already duplicated across 5 sites and demonstrably leaky (known failure-shaped terminal names missing from FAILURE_TERMINAL_NAMES); Option B collapses to one source of truth using the proven StateConfig.terminal three-site round-trip pattern.",
+  "rule": "Schema flag (Option B): add explicit failure: true to StateConfig",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: name-based exit code mapping in EXIT_CODES + persistence.py name check",
+  "issue": "ENH-2814"
+}

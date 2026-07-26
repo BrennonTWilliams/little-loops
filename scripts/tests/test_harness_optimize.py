@@ -102,7 +102,10 @@ class TestHarnessOptimizeStates:
         assert "context.tasks_dir" in state.get("action", "")
         assert state.get("on_yes") == "init_prev"
         assert state.get("on_no") == "done"
-        assert state.get("on_error") == "done"
+        # ENH-2825: a baseline that cannot be measured blocks the whole
+        # optimization run — it terminates on `failed` (exit 2), not `done`.
+        assert state.get("on_error") == "failed"
+        assert loop_data["states"]["failed"].get("failure") is True
 
     def test_init_prev_captures_prev_score(self, loop_data: dict) -> None:
         state = loop_data["states"]["init_prev"]

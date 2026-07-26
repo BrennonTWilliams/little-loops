@@ -260,7 +260,8 @@ states:
       pattern: "VISION_PASS"
     on_yes: done
     on_no: run_gen_eval
-    on_error: done
+    # ENH-2825: a vision gate that errors has not passed.
+    on_error: failed
 
   done:
     # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
