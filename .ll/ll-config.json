@@ -130,7 +130,6 @@
     }
   },
   "orchestration": {
-    "host_cli": "claude-code",
-    "request_path": "sdk"
+    "host_cli": "claude-code"
   }
 }

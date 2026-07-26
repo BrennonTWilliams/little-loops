@@ -2,11 +2,13 @@
 id: ENH-2825
 type: ENH
 priority: P2
-status: open
-captured_at: "2026-07-26T05:58:30Z"
+status: done
+captured_at: '2026-07-26T05:58:30Z'
 discovered_date: 2026-07-26
 discovered_by: capture-issue
-relates_to: [ENH-2814]
+relates_to:
+- ENH-2814
+completed_at: '2026-07-26T17:12:18Z'
 ---
 
 # ENH-2825: Add `failed` terminals to the 39 built-in loops that lack one
@@ -175,6 +177,29 @@ re-runs the check). Each edge needs a read.
 
 - N/A.
 
+### Documentation (Wiring pass added by `/ll:wire-issue`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/review-loop/reference.md` — FA-2 ("Missing failure terminal state") only
+  flags the *absence* of a failure-named terminal. It does not catch the actual
+  bug class this issue fixed: a failure terminal exists, but an `on_error` /
+  `on_failure` / `on_retry_exhausted` edge still routes to a success terminal.
+  Without an FA-2 update (or a new FA check), `/ll:review-loop` will not catch a
+  reintroduced instance of this exact regression in a new or edited loop.
+
+### Regression Prevention Gap (found by `/ll:wire-issue`)
+
+- `scripts/little_loops/fsm/validation.py` has no static lint rule enforcing "no
+  `on_error`/`on_failure`/`on_retry_exhausted` edge may terminate at a
+  non-`failure: true` terminal" — the only guard is the pytest regression test
+  `test_no_failure_edge_routes_to_a_success_terminal` in
+  `scripts/tests/test_builtin_loops.py`, which covers built-in loops only. A
+  loop authored outside `scripts/little_loops/loops/` (e.g. a project-local
+  custom loop) gets no `ll-loop validate` warning for this pattern. Consider a
+  follow-up `ll-loop validate` MR rule (see `.claude/CLAUDE.md` § Loop
+  Authoring meta-rule table) if this class of bug should be caught at
+  authoring time rather than by full-suite regression test.
+
 ## Resolution Note (2026-07-26)
 
 The scope above was refined during implementation. Two findings changed it:
@@ -279,6 +304,7 @@ every loop declares at least one `failure: true` terminal.
 | `docs/reference/CLI.md` § Exit Codes (ENH-2814) | Exit-code contract this sweep activates |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-26T17:11:08 - `e3024f53-676e-4cd7-ac75-f6b2b447be99.jsonl`
 - `/ll:capture-issue` - 2026-07-26T05:58:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00041c0b-3526-41ec-b743-a686380c429a.jsonl`
 
 ---
