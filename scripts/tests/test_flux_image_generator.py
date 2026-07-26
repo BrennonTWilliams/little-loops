@@ -76,6 +76,44 @@ class TestLoopStructure:
         for name in ("score", "record_score", "check_stall", "check_diff_stall"):
             assert name in fsm.states, f"oracle lost inherited state '{name}'"
 
+    def test_oracle_max_steps_covers_intended_cycle_count(self) -> None:
+        """BUG-2822: the oracle's cycle is 8 states; the budget must buy several
+        full scored cycles, not silently cap out at 2.5 (the observed failure)."""
+        fsm, _ = load_and_validate(ORACLE)
+        INTENDED_CYCLES = 7
+        assert fsm.max_steps >= 8 * INTENDED_CYCLES, (
+            f"max_steps={fsm.max_steps} does not buy {INTENDED_CYCLES} full "
+            "8-state cycles (generate -> synthesize -> evaluate -> snapshot -> "
+            "score -> record_score -> check_stall -> check_diff_stall)"
+        )
+
+    def test_oracle_has_on_max_steps_summary_handler(self) -> None:
+        """BUG-2822: budget exhaustion must be a reported outcome, not a silent
+        crash that discards a generated-but-unscored image."""
+        fsm, _ = load_and_validate(ORACLE)
+        assert fsm.on_max_steps, "oracle must declare on_max_steps"
+        assert fsm.on_max_steps in fsm.states, (
+            f"on_max_steps={fsm.on_max_steps!r} does not name a real state"
+        )
+        summary = fsm.states[fsm.on_max_steps]
+        assert summary.terminal is True, (
+            "the on_max_steps handler must be terminal-doubling (BUG-158 shape) "
+            "so its action actually runs"
+        )
+
+    def test_wrapper_max_steps_covers_vision_rounds(self) -> None:
+        """BUG-2822: the parent must be able to complete the vision_gate <->
+        run_gen_eval back-edge (ROUND_CAP: 3 rounds, 2 states/round) plus its
+        4-state linear prefix, not just the single first pass."""
+        fsm, _ = load_and_validate(WRAPPER)
+        LINEAR_PREFIX = 4  # init, check_image_env, plan, run_gen_eval
+        ROUND_CAP = 3
+        STATES_PER_ROUND = 2  # run_gen_eval, vision_gate
+        assert fsm.max_steps >= LINEAR_PREFIX + ROUND_CAP * STATES_PER_ROUND, (
+            f"max_steps={fsm.max_steps} cannot complete {ROUND_CAP} vision "
+            "rounds the loop's own code budgets for"
+        )
+
     def test_generate_routes_through_synthesize(self) -> None:
         fsm, _ = load_and_validate(ORACLE)
         gen = fsm.states["generate"]
@@ -96,6 +134,33 @@ class TestLoopStructure:
             s for s in raw["states"].values() if s.get("loop") == "oracles/generator-evaluator-flux"
         ]
         assert delegating, "wrapper must delegate to oracles/generator-evaluator-flux"
+
+    def test_wrapper_distinguishes_exhausted_from_errored_child(self) -> None:
+        """BUG-2822: run_gen_eval's on_no must route to a check that separates
+        "child exhausted with usable output" from "child errored", instead of
+        collapsing both straight into diagnose -> failed."""
+        fsm, _ = load_and_validate(WRAPPER)
+        run_gen_eval = fsm.states["run_gen_eval"]
+        assert run_gen_eval.capture, (
+            "run_gen_eval must capture the child event stream so downstream "
+            "routing can inspect it for the oracle's SUMMARY_EMITTED verdict"
+        )
+        assert run_gen_eval.on_no != "diagnose", (
+            "on_no must not collapse straight to diagnose/failed; it must first "
+            "check whether the child left usable output behind"
+        )
+        gate = fsm.states[run_gen_eval.on_no]
+        assert gate.on_yes in fsm.states and gate.on_yes != "diagnose"
+        assert gate.on_no == "diagnose"
+        partial_terminal = fsm.states[gate.on_yes]
+        # finalize_partial is non-terminal (action must run) and routes onward
+        # to a distinct terminal from `done`.
+        while not partial_terminal.terminal:
+            partial_terminal = fsm.states[partial_terminal.next]
+        assert partial_terminal is not fsm.states["done"], (
+            "the partial-success path must not collapse into the same terminal "
+            "as a clean pass"
+        )
 
     def test_wrapper_fails_loudly_on_missing_image_base_url(self) -> None:
         """IMAGE_BASE_URL is the loop's core dependency — actionable hard failure."""
@@ -265,6 +330,26 @@ class TestSynthesizeBehaviour:
         assert len(seed_lines) == 2
         seeds = {ln.split("seed=")[1].split()[0] for ln in seed_lines}
         assert len(seeds) == 2, f"seed must vary per iteration, got {seed_lines}"
+
+    def test_stale_prompt_on_second_iteration_fails_loudly(
+        self, flux_stub, tmp_path: Path
+    ) -> None:
+        """BUG-2822: a regenerate against an unrewritten image-prompt.txt must
+        fail loudly (IMAGE_FAIL) on iteration >= 2 instead of burning a full
+        FLUX generation to re-render a near-identical latent."""
+        server, handler = flux_stub
+        url = f"http://127.0.0.1:{server.server_port}"
+        run_dir = tmp_path / "run"
+        first = _run_synthesize(run_dir, url, "a server rack, flat vector diagram")
+        assert "IMAGE_OK" in first.stdout, first.stdout + first.stderr
+
+        second = _run_synthesize(run_dir, url, "a server rack, flat vector diagram")
+        combined = second.stdout + second.stderr
+        assert "IMAGE_OK" not in combined, combined
+        assert "IMAGE_FAIL" in combined, combined
+        assert len(handler.received) == 1, (
+            "the stale-prompt gate must fail before the second HTTP call is made"
+        )
 
     def test_shell_metacharacters_in_prompt_are_safe(self, flux_stub, tmp_path: Path) -> None:
         server, handler = flux_stub

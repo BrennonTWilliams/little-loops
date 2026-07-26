@@ -12,7 +12,16 @@ description: |
   rather than an LLM emitting code — the LLM's role is prompt authoring and
   refinement. Thin wrapper over oracles/generator-evaluator-flux (FEAT-2817).
 initial: init
-max_steps: 20
+# max_steps: raised 20 -> 24 (BUG-2822). Linear prefix (init, check_image_env,
+# plan, run_gen_eval) = 4 states; vision_gate <-> run_gen_eval back-edge costs 2
+# states per round against ROUND_CAP: 3 in vision_gate's own action = 6 states;
+# finalize_done/done = 2 states. That's 12 for a full happy path. The partial-
+# success route added below (check_gen_eval_exhausted -> finalize_partial ->
+# partial_done, or -> diagnose -> failed) adds up to 3 more on any exit. 24
+# leaves headroom for both without silently truncating the vision rounds the
+# loop's own code already budgets for (note: the child oracle's own step
+# budget is separate — see oracles/generator-evaluator-flux.yaml max_steps).
+max_steps: 24
 timeout: 7200
 
 # HARNESS: Context variables control quality threshold and sampling parameters.
@@ -164,9 +173,69 @@ states:
         If ALL five individual scores are >= 8, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 8
+    # BUG-2822: capture the child's event stream so check_gen_eval_exhausted can
+    # tell "child hit max_steps but produced a summary with usable output"
+    # apart from "child genuinely errored" — the loop: state's own routing only
+    # distinguishes terminal `done` (on_yes) from everything else (on_no), so a
+    # step-cap exhaustion and a hard error both land on on_no today. There is no
+    # native 3-way route on a `loop:` state (checked executor.py's
+    # _execute_sub_loop — only on_yes/on_no/on_error are consulted), so the
+    # distinction is made here, one state downstream, instead.
+    capture: gen_eval_events
     on_yes: vision_gate
+    on_no: check_gen_eval_exhausted
+    on_error: diagnose
+
+  check_gen_eval_exhausted:
+    # HARNESS (BUG-2822): non-LLM gate — greps the captured child event stream
+    # for the SUMMARY_EMITTED token emitted by the oracle's max_steps_summary
+    # terminal-doubling state. Present => the child ran out of budget but left a
+    # scored/best-so-far image on disk (partial success). Absent => a genuine
+    # child error (e.g. IMAGE_FAIL, HTTP failure) — the existing diagnose/failed
+    # path is unchanged for that case.
+    action_type: shell
+    action: |
+      if printf '%s' "${captured.gen_eval_events.output}" | grep -q "SUMMARY_EMITTED"; then
+        echo "GEN_EVAL_EXHAUSTED_WITH_OUTPUT"
+      else
+        echo "GEN_EVAL_ERRORED"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "GEN_EVAL_EXHAUSTED_WITH_OUTPUT"
+    on_yes: finalize_partial
     on_no: diagnose
     on_error: diagnose
+
+  finalize_partial:
+    # HARNESS (BUG-2822): distinct from finalize_done — reports that the budget
+    # was exhausted before every criterion passed, but a usable image exists on
+    # disk (BUG-2822's "never orphan a generated-but-unscored image" half; full
+    # per-cycle reordering is deferred to BUG-2824). Not terminal: true itself
+    # (BUG-158/BUG-2813 shape — the action runs here, then routes to a bare
+    # terminal), matching finalize_done -> done below.
+    action_type: prompt
+    action: |
+      The FLUX image generation loop exhausted its iteration budget before every
+      rubric criterion passed, but produced usable output.
+
+      Final output files:
+      - ${captured.run_dir.output}/image.png        — the latest generated image (best-effort)
+      - ${captured.run_dir.output}/image-iter-*.png — every iteration's image, kept in order
+      - ${captured.run_dir.output}/seeds.txt        — the seed and step count behind each image
+      - ${captured.run_dir.output}/critique.md      — the last evaluation scores and notes
+
+      Report these paths to the user, note this is a partial result (budget
+      exhausted, not a clean pass), name which iteration scored best, and quote
+      the seed for that image so it can be reproduced or refined further.
+    next: partial_done
+    on_error: failed
+
+  partial_done:
+    # HARNESS: distinct terminal from `done` — makes a budget-exhausted-but-
+    # usable outcome visible in ll-loop history instead of collapsing into
+    # either a clean pass or a hard failure.
+    terminal: true
 
   vision_gate:
     # HARNESS: Independent external-vision evaluator (VISION_* env wiring), the same

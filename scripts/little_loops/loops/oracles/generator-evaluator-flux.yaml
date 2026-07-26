@@ -1,6 +1,11 @@
 name: generator-evaluator-flux
 from: generator-evaluator
 visibility: internal
+# 8-state cycle (the base 7 + synthesize); 60 ≈ 7 full scored iterations.
+# Overrides the inherited max_steps: 20, which capped this oracle at 2.5 cycles
+# (BUG-2822 — synthesize a FLUX image, score it, then get cut off mid-cycle).
+max_steps: 60
+on_max_steps: max_steps_summary
 description: |
   Diffusion-API oracle variant of generator-evaluator (FEAT-2817). The LLM
   generate state authors/refines a text-to-image PROMPT rather than an artifact;
@@ -81,7 +86,7 @@ states:
       export FLUX_BASE_SEED="${context.base_seed}"
       export FLUX_ARTIFACT="${context.artifact_path}"
       python3 <<'PY'
-      import base64, json, os, sys, urllib.request
+      import base64, hashlib, json, os, sys, urllib.request
 
       abs_dir = os.environ["ABS_DIR"]
       artifact = os.environ.get("FLUX_ARTIFACT") or "image.png"
@@ -108,6 +113,26 @@ states:
       n += 1
       with open(counter_file, "w") as f:
           f.write(str(n))
+
+      # Stale-prompt gate (BUG-2822): if generate hands off without actually
+      # rewriting image-prompt.txt (self-reported as written but unchanged —
+      # the observed iteration-3 failure mode), a regenerate re-renders a
+      # near-identical latent and burns a full FLUX generation for nothing.
+      # Same read/compare/rewrite idiom as the .gen_counter file above.
+      prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
+      hash_file = os.path.join(abs_dir, ".prompt_hash")
+      try:
+          with open(hash_file) as f:
+              prev_hash = f.read().strip()
+      except Exception:
+          prev_hash = ""
+      if n >= 2 and prompt_hash == prev_hash:
+          print("IMAGE_FAIL: image-prompt.txt is unchanged since the previous "
+                "iteration (hash %s) — the generate state must actually rewrite "
+                "the prompt before a regenerate." % prompt_hash[:12])
+          sys.exit(1)
+      with open(hash_file, "w") as f:
+          f.write(prompt_hash)
 
       # Vary the seed per iteration so a regenerate after critique re-samples the
       # latent instead of re-rendering the same image with a new prompt.
@@ -178,3 +203,31 @@ states:
     on_yes: snapshot
     on_no: failed
     on_error: failed
+
+  max_steps_summary:
+    # HARNESS (BUG-2822): terminal-doubling summary state fired when the engine
+    # hits max_steps before ALL_PASS/done is reached. Per BUG-158 semantics
+    # (executor.py:590-601), a terminal: true state named by on_max_steps DOES
+    # still execute its action, so this is the sanctioned shape (precedent:
+    # vega-viz.yaml:553-577, cua-agent-desktop.yaml:1213-1264) — surface the
+    # best-scoring iteration already on disk instead of silently discarding it,
+    # and emit a verdict token the parent's run_gen_eval evaluator can consume
+    # as a distinct "exhausted with usable output" outcome.
+    action_type: prompt
+    action: |
+      The generator-evaluator-flux oracle exhausted its max_steps budget before
+      reaching ALL_PASS.
+
+      Score history: $(cat ${context.run_dir}/.score_history 2>/dev/null || echo "no scores recorded")
+      Generations completed: $(cat ${context.run_dir}/.gen_counter 2>/dev/null || echo "0")
+      Seeds: $(cat ${context.run_dir}/seeds.txt 2>/dev/null || echo "none")
+
+      Identify the highest-scoring iteration from the score history above (the
+      Nth line of .score_history corresponds to image-iter-N.png) and name it
+      explicitly, along with its score. If no scores were recorded, say so.
+
+      SUMMARY_EMITTED
+    evaluate:
+      type: output_contains
+      pattern: "SUMMARY_EMITTED"
+    terminal: true

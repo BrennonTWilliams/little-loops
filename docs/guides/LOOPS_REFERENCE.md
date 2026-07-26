@@ -1737,10 +1737,12 @@ The prompt is read from a file inside a quoted Python heredoc and serialized wit
 
 **When to use**: When you want a raster illustration and the iteration cost is prompt phrasing rather than markup. Use `svg-image-generator` instead when you need an editable, resolution-independent vector artifact.
 
+The wrapper runs up to 24 iterations (`max_steps: 24`) — enough for its linear prefix, a full 3-round `vision_gate` back-edge, and the partial-success route below. The delegated `oracles/generator-evaluator-flux` child has its own, separately-budgeted `max_steps: 60` (~7 full scored cycles); an exhausted child no longer discards its generated image (BUG-2822) — see the `on_max_steps` handler note further down.
+
 **Usage:**
 
 ```bash
-ll-loop run flux-image-generator --input "a clean vector illustration of a server rack, diagram style"
+ll-loop run flux-image-generator "a clean vector illustration of a server rack, diagram style"
 ```
 
 **Context variables:**
@@ -1759,16 +1761,20 @@ ll-loop run flux-image-generator --input "a clean vector illustration of a serve
 ```
 init → check_image_env ──(IMAGE_BASE_URL unset)──→ diagnose → failed
           │
-          └→ plan → run_gen_eval  [oracles/generator-evaluator-flux]
-                       generate (author prompt) → synthesize (POST + decode)
+          └→ plan → run_gen_eval  [oracles/generator-evaluator-flux, max_steps: 60]
+                       generate (author prompt) → synthesize (POST + decode; IMAGE_FAIL on a stale, unrewritten prompt too)
                             ├─ IMAGE_OK   → evaluate (copy PNG) → snapshot → score
                             │                                                 ├─ ALL_PASS → done
                             │                                                 └─ ITERATE  → stall guards → generate
-                            └─ IMAGE_FAIL → failed
+                            ├─ IMAGE_FAIL → failed
+                            └─ (budget exhausted) → on_max_steps: max_steps_summary → SUMMARY_EMITTED
                        │
-                       ├─ done → vision_gate ─ VISION_PASS → done
-                       │                     └ VISION_FAIL → run_gen_eval
-                       └─ failed → diagnose → failed
+                       ├─ on_yes (done)  → vision_gate ─ VISION_PASS → done
+                       │                                └ VISION_FAIL → run_gen_eval
+                       ├─ on_no (exhausted or errored) → check_gen_eval_exhausted
+                       │        ├─ SUMMARY_EMITTED found → finalize_partial → partial_done
+                       │        └─ not found (real error) → diagnose → failed
+                       └─ on_error → diagnose → failed
 ```
 
 **Evaluation criteria** (all five must meet `pass_threshold`):
@@ -1786,6 +1792,7 @@ init → check_image_env ──(IMAGE_BASE_URL unset)──→ diagnose → fail
 - **Per-iteration artifacts**: `synthesize` uses the `.gen_counter` file idiom (`${state.iteration}` is unavailable in shell actions) to write `image-iter-N.png` with a matching `seeds.txt` line, so a good result is reproducible and no iteration is overwritten.
 - Unset `VISION_*` degrades to `VISION_PASS: skipped (VISION_* env not configured)` rather than failing; the gate is capped at 3 rounds via `.vision_rounds`.
 - Delegation goes through `oracles/generator-evaluator-flux`, which extends `oracles/generator-evaluator` via `from:` inheritance — it overrides only `generate` (routing) and `evaluate` (copy the PNG instead of screenshotting it) and adds `synthesize`, inheriting all snapshot / score / score-stall / diff-stall machinery.
+- **Budget exhaustion is a distinct, reported outcome, not a silent crash** (BUG-2822): the child oracle's `on_max_steps: max_steps_summary` state names the best-scoring iteration and emits `SUMMARY_EMITTED` instead of dropping a generated-but-unscored image. The wrapper's `run_gen_eval` captures the child's event stream and `check_gen_eval_exhausted` distinguishes that outcome from a genuine error, routing to `finalize_partial → partial_done` (a distinct terminal from both `done` and `failed`) so a budget-exhausted-but-usable run is visible in `ll-loop history` rather than collapsing into `failed`.
 
 ### `openscad-model-generator` — Parametric CAD Model Generator
 
@@ -2565,7 +2572,7 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 **Usage:**
 
 ```bash
-ll-loop run workflow-generator --input "triage a new bug report: read it, grep for the offending code, confirm repro, draft a fix plan, open a PR"
+ll-loop run workflow-generator "triage a new bug report: read it, grep for the offending code, confirm repro, draft a fix plan, open a PR"
 # Lowers the brief through six passes → ${run_dir}/workflow.yaml (validated)
 # Stops at await_confirmation unless --context auto_promote=true
 ```
