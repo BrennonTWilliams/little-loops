@@ -844,7 +844,7 @@ The `=== Summary ===` block always appears at end of stdout. Key lines to parse:
 | SIM-2 (premature terminal) | `Iterations: 1` or `Iterations: 2` AND `Terminated by: terminal` | Only flag when `max_steps > 5` |
 | SIM-3 (exceeds max_steps) | `Terminated by: max_steps` (parse stdout regardless of exit code) | Exit code 1 is non-unique; must parse stdout |
 
-**Exit code note**: `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` — exit code 1 covers `max_steps`, `timeout`, and `cycle_detected`. Do not use exit code alone to distinguish SIM-3; always parse stdout.
+**Exit code note**: `scripts/little_loops/cli/loop/_helpers.py:EXIT_CODES` — exit code 1 covers `max_steps`, `timeout`, and `cycle_detected`. Do not use exit code alone to distinguish SIM-3; always parse stdout. Exit code **2** is distinct and unambiguous: the loop reached a terminal declared `failure: true` (ENH-2814). So `2` means "ran to completion and reported failure", `1` means "never reached a terminal", and `0` means success.
 
 ### SIM-1: Simulation Stall
 

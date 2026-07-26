@@ -27,6 +27,7 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
 from tests.helpers import make_test_fsm, make_test_state
 
 if TYPE_CHECKING:
@@ -2252,6 +2253,9 @@ class TestDisplayProgressEvents:
                     terminated_by="terminal",
                     duration_ms=0,
                     captured={},
+                    # ENH-2814: failure-ness is an explicit flag on the result,
+                    # not something re-derived from final_state's name.
+                    failure_terminal=True,
                 )
 
         return _Failing()
@@ -2800,7 +2804,13 @@ class TestRunForegroundExitCodes:
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
 
-    def _run_with_terminated_by(self, terminated_by: str) -> int:
+    def _run_with_terminated_by(
+        self,
+        terminated_by: str,
+        *,
+        final_state: str = "done",
+        failure_terminal: bool = False,
+    ) -> int:
         """Run run_foreground with a mock executor returning given terminated_by."""
 
         class _Executor:
@@ -2810,11 +2820,12 @@ class TestRunForegroundExitCodes:
 
             def run(self) -> ExecutionResult:
                 return ExecutionResult(
-                    final_state="done",
+                    final_state=final_state,
                     iterations=1,
                     terminated_by=self._tb,
                     duration_ms=100,
                     captured={},
+                    failure_terminal=failure_terminal,
                 )
 
         with patch("builtins.print"):
@@ -2847,6 +2858,35 @@ class TestRunForegroundExitCodes:
         # can distinguish them from graceful terminal/interrupted/handoff paths.
         assert EXIT_CODES["user_stopped"] == 1
         assert EXIT_CODES["system_signal"] == 1
+
+    def test_failure_terminal_returns_distinct_exit_code(self) -> None:
+        """ENH-2814: a `failure: true` terminal exits 2, not 0.
+
+        EXIT_CODES["terminal"] stays 0 — the failure code is applied ahead of
+        the terminated_by lookup, keyed off ExecutionResult.failure_terminal.
+        """
+        assert FAILURE_TERMINAL_EXIT_CODE == 2
+        assert (
+            self._run_with_terminated_by("terminal", final_state="blocked", failure_terminal=True)
+            == FAILURE_TERMINAL_EXIT_CODE
+        )
+
+    def test_failure_exit_code_is_distinct_from_limit_terminations(self) -> None:
+        """The failure code differs from 1 so callers can tell the two apart."""
+        assert FAILURE_TERMINAL_EXIT_CODE != EXIT_CODES["max_steps"]
+        assert FAILURE_TERMINAL_EXIT_CODE != EXIT_CODES["terminal"]
+
+    def test_non_done_terminal_without_flag_still_exits_zero(self) -> None:
+        """A non-`done` terminal that is not flagged `failure` is still success.
+
+        Guards against the exit code regressing to a name-based check.
+        """
+        assert (
+            self._run_with_terminated_by(
+                "terminal", final_state="present_result", failure_terminal=False
+            )
+            == 0
+        )
 
 
 class TestRunForegroundResumeMode:

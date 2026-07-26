@@ -183,6 +183,7 @@ states:
 
   blocked:
     terminal: true
+    failure: true
 
   no_external_deps:
     terminal: true

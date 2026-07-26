@@ -353,4 +353,5 @@ states:
 
   plan_failed:
     terminal: true
+    failure: true
     description: "Planning or rendering failed after retry exhaustion; prior iteration artifacts preserved"

@@ -710,6 +710,7 @@ states:
     # accounting (check_oscillation, keyed on .smoke_fail_streak — distinct
     # from .score_fail_streak) apply without inflating VISION_FAIL counts.
     terminal: true
+    failure: true
 
   done:
     terminal: true

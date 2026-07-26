@@ -168,12 +168,15 @@ states:
 
   refine_failed:
     terminal: true
+    failure: true
 
   sprint_failed:
     terminal: true
+    failure: true
 
   refine_unresolved_failed:
     terminal: true
+    failure: true
 
   done:
     terminal: true

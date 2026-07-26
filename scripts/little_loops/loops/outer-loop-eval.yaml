@@ -35,6 +35,7 @@ states:
     on_error: fail_missing_input
   fail_missing_input:
     terminal: true
+    failure: true
 
   load_definition:
     action_type: shell
@@ -75,6 +76,7 @@ states:
     on_error: handle_sub_loop_failed
   handle_sub_loop_failed:
     terminal: true
+    failure: true
 
   finalize_handle_sub_loop_error:
     action_type: shell
@@ -85,6 +87,7 @@ states:
     on_error: handle_sub_loop_error
   handle_sub_loop_error:
     terminal: true
+    failure: true
 
   analyze_execution:
     action_type: slash_command

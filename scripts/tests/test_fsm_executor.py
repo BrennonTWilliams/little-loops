@@ -5565,6 +5565,62 @@ class TestSubLoopExecution:
         assert result.final_state == "fail"
         assert result.terminated_by == "terminal"
 
+    def test_sub_loop_flagged_terminal_routes_to_on_no_regardless_of_name(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2814: routing keys off `failure: true`, not the terminal's name.
+
+        The child terminal is named `blocked` — outside the legacy
+        failed/error/aborted name set — so this passes only because the flag,
+        not the name, drives the decision.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: blocked\nstates:\n"
+            "  blocked:\n    terminal: true\n    failure: true\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="ok", on_no="fail", on_error="err"),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        result = FSMExecutor(parent_fsm, loops_dir=loops_dir).run()
+        assert result.final_state == "fail"
+
+    def test_sub_loop_unflagged_non_done_terminal_routes_to_on_yes(self, tmp_path: Path) -> None:
+        """A non-`done` terminal without `failure: true` is a child success.
+
+        Behaviour change from the pre-ENH-2814 name check, which treated every
+        non-`done` terminal (including reporting terminals like
+        `present_result`) as a failure.
+        """
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: present_result\nstates:\n"
+            "  present_result:\n    terminal: true\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="ok", on_no="fail", on_error="err"),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        result = FSMExecutor(parent_fsm, loops_dir=loops_dir).run()
+        assert result.final_state == "ok"
+
     def test_sub_loop_error_routes_to_on_error_when_set(self, tmp_path: Path) -> None:
         """Sub-loop that errors at runtime routes parent to on_error when set (BUG-1017)."""
         loops_dir = tmp_path / ".loops"

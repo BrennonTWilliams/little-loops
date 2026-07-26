@@ -302,7 +302,9 @@ If the file exists, extract the claimed-outcome counters (`closed`, `implemented
 
 ### Step 6b: Verdict Table
 
-Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`), the artifact/contract evidence from Step 4, and the claimed-success signal from Step 6a:
+Determine the verdict using the terminal state from `loop_complete` event (`terminated_by`), the artifact/contract evidence from Step 4, and the claimed-success signal from Step 6a.
+
+"Terminal reached" below means `terminated_by == "terminal"`. Note that this alone does **not** mean the run succeeded: the same `loop_complete` event carries `failure_terminal` (ENH-2814), which is `true` when the loop stopped on a state declared `failure: true`. Read that flag — do not infer failure from the terminal state's name. A run with `failure_terminal: true` is an `honest-failure` when its artifact/claim evidence agrees, and a `phantom` when the loop nonetheless claimed success. The process exit code carries the same signal (`2` = failure terminal).
 
 | Verdict | Condition |
 |---|---|

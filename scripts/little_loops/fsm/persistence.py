@@ -114,6 +114,45 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _map_final_status(terminated_by: str, *, failure_terminal: bool = False) -> str:
+    """Map a termination reason to a persisted ``LoopState.status`` value.
+
+    Single implementation shared by ``PersistentExecutor.run()`` and
+    ``archive_run_only()`` so the two paths cannot drift.
+
+    ENH-2814: ``terminated_by == "terminal"`` no longer implies success. A run
+    that stopped on a state with ``failure: true`` is persisted as ``"failed"``
+    so ``.loops/runs`` archives and the session store are truthful.
+
+    Args:
+        terminated_by: ``ExecutionResult.terminated_by``. ``"interrupted_force"``
+            is accepted for the signal-driven force-exit path.
+        failure_terminal: ``ExecutionResult.failure_terminal`` — True when the
+            final state carries the ``failure`` flag.
+
+    Returns:
+        One of ``completed``/``failed``/``interrupted``/``timed_out``/
+        ``awaiting_continuation``.
+    """
+    if terminated_by in (
+        "max_steps",
+        "max_iterations_reached",
+        "interrupted",
+        "interrupted_force",
+    ):
+        return "interrupted"
+    if terminated_by == "handoff":
+        return "awaiting_continuation"
+    if terminated_by == "timeout":
+        return "timed_out"
+    if terminated_by == "terminal":
+        return "failed" if failure_terminal else "completed"
+    # cycle_detected, error, user_stopped, system_signal, ... — ENH-2522:
+    # user_stopped and system_signal share the "failed" bucket but remain
+    # distinct terminated_by values so audit tooling can read the cause.
+    return "failed"
+
+
 def _verdict_is_yes(verdict: str) -> bool:
     """Return True if verdict maps to a positive (yes) outcome."""
     return verdict.startswith("yes") or verdict in ("progress", "success")
@@ -888,22 +927,15 @@ class PersistentExecutor:
             Path to the archive directory if files were archived, ``None`` if
             neither ``state.json`` nor ``events.jsonl`` exists.
         """
-        final_status = "completed" if terminated_by == "terminal" else "failed"
-        if terminated_by in (
-            "max_steps",
-            "max_iterations_reached",
-            "interrupted",
-            "interrupted_force",
-        ):
-            final_status = "interrupted"
-        if terminated_by == "handoff":
-            final_status = "awaiting_continuation"
-        if terminated_by == "timeout":
-            final_status = "timed_out"
-        if terminated_by == "cycle_detected":
-            final_status = "failed"
-        # ENH-2522: user_stopped and system_signal share the "failed" terminal bucket
-        # but remain distinct enum values so audit tooling can read the cause.
+        # ENH-2814: a signal-driven force-exit has no ExecutionResult, so read
+        # the failure flag off the state the executor is currently sitting on.
+        final_status = _map_final_status(
+            terminated_by,
+            failure_terminal=(
+                terminated_by == "terminal"
+                and self._executor.current_state in self.fsm.get_failure_states()
+            ),
+        )
 
         final_state = LoopState(
             loop_name=self.fsm.name,
@@ -940,17 +972,9 @@ class PersistentExecutor:
         result = self._executor.run()
 
         # Update final state
-        final_status = "completed" if result.terminated_by == "terminal" else "failed"
-        if result.terminated_by in ("max_steps", "max_iterations_reached", "interrupted"):
-            final_status = "interrupted"
-        if result.terminated_by == "handoff":
-            final_status = "awaiting_continuation"
-        if result.terminated_by == "timeout":
-            final_status = "timed_out"
-        if result.terminated_by == "cycle_detected":
-            final_status = "failed"
-        # ENH-2522: user_stopped and system_signal share the "failed" terminal bucket
-        # but remain distinct enum values so audit tooling can read the cause.
+        final_status = _map_final_status(
+            result.terminated_by, failure_terminal=result.failure_terminal
+        )
 
         final_state = LoopState(
             loop_name=self.fsm.name,

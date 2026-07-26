@@ -44,24 +44,6 @@ if TYPE_CHECKING:
     from little_loops.parallel.types import SprintWorkerContext
 
 
-def _read_loop_final_state(worktree_path: Path, loop_name: str) -> str | None:
-    """Read the final state from a completed loop's running state file.
-
-    After ``ll-loop run`` exits, the state file remains at
-    ``<worktree>/.loops/.running/<loop_name>.state.json``.  The
-    ``current_state`` field holds the terminal state name (e.g. ``"done"``,
-    ``"blocked"``, ``"impl_failed"``).
-    """
-    state_file = worktree_path / ".loops" / ".running" / f"{loop_name}.state.json"
-    if not state_file.exists():
-        return None
-    try:
-        data = json.loads(state_file.read_text())
-        return data.get("current_state")
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
 def _run_per_worktree_proof_first_gate(
     issue: IssueInfo,
     worktree_path: Path,
@@ -118,19 +100,23 @@ def _run_per_worktree_proof_first_gate(
         cwd=worktree_path,
     )
 
-    # All terminal states (done, blocked, impl_failed) exit 0 — distinguish
-    # blocked from done by reading the state file left after execution.
-    final_state = _read_loop_final_state(worktree_path, "proof-first-task")
+    # Function-local import: little_loops.fsm's package __init__ pulls in the
+    # executor, which imports little_loops.config — a cycle at module scope.
+    from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+    # ENH-2814: the gate's failure terminals (blocked, impl_failed) carry
+    # `failure: true`, so `ll-loop run` exits FAILURE_TERMINAL_EXIT_CODE for
+    # them. The old state-file read that distinguished blocked from done is
+    # retired — the exit code alone is authoritative.
+    if gate_result.returncode == FAILURE_TERMINAL_EXIT_CODE:
+        logger.info(f"[{issue.issue_id}] proof-first-task gate: blocked")
+        return False
 
     if gate_result.returncode != 0:
         logger.warning(f"[{issue.issue_id}] proof-first-task exited {gate_result.returncode}")
         return False
 
-    if final_state == "blocked":
-        logger.info(f"[{issue.issue_id}] proof-first-task gate: blocked")
-        return False
-
-    logger.info(f"[{issue.issue_id}] proof-first-task gate: passed (state={final_state!r})")
+    logger.info(f"[{issue.issue_id}] proof-first-task gate: passed")
     return True
 
 

@@ -895,6 +895,32 @@ class TestPersistentExecutor:
             "interrupted_force must map to status=interrupted (matches first-SIGINT path)"
         )
 
+    def test_archive_run_only_maps_failure_terminal_to_failed(self, tmp_loops_dir: Path) -> None:
+        """ENH-2814: the force-exit archive path honours the `failure` flag too.
+
+        archive_run_only() has no ExecutionResult to read, so it derives
+        failure-ness from the state the executor stopped on. Sibling of
+        test_archive_run_only_maps_terminated_by_to_status, which covers the
+        non-terminal reasons.
+        """
+        fsm = FSMLoop(
+            name="failing-loop",
+            initial="work",
+            states={
+                "work": StateConfig(action="echo 'working'", next="blocked"),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        executor.run()
+
+        executor.archive_run_only(terminated_by="terminal")
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "failed"
+
     def test_archive_run_only_maps_terminated_by_to_status(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
@@ -1157,6 +1183,59 @@ class TestPersistentExecutor:
         result = executor.run()
 
         assert result.terminated_by == "terminal"
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "completed"
+
+    def test_final_status_failed_on_failure_terminal(self, tmp_loops_dir: Path) -> None:
+        """ENH-2814: landing on a `failure: true` terminal persists 'failed'.
+
+        Before ENH-2814 this stamped "completed" for *any* terminal, so run
+        archives and the session store recorded failures as successes.
+        """
+        fsm = FSMLoop(
+            name="failing-loop",
+            initial="work",
+            states={
+                "work": StateConfig(action="echo 'working'", next="blocked"),
+                # Deliberately NOT named `failed` — the flag, not the name, is
+                # what drives the status.
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "failed"
+
+    def test_final_status_completed_on_non_done_success_terminal(self, tmp_loops_dir: Path) -> None:
+        """A non-`done` terminal without `failure: true` is still a success.
+
+        Guards the flag against regressing into a re-derived name check.
+        """
+        fsm = FSMLoop(
+            name="reporting-loop",
+            initial="work",
+            states={
+                "work": StateConfig(action="echo 'working'", next="present_result"),
+                "present_result": StateConfig(terminal=True),
+            },
+        )
+
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        result = executor.run()
+
+        assert result.failure_terminal is False
         state = executor.persistence.load_state()
         assert state is not None
         assert state.status == "completed"

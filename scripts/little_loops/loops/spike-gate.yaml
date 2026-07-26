@@ -86,6 +86,8 @@ states:
 
   blocked:
     terminal: true
+    failure: true
 
   impl_failed:
     terminal: true
+    failure: true

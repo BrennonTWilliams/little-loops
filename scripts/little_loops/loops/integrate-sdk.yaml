@@ -230,6 +230,7 @@ states:
 
   blocked:
     terminal: true
+    failure: true
 
   done:
     terminal: true

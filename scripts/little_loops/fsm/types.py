@@ -14,6 +14,17 @@ if TYPE_CHECKING:
     from little_loops.fsm.schema import EvaluateConfig
 
 
+# ENH-2814: a run that lands on a terminal state declared `failure: true`
+# exits with this distinct code, so shell scripts, cron wrappers and any
+# subprocess caller of `ll-loop run` can tell a failed loop from a successful
+# one. Kept separate from 1 (which covers the infra/limit terminations in
+# cli/loop/_helpers.py::EXIT_CODES) so callers can distinguish "the loop ran
+# and reported failure" from "the loop never reached a terminal at all".
+# Lives here, not in cli/, so low-level consumers (parallel/, learning_tests/)
+# can import it without pulling in the CLI package.
+FAILURE_TERMINAL_EXIT_CODE: int = 2
+
+
 @dataclass
 class ExecutionResult:
     """Result from FSM execution.
@@ -30,6 +41,12 @@ class ExecutionResult:
             (ENH-2452), "host_budget_exceeded" (ENH-2453).
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
+        failure_terminal: True when execution stopped on a terminal state whose
+            ``StateConfig.failure`` flag is set (ENH-2814). This is the single
+            signal consumers use to tell a failed run from a successful one —
+            ``terminated_by == "terminal"`` alone does NOT imply success. Drives
+            the nonzero ``ll-loop run`` exit code, the persisted
+            ``final_status="failed"``, and sub-loop ``on_no`` routing.
         error: Error message if terminated_by is "error"
         handoff: True if execution stopped due to handoff signal
         continuation_prompt: Continuation context from handoff signal
@@ -40,6 +57,7 @@ class ExecutionResult:
     terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "user_stopped", "system_signal", "error", "handoff", "cycle_detected"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
+    failure_terminal: bool = False
     error: str | None = None
     handoff: bool = False
     continuation_prompt: str | None = None
@@ -54,6 +72,8 @@ class ExecutionResult:
             "duration_ms": self.duration_ms,
             "captured": self.captured,
         }
+        if self.failure_terminal:
+            result["failure_terminal"] = self.failure_terminal
         if self.error is not None:
             result["error"] = self.error
         if self.handoff:

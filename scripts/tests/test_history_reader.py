@@ -219,6 +219,7 @@ class TestWasteAttribution:
         final_state: str | None,
         input_tokens: int,
         output_tokens: int,
+        failure_terminal: bool | None = None,
     ) -> None:
         from little_loops.session_store import record_loop_run_summary
 
@@ -229,6 +230,7 @@ class TestWasteAttribution:
             loop_name=loop_name,
             terminated_by=terminated_by,
             final_state=final_state,
+            failure_terminal=failure_terminal,
         )
         conn = connect(db)
         conn.execute(
@@ -306,6 +308,60 @@ class TestWasteAttribution:
         assert row["waste_pct"] == 95 / 215
         assert row["runs_total"] == 3
         assert row["runs_wasted"] == 2
+
+    def test_wasted_run_read_from_persisted_failure_flag(self, tmp_path: Path) -> None:
+        """ENH-2814: waste is read from loop_runs.failure_terminal, not the name.
+
+        Covers both directions of the flag against the legacy name heuristic:
+        a flagged terminal named `blocked` counts as wasted, while an
+        unflagged terminal named `present_result` does not.
+        """
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="gate",
+            terminated_by="terminal",
+            final_state="blocked",
+            failure_terminal=True,
+            input_tokens=80,
+            output_tokens=20,
+        )
+        self._seed_run(
+            db,
+            run_id="run-2",
+            loop_name="gate",
+            terminated_by="terminal",
+            final_state="present_result",
+            failure_terminal=False,
+            input_tokens=80,
+            output_tokens=20,
+        )
+
+        row = waste_attribution(db=db)[0]
+        assert row["runs_total"] == 2
+        assert row["runs_wasted"] == 1
+        assert row["tokens_wasted"] == 100
+
+    def test_legacy_null_flag_falls_back_to_name_check(self, tmp_path: Path) -> None:
+        """Pre-ENH-2814 rows (failure_terminal NULL) keep the old semantics."""
+        from little_loops.history_reader import waste_attribution
+
+        db = tmp_path / "history.db"
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="legacy",
+            terminated_by="terminal",
+            final_state="failed",
+            failure_terminal=None,
+            input_tokens=80,
+            output_tokens=20,
+        )
+
+        assert waste_attribution(db=db)[0]["runs_wasted"] == 1
 
     def test_waste_pct_none_when_no_tokens(self, tmp_path: Path) -> None:
         """Divide-by-zero guard: a loop with zero-token rows reports waste_pct=None."""

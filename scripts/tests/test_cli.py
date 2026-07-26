@@ -2108,6 +2108,7 @@ class TestMainLoopAdditionalCoverage:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result
@@ -2154,6 +2155,7 @@ class TestMainLoopAdditionalCoverage:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result
@@ -2242,6 +2244,7 @@ states:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result
@@ -2288,6 +2291,7 @@ states:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result
@@ -2351,6 +2355,7 @@ states:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result
@@ -2418,6 +2423,7 @@ states:
                     mock_result = MagicMock()
                     mock_result.iterations = 1
                     mock_result.terminated_by = "terminal"
+                    mock_result.failure_terminal = False
                     mock_result.final_state = "start"
                     mock_result.duration_ms = 100
                     mock_executor.run.return_value = mock_result

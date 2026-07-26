@@ -984,15 +984,21 @@ def cost_attribution(
 
 # ENH-2722 — a run is "wasted" when its terminal outcome produced no accepted
 # artifact: any infra/step-cap exit, or a normal FSM completion (terminated_by
-# == "terminal") whose final_state is anything other than "done" (a "terminal"
-# finish alone does not imply success — see fsm/executor.py's own success
-# check pairing terminated_by=="terminal" with final_state=="done"). Excludes
-# "user_stopped"/"handoff" (operator-initiated, not necessarily wasted) and
-# per-iteration diff_stall/score_stall discards (an explicit follow-on).
+# == "terminal") that stopped on a failure terminal (a "terminal" finish alone
+# does not imply success). Excludes "user_stopped"/"handoff"
+# (operator-initiated, not necessarily wasted) and per-iteration
+# diff_stall/score_stall discards (an explicit follow-on).
+#
+# ENH-2814 — failure-ness is read from the persisted `loop_runs.failure_terminal`
+# flag rather than re-derived in SQL. Rows written before ENH-2814 have NULL
+# there (fix-forward only, no backfill), so they fall back to the legacy
+# name check; that fallback can be dropped once such rows have aged out.
 _WASTED_RUN_PREDICATE = (
     "(lr.terminated_by IN ('error', 'max_steps', 'max_iterations_reached', "
     "'timeout', 'system_signal', 'interrupted') "
-    "OR (lr.terminated_by = 'terminal' AND lr.final_state != 'done'))"
+    "OR lr.failure_terminal = 1 "
+    "OR (lr.failure_terminal IS NULL AND lr.terminated_by = 'terminal' "
+    "AND lr.final_state != 'done'))"
 )
 
 

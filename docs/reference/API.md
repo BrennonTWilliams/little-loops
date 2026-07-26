@@ -4959,6 +4959,7 @@ The stall detector records `(state_name, exit_code, eval_verdict)` after every t
 | `from_dict(data)` | `FSMLoop` | Create from dictionary |
 | `get_all_state_names()` | `set[str]` | All defined state names |
 | `get_terminal_states()` | `set[str]` | States with `terminal=True` |
+| `get_failure_states()` | `set[str]` | States with `failure=True` — the single source of truth for whether a run failed (ENH-2814) |
 | `get_all_referenced_states()` | `set[str]` | All states referenced by transitions |
 
 When any single state→state edge (e.g., `evaluate → fix`) is traversed more than `max_edge_revisits` times, the loop terminates immediately with `terminated_by="cycle_detected"` (exit code 1) rather than continuing until `max_steps` is reached. This prevents tight infinite loops where two states bounce between each other indefinitely without making progress. Edge counts are persisted in `LoopState` so they survive a `--resume`. The default value of `100` covers all practical loops; lower it on short single-purpose loops to catch regressions faster.
@@ -5038,6 +5039,7 @@ class StateConfig:
     on_blocked: str | None = None      # Shorthand routing for blocked verdict
     next: str | None = None            # Unconditional transition
     terminal: bool = False             # End state marker
+    failure: bool = False              # Terminal means the run FAILED (ENH-2814); defaults true for states named failed/error/aborted/finalize_aborted
     capture: str | None = None         # Variable name to store output
     append_to_messages: str | None = None  # Append captured value to message history
     timeout: int | None = None         # Action timeout in seconds
@@ -5438,8 +5440,14 @@ class ExecutionResult:
     terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "interrupted" | "cycle_detected" | "stall_detected" | "error"
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
+    failure_terminal: bool = False        # Stopped on a `failure: true` terminal (ENH-2814)
     error: str | None = None              # Error message if failed
 ```
+
+`terminated_by == "terminal"` does **not** imply success — read
+`failure_terminal` for that. It drives `ll-loop run`'s exit code (`2`), the
+persisted `final_status` (`"failed"` rather than `"completed"`), and sub-loop
+`on_no` routing.
 
 #### ActionResult
 
@@ -5601,7 +5609,7 @@ Validate FSM structure and return list of errors.
 - No conflicting routing definitions
 - Warns about unreachable states
 - Warns when no top-level `description:` field is set
-- Warns (WARNING) when a failure-named terminal state (e.g. `failed`, `error`, `aborted`) has no predecessor state with a diagnostic action
+- Warns (WARNING) when a failure terminal state — one carrying `failure: true`, whether declared or defaulted from the `failed`/`error`/`aborted`/`finalize_aborted` name convention (ENH-2814) — has no predecessor state with a diagnostic action (an `action`, a sub-`loop`, or a `learning` block)
 - **MR-1 (ERROR)**: meta-loop (writes harness artifacts or imports `lib/benchmark.yaml`) must have at least one non-LLM evaluator; suppress with `meta_self_eval_ok: true` (ENH-1665)
 - **MR-2 (WARNING)**: meta-loop should reference a captured baseline value in a later evaluator (measure→propose→apply→re-measure spine); suppress with `meta_self_eval_ok: true` (ENH-1665)
 - **MR-3 (WARNING)**: loop writes intermediate artifacts to shared `.loops/tmp/` instead of `${context.run_dir}/`; suppress with `shared_state_ok: true`
@@ -7398,8 +7406,11 @@ accepted artifact (ENH-2722). Joins `usage_events.run_id = loop_runs.run_id`
 `run_id` column and live writer). A run is "wasted" when `terminated_by` is an
 infra/step-cap exit (`error` / `max_steps` / `max_iterations_reached` /
 `timeout` / `system_signal` / `interrupted`), or a normal FSM completion
-(`terminated_by == "terminal"`) whose `final_state` is anything other than
-`"done"` — a `"terminal"` finish alone does not imply success. Operator-initiated
+(`terminated_by == "terminal"`) that stopped on a failure terminal — a
+`"terminal"` finish alone does not imply success. Since ENH-2814 failure-ness
+is read from the persisted `loop_runs.failure_terminal` flag rather than
+re-derived in SQL from `final_state != 'done'`; rows written before ENH-2814
+have `NULL` there and fall back to that legacy name check. Operator-initiated
 exits (`user_stopped` / `handoff`) are not counted as waste, and per-iteration
 `diff_stall` / `score_stall` discard tracking is out of scope (an explicit
 follow-on). Each returned dict carries `loop_name`, `tokens_total`,

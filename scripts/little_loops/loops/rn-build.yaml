@@ -179,6 +179,7 @@ states:
     on_error: finalize_failed
   abort_normalize:
     terminal: true
+    failure: true
   resume:
     action_type: shell
     action: |
@@ -755,6 +756,7 @@ states:
     on_error: finalize_failed
   build_failed:
     terminal: true
+    failure: true
   finalize_failed:
     action_type: shell
     action: |

@@ -12,7 +12,6 @@ for the ``proof-first-task`` loop used by ll-auto (ENH-2319).
 from __future__ import annotations
 
 import datetime
-import json
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -56,23 +55,6 @@ def is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool:
     return age_days > threshold
 
 
-def _read_loop_final_state(cwd: Path, loop_name: str) -> str | None:
-    """Read the terminal state from a completed loop's running state file.
-
-    After ``ll-loop run`` exits, the state file remains at
-    ``<cwd>/.loops/.running/<loop_name>.state.json``. The ``current_state``
-    field holds the terminal state name (e.g. ``"done"``, ``"blocked"``).
-    """
-    state_file = cwd / ".loops" / ".running" / f"{loop_name}.state.json"
-    if not state_file.exists():
-        return None
-    try:
-        data = json.loads(state_file.read_text())
-        return data.get("current_state")
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
 def run_learning_gate_for_issue(
     issue_path: Path,
     *,
@@ -83,8 +65,10 @@ def run_learning_gate_for_issue(
     """Invoke proof-first-task loop for an issue and return the gate verdict.
 
     ``skip=True`` short-circuits to "skipped" (honours --skip-learning-gate).
-    All terminal states (done, blocked, impl_failed) exit 0 — blocked is
-    distinguished from done by reading the loop state file left after execution.
+    ENH-2814: the loop's failure terminals (``blocked``, ``impl_failed``) carry
+    ``failure: true``, so a blocked gate is read straight off the subprocess
+    exit code (``FAILURE_TERMINAL_EXIT_CODE``) instead of the state file left
+    behind on disk.
 
     Args:
         issue_path: Absolute path to the issue file.
@@ -110,14 +94,17 @@ def run_learning_gate_for_issue(
     ]
     if targets:
         cmd += ["--context", f"targets_csv={','.join(targets)}"]
-    subprocess.run(
+    proc = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         cwd=working_dir,
     )
 
-    final_state = _read_loop_final_state(working_dir, "proof-first-task")
-    if final_state == "blocked":
+    # Function-local import: little_loops.fsm's package __init__ pulls in the
+    # executor, which imports little_loops.config — a cycle at module scope.
+    from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+    if proc.returncode == FAILURE_TERMINAL_EXIT_CODE:
         return "blocked"
     return "passed"

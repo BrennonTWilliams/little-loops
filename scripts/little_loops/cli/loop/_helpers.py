@@ -23,6 +23,7 @@ from little_loops.cli.loop.diagram_modes import (
 )
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
+from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -1828,11 +1829,12 @@ def run_foreground(
                 minutes = int(duration_sec // 60)
                 seconds = duration_sec % 60
                 duration_str = f"{minutes}m {seconds:.0f}s"
-            # A terminal state whose name is not "done" represents failure (the
-            # established convention; see sub-FSM routing in executor.py). Colour
-            # only genuine success green so a `failed` terminal doesn't read as a pass.
-            _is_success = result.terminated_by in ("terminal", "interrupted", "handoff") and not (
-                result.terminated_by == "terminal" and result.final_state != "done"
+            # ENH-2814: colour only genuine success green. Failure-ness comes
+            # from the terminal state's own `failure:` flag (ExecutionResult
+            # .failure_terminal), not from re-testing the state's name.
+            _is_success = (
+                result.terminated_by in ("terminal", "interrupted", "handoff")
+                and not result.failure_terminal
             )
             if _is_success:
                 state_colored = colorize(result.final_state, "32")
@@ -1902,6 +1904,8 @@ def run_foreground(
                         except Exception:
                             pass  # Non-fatal
 
+        if result.failure_terminal:
+            return FAILURE_TERMINAL_EXIT_CODE
         return EXIT_CODES.get(result.terminated_by, 1)
     finally:
         sys.stdout = _orig_stdout

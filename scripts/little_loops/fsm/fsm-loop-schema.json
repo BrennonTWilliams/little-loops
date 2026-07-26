@@ -451,6 +451,11 @@
           "description": "If true, this is an end state",
           "default": false
         },
+        "failure": {
+          "type": "boolean",
+          "description": "If true, reaching this terminal state means the run failed: ll-loop run exits 2, the run is persisted as final_status 'failed', and a parent loop routes on_no. Defaults to true for states named failed/error/aborted/finalize_aborted; declare it explicitly for any other failure-shaped terminal (blocked, impl_failed, ...).",
+          "default": false
+        },
         "capture": {
           "type": "string",
           "description": "Variable name to store action output"

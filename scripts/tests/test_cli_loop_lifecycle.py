@@ -665,6 +665,7 @@ class TestCmdResume:
         mock_result.iterations = 5
         mock_result.duration_ms = 30000  # 30 seconds
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -700,6 +701,7 @@ class TestCmdResume:
         mock_result.iterations = 10
         mock_result.duration_ms = 120000  # 2 minutes
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -734,6 +736,7 @@ class TestCmdResume:
         mock_result.iterations = 8
         mock_result.duration_ms = 5000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -766,6 +769,7 @@ class TestCmdResume:
         mock_result.iterations = 5
         mock_result.duration_ms = 10000
         mock_result.terminated_by = "max_steps"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -792,6 +796,7 @@ class TestCmdResume:
         mock_result.iterations = 3
         mock_result.duration_ms = 5000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -831,6 +836,7 @@ class TestCmdResume:
         mock_result.iterations = 3
         mock_result.duration_ms = 5000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch(
@@ -860,6 +866,7 @@ class TestCmdResume:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -921,6 +928,7 @@ class TestCmdResume:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -949,6 +957,7 @@ class TestCmdResume:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1021,6 +1030,7 @@ class TestCmdResumeBackground:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1046,6 +1056,7 @@ class TestCmdResumeBackground:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         running_dir = tmp_path / ".running"
         running_dir.mkdir(parents=True)
@@ -1077,6 +1088,7 @@ class TestCmdResumeBackground:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1103,6 +1115,7 @@ class TestCmdResumeBackground:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1127,6 +1140,7 @@ class TestCmdResumeBackground:
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         running_dir = tmp_path / ".running"
         running_dir.mkdir(parents=True)
@@ -1225,16 +1239,24 @@ class TestCmdResumeBackground:
 class TestCmdResumeExitCodes:
     """Tests for cmd_resume exit code mapping per terminated_by value (BUG-605)."""
 
-    def _resume_with_terminated_by(self, tmp_path: Path, terminated_by: str) -> int:
+    def _resume_with_terminated_by(
+        self,
+        tmp_path: Path,
+        terminated_by: str,
+        *,
+        final_state: str = "done",
+        failure_terminal: bool = False,
+    ) -> int:
         logger = MagicMock()
         args = argparse.Namespace()
         mock_fsm = MagicMock()
 
         mock_result = MagicMock()
-        mock_result.final_state = "done"
+        mock_result.final_state = final_state
         mock_result.iterations = 1
         mock_result.duration_ms = 1000
         mock_result.terminated_by = terminated_by
+        mock_result.failure_terminal = failure_terminal
 
         with (
             patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
@@ -1260,6 +1282,17 @@ class TestCmdResumeExitCodes:
     def test_unknown_terminated_by_returns_1(self, tmp_path: Path) -> None:
         """Unknown terminated_by values fall back to exit code 1."""
         assert self._resume_with_terminated_by(tmp_path, "unexpected") == 1
+
+    def test_failure_terminal_returns_distinct_exit_code(self, tmp_path: Path) -> None:
+        """ENH-2814: a resumed run ending on a `failure: true` terminal exits 2."""
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        assert (
+            self._resume_with_terminated_by(
+                tmp_path, "terminal", final_state="blocked", failure_terminal=True
+            )
+            == FAILURE_TERMINAL_EXIT_CODE
+        )
 
 
 class TestCmdRunHandoffThreshold:
@@ -1941,6 +1974,7 @@ class TestCmdResumeCircuitWiring:
         mock_result.iterations = 1
         mock_result.duration_ms = 100
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         mock_config = MagicMock()
         mock_config.commands.rate_limits.circuit_breaker_enabled = True
@@ -1978,6 +2012,7 @@ class TestCmdResumeCircuitWiring:
         mock_result.iterations = 1
         mock_result.duration_ms = 100
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         mock_config = MagicMock()
         mock_config.commands.rate_limits.circuit_breaker_enabled = False
@@ -2017,6 +2052,7 @@ class TestCmdResumeTransportWiring:
         mock_result.iterations = 1
         mock_result.duration_ms = 100
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         mock_config = MagicMock()
         mock_config.commands.rate_limits.circuit_breaker_enabled = False
@@ -2054,6 +2090,7 @@ class TestCmdResumeTransportWiring:
         mock_result.iterations = 1
         mock_result.duration_ms = 100
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         mock_config = MagicMock()
         mock_config.commands.rate_limits.circuit_breaker_enabled = False
@@ -2345,6 +2382,7 @@ class TestCmdResumeMultiInstance:
         mock_result.iterations = 2
         mock_result.duration_ms = 3000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         state1 = MagicMock()
         state1.status = "awaiting_continuation"
@@ -2379,6 +2417,7 @@ class TestCmdResumeMultiInstance:
         mock_result.iterations = 2
         mock_result.duration_ms = 3000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         resumable_state = MagicMock()
         resumable_state.status = "awaiting_continuation"
@@ -2411,6 +2450,7 @@ class TestCmdResumeInterrupted:
         mock_result.iterations = 3
         mock_result.duration_ms = 5000
         mock_result.terminated_by = "terminal"
+        mock_result.failure_terminal = False
 
         interrupted_state = MagicMock()
         interrupted_state.status = "interrupted"

@@ -4114,3 +4114,63 @@ class TestTerminalActionOk:
             }
         )
         assert fsm.terminal_action_ok is False
+
+
+class TestStateConfigFailureFlag:
+    """ENH-2814: StateConfig.failure round-trip + name-convention defaulting."""
+
+    def test_failure_true_round_trips(self) -> None:
+        """failure=True is present in to_dict() and restored by from_dict()."""
+        state = StateConfig(terminal=True, failure=True)
+        d = state.to_dict()
+        assert d.get("failure") is True
+        assert StateConfig.from_dict(d).failure is True
+
+    def test_failure_false_omitted_from_dict(self) -> None:
+        """failure=False (the default) is omitted from to_dict()."""
+        assert "failure" not in StateConfig(terminal=True).to_dict()
+
+    def test_failure_defaults_false(self) -> None:
+        """from_dict() without a name and without `failure` defaults to False."""
+        assert StateConfig.from_dict({"terminal": True}).failure is False
+
+    def test_failure_defaults_true_for_conventional_names(self) -> None:
+        """A terminal named per the legacy convention defaults to failure=True.
+
+        This is the backward-compat guarantee: no existing loop YAML has to
+        declare `failure:` for its `failed`/`error`/`aborted` terminal.
+        """
+        for name in ("failed", "error", "aborted", "finalize_aborted"):
+            state = StateConfig.from_dict({"terminal": True}, name=name)
+            assert state.failure is True, name
+
+    def test_failure_default_requires_terminal(self) -> None:
+        """A non-terminal state named `failed` is not silently a failure state."""
+        assert StateConfig.from_dict({"next": "x"}, name="failed").failure is False
+
+    def test_explicit_false_overrides_name_convention(self) -> None:
+        """An explicit `failure: false` beats the name-derived default."""
+        state = StateConfig.from_dict({"terminal": True, "failure": False}, name="failed")
+        assert state.failure is False
+
+    def test_explicit_true_for_unconventional_name(self) -> None:
+        """A failure-shaped terminal outside the name set can opt in explicitly."""
+        state = StateConfig.from_dict({"terminal": True, "failure": True}, name="blocked")
+        assert state.failure is True
+
+    def test_get_failure_states(self) -> None:
+        """get_failure_states() mirrors get_terminal_states(), filtering on `failure`."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "t",
+                "initial": "start",
+                "states": {
+                    "start": {"action": "true", "next": "done"},
+                    "done": {"terminal": True},
+                    "failed": {"terminal": True},
+                    "blocked": {"terminal": True, "failure": True},
+                },
+            }
+        )
+        assert fsm.get_terminal_states() == {"done", "failed", "blocked"}
+        assert fsm.get_failure_states() == {"failed", "blocked"}

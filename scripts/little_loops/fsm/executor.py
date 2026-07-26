@@ -1011,12 +1011,13 @@ class FSMExecutor:
         if (state.context_passthrough or state.with_) and child_executor.captured:
             self.captured[self.current_state] = child_executor.captured
 
-        # Route based on child termination reason and terminal state name
+        # Route based on child termination reason and the child's explicit
+        # failure flag (ENH-2814) — not a re-derived "is it named done?" check.
         if child_result.terminated_by == "terminal":
-            if child_result.final_state == "done":
+            if not child_result.failure_terminal:
                 return interpolate(state.on_yes, ctx) if state.on_yes else None
             else:
-                # Reached a non-done terminal (e.g. "failed") → failure
+                # Reached a terminal declared (or defaulted) failure: true
                 return interpolate(state.on_no, ctx) if state.on_no else None
         elif child_result.terminated_by == "error":
             # Runtime child failure (not a YAML load error)
@@ -2831,10 +2832,16 @@ class FSMExecutor:
 
     def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""
+        # ENH-2814: single source of truth for "did this run fail?" — the
+        # terminal state's own `failure:` flag, not its name.
+        failure_terminal = terminated_by == "terminal" and self.current_state in (
+            self.fsm.get_failure_states()
+        )
         payload: dict[str, Any] = {
             "final_state": self.current_state,
             "iterations": self.iteration,
             "terminated_by": terminated_by,
+            "failure_terminal": failure_terminal,
         }
         if error is not None:
             payload["error"] = error
@@ -2857,6 +2864,7 @@ class FSMExecutor:
                 iterations=self.iteration,
                 terminated_by=terminated_by,
                 error=error,
+                failure_terminal=failure_terminal,
             )
         except Exception:
             pass  # Non-fatal: loop still completes (ENH-2463)
@@ -2916,6 +2924,7 @@ class FSMExecutor:
             terminated_by=terminated_by,
             duration_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
             captured=self.captured,
+            failure_terminal=failure_terminal,
             error=error,
             messages=list(self.messages),
         )

@@ -77,6 +77,7 @@ states:
 
   input_missing:
     terminal: true
+    failure: true
     description: "Input validation failed — context.input is empty; set a non-empty animation description"
 
   run_generate:
@@ -434,6 +435,7 @@ states:
 
   plan_failed:
     terminal: true
+    failure: true
     description: "Planning failed after retry exhaustion; prior iteration artifacts preserved"
 
   failed:

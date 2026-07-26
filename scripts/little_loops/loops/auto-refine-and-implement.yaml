@@ -1000,3 +1000,4 @@ states:
     # artifact are in summary.json / auto-refine-and-implement-abandoned.txt so a
     # re-run to drain the remainder is obvious.
     terminal: true
+    failure: true

@@ -93,6 +93,7 @@ states:
 
   input_missing:
     terminal: true
+    failure: true
     description: "context.description is empty — provide a task description via loop_input or --context"
 
   check_install:
@@ -116,6 +117,7 @@ states:
 
   not_installed:
     terminal: true
+    failure: true
     description: "agent-desktop not found. Install with: npm install -g agent-desktop"
 
   check_permissions:
@@ -149,6 +151,7 @@ states:
 
   perm_denied:
     terminal: true
+    failure: true
     description: |
       macOS Accessibility permissions not granted. Grant access in:
       System Settings > Privacy & Security > Accessibility

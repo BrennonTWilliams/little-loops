@@ -582,6 +582,25 @@ Run a loop.
 | `--context-limit` | | Override context window token estimate |
 | `--no-lock` | | Run without acquiring the scope lock, bypassing the conflict check. **Caution:** this allows concurrent runs that may interfere with each other on shared resources. Use when you need parallel runs that operate on disjoint paths or when testing a loop that would otherwise be blocked by a stale lock you cannot clear. |
 
+##### Exit Codes (ENH-2814)
+
+| Code | Meaning |
+|---|---|
+| `0` | The loop reached a terminal state that is **not** marked `failure: true` (a success, including `interrupted` and `handoff`). |
+| `1` | The loop never reached a terminal state: `max_steps`, `max_iterations_reached`, `timeout`, `cycle_detected`, `stall_detected`, `user_stopped`, `system_signal`, or an unrecognised termination reason. |
+| `2` | The loop ran to completion and reported failure — it reached a terminal state declared `failure: true` (see [Failure Terminals](../generalized-fsm-loop.md#failure-terminals-must-include-a-diagnostic-action)). |
+
+Codes `1` and `2` are deliberately distinct: `1` means the run was cut short by
+an infra/limit condition, `2` means the loop itself decided it failed. Before
+ENH-2814, *any* terminal state exited `0`, so a loop landing on `failed` was
+indistinguishable from success to shell scripts, cron wrappers, and
+`ll-queue run`.
+
+**Behaviour change:** scripts that treated every `ll-loop run` exit as success
+will now see `2` on failure runs. A terminal's `failure` flag defaults to true
+for states named `failed`, `error`, `aborted`, or `finalize_aborted`; any other
+failure-shaped terminal must declare `failure: true` to exit nonzero.
+
 ##### Model Header Display (ENH-1805)
 
 `ll-loop run` and `ll-loop monitor` print a header line showing the active LLM model name on startup, detected from the Claude CLI `stream-json` init event (same mechanism as `ll-auto`). The model name appears in the first output line after the logo banner:

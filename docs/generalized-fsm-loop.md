@@ -326,6 +326,14 @@ states:                         # State definitions
     # --- Other State Properties ---
     next: string                # Unconditional transition (no evaluation)
     terminal: boolean           # True if this is an end state
+    failure: boolean            # True if reaching this terminal means the run
+                                # FAILED (ENH-2814). `ll-loop run` exits 2, the
+                                # run is persisted as final_status "failed", and
+                                # a parent loop routes on_no. Defaults to true
+                                # for terminals named failed/error/aborted/
+                                # finalize_aborted; declare it explicitly for
+                                # any other failure-shaped terminal (blocked,
+                                # impl_failed, ...).
     capture: string             # Variable name to store output
                                 # Validated by ENH-1961: any ${captured.<var>.*}
                                 # reference in a downstream state must be reachable
@@ -1700,6 +1708,16 @@ Loop completed: done (1 iteration, 2m 34s)
 ### Failure Terminals Must Include a Diagnostic Action
 
 A `terminal: true` state that signals failure (as opposed to a successful `done`) must be paired with a preceding non-terminal `diagnose` state that runs an `action_type: prompt` action before routing to the bare terminal. A failure terminal with no action produces a blank entry in `ll-loop history` — the only visible signal is the state name.
+
+**Mark the terminal `failure: true`.** Since ENH-2814 failure-ness is an explicit schema flag, not a naming convention: it is what makes `ll-loop run` exit `2`, what persists the run as `final_status: "failed"` in `.loops/runs` archives and the session store, and what routes a parent loop to `on_no`. The flag defaults to `true` for terminals named `failed`, `error`, `aborted`, or `finalize_aborted`, so pre-existing loops keep working unchanged — but any other failure-shaped name (`blocked`, `impl_failed`, `input_missing`, ...) is invisible to every one of those consumers unless you declare it:
+
+```yaml
+  blocked:
+    terminal: true
+    failure: true
+```
+
+Conversely, a non-`done` terminal that is *not* a failure (a reporting terminal like `present_result`, or `done_empty`) should be left unflagged — it then exits 0 and routes a parent to `on_yes`.
 
 **Important**: do NOT put `action_type: prompt` directly on the `terminal: true` state. The FSM runner calls `_finish("terminal")` before executing any terminal-state action, so the action is silently skipped. The correct pattern is the same two-state split used for successful completion (`report → done`): a non-terminal `diagnose` state runs the prompt and routes `next: failed`, while `failed` stays as a bare `terminal: true` anchor.
 

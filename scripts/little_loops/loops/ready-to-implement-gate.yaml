@@ -25,3 +25,4 @@ states:
 
   blocked:
     terminal: true
+    failure: true

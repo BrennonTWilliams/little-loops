@@ -3427,20 +3427,23 @@ class TestPerWorktreeProofFirstGate:
     def test_blocked_result_skips_manage_issue(
         self, lt_enabled_br_config: BRConfig, tmp_path: Path
     ) -> None:
-        """Gate returning blocked state skips manage-issue; WorkerResult.success=False."""
+        """Gate landing on a failure terminal skips manage-issue; success=False.
+
+        ENH-2814: `blocked` carries `failure: true`, so `ll-loop run` exits
+        FAILURE_TERMINAL_EXIT_CODE. The gate reads that exit code directly —
+        the old `.loops/.running/*.state.json` read is retired.
+        """
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
         from little_loops.parallel.worker_pool import _run_per_worktree_proof_first_gate
 
         issue = self._make_issue(tmp_path, "ENH-002", learning_tests_required=["httpx"])
 
-        # Write state file that simulates proof-first-task landing in "blocked" state
-        loops_running = tmp_path / ".loops" / ".running"
-        loops_running.mkdir(parents=True, exist_ok=True)
-        state_data = {"current_state": "blocked", "status": "completed"}
-        (loops_running / "proof-first-task.state.json").write_text(json.dumps(state_data))
+        blocked_result = self._gate_ok_result()
+        blocked_result.returncode = FAILURE_TERMINAL_EXIT_CODE
 
         with patch(
             "little_loops.parallel.worker_pool.subprocess.run",
-            return_value=self._gate_ok_result(),
+            return_value=blocked_result,
         ) as mock_sub:
             result = _run_per_worktree_proof_first_gate(
                 issue,

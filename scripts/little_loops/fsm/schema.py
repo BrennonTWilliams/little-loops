@@ -22,6 +22,17 @@ from little_loops.fsm.host_guard import HostGuardConfig
 # Default LLM model for structured evaluation
 DEFAULT_LLM_MODEL: str = "sonnet"
 
+# ENH-2814: terminal-state names that historically signalled failure by naming
+# convention alone. This set is now only a *backward-compatibility default* for
+# ``StateConfig.failure`` when a loop YAML does not declare the flag explicitly.
+# Every consumer (exit codes, persistence, sub-loop routing, validation) reads
+# ``StateConfig.failure`` / ``FSMLoop.get_failure_states()`` — not this set.
+# Loops with failure-shaped terminals outside this set (``blocked``,
+# ``impl_failed``, ...) should declare ``failure: true`` on the state.
+FAILURE_TERMINAL_NAMES: frozenset[str] = frozenset(
+    {"failed", "error", "aborted", "finalize_aborted"}
+)
+
 
 @dataclass
 class EvaluateConfig:
@@ -546,6 +557,11 @@ class StateConfig:
         on_partial: Shorthand for partial verdict routing
         next: Unconditional transition (no evaluation)
         terminal: If True, this is an end state
+        failure: If True, reaching this terminal state means the run failed
+            (ENH-2814). Drives the nonzero ``ll-loop run`` exit code, the
+            persisted ``final_status="failed"``, and sub-loop ``on_no``
+            routing. Defaults from :data:`FAILURE_TERMINAL_NAMES` when the
+            YAML omits it, so pre-existing loops keep their behaviour.
         capture: Variable name to store action output
         timeout: Action-level timeout in seconds
         on_maintain: State to transition to when maintain=True and loop completes
@@ -605,6 +621,7 @@ class StateConfig:
     on_blocked: str | None = None
     next: str | None = None
     terminal: bool = False
+    failure: bool = False
     capture: str | None = None
     append_to_messages: str | None = None
     timeout: int | None = None
@@ -669,6 +686,8 @@ class StateConfig:
             result["next"] = self.next
         if self.terminal:
             result["terminal"] = self.terminal
+        if self.failure:
+            result["failure"] = self.failure
         if self.capture is not None:
             result["capture"] = self.capture
         if self.append_to_messages is not None:
@@ -731,8 +750,16 @@ class StateConfig:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> StateConfig:
-        """Create from dictionary (JSON/YAML deserialization)."""
+    def from_dict(cls, data: dict[str, Any], name: str | None = None) -> StateConfig:
+        """Create from dictionary (JSON/YAML deserialization).
+
+        Args:
+            data: The state's YAML/JSON mapping.
+            name: The state's own name, used only to default the ENH-2814
+                ``failure`` flag from :data:`FAILURE_TERMINAL_NAMES` when the
+                mapping omits it. ``None`` (the standalone-parse case) means
+                the flag defaults to ``False`` unless declared.
+        """
         evaluate = None
         if "evaluate" in data:
             evaluate = EvaluateConfig.from_dict(data["evaluate"])
@@ -789,6 +816,12 @@ class StateConfig:
             on_blocked=data.get("on_blocked"),
             next=data.get("next"),
             terminal=data.get("terminal", False),
+            failure=bool(
+                data.get(
+                    "failure",
+                    bool(data.get("terminal", False)) and name in FAILURE_TERMINAL_NAMES,
+                )
+            ),
             capture=data.get("capture"),
             append_to_messages=data.get("append_to_messages"),
             timeout=data.get("timeout"),
@@ -1366,7 +1399,7 @@ class FSMLoop:
     def from_dict(cls, data: dict[str, Any]) -> FSMLoop:
         """Create from dictionary (JSON/YAML deserialization)."""
         states = {
-            name: StateConfig.from_dict(state_data)
+            name: StateConfig.from_dict(state_data, name=name)
             for name, state_data in data.get("states", {}).items()
         }
 
@@ -1480,6 +1513,17 @@ class FSMLoop:
             Set of state names where terminal=True.
         """
         return {name for name, state in self.states.items() if state.terminal}
+
+    def get_failure_states(self) -> set[str]:
+        """Get all failure-terminal state names (ENH-2814).
+
+        Returns:
+            Set of state names where failure=True. This is the single source
+            of truth for "did this run fail?" — exit codes, persisted
+            ``final_status``, sub-loop routing, and validation all read it
+            instead of re-deriving failure-ness from the state's name.
+        """
+        return {name for name, state in self.states.items() if state.failure}
 
     def get_all_referenced_states(self) -> set[str]:
         """Get all state names referenced by transitions.

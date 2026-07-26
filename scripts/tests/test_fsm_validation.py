@@ -32,6 +32,7 @@ from little_loops.fsm.validation import (
     _validate_capture_reachability,
     _validate_classify_route_default,
     _validate_evaluator,
+    _validate_failure_terminal_action,
     _validate_generator_fix_discipline,
     _validate_haiku_pinned_generator,
     _validate_harness_multimodal_evaluator_blind_spot,
@@ -3116,7 +3117,9 @@ class TestCaptureReachabilityValidation:
             },
         )
         errors = _validate_capture_reachability(fsm)
-        assert errors == [], f"Referencing the event-stream's own .output field should be fine: {errors}"
+        assert errors == [], (
+            f"Referencing the event-stream's own .output field should be fine: {errors}"
+        )
 
     # --- Missing capture state → ERROR ---
 
@@ -4871,9 +4874,7 @@ class TestPruningProfileCoverageValidation:
                 "done": make_state(terminal=True),
             },
         )
-        warnings = self._mr12_coverage_warnings(
-            validate_fsm(fsm, orchestration_request_path="sdk")
-        )
+        warnings = self._mr12_coverage_warnings(validate_fsm(fsm, orchestration_request_path="sdk"))
         assert warnings == [], f"Unexpected MR-12 coverage WARNING under config sdk: {warnings}"
 
     # --- end-to-end via validate_fsm() ---
@@ -4980,3 +4981,84 @@ class TestTerminalActionOk:
         )
         errors = _validate_terminal_action_ok(fsm)
         assert errors == []
+
+
+class TestFailureTerminalActionFlagDriven:
+    """ENH-2814: _validate_failure_terminal_action reads the `failure` flag."""
+
+    def _fsm(self, terminal_states: dict[str, StateConfig]) -> FSMLoop:
+        states: dict[str, StateConfig] = {
+            "start": StateConfig(action="echo hi", next=next(iter(terminal_states))),
+        }
+        states.update(terminal_states)
+        return FSMLoop(name="t", initial="start", states=states)
+
+    def test_bare_flagged_terminal_warns_regardless_of_name(self) -> None:
+        """A flagged terminal named outside the legacy set is now covered."""
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            states={
+                # No action and no sub-loop → not a diagnostic predecessor.
+                "check": StateConfig(next="blocked"),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        errors = _validate_failure_terminal_action(fsm)
+        assert [e.path for e in errors] == ["states.blocked"]
+        assert errors[0].severity is ValidationSeverity.WARNING
+
+    def test_unflagged_terminal_named_failed_is_not_flagged_twice(self) -> None:
+        """An explicit `failure: false` opts a `failed`-named terminal out."""
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            states={
+                "check": StateConfig(next="failed"),
+                "failed": StateConfig(terminal=True, failure=False),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
+    def test_diagnostic_predecessor_suppresses_warning(self) -> None:
+        """A predecessor carrying an action counts as diagnostic output."""
+        fsm = FSMLoop(
+            name="t",
+            initial="diagnose",
+            states={
+                "diagnose": StateConfig(action="echo why", next="blocked"),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
+    def test_learning_predecessor_counts_as_diagnostic(self) -> None:
+        """A `learning:` state is action-bearing (it shells out to ll-learning-tests)."""
+        fsm = FSMLoop(
+            name="t",
+            initial="prove",
+            states={
+                "prove": StateConfig(
+                    learning=LearningConfig(targets_csv="httpx"),
+                    on_yes="done",
+                    on_blocked="blocked",
+                ),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
+    def test_name_convention_still_defaults_the_flag_through_yaml(self) -> None:
+        """A YAML `failed` terminal with no `failure:` key is still validated."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "t",
+                "initial": "check",
+                "states": {
+                    "check": {"next": "failed"},
+                    "failed": {"terminal": True},
+                },
+            }
+        )
+        assert [e.path for e in _validate_failure_terminal_action(fsm)] == ["states.failed"]

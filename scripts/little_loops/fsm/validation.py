@@ -1098,33 +1098,38 @@ def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
 
 
 def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
-    """Warn when a failure-named terminal state has no diagnostic predecessor.
+    """Warn when a failure terminal state has no diagnostic predecessor.
 
-    Failure terminals (failed, error, aborted) should have at least one
-    predecessor state with an action or sub-loop that provides diagnostic
-    output before termination. Otherwise the failure is silent — the
-    executor calls _finish("terminal") before any action on the terminal
-    itself can execute.
+    Failure terminals should have at least one predecessor state with an
+    action or sub-loop that provides diagnostic output before termination.
+    Otherwise the failure is silent — the executor calls _finish("terminal")
+    before any action on the terminal itself can execute.
+
+    ENH-2814: failure-ness is read from ``StateConfig.failure`` (via
+    ``get_failure_states()``), the single source of truth, rather than
+    re-tested against the ``FAILURE_TERMINAL_NAMES`` name convention. That
+    set now only *defaults* the flag at parse time, so this validator keeps
+    its previous coverage while also catching explicitly-declared failure
+    terminals whose names fall outside it (``blocked``, ``impl_failed``, ...).
 
     Severity is WARNING (not ERROR) so that existing loops with bare
     failure terminals continue to load, and test_terminal_only_state_valid
     (which filters by ERROR) passes without modification.
     """
-    FAILURE_TERMINAL_NAMES: frozenset[str] = frozenset(
-        {"failed", "error", "aborted", "finalize_aborted"}
-    )
     errors: list[ValidationError] = []
 
-    terminal_states = fsm.get_terminal_states()
-    failure_terminals = terminal_states & FAILURE_TERMINAL_NAMES
+    failure_terminals = fsm.get_failure_states() & fsm.get_terminal_states()
 
-    for ft_name in failure_terminals:
+    for ft_name in sorted(failure_terminals):
         has_diagnostic_predecessor = False
         for state_name, state in fsm.states.items():
             if state_name == ft_name:
                 continue
             if ft_name in state.get_referenced_states():
-                if state.action is not None or state.loop is not None:
+                # `learning:` is an action-bearing primitive too (it shells out
+                # to ll-learning-tests), so a `learning` state routing to a
+                # failure terminal is a genuine diagnostic predecessor.
+                if state.action is not None or state.loop is not None or state.learning is not None:
                     has_diagnostic_predecessor = True
                     break
 
@@ -1132,7 +1137,7 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
             errors.append(
                 ValidationError(
                     message=(
-                        f"Failure-named terminal state '{ft_name}' has no predecessor "
+                        f"Failure terminal state '{ft_name}' has no predecessor "
                         "state with a diagnostic action. Add a non-terminal diagnostic "
                         "state (e.g. 'diagnose') with an action or sub-loop that routes "
                         f"to '{ft_name}'."

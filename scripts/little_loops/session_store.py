@@ -228,7 +228,7 @@ def _unpack_payload(value: str | bytes) -> str:
     return value
 
 
-SCHEMA_VERSION = 36
+SCHEMA_VERSION = 37
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1174,6 +1174,18 @@ _MIGRATIONS: list[str] = [
         SELECT issue_num FROM issue_events
         WHERE session_id IS NOT NULL AND issue_num IS NOT NULL
     );
+    """,
+    # (ENH-2814): persist the FSM's explicit failure signal on loop_runs so
+    # consumers read it instead of re-deriving failure-ness from the terminal
+    # state's name. 1 = the run stopped on a state declared `failure: true`;
+    # 0 = it did not. NULL marks a pre-ENH-2814 row whose failure-ness was
+    # never recorded — those still fall back to the legacy name check (see
+    # history_reader._WASTED_RUN_PREDICATE). Fix-forward only: existing rows
+    # are not backfilled.
+    """
+    ALTER TABLE loop_runs ADD COLUMN failure_terminal INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_failure_terminal
+        ON loop_runs(failure_terminal);
     """,
 ]
 
@@ -2465,6 +2477,7 @@ def record_loop_run_summary(
     diagnostics_path: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
+    failure_terminal: bool | None = None,
     config: dict | None = None,
 ) -> bool:
     """Write one row to ``loop_runs`` and index it in ``search_index`` (ENH-2463).
@@ -2477,6 +2490,10 @@ def record_loop_run_summary(
     :func:`record_commit_event` — a resumed-then-completed run contributes
     exactly one row. The FTS row is only written when the insert actually
     lands, so repeated calls do not duplicate search results.
+
+    ``failure_terminal`` (ENH-2814) records whether the run stopped on a state
+    declared ``failure: true``. ``None`` writes SQL NULL, marking a row whose
+    failure-ness is unknown so readers fall back to the legacy name check.
 
     The ``config`` parameter is a forward-compatibility stub for a future
     ``analytics.capture.loop_runs`` gate; it is accepted but not yet used.
@@ -2491,8 +2508,9 @@ def record_loop_run_summary(
         cursor = conn.execute(
             "INSERT OR IGNORE INTO loop_runs("
             "run_id, loop_name, started_at, ended_at, final_state, iterations, "
-            "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch, "
+            "failure_terminal"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 loop_name,
@@ -2506,6 +2524,7 @@ def record_loop_run_summary(
                 diagnostics_path,
                 head_sha,
                 branch,
+                None if failure_terminal is None else int(failure_terminal),
             ),
         )
         inserted = bool(cursor.rowcount)

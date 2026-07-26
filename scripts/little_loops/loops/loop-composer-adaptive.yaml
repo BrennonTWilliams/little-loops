@@ -769,6 +769,7 @@ states:
     on_error: finalize_failed
   abort_composer:
     terminal: true
+    failure: true
   finalize_failed:
     action_type: shell
     action: |

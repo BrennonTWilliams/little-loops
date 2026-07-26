@@ -187,3 +187,43 @@ class TestCmdRunOnlyPending:
         entries = {e.id: e for e in list_entries()}
         assert entries[done_id].status == "done"
         assert entries[pending_id].status == "done"
+
+
+class TestQueueRunExitCodeVerdict:
+    """ENH-2814: `ll-queue run` marks a nonzero-exiting action "failed"."""
+
+    def test_failure_terminal_exit_code_records_failed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An action exiting FAILURE_TERMINAL_EXIT_CODE is recorded as failed.
+
+        `ll-queue run`'s verdict is `exit_code == 0`, so making failure
+        terminals exit nonzero (ENH-2814) is exactly what stops a failed run
+        from being written back as "done".
+        """
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        entry_id = _add_and_get_id(capsys, "check-code")
+
+        def fake_run_action(spec: object) -> RunnerResult:
+            return RunnerResult(stdout="", stderr="", exit_code=FAILURE_TERMINAL_EXIT_CODE)
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        assert get_entry(entry_id).status == "failed"
+
+    def test_loop_runner_is_not_dispatched_by_run_action(self) -> None:
+        """`RunnerType.LOOP` is deliberately not dispatched by run_action().
+
+        Documents why ENH-2814 needs no `ll-queue run` change: queued loops
+        stay on PersistentExecutor (FEAT-2684), so the exit-code verdict above
+        only ever applies to the SKILL/CMD/MCP/PROMPT kinds. Guards against a
+        future LOOP handler being wired up without revisiting that verdict.
+        """
+        from little_loops.runner_spec import ActionSpec, RunnerType, run_action
+
+        spec = ActionSpec(name="x", runner=RunnerType.LOOP, target="x")
+        with pytest.raises(ValueError, match="does not dispatch"):
+            run_action(spec)

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.152.0] - 2026-07-26
+
+### Changed
+
+- ENH-2814: FSM failure terminals are now observable end-to-end. `StateConfig`
+  gains an explicit `failure: bool` flag (with `FSMLoop.get_failure_states()`
+  alongside `get_terminal_states()`), and it is the single source of truth that
+  the exit code, run persistence, sub-loop routing, and `ll-loop validate` all
+  read — replacing four independent re-derivations from the terminal state's
+  *name*. The flag defaults to `true` for terminals named `failed`, `error`,
+  `aborted`, or `finalize_aborted`, so no existing loop YAML has to change.
+  `parallel/worker_pool.py`'s and `learning_tests/gate.py`'s state-file
+  workarounds are deleted.
+
+  **Behaviour change — `ll-loop run` no longer always exits 0.** A run that
+  lands on a `failure: true` terminal now exits **2** (distinct from `1`, which
+  still means the loop never reached a terminal at all). Scripts, cron
+  wrappers, and `ll-queue run` that treated any loop exit as success will start
+  seeing failures they previously missed. Such runs are also persisted as
+  `final_status: "failed"` rather than `"completed"` in `.loops/runs` archives
+  and the session store's `loop_runs` table, which gains a `failure_terminal`
+  column. This is fix-forward only: historical rows already written as
+  `"completed"` are not backfilled.
+
+  **Behaviour change — sub-loop routing.** A parent now routes to `on_yes` for
+  any child terminal *not* flagged `failure`, where previously any terminal not
+  literally named `done` routed to `on_no`. Built-in loops with failure-shaped
+  terminals outside the name convention (`blocked`, `impl_failed`,
+  `input_missing`, ...) have been marked `failure: true` to preserve their
+  behaviour; non-failure terminals like `present_result` and `done_empty` are
+  correctly treated as successes for the first time.
+
 ## [1.151.1] - 2026-07-25
 
 ### Fixed
